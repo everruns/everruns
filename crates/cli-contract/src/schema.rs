@@ -28,10 +28,50 @@ pub fn contract_for(
     route: &CliRoute,
     schema: &Value,
 ) -> ContractCommand {
-    ContractCommand {
+    contract_with(
+        wire_name,
+        description,
+        method,
+        http_path,
+        Some(route),
+        schema,
+    )
+    .expect("a declared route always yields a spelling")
+}
+
+/// Build a contract from a declared route, or from what the command already
+/// carries when it declares none.
+///
+/// `None` means the command has no spelling and none could be derived, which is
+/// a command that must declare one. The caller decides whether that is an error
+/// or an omission; on the hosted catalog it is an error, because a command
+/// without a spelling is unreachable from the command line.
+pub fn contract_with(
+    wire_name: &str,
+    description: &str,
+    method: &str,
+    http_path: &str,
+    route: Option<&CliRoute>,
+    schema: &Value,
+) -> Option<ContractCommand> {
+    let derived;
+    let (path, verb) = match route {
+        Some(route) => (
+            route.path.iter().map(|part| (*part).to_string()).collect(),
+            route.verb.to_string(),
+        ),
+        None => {
+            derived = crate::declare::derived_route(wire_name, http_path)?;
+            derived
+        }
+    };
+    let empty = CliRoute::new(&[], "");
+    let route = route.unwrap_or(&empty);
+
+    Some(ContractCommand {
         wire_name: wire_name.to_string(),
-        path: route.path.iter().map(|part| (*part).to_string()).collect(),
-        verb: route.verb.to_string(),
+        path,
+        verb,
         description: description.to_string(),
         method: method.to_string(),
         http_path: http_path.to_string(),
@@ -44,7 +84,7 @@ pub fn contract_for(
                 command: example.command.to_string(),
             })
             .collect(),
-    }
+    })
 }
 
 fn args_for(route: &CliRoute, schema: &Value) -> Vec<ContractArg> {

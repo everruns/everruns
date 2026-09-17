@@ -698,7 +698,7 @@
   },
   {
     "category": "apps",
-    "cli": null,
+    "cli": "apps channels add-schedule",
     "description": "Add a schedule invocation channel to an app using flat args. cron_expression accepts 5-field or 7-field cron; 5-field input is normalized to 7-field cron.",
     "input_schema": {
       "$defs": {
@@ -839,7 +839,7 @@
   },
   {
     "category": "apps",
-    "cli": null,
+    "cli": "apps channels add-webhook",
     "description": "Add a webhook invocation channel to an app using flat args.",
     "input_schema": {
       "$defs": {
@@ -10436,7 +10436,7 @@
   },
   {
     "category": "system",
-    "cli": null,
+    "cli": "system health",
     "description": "Health check endpoint.",
     "input_schema": {
       "type": "object"
@@ -14523,7 +14523,7 @@
   },
   {
     "category": "organizations",
-    "cli": null,
+    "cli": "orgs resolve",
     "description": "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
     "input_schema": {
       "properties": {

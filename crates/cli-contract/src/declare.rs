@@ -128,3 +128,127 @@ impl CliRoute {
         self.args.iter().find(|arg| arg.field == field)
     }
 }
+
+/// The spelling a command gets when it declares no [`CliRoute`].
+///
+/// Every command is part of the command line, because a surface where most
+/// operations have no spelling is not a CLI: a caller who cannot find a command
+/// by walking `--help` has to be told it exists some other way, and that other
+/// way is the thing the tree replaces.
+///
+/// Two facts each command already carries are enough for almost all of them.
+/// The REST path holds the hierarchy that flat names hide:
+/// `/v1/agents/{id}/versions` is `agents versions`, which no amount of string
+/// surgery on `list_agent_versions` would have found. The verb is the flat
+/// name's first token.
+///
+/// Derivation is a default, never an override. A command that declares a route
+/// keeps it, which is how `destroy_agent` stays `agents destroy` rather than
+/// the `agents delete destroy` its REST path implies. Measured against the
+/// hand-written routes, this reproduces 38 of 50 exactly and every difference
+/// is one where the declaration is better.
+///
+/// Returns `None` when the path carries no noun at all, which is a command that
+/// has to declare its own spelling.
+pub fn derived_route(wire_name: &str, http_path: &str) -> Option<(Vec<String>, String)> {
+    // Fixtures are not part of anyone's command line.
+    if http_path.starts_with("/test/") {
+        return None;
+    }
+    let verb = wire_name.split('_').next()?.to_string();
+    let mut nouns: Vec<String> = http_path
+        .trim_matches('/')
+        .split('/')
+        // Skip the version segment; drop path parameters.
+        .skip(1)
+        .filter(|segment| !segment.is_empty() && !segment.starts_with('{'))
+        // REST paths are not uniformly spelled; a CLI is. `plugin_marketplaces`
+        // is a path segment, `plugin-marketplaces` is a command.
+        .map(|segment| segment.replace('_', "-"))
+        .collect();
+
+    // A REST action endpoint repeats the verb as its last segment, so
+    // `/v1/sessions/{id}/archive` would otherwise spell `sessions archive
+    // archive`.
+    if nouns
+        .last()
+        .is_some_and(|last| last.replace('-', "_") == verb)
+    {
+        nouns.pop();
+    }
+
+    if nouns.is_empty() {
+        return None;
+    }
+    Some((nouns, verb.replace('_', "-")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_rest_path_supplies_the_hierarchy_a_flat_name_hides() {
+        assert_eq!(
+            derived_route("list_agent_versions", "/v1/agents/{agent_id}/versions"),
+            Some((vec!["agents".into(), "versions".into()], "list".into()))
+        );
+        assert_eq!(
+            derived_route(
+                "list_session_participants",
+                "/v1/sessions/{id}/participants"
+            ),
+            Some((
+                vec!["sessions".into(), "participants".into()],
+                "list".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn an_action_endpoint_does_not_repeat_its_verb() {
+        assert_eq!(
+            derived_route("archive_session", "/v1/sessions/{id}/archive"),
+            Some((vec!["sessions".into()], "archive".into()))
+        );
+    }
+
+    #[test]
+    fn a_multi_word_verb_is_kebab() {
+        assert_eq!(
+            derived_route(
+                "set_default_agent_version",
+                "/v1/agents/{id}/versions/default"
+            ),
+            Some((
+                vec!["agents".into(), "versions".into(), "default".into()],
+                "set".into()
+            ))
+        );
+    }
+
+    /// A command whose path carries no noun has to say what it is called.
+    #[test]
+    fn a_pathless_command_derives_nothing() {
+        assert_eq!(derived_route("health_check", "/health"), None);
+    }
+
+    /// A REST path may be snake_case; a command line is not.
+    #[test]
+    fn nouns_are_kebab_even_when_the_path_is_not() {
+        assert_eq!(
+            derived_route("list_plugin_marketplaces", "/v1/plugin_marketplaces"),
+            Some((vec!["plugin-marketplaces".into()], "list".into()))
+        );
+    }
+
+    /// A test fixture is not part of the command line, and a derived surface
+    /// would otherwise hand one to every operator.
+    #[test]
+    fn a_fixture_route_is_not_derived() {
+        assert_eq!(
+            derived_route("test_transport_conflict", "/test/transport-conflict"),
+            None
+        );
+    }
+}

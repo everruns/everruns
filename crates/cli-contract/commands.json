@@ -1,5 +1,188 @@
 [
   {
+    "wire_name": "create_agent_identity",
+    "path": [
+      "agent-identities"
+    ],
+    "verb": "create",
+    "description": "Create a new agent identity (virtual principal for unattended execution).",
+    "method": "POST",
+    "http_path": "/v1/agent-identities",
+    "args": [
+      {
+        "field": "avatar_url",
+        "long": "avatar-url",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "locale",
+        "long": "locale",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_agent_identity",
+    "path": [
+      "agent-identities"
+    ],
+    "verb": "delete",
+    "description": "Archive an agent identity (soft delete). Can be restored.",
+    "method": "DELETE",
+    "http_path": "/v1/agent-identities/{identity_id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "destroy_agent_identity",
+    "path": [
+      "agent-identities",
+      "delete"
+    ],
+    "verb": "destroy",
+    "description": "Permanently delete an agent identity.",
+    "method": "POST",
+    "http_path": "/v1/agent-identities/{identity_id}/delete",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent_identity",
+    "path": [
+      "agent-identities"
+    ],
+    "verb": "get",
+    "description": "Get a single agent identity by ID.",
+    "method": "GET",
+    "http_path": "/v1/agent-identities/{identity_id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_identities",
+    "path": [
+      "agent-identities"
+    ],
+    "verb": "list",
+    "description": "List all active agent identities. Use search for name search, include_archived=true to include archived.",
+    "method": "GET",
+    "http_path": "/v1/agent-identities",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_agent_identity",
+    "path": [
+      "agent-identities"
+    ],
+    "verb": "update",
+    "description": "Update an agent identity. Only provided fields are changed.",
+    "method": "PATCH",
+    "http_path": "/v1/agent-identities/{identity_id}",
+    "args": [
+      {
+        "field": "avatar_url",
+        "long": "avatar-url",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "locale",
+        "long": "locale",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
     "wire_name": "analyze_agent",
     "path": [
       "agents"
@@ -69,6 +252,107 @@
       {
         "intent": "See whether a name is free before creating an agent",
         "command": "everruns agents check-name --name triage"
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_agent_check_rule",
+    "path": [
+      "agents",
+      "check-rules"
+    ],
+    "verb": "delete",
+    "description": "Delete an agent check rule (built-in override or custom rule).",
+    "method": "DELETE",
+    "http_path": "/v1/agents/check-rules/{rule_id}",
+    "args": [
+      {
+        "field": "rule_id",
+        "long": "rule-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_check_rules",
+    "path": [
+      "agents",
+      "check-rules"
+    ],
+    "verb": "list",
+    "description": "List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules.",
+    "method": "GET",
+    "http_path": "/v1/agents/check-rules",
+    "args": []
+  },
+  {
+    "wire_name": "upsert_agent_check_rule",
+    "path": [
+      "agents",
+      "check-rules"
+    ],
+    "verb": "upsert",
+    "description": "Create or update an agent check rule (built-in override or custom rule).",
+    "method": "PUT",
+    "http_path": "/v1/agents/check-rules/{rule_id}",
+    "args": [
+      {
+        "field": "category",
+        "long": "category",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": true
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": true,
+        "help": "`builtin_override`, `declarative`, or `nl_rubric`."
+      },
+      {
+        "field": "match_mode",
+        "long": "match-mode",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "message",
+        "long": "message",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "pattern",
+        "long": "pattern",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "rubric",
+        "long": "rubric",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "rule_id",
+        "long": "rule-id",
+        "kind": "string",
+        "required": true,
+        "help": "Built-in rule id (for `builtin_override`) or `custom.<slug>` (custom)."
+      },
+      {
+        "field": "severity",
+        "long": "severity",
+        "kind": "string",
+        "required": false,
+        "help": "Optional everywhere."
       }
     ]
   },
@@ -249,6 +533,61 @@
     ]
   },
   {
+    "wire_name": "create_agent_credential_binding",
+    "path": [
+      "agents",
+      "credentials"
+    ],
+    "verb": "create",
+    "description": "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/credentials",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Agent ID, populated from the request path by the HTTP API."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Optional explanation of how the credential will be used."
+      },
+      {
+        "field": "label",
+        "long": "label",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable label shown in the secure setup UI."
+      },
+      {
+        "field": "mcp_server_name",
+        "long": "mcp-server-name",
+        "kind": "string",
+        "required": true,
+        "help": "Name of an MCP server attached to the agent."
+      },
+      {
+        "field": "parameter_name",
+        "long": "parameter-name",
+        "kind": "string",
+        "required": true,
+        "help": "Top-level tool argument to inject outside model context."
+      },
+      {
+        "field": "tool_name",
+        "long": "tool-name",
+        "kind": "string",
+        "required": true,
+        "help": "MCP tool whose outbound call requires the credential."
+      }
+    ]
+  },
+  {
     "wire_name": "delete_agent",
     "path": [
       "agents"
@@ -349,6 +688,89 @@
       {
         "intent": "Show one agent's full configuration",
         "command": "everruns agents get agt_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent_health_check_run",
+    "path": [
+      "agents",
+      "health-checks"
+    ],
+    "verb": "get",
+    "description": "Get a single agent health check run with its results.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/health-checks/{run_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "run_id",
+        "long": "run-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_latest_agent_health_check_run",
+    "path": [
+      "agents",
+      "health-checks",
+      "latest"
+    ],
+    "verb": "get",
+    "description": "Get the latest health check run for an agent, with a stale-config flag.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/health-checks/latest",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_health_check_runs",
+    "path": [
+      "agents",
+      "health-checks"
+    ],
+    "verb": "list",
+    "description": "List recent health check runs for an agent.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/health-checks",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "trigger_agent_health_check",
+    "path": [
+      "agents",
+      "health-checks"
+    ],
+    "verb": "trigger",
+    "description": "Run a behavioral health check (generated smoke tests) against an agent.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/health-checks",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
       }
     ]
   },
@@ -584,6 +1006,250 @@
       {
         "intent": "See the prompt a draft configuration would produce, without creating it",
         "command": "everruns agents preview --system-prompt 'Triage incoming issues'"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_agent_trigger",
+    "path": [
+      "agents",
+      "triggers"
+    ],
+    "verb": "create",
+    "description": "Create a schedule trigger that wakes an agent on a cron.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/triggers",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
+      },
+      {
+        "field": "cron_expression",
+        "long": "cron-expression",
+        "kind": "string",
+        "required": true,
+        "help": "Cron expression that drives the durable schedule."
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether the trigger is active on creation (default `true`)."
+      },
+      {
+        "field": "message",
+        "long": "message",
+        "kind": "string",
+        "required": true,
+        "help": "Message content or `{{template}}` sent when the schedule fires."
+      },
+      {
+        "field": "session_mode",
+        "long": "session-mode",
+        "kind": "string",
+        "required": false,
+        "help": "How app-triggered invocations route into sessions.",
+        "choices": [
+          "shared_session",
+          "session_per_invocation"
+        ]
+      },
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false,
+        "help": "IANA timezone identifier for cron evaluation (default `UTC`)."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_agent_trigger",
+    "path": [
+      "agents",
+      "triggers"
+    ],
+    "verb": "delete",
+    "description": "Archive an agent trigger and remove its durable schedule.",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "trigger_id",
+        "long": "trigger-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent_trigger",
+    "path": [
+      "agents",
+      "triggers"
+    ],
+    "verb": "get",
+    "description": "Get a single agent trigger by id.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "trigger_id",
+        "long": "trigger-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_triggers",
+    "path": [
+      "agents",
+      "triggers"
+    ],
+    "verb": "list",
+    "description": "List an agent's triggers. include_archived=true also returns archived.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/triggers",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_trigger_runs",
+    "path": [
+      "agents",
+      "triggers",
+      "runs"
+    ],
+    "verb": "list",
+    "description": "List recent execution outcomes for an agent trigger.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "trigger_id",
+        "long": "trigger-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "trigger_agent_trigger",
+    "path": [
+      "agents",
+      "triggers"
+    ],
+    "verb": "trigger",
+    "description": "Manually fire an agent trigger once.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "trigger_id",
+        "long": "trigger-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "update_agent_trigger",
+    "path": [
+      "agents",
+      "triggers"
+    ],
+    "verb": "update",
+    "description": "Update an agent trigger. Only provided fields change.",
+    "method": "PATCH",
+    "http_path": "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "cron_expression",
+        "long": "cron-expression",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement cron expression."
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Replacement enabled state."
+      },
+      {
+        "field": "message",
+        "long": "message",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement message sent when the trigger fires."
+      },
+      {
+        "field": "session_mode",
+        "long": "session-mode",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement IANA timezone identifier."
+      },
+      {
+        "field": "trigger_id",
+        "long": "trigger-id",
+        "kind": "string",
+        "required": true
       }
     ]
   },
@@ -1135,6 +1801,3563 @@
     ]
   },
   {
+    "wire_name": "add_a2a_app_channel",
+    "path": [
+      "apps",
+      "a2a-channels"
+    ],
+    "verb": "add",
+    "description": "Add an A2A (Agent2Agent) invocation channel to an app. Returns the plaintext API key exactly once.",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/a2a-channels",
+    "args": [
+      {
+        "field": "agent_card_description",
+        "long": "agent-card-description",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "agent_card_name",
+        "long": "agent-card-name",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "auth",
+        "long": "auth",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether this resource is enabled."
+      },
+      {
+        "field": "message",
+        "long": "message",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "session_mode",
+        "long": "session-mode",
+        "kind": "string",
+        "required": false,
+        "help": "How app-triggered invocations route into sessions.",
+        "choices": [
+          "shared_session",
+          "session_per_invocation"
+        ]
+      }
+    ]
+  },
+  {
+    "wire_name": "regenerate_a2a_app_channel_key",
+    "path": [
+      "apps",
+      "a2a-channels",
+      "regenerate-key"
+    ],
+    "verb": "regenerate",
+    "description": "Regenerate the A2A channel API key. Returns the new plaintext exactly once and invalidates the previous key.",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/a2a-channels/{channel_id}/regenerate-key",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true,
+        "help": "Channel's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "add_api_endpoint_app_channel",
+    "path": [
+      "apps",
+      "api-endpoint-channels"
+    ],
+    "verb": "add",
+    "description": "Add an api_endpoint (execution-only API key) channel to an app. Returns the plaintext API key exactly once.",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/api-endpoint-channels",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "auth",
+        "long": "auth",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether this resource is enabled."
+      },
+      {
+        "field": "session_mode",
+        "long": "session-mode",
+        "kind": "string",
+        "required": false,
+        "help": "How app-triggered invocations route into sessions.",
+        "choices": [
+          "shared_session",
+          "session_per_invocation"
+        ]
+      }
+    ]
+  },
+  {
+    "wire_name": "regenerate_api_endpoint_app_channel_key",
+    "path": [
+      "apps",
+      "api-endpoint-channels",
+      "regenerate-key"
+    ],
+    "verb": "regenerate",
+    "description": "Regenerate the api_endpoint channel API key. Returns the new plaintext exactly once and invalidates the previous key.",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/api-endpoint-channels/{channel_id}/regenerate-key",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true,
+        "help": "Channel's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_app_budgets",
+    "path": [
+      "apps",
+      "budgets"
+    ],
+    "verb": "list",
+    "description": "List budgets attached to an app and (optionally) its channels.",
+    "method": "GET",
+    "http_path": "/v1/apps/{app_id}/budgets",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "include_channels",
+        "long": "include-channels",
+        "kind": "boolean",
+        "required": false,
+        "help": "When true include budgets attached to any of the app's channels (`app_channel:<id>`) in addit..."
+      }
+    ]
+  },
+  {
+    "wire_name": "add_app_channel",
+    "path": [
+      "apps",
+      "channels"
+    ],
+    "verb": "add",
+    "description": "Add a channel to an app.",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/channels",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "channel_config",
+        "long": "channel-config",
+        "kind": "json",
+        "required": false,
+        "help": "Channel-specific configuration."
+      },
+      {
+        "field": "channel_type",
+        "long": "channel-type",
+        "kind": "string",
+        "required": true,
+        "help": "Supported channel types for app distribution.",
+        "choices": [
+          "slack",
+          "ag_ui",
+          "schedule",
+          "webhook",
+          "a2a",
+          "fcp",
+          "api_endpoint",
+          "public_chat"
+        ]
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether the channel is enabled (default: true)."
+      }
+    ]
+  },
+  {
+    "wire_name": "add_schedule_app_channel",
+    "path": [
+      "apps",
+      "channels"
+    ],
+    "verb": "add-schedule",
+    "description": "Add a schedule invocation channel to an app using flat args. cron_expression accepts 5-field or 7-field cron; 5-field input is normalized to 7-field cron.",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/channels",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "cron_expression",
+        "long": "cron-expression",
+        "kind": "string",
+        "required": true,
+        "help": "Cron expression."
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether this resource is enabled."
+      },
+      {
+        "field": "message",
+        "long": "message",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "session_mode",
+        "long": "session-mode",
+        "kind": "string",
+        "required": false,
+        "help": "How app-triggered invocations route into sessions.",
+        "choices": [
+          "shared_session",
+          "session_per_invocation"
+        ]
+      },
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Attach a schedule that wakes an app on a cadence",
+        "command": "everruns apps channels add-schedule --app-id app_01h9 --cron-expression '0 * * * *' --message 'Daily digest'"
+      }
+    ]
+  },
+  {
+    "wire_name": "add_webhook_app_channel",
+    "path": [
+      "apps",
+      "channels"
+    ],
+    "verb": "add-webhook",
+    "description": "Add a webhook invocation channel to an app using flat args.",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/channels",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether this resource is enabled."
+      },
+      {
+        "field": "message",
+        "long": "message",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "session_mode",
+        "long": "session-mode",
+        "kind": "string",
+        "required": false,
+        "help": "How app-triggered invocations route into sessions.",
+        "choices": [
+          "shared_session",
+          "session_per_invocation"
+        ]
+      },
+      {
+        "field": "token",
+        "long": "token",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Attach a webhook so an external service can trigger an app",
+        "command": "everruns apps channels add-webhook --app-id app_01h9 --message 'Incoming webhook' --token wht_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_app_channel",
+    "path": [
+      "apps",
+      "channels"
+    ],
+    "verb": "delete",
+    "description": "Remove a channel from an app.",
+    "method": "DELETE",
+    "http_path": "/v1/apps/{id}/channels/{channel_id}",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true,
+        "help": "Channel's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_app_channels",
+    "path": [
+      "apps",
+      "channels"
+    ],
+    "verb": "list",
+    "description": "List channels attached to an app. Secret fields are redacted.",
+    "method": "GET",
+    "http_path": "/v1/apps/{id}/channels",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "channel_type",
+        "long": "channel-type",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "trigger_app_schedule_channel",
+    "path": [
+      "apps",
+      "channels"
+    ],
+    "verb": "trigger",
+    "description": "Manually trigger an app schedule channel. Use app_id and channel_id from list_app_channels.",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/channels/{channel_id}/trigger",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true,
+        "help": "Channel's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "update_app_channel",
+    "path": [
+      "apps",
+      "channels"
+    ],
+    "verb": "update",
+    "description": "Update a channel on an app.",
+    "method": "PATCH",
+    "http_path": "/v1/apps/{id}/channels/{channel_id}",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "channel_config",
+        "long": "channel-config",
+        "kind": "json",
+        "required": false,
+        "help": "Channel-specific configuration."
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true,
+        "help": "Channel's prefixed public identifier."
+      },
+      {
+        "field": "channel_type",
+        "long": "channel-type",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether the channel is enabled."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_app",
+    "path": [
+      "apps"
+    ],
+    "verb": "create",
+    "description": "Create a new app with a harness, agent, and optional channel.",
+    "method": "POST",
+    "http_path": "/v1/apps",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "ID of the agent to use."
+      },
+      {
+        "field": "agent_identity_id",
+        "long": "agent-identity-id",
+        "kind": "string",
+        "required": false,
+        "help": "Optional resident agent identity for unattended/channel execution."
+      },
+      {
+        "field": "agent_version_id",
+        "long": "agent-version-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "agent_version_policy",
+        "long": "agent-version-policy",
+        "kind": "string",
+        "required": false,
+        "help": "How an App resolves the Agent version it runs.",
+        "choices": [
+          "default",
+          "latest",
+          "pinned"
+        ]
+      },
+      {
+        "field": "channel_config",
+        "long": "channel-config",
+        "kind": "json",
+        "required": false,
+        "help": "Initial channel configuration."
+      },
+      {
+        "field": "channel_type",
+        "long": "channel-type",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Description of what the app does."
+      },
+      {
+        "field": "harness_id",
+        "long": "harness-id",
+        "kind": "string",
+        "required": true,
+        "help": "ID of the harness to use."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Display name of the app."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_app",
+    "path": [
+      "apps"
+    ],
+    "verb": "delete",
+    "description": "Archive an app (soft delete). Can be restored.",
+    "method": "DELETE",
+    "http_path": "/v1/apps/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "destroy_app",
+    "path": [
+      "apps",
+      "delete"
+    ],
+    "verb": "destroy",
+    "description": "Permanently delete an archived app.",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/delete",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_app",
+    "path": [
+      "apps"
+    ],
+    "verb": "get",
+    "description": "Get a single app by ID.",
+    "method": "GET",
+    "http_path": "/v1/apps/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_apps",
+    "path": [
+      "apps"
+    ],
+    "verb": "list",
+    "description": "List all apps. Use search for name search, include_archived=true to include archived.",
+    "method": "GET",
+    "http_path": "/v1/apps",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "publish_app",
+    "path": [
+      "apps"
+    ],
+    "verb": "publish",
+    "description": "Publish an app (start accepting requests).",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/publish",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_app_runs",
+    "path": [
+      "apps",
+      "runs"
+    ],
+    "verb": "list",
+    "description": "List recent app channel invocation runs.",
+    "method": "GET",
+    "http_path": "/v1/apps/{id}/runs",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "groupBy",
+        "long": "groupBy",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "window",
+        "long": "window",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "unpublish_app",
+    "path": [
+      "apps"
+    ],
+    "verb": "unpublish",
+    "description": "Unpublish an app (stop accepting requests).",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/unpublish",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "update_app",
+    "path": [
+      "apps"
+    ],
+    "verb": "update",
+    "description": "Update an app. Only provided fields are changed.",
+    "method": "PATCH",
+    "http_path": "/v1/apps/{id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "ID of the agent to use."
+      },
+      {
+        "field": "agent_identity_id",
+        "long": "agent-identity-id",
+        "kind": "string",
+        "required": false,
+        "help": "Optional resident agent identity for unattended/channel execution."
+      },
+      {
+        "field": "agent_version_id",
+        "long": "agent-version-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "agent_version_policy",
+        "long": "agent-version-policy",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Description of what the app does."
+      },
+      {
+        "field": "harness_id",
+        "long": "harness-id",
+        "kind": "string",
+        "required": false,
+        "help": "ID of the harness to use."
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Display name of the app."
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "check_budget",
+    "path": [
+      "budgets"
+    ],
+    "verb": "check",
+    "description": "Check budget status for a session-scoped budget.",
+    "method": "GET",
+    "http_path": "/v1/budgets/{budget_id}/check",
+    "args": [
+      {
+        "field": "budget_id",
+        "long": "budget-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "create_budget",
+    "path": [
+      "budgets"
+    ],
+    "verb": "create",
+    "description": "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
+    "method": "POST",
+    "http_path": "/v1/budgets",
+    "args": [
+      {
+        "field": "currency",
+        "long": "currency",
+        "kind": "string",
+        "required": true,
+        "help": "Unit in which usage and the limit are measured."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "number",
+        "required": true,
+        "help": "Hard spending ceiling for the budget."
+      },
+      {
+        "field": "metadata",
+        "long": "metadata",
+        "kind": "json",
+        "required": false,
+        "help": "Free-form metadata attached to this resource."
+      },
+      {
+        "field": "period",
+        "long": "period",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "soft_limit",
+        "long": "soft-limit",
+        "kind": "number",
+        "required": false,
+        "help": "Optional threshold that triggers a warning or pause before exhaustion."
+      },
+      {
+        "field": "subject_id",
+        "long": "subject-id",
+        "kind": "string",
+        "required": true,
+        "help": "Public identifier of the constrained resource."
+      },
+      {
+        "field": "subject_type",
+        "long": "subject-type",
+        "kind": "string",
+        "required": true,
+        "help": "Kind of resource constrained by the budget."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_budget",
+    "path": [
+      "budgets"
+    ],
+    "verb": "delete",
+    "description": "Delete a budget.",
+    "method": "DELETE",
+    "http_path": "/v1/budgets/{budget_id}",
+    "args": [
+      {
+        "field": "budget_id",
+        "long": "budget-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_budget",
+    "path": [
+      "budgets"
+    ],
+    "verb": "get",
+    "description": "Get a single budget by ID.",
+    "method": "GET",
+    "http_path": "/v1/budgets/{budget_id}",
+    "args": [
+      {
+        "field": "budget_id",
+        "long": "budget-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_budget_ledger",
+    "path": [
+      "budgets",
+      "ledger"
+    ],
+    "verb": "list",
+    "description": "List ledger entries for a budget.",
+    "method": "GET",
+    "http_path": "/v1/budgets/{budget_id}/ledger",
+    "args": [
+      {
+        "field": "budget_id",
+        "long": "budget-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of items returned in this page."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "Zero-based offset into the result set."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_budgets",
+    "path": [
+      "budgets"
+    ],
+    "verb": "list",
+    "description": "List budgets. Filter by subject_type and subject_id.",
+    "method": "GET",
+    "http_path": "/v1/budgets",
+    "args": [
+      {
+        "field": "subject_id",
+        "long": "subject-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "subject_type",
+        "long": "subject-type",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "top_up_budget",
+    "path": [
+      "budgets",
+      "top-up"
+    ],
+    "verb": "top",
+    "description": "Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.",
+    "method": "POST",
+    "http_path": "/v1/budgets/{budget_id}/top-up",
+    "args": [
+      {
+        "field": "amount",
+        "long": "amount",
+        "kind": "number",
+        "required": true
+      },
+      {
+        "field": "budget_id",
+        "long": "budget-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      }
+    ]
+  },
+  {
+    "wire_name": "update_budget",
+    "path": [
+      "budgets"
+    ],
+    "verb": "update",
+    "description": "Update a budget limit, status, or metadata.",
+    "method": "PATCH",
+    "http_path": "/v1/budgets/{budget_id}",
+    "args": [
+      {
+        "field": "budget_id",
+        "long": "budget-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "number",
+        "required": false,
+        "help": "Maximum number of items returned in this page."
+      },
+      {
+        "field": "metadata",
+        "long": "metadata",
+        "kind": "json",
+        "required": false,
+        "help": "Free-form metadata attached to this resource."
+      },
+      {
+        "field": "soft_limit",
+        "long": "soft-limit",
+        "kind": "number",
+        "required": false
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false,
+        "help": "Current lifecycle status."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_declarative_capability",
+    "path": [
+      "capabilities"
+    ],
+    "verb": "create",
+    "description": "Create a persisted declarative capability.",
+    "method": "POST",
+    "http_path": "/v1/capabilities",
+    "args": [
+      {
+        "field": "definition",
+        "long": "definition",
+        "kind": "json",
+        "required": true,
+        "help": "Definition for the new declarative capability."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_declarative_capability",
+    "path": [
+      "capabilities",
+      "declarative"
+    ],
+    "verb": "delete",
+    "description": "Archive a persisted declarative capability.",
+    "method": "DELETE",
+    "http_path": "/v1/capabilities/declarative/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "destroy_declarative_capability",
+    "path": [
+      "capabilities",
+      "declarative",
+      "delete"
+    ],
+    "verb": "destroy",
+    "description": "Permanently delete an archived declarative capability.",
+    "method": "POST",
+    "http_path": "/v1/capabilities/declarative/{id}/delete",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_declarative_capability",
+    "path": [
+      "capabilities",
+      "declarative"
+    ],
+    "verb": "get",
+    "description": "Get a persisted declarative capability.",
+    "method": "GET",
+    "http_path": "/v1/capabilities/declarative/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_declarative_capabilities",
+    "path": [
+      "capabilities",
+      "declarative"
+    ],
+    "verb": "list",
+    "description": "List persisted declarative capabilities.",
+    "method": "GET",
+    "http_path": "/v1/capabilities/declarative",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_declarative_capability",
+    "path": [
+      "capabilities",
+      "declarative"
+    ],
+    "verb": "update",
+    "description": "Update a persisted declarative capability.",
+    "method": "PATCH",
+    "http_path": "/v1/capabilities/declarative/{id}",
+    "args": [
+      {
+        "field": "definition",
+        "long": "definition",
+        "kind": "json",
+        "required": false,
+        "help": "Replacement declarative definition."
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false,
+        "help": "Optional lifecycle state update."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_capability",
+    "path": [
+      "capabilities"
+    ],
+    "verb": "get",
+    "description": "Get a specific capability by ID.",
+    "method": "GET",
+    "http_path": "/v1/capabilities/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "dry_run_guardrails",
+    "path": [
+      "capabilities",
+      "guardrails",
+      "dry-run"
+    ],
+    "verb": "dry",
+    "description": "Evaluate a guardrails capability config against sample text without a session. Returns triggered checks and whether the content would be blocked.",
+    "method": "POST",
+    "http_path": "/v1/capabilities/guardrails/dry-run",
+    "args": [
+      {
+        "field": "config",
+        "long": "config",
+        "kind": "json",
+        "required": true,
+        "help": "The `guardrails` capability config to evaluate (same shape persisted in `AgentCapabilityConfi..."
+      },
+      {
+        "field": "stage",
+        "long": "stage",
+        "kind": "string",
+        "required": true,
+        "help": "Pipeline stage a check applies to.",
+        "choices": [
+          "output",
+          "tool_use",
+          "tool_output"
+        ]
+      },
+      {
+        "field": "text",
+        "long": "text",
+        "kind": "string",
+        "required": true,
+        "help": "Sample content: model output, serialized tool arguments, or tool output, depending on `stage`."
+      },
+      {
+        "field": "tool_name",
+        "long": "tool-name",
+        "kind": "string",
+        "required": false,
+        "help": "Tool name for `tool_use` stage checks (`tool_pattern` rules)."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_guardrail_examples",
+    "path": [
+      "capabilities",
+      "guardrails",
+      "examples"
+    ],
+    "verb": "list",
+    "description": "List adoptable guardrail presets (the guardrail gallery), each with its config and trust metadata (check-type composition, stages, data egress).",
+    "method": "GET",
+    "http_path": "/v1/capabilities/guardrails/examples",
+    "args": []
+  },
+  {
+    "wire_name": "list_capabilities",
+    "path": [
+      "capabilities"
+    ],
+    "verb": "list",
+    "description": "List available capabilities. Use search for name/description filtering. Retired capabilities are excluded unless include_retired is set. Supports pagination (limit/offset).",
+    "method": "GET",
+    "http_path": "/v1/capabilities",
+    "args": [
+      {
+        "field": "include_retired",
+        "long": "include-retired",
+        "kind": "boolean",
+        "required": false,
+        "help": "Include capabilities that have been retired (removed but still referenceable)."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of items returned in this page."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "Zero-based offset into the result set."
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "get_execution",
+    "path": [
+      "durable",
+      "executions"
+    ],
+    "verb": "get",
+    "description": "Get a durable schedule execution.",
+    "method": "GET",
+    "http_path": "/v1/durable/executions/{execution_id}",
+    "args": [
+      {
+        "field": "execution_id",
+        "long": "execution-id",
+        "kind": "string",
+        "required": true,
+        "help": "Schedule execution's identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_schedule",
+    "path": [
+      "durable",
+      "schedules"
+    ],
+    "verb": "create",
+    "description": "Create a new durable scheduled task with a cron expression.",
+    "method": "POST",
+    "http_path": "/v1/durable/schedules",
+    "args": [
+      {
+        "field": "catch_up_missed",
+        "long": "catch-up-missed",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether to catch up missed triggers (default: false)"
+      },
+      {
+        "field": "cron_expression",
+        "long": "cron-expression",
+        "kind": "string",
+        "required": true,
+        "help": "Cron expression (5-field or 7-field)."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Optional description"
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether schedule is enabled (default: true)"
+      },
+      {
+        "field": "max_catch_up",
+        "long": "max-catch-up",
+        "kind": "integer",
+        "required": false,
+        "help": "Max catch-up executions when `catch_up_missed` is true."
+      },
+      {
+        "field": "max_concurrent",
+        "long": "max-concurrent",
+        "kind": "integer",
+        "required": false,
+        "help": "Max concurrent executions."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Unique name for the schedule"
+      },
+      {
+        "field": "retry_policy",
+        "long": "retry-policy",
+        "kind": "json",
+        "required": false,
+        "help": "Retry policy for failed executions (provider-specific JSON; see the durable engine's `RetryPo..."
+      },
+      {
+        "field": "target",
+        "long": "target",
+        "kind": "json",
+        "required": true,
+        "help": "Target for a schedule - either a workflow or activity"
+      },
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false,
+        "help": "Timezone (default: UTC)."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_schedule",
+    "path": [
+      "durable",
+      "schedules"
+    ],
+    "verb": "delete",
+    "description": "Delete a durable schedule.",
+    "method": "DELETE",
+    "http_path": "/v1/durable/schedules/{schedule_id}",
+    "args": [
+      {
+        "field": "schedule_id",
+        "long": "schedule-id",
+        "kind": "string",
+        "required": true,
+        "help": "Schedule's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_schedule_executions",
+    "path": [
+      "durable",
+      "schedules",
+      "executions"
+    ],
+    "verb": "list",
+    "description": "List executions for a durable schedule.",
+    "method": "GET",
+    "http_path": "/v1/durable/schedules/{schedule_id}/executions",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Pagination limit (default: 20, max: 100)"
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "Pagination offset"
+      },
+      {
+        "field": "schedule_id",
+        "long": "schedule-id",
+        "kind": "string",
+        "required": true,
+        "help": "Schedule ID"
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false,
+        "help": "Filter by execution status"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_schedule",
+    "path": [
+      "durable",
+      "schedules"
+    ],
+    "verb": "get",
+    "description": "Get a durable schedule.",
+    "method": "GET",
+    "http_path": "/v1/durable/schedules/{schedule_id}",
+    "args": [
+      {
+        "field": "schedule_id",
+        "long": "schedule-id",
+        "kind": "string",
+        "required": true,
+        "help": "Schedule's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_schedules",
+    "path": [
+      "durable",
+      "schedules"
+    ],
+    "verb": "list",
+    "description": "List durable scheduled tasks.",
+    "method": "GET",
+    "http_path": "/v1/durable/schedules",
+    "args": [
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Filter by enabled status"
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Pagination limit (default: 20, max: 100)"
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "Pagination offset"
+      },
+      {
+        "field": "target_type",
+        "long": "target-type",
+        "kind": "string",
+        "required": false,
+        "help": "Filter by target type (\"workflow\" or \"activity\")"
+      }
+    ]
+  },
+  {
+    "wire_name": "pause_schedule",
+    "path": [
+      "durable",
+      "schedules"
+    ],
+    "verb": "pause",
+    "description": "Pause a durable schedule.",
+    "method": "POST",
+    "http_path": "/v1/durable/schedules/{schedule_id}/pause",
+    "args": [
+      {
+        "field": "schedule_id",
+        "long": "schedule-id",
+        "kind": "string",
+        "required": true,
+        "help": "Schedule's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "resume_schedule",
+    "path": [
+      "durable",
+      "schedules"
+    ],
+    "verb": "resume",
+    "description": "Resume a durable schedule.",
+    "method": "POST",
+    "http_path": "/v1/durable/schedules/{schedule_id}/resume",
+    "args": [
+      {
+        "field": "schedule_id",
+        "long": "schedule-id",
+        "kind": "string",
+        "required": true,
+        "help": "Schedule's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_schedule_stats",
+    "path": [
+      "durable",
+      "schedules",
+      "stats"
+    ],
+    "verb": "get",
+    "description": "Get durable schedule statistics.",
+    "method": "GET",
+    "http_path": "/v1/durable/schedules/{schedule_id}/stats",
+    "args": [
+      {
+        "field": "schedule_id",
+        "long": "schedule-id",
+        "kind": "string",
+        "required": true,
+        "help": "Schedule's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "trigger_schedule",
+    "path": [
+      "durable",
+      "schedules"
+    ],
+    "verb": "trigger",
+    "description": "Manually trigger a durable schedule.",
+    "method": "POST",
+    "http_path": "/v1/durable/schedules/{schedule_id}/trigger",
+    "args": [
+      {
+        "field": "schedule_id",
+        "long": "schedule-id",
+        "kind": "string",
+        "required": true,
+        "help": "Schedule's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "update_schedule",
+    "path": [
+      "durable",
+      "schedules"
+    ],
+    "verb": "update",
+    "description": "Update a durable schedule.",
+    "method": "PATCH",
+    "http_path": "/v1/durable/schedules/{schedule_id}",
+    "args": [
+      {
+        "field": "catch_up_missed",
+        "long": "catch-up-missed",
+        "kind": "boolean",
+        "required": false,
+        "help": "Catch up missed triggers"
+      },
+      {
+        "field": "cron_expression",
+        "long": "cron-expression",
+        "kind": "string",
+        "required": false,
+        "help": "New cron expression."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "New description"
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Enable/disable"
+      },
+      {
+        "field": "max_catch_up",
+        "long": "max-catch-up",
+        "kind": "integer",
+        "required": false,
+        "help": "Max catch-up executions"
+      },
+      {
+        "field": "max_concurrent",
+        "long": "max-concurrent",
+        "kind": "integer",
+        "required": false,
+        "help": "Max concurrent executions"
+      },
+      {
+        "field": "retry_policy",
+        "long": "retry-policy",
+        "kind": "json",
+        "required": false,
+        "help": "Retry policy (provider-specific JSON; see the durable engine's `RetryPolicy`). Example: `{\"ma..."
+      },
+      {
+        "field": "schedule_id",
+        "long": "schedule-id",
+        "kind": "string",
+        "required": true,
+        "help": "Schedule's prefixed public identifier."
+      },
+      {
+        "field": "target",
+        "long": "target",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false,
+        "help": "New timezone (IANA name)."
+      }
+    ]
+  },
+  {
+    "wire_name": "import_atif_trajectories",
+    "path": [
+      "evals",
+      "atif-import"
+    ],
+    "verb": "import",
+    "description": "Import ATIF trajectories as eval cases (upserted by name).",
+    "method": "POST",
+    "http_path": "/v1/evals/{eval_id}/atif_import",
+    "args": [
+      {
+        "field": "body",
+        "long": "body",
+        "kind": "string",
+        "required": true,
+        "help": "Raw ATIF payload (NDJSON or JSON)."
+      },
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "create_eval_case",
+    "path": [
+      "evals",
+      "cases"
+    ],
+    "verb": "create",
+    "description": "Create an eval case.",
+    "method": "POST",
+    "http_path": "/v1/evals/{eval_id}/cases",
+    "args": [
+      {
+        "field": "artifacts",
+        "long": "artifacts",
+        "kind": "json",
+        "required": false,
+        "help": "Session files to capture after scoring completes."
+      },
+      {
+        "field": "conversation",
+        "long": "conversation",
+        "kind": "json",
+        "required": true
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "max_turns",
+        "long": "max-turns",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "position",
+        "long": "position",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "post",
+        "long": "post",
+        "kind": "json",
+        "required": false,
+        "help": "Verification messages sent after conversation completes and session idles."
+      },
+      {
+        "field": "scorers",
+        "long": "scorers",
+        "kind": "json",
+        "required": true
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Free-form tags attached to this resource."
+      },
+      {
+        "field": "target",
+        "long": "target",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "timeout_seconds",
+        "long": "timeout-seconds",
+        "kind": "integer",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_eval_case",
+    "path": [
+      "evals",
+      "cases"
+    ],
+    "verb": "delete",
+    "description": "Delete an eval case.",
+    "method": "DELETE",
+    "http_path": "/v1/evals/{eval_id}/cases/{case_id}",
+    "args": [
+      {
+        "field": "case_id",
+        "long": "case-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_eval_case",
+    "path": [
+      "evals",
+      "cases"
+    ],
+    "verb": "get",
+    "description": "Get an eval case.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/cases/{case_id}",
+    "args": [
+      {
+        "field": "case_id",
+        "long": "case-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_eval_cases",
+    "path": [
+      "evals",
+      "cases"
+    ],
+    "verb": "list",
+    "description": "List eval cases.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/cases",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "update_eval_case",
+    "path": [
+      "evals",
+      "cases"
+    ],
+    "verb": "update",
+    "description": "Update an eval case.",
+    "method": "PATCH",
+    "http_path": "/v1/evals/{eval_id}/cases/{case_id}",
+    "args": [
+      {
+        "field": "artifacts",
+        "long": "artifacts",
+        "kind": "json",
+        "required": false,
+        "help": "Session files to capture after scoring completes."
+      },
+      {
+        "field": "case_id",
+        "long": "case-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "conversation",
+        "long": "conversation",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "max_turns",
+        "long": "max-turns",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "position",
+        "long": "position",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "post",
+        "long": "post",
+        "kind": "json",
+        "required": false,
+        "help": "Verification messages sent after conversation completes."
+      },
+      {
+        "field": "scorers",
+        "long": "scorers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Free-form tags attached to this resource."
+      },
+      {
+        "field": "target",
+        "long": "target",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "timeout_seconds",
+        "long": "timeout-seconds",
+        "kind": "integer",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "create_eval",
+    "path": [
+      "evals"
+    ],
+    "verb": "create",
+    "description": "Create a new eval.",
+    "method": "POST",
+    "http_path": "/v1/evals",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "model_override",
+        "long": "model-override",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Free-form tags attached to this resource."
+      },
+      {
+        "field": "target",
+        "long": "target",
+        "kind": "json",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_eval",
+    "path": [
+      "evals"
+    ],
+    "verb": "delete",
+    "description": "Delete an eval.",
+    "method": "DELETE",
+    "http_path": "/v1/evals/{eval_id}",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_eval",
+    "path": [
+      "evals"
+    ],
+    "verb": "get",
+    "description": "Get a single eval.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "import_eval_run",
+    "path": [
+      "evals"
+    ],
+    "verb": "import",
+    "description": "Import externally-executed eval results.",
+    "method": "POST",
+    "http_path": "/v1/evals/import",
+    "args": [
+      {
+        "field": "evals",
+        "long": "evals",
+        "kind": "json",
+        "required": true
+      },
+      {
+        "field": "source",
+        "long": "source",
+        "kind": "json",
+        "required": true,
+        "help": "Attribution for the external system that produced the run."
+      }
+    ]
+  },
+  {
+    "wire_name": "eval_import_preflight",
+    "path": [
+      "evals",
+      "import",
+      "preflight"
+    ],
+    "verb": "eval",
+    "description": "Report whether the caller can import eval results.",
+    "method": "GET",
+    "http_path": "/v1/evals/import/preflight",
+    "args": []
+  },
+  {
+    "wire_name": "list_evals",
+    "path": [
+      "evals"
+    ],
+    "verb": "list",
+    "description": "List evals.",
+    "method": "GET",
+    "http_path": "/v1/evals",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "export_eval_run_artifacts",
+    "path": [
+      "evals",
+      "runs",
+      "artifacts"
+    ],
+    "verb": "export",
+    "description": "Export eval run artifacts as NDJSON.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "run_id",
+        "long": "run-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "cancel_eval_run",
+    "path": [
+      "evals",
+      "runs"
+    ],
+    "verb": "cancel",
+    "description": "Cancel an eval run.",
+    "method": "POST",
+    "http_path": "/v1/evals/{eval_id}/runs/{run_id}/cancel",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "run_id",
+        "long": "run-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "create_eval_run",
+    "path": [
+      "evals",
+      "runs"
+    ],
+    "verb": "create",
+    "description": "Create an eval run.",
+    "method": "POST",
+    "http_path": "/v1/evals/{eval_id}/runs",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "model_override",
+        "long": "model-override",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "target",
+        "long": "target",
+        "kind": "json",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "export_eval_run_dataset",
+    "path": [
+      "evals",
+      "runs",
+      "dataset"
+    ],
+    "verb": "export",
+    "description": "Enqueue an async reward-labeled trajectory dataset export from a completed eval run.",
+    "method": "POST",
+    "http_path": "/v1/evals/{eval_id}/runs/{run_id}/dataset",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "filters",
+        "long": "filters",
+        "kind": "json",
+        "required": false,
+        "help": "Selection filters applied per case."
+      },
+      {
+        "field": "format",
+        "long": "format",
+        "kind": "string",
+        "required": false,
+        "help": "Output schema for the exported dataset.",
+        "choices": [
+          "trajectory",
+          "sft",
+          "atif"
+        ]
+      },
+      {
+        "field": "redaction",
+        "long": "redaction",
+        "kind": "json",
+        "required": false,
+        "help": "Redaction controls."
+      },
+      {
+        "field": "run_id",
+        "long": "run-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_eval_run_dataset",
+    "path": [
+      "evals",
+      "runs",
+      "dataset"
+    ],
+    "verb": "get",
+    "description": "Fetch an eval-run dataset export handle (status + NDJSON body).",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",
+    "args": [
+      {
+        "field": "dataset_id",
+        "long": "dataset-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "run_id",
+        "long": "run-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_eval_run",
+    "path": [
+      "evals",
+      "runs"
+    ],
+    "verb": "get",
+    "description": "Get an eval run.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/runs/{run_id}",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "run_id",
+        "long": "run-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_eval_runs",
+    "path": [
+      "evals",
+      "runs"
+    ],
+    "verb": "list",
+    "description": "List eval runs.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/runs",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "update_eval_result_scores",
+    "path": [
+      "evals",
+      "runs",
+      "results",
+      "scores"
+    ],
+    "verb": "update",
+    "description": "Update scores for one eval result.",
+    "method": "PATCH",
+    "http_path": "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "metadata",
+        "long": "metadata",
+        "kind": "json",
+        "required": false,
+        "help": "Free-form metadata attached to this resource."
+      },
+      {
+        "field": "result_id",
+        "long": "result-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "run_id",
+        "long": "run-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "scores",
+        "long": "scores",
+        "kind": "json",
+        "required": true
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "bulk_update_eval_run_scores",
+    "path": [
+      "evals",
+      "runs",
+      "scores"
+    ],
+    "verb": "bulk",
+    "description": "Bulk update scores for all results in an eval run.",
+    "method": "PATCH",
+    "http_path": "/v1/evals/{eval_id}/runs/{run_id}/scores",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "metadata",
+        "long": "metadata",
+        "kind": "json",
+        "required": false,
+        "help": "Free-form metadata attached to this resource."
+      },
+      {
+        "field": "results",
+        "long": "results",
+        "kind": "json",
+        "required": true
+      },
+      {
+        "field": "run_id",
+        "long": "run-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "create_eval_run_share",
+    "path": [
+      "evals",
+      "runs",
+      "share"
+    ],
+    "verb": "create",
+    "description": "Mint a read-only share link for an eval run.",
+    "method": "POST",
+    "http_path": "/v1/evals/{eval_id}/runs/{run_id}/share",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "run_id",
+        "long": "run-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_eval_run_share",
+    "path": [
+      "evals",
+      "runs",
+      "share"
+    ],
+    "verb": "get",
+    "description": "Whether an eval run has an active share link.",
+    "method": "GET",
+    "http_path": "/v1/evals/{eval_id}/runs/{run_id}/share",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "run_id",
+        "long": "run-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "revoke_eval_run_share",
+    "path": [
+      "evals",
+      "runs",
+      "share"
+    ],
+    "verb": "revoke",
+    "description": "Revoke all share links for an eval run.",
+    "method": "DELETE",
+    "http_path": "/v1/evals/{eval_id}/runs/{run_id}/share",
+    "args": [
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "run_id",
+        "long": "run-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "update_eval",
+    "path": [
+      "evals"
+    ],
+    "verb": "update",
+    "description": "Update an eval.",
+    "method": "PATCH",
+    "http_path": "/v1/evals/{eval_id}",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "eval_id",
+        "long": "eval-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "model_override",
+        "long": "model-override",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Free-form tags attached to this resource."
+      },
+      {
+        "field": "target",
+        "long": "target",
+        "kind": "json",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "check_harness_name",
+    "path": [
+      "harnesses",
+      "check-name"
+    ],
+    "verb": "check",
+    "description": "Check whether a harness name is available.",
+    "method": "GET",
+    "http_path": "/v1/harnesses/check-name",
+    "args": [
+      {
+        "field": "exclude_id",
+        "long": "exclude-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      }
+    ]
+  },
+  {
+    "wire_name": "copy_harness",
+    "path": [
+      "harnesses"
+    ],
+    "verb": "copy",
+    "description": "Copy a harness. Generates a unique name.",
+    "method": "POST",
+    "http_path": "/v1/harnesses/{id}/copy",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_harness",
+    "path": [
+      "harnesses"
+    ],
+    "verb": "create",
+    "description": "Create a new harness with a name, system prompt, and optional capabilities.",
+    "method": "POST",
+    "http_path": "/v1/harnesses",
+    "args": [
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "json",
+        "required": false,
+        "help": "Capabilities to enable with per-harness configuration."
+      },
+      {
+        "field": "default_model_id",
+        "long": "default-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Default LLM model ID for this harness."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Description of what the harness does."
+      },
+      {
+        "field": "display_name",
+        "long": "display-name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable display name shown in UI."
+      },
+      {
+        "field": "embedder_metadata",
+        "long": "embedder-metadata",
+        "kind": "json",
+        "required": false,
+        "help": "Arbitrary key-value metadata injected into LLM requests for observability."
+      },
+      {
+        "field": "initial_files",
+        "long": "initial-files",
+        "kind": "json",
+        "required": false,
+        "help": "Starter files copied into each new session for this harness."
+      },
+      {
+        "field": "intro_markdown",
+        "long": "intro-markdown",
+        "kind": "string",
+        "required": false,
+        "help": "Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed."
+      },
+      {
+        "field": "mcpServers",
+        "long": "mcpServers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Name, unique per org."
+      },
+      {
+        "field": "network_access",
+        "long": "network-access",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "parent_harness_id",
+        "long": "parent-harness-id",
+        "kind": "string",
+        "required": false,
+        "help": "Optional parent harness to inherit from."
+      },
+      {
+        "field": "short_description",
+        "long": "short-description",
+        "kind": "string",
+        "required": false,
+        "help": "One-line description in simplified Markdown, shown below the chat title once the intro is hid..."
+      },
+      {
+        "field": "starters",
+        "long": "starters",
+        "kind": "json",
+        "required": false,
+        "help": "Conversation starters for a fresh Platform Chat thread."
+      },
+      {
+        "field": "system_prompt",
+        "long": "system-prompt",
+        "kind": "string",
+        "required": false,
+        "help": "Base system prompt defining the harness's behavior."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Tags for organizing harnesses."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_harness",
+    "path": [
+      "harnesses"
+    ],
+    "verb": "delete",
+    "description": "Archive a harness (soft delete). Can be restored.",
+    "method": "DELETE",
+    "http_path": "/v1/harnesses/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "destroy_harness",
+    "path": [
+      "harnesses",
+      "delete"
+    ],
+    "verb": "destroy",
+    "description": "Permanently delete an archived harness.",
+    "method": "POST",
+    "http_path": "/v1/harnesses/{id}/delete",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_harness",
+    "path": [
+      "harnesses"
+    ],
+    "verb": "get",
+    "description": "Get a single harness by ID or name.",
+    "method": "GET",
+    "http_path": "/v1/harnesses/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_harnesses",
+    "path": [
+      "harnesses"
+    ],
+    "verb": "list",
+    "description": "List all active harnesses. Use search for name search, include_archived=true to include archived.",
+    "method": "GET",
+    "http_path": "/v1/harnesses",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "preview_harness",
+    "path": [
+      "harnesses"
+    ],
+    "verb": "preview",
+    "description": "Preview the final harness shape with capabilities applied.",
+    "method": "POST",
+    "http_path": "/v1/harnesses/preview",
+    "args": [
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "mcp_servers",
+        "long": "mcp-servers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "parent_harness_id",
+        "long": "parent-harness-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "system_prompt",
+        "long": "system-prompt",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_harness",
+    "path": [
+      "harnesses"
+    ],
+    "verb": "update",
+    "description": "Update a harness. Only provided fields are changed.",
+    "method": "PATCH",
+    "http_path": "/v1/harnesses/{id}",
+    "args": [
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "json",
+        "required": false,
+        "help": "Replace the capability list entirely; omit to leave unchanged."
+      },
+      {
+        "field": "default_model_id",
+        "long": "default-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "New default model selected when sessions inherit from this harness; omit to leave unchanged."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "display_name",
+        "long": "display-name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable display name."
+      },
+      {
+        "field": "embedder_metadata",
+        "long": "embedder-metadata",
+        "kind": "json",
+        "required": false,
+        "help": "Replace the embedder metadata map entirely; omit to leave unchanged."
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "initial_files",
+        "long": "initial-files",
+        "kind": "json",
+        "required": false,
+        "help": "Replace the initial-files list entirely; omit to leave unchanged."
+      },
+      {
+        "field": "intro_markdown",
+        "long": "intro-markdown",
+        "kind": "string",
+        "required": false,
+        "help": "Markdown intro shown as an intro box on a fresh Platform Chat thread. Outer `None` leaves unc..."
+      },
+      {
+        "field": "mcpServers",
+        "long": "mcpServers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Name, unique per org."
+      },
+      {
+        "field": "network_access",
+        "long": "network-access",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "parent_harness_id",
+        "long": "parent-harness-id",
+        "kind": "string",
+        "required": false,
+        "help": "New parent harness for inheritance."
+      },
+      {
+        "field": "short_description",
+        "long": "short-description",
+        "kind": "string",
+        "required": false,
+        "help": "One-line description in simplified Markdown."
+      },
+      {
+        "field": "starters",
+        "long": "starters",
+        "kind": "json",
+        "required": false,
+        "help": "Conversation starters; omit to leave unchanged, send empty to clear. `icon` reuses the harnes..."
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "system_prompt",
+        "long": "system-prompt",
+        "kind": "string",
+        "required": false,
+        "help": "New system prompt the harness contributes to sessions; omit to leave unchanged."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Replace the tag list entirely; omit to leave unchanged."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_image",
+    "path": [
+      "images"
+    ],
+    "verb": "get",
+    "description": "Get image data by ID.",
+    "method": "GET",
+    "http_path": "/v1/images/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_images",
+    "path": [
+      "images"
+    ],
+    "verb": "list",
+    "description": "List uploaded images. Supports pagination (limit/offset).",
+    "method": "GET",
+    "http_path": "/v1/images",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of items returned in this page."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "Zero-based offset into the result set."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_knowledge_base",
+    "path": [
+      "knowledge-bases"
+    ],
+    "verb": "create",
+    "description": "Create a knowledge base in the current organization.",
+    "method": "POST",
+    "http_path": "/v1/knowledge-bases",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "embedding_model_id",
+        "long": "embedding-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Optional embedding model for hybrid retrieval."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_knowledge_base",
+    "path": [
+      "knowledge-bases"
+    ],
+    "verb": "delete",
+    "description": "Archive a knowledge base.",
+    "method": "DELETE",
+    "http_path": "/v1/knowledge-bases/{kb_id}",
+    "args": [
+      {
+        "field": "kb_id",
+        "long": "kb-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_knowledge_entry",
+    "path": [
+      "knowledge-bases",
+      "entries"
+    ],
+    "verb": "create",
+    "description": "Create an entry inside a knowledge base.",
+    "method": "POST",
+    "http_path": "/v1/knowledge-bases/{kb_id}/entries",
+    "args": [
+      {
+        "field": "body",
+        "long": "body",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "kb_id",
+        "long": "kb-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base's prefixed public identifier."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Discriminator selecting the variant of this resource."
+      },
+      {
+        "field": "resource",
+        "long": "resource",
+        "kind": "string",
+        "required": false,
+        "help": "Optional OKF resource URI identifying the underlying asset."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Free-form tags attached to this resource."
+      },
+      {
+        "field": "title",
+        "long": "title",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable title."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_knowledge_entry",
+    "path": [
+      "knowledge-bases",
+      "entries"
+    ],
+    "verb": "delete",
+    "description": "Delete a knowledge entry.",
+    "method": "DELETE",
+    "http_path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    "args": [
+      {
+        "field": "entry_id",
+        "long": "entry-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base entry's prefixed public identifier."
+      },
+      {
+        "field": "kb_id",
+        "long": "kb-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_knowledge_entry",
+    "path": [
+      "knowledge-bases",
+      "entries"
+    ],
+    "verb": "get",
+    "description": "Get a knowledge entry by ID.",
+    "method": "GET",
+    "http_path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    "args": [
+      {
+        "field": "entry_id",
+        "long": "entry-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base entry's prefixed public identifier."
+      },
+      {
+        "field": "kb_id",
+        "long": "kb-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_knowledge_entries",
+    "path": [
+      "knowledge-bases",
+      "entries"
+    ],
+    "verb": "list",
+    "description": "List entries inside a knowledge base.",
+    "method": "GET",
+    "http_path": "/v1/knowledge-bases/{kb_id}/entries",
+    "args": [
+      {
+        "field": "kb_id",
+        "long": "kb-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base's prefixed public identifier."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Discriminator selecting the variant of this resource."
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_knowledge_entry",
+    "path": [
+      "knowledge-bases",
+      "entries"
+    ],
+    "verb": "update",
+    "description": "Update a knowledge entry.",
+    "method": "PATCH",
+    "http_path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    "args": [
+      {
+        "field": "body",
+        "long": "body",
+        "kind": "string",
+        "required": false,
+        "help": "Updated entry body."
+      },
+      {
+        "field": "entry_id",
+        "long": "entry-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base entry's prefixed public identifier."
+      },
+      {
+        "field": "kb_id",
+        "long": "kb-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base's prefixed public identifier."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Discriminator selecting the variant of this resource."
+      },
+      {
+        "field": "resource",
+        "long": "resource",
+        "kind": "string",
+        "required": false,
+        "help": "Optional OKF resource URI."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Free-form tags attached to this resource."
+      },
+      {
+        "field": "title",
+        "long": "title",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable title."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_knowledge_base",
+    "path": [
+      "knowledge-bases"
+    ],
+    "verb": "get",
+    "description": "Get a knowledge base by ID.",
+    "method": "GET",
+    "http_path": "/v1/knowledge-bases/{kb_id}",
+    "args": [
+      {
+        "field": "kb_id",
+        "long": "kb-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_knowledge_bases",
+    "path": [
+      "knowledge-bases"
+    ],
+    "verb": "list",
+    "description": "List knowledge bases in the current organization.",
+    "method": "GET",
+    "http_path": "/v1/knowledge-bases",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "import_okf_bundle",
+    "path": [
+      "knowledge-bases",
+      "okf-import"
+    ],
+    "verb": "import",
+    "description": "Import an Open Knowledge Format (OKF) bundle into a knowledge base.",
+    "method": "POST",
+    "http_path": "/v1/knowledge-bases/{kb_id}/okf_import",
+    "args": [
+      {
+        "field": "bundle_base64",
+        "long": "bundle-base64",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "files",
+        "long": "files",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "kb_id",
+        "long": "kb-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base's prefixed public identifier."
+      },
+      {
+        "field": "prune",
+        "long": "prune",
+        "kind": "boolean",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_knowledge_base",
+    "path": [
+      "knowledge-bases"
+    ],
+    "verb": "update",
+    "description": "Update a knowledge base.",
+    "method": "PATCH",
+    "http_path": "/v1/knowledge-bases/{kb_id}",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "embedding_model_id",
+        "long": "embedding-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Optional embedding model for hybrid retrieval."
+      },
+      {
+        "field": "kb_id",
+        "long": "kb-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge base's prefixed public identifier."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable name."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_knowledge_index",
+    "path": [
+      "knowledge-indexes"
+    ],
+    "verb": "create",
+    "description": "Create a knowledge index in the current organization.",
+    "method": "POST",
+    "http_path": "/v1/knowledge-indexes",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "embedding_model_id",
+        "long": "embedding-model-id",
+        "kind": "string",
+        "required": true,
+        "help": "Embedding model used to embed chunks."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "source_config",
+        "long": "source-config",
+        "kind": "json",
+        "required": false,
+        "help": "Non-secret source coordinates."
+      },
+      {
+        "field": "source_type",
+        "long": "source-type",
+        "kind": "string",
+        "required": false,
+        "help": "External source type."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_knowledge_index",
+    "path": [
+      "knowledge-indexes"
+    ],
+    "verb": "delete",
+    "description": "Archive a knowledge index.",
+    "method": "DELETE",
+    "http_path": "/v1/knowledge-indexes/{index_id}",
+    "args": [
+      {
+        "field": "index_id",
+        "long": "index-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge index's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_knowledge_index_documents",
+    "path": [
+      "knowledge-indexes",
+      "documents"
+    ],
+    "verb": "list",
+    "description": "List documents inside a knowledge index.",
+    "method": "GET",
+    "http_path": "/v1/knowledge-indexes/{index_id}/documents",
+    "args": [
+      {
+        "field": "index_id",
+        "long": "index-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge index's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_knowledge_index",
+    "path": [
+      "knowledge-indexes"
+    ],
+    "verb": "get",
+    "description": "Get a knowledge index by ID.",
+    "method": "GET",
+    "http_path": "/v1/knowledge-indexes/{index_id}",
+    "args": [
+      {
+        "field": "index_id",
+        "long": "index-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge index's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_knowledge_indexes",
+    "path": [
+      "knowledge-indexes"
+    ],
+    "verb": "list",
+    "description": "List knowledge indexes in the current organization.",
+    "method": "GET",
+    "http_path": "/v1/knowledge-indexes",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "sync_knowledge_index",
+    "path": [
+      "knowledge-indexes"
+    ],
+    "verb": "sync",
+    "description": "Enqueue a manual sync of a knowledge index.",
+    "method": "POST",
+    "http_path": "/v1/knowledge-indexes/{index_id}/sync",
+    "args": [
+      {
+        "field": "index_id",
+        "long": "index-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge index's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "update_knowledge_index",
+    "path": [
+      "knowledge-indexes"
+    ],
+    "verb": "update",
+    "description": "Update a knowledge index.",
+    "method": "PATCH",
+    "http_path": "/v1/knowledge-indexes/{index_id}",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "embedding_model_id",
+        "long": "embedding-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Embedding model used to embed chunks."
+      },
+      {
+        "field": "index_id",
+        "long": "index-id",
+        "kind": "string",
+        "required": true,
+        "help": "Knowledge index's prefixed public identifier."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "source_config",
+        "long": "source-config",
+        "kind": "json",
+        "required": false,
+        "help": "Non-secret source coordinates."
+      }
+    ]
+  },
+  {
     "wire_name": "create_mcp_server",
     "path": [
       "mcp-servers"
@@ -1404,6 +5627,1960 @@
     ]
   },
   {
+    "wire_name": "create_memory",
+    "path": [
+      "memories"
+    ],
+    "verb": "create",
+    "description": "Create a workspace memory in the current organization.",
+    "method": "POST",
+    "http_path": "/v1/memories",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "source",
+        "long": "source",
+        "kind": "json",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_memory",
+    "path": [
+      "memories"
+    ],
+    "verb": "delete",
+    "description": "Archive a workspace memory.",
+    "method": "DELETE",
+    "http_path": "/v1/memories/{memory_id}",
+    "args": [
+      {
+        "field": "memory_id",
+        "long": "memory-id",
+        "kind": "string",
+        "required": true,
+        "help": "Workspace memory's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_memory",
+    "path": [
+      "memories"
+    ],
+    "verb": "get",
+    "description": "Get a workspace memory by ID.",
+    "method": "GET",
+    "http_path": "/v1/memories/{memory_id}",
+    "args": [
+      {
+        "field": "memory_id",
+        "long": "memory-id",
+        "kind": "string",
+        "required": true,
+        "help": "Workspace memory's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_memories",
+    "path": [
+      "memories"
+    ],
+    "verb": "list",
+    "description": "List workspace memories in the current organization.",
+    "method": "GET",
+    "http_path": "/v1/memories",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "sync_memory_now",
+    "path": [
+      "memories"
+    ],
+    "verb": "sync",
+    "description": "Queue an immediate sync for a source-backed workspace memory.",
+    "method": "POST",
+    "http_path": "/v1/memories/{memory_id}/sync",
+    "args": [
+      {
+        "field": "memory_id",
+        "long": "memory-id",
+        "kind": "string",
+        "required": true,
+        "help": "Workspace memory's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "update_memory",
+    "path": [
+      "memories"
+    ],
+    "verb": "update",
+    "description": "Update a workspace memory.",
+    "method": "PATCH",
+    "http_path": "/v1/memories/{memory_id}",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "memory_id",
+        "long": "memory-id",
+        "kind": "string",
+        "required": true,
+        "help": "Workspace memory's prefixed public identifier."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "source",
+        "long": "source",
+        "kind": "json",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_model",
+    "path": [
+      "models"
+    ],
+    "verb": "delete",
+    "description": "Delete a model.",
+    "method": "DELETE",
+    "http_path": "/v1/models/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_model",
+    "path": [
+      "models"
+    ],
+    "verb": "get",
+    "description": "Get a specific model with provider information.",
+    "method": "GET",
+    "http_path": "/v1/models/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_models",
+    "path": [
+      "models"
+    ],
+    "verb": "list",
+    "description": "List all models across all providers.",
+    "method": "GET",
+    "http_path": "/v1/models",
+    "args": [
+      {
+        "field": "favorites_only",
+        "long": "favorites-only",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "include_stale",
+        "long": "include-stale",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "source",
+        "long": "source",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_model",
+    "path": [
+      "models"
+    ],
+    "verb": "update",
+    "description": "Update a model.",
+    "method": "PATCH",
+    "http_path": "/v1/models/{id}",
+    "args": [
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "string_list",
+        "required": false
+      },
+      {
+        "field": "display_name",
+        "long": "display-name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable display name."
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether this resource is enabled."
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "is_favorite",
+        "long": "is-favorite",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "model_id",
+        "long": "model-id",
+        "kind": "string",
+        "required": false,
+        "help": "LLM model's prefixed public identifier."
+      },
+      {
+        "field": "provider_id",
+        "long": "provider-id",
+        "kind": "string",
+        "required": false,
+        "help": "LLM provider's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_notifications",
+    "path": [
+      "notifications"
+    ],
+    "verb": "list",
+    "description": "List notifications for the current user.",
+    "method": "GET",
+    "http_path": "/v1/notifications",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of items returned in this page."
+      }
+    ]
+  },
+  {
+    "wire_name": "mark_notification_viewed",
+    "path": [
+      "notifications",
+      "view"
+    ],
+    "verb": "mark",
+    "description": "Mark a notification as viewed.",
+    "method": "POST",
+    "http_path": "/v1/notifications/{notification_id}/view",
+    "args": [
+      {
+        "field": "notification_id",
+        "long": "notification-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "create_observer",
+    "path": [
+      "observers"
+    ],
+    "verb": "create",
+    "description": "Create an observer (online scoring).",
+    "method": "POST",
+    "http_path": "/v1/observers",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "match",
+        "long": "match",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "sampling_rate",
+        "long": "sampling-rate",
+        "kind": "number",
+        "required": false,
+        "help": "Fraction of matching turns to score (0.0–1.0)."
+      },
+      {
+        "field": "scorers",
+        "long": "scorers",
+        "kind": "json",
+        "required": true,
+        "help": "Scoring rules."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_observer",
+    "path": [
+      "observers"
+    ],
+    "verb": "delete",
+    "description": "Archive an observer.",
+    "method": "DELETE",
+    "http_path": "/v1/observers/{observer_id}",
+    "args": [
+      {
+        "field": "observer_id",
+        "long": "observer-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_observer",
+    "path": [
+      "observers"
+    ],
+    "verb": "get",
+    "description": "Get a single observer.",
+    "method": "GET",
+    "http_path": "/v1/observers/{observer_id}",
+    "args": [
+      {
+        "field": "observer_id",
+        "long": "observer-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_observers",
+    "path": [
+      "observers"
+    ],
+    "verb": "list",
+    "description": "List observers.",
+    "method": "GET",
+    "http_path": "/v1/observers",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "list_observer_scores",
+    "path": [
+      "observers",
+      "scores"
+    ],
+    "verb": "list",
+    "description": "List trace scores produced by an observer.",
+    "method": "GET",
+    "http_path": "/v1/observers/{observer_id}/scores",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": true
+      },
+      {
+        "field": "observer_id",
+        "long": "observer-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": true
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_observer",
+    "path": [
+      "observers"
+    ],
+    "verb": "update",
+    "description": "Update an observer.",
+    "method": "PATCH",
+    "http_path": "/v1/observers/{observer_id}",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "match",
+        "long": "match",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "observer_id",
+        "long": "observer-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "sampling_rate",
+        "long": "sampling-rate",
+        "kind": "number",
+        "required": false
+      },
+      {
+        "field": "scorers",
+        "long": "scorers",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "list_audit_logs",
+    "path": [
+      "orgs",
+      "audit-logs"
+    ],
+    "verb": "list",
+    "description": "List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.",
+    "method": "GET",
+    "http_path": "/v1/orgs/{org}/audit-logs",
+    "args": [
+      {
+        "field": "action",
+        "long": "action",
+        "kind": "string",
+        "required": false,
+        "help": "Filter by action string (e.g."
+      },
+      {
+        "field": "actor_id",
+        "long": "actor-id",
+        "kind": "string",
+        "required": false,
+        "help": "Filter by actor UUID."
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "string",
+        "required": false,
+        "help": "Cursor: return entries created before this timestamp."
+      },
+      {
+        "field": "domain",
+        "long": "domain",
+        "kind": "string",
+        "required": false,
+        "help": "Filter by audit domain (\"management\" or \"agent\")."
+      },
+      {
+        "field": "event_type",
+        "long": "event-type",
+        "kind": "string",
+        "required": false,
+        "help": "Filter by event type prefix (e.g."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Max entries to return (default 50, max 200)."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_org",
+    "path": [
+      "orgs"
+    ],
+    "verb": "get",
+    "description": "Get organization details.",
+    "method": "GET",
+    "http_path": "/v1/orgs/{org}",
+    "args": [
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_orgs",
+    "path": [
+      "orgs"
+    ],
+    "verb": "list",
+    "description": "List organizations for the current user.",
+    "method": "GET",
+    "http_path": "/v1/orgs",
+    "args": []
+  },
+  {
+    "wire_name": "resolve_org",
+    "path": [
+      "orgs"
+    ],
+    "verb": "resolve",
+    "description": "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
+    "method": "GET",
+    "http_path": "/v1/resolve-org",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Look up an organization by its identifier",
+        "command": "everruns orgs resolve --id org_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_payment_account",
+    "path": [
+      "payments",
+      "accounts"
+    ],
+    "verb": "create",
+    "description": "Create a machine-payment wallet account.",
+    "method": "POST",
+    "http_path": "/v1/payments/accounts",
+    "args": [
+      {
+        "field": "label",
+        "long": "label",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable label."
+      },
+      {
+        "field": "metadata",
+        "long": "metadata",
+        "kind": "json",
+        "required": false,
+        "help": "Free-form metadata attached to this account (caller-defined; opaque to the platform). Example..."
+      },
+      {
+        "field": "owner_id",
+        "long": "owner-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier of the owning principal."
+      },
+      {
+        "field": "owner_type",
+        "long": "owner-type",
+        "kind": "string",
+        "required": true,
+        "help": "Principal class that owns the account."
+      },
+      {
+        "field": "private_key",
+        "long": "private-key",
+        "kind": "string",
+        "required": false,
+        "help": "Private key material for the rail."
+      },
+      {
+        "field": "public_address",
+        "long": "public-address",
+        "kind": "string",
+        "required": false,
+        "help": "Public address on the rail (chain address, account number, etc.)."
+      },
+      {
+        "field": "rail",
+        "long": "rail",
+        "kind": "string",
+        "required": true,
+        "help": "Settlement rail this account operates on."
+      }
+    ]
+  },
+  {
+    "wire_name": "disable_payment_account",
+    "path": [
+      "payments",
+      "accounts"
+    ],
+    "verb": "disable",
+    "description": "Disable a machine-payment wallet account.",
+    "method": "DELETE",
+    "http_path": "/v1/payments/accounts/{payment_account_id}",
+    "args": [
+      {
+        "field": "payment_account_id",
+        "long": "payment-account-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_payment_account",
+    "path": [
+      "payments",
+      "accounts"
+    ],
+    "verb": "get",
+    "description": "Get a machine-payment wallet account.",
+    "method": "GET",
+    "http_path": "/v1/payments/accounts/{payment_account_id}",
+    "args": [
+      {
+        "field": "payment_account_id",
+        "long": "payment-account-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_payment_accounts",
+    "path": [
+      "payments",
+      "accounts"
+    ],
+    "verb": "list",
+    "description": "List machine-payment wallet accounts.",
+    "method": "GET",
+    "http_path": "/v1/payments/accounts",
+    "args": [
+      {
+        "field": "owner_id",
+        "long": "owner-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "owner_type",
+        "long": "owner-type",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_payment_account",
+    "path": [
+      "payments",
+      "accounts"
+    ],
+    "verb": "update",
+    "description": "Update a machine-payment wallet account.",
+    "method": "PATCH",
+    "http_path": "/v1/payments/accounts/{payment_account_id}",
+    "args": [
+      {
+        "field": "label",
+        "long": "label",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "metadata",
+        "long": "metadata",
+        "kind": "json",
+        "required": false,
+        "help": "Free-form metadata attached to this resource."
+      },
+      {
+        "field": "payment_account_id",
+        "long": "payment-account-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "private_key",
+        "long": "private-key",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "public_address",
+        "long": "public-address",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false,
+        "help": "Current lifecycle status."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_payment_attempts",
+    "path": [
+      "payments",
+      "attempts"
+    ],
+    "verb": "list",
+    "description": "List machine-payment attempts.",
+    "method": "GET",
+    "http_path": "/v1/payments/attempts",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": true,
+        "help": "Maximum number of items returned in this page."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": false,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_payment_policy",
+    "path": [
+      "payments",
+      "policies"
+    ],
+    "verb": "create",
+    "description": "Create a machine-payment spend policy.",
+    "method": "POST",
+    "http_path": "/v1/payments/policies",
+    "args": [
+      {
+        "field": "allowed_capabilities",
+        "long": "allowed-capabilities",
+        "kind": "string_list",
+        "required": false,
+        "help": "Capability IDs this policy permits paid calls for."
+      },
+      {
+        "field": "allowed_hosts",
+        "long": "allowed-hosts",
+        "kind": "string_list",
+        "required": false,
+        "help": "HTTP host allowlist for paid outbound calls."
+      },
+      {
+        "field": "max_amount_usd_per_day",
+        "long": "max-amount-usd-per-day",
+        "kind": "number",
+        "required": false,
+        "help": "Maximum cumulative amount (USD) per UTC day."
+      },
+      {
+        "field": "max_amount_usd_per_request",
+        "long": "max-amount-usd-per-request",
+        "kind": "number",
+        "required": false,
+        "help": "Maximum amount (USD) any single paid request may settle for."
+      },
+      {
+        "field": "max_amount_usd_per_turn",
+        "long": "max-amount-usd-per-turn",
+        "kind": "number",
+        "required": false,
+        "help": "Maximum cumulative amount (USD) per agent turn."
+      },
+      {
+        "field": "metadata",
+        "long": "metadata",
+        "kind": "json",
+        "required": false,
+        "help": "Free-form metadata attached to this policy. Example: `{\"owner_team\": \"ops\", \"ticket\": \"OPS-12..."
+      },
+      {
+        "field": "payment_account_id",
+        "long": "payment-account-id",
+        "kind": "string",
+        "required": true,
+        "help": "Payment account this policy authorizes spending from."
+      },
+      {
+        "field": "rail_preference",
+        "long": "rail-preference",
+        "kind": "string_list",
+        "required": false,
+        "help": "Preferred settlement rails in priority order; the authority picks the first available."
+      },
+      {
+        "field": "require_approval_above_usd",
+        "long": "require-approval-above-usd",
+        "kind": "number",
+        "required": false,
+        "help": "Threshold (USD) above which a request would require explicit human approval."
+      },
+      {
+        "field": "subject_id",
+        "long": "subject-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier of the bound subject."
+      },
+      {
+        "field": "subject_type",
+        "long": "subject-type",
+        "kind": "string",
+        "required": true,
+        "help": "Class of subject this policy binds to."
+      }
+    ]
+  },
+  {
+    "wire_name": "disable_payment_policy",
+    "path": [
+      "payments",
+      "policies"
+    ],
+    "verb": "disable",
+    "description": "Disable a machine-payment spend policy.",
+    "method": "DELETE",
+    "http_path": "/v1/payments/policies/{payment_policy_id}",
+    "args": [
+      {
+        "field": "payment_policy_id",
+        "long": "payment-policy-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_payment_policy",
+    "path": [
+      "payments",
+      "policies"
+    ],
+    "verb": "get",
+    "description": "Get a machine-payment spend policy.",
+    "method": "GET",
+    "http_path": "/v1/payments/policies/{payment_policy_id}",
+    "args": [
+      {
+        "field": "payment_policy_id",
+        "long": "payment-policy-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_payment_policies",
+    "path": [
+      "payments",
+      "policies"
+    ],
+    "verb": "list",
+    "description": "List machine-payment spend policies.",
+    "method": "GET",
+    "http_path": "/v1/payments/policies",
+    "args": [
+      {
+        "field": "payment_account_id",
+        "long": "payment-account-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "subject_id",
+        "long": "subject-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "subject_type",
+        "long": "subject-type",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_payment_policy",
+    "path": [
+      "payments",
+      "policies"
+    ],
+    "verb": "update",
+    "description": "Update a machine-payment spend policy.",
+    "method": "PATCH",
+    "http_path": "/v1/payments/policies/{payment_policy_id}",
+    "args": [
+      {
+        "field": "allowed_capabilities",
+        "long": "allowed-capabilities",
+        "kind": "string_list",
+        "required": false
+      },
+      {
+        "field": "allowed_hosts",
+        "long": "allowed-hosts",
+        "kind": "string_list",
+        "required": false
+      },
+      {
+        "field": "max_amount_usd_per_day",
+        "long": "max-amount-usd-per-day",
+        "kind": "number",
+        "required": false
+      },
+      {
+        "field": "max_amount_usd_per_request",
+        "long": "max-amount-usd-per-request",
+        "kind": "number",
+        "required": false
+      },
+      {
+        "field": "max_amount_usd_per_turn",
+        "long": "max-amount-usd-per-turn",
+        "kind": "number",
+        "required": false
+      },
+      {
+        "field": "metadata",
+        "long": "metadata",
+        "kind": "json",
+        "required": false,
+        "help": "Free-form metadata attached to this resource."
+      },
+      {
+        "field": "payment_policy_id",
+        "long": "payment-policy-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "rail_preference",
+        "long": "rail-preference",
+        "kind": "string_list",
+        "required": false
+      },
+      {
+        "field": "require_approval_above_usd",
+        "long": "require-approval-above-usd",
+        "kind": "number",
+        "required": false
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false,
+        "help": "Current lifecycle status."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_plugin_marketplace",
+    "path": [
+      "plugin-marketplaces"
+    ],
+    "verb": "create",
+    "description": "Register a new plugin marketplace for this organization.",
+    "method": "POST",
+    "http_path": "/v1/plugin_marketplaces",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Unique name within the org (kebab-case, e.g."
+      },
+      {
+        "field": "source",
+        "long": "source",
+        "kind": "string",
+        "required": true,
+        "help": "Source value."
+      },
+      {
+        "field": "source_type",
+        "long": "source-type",
+        "kind": "string",
+        "required": true,
+        "help": "Source type: `github`, `url`, or `local_path` (dev/test only)."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_plugin_marketplace",
+    "path": [
+      "plugin-marketplaces"
+    ],
+    "verb": "delete",
+    "description": "Delete a plugin marketplace. Installed plugins become unattached.",
+    "method": "DELETE",
+    "http_path": "/v1/plugin_marketplaces/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Public marketplace ID."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_plugin_marketplace",
+    "path": [
+      "plugin-marketplaces"
+    ],
+    "verb": "get",
+    "description": "Get a plugin marketplace by ID.",
+    "method": "GET",
+    "http_path": "/v1/plugin_marketplaces/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Public marketplace ID (`plgmkt_<32-hex>`)."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_plugin_marketplaces",
+    "path": [
+      "plugin-marketplaces"
+    ],
+    "verb": "list",
+    "description": "List plugin marketplaces registered for this organization.",
+    "method": "GET",
+    "http_path": "/v1/plugin_marketplaces",
+    "args": [
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "get_marketplace_catalog",
+    "path": [
+      "plugin-marketplaces",
+      "plugins"
+    ],
+    "verb": "get",
+    "description": "List plugin catalog entries for a marketplace (with installed flag per entry).",
+    "method": "GET",
+    "http_path": "/v1/plugin_marketplaces/{id}/plugins",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Public marketplace ID."
+      }
+    ]
+  },
+  {
+    "wire_name": "sync_plugin_marketplace",
+    "path": [
+      "plugin-marketplaces"
+    ],
+    "verb": "sync",
+    "description": "Re-sync the plugin marketplace catalog from its source.",
+    "method": "POST",
+    "http_path": "/v1/plugin_marketplaces/{id}/sync",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Public marketplace ID."
+      }
+    ]
+  },
+  {
+    "wire_name": "update_plugin_marketplace",
+    "path": [
+      "plugin-marketplaces"
+    ],
+    "verb": "update",
+    "description": "Update a plugin marketplace (name or status).",
+    "method": "PATCH",
+    "http_path": "/v1/plugin_marketplaces/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Public marketplace ID."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "get_plugin",
+    "path": [
+      "plugins"
+    ],
+    "verb": "get",
+    "description": "Get an installed plugin by ID.",
+    "method": "GET",
+    "http_path": "/v1/plugins/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Public plugin ID (`plugin_<32-hex>`)."
+      }
+    ]
+  },
+  {
+    "wire_name": "install_plugin",
+    "path": [
+      "plugins"
+    ],
+    "verb": "install",
+    "description": "Install a plugin from a marketplace catalog entry.",
+    "method": "POST",
+    "http_path": "/v1/plugins",
+    "args": [
+      {
+        "field": "marketplace_id",
+        "long": "marketplace-id",
+        "kind": "string",
+        "required": true,
+        "help": "Public ID of the marketplace to install from."
+      },
+      {
+        "field": "plugin_name",
+        "long": "plugin-name",
+        "kind": "string",
+        "required": true,
+        "help": "Name of the plugin entry in the marketplace catalog."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_plugins",
+    "path": [
+      "plugins"
+    ],
+    "verb": "list",
+    "description": "List installed plugins for this organization.",
+    "method": "GET",
+    "http_path": "/v1/plugins",
+    "args": [
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "patch_installed_plugin",
+    "path": [
+      "plugins"
+    ],
+    "verb": "patch",
+    "description": "Update an installed plugin's status (active/disabled).",
+    "method": "PATCH",
+    "http_path": "/v1/plugins/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Public plugin ID."
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false,
+        "help": "New lifecycle status: `active` or `disabled`."
+      }
+    ]
+  },
+  {
+    "wire_name": "uninstall_plugin",
+    "path": [
+      "plugins"
+    ],
+    "verb": "uninstall",
+    "description": "Uninstall a plugin. Capability ref becomes dangling for assigned agents.",
+    "method": "DELETE",
+    "http_path": "/v1/plugins/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Public plugin ID."
+      }
+    ]
+  },
+  {
+    "wire_name": "update_plugin",
+    "path": [
+      "plugins"
+    ],
+    "verb": "update",
+    "description": "Re-install an installed plugin at the marketplace's current catalog version.",
+    "method": "POST",
+    "http_path": "/v1/plugins/{id}/update",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Public plugin ID."
+      }
+    ]
+  },
+  {
+    "wire_name": "check_provider_credentials",
+    "path": [
+      "providers",
+      "check-credentials"
+    ],
+    "verb": "check",
+    "description": "Check a provider API key without storing it.",
+    "method": "POST",
+    "http_path": "/v1/providers/check-credentials",
+    "args": [
+      {
+        "field": "api_key",
+        "long": "api-key",
+        "kind": "string",
+        "required": true,
+        "help": "The credential to probe."
+      },
+      {
+        "field": "base_url",
+        "long": "base-url",
+        "kind": "string",
+        "required": false,
+        "help": "Optional custom endpoint."
+      },
+      {
+        "field": "provider_type",
+        "long": "provider-type",
+        "kind": "string",
+        "required": true,
+        "help": "LLM provider type."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_provider",
+    "path": [
+      "providers"
+    ],
+    "verb": "create",
+    "description": "Create a new LLM provider.",
+    "method": "POST",
+    "http_path": "/v1/providers",
+    "args": [
+      {
+        "field": "api_key",
+        "long": "api-key",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "base_url",
+        "long": "base-url",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "provider_type",
+        "long": "provider-type",
+        "kind": "string",
+        "required": true,
+        "help": "LLM provider type."
+      },
+      {
+        "field": "request_options",
+        "long": "request-options",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "trace",
+        "long": "trace",
+        "kind": "json",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_provider",
+    "path": [
+      "providers"
+    ],
+    "verb": "delete",
+    "description": "Delete an LLM provider.",
+    "method": "DELETE",
+    "http_path": "/v1/providers/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_provider",
+    "path": [
+      "providers"
+    ],
+    "verb": "get",
+    "description": "Get a specific LLM provider.",
+    "method": "GET",
+    "http_path": "/v1/providers/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_providers",
+    "path": [
+      "providers"
+    ],
+    "verb": "list",
+    "description": "List all LLM providers.",
+    "method": "GET",
+    "http_path": "/v1/providers",
+    "args": []
+  },
+  {
+    "wire_name": "create_model",
+    "path": [
+      "providers",
+      "models"
+    ],
+    "verb": "create",
+    "description": "Create a new model for a provider.",
+    "method": "POST",
+    "http_path": "/v1/providers/{provider_id}/models",
+    "args": [
+      {
+        "field": "capabilities",
+        "long": "capabilities",
+        "kind": "string_list",
+        "required": false
+      },
+      {
+        "field": "display_name",
+        "long": "display-name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable display name."
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether this resource is enabled."
+      },
+      {
+        "field": "is_favorite",
+        "long": "is-favorite",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "model_id",
+        "long": "model-id",
+        "kind": "string",
+        "required": true,
+        "help": "LLM model's prefixed public identifier."
+      },
+      {
+        "field": "provider_id",
+        "long": "provider-id",
+        "kind": "string",
+        "required": true,
+        "help": "LLM provider's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_provider_models",
+    "path": [
+      "providers",
+      "models"
+    ],
+    "verb": "list",
+    "description": "List models for a specific provider.",
+    "method": "GET",
+    "http_path": "/v1/providers/{provider_id}/models",
+    "args": [
+      {
+        "field": "provider_id",
+        "long": "provider-id",
+        "kind": "string",
+        "required": true,
+        "help": "LLM provider's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "sync_provider_models",
+    "path": [
+      "providers",
+      "sync-models"
+    ],
+    "verb": "sync",
+    "description": "Discover and sync models from a provider.",
+    "method": "POST",
+    "http_path": "/v1/providers/{id}/sync-models",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "update_provider",
+    "path": [
+      "providers"
+    ],
+    "verb": "update",
+    "description": "Update an LLM provider.",
+    "method": "PATCH",
+    "http_path": "/v1/providers/{id}",
+    "args": [
+      {
+        "field": "api_key",
+        "long": "api-key",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "base_url",
+        "long": "base-url",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "provider_type",
+        "long": "provider-type",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "request_options",
+        "long": "request-options",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "trace",
+        "long": "trace",
+        "kind": "json",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "backfill_reporting",
+    "path": [
+      "reports",
+      "admin"
+    ],
+    "verb": "backfill",
+    "description": "Enqueue missing reporting projection work from canonical sources.",
+    "method": "POST",
+    "http_path": "/v1/reports/admin/backfill",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of outbox rows to enqueue across all source types."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_reporting_diagnostics",
+    "path": [
+      "reports",
+      "admin",
+      "diagnostics"
+    ],
+    "verb": "get",
+    "description": "Inspect reporting projector lag and failed outbox rows.",
+    "method": "GET",
+    "http_path": "/v1/reports/admin/diagnostics",
+    "args": []
+  },
+  {
+    "wire_name": "get_report_catalog",
+    "path": [
+      "reports",
+      "catalog"
+    ],
+    "verb": "get",
+    "description": "Return semantic reporting datasets, dimensions, measures, and filter fields.",
+    "method": "GET",
+    "http_path": "/v1/reports/catalog",
+    "args": []
+  },
+  {
+    "wire_name": "run_reporting_projector",
+    "path": [
+      "reports",
+      "projector"
+    ],
+    "verb": "run",
+    "description": "Claim and process pending reporting outbox rows.",
+    "method": "POST",
+    "http_path": "/v1/reports/projector/run",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of items returned in this page."
+      }
+    ]
+  },
+  {
+    "wire_name": "export_report_query",
+    "path": [
+      "reports",
+      "query"
+    ],
+    "verb": "export",
+    "description": "Run and export an org-scoped semantic reporting query.",
+    "method": "POST",
+    "http_path": "/v1/reports/query/export",
+    "args": [
+      {
+        "field": "format",
+        "long": "format",
+        "kind": "string",
+        "required": false,
+        "help": "Output format for a report export.",
+        "choices": [
+          "csv",
+          "json"
+        ]
+      },
+      {
+        "field": "query",
+        "long": "query",
+        "kind": "json",
+        "required": true,
+        "help": "Semantic query a caller submits to the reporting layer."
+      }
+    ]
+  },
+  {
+    "wire_name": "run_report_query",
+    "path": [
+      "reports",
+      "query"
+    ],
+    "verb": "run",
+    "description": "Run an org-scoped semantic reporting query.",
+    "method": "POST",
+    "http_path": "/v1/reports/query",
+    "args": [
+      {
+        "field": "dataset",
+        "long": "dataset",
+        "kind": "string",
+        "required": true,
+        "help": "Dataset name to query (see `GET /v1/reports/catalog` for the list of available datasets)."
+      },
+      {
+        "field": "dimensions",
+        "long": "dimensions",
+        "kind": "string_list",
+        "required": false,
+        "help": "Columns to group by."
+      },
+      {
+        "field": "filters",
+        "long": "filters",
+        "kind": "json",
+        "required": false,
+        "help": "Predicate filters applied before aggregation."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of rows to return (defaults to 100)."
+      },
+      {
+        "field": "measures",
+        "long": "measures",
+        "kind": "string_list",
+        "required": false,
+        "help": "Aggregations to compute (count, sum, avg, etc.)."
+      },
+      {
+        "field": "order_by",
+        "long": "order-by",
+        "kind": "json",
+        "required": false,
+        "help": "Sort spec applied after aggregation."
+      },
+      {
+        "field": "time_range",
+        "long": "time-range",
+        "kind": "json",
+        "required": true,
+        "help": "Half-open time window applied to the dataset's primary timestamp column during a report query."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_saved_report",
+    "path": [
+      "reports",
+      "saved"
+    ],
+    "verb": "create",
+    "description": "Create an org-scoped saved report definition.",
+    "method": "POST",
+    "http_path": "/v1/reports/saved",
+    "args": [
+      {
+        "field": "dashboard",
+        "long": "dashboard",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "query",
+        "long": "query",
+        "kind": "json",
+        "required": true,
+        "help": "Semantic query a caller submits to the reporting layer."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_saved_report",
+    "path": [
+      "reports",
+      "saved"
+    ],
+    "verb": "delete",
+    "description": "Delete an org-scoped saved report definition.",
+    "method": "DELETE",
+    "http_path": "/v1/reports/saved/{report_id}",
+    "args": [
+      {
+        "field": "report_id",
+        "long": "report-id",
+        "kind": "string",
+        "required": true,
+        "help": "Saved report's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "export_saved_report",
+    "path": [
+      "reports",
+      "saved"
+    ],
+    "verb": "export",
+    "description": "Run and export an org-scoped saved report definition.",
+    "method": "POST",
+    "http_path": "/v1/reports/saved/{report_id}/export",
+    "args": [
+      {
+        "field": "report_id",
+        "long": "report-id",
+        "kind": "string",
+        "required": true,
+        "help": "Saved report's prefixed public identifier."
+      },
+      {
+        "field": "request",
+        "long": "request",
+        "kind": "json",
+        "required": true,
+        "help": "Request body for the `export_saved_report` operation."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_saved_report",
+    "path": [
+      "reports",
+      "saved"
+    ],
+    "verb": "get",
+    "description": "Get an org-scoped saved report definition.",
+    "method": "GET",
+    "http_path": "/v1/reports/saved/{report_id}",
+    "args": [
+      {
+        "field": "report_id",
+        "long": "report-id",
+        "kind": "string",
+        "required": true,
+        "help": "Saved report's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_saved_reports",
+    "path": [
+      "reports",
+      "saved"
+    ],
+    "verb": "list",
+    "description": "List org-scoped saved report definitions.",
+    "method": "GET",
+    "http_path": "/v1/reports/saved",
+    "args": []
+  },
+  {
+    "wire_name": "run_saved_report",
+    "path": [
+      "reports",
+      "saved"
+    ],
+    "verb": "run",
+    "description": "Run an org-scoped saved report definition.",
+    "method": "POST",
+    "http_path": "/v1/reports/saved/{report_id}/run",
+    "args": [
+      {
+        "field": "report_id",
+        "long": "report-id",
+        "kind": "string",
+        "required": true,
+        "help": "Saved report's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "update_saved_report",
+    "path": [
+      "reports",
+      "saved"
+    ],
+    "verb": "update",
+    "description": "Update an org-scoped saved report definition.",
+    "method": "PATCH",
+    "http_path": "/v1/reports/saved/{report_id}",
+    "args": [
+      {
+        "field": "report_id",
+        "long": "report-id",
+        "kind": "string",
+        "required": true,
+        "help": "Saved report's prefixed public identifier."
+      },
+      {
+        "field": "request",
+        "long": "request",
+        "kind": "json",
+        "required": true,
+        "help": "Request body for the `update_saved_report` operation."
+      }
+    ]
+  },
+  {
     "wire_name": "archive_session",
     "path": [
       "sessions"
@@ -1426,6 +7603,46 @@
       {
         "intent": "Move a finished session out of the active list",
         "command": "everruns sessions archive ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "check_session_budgets",
+    "path": [
+      "sessions",
+      "budget-check"
+    ],
+    "verb": "check",
+    "description": "Check all budgets for a session.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/budget-check",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_budgets",
+    "path": [
+      "sessions",
+      "budgets"
+    ],
+    "verb": "list",
+    "description": "List all budgets for a session.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/budgets",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
       }
     ]
   },
@@ -1647,6 +7864,135 @@
     ]
   },
   {
+    "wire_name": "create_session_database",
+    "path": [
+      "sessions",
+      "databases"
+    ],
+    "verb": "create",
+    "description": "Create a new SQL database inside a session.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/databases",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_session_database",
+    "path": [
+      "sessions",
+      "databases"
+    ],
+    "verb": "delete",
+    "description": "Delete a session SQL database.",
+    "method": "DELETE",
+    "http_path": "/v1/sessions/{session_id}/databases/{name}",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_database",
+    "path": [
+      "sessions",
+      "databases"
+    ],
+    "verb": "get",
+    "description": "Get metadata for a session SQL database.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/databases/{name}",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_databases",
+    "path": [
+      "sessions",
+      "databases"
+    ],
+    "verb": "list",
+    "description": "List all SQL databases created inside a session.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/databases",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_database_schema",
+    "path": [
+      "sessions",
+      "databases",
+      "schema"
+    ],
+    "verb": "get",
+    "description": "Inspect the schema of a session SQL database.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/databases/{name}/schema",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
     "wire_name": "delete_session",
     "path": [
       "sessions"
@@ -1669,6 +8015,191 @@
       {
         "intent": "Archive a session, keeping it restorable",
         "command": "everruns sessions delete ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_events",
+    "path": [
+      "sessions",
+      "events"
+    ],
+    "verb": "list",
+    "description": "List events for a session.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/events",
+    "args": [
+      {
+        "field": "after_sequence",
+        "long": "after-sequence",
+        "kind": "integer",
+        "required": false,
+        "help": "Forward cursor: only return events with sequence > after_sequence. Mutually exclusive with `b..."
+      },
+      {
+        "field": "around",
+        "long": "around",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "before_sequence",
+        "long": "before-sequence",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "exclude",
+        "long": "exclude",
+        "kind": "string_list",
+        "required": false
+      },
+      {
+        "field": "exec_id",
+        "long": "exec-id",
+        "kind": "string",
+        "required": false,
+        "help": "Filter by `context.exec_id`."
+      },
+      {
+        "field": "from_ts",
+        "long": "from-ts",
+        "kind": "string",
+        "required": false,
+        "help": "`created_at >= from_ts` (RFC 3339)."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of items returned in this page."
+      },
+      {
+        "field": "order_desc",
+        "long": "order-desc",
+        "kind": "boolean",
+        "required": false,
+        "help": "When true, return newest first; default oldest first."
+      },
+      {
+        "field": "q",
+        "long": "q",
+        "kind": "string",
+        "required": false,
+        "help": "Full-text search via Postgres tsvector (substring fallback in-memory)."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "since_id",
+        "long": "since-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Tag any-match against `events.tags`."
+      },
+      {
+        "field": "to_ts",
+        "long": "to-ts",
+        "kind": "string",
+        "required": false,
+        "help": "`created_at <= to_ts` (RFC 3339)."
+      },
+      {
+        "field": "tool_name",
+        "long": "tool-name",
+        "kind": "string",
+        "required": false,
+        "help": "Match `data.tool_name` (useful for `tool.*` events)."
+      },
+      {
+        "field": "trace_id",
+        "long": "trace-id",
+        "kind": "string",
+        "required": false,
+        "help": "Filter by `context.trace_id`."
+      },
+      {
+        "field": "turn_id",
+        "long": "turn-id",
+        "kind": "string",
+        "required": false,
+        "help": "Filter by `context.turn_id`."
+      },
+      {
+        "field": "types",
+        "long": "types",
+        "kind": "string_list",
+        "required": false
+      },
+      {
+        "field": "window",
+        "long": "window",
+        "kind": "integer",
+        "required": false,
+        "help": "Window size for `around` (events on each side)."
+      }
+    ]
+  },
+  {
+    "wire_name": "events_summary",
+    "path": [
+      "sessions",
+      "events",
+      "summary"
+    ],
+    "verb": "events",
+    "description": "One-shot debug summary for a session: counts by type, first/last timestamps, turn count, error count.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/events/summary",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "export_session_messages",
+    "path": [
+      "sessions"
+    ],
+    "verb": "export",
+    "description": "Export session messages as JSONL.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/export",
+    "args": [
+      {
+        "field": "format",
+        "long": "format",
+        "kind": "string",
+        "required": false,
+        "help": "Output format for session export.",
+        "choices": [
+          "jsonl",
+          "atif"
+        ]
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
       }
     ]
   },
@@ -1782,6 +8313,330 @@
       {
         "intent": "Branch from a session to try a different direction",
         "command": "everruns sessions fork ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "copy_workspace_file",
+    "path": [
+      "sessions",
+      "fs",
+      "-"
+    ],
+    "verb": "copy",
+    "description": "Copy a file in the session filesystem.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/fs/_/copy",
+    "args": [
+      {
+        "field": "dst_path",
+        "long": "dst-path",
+        "kind": "string",
+        "required": true,
+        "help": "Destination path (relative to the workspace filesystem root)."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "src_path",
+        "long": "src-path",
+        "kind": "string",
+        "required": true,
+        "help": "Source path (relative to the workspace filesystem root)."
+      }
+    ]
+  },
+  {
+    "wire_name": "grep_workspace_files",
+    "path": [
+      "sessions",
+      "fs",
+      "-"
+    ],
+    "verb": "grep",
+    "description": "Search files in the session filesystem.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/fs/_/grep",
+    "args": [
+      {
+        "field": "path_pattern",
+        "long": "path-pattern",
+        "kind": "string",
+        "required": false,
+        "help": "Optional path glob to filter files (`**/*.rs`, `docs/*.md`)."
+      },
+      {
+        "field": "pattern",
+        "long": "pattern",
+        "kind": "string",
+        "required": true,
+        "help": "Regex pattern to search for."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "move_workspace_file",
+    "path": [
+      "sessions",
+      "fs",
+      "-"
+    ],
+    "verb": "move",
+    "description": "Move or rename a file in the session filesystem.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/fs/_/move",
+    "args": [
+      {
+        "field": "dst_path",
+        "long": "dst-path",
+        "kind": "string",
+        "required": true,
+        "help": "Destination path (relative to the workspace filesystem root)."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "src_path",
+        "long": "src-path",
+        "kind": "string",
+        "required": true,
+        "help": "Source path (relative to the workspace filesystem root)."
+      }
+    ]
+  },
+  {
+    "wire_name": "stat_workspace_file",
+    "path": [
+      "sessions",
+      "fs",
+      "-"
+    ],
+    "verb": "stat",
+    "description": "Get file metadata in the session filesystem.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/fs/_/stat",
+    "args": [
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true,
+        "help": "Path to the file or directory (relative to the workspace filesystem root)."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_workspace_file",
+    "path": [
+      "sessions",
+      "fs"
+    ],
+    "verb": "create",
+    "description": "Create a file or directory in the session filesystem.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/fs/{path}",
+    "args": [
+      {
+        "field": "content",
+        "long": "content",
+        "kind": "string",
+        "required": false,
+        "help": "File content (text or base64-encoded)."
+      },
+      {
+        "field": "encoding",
+        "long": "encoding",
+        "kind": "string",
+        "required": false,
+        "help": "Content encoding: \"text\" or \"base64\"."
+      },
+      {
+        "field": "is_directory",
+        "long": "is-directory",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether to create a directory instead of a file (ignores `content`/`encoding`)."
+      },
+      {
+        "field": "is_readonly",
+        "long": "is-readonly",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether file is read-only"
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_workspace_file",
+    "path": [
+      "sessions",
+      "fs"
+    ],
+    "verb": "delete",
+    "description": "Delete a file or directory in the session filesystem.",
+    "method": "DELETE",
+    "http_path": "/v1/sessions/{session_id}/fs/{path}",
+    "args": [
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "recursive",
+        "long": "recursive",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_workspace_file",
+    "path": [
+      "sessions",
+      "fs"
+    ],
+    "verb": "get",
+    "description": "Get a file or directory at a path in the session filesystem.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/fs/{path}",
+    "args": [
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "recursive",
+        "long": "recursive",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_workspace_files",
+    "path": [
+      "sessions",
+      "fs"
+    ],
+    "verb": "list",
+    "description": "Get the root directory listing of session files.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/fs",
+    "args": [
+      {
+        "field": "recursive",
+        "long": "recursive",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "update_workspace_file",
+    "path": [
+      "sessions",
+      "fs"
+    ],
+    "verb": "update",
+    "description": "Update a file in the session filesystem.",
+    "method": "PUT",
+    "http_path": "/v1/sessions/{session_id}/fs/{path}",
+    "args": [
+      {
+        "field": "content",
+        "long": "content",
+        "kind": "string",
+        "required": false,
+        "help": "New file content"
+      },
+      {
+        "field": "encoding",
+        "long": "encoding",
+        "kind": "string",
+        "required": false,
+        "help": "Content encoding: \"text\" or \"base64\"."
+      },
+      {
+        "field": "is_readonly",
+        "long": "is-readonly",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether file is read-only"
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
       }
     ]
   },
@@ -1902,6 +8757,98 @@
       {
         "intent": "Find recent sessions when you do not know the id",
         "command": "everruns sessions list --limit 20"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_message",
+    "path": [
+      "sessions",
+      "messages"
+    ],
+    "verb": "create",
+    "description": "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/messages",
+    "args": [
+      {
+        "field": "addressed_participant_id",
+        "long": "addressed-participant-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "controls",
+        "long": "controls",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "external_actor",
+        "long": "external-actor",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "message",
+        "long": "message",
+        "kind": "json",
+        "required": true,
+        "help": "Input message for creating a user message  Only user messages can be created via the API. Age..."
+      },
+      {
+        "field": "metadata",
+        "long": "metadata",
+        "kind": "json",
+        "required": false,
+        "help": "Free-form metadata attached to this resource."
+      },
+      {
+        "field": "request_id",
+        "long": "request-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "tags",
+        "long": "tags",
+        "kind": "string_list",
+        "required": false,
+        "help": "Free-form tags attached to this resource."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_messages",
+    "path": [
+      "sessions",
+      "messages"
+    ],
+    "verb": "list",
+    "description": "List materialized messages in a session, optionally limited to the most recent N.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/messages",
+    "args": [
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of items returned in this page."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
       }
     ]
   },
@@ -2041,6 +8988,117 @@
     ]
   },
   {
+    "wire_name": "list_session_resources",
+    "path": [
+      "sessions",
+      "resources"
+    ],
+    "verb": "list",
+    "description": "List all resources registered in a session.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/resources",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "resume_session_budgets",
+    "path": [
+      "sessions"
+    ],
+    "verb": "resume",
+    "description": "Resume all paused session budgets for a session.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/resume",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_sandbox",
+    "path": [
+      "sessions",
+      "sandbox"
+    ],
+    "verb": "get",
+    "description": "Inspect the managed sandbox owned by a session.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/sandbox",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "manage_session_sandbox",
+    "path": [
+      "sessions",
+      "sandbox"
+    ],
+    "verb": "manage",
+    "description": "Pause, resume, or delete the managed sandbox for a session.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/sandbox",
+    "args": [
+      {
+        "field": "action",
+        "long": "action",
+        "kind": "string",
+        "required": true,
+        "help": "Operator action to take against a session's managed sandbox.",
+        "choices": [
+          "pause",
+          "resume",
+          "delete"
+        ]
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "stream_sse",
+    "path": [
+      "sessions",
+      "sse"
+    ],
+    "verb": "stream",
+    "description": "Stream events via SSE. Not supported in bash mode.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/sse",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
     "wire_name": "get_session_stats",
     "path": [
       "sessions"
@@ -2054,6 +9112,392 @@
       {
         "intent": "Check token and cost totals across sessions",
         "command": "everruns sessions stats"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_storage",
+    "path": [
+      "sessions",
+      "storage",
+      "keys"
+    ],
+    "verb": "list",
+    "description": "List all key-value pairs stored for a session.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/storage/keys",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "batch_set_session_secrets",
+    "path": [
+      "sessions",
+      "storage",
+      "secrets"
+    ],
+    "verb": "batch",
+    "description": "Encrypt and store multiple session secrets in one request.",
+    "method": "PUT",
+    "http_path": "/v1/sessions/{session_id}/storage/secrets",
+    "args": [
+      {
+        "field": "secrets",
+        "long": "secrets",
+        "kind": "json",
+        "required": true
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_session_secret",
+    "path": [
+      "sessions",
+      "storage",
+      "secrets"
+    ],
+    "verb": "delete",
+    "description": "Delete a user-managed encrypted session secret by name.",
+    "method": "DELETE",
+    "http_path": "/v1/sessions/{session_id}/storage/secrets/{name}",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Exact secret name to delete."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session that owns the secret."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_secrets",
+    "path": [
+      "sessions",
+      "storage",
+      "secrets"
+    ],
+    "verb": "list",
+    "description": "List all secrets stored for a session without revealing values.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/storage/secrets",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "cancel_session_task",
+    "path": [
+      "sessions",
+      "tasks"
+    ],
+    "verb": "cancel",
+    "description": "Request cooperative cancellation of a session task.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/tasks/{task_id}/cancel",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "task_id",
+        "long": "task-id",
+        "kind": "string",
+        "required": true,
+        "help": "Task's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_task",
+    "path": [
+      "sessions",
+      "tasks"
+    ],
+    "verb": "get",
+    "description": "Get one session task with its recent message thread.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/tasks/{task_id}",
+    "args": [
+      {
+        "field": "after_id",
+        "long": "after-id",
+        "kind": "string",
+        "required": false,
+        "help": "Return only messages newer than this message ID (exclusive cursor). When omitted, the most re..."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum number of messages to return."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "task_id",
+        "long": "task-id",
+        "kind": "string",
+        "required": true,
+        "help": "Task's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_tasks",
+    "path": [
+      "sessions",
+      "tasks"
+    ],
+    "verb": "list",
+    "description": "List background tasks owned by a session.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/tasks",
+    "args": [
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Optional kind filter (subagent, external_agent, background_tool, ...)."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "state",
+        "long": "state",
+        "kind": "string",
+        "required": false,
+        "help": "Optional state filter (queued, running, awaiting_input, succeeded, failed, canceled)."
+      }
+    ]
+  },
+  {
+    "wire_name": "post_session_task_message",
+    "path": [
+      "sessions",
+      "tasks",
+      "messages"
+    ],
+    "verb": "post",
+    "description": "Send an inbound message to a session task.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/tasks/{task_id}/messages",
+    "args": [
+      {
+        "field": "content",
+        "long": "content",
+        "kind": "json",
+        "required": false,
+        "help": "Structured message parts (alternative to `text`)."
+      },
+      {
+        "field": "in_reply_to",
+        "long": "in-reply-to",
+        "kind": "string",
+        "required": false,
+        "help": "Input request ID this message answers, when applicable."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "task_id",
+        "long": "task-id",
+        "kind": "string",
+        "required": true,
+        "help": "Task's prefixed public identifier."
+      },
+      {
+        "field": "text",
+        "long": "text",
+        "kind": "string",
+        "required": false,
+        "help": "Plain-text message (alternative to `content`)."
+      }
+    ]
+  },
+  {
+    "wire_name": "create_task_push_config",
+    "path": [
+      "sessions",
+      "tasks",
+      "push-configs"
+    ],
+    "verb": "create",
+    "description": "Create a per-task push-notification config.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+    "args": [
+      {
+        "field": "event_filter",
+        "long": "event-filter",
+        "kind": "string_list",
+        "required": false,
+        "help": "Events that trigger delivery."
+      },
+      {
+        "field": "secret",
+        "long": "secret",
+        "kind": "string",
+        "required": false,
+        "help": "Optional HMAC-SHA256 signing secret."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "task_id",
+        "long": "task-id",
+        "kind": "string",
+        "required": true,
+        "help": "Task's prefixed public identifier."
+      },
+      {
+        "field": "url",
+        "long": "url",
+        "kind": "string",
+        "required": true,
+        "help": "URL to POST task events to."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_task_push_config",
+    "path": [
+      "sessions",
+      "tasks",
+      "push-configs"
+    ],
+    "verb": "delete",
+    "description": "Delete a per-task push-notification config.",
+    "method": "DELETE",
+    "http_path": "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
+    "args": [
+      {
+        "field": "config_id",
+        "long": "config-id",
+        "kind": "string",
+        "required": true,
+        "help": "Push config public id (tpc_...)."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "task_id",
+        "long": "task-id",
+        "kind": "string",
+        "required": true,
+        "help": "Task's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_task_push_configs",
+    "path": [
+      "sessions",
+      "tasks",
+      "push-configs"
+    ],
+    "verb": "list",
+    "description": "List per-task push-notification configs.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "task_id",
+        "long": "task-id",
+        "kind": "string",
+        "required": true,
+        "help": "Task's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "submit_tool_results",
+    "path": [
+      "sessions",
+      "tool-results"
+    ],
+    "verb": "submit",
+    "description": "Submit client-side tool results back to a waiting session.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/tool-results",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "tool_results",
+        "long": "tool-results",
+        "kind": "json",
+        "required": true
       }
     ]
   },
@@ -2382,6 +9826,254 @@
       {
         "intent": "See which agents use which skills",
         "command": "everruns skills usage"
+      }
+    ]
+  },
+  {
+    "wire_name": "health_check",
+    "path": [
+      "system"
+    ],
+    "verb": "health",
+    "description": "Health check endpoint.",
+    "method": "GET",
+    "http_path": "/health",
+    "args": [],
+    "examples": [
+      {
+        "intent": "Check that the control plane is reachable and healthy",
+        "command": "everruns system health"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_org_tasks",
+    "path": [
+      "tasks"
+    ],
+    "verb": "list",
+    "description": "List background tasks across every session in the org.",
+    "method": "GET",
+    "http_path": "/v1/tasks",
+    "args": [
+      {
+        "field": "created_after",
+        "long": "created-after",
+        "kind": "string",
+        "required": false,
+        "help": "Optional age filter: only tasks created at or after this RFC3339 timestamp."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Optional kind filter (subagent, external_agent, background_tool, monitor, ...)."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Max tasks to return, newest first."
+      },
+      {
+        "field": "root_session_id",
+        "long": "root-session-id",
+        "kind": "string",
+        "required": false,
+        "help": "Optional delegation-tree filter (EVE-680): only tasks whose owning session's root is this ses..."
+      },
+      {
+        "field": "state",
+        "long": "state",
+        "kind": "string",
+        "required": false,
+        "help": "Optional state filter (queued, running, awaiting_input, succeeded, failed, canceled)."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_user_connections",
+    "path": [
+      "user",
+      "connections"
+    ],
+    "verb": "list",
+    "description": "List sanitized connection state for the current user. Returns provider identity and connection metadata, never credentials or tokens.",
+    "method": "GET",
+    "http_path": "/v1/user/connections",
+    "args": [
+      {
+        "field": "provider",
+        "long": "provider",
+        "kind": "string",
+        "required": false,
+        "help": "Optional provider ID filter."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_connection_providers",
+    "path": [
+      "user",
+      "connections",
+      "providers"
+    ],
+    "verb": "list",
+    "description": "List connection providers available in the current organization. This reports provider availability, not whether the current user is connected.",
+    "method": "GET",
+    "http_path": "/v1/user/connections/providers",
+    "args": [
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false,
+        "help": "Optional case-insensitive provider name/ID filter."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_users",
+    "path": [
+      "users"
+    ],
+    "verb": "list",
+    "description": "List users in the current organization. Supports search filtering.",
+    "method": "GET",
+    "http_path": "/v1/users",
+    "args": [
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "create_workspace",
+    "path": [
+      "workspaces"
+    ],
+    "verb": "create",
+    "description": "Create a new Workspace in the current organization.",
+    "method": "POST",
+    "http_path": "/v1/workspaces",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Optional human-readable description."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Human-readable workspace name."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_workspace",
+    "path": [
+      "workspaces"
+    ],
+    "verb": "delete",
+    "description": "Archive a Workspace (soft-delete).",
+    "method": "DELETE",
+    "http_path": "/v1/workspaces/{workspace_id}",
+    "args": [
+      {
+        "field": "workspace_id",
+        "long": "workspace-id",
+        "kind": "string",
+        "required": true,
+        "help": "Workspace ID (wsp_<32-hex>)."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_workspace",
+    "path": [
+      "workspaces"
+    ],
+    "verb": "get",
+    "description": "Fetch a Workspace by its public ID.",
+    "method": "GET",
+    "http_path": "/v1/workspaces/{workspace_id}",
+    "args": [
+      {
+        "field": "workspace_id",
+        "long": "workspace-id",
+        "kind": "string",
+        "required": true,
+        "help": "Workspace ID (wsp_<32-hex>)."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_workspaces",
+    "path": [
+      "workspaces"
+    ],
+    "verb": "list",
+    "description": "List Workspaces in the current organization.",
+    "method": "GET",
+    "http_path": "/v1/workspaces",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "update_workspace",
+    "path": [
+      "workspaces"
+    ],
+    "verb": "update",
+    "description": "Update a Workspace's mutable fields.",
+    "method": "PATCH",
+    "http_path": "/v1/workspaces/{workspace_id}",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "workspace_id",
+        "long": "workspace-id",
+        "kind": "string",
+        "required": true,
+        "help": "Workspace ID (wsp_<32-hex>)."
       }
     ]
   }

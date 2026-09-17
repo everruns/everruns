@@ -91,16 +91,19 @@ pub fn contracts() -> &'static [ContractCommand] {
         let mut built: Vec<ContractCommand> = inventory::iter::<CommandDescriptor>
             .into_iter()
             .filter_map(|desc| {
-                let route = (desc.cli)()?;
                 let meta = (desc.meta)();
-                Some(everruns_cli_contract::schema::contract_for(
+                // Every command is part of the command line. A declared route
+                // wins; the rest derive one from the REST path and the flat
+                // name, so `--help` reaches the whole catalog rather than the
+                // curated slice of it.
+                everruns_cli_contract::schema::contract_with(
                     meta.name,
                     meta.description,
                     meta.method,
                     meta.path,
-                    &route,
+                    (desc.cli)().as_ref(),
                     &(desc.param_schema)(),
-                ))
+                )
             })
             .collect();
         built.sort_by_key(|contract| contract.spelling());
@@ -383,14 +386,28 @@ mod tests {
         }
     }
 
-    /// Yolop's bar, made structural: a command an agent cannot learn from
-    /// `--help` is one it will guess at instead. An intent line without a
-    /// command teaches nothing runnable, and a command line without an intent
-    /// only restates syntax the caller could have guessed.
+    /// Yolop's bar, made structural, for the commands that declare a route.
+    ///
+    /// A command that declares one was curated: someone chose its spelling, so
+    /// they can say when to reach for it. A derived route is the default the
+    /// catalog gets for free, and a generated example would be worse than none
+    /// — it would restate the syntax `--help` already shows while teaching
+    /// nothing about when to use the command.
+    ///
+    /// So this is a bar on curation, not on coverage. It does mean most of the
+    /// catalog carries no worked example yet; that is the authoring work this
+    /// makes visible rather than hides.
     #[test]
-    fn every_routed_command_carries_a_worked_example() {
+    fn every_declared_command_carries_a_worked_example() {
+        let declared: std::collections::BTreeSet<&str> = inventory::iter::<CommandDescriptor>
+            .into_iter()
+            .filter(|desc| (desc.cli)().is_some())
+            .map(|desc| (desc.meta)().name)
+            .collect();
+
         let bare: Vec<&str> = contracts()
             .iter()
+            .filter(|contract| declared.contains(contract.wire_name.as_str()))
             .filter(|contract| {
                 contract.examples.is_empty()
                     || contract
@@ -402,7 +419,49 @@ mod tests {
             .collect();
         assert!(
             bare.is_empty(),
-            "commands without a worked example: {bare:?}"
+            "declared commands without a worked example: {bare:?}"
+        );
+    }
+
+    /// Every command reaches the command line, and no two reach the same place.
+    ///
+    /// Both halves matter. A command with no spelling cannot be found by
+    /// walking `--help`, which is the only way this surface is discoverable now
+    /// that there is no `discover` tool. Two commands at one spelling means the
+    /// tree silently serves one of them.
+    #[test]
+    fn every_command_has_exactly_one_spelling() {
+        let mut by_spelling: std::collections::BTreeMap<String, Vec<&str>> =
+            std::collections::BTreeMap::new();
+        for contract in contracts() {
+            by_spelling
+                .entry(contract.spelling())
+                .or_default()
+                .push(contract.wire_name.as_str());
+        }
+        let collisions: Vec<(&String, &Vec<&str>)> = by_spelling
+            .iter()
+            .filter(|(_, names)| names.len() > 1)
+            .collect();
+        assert!(
+            collisions.is_empty(),
+            "these spellings serve more than one command; declare a `cli()` route \
+             on all but one: {collisions:?}"
+        );
+
+        let unreachable: Vec<&str> = inventory::iter::<CommandDescriptor>
+            .into_iter()
+            .map(|desc| (desc.meta)())
+            // A fixture is deliberately not part of anyone's command line, so
+            // its absence is the design rather than an omission.
+            .filter(|meta| !meta.path.starts_with("/test/"))
+            .map(|meta| meta.name)
+            .filter(|name| !contracts().iter().any(|c| c.wire_name == *name))
+            .collect();
+        assert!(
+            unreachable.is_empty(),
+            "these commands have no spelling and could not derive one; declare a \
+             `cli()` route: {unreachable:?}"
         );
     }
 
@@ -647,13 +706,37 @@ mod tests {
     fn root_help_lists_nouns_only() {
         // The root is bounded because it lists nouns, never the verbs beneath
         // them: this is what makes `--help` affordable where the flat
-        // 312-command namespace had to forbid it.
+        // 292-command namespace had to forbid it. Now that every command has a
+        // spelling the root covers the whole catalog, and it is still one
+        // screen of nouns rather than a wall of commands.
         let text = render_help(tree(), "", None).expect("root help");
-        assert_eq!(
-            listed_commands(&text),
-            vec!["agents", "mcp-servers", "sessions", "skills"],
-            "{text}"
+        let nouns = listed_commands(&text);
+
+        for expected in [
+            "agents",
+            "mcp-servers",
+            "sessions",
+            "skills",
+            "harnesses",
+            "apps",
+        ] {
+            assert!(
+                nouns.iter().any(|n| n == expected),
+                "{expected} missing:\n{text}"
+            );
+        }
+        assert!(
+            nouns.len() < 60,
+            "the root listed {} entries; it is supposed to be nouns, not commands:\n{text}",
+            nouns.len()
         );
+        // A verb at the root would mean a command escaped its noun.
+        for verb in ["list", "get", "create", "delete"] {
+            assert!(
+                !nouns.iter().any(|n| n == verb),
+                "verb {verb} at root:\n{text}"
+            );
+        }
     }
 
     #[test]
