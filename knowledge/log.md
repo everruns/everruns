@@ -16,6 +16,12 @@
 
 ## 2026-09-16
 
+* **Demo screenshots are maintained product assets, not disposable PR evidence.** The canonical set
+  now covers Platform Chat, Sessions, Agents, Harnesses, and Durable Execution in matching light and
+  dark 1440-by-900 frames. Its scene data, framing constraints, refresh policy, and reproducible
+  capture entry point are recorded in [Demo Screenshot Set](ui/demo-screenshots.md); transient UI
+  review evidence remains upload-only.
+
 * **Blueprint config schemas were hand-written JSON that nothing validated.**
   Each blueprint carried a `json!` schema duplicating the shape, bounds, and
   defaults its Rust code already knew, and the spawn path only checked whether
