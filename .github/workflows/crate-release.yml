@@ -20,6 +20,11 @@ on:
     paths:
       - '**/Cargo.toml'
       - '.github/workflows/crate-release.yml'
+      # A fix to the publish workflow has to be able to re-drive the cascade it
+      # broke. Without this, a release halted by a Publish Crate bug stays
+      # unpublished until someone dispatches the controller by hand, and nothing
+      # on main reports that the crates never shipped.
+      - '.github/workflows/publish-crates.yml'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -135,11 +140,33 @@ jobs:
             echo "::group::Release $PKG $VER ($TAG)"
 
             # Create the tag on GitHub's infrastructure (the Actions token can push
-            # tags; a hand push cannot). Idempotent if a prior run already tagged.
+            # tags; a hand push cannot). A tag that already exists is reused and
+            # never moved: it is the trusted provenance anchor for this package's
+            # publish, which Publish Crate checks out from and validates against
+            # the expected SHA before the crates.io token is used. Moving it would
+            # let a published artifact stop matching the tag that names it.
+            #
+            # The plan only contains versions absent from crates.io, so a tag here
+            # that points somewhere else is the residue of an attempt that tagged
+            # and then failed to publish. It pins this package to that older commit
+            # permanently, and no re-run can clear it. Fail here, where the remedy
+            # is one command, rather than dispatching a run whose head is the stale
+            # commit -- the correlation selector rejects it on headSha and the
+            # controller then misreports it as "did not start", which is both wrong
+            # and four minutes slower.
+            EXISTING=""
             if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-              echo "Tag $TAG already exists locally"
+              EXISTING="$(git rev-list -n 1 "$TAG^{commit}")"
             elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-              echo "Tag $TAG already exists on origin"
+              git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+              EXISTING="$(git rev-list -n 1 "$TAG^{commit}")"
+            fi
+            if [ -n "$EXISTING" ]; then
+              if [ "$EXISTING" != "$SHA" ]; then
+                echo "::error::Tag $TAG exists at $EXISTING but this release is $SHA. A previous attempt tagged $PKG and did not publish it. Release tags are the trusted publish anchor and are never moved, so delete the stale tag and re-run Crate Release: gh api -X DELETE repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG"
+                exit 1
+              fi
+              echo "Tag $TAG already exists at $SHA; reusing"
             else
               git tag "$TAG" "$SHA"
               git push origin "refs/tags/$TAG:refs/tags/$TAG"
