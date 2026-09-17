@@ -712,8 +712,8 @@ mod tests {
         let encryption = encryption();
         let legacy = serde_json::json!({
             "anonymous": false,
-            "auth": {"mode": "oauth2_introspection", "provider": {
-                "type": "oauth2_introspection",
+            "auth": {"mode": "o_auth2_introspection", "provider": {
+                "type": "o_auth2_introspection",
                 "introspection_url": "https://identity.example.com/introspect"
             }}
         });
@@ -721,7 +721,7 @@ mod tests {
         let row = row(serde_json::json!({}), encrypted, None, None);
 
         let config = channel_config_with_auth(Some(&encryption), &row);
-        assert_eq!(config["auth"]["mode"], "oauth2_introspection");
+        assert_eq!(config["auth"]["mode"], "o_auth2_introspection");
         let channel = channel_row_to_channel(Some(&encryption), row);
         let auth = serde_json::to_value(channel.auth.unwrap()).unwrap();
         assert_eq!(auth["mode"], "oauth2_introspection");
