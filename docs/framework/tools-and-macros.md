@@ -8,7 +8,7 @@ typed agent tool. Parameter types produce JSON Schema and call arguments are
 deserialized before the function runs.
 
 ```rust
-use everruns::{Agent, Model};
+use everruns::{Agent, OpenAI};
 
 #[everruns::tool]
 /// Add two integers.
@@ -18,10 +18,11 @@ async fn add(left: i64, right: i64) -> Result<i64, String> {
 
 let agent = Agent::builder()
     .instructions("Use the add tool for arithmetic.")
-    .model(Model::simulated("The tool is registered."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .tool(add())
     .build()?;
-# Ok::<(), everruns::BuildError>(())
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 Use `#[everruns::tool(name = "…", description = "…")]` to override metadata,

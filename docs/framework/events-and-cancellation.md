@@ -6,13 +6,14 @@ description: Subscribe to live Framework session events and cancel a turn cooper
 Subscribe before sending a message to observe its live event projection:
 
 ```rust
-use everruns::{Agent, Engine, Model};
+use everruns::{Agent, Engine, OpenAI};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 let agent = Agent::builder()
     .instructions("Be concise.")
-    .model(Model::simulated("Done."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .build()?;
 let session = Engine::new().create(agent);
 let mut events = session.events();

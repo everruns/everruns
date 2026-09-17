@@ -8,7 +8,7 @@ in-process agent. Applications configure it through `everruns`; they do not
 need `RealDiskFileStore`, `HostBackends`, or a runtime-owned blocklist.
 
 ```rust
-use everruns::{Agent, Model, WorkspacePolicy};
+use everruns::{Agent, OpenAI, WorkspacePolicy};
 
 fn build(root: &std::path::Path) -> Result<Agent, Box<dyn std::error::Error>> {
     let policy = WorkspacePolicy::builder()
@@ -20,7 +20,8 @@ fn build(root: &std::path::Path) -> Result<Agent, Box<dyn std::error::Error>> {
 
     Ok(Agent::builder()
         .instructions("Work only inside the configured workspace.")
-        .model(Model::simulated("ready"))
+        .provider(OpenAI::from_env()?)
+        .model("gpt-5.6-terra")
         .workspace(root)
         .workspace_policy(policy)
         .build()?)
