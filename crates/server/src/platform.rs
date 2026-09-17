@@ -134,3 +134,64 @@ pub fn system_email_sender() -> Arc<dyn EmailSender> {
         .expect("Invalid system email configuration")
         .into_sender()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The wiring a full-stack run would exercise: the OSS composition a server
+    /// actually builds carries a judgment service, and it is the disabled one
+    /// unless the deployment configured a key. A composition that silently
+    /// carried no service would make every `jev` guardrail check a no-op.
+    #[test]
+    fn oss_composition_carries_a_judgment_service() {
+        let composition = oss_host_composition_for_grade(DeploymentGrade::Dev);
+        let service = composition.judgment_service();
+        // Process env decides which one; both are valid, a missing service is not.
+        let configured = std::env::var(everruns_host::UTILITY_TYPESAFE_API_KEY_ENV)
+            .is_ok_and(|key| !key.trim().is_empty());
+        assert_eq!(
+            service.is_configured(),
+            configured,
+            "judgment service configuration must follow {}",
+            everruns_host::UTILITY_TYPESAFE_API_KEY_ENV
+        );
+        assert_eq!(
+            service.name(),
+            if configured {
+                "TypeSafeJudgmentService"
+            } else {
+                "DisabledJudgmentService"
+            }
+        );
+    }
+
+    /// The `jev` capability reaches the hosted registry in a dev deployment and
+    /// stays out of a prod one, which is what `experimental_only` promises.
+    #[test]
+    fn jev_capability_is_registered_for_dev_deployments_only() {
+        assert!(
+            oss_host_composition_for_grade(DeploymentGrade::Dev)
+                .capability_registry()
+                .has("jev"),
+            "dev deployments should offer the jev capability"
+        );
+        assert!(
+            !oss_host_composition_for_grade(DeploymentGrade::Prod)
+                .capability_registry()
+                .has("jev"),
+            "experimental capabilities must stay out of prod registries"
+        );
+    }
+
+    /// The connector an operator sees in Settings > Connections is registered
+    /// too, otherwise the capability has no way to get a user's key.
+    #[test]
+    fn typesafe_connector_is_registered_for_dev_deployments() {
+        let registry = oss_connector_registry_for_grade(DeploymentGrade::Dev);
+        assert!(
+            registry.get("typesafe").is_some(),
+            "the capability resolves its key from this connection provider"
+        );
+    }
+}

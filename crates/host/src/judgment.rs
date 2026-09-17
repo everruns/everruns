@@ -46,10 +46,11 @@ impl std::fmt::Debug for TypeSafeJudgmentService {
 impl TypeSafeJudgmentService {
     /// Construct the fixed-model service with a deployment-owned key.
     pub fn new(api_key: impl Into<String>) -> Self {
-        // THREAT[TM-LLM-021]: Judgment credentials remain deployment-owned and
-        // never become agent- or session-configurable, exactly like the utility
-        // LLM key. The agent-facing `typesafe` capability is a separate surface
-        // with its own user-scoped connection.
+        // THREAT[TM-LLM-037]: Judgment credentials remain deployment-owned and
+        // never become agent- or session-configurable, the same posture
+        // TM-LLM-021 gives the utility LLM key. The agent-facing `jev`
+        // capability is a separate surface with its own user-scoped connection,
+        // so an agent can neither read nor spend this key.
         Self::with_client(TypeSafeClient::new(api_key.into()))
     }
 
