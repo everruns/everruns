@@ -207,7 +207,8 @@ was a silent bypass, since a malformed verdict read as `allow`.
 
 `utility_llm` stays the default so existing configs keep their exact behavior;
 `judgment` is opt-in per check, which also makes the two directly comparable on
-the same agent. When a check selects `judgment` and the deployment configured no
+the same agent. Neither engine has calibration coverage yet — see
+[Known coverage gaps](../evaluation/evals.md#known-coverage-gaps). When a check selects `judgment` and the deployment configured no
 judgment service (`TYPESAFE_API_KEY` unset), the check is skipped with a warning
 and the stage proceeds — fail-open, and visible in logs rather than silent.
 

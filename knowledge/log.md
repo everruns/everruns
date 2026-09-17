@@ -16,6 +16,18 @@
   [Judgment Service](operations/judgment-service.md), with the egress and
   steering analysis in TM-LLM-037/038.
 
+* **Operators had no single place to learn what the system model keys do.**
+  `UTILITY_OPENAI_API_KEY` was mentioned only in passing on a feature page, and
+  the new `TYPESAFE_API_KEY` had nowhere at all. Both are now documented
+  together in the public environment-variables reference, including the point
+  that a missing key fails open — a guardrail whose engine is unconfigured
+  weakens policy silently rather than wedging traffic.
+
+* **Eval coverage gaps are now written down.** Model-backed guardrails have no
+  calibration coverage, and typed-judgment tool *use* is unmeasured; both are
+  recorded in [Evals](evaluation/evals.md#known-coverage-gaps) with the shape
+  each one needs.
+
 * **Typed judgments are now an agent-facing capability too.** The `typesafe`
   integration contributes `typesafe_evaluate`, so an agent can verify or rate
   something and get numbers back instead of forming a second impression in

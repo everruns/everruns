@@ -233,6 +233,38 @@ published results are tracked in
 - Scorer failures do not expose internal provider or storage errors to public
   consumers.
 
+## Known coverage gaps
+
+Eval coverage is not uniform, and the two shapes below are missing today. Both
+are recorded here rather than in the specs they belong to, so the gap list has
+one home.
+
+**Model-backed guardrails have no eval coverage at all.** `llm_judge` and
+`moderation` ([Guardrails](../execution/guardrails.md)) are unit-tested against
+stubs and smoke-tested against the live judgment API, which proves the plumbing
+and the fail-open contract. Neither measures the thing that decides whether a
+guardrail is usable: its **calibration** — block rate against false-positive
+rate on real content, per threshold, per engine. This is what the specs mean by
+"validate thresholds against your own data and consequences", and it is the only
+way to say whether the `judgment` engine is actually better than `utility_llm`
+on a given deployment's traffic. The shape needed is a scoring harness over a
+labeled corpus driving `JudgmentService` directly, not a Mira agent study: there
+is no agent in the loop, so the agent-subject shape does not fit.
+
+**Typed-judgment tool use is unmeasured.** The `typesafe_evaluate` tool
+([integrations](../integrations/integrations.md)) is covered by wire, framework,
+and live-API tests, but nothing measures whether a model *uses it well*: whether
+it reaches for a judgment instead of asserting one, whether the questions it
+writes carry their full meaning (ids never reach the model), whether its score
+levels describe concrete situations, and whether it reads the returned number
+rather than restating its own impression. This one does fit the
+[Generic study](../../evals/generic/README.md): its samples already gate on
+capability through `metadata.requires` and score with `expected_tools`,
+`forbid_tools`, and tool-call budgets.
+
+A tool that is correctly implemented and badly used is indistinguishable, from
+the outside, from a tool that does not work.
+
 ## Harness prompt experiments
 
 The standalone [Generic Mira study](../../evals/generic/README.md#harness-behavior-comparison)
