@@ -3560,7 +3560,19 @@ mod tests {
         assert_eq!(direct.acts_as, everruns_core::McpServerActsAs::Service);
         assert_eq!(grpc.url, direct.url);
         assert_eq!(grpc.acts_as, direct.acts_as.to_string());
-        assert_eq!(grpc.auth_mode, "none");
+        // A `service` attachment is wired to the connection store keyed by its
+        // preset, so both paths report OAuth rather than a neutral descriptor
+        // (EVE-1029). The point of this test is that the two paths agree.
+        assert_eq!(grpc.auth_mode, "oauth");
+        assert_eq!(grpc.auth_mode, direct.auth_mode.to_string());
+        assert_eq!(grpc.oauth_provider_id, direct.oauth_provider_id);
+        assert!(
+            direct.oauth_provider_id.is_some(),
+            "a service attachment must name the store it resolves from"
+        );
+        // Neither path hands the worker a credential of its own.
+        assert!(direct.api_key.is_none());
+        assert!(grpc.api_key.is_none());
     }
     // =========================================================================
     // grep_files parity tests (EVE-58)

@@ -99,6 +99,12 @@ invariant, not validation, so a stored config cannot drift past it.
 in a session with no human initiator returns `connection_required` rather than
 resolving the owner user's token. This closes first-org-member-wins for MCP.
 
+A session counts as having a human initiator when its *owning principal is
+itself a `user` principal*. `sessions.resolved_owner_user_id` is deliberately
+not the signal: it walks the principal parent chain, so a trigger-created
+agent-identity principal parented to its creator still resolves to a human —
+which is precisely the borrow this rule forbids.
+
 ### D3. Org MCP servers become presets
 
 An org `mcp_servers` row is a **catalog entry**: name, URL, description,
@@ -276,7 +282,7 @@ the agent or the user is missing a grant.
 | Phase | Scope |
 |---|---|
 | 0 | `actsAs` on `ScopedMcpServer` + `use: catalog:<name>` references; validation; no behavior change (existing configs resolve to today's semantics) |
-| 1 | Fail-closed resolution; service grants in `agent_identity_connections`; eager identity on authorize; unattended runs restricted to `service` |
+| 1 | Fail-closed resolution; service grants in `agent_identity_connections`; eager identity on authorize; unattended runs restricted to `service` — **resolution and the unattended restriction landed** (EVE-1029); authorizing service grants and eager identity on authorize remain open (EVE-1030) |
 | 2 | Linear preset end to end, with the application actor; first vertical proof |
 | 3 | Agent MCP tab and the add popover |
 | 4 | Catalog page columns, My connections tab |

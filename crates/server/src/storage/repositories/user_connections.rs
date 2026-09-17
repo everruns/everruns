@@ -278,6 +278,104 @@ impl Database {
         Ok(row.map(|(user_id,)| user_id))
     }
 
+    /// Whether a human actually initiated this session.
+    ///
+    /// True only when the session's *owning principal is itself a user
+    /// principal*. This is deliberately stricter than
+    /// `sessions.resolved_owner_user_id`, which walks the principal parent
+    /// chain and therefore reports a human for an agent-identity principal
+    /// parented to its creator. That lineage walk is exactly how an unattended
+    /// run borrows a person: a trigger-fired session resolves an owner user and
+    /// would spend their token (EVE-1029).
+    ///
+    /// THREAT[TM-TOOL-042]: reads `principals.kind` rather than the
+    /// denormalized owner column so a session cannot present as attended by
+    /// virtue of who created the agent.
+    pub async fn session_has_human_initiator(&self, session_id: SessionId) -> Result<bool> {
+        let row: Option<(i32,)> = sqlx::query_as(
+            r#"
+            SELECT 1 as v
+            FROM sessions s
+            JOIN principals p ON p.id = s.owner_principal_id
+            WHERE s.id = $1
+              AND p.kind = 'user'
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.is_some())
+    }
+
+    /// Get the agent identity's connection for a session/provider pair.
+    ///
+    /// Reads `agent_identity_connections` and nothing else: there is no user
+    /// fallback here by construction, so an `actsAs: service` attachment can
+    /// never spend a person's token (EVE-1029).
+    pub async fn get_agent_identity_connection_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        let row: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
+            r#"
+            SELECT aic.access_token_encrypted
+            FROM sessions s
+            JOIN agent_identity_connections aic
+                ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
+            WHERE s.id = $1
+              AND s.agent_identity_id IS NOT NULL
+              AND aic.access_token_encrypted IS NOT NULL
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .bind(provider)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.and_then(|(token,)| token))
+    }
+
+    /// Get the invoking user's own connection row for a session/provider pair.
+    ///
+    /// Reads `user_connections` for the session's resolved owner and nothing
+    /// else — an agent identity grant for the same provider neither satisfies
+    /// nor suppresses this lookup. Attendedness is checked separately by
+    /// [`Self::session_has_human_initiator`] so the two failure reasons stay
+    /// distinguishable (EVE-1029).
+    pub async fn get_owner_user_connection_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<UserConnectionRow>> {
+        let row: Option<UserConnectionRow> = sqlx::query_as(
+            r#"
+            SELECT uc.id, uc.user_id, uc.provider, uc.connection_type,
+                   uc.provider_user_id, uc.provider_username,
+                   uc.access_token_encrypted, uc.refresh_token_encrypted,
+                   uc.scopes, uc.expires_at, uc.installation_id,
+                   uc.provider_metadata, uc.created_at, uc.updated_at
+            FROM sessions s
+            JOIN user_connections uc
+                ON uc.user_id = s.resolved_owner_user_id AND uc.provider = $2
+            WHERE s.id = $1
+              AND s.resolved_owner_user_id IS NOT NULL
+              AND uc.access_token_encrypted IS NOT NULL
+            ORDER BY uc.created_at ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .bind(provider)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     /// Get the encrypted connection token for a specific user/provider pair.
     pub async fn get_connection_token_for_user(
         &self,
