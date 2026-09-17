@@ -48,6 +48,7 @@ mod agent;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;
+/// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod classifier;
 mod context;
 mod default_workspace;
@@ -55,10 +56,13 @@ mod engine;
 mod events;
 mod history;
 mod hooks;
+/// Stability: stable — no breaking change without a major bump; see [`stability`].
 pub mod llm;
 mod mcp;
 mod plugin;
 mod session;
+/// Stability tiers and the marking convention.
+pub mod stability;
 mod tool;
 /// Session-owned background work, scheduling, cancellation, and wakes.
 pub mod work;
