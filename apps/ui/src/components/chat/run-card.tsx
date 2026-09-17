@@ -16,8 +16,8 @@ import { cn } from "@/lib/utils";
 const STATUS_DOT: Record<SessionTaskState, string> = {
   queued: "bg-muted-foreground/60",
   running: "bg-primary animate-pulse",
-  awaiting_input: "bg-amber-500",
-  succeeded: "bg-emerald-500",
+  awaiting_input: "bg-warning",
+  succeeded: "bg-success",
   failed: "bg-destructive",
   canceled: "bg-muted-foreground/40",
 };

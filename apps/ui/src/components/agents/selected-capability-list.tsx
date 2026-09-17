@@ -206,7 +206,7 @@ export function SelectedCapabilityList({
                       <TooltipTrigger>
                         <Badge
                           variant="outline"
-                          className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0 border-amber-500 text-amber-500"
+                          className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0 border-warning text-warning"
                         >
                           <AlertTriangle className="w-2.5 h-2.5" />
                           Deprecated

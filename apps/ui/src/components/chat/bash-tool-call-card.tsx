@@ -108,8 +108,8 @@ export function BashToolResultDetails({
       {bashOutput.stderr && (
         <pre
           className={cn(
-            "max-h-40 overflow-x-auto whitespace-pre-wrap break-all text-red-600/80 dark:text-red-400/80",
-            bashOutput.stdout && "mt-3 border-t border-red-400/20 pt-3",
+            "max-h-40 overflow-x-auto whitespace-pre-wrap break-all text-destructive/80",
+            bashOutput.stdout && "mt-3 border-t border-destructive/20 pt-3",
             stderrClassName,
           )}
         >
@@ -117,7 +117,7 @@ export function BashToolResultDetails({
         </pre>
       )}
       {showExitCode && bashOutput.exit_code !== 0 && (
-        <div className={cn("mt-3 text-[10px] text-red-500/70", exitCodeClassName)}>
+        <div className={cn("mt-3 text-[10px] text-destructive/70", exitCodeClassName)}>
           exit code {bashOutput.exit_code}
         </div>
       )}
@@ -175,9 +175,9 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
   // Status icon
   const statusIcon = isComplete ? (
     exitedWithError ? (
-      <span className="text-red-500 text-xs font-bold">!</span>
+      <span className="text-destructive text-xs font-bold">!</span>
     ) : (
-      <Check className="h-3 w-3 text-green-600/80" />
+      <Check className="h-3 w-3 text-success/80" />
     )
   ) : (
     <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/60" />
@@ -206,7 +206,7 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
               {command ?? "bash"}
             </span>
             {exitCodeLabel && (
-              <span className="flex-shrink-0 text-[10px] leading-none text-red-500/70">
+              <span className="flex-shrink-0 text-[10px] leading-none text-destructive/70">
                 {exitCodeLabel}
               </span>
             )}
@@ -238,7 +238,7 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
 
       {/* Tool-level error (not bash stderr) */}
       {hasError && !bashOutput && (
-        <div className="text-red-600 ml-[22px] mt-0.5 text-[10px]">
+        <div className="text-destructive ml-[22px] mt-0.5 text-[10px]">
           {t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}
@@ -270,8 +270,8 @@ function StreamedOutputDetails({ streamedOutput }: { streamedOutput: ToolOutputS
       {streamedOutput.stderr && (
         <pre
           className={cn(
-            "max-h-40 overflow-x-auto whitespace-pre-wrap break-all text-red-600/80 dark:text-red-400/80",
-            streamedOutput.stdout && "mt-3 border-t border-red-400/20 pt-3",
+            "max-h-40 overflow-x-auto whitespace-pre-wrap break-all text-destructive/80",
+            streamedOutput.stdout && "mt-3 border-t border-destructive/20 pt-3",
           )}
         >
           {streamedOutput.stderr}

@@ -18,8 +18,8 @@ import type { Session, SessionActivity } from "@/lib/api/types";
 const ACTIVITY_DOT: Record<SessionActivity, string> = {
   running: "bg-primary animate-pulse",
   failed: "bg-destructive",
-  completed: "bg-emerald-500",
-  paused: "bg-amber-500",
+  completed: "bg-success",
+  paused: "bg-warning",
   idle: "bg-muted-foreground/40",
 };
 

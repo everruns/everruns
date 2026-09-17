@@ -75,7 +75,7 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
       {/* Result or executing state */}
       {isComplete ? (
         hasError ? (
-          <div className="text-red-600">
+          <div className="text-destructive">
             &gt; {t("error_prefix", { value: resultContent?.error ?? "" })}
           </div>
         ) : resultPreview ? (
@@ -84,7 +84,7 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
             {(resultPreview.hasMore || isExpanded) && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="text-xs text-blue-600 hover:underline"
+                className="text-xs text-primary hover:underline"
               >
                 {isExpanded ? t("show_less") : t("see_more")}
               </button>

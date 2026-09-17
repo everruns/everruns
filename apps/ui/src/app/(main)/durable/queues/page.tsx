@@ -188,7 +188,7 @@ export default function QueuesPage() {
         <Card>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-blue-500" />
+              <Activity className="h-4 w-4 text-info" />
               <p className="text-sm text-muted-foreground">Processing</p>
             </div>
             <p className="text-2xl font-bold mt-1">{totalClaimed}</p>
@@ -197,7 +197,7 @@ export default function QueuesPage() {
         <Card>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
+              <CheckCircle className="h-4 w-4 text-success" />
               <p className="text-sm text-muted-foreground">Completed/hr</p>
             </div>
             <p className="text-2xl font-bold mt-1">{totalCompletedHr}</p>
@@ -206,10 +206,10 @@ export default function QueuesPage() {
         <Card>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2">
-              <XCircle className="h-4 w-4 text-red-500" />
+              <XCircle className="h-4 w-4 text-destructive" />
               <p className="text-sm text-muted-foreground">Failed/hr</p>
             </div>
-            <p className={cn("text-2xl font-bold mt-1", totalFailedHr > 0 && "text-red-500")}>
+            <p className={cn("text-2xl font-bold mt-1", totalFailedHr > 0 && "text-destructive")}>
               {totalFailedHr}
             </p>
           </CardContent>
@@ -507,7 +507,7 @@ export default function QueuesPage() {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <CheckCircle className="h-12 w-12 mb-4 text-green-500" />
+                    <CheckCircle className="h-12 w-12 mb-4 text-success" />
                     <h3 className="text-lg font-medium mb-2">DLQ is Empty</h3>
                     <p className="text-sm text-center max-w-md">
                       No tasks have failed permanently. All tasks are being processed successfully.
