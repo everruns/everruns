@@ -53,7 +53,14 @@ pub fn definition() -> BuiltInHarnessDefinition {
         },
     ])
     .with_capabilities([
-        BuiltInCapabilityDefinition::new("platform"),
+        // Shell surface: the catalog's mounts, permissions and docs stay; its
+        // three tools do not. v2's whole claim is that platform operations are
+        // a command in the session's own shell, and that is not true of a
+        // harness that also ships `query` and `execute`.
+        BuiltInCapabilityDefinition::with_config(
+            "platform",
+            serde_json::json!({ "surface": "shell" }),
+        ),
         // The v2 delta. `platform` already declares the `/docs` mount and
         // depends on `session_file_system`; naming both here makes the
         // filesystem a property of the harness rather than a side effect of a

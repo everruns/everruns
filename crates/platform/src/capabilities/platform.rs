@@ -10,6 +10,7 @@
 use async_trait::async_trait;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, MountPoint, RiskLevel,
+    SystemPromptContext,
 };
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
 use everruns_core::capability_types::{MountAccess, MountSource};
@@ -57,6 +58,7 @@ fn system_prompt_with_docs() -> &'static str {
 
 pub struct PlatformCapability;
 
+#[async_trait]
 impl Capability for PlatformCapability {
     fn id(&self) -> &str {
         PLATFORM_CAPABILITY_ID
@@ -143,6 +145,61 @@ impl Capability for PlatformCapability {
             Box::new(PlatformCommandTool::query()),
             Box::new(PlatformCommandTool::execute()),
         ]
+    }
+
+    /// In shell mode this capability contributes no model-facing tools.
+    ///
+    /// The catalog is still here: the mounts, the permission checks and the
+    /// docs tree are the capability's, and none of them move. What goes is the
+    /// three tools, because a host in shell mode reaches the same commands as
+    /// `everruns` in its own shell. Leaving them would give the model two ways
+    /// to do one thing and a prompt that has to explain when to use which.
+    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
+        if shell_surface(config) {
+            return vec![];
+        }
+        self.tools()
+    }
+
+    /// The tool prose is wrong in shell mode and has to go with the tools.
+    ///
+    /// It tells the model that platform builtins have no `--help` and that
+    /// filesystem redirection is disabled. Both are true of the scripted tool
+    /// and false of a real shell, so a host in shell mode would be instructed
+    /// against the two things shell mode exists to provide.
+    async fn system_prompt_contribution_with_config(
+        &self,
+        ctx: &SystemPromptContext,
+        config: &Value,
+    ) -> Option<String> {
+        if shell_surface(config) {
+            return shell_prompt_addition();
+        }
+        self.system_prompt_contribution(ctx).await
+    }
+}
+
+/// Whether this attachment asks for the shell surface.
+///
+/// Config rather than a second capability id: it is the same catalog, the same
+/// authorization and the same docs; only the way a caller reaches it differs.
+fn shell_surface(config: &Value) -> bool {
+    config.get("surface").and_then(Value::as_str) == Some("shell")
+}
+
+/// What the capability contributes when its commands live in the shell.
+///
+/// Only the part that is still true: the docs are mounted, so say where. How to
+/// find and spell a command belongs to the harness that owns the shell, not
+/// here.
+fn shell_prompt_addition() -> Option<String> {
+    #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
+    {
+        Some(DOCS_PROMPT.trim().to_string())
+    }
+    #[cfg(not(all(feature = "embedded-platform-docs", everruns_has_workspace_docs)))]
+    {
+        None
     }
 }
 
@@ -517,5 +574,71 @@ mod tests {
             )
             .await;
         assert!(matches!(result, ToolExecutionResult::ToolError(_)));
+    }
+}
+
+#[cfg(test)]
+mod shell_surface_tests {
+    use super::*;
+
+    fn names(config: Value) -> Vec<String> {
+        PlatformCapability
+            .tools_with_config(&config)
+            .iter()
+            .map(|tool| tool.name().to_string())
+            .collect()
+    }
+
+    /// The default attachment is unchanged: v1 and every other host that never
+    /// sets `surface` keeps discover/query/execute.
+    #[test]
+    fn the_default_surface_still_carries_the_three_tools() {
+        assert_eq!(names(json!({})), ["discover", "query", "execute"]);
+    }
+
+    /// The point of the mode.
+    #[test]
+    fn the_shell_surface_carries_no_model_facing_tools() {
+        assert!(names(json!({ "surface": "shell" })).is_empty());
+    }
+
+    /// An unrecognized surface is the default, not an empty toolset: a typo in
+    /// a config should not silently remove a host's only way to reach the
+    /// catalog.
+    #[test]
+    fn an_unknown_surface_falls_back_to_the_tools() {
+        assert_eq!(names(json!({ "surface": "sehll" })).len(), 3);
+    }
+
+    /// The prose that contradicts a real shell goes with the tools. It tells a
+    /// model that `--help` does not work and that redirection is disabled,
+    /// which is true of the scripted tool and false of the shell.
+    #[tokio::test]
+    async fn the_shell_surface_drops_the_scripted_tool_prose() {
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
+        let shell = PlatformCapability
+            .system_prompt_contribution_with_config(&ctx, &json!({ "surface": "shell" }))
+            .await
+            .unwrap_or_default();
+
+        assert!(
+            !shell.contains("do not probe them with `--help`"),
+            "{shell}"
+        );
+        assert!(
+            !shell.contains("Filesystem redirection is disabled"),
+            "{shell}"
+        );
+        assert!(!shell.contains("`query`"), "{shell}");
+
+        let default = PlatformCapability
+            .system_prompt_contribution_with_config(&ctx, &json!({}))
+            .await
+            .unwrap_or_default();
+        assert!(
+            default.contains("Filesystem redirection is disabled"),
+            "{default}"
+        );
     }
 }

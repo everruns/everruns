@@ -17,6 +17,7 @@ extern crate everruns_integrations_typesafe;
 pub mod activities;
 pub mod adapters;
 pub mod app_builder;
+mod catalog_cli;
 pub mod durable_runner;
 pub mod grpc_adapters;
 pub mod grpc_durable_store;
