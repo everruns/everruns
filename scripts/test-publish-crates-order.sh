@@ -35,6 +35,20 @@ require("package:" in workflow, "crate workflow must require a package input")
 require("crate/$DISPATCH_PACKAGE/v$VERSION" in workflow, "crate tags must bind package name and version")
 require('cargo publish --locked --no-verify --package "$PACKAGE"' in workflow, "workflow must publish only the selected package")
 require("CRATES=(" not in workflow, "workflow must not retain a bulk crate publish list")
+# The tag-vs-manifest check must read the version Cargo resolved, not the raw
+# manifest TOML. Every published crate inherits the platform version with
+# `version.workspace = true`, which parses as {'workspace': True} and can never
+# equal a tag, so a raw read fails every publish closed — it halted the 0.28.0
+# cascade at its first crate. cargo metadata resolves the inheritance and is the
+# same source crate-release.yml tags from, so the two cannot disagree.
+require(
+    'manifest_version = package["version"]' in workflow,
+    "publish workflow must verify the tag against the Cargo-resolved version",
+)
+require(
+    "tomllib" not in workflow,
+    "publish workflow must not read the raw manifest version, which is inherited",
+)
 require("workspace package version" not in workflow.lower(), "workflow must not validate against the product workspace version")
 require("publish-crates" not in release and "publish-crate" not in release, "product releases must not dispatch library publishing")
 require("run-name: Publish " in workflow, "publish workflow must expose correlated inputs in its run name")
