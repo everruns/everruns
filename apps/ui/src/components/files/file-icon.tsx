@@ -47,8 +47,8 @@ export function FileIcon({ extension, className = "h-4 w-4" }: FileIconProps) {
   const isText = TEXT_EXTENSIONS.includes(extension.toLowerCase());
 
   if (isText) {
-    return <FileText className={`${className} text-gray-500`} />;
+    return <FileText className={`${className} text-muted-foreground`} />;
   }
 
-  return <File className={`${className} text-gray-400`} />;
+  return <File className={`${className} text-muted-foreground`} />;
 }

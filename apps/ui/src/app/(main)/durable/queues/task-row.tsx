@@ -24,7 +24,7 @@ export function getTaskStatusIcon(status: TaskStatus) {
     case "cancelled":
       return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
     default:
-      return <Clock className="h-4 w-4 text-gray-500" />;
+      return <Clock className="h-4 w-4 text-muted-foreground" />;
   }
 }
 
