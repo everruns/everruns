@@ -18816,6 +18816,10 @@
           "type": "object",
           "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
           "properties": {
+            "actsAs": {
+              "$ref": "#/components/schemas/McpServerActsAs",
+              "description": "Identity whose grant this attachment requests."
+            },
             "args": {
               "type": "array",
               "items": {
@@ -18876,6 +18880,17 @@
             "url": {
               "type": "string",
               "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio."
+            },
+            "use": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/McpServerPresetRef",
+                  "description": "Organization catalog preset that supplies transport and authentication policy."
+                }
+              ]
             }
           }
         },
@@ -31196,6 +31211,16 @@
           }
         }
       },
+      "McpServerActsAs": {
+        "type": "string",
+        "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+        "enum": [
+          "none",
+          "service",
+          "user"
+        ],
+        "example": "service"
+      },
       "McpServerAuthMode": {
         "type": "string",
         "description": "MCP server authentication mode.",
@@ -31205,6 +31230,11 @@
           "oauth"
         ],
         "example": "api_key"
+      },
+      "McpServerPresetRef": {
+        "type": "string",
+        "description": "Reference to an organization MCP server catalog entry.",
+        "example": "catalog:linear"
       },
       "McpServerStatus": {
         "type": "string",

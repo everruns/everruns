@@ -43,6 +43,26 @@ fn flatten_secret_bindings(
         .collect()
 }
 
+fn resolved_mcp_server_to_proto(
+    resolved: crate::domains::mcp_servers::McpServerResolved,
+    secret_bindings: std::collections::HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
+) -> McpServerInfo {
+    McpServerInfo {
+        id: Some(proto::Uuid {
+            value: resolved.id.to_string(),
+        }),
+        name: resolved.name,
+        url: resolved.url,
+        api_key: resolved.api_key,
+        headers: resolved.headers,
+        auth_mode: resolved.auth_mode.to_string(),
+        protocol_mode: resolved.protocol_mode.to_string(),
+        oauth_provider_id: resolved.oauth_provider_id,
+        secret_bindings: flatten_secret_bindings(secret_bindings),
+        acts_as: resolved.acts_as.to_string(),
+    }
+}
+
 fn apply_proto_secret_binding_schemas(
     definitions: &mut [McpToolDef],
     bindings: &[everruns_core::McpSecretBindingMetadata],
@@ -369,15 +389,18 @@ impl WorkerService for WorkerServiceImpl {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
             } else {
-                crate::domains::mcp_servers::scoped_mcp::build_scoped_mcp_tool_definitions(
+                match crate::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions(
+                    &self.db,
+                    req.org_id,
                     &effective,
                     Some(session.id),
                     self.connection_resolver.as_ref(),
                     self.mcp_server_service.egress_service().as_ref(),
                 )
                 .await
-                .map(|defs| {
-                    defs.into_iter()
+                {
+                    Ok(definitions) => definitions
+                        .into_iter()
                         .map(|tool| McpToolDef {
                             name: tool.name().to_string(),
                             description: tool.description().to_string(),
@@ -394,12 +417,12 @@ impl WorkerService for WorkerServiceImpl {
                                 .unwrap_or_default()
                                 .to_string(),
                         })
-                        .collect()
-                })
-                .unwrap_or_else(|error| {
-                    tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
-                    vec![]
-                })
+                        .collect(),
+                    Err(error) => {
+                        tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
+                        vec![]
+                    }
+                }
             }
         } else {
             vec![]
@@ -2619,7 +2642,7 @@ impl WorkerService for WorkerServiceImpl {
                 })?
             {
                 runtime_agent_id = session.agent_id;
-                let agent = if let Some(agent_id) = session.agent_id {
+                let mut agent = if let Some(agent_id) = session.agent_id {
                     crate::domains::agents::queries::get_by_public_id(
                         &self.db,
                         req.org_id,
@@ -2633,14 +2656,39 @@ impl WorkerService for WorkerServiceImpl {
                 } else {
                     None
                 };
+                if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
+                    && let Some(version_row) = self
+                        .db
+                        .get_agent_version(req.org_id, version_id)
+                        .await
+                        .map_err(|e| {
+                            tracing::error!(
+                                "Failed to get agent version for scoped MCP lookup: {}",
+                                e
+                            );
+                            Status::internal("Failed to resolve scoped MCP server")
+                        })?
+                {
+                    let version =
+                        crate::domains::agents::queries::row_to_agent_version(version_row);
+                    *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
+                }
 
                 if let Some(r) = crate::domains::mcp_servers::scoped_mcp::resolve_scoped_mcp_server_with_capabilities(
+                    &self.mcp_server_service,
+                    req.org_id,
                     &harness,
                     agent.as_ref(),
                     &session,
                     &req.server_prefix,
                     self.capability_service.registry(),
-                ) {
+                )
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, "Failed to resolve scoped MCP server");
+                    Status::internal("Failed to resolve scoped MCP server")
+                })?
+                {
                     let secret_bindings = crate::domains::agents::credentials::resolve_runtime_secret_bindings(
                         self.db.as_ref(),
                         self.encryption.as_deref(),
@@ -2655,19 +2703,7 @@ impl WorkerService for WorkerServiceImpl {
                         Status::internal("Failed to resolve MCP credentials")
                     })?;
                     return Ok(Response::new(GetMcpServerByPrefixResponse {
-                        server: Some(McpServerInfo {
-                            id: Some(proto::Uuid {
-                                value: r.id.to_string(),
-                            }),
-                            name: r.name,
-                            url: r.url,
-                            api_key: r.api_key,
-                            headers: r.headers,
-                            auth_mode: r.auth_mode.to_string(),
-                            protocol_mode: r.protocol_mode.to_string(),
-                            oauth_provider_id: r.oauth_provider_id,
-                            secret_bindings: flatten_secret_bindings(secret_bindings),
-                        }),
+                        server: Some(resolved_mcp_server_to_proto(r, secret_bindings)),
                     }));
                 }
             }
@@ -2698,19 +2734,7 @@ impl WorkerService for WorkerServiceImpl {
                     tracing::error!(%error, "Failed to resolve Agent MCP credentials");
                     Status::internal("Failed to resolve MCP credentials")
                 })?;
-            Some(McpServerInfo {
-                id: Some(proto::Uuid {
-                    value: r.id.to_string(),
-                }),
-                name: r.name,
-                url: r.url,
-                api_key: r.api_key,
-                headers: r.headers,
-                auth_mode: r.auth_mode.to_string(),
-                protocol_mode: r.protocol_mode.to_string(),
-                oauth_provider_id: r.oauth_provider_id,
-                secret_bindings: flatten_secret_bindings(secret_bindings),
-            })
+            Some(resolved_mcp_server_to_proto(r, secret_bindings))
         } else {
             None
         };
@@ -5057,7 +5081,7 @@ fn proto_to_workflow_status(status: DurableWorkflowStatus) -> WorkflowStatus {
 mod tests {
     use super::{
         DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT, MAX_TURN_CONTEXT_MESSAGE_LIMIT, command_error_to_proto,
-        internal_status, normalize_turn_context_message_limit,
+        internal_status, normalize_turn_context_message_limit, resolved_mcp_server_to_proto,
     };
 
     const RAW_STORAGE_ERROR: &str = "error returned from database: relation \"agents\" does not \
@@ -5147,6 +5171,34 @@ mod tests {
             normalize_turn_context_message_limit(Some(i32::MAX), 123),
             MAX_TURN_CONTEXT_MESSAGE_LIMIT
         );
+    }
+
+    #[test]
+    fn grpc_mcp_adapter_preserves_neutral_catalog_descriptors() {
+        for (acts_as, wire_value) in [
+            (everruns_core::McpServerActsAs::None, "none"),
+            (everruns_core::McpServerActsAs::Service, "service"),
+            (everruns_core::McpServerActsAs::User, "user"),
+        ] {
+            let resolved = crate::domains::mcp_servers::McpServerResolved {
+                id: uuid::Uuid::new_v4(),
+                name: "linear".to_string(),
+                url: "https://mcp.linear.app/mcp".to_string(),
+                auth_mode: everruns_core::McpServerAuthMode::None,
+                protocol_mode: everruns_core::McpProtocolMode::Auto,
+                oauth_provider_id: None,
+                acts_as,
+                api_key: None,
+                headers: std::collections::HashMap::new(),
+            };
+
+            let proto = resolved_mcp_server_to_proto(resolved, std::collections::HashMap::new());
+
+            assert_eq!(proto.acts_as, wire_value);
+            assert_eq!(proto.auth_mode, "none");
+            assert!(proto.oauth_provider_id.is_none());
+            assert!(proto.api_key.is_none());
+        }
     }
     #[test]
     fn ambiguous_bindings_do_not_rewrite_a_different_proto_tool() {

@@ -255,9 +255,12 @@ impl Command for CreateHarness {
             scoped_mcp_layers.push(&parent.mcp_servers);
         }
         scoped_mcp_layers.push(&req.mcp_servers);
-        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers(
+        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers_for_org(
+            &ctx.db,
+            ctx.org_id(),
             scoped_mcp_layers,
         )
+        .await
         .map_err(classify_anyhow)?;
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
@@ -538,9 +541,12 @@ impl Command for UpdateHarnessCmd {
             scoped_mcp_layers.push(&parent.mcp_servers);
         }
         scoped_mcp_layers.push(&updated_mcp_servers);
-        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers(
+        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers_for_org(
+            &ctx.db,
+            ctx.org_id(),
             scoped_mcp_layers,
         )
+        .await
         .map_err(classify_anyhow)?;
 
         // Persist
@@ -874,8 +880,13 @@ impl Command for PreviewHarness {
                 .map_err(classify_anyhow)?,
             None => None,
         };
-        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
-            .map_err(classify_anyhow)?;
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
+            &ctx.db,
+            ctx.org_id(),
+            &self.mcp_servers,
+        )
+        .await
+        .map_err(classify_anyhow)?;
         let (system_prompt, capabilities) = q::merge_preview_layer(
             parent.as_ref(),
             &self.system_prompt.unwrap_or_default(),
@@ -888,9 +899,12 @@ impl Command for PreviewHarness {
                 .unwrap_or_default(),
             &self.mcp_servers,
         );
-        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
+            &ctx.db,
+            ctx.org_id(),
             &effective_mcp_servers,
         )
+        .await
         .map_err(classify_anyhow)?;
         let (system_prompt, mut tools) = ctx
             .capability_service
@@ -898,7 +912,9 @@ impl Command for PreviewHarness {
             .await
             .map_err(classify_anyhow)?;
         tools.extend(
-            crate::domains::mcp_servers::scoped_mcp::build_scoped_mcp_tool_definitions(
+            crate::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions(
+                &ctx.db,
+                ctx.org_id(),
                 &effective_mcp_servers,
                 None,
                 None,

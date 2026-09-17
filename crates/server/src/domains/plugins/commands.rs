@@ -465,7 +465,7 @@ fn validate_compiled_mcp_servers(
     definition: &everruns_core::DeclarativeCapabilityDefinition,
 ) -> Result<(), CommandError> {
     if let Some(servers) = &definition.mcp_servers {
-        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(servers)
+        crate::domains::mcp_servers::scoped_mcp::validate_capability_mcp_servers(servers)
             .map_err(|error| CommandError::bad_request(format!("Invalid MCP servers: {error}")))?;
     }
     Ok(())
@@ -1415,5 +1415,41 @@ mod tests {
             "{}",
             err.message()
         );
+    }
+
+    #[test]
+    fn compiled_plugin_install_and_update_reject_scoped_identity_features() {
+        let catalog = everruns_core::ScopedMcpServers::from([(
+            "docs".to_string(),
+            everruns_core::ScopedMcpServer {
+                preset: Some("catalog:docs".parse().unwrap()),
+                ..Default::default()
+            },
+        )]);
+        let error = validate_compiled_mcp_servers(&DeclarativeCapabilityDefinition {
+            name: "catalog-plugin".to_string(),
+            description: "test plugin".to_string(),
+            mcp_servers: Some(catalog),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(error.message().contains("cannot use a catalog preset"));
+
+        let identity = everruns_core::ScopedMcpServers::from([(
+            "docs".to_string(),
+            everruns_core::ScopedMcpServer {
+                url: "https://docs.example.com/mcp".to_string(),
+                acts_as: everruns_core::McpServerActsAs::Service,
+                ..Default::default()
+            },
+        )]);
+        let error = validate_compiled_mcp_servers(&DeclarativeCapabilityDefinition {
+            name: "identity-plugin".to_string(),
+            description: "test plugin".to_string(),
+            mcp_servers: Some(identity),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(error.message().contains("cannot set actsAs"));
     }
 }

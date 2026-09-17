@@ -333,8 +333,13 @@ impl Command for CreateAgent {
         )
         .await
         .map_err(classify_anyhow)?;
-        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
-            .map_err(classify_anyhow)?;
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
+            &ctx.db,
+            ctx.org_id(),
+            &req.mcp_servers,
+        )
+        .await
+        .map_err(classify_anyhow)?;
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
@@ -680,8 +685,13 @@ impl Command for UpdateAgentCmd {
             .map_err(classify_anyhow)?;
         }
         if let Some(ref servers) = req.mcp_servers {
-            crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(servers)
-                .map_err(classify_anyhow)?;
+            crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
+                &ctx.db,
+                ctx.org_id(),
+                servers,
+            )
+            .await
+            .map_err(classify_anyhow)?;
         }
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
@@ -906,8 +916,13 @@ impl Command for UpsertAgent {
         )
         .await
         .map_err(classify_anyhow)?;
-        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
-            .map_err(classify_anyhow)?;
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
+            &ctx.db,
+            ctx.org_id(),
+            &req.mcp_servers,
+        )
+        .await
+        .map_err(classify_anyhow)?;
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
@@ -1996,8 +2011,13 @@ impl Command for PreviewAgent {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentPreview, CommandError> {
-        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
-            .map_err(classify_anyhow)?;
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
+            &ctx.db,
+            ctx.org_id(),
+            &self.mcp_servers,
+        )
+        .await
+        .map_err(classify_anyhow)?;
         let authored_prompt = self.system_prompt.unwrap_or_default();
         let (prompt, mut tools) = ctx
             .capability_service
@@ -2005,7 +2025,9 @@ impl Command for PreviewAgent {
             .await
             .map_err(classify_anyhow)?;
         tools.extend(
-            crate::domains::mcp_servers::scoped_mcp::build_scoped_mcp_tool_definitions(
+            crate::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions(
+                &ctx.db,
+                ctx.org_id(),
                 &self.mcp_servers,
                 None,
                 None,
