@@ -11,7 +11,6 @@
 1746 crates/builtins/src/progress_guard.rs
 2426 crates/builtins/src/skills.rs
 1811 crates/cli/src/commands/agents.rs
-5224 crates/core/src/capabilities/mod.rs
 1542 crates/core/src/guardrail_checks.rs
 1593 crates/core/src/mcp_server.rs
 1691 crates/core/src/message.rs
