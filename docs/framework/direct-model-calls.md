@@ -21,7 +21,8 @@ println!("{answer}");
 ```
 
 The model is the same value an [agent](/framework/agents/) takes, reached
-through the same [`Provider`](/framework/models-and-providers/). Nothing is
+through the same [`Provider`](/framework/models-and-providers/) — which can also
+be asked [which models it offers](/framework/model-catalogs/). Nothing is
 persisted: a direct completion owns no session, no history, and no workspace.
 Reach for an agent as soon as the work needs tools, multiple turns, durability,
 or events.
