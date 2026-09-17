@@ -99,8 +99,11 @@ carrying both the client and the connector would close that loop.
 
 - Model is fixed (`jev-latest`), for the same reason the utility model is: call
   sites must not be able to turn it into a selectable one.
-- Configured from process environment: `TYPESAFE_API_KEY`. Unset or empty means
-  the service is disabled and `is_configured()` is false.
+- Configured from process environment: `UTILITY_TYPESAFE_API_KEY`. Unset or
+  empty means the service is disabled and `is_configured()` is false. The name
+  mirrors `UTILITY_OPENAI_API_KEY`: both are platform-owned credentials for
+  internal model work, distinct from the `TYPESAFE_API_KEY` session secret the
+  agent-facing capability falls back to.
 - Credentials are deployment-owned. The agent-facing `typesafe` capability is a
   separate surface with its own user-scoped connection; the two never share a
   key (THREAT[TM-LLM-021]).
@@ -110,7 +113,9 @@ carrying both the client and the connector would close that loop.
 ## Callers
 
 `guardrails` is the first caller: `llm_judge` and `moderation` checks set
-`engine: "judgment"` to be answered here instead of by the utility model. See
+`engine: "jev"` to be answered here instead of by the utility model. The
+config value names the model rather than this service, because that is the
+choice an agent author is making. See
 [Guardrails](../execution/guardrails.md#check-engines).
 
 Every caller must treat an unconfigured or failing service the way the utility

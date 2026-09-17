@@ -153,9 +153,9 @@ impl Capability for GuardrailsCapability {
                             },
                             "engine": {
                                 "type": "string",
-                                "enum": ["utility_llm", "judgment"],
+                                "enum": ["utility_llm", "jev"],
                                 "default": "utility_llm",
-                                "description": "Which system model answers a model-backed check (type=llm_judge or moderation). utility_llm prompts the utility model for a verdict, one request per check. judgment asks the deployment's judgment service a typed question and gets a calibrated probability back; every judgment check on a stage rides a single request, and `threshold` decides the verdict. Both fail open."
+                                "description": "Which system model answers a model-backed check (type=llm_judge or moderation). utility_llm prompts the utility model for a verdict, one request per check. jev asks TypeSafe's Jev model a typed question and gets a calibrated probability back; every jev check on a stage rides a single request, and `threshold` decides the verdict. jev requires UTILITY_TYPESAFE_API_KEY on the deployment; without it the check is skipped. Both fail open."
                             },
                             "categories": {
                                 "type": "array",
@@ -168,7 +168,7 @@ impl Capability for GuardrailsCapability {
                                 "minimum": 0,
                                 "maximum": 100,
                                 "default": 50,
-                                "description": "Block threshold as a percentage (0-100). For type=moderation, a category scoring at or above this value trips the check. For type=llm_judge with engine=judgment, the judged probability of a violation at or above this value trips the check; the utility_llm engine returns a verdict directly and ignores it."
+                                "description": "Block threshold as a percentage (0-100). For type=moderation, a category scoring at or above this value trips the check. For type=llm_judge with engine=jev, the judged probability of a violation at or above this value trips the check; the utility_llm engine returns a verdict directly and ignores it."
                             },
                             "replacement": {
                                 "type": "string",
@@ -343,10 +343,10 @@ async fn run_judge_check(
 // Judgment engine
 // ============================================================================
 //
-// Checks configured with `engine: "judgment"` are answered by the deployment's
-// judgment service instead of the utility LLM. Two things change:
+// Checks configured with `engine: "jev"` are answered by Jev, through the
+// deployment's judgment service, instead of the utility LLM. Two things change:
 //
-//   1. Every judgment-engine check on a stage rides ONE request. The
+//   1. Every jev-engine check on a stage rides ONE request. The
 //      utility-LLM path spends a round trip per check, which is why it needs a
 //      per-invocation call cap; here the cap is on questions, not requests.
 //   2. The answer is a calibrated probability, so the verdict is a threshold
@@ -387,7 +387,7 @@ fn threshold_probability(threshold: u8) -> f64 {
     f64::from(threshold) / 100.0
 }
 
-/// Decide a judgment-engine check from its answer.
+/// Decide a jev-engine check from its answer.
 ///
 /// A missing answer is fail-open (`None`), the same as a judge call that timed
 /// out: the service returned, but not for this question.
@@ -401,7 +401,7 @@ fn action_from_probability(probability: f64, threshold: u8) -> GuardrailAction {
     }
 }
 
-/// Evaluate every judgment-engine check for `stage` in one request.
+/// Evaluate every jev-engine check for `stage` in one request.
 ///
 /// Returns raw actions keyed by check index. An index is absent when the
 /// service is missing, the request failed, or that question came back
@@ -436,7 +436,7 @@ async fn run_judgment_batch(
     let mut thresholds: HashMap<String, (usize, u8)> = HashMap::new();
     for check in compiled
         .judge_checks_for_stage(stage)
-        .filter(|check| check.engine == GuardrailEngine::Judgment)
+        .filter(|check| check.engine == GuardrailEngine::Jev)
     {
         if request.len() >= MAX_JUDGMENT_QUESTIONS {
             break;
@@ -462,7 +462,7 @@ async fn run_judgment_batch(
     let mut moderation: HashMap<String, (usize, u8)> = HashMap::new();
     for check in compiled
         .moderation_checks_for_stage(stage)
-        .filter(|check| check.engine == GuardrailEngine::Judgment)
+        .filter(|check| check.engine == GuardrailEngine::Jev)
     {
         for category in &check.categories {
             if request.len() >= MAX_JUDGMENT_QUESTIONS {
@@ -576,11 +576,11 @@ async fn judgment_decisions(
             run_judgment_batch(service, compiled, stage, tool_name, content, content_cap).await
         }
         None => {
-            if compiled.has_judgment_checks_for_stage(stage) {
+            if compiled.has_jev_checks_for_stage(stage) {
                 tracing::warn!(
                     stage = %stage.as_str(),
-                    "guardrails: judgment-engine checks skipped — no judgment service configured \
-                     (fail-open)"
+                    "guardrails: jev-engine checks skipped — no judgment service \
+                     configured (set UTILITY_TYPESAFE_API_KEY); fail-open"
                 );
             }
             HashMap::new()
@@ -954,8 +954,8 @@ impl PostGenerationOutputGuardrail for ModerationOutputGuardrail {
     }
 
     async fn check_message(&self, ctx: &PostGenerationOutputContext<'_>) -> GuardrailDecision {
-        // Judgment-engine checks resolve in one request, before the
-        // per-check utility-LLM calls.
+        // Jev-engine checks resolve in one request, before the per-check
+        // utility-LLM calls.
         let judged = judgment_decisions(
             ctx.judgment_service,
             &self.compiled,
@@ -975,7 +975,7 @@ impl PostGenerationOutputGuardrail for ModerationOutputGuardrail {
             .moderation_checks_for_stage(GuardrailStage::Output)
         {
             let raw_action = match check.engine {
-                GuardrailEngine::Judgment => judged.get(&check.index).copied(),
+                GuardrailEngine::Jev => judged.get(&check.index).copied(),
                 GuardrailEngine::UtilityLlm => {
                     let Some(service) = utility else {
                         tracing::warn!(
@@ -1085,9 +1085,9 @@ impl PreToolUseHook for GuardrailPreToolHook {
                 }
             }
         }
-        // LLM-judge checks run after deterministic checks. Judgment-engine
-        // checks resolve in one batched request; utility-LLM ones keep their
-        // per-check call and its cap.
+        // LLM-judge checks run after deterministic checks. Jev-engine checks
+        // resolve in one batched request; utility-LLM ones keep their per-check
+        // call and its cap.
         {
             let judged = judgment_decisions(
                 context.judgment_service.as_ref(),
@@ -1108,7 +1108,7 @@ impl PreToolUseHook for GuardrailPreToolHook {
                 .judge_checks_for_stage(GuardrailStage::ToolUse)
             {
                 let raw_action = match check.engine {
-                    GuardrailEngine::Judgment => judged.get(&check.index).copied(),
+                    GuardrailEngine::Jev => judged.get(&check.index).copied(),
                     GuardrailEngine::UtilityLlm => {
                         let Some(service) = utility else { continue };
                         if utility_calls >= MAX_JUDGE_CALLS_PER_INVOCATION {
@@ -1316,7 +1316,7 @@ impl PostToolExecHook for GuardrailPostToolHook {
                 .judge_checks_for_stage(GuardrailStage::ToolOutput)
             {
                 let raw_action = match check.engine {
-                    GuardrailEngine::Judgment => judged.get(&check.index).copied(),
+                    GuardrailEngine::Jev => judged.get(&check.index).copied(),
                     GuardrailEngine::UtilityLlm => {
                         let Some(service) = utility else { continue };
                         if utility_calls >= MAX_JUDGE_CALLS_PER_INVOCATION {
@@ -2286,7 +2286,7 @@ mod tests {
         assert!(matches!(decision, PreToolUseDecision::Continue(_)));
     }
 
-    // --- judgment-engine tests ---
+    // --- jev-engine tests ---
 
     /// Stub judgment service: answers every noul with `noul`, every score with
     /// `severe` mass on the top level, and records what it was asked.
@@ -2399,7 +2399,7 @@ mod tests {
         let mut check = json!({
             "stage": "tool_use",
             "type": "llm_judge",
-            "engine": "judgment",
+            "engine": "jev",
             "prompt": "Block requests that delete customer data."
         });
         let object = check.as_object_mut().expect("object");
@@ -2410,7 +2410,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn judgment_engine_blocks_at_or_above_the_threshold() {
+    async fn jev_engine_blocks_at_or_above_the_threshold() {
         let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&judge_config(json!({})));
         let service = StubJudgment::noul(0.5); // exactly the default threshold
         let decision = hooks[0]
@@ -2424,7 +2424,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn judgment_engine_allows_below_the_threshold() {
+    async fn jev_engine_allows_below_the_threshold() {
         let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&judge_config(json!({})));
         let decision = hooks[0]
             .before_exec(
@@ -2437,7 +2437,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn judgment_engine_honors_a_custom_threshold() {
+    async fn jev_engine_honors_a_custom_threshold() {
         let config = judge_config(json!({"threshold": 90}));
         let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&config);
         let allowed = hooks[0]
@@ -2463,12 +2463,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn every_judgment_check_on_a_stage_rides_one_request() {
+    async fn every_jev_check_on_a_stage_rides_one_request() {
         let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&json!({
             "checks": [
-                {"stage": "tool_use", "type": "llm_judge", "engine": "judgment", "prompt": "a"},
-                {"stage": "tool_use", "type": "llm_judge", "engine": "judgment", "prompt": "b"},
-                {"stage": "tool_use", "type": "llm_judge", "engine": "judgment", "prompt": "c"}
+                {"stage": "tool_use", "type": "llm_judge", "engine": "jev", "prompt": "a"},
+                {"stage": "tool_use", "type": "llm_judge", "engine": "jev", "prompt": "b"},
+                {"stage": "tool_use", "type": "llm_judge", "engine": "jev", "prompt": "c"}
             ]
         }));
         let service = StubJudgment::noul(0.1);
@@ -2520,15 +2520,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn judgment_and_utility_engines_coexist_on_one_stage() {
+    async fn jev_and_utility_engines_coexist_on_one_stage() {
         let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&json!({
             "checks": [
                 {"id": "judged", "stage": "tool_use", "type": "llm_judge",
-                 "engine": "judgment", "prompt": "a"},
+                 "engine": "jev", "prompt": "a"},
                 {"id": "prompted", "stage": "tool_use", "type": "llm_judge", "prompt": "b"}
             ]
         }));
-        // The judgment check allows; the utility-LLM check blocks. The second
+        // The jev check allows; the utility-LLM check blocks. The second
         // check must still run.
         let ctx = ToolContext::new(SessionId::new())
             .with_judgment_service(StubJudgment::noul(0.0))
@@ -2538,12 +2538,12 @@ mod tests {
             .await;
         assert!(
             matches!(decision, PreToolUseDecision::Block { .. }),
-            "a utility-LLM check must still be evaluated alongside judgment checks"
+            "a utility-LLM check must still be evaluated alongside jev checks"
         );
     }
 
     #[tokio::test]
-    async fn judgment_checks_fail_open_without_a_service() {
+    async fn jev_checks_fail_open_without_a_service() {
         let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&judge_config(json!({})));
         let decision = hooks[0]
             .before_exec(
@@ -2559,7 +2559,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn judgment_checks_fail_open_when_the_service_errors() {
+    async fn jev_checks_fail_open_when_the_deployment_key_is_unset() {
+        // `UTILITY_TYPESAFE_API_KEY` unset resolves to DisabledJudgmentService,
+        // which is wired in like any other: present, but not configured.
+        let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&judge_config(json!({})));
+        let ctx = ToolContext::new(SessionId::new())
+            .with_judgment_service(Arc::new(everruns_core::DisabledJudgmentService));
+        let decision = hooks[0]
+            .before_exec(tool_call("delete_record", json!({})), &tool_def(), &ctx)
+            .await;
+        assert!(
+            matches!(decision, PreToolUseDecision::Continue(_)),
+            "an unconfigured judgment service must never wedge a turn"
+        );
+    }
+
+    #[tokio::test]
+    async fn jev_checks_fail_open_when_the_service_errors() {
         let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&judge_config(json!({})));
         let decision = hooks[0]
             .before_exec(
@@ -2575,8 +2591,8 @@ mod tests {
     async fn an_unanswered_question_fails_open_without_affecting_the_others() {
         let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&json!({
             "checks": [
-                {"stage": "tool_use", "type": "llm_judge", "engine": "judgment", "prompt": "a"},
-                {"stage": "tool_use", "type": "llm_judge", "engine": "judgment", "prompt": "b"}
+                {"stage": "tool_use", "type": "llm_judge", "engine": "jev", "prompt": "a"},
+                {"stage": "tool_use", "type": "llm_judge", "engine": "jev", "prompt": "b"}
             ]
         }));
         // Check #0 comes back unanswered; check #1 answers over the threshold.
@@ -2594,10 +2610,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn judgment_engine_guards_the_tool_output_stage() {
+    async fn jev_engine_guards_the_tool_output_stage() {
         let hooks = GuardrailsCapability.post_tool_exec_hooks_with_config(&json!({
             "checks": [{"stage": "tool_output", "type": "llm_judge",
-                        "engine": "judgment", "prompt": "Block PII."}]
+                        "engine": "jev", "prompt": "Block PII."}]
         }));
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
@@ -2619,11 +2635,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn advisory_mode_downgrades_a_judgment_block_to_a_log() {
+    async fn advisory_mode_downgrades_a_jev_block_to_a_log() {
         let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&json!({
             "mode": "advisory",
             "checks": [{"stage": "tool_use", "type": "llm_judge",
-                        "engine": "judgment", "prompt": "a"}]
+                        "engine": "jev", "prompt": "a"}]
         }));
         let decision = hooks[0]
             .before_exec(
@@ -2636,9 +2652,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn judgment_moderation_blocks_on_tail_mass_not_the_mean() {
+    async fn jev_moderation_blocks_on_tail_mass_not_the_mean() {
         let config = json!({
-            "checks": [{"stage": "output", "type": "moderation", "engine": "judgment",
+            "checks": [{"stage": "output", "type": "moderation", "engine": "jev",
                         "threshold": 30, "categories": ["hate"]}]
         });
         // Probably fine (70% on "not present"), possibly severe (30%). The
@@ -2657,9 +2673,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn judgment_moderation_allows_a_clean_message() {
+    async fn jev_moderation_allows_a_clean_message() {
         let config = json!({
-            "checks": [{"stage": "output", "type": "moderation", "engine": "judgment",
+            "checks": [{"stage": "output", "type": "moderation", "engine": "jev",
                         "threshold": 50, "categories": ["hate", "violence"]}]
         });
         let decision = run_moderation_seam_with(
@@ -2673,9 +2689,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn judgment_moderation_scores_every_category_in_one_request() {
+    async fn jev_moderation_scores_every_category_in_one_request() {
         let config = json!({
-            "checks": [{"stage": "output", "type": "moderation", "engine": "judgment",
+            "checks": [{"stage": "output", "type": "moderation", "engine": "jev",
                         "categories": ["hate", "harassment", "violence"]}]
         });
         let service = StubJudgment::severe(0.0);
@@ -2691,9 +2707,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn judgment_moderation_fails_open_without_a_service() {
+    async fn jev_moderation_fails_open_without_a_service() {
         let config = json!({
-            "checks": [{"stage": "output", "type": "moderation", "engine": "judgment"}]
+            "checks": [{"stage": "output", "type": "moderation", "engine": "jev"}]
         });
         let decision = run_moderation_seam_with(&config, None, None, "anything").await;
         assert!(matches!(decision, GuardrailDecision::Pass));
@@ -2718,24 +2734,24 @@ mod tests {
         }))
         .expect("parses");
         let compiled = config.compile().expect("compiles");
-        assert!(!compiled.has_judgment_checks_for_stage(GuardrailStage::ToolUse));
-        assert!(!compiled.has_judgment_checks_for_stage(GuardrailStage::Output));
+        assert!(!compiled.has_jev_checks_for_stage(GuardrailStage::ToolUse));
+        assert!(!compiled.has_jev_checks_for_stage(GuardrailStage::Output));
 
         let config: GuardrailsConfig = serde_json::from_value(json!({
             "checks": [{"stage": "tool_use", "type": "llm_judge",
-                        "engine": "judgment", "prompt": "a"}]
+                        "engine": "jev", "prompt": "a"}]
         }))
         .expect("parses");
         let compiled = config.compile().expect("compiles");
-        assert!(compiled.has_judgment_checks_for_stage(GuardrailStage::ToolUse));
-        assert!(!compiled.has_judgment_checks_for_stage(GuardrailStage::ToolOutput));
+        assert!(compiled.has_jev_checks_for_stage(GuardrailStage::ToolUse));
+        assert!(!compiled.has_jev_checks_for_stage(GuardrailStage::ToolOutput));
     }
 
     #[test]
     fn an_out_of_range_judge_threshold_is_rejected() {
         let error = GuardrailsCapability
             .validate_config(&json!({
-                "checks": [{"stage": "tool_use", "type": "llm_judge", "engine": "judgment",
+                "checks": [{"stage": "tool_use", "type": "llm_judge", "engine": "jev",
                             "prompt": "a", "threshold": 101}]
             }))
             .expect_err("101 is not a percentage");
@@ -2746,7 +2762,7 @@ mod tests {
     fn config_schema_documents_the_engine_selector() {
         let schema = GuardrailsCapability.config_schema().expect("schema");
         let engine = &schema["properties"]["checks"]["items"]["properties"]["engine"];
-        assert_eq!(engine["enum"], json!(["utility_llm", "judgment"]));
+        assert_eq!(engine["enum"], json!(["utility_llm", "jev"]));
         assert_eq!(engine["default"], "utility_llm");
     }
 

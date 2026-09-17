@@ -4,7 +4,7 @@
 //!
 //!   cargo test -p everruns-host --features typesafe-live-tests
 //!
-//! The key comes from Doppler as `TYPESAFE_API_KEY`. The tests panic when it is
+//! The key comes from `UTILITY_TYPESAFE_API_KEY`. The tests panic when it is
 //! missing, so a dropped credential never looks like a pass.
 //!
 //! These exercise the shape guardrails actually send: one request per stage,
@@ -17,9 +17,9 @@ use everruns_core::{JudgmentQuestion, JudgmentRequest, JudgmentService};
 use everruns_host::TypeSafeJudgmentService;
 
 fn service() -> TypeSafeJudgmentService {
-    match std::env::var("TYPESAFE_API_KEY") {
+    match std::env::var("UTILITY_TYPESAFE_API_KEY") {
         Ok(key) if !key.trim().is_empty() => TypeSafeJudgmentService::new(key),
-        _ => panic!("TYPESAFE_API_KEY not set — cannot run live judgment tests"),
+        _ => panic!("UTILITY_TYPESAFE_API_KEY not set — cannot run live judgment tests"),
     }
 }
 

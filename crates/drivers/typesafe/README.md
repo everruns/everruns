@@ -118,7 +118,7 @@ instead of forming a second impression in prose.
 
 The same client also backs Everruns'
 [guardrails](https://docs.everruns.com/capabilities/guardrails/) when a check
-sets `"engine": "judgment"`, which turns one round trip per policy into one
+sets `"engine": "jev"`, which turns one round trip per policy into one
 round trip per stage.
 
 ## Examples

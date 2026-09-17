@@ -96,7 +96,12 @@ jobs:
 
       - name: Fetch TypeSafe API key from Doppler
         run: |
-          echo "TYPESAFE_API_KEY=$(doppler secrets get TYPESAFE_API_KEY --plain)" >> "$GITHUB_ENV"
+          # The SDK smoke tests read TYPESAFE_API_KEY; the deployment judgment
+          # service reads UTILITY_TYPESAFE_API_KEY. One Doppler secret backs
+          # both until a separate UTILITY_TYPESAFE_API_KEY exists there.
+          KEY="$(doppler secrets get TYPESAFE_API_KEY --plain)"
+          echo "TYPESAFE_API_KEY=$KEY" >> "$GITHUB_ENV"
+          echo "UTILITY_TYPESAFE_API_KEY=$KEY" >> "$GITHUB_ENV"
 
       - name: Run integration tests
         run: cargo test -p typesafe-systemone --features integration

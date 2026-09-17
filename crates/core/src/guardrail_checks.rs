@@ -129,7 +129,7 @@ pub enum GuardrailRule {
         #[serde(default)]
         engine: GuardrailEngine,
         /// Block threshold as a percentage (`0..=100`). Only meaningful for
-        /// `engine: judgment`, where the answer is a probability rather than a
+        /// `engine: jev`, where the answer is a probability rather than a
         /// verdict; the utility-LLM engine returns block/allow directly.
         #[serde(default = "default_judge_threshold")]
         threshold: u8,
@@ -179,10 +179,10 @@ pub fn default_moderation_threshold() -> u8 {
 ///
 /// Both engines fail open and honor the same `threshold`; they differ in what
 /// the model is asked to produce. The utility LLM writes a JSON verdict a call
-/// site has to parse, one request per check. The judgment engine returns a
-/// calibrated probability directly, and every check on a stage rides one
-/// request. `utility_llm` stays the default so existing configs keep their
-/// current behavior; see `knowledge/execution/guardrails.md`.
+/// site has to parse, one request per check. Jev returns a calibrated
+/// probability directly, and every check on a stage rides one request.
+/// `utility_llm` stays the default so existing configs keep their current
+/// behavior; see `knowledge/execution/guardrails.md`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -190,8 +190,14 @@ pub enum GuardrailEngine {
     /// The deployment's utility LLM, prompted for a JSON verdict.
     #[default]
     UtilityLlm,
-    /// The deployment's judgment service, asked a typed question.
-    Judgment,
+    /// Jev, TypeSafe's System One model, asked a typed question through the
+    /// deployment's judgment service.
+    ///
+    /// The config names the model rather than the service because that is what
+    /// an author is choosing between: prose a parser has to trust, or a
+    /// calibrated number. If the judgment service is ever backed by a different
+    /// model, this value gains a sibling rather than changing meaning.
+    Jev,
 }
 
 impl GuardrailEngine {
@@ -199,7 +205,7 @@ impl GuardrailEngine {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::UtilityLlm => "utility_llm",
-            Self::Judgment => "judgment",
+            Self::Jev => "jev",
         }
     }
 }
@@ -465,17 +471,17 @@ impl CompiledGuardrails {
             .filter(move |c| c.stage == stage)
     }
 
-    /// Whether any `judgment`-engine check targets `stage`. Lets a hook tell
+    /// Whether any `jev`-engine check targets `stage`. Lets a hook tell
     /// "nothing configured" apart from "configured but no service wired", so
     /// the second case can say so instead of silently passing.
-    pub fn has_judgment_checks_for_stage(&self, stage: GuardrailStage) -> bool {
+    pub fn has_jev_checks_for_stage(&self, stage: GuardrailStage) -> bool {
         self.judge_checks
             .iter()
-            .any(|check| check.stage == stage && check.engine == GuardrailEngine::Judgment)
+            .any(|check| check.stage == stage && check.engine == GuardrailEngine::Jev)
             || self
                 .moderation_checks
                 .iter()
-                .any(|check| check.stage == stage && check.engine == GuardrailEngine::Judgment)
+                .any(|check| check.stage == stage && check.engine == GuardrailEngine::Jev)
     }
 
     /// LLM-judge checks that target `stage`. Empty when no `llm_judge` rule

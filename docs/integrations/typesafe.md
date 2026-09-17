@@ -113,10 +113,10 @@ Two things worth knowing when you write the questions:
 ## Guardrails
 
 The same model backs Everruns [guardrails](/capabilities/guardrails/) when a
-`llm_judge` or `moderation` check sets `"engine": "judgment"`. Instead of asking
+`llm_judge` or `moderation` check sets `"engine": "jev"`. Instead of asking
 the utility model to write a verdict, the check gets a calibrated probability and
 your configured `threshold` decides — and every check on a stage is answered in a
-single call. That path uses a deployment-owned key (`TYPESAFE_API_KEY`), not your
+single call. That path uses a deployment-owned key (`UTILITY_TYPESAFE_API_KEY`), not your
 personal connection.
 
 ## Security

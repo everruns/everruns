@@ -59,7 +59,7 @@ The two model-backed types, `llm_judge` and `moderation`, choose which system mo
 {
   "stage": "tool_use",
   "type": "llm_judge",
-  "engine": "judgment",
+  "engine": "jev",
   "threshold": 70,
   "prompt": "Block any tool call that deletes customer records."
 }
@@ -112,7 +112,7 @@ The `id` is optional but recommended, it is surfaced in reason codes and logs.
 ## Data egress and failure behavior
 
 - **Deterministic checks** (`regex`, `blocklist`, `tool_pattern`) run entirely in-process; no data leaves the platform.
-- **`llm_judge` and `moderation`** send a bounded content excerpt to a system model: with `engine: "utility_llm"`, your org's *own* configured utility LLM, the same provider the agent already uses; with `engine: "judgment"`, the deployment's judgment provider. Either way it is an operator-configured destination, not a per-agent one.
+- **`llm_judge` and `moderation`** send a bounded content excerpt to a system model: with `engine: "utility_llm"`, your org's *own* configured utility LLM, the same provider the agent already uses; with `engine: "jev"`, the deployment's judgment provider. Either way it is an operator-configured destination, not a per-agent one.
 - **`mcp`** sends a bounded content excerpt to an external, operator-configured MCP guardrail endpoint. Tenant scoping is enforced by the host's per-session scoped-MCP resolver, so a config can only reach servers scoped to its own session/org.
 
 Every async check is bounded (10 s timeout; at most 4 utility-LLM calls per invocation, and one batched request for the judgment engine) and **fails open**: a timeout, error, or unparseable verdict defaults to `allow`. A guardrail outage, or a hostile MCP endpoint, can only ever *allow*, never make execution more permissive than the no-guardrail baseline in a way that blocks a healthy turn. Model-backed checks flow through utility-LLM accounting, not the session model budget.

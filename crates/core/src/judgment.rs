@@ -255,7 +255,9 @@ impl JudgmentService for DisabledJudgmentService {
     }
 
     async fn evaluate(&self, _request: JudgmentRequest) -> Result<JudgmentOutcome> {
-        Err(AgentLoopError::llm("judgment service is disabled"))
+        Err(AgentLoopError::llm(
+            "judgment service is disabled (no UTILITY_TYPESAFE_API_KEY configured)",
+        ))
     }
 
     fn name(&self) -> &'static str {
@@ -275,7 +277,10 @@ mod tests {
             .evaluate(JudgmentRequest::new("anything").ask("q", JudgmentQuestion::noul("Yes?")))
             .await
             .unwrap_err();
-        assert_eq!(error.to_string(), "LLM error: judgment service is disabled");
+        assert!(
+            error.to_string().contains("UTILITY_TYPESAFE_API_KEY"),
+            "a disabled service must name the switch that enables it: {error}"
+        );
     }
 
     #[test]

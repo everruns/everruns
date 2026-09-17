@@ -66,5 +66,5 @@ Settings > Connections, validates it, and returns calibrated numbers from
 ## Notes
 
 - The capability's key is the **user's** connection. The deployment-owned
-  `TYPESAFE_API_KEY` that backs guardrail `judgment` checks is a separate
+  `UTILITY_TYPESAFE_API_KEY` that backs guardrail `jev` checks is a separate
   credential and is not exercised by this test case.

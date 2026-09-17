@@ -376,7 +376,7 @@ platform uses for its own internal work.
 | Variable | Powers | Unset means |
 |----------|--------|-------------|
 | `UTILITY_OPENAI_API_KEY` | Agent Analyze/Health checks, and guardrail checks with `engine: "utility_llm"` (the default) | Those checks are skipped; Analyze and Health are unavailable |
-| `TYPESAFE_API_KEY` | Guardrail checks with `engine: "judgment"` | Those checks are skipped with a warning and the turn proceeds |
+| `UTILITY_TYPESAFE_API_KEY` | Guardrail checks with `engine: "jev"` | Those checks are skipped with a warning and the turn proceeds |
 
 Both are read from the process environment at startup. Missing keys **fail
 open**: a guardrail whose engine is not configured never blocks, so a missing
@@ -386,7 +386,7 @@ configured guardrail appears to do nothing.
 ```bash
 # Control-plane and workers both read these.
 UTILITY_OPENAI_API_KEY=sk-...
-TYPESAFE_API_KEY=ts-...
+UTILITY_TYPESAFE_API_KEY=ts-...
 ```
 
 Agents can also be given the TypeSafe capability directly, which is a

@@ -2,6 +2,19 @@
 
 ## 2026-09-17
 
+* **The guardrail engine value now names the model, and the deployment key names
+  its role.** `engine: "judgment"` became `engine: "jev"`: an agent author is
+  choosing between prose a parser has to trust and a calibrated number from a
+  specific model, so the config says which model. If the judgment service is
+  ever backed by something else, the value gains a sibling rather than changing
+  meaning. The deployment credential became `UTILITY_TYPESAFE_API_KEY`, mirroring
+  `UTILITY_OPENAI_API_KEY` — both are platform-owned credentials for internal
+  model work, and the name now keeps them visibly distinct from the
+  `TYPESAFE_API_KEY` session secret the agent-facing capability falls back to.
+  Everything that spends the deployment credential is gated on it: unset means a
+  disabled service, jev checks are skipped with a log line naming the variable,
+  and the turn proceeds.
+
 * **Model-backed guardrails had a fail-open that read as allow.** `llm_judge`
   and `moderation` prompted the utility model for a JSON verdict and parsed it
   back, so a missing fragment, a parse error, or an unrecognized verdict

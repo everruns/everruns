@@ -53,7 +53,8 @@ Everruns' guardrails do **not** depend on this crate. They call
 implements on top of the same client. That keeps `everruns-builtins` free of
 network and vendor edges, the way `UtilityLlmService` does for chat completions,
 and it keeps the two credentials separate: the guardrail path uses a
-deployment-owned key, this capability uses the user's connection. See
+deployment-owned `UTILITY_TYPESAFE_API_KEY`, this capability uses the user's
+connection or the `TYPESAFE_API_KEY` session secret. See
 [`knowledge/operations/judgment-service.md`](../../knowledge/operations/judgment-service.md).
 
 ## Tests

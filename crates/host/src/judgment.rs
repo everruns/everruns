@@ -17,7 +17,12 @@ use typesafe_systemone::{
 };
 
 /// Environment variable used by the deployment-owned judgment client.
-pub const TYPESAFE_API_KEY_ENV: &str = "TYPESAFE_API_KEY";
+///
+/// Named for the utility role, not the vendor product, to match
+/// `UTILITY_OPENAI_API_KEY`: both are platform-owned credentials for internal
+/// model work. The agent-facing capability reads the plain `TYPESAFE_API_KEY`
+/// session secret instead, and the two must never be the same key.
+pub const UTILITY_TYPESAFE_API_KEY_ENV: &str = "UTILITY_TYPESAFE_API_KEY";
 
 /// The model this deployment asks for. Fixed for the same reason the utility
 /// LLM model is: call sites must not be able to turn it into a selectable one.
@@ -198,7 +203,7 @@ impl std::fmt::Debug for SystemJudgmentConfig {
 impl SystemJudgmentConfig {
     /// Resolve judgment configuration from the process environment.
     pub fn from_env() -> Self {
-        match std::env::var(TYPESAFE_API_KEY_ENV)
+        match std::env::var(UTILITY_TYPESAFE_API_KEY_ENV)
             .ok()
             .filter(|value| !value.trim().is_empty())
         {

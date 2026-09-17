@@ -128,7 +128,7 @@ pub use in_memory::{
 pub use in_process_execution::InProcessExecution;
 #[cfg(feature = "typesafe-judgment")]
 pub use judgment::{
-    JUDGMENT_MODEL, SystemJudgmentConfig, TYPESAFE_API_KEY_ENV, TypeSafeJudgmentService,
+    JUDGMENT_MODEL, SystemJudgmentConfig, TypeSafeJudgmentService, UTILITY_TYPESAFE_API_KEY_ENV,
 };
 #[cfg(feature = "process")]
 pub use process_command::ProcessCommandExecutor;

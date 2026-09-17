@@ -104,14 +104,14 @@ excerpt of the content, and returns a structured JSON verdict (`allow` or
   path. Deterministic checks (`regex`, `blocklist`, `tool_pattern`) run first;
   judge checks run after, only when the check's engine is configured.
 - **Engine**: `engine: "utility_llm"` (default) prompts the utility model for a
-  JSON verdict, one request per check. `engine: "judgment"` asks the judgment
-  service whether the content violates the policy and blocks at or above
-  `threshold` (a percentage, default 50). See [Check engines](#check-engines).
+  JSON verdict, one request per check. `engine: "jev"` asks Jev whether the
+  content violates the policy and blocks at or above `threshold` (a percentage,
+  default 50). See [Check engines](#check-engines).
 - **Fail-open**: a timeout (10 s), model error, or unparseable verdict defaults
   to `allow`, so a judge outage never wedges a turn.
 - **Cap**: at most 4 utility-LLM judge calls per tool-call invocation, to bound
-  latency impact. Judgment-engine checks are capped by questions per request,
-  not requests, because they share one.
+  latency impact. Jev-engine checks are capped by questions per request, not
+  requests, because they share one.
 - **Cost**: flows through utility-LLM accounting, not the session model budget.
 - `prompt` length is bounded by `MAX_JUDGE_PROMPT_LEN` (4 000 bytes). Content
   sent to the judge is capped at 2 000 bytes (truncated to the nearest UTF-8
@@ -168,8 +168,8 @@ threshold applies reason code `guardrail.moderation`. Constraints:
 - **Async + model-backed**: runs once on the assembled assistant message, only
   when the check's engine is configured. Without one, it fails open.
 - **Engine**: `engine: "utility_llm"` (default) asks the utility model to write
-  0-100 scores per category. `engine: "judgment"` scores each category against
-  three ordered severity levels and trips when the probability mass on "clearly
+  0-100 scores per category. `engine: "jev"` scores each category against three
+  ordered severity levels and trips when the probability mass on "clearly
   present and serious" reaches `threshold`. Reading that tail rather than a
   weighted mean is the point: an answer that is probably fine and possibly
   severe must not average into fine. See [Check engines](#check-engines).
@@ -181,7 +181,7 @@ threshold applies reason code `guardrail.moderation`. Constraints:
   utility service defaults to `allow`, so a classifier outage never wedges a
   turn.
 - **Cap**: at most 4 utility-LLM moderation calls per finalized message
-  (TM-DOS). Judgment-engine categories all ride the stage's single request.
+  (TM-DOS). Jev-engine categories all ride the stage's single request.
 - Cost flows through the utility-LLM accounting pipeline (`LlmCompletionMetadata`),
   like `llm_judge`.
 - Advisory mode and `on_fail: log` downgrade `block` to `log` like other checks.
@@ -191,7 +191,7 @@ threshold applies reason code `guardrail.moderation`. Constraints:
 `llm_judge` and `moderation` are the two model-backed check types, and each
 picks its engine with `engine`:
 
-| | `utility_llm` (default) | `judgment` |
+| | `utility_llm` (default) | `jev` |
 |---|---|---|
 | Backing service | [Utility LLM Service](../operations/utility-llm.md) | [Judgment Service](../operations/judgment-service.md) |
 | Requests | one per check (per category set) | one per stage, for every judgment check on it |
@@ -201,18 +201,18 @@ picks its engine with `engine`:
 
 Both fail open, honor `on_fail` and advisory mode identically, and bound stage
 content the same way. What changes is where the decision boundary lives: with
-`judgment`, the model reports a probability and the config decides, so there is
+`jev`, the model reports a probability and the config decides, so there is
 no verdict to parse and therefore no parse-failure path — which in a guardrail
 was a silent bypass, since a malformed verdict read as `allow`.
 
 `utility_llm` stays the default so existing configs keep their exact behavior;
-`judgment` is opt-in per check, which also makes the two directly comparable on
+`jev` is opt-in per check, which also makes the two directly comparable on
 the same agent. Neither engine has calibration coverage yet — see
-[Known coverage gaps](../evaluation/evals.md#known-coverage-gaps). When a check selects `judgment` and the deployment configured no
-judgment service (`TYPESAFE_API_KEY` unset), the check is skipped with a warning
+[Known coverage gaps](../evaluation/evals.md#known-coverage-gaps). When a check selects `jev` and the deployment configured no judgment
+service (`UTILITY_TYPESAFE_API_KEY` unset), the check is skipped with a warning
 and the stage proceeds — fail-open, and visible in logs rather than silent.
 
-Content sent to the judgment engine is the same bounded excerpt, passed as
+Content sent to the jev engine is the same bounded excerpt, passed as
 *state* (`stage`, `tool`, `content`) with the policy in the question, and every
 question states that the content is data rather than instructions.
 
@@ -333,7 +333,7 @@ Clients localize copy from the code rather than the human text. The
 ## Security
 
 - Deterministic checks run in-process with no external network access.
-- A model-backed check with `engine: "judgment"` sends the same bounded excerpt
+- A model-backed check with `engine: "jev"` sends the same bounded excerpt
   to the deployment's judgment provider instead of the utility model; the
   egress class is identical, the destination is not. See
   [Judgment Service](../operations/judgment-service.md).

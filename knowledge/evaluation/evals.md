@@ -246,7 +246,7 @@ and the fail-open contract. Neither measures the thing that decides whether a
 guardrail is usable: its **calibration** — block rate against false-positive
 rate on real content, per threshold, per engine. This is what the specs mean by
 "validate thresholds against your own data and consequences", and it is the only
-way to say whether the `judgment` engine is actually better than `utility_llm`
+way to say whether the `jev` engine is actually better than `utility_llm`
 on a given deployment's traffic. The shape needed is a scoring harness over a
 labeled corpus driving `JudgmentService` directly, not a Mira agent study: there
 is no agent in the loop, so the agent-subject shape does not fit.
