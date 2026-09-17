@@ -19,8 +19,8 @@ use everruns_core::InitialFile;
 use everruns_host::{
     AgentBuilder as RuntimeAgentBuilder, Environment, EnvironmentBindingError,
     EnvironmentBindingStore, EventLogError, EventSink, HarnessBuilder, HostBackends,
-    InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder, WorkspaceProvider,
-    WorkspaceProviderId,
+    InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder, WorkspaceBackend,
+    WorkspaceBackendId,
 };
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 use everruns_provider::model_spec::ModelSpec;
@@ -219,9 +219,15 @@ pub enum BuildError {
         /// Why the MCP server configuration was rejected.
         reason: String,
     },
-    /// Two workspace providers registered the same stable SPI id.
+    /// Two workspace backends registered the same stable SPI id.
+    DuplicateWorkspaceBackend {
+        /// The colliding workspace backend id.
+        id: String,
+    },
+    /// Compatibility name for [`BuildError::DuplicateWorkspaceBackend`].
+    #[deprecated(note = "use DuplicateWorkspaceBackend")]
     DuplicateWorkspaceProvider {
-        /// The colliding workspace provider id.
+        /// The colliding workspace backend id.
         id: String,
     },
 }
@@ -257,8 +263,12 @@ impl fmt::Display for BuildError {
             BuildError::InvalidMcpServer { reason } => {
                 write!(f, "invalid MCP server configuration: {reason}")
             }
+            BuildError::DuplicateWorkspaceBackend { id } => {
+                write!(f, "duplicate workspace backend id {id:?}")
+            }
+            #[allow(deprecated)]
             BuildError::DuplicateWorkspaceProvider { id } => {
-                write!(f, "duplicate workspace provider id {id:?}")
+                write!(f, "duplicate workspace backend id {id:?}")
             }
         }
     }
@@ -330,33 +340,33 @@ impl fmt::Debug for CapabilityImplementation {
 }
 
 struct AgentState {
-    workspace_providers: Mutex<HashMap<WorkspaceProviderId, Arc<dyn WorkspaceProvider>>>,
+    workspace_backends: Mutex<HashMap<WorkspaceBackendId, Arc<dyn WorkspaceBackend>>>,
 }
 
 impl AgentState {
-    fn new(workspace_providers: HashMap<WorkspaceProviderId, Arc<dyn WorkspaceProvider>>) -> Self {
+    fn new(workspace_backends: HashMap<WorkspaceBackendId, Arc<dyn WorkspaceBackend>>) -> Self {
         Self {
-            workspace_providers: Mutex::new(workspace_providers),
+            workspace_backends: Mutex::new(workspace_backends),
         }
     }
 
-    fn remember_provider(&self, provider: Arc<dyn WorkspaceProvider>) -> bool {
-        let mut providers = self
-            .workspace_providers
+    fn remember_backend(&self, backend: Arc<dyn WorkspaceBackend>) -> bool {
+        let mut backends = self
+            .workspace_backends
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let id = provider.id();
-        match providers.get(&id) {
-            Some(existing) => Arc::ptr_eq(existing, &provider),
+        let id = backend.id();
+        match backends.get(&id) {
+            Some(existing) => Arc::ptr_eq(existing, &backend),
             None => {
-                providers.insert(id, provider);
+                backends.insert(id, backend);
                 true
             }
         }
     }
 
-    fn provider(&self, id: &WorkspaceProviderId) -> Option<Arc<dyn WorkspaceProvider>> {
-        self.workspace_providers
+    fn backend(&self, id: &WorkspaceBackendId) -> Option<Arc<dyn WorkspaceBackend>> {
+        self.workspace_backends
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .get(id)
@@ -368,11 +378,11 @@ impl fmt::Debug for AgentState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AgentState")
             .field(
-                "workspace_provider_count",
+                "workspace_backend_count",
                 &self
-                    .workspace_providers
+                    .workspace_backends
                     .lock()
-                    .map_or(0, |providers| providers.len()),
+                    .map_or(0, |backends| backends.len()),
             )
             .finish()
     }
@@ -465,8 +475,8 @@ impl Agent {
         environment: &Environment,
     ) -> Result<(), crate::SessionEnvironmentError> {
         let head = environment.workspace_head();
-        if !self.state.remember_provider(head.provider()) {
-            return Err(crate::SessionEnvironmentError::ProviderConflict);
+        if !self.state.remember_backend(head.backend()) {
+            return Err(crate::SessionEnvironmentError::BackendConflict);
         }
         binding_store
             .bind(session_id, head.binding())
@@ -508,16 +518,16 @@ impl Agent {
         else {
             return Ok(None);
         };
-        let provider = self.state.provider(&binding.provider_id).ok_or_else(|| {
-            crate::ResumeError::WorkspaceProviderUnavailable {
+        let backend = self.state.backend(&binding.provider_id).ok_or_else(|| {
+            crate::ResumeError::WorkspaceBackendUnavailable {
                 provider_id: binding.provider_id.to_string(),
             }
         })?;
-        let descriptor = provider
+        let descriptor = backend
             .open_workspace_from_binding(&binding)
             .await
             .map_err(map_workspace_resume_error)?;
-        let workspace = everruns_host::Workspace::from_descriptor(provider, descriptor);
+        let workspace = everruns_host::Workspace::from_descriptor(backend, descriptor);
         let head = workspace
             .reopen(&binding)
             .await
@@ -778,7 +788,7 @@ pub struct AgentBuilder {
     parallel_tool_calls: Option<bool>,
     workspace_root: Option<PathBuf>,
     workspace_policy: everruns_core::WorkspacePolicy,
-    workspace_providers: Vec<Arc<dyn WorkspaceProvider>>,
+    workspace_backends: Vec<Arc<dyn WorkspaceBackend>>,
     mcp_servers: Vec<crate::McpServer>,
     plugin_warnings: Vec<String>,
     #[cfg(feature = "local")]
@@ -1006,8 +1016,8 @@ impl AgentBuilder {
     /// This is shorthand for one shared, reopenable default WorkspaceHead over
     /// that directory. Every session created from this Agent explicitly binds
     /// to that same shared head before execution. Use an explicit
-    /// [`Environment`] and provider-created head when sessions need isolation,
-    /// forking, or provider-specific lifecycle operations.
+    /// [`Environment`] and backend-created head when sessions need isolation,
+    /// forking, or backend-specific lifecycle operations.
     pub fn workspace(mut self, root: impl Into<PathBuf>) -> Self {
         self.workspace_root = Some(root.into());
         if !self
@@ -1033,14 +1043,20 @@ impl AgentBuilder {
         self
     }
 
-    /// Register a provider for durable typed resume of provider-owned heads.
+    /// Register a backend for durable typed resume of backend-owned heads.
     ///
-    /// Starting a session from a live Environment also remembers its provider
+    /// Starting a session from a live Environment also remembers its backend
     /// for this Agent lifetime. Register it here when a newly constructed Agent
     /// must resume persisted sessions after process restart.
-    pub fn workspace_provider(mut self, provider: Arc<dyn WorkspaceProvider>) -> Self {
-        self.workspace_providers.push(provider);
+    pub fn workspace_backend(mut self, backend: Arc<dyn WorkspaceBackend>) -> Self {
+        self.workspace_backends.push(backend);
         self
+    }
+
+    /// Compatibility name for [`AgentBuilder::workspace_backend`].
+    #[deprecated(note = "use AgentBuilder::workspace_backend")]
+    pub fn workspace_provider(self, backend: Arc<dyn WorkspaceBackend>) -> Self {
+        self.workspace_backend(backend)
     }
 
     /// Add a scoped MCP server to this agent.
@@ -1104,14 +1120,14 @@ impl AgentBuilder {
     ///   capability implementation, including aliases and reference/implementation
     ///   collisions.
     pub fn build(self) -> Result<Agent, BuildError> {
-        let mut workspace_providers = HashMap::new();
-        for provider in &self.workspace_providers {
-            let id = provider.id();
-            if workspace_providers
-                .insert(id.clone(), provider.clone())
+        let mut workspace_backends = HashMap::new();
+        for backend in &self.workspace_backends {
+            let id = backend.id();
+            if workspace_backends
+                .insert(id.clone(), backend.clone())
                 .is_some()
             {
-                return Err(BuildError::DuplicateWorkspaceProvider { id: id.to_string() });
+                return Err(BuildError::DuplicateWorkspaceBackend { id: id.to_string() });
             }
         }
         let default_workspace_root = self.workspace_root.clone().or({
@@ -1129,14 +1145,14 @@ impl AgentBuilder {
         let default_workspace = default_workspace_root
             .map(crate::default_workspace::DefaultWorkspace::directory)
             .unwrap_or_else(crate::default_workspace::DefaultWorkspace::in_memory);
-        let default_provider = default_workspace.provider();
-        let default_provider_id = default_provider.id();
-        if workspace_providers
-            .insert(default_provider_id.clone(), default_provider)
+        let default_backend = default_workspace.backend();
+        let default_backend_id = default_backend.id();
+        if workspace_backends
+            .insert(default_backend_id.clone(), default_backend)
             .is_some()
         {
-            return Err(BuildError::DuplicateWorkspaceProvider {
-                id: default_provider_id.to_string(),
+            return Err(BuildError::DuplicateWorkspaceBackend {
+                id: default_backend_id.to_string(),
             });
         }
         let instructions = self.instructions.unwrap_or_default();
@@ -1327,7 +1343,7 @@ impl AgentBuilder {
             #[cfg(feature = "local")]
             local: self.local,
             lifecycle_hooks: self.lifecycle_hooks,
-            state: Arc::new(AgentState::new(workspace_providers)),
+            state: Arc::new(AgentState::new(workspace_backends)),
         })
     }
 }
@@ -1340,11 +1356,11 @@ impl fmt::Debug for AgentBuilder {
             .field("instructions", &self.instructions)
             .field("workspace_root", &self.workspace_root)
             .field(
-                "workspace_providers",
+                "workspace_backends",
                 &self
-                    .workspace_providers
+                    .workspace_backends
                     .iter()
-                    .map(|provider| provider.id())
+                    .map(|backend| backend.id())
                     .collect::<Vec<_>>(),
             )
             .finish_non_exhaustive()

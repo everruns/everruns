@@ -1,4 +1,4 @@
-//! Public local Git-worktree workspace provider.
+//! Public local Git-worktree workspace backend.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -6,20 +6,20 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_host::{
-    RealDiskFileStore, WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff,
-    WorkspaceError, WorkspaceHeadAccess, WorkspaceHeadDescriptor, WorkspaceHeadId,
-    WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceProvider,
-    WorkspaceProviderId,
+    RealDiskFileStore, WorkspaceBackend, WorkspaceBackendId, WorkspaceBinding, WorkspaceCheckpoint,
+    WorkspaceDescriptor, WorkspaceDiff, WorkspaceError, WorkspaceHeadAccess,
+    WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource,
+    WorkspaceHeadStatus,
 };
 use everruns_provider::typed_id::WorkspaceId;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 use uuid::Uuid;
 
-const PROVIDER_ID: &str = "everruns.local-git-worktree.v1";
+const BACKEND_ID: &str = "everruns.local-git-worktree.v1";
 const PAYLOAD: &[u8] = b"local-git-worktree-v1";
 
-/// A Git provider whose writable heads are explicit local worktrees.
+/// A Git backend whose writable heads are explicit local worktrees.
 ///
 /// Dropping this value, a Workspace, a head, a Session, or an Agent performs no
 /// cleanup. [`WorkspaceHead::destroy`](everruns_host::WorkspaceHead::destroy)
@@ -27,20 +27,20 @@ const PAYLOAD: &[u8] = b"local-git-worktree-v1";
 /// Archive prevents subsequent reopen but does not revoke filesystem handles
 /// already held by a running session.
 #[derive(Clone, Debug)]
-pub struct LocalGitWorkspaceProvider {
+pub struct LocalGitWorkspace {
     state_root: PathBuf,
     lifecycle_guard: Arc<tokio::sync::Mutex<()>>,
 }
 
-impl LocalGitWorkspaceProvider {
-    /// Open or create provider state under `state_root`.
+impl LocalGitWorkspace {
+    /// Open or create backend state under `state_root`.
     pub fn new(state_root: impl Into<PathBuf>) -> Result<Self, WorkspaceError> {
         let state_root = state_root.into();
         if let Ok(metadata) = std::fs::symlink_metadata(&state_root)
             && (metadata.file_type().is_symlink() || !metadata.is_dir())
         {
             return Err(WorkspaceError::InvalidRequest(
-                "local Git provider state root must be a real directory".into(),
+                "local Git backend state root must be a real directory".into(),
             ));
         }
         std::fs::create_dir_all(&state_root).map_err(io_error)?;
@@ -128,7 +128,7 @@ impl LocalGitWorkspaceProvider {
     async fn git(&self, repository: &Path, args: &[&str]) -> Result<String, WorkspaceError> {
         let output = Command::new("git")
             // THREAT[TM-FS-018]: a repository may contain executable hooks. Never
-            // run them in the provider process when inspecting or checking it out.
+            // run them in the backend process when inspecting or checking it out.
             .args(["-c", "core.hooksPath=/dev/null"])
             .arg("-C")
             .arg(repository)
@@ -192,9 +192,9 @@ impl LocalGitWorkspaceProvider {
 }
 
 #[async_trait]
-impl WorkspaceProvider for LocalGitWorkspaceProvider {
-    fn id(&self) -> WorkspaceProviderId {
-        WorkspaceProviderId::new(PROVIDER_ID).expect("static provider id is valid")
+impl WorkspaceBackend for LocalGitWorkspace {
+    fn id(&self) -> WorkspaceBackendId {
+        WorkspaceBackendId::new(BACKEND_ID).expect("static backend id is valid")
     }
 
     async fn open_workspace(&self, locator: &str) -> Result<WorkspaceDescriptor, WorkspaceError> {
@@ -435,7 +435,7 @@ fn ensure_real_directory(path: &Path) -> Result<(), WorkspaceError> {
     let metadata = std::fs::symlink_metadata(path).map_err(io_error)?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(WorkspaceError::InvalidRequest(
-            "local Git provider paths must be real directories".into(),
+            "local Git backend paths must be real directories".into(),
         ));
     }
     Ok(())
@@ -503,7 +503,7 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         std::os::unix::fs::symlink(outside.path(), state.path().join("heads")).unwrap();
         assert!(matches!(
-            LocalGitWorkspaceProvider::new(state.path()),
+            LocalGitWorkspace::new(state.path()),
             Err(WorkspaceError::InvalidRequest(_))
         ));
     }
@@ -523,7 +523,7 @@ mod tests {
         std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o700)).unwrap();
 
         let state = tempfile::tempdir().unwrap();
-        let provider = Arc::new(LocalGitWorkspaceProvider::new(state.path()).unwrap());
+        let provider = Arc::new(LocalGitWorkspace::new(state.path()).unwrap());
         let workspace = Workspace::open(provider, repository.path().to_string_lossy())
             .await
             .unwrap();
@@ -536,7 +536,7 @@ mod tests {
     async fn isolated_heads_fork_reopen_and_destroy_only_explicitly() {
         let repository = repository();
         let state = tempfile::tempdir().unwrap();
-        let provider = Arc::new(LocalGitWorkspaceProvider::new(state.path()).unwrap());
+        let provider = Arc::new(LocalGitWorkspace::new(state.path()).unwrap());
         let workspace = Workspace::open(provider.clone(), repository.path().to_string_lossy())
             .await
             .unwrap();
@@ -607,7 +607,7 @@ mod tests {
     async fn shared_and_archive_lifecycle_are_explicit() {
         let repository = repository();
         let state = tempfile::tempdir().unwrap();
-        let provider = Arc::new(LocalGitWorkspaceProvider::new(state.path()).unwrap());
+        let provider = Arc::new(LocalGitWorkspace::new(state.path()).unwrap());
         let workspace = Workspace::open(provider, repository.path().to_string_lossy())
             .await
             .unwrap();
@@ -620,7 +620,7 @@ mod tests {
             .join(shared.id().to_string());
 
         shared.archive().await.unwrap();
-        assert!(path.exists(), "archive retains provider contents");
+        assert!(path.exists(), "archive retains backend contents");
         assert!(shared.status().await.unwrap().archived);
         assert!(matches!(
             workspace.reopen(shared.binding()).await,

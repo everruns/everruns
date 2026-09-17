@@ -4,18 +4,18 @@ use async_trait::async_trait;
 use everruns_host::{
     InMemorySessionFileStore, WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor,
     WorkspaceDiff, WorkspaceError, WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest,
-    WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceId, WorkspaceProvider,
-    WorkspaceProviderId,
+    WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceId, WorkspaceBackend,
+    WorkspaceBackendId,
 };
 
 /// Compile-only proof that a downstream crate can implement the SPI without a
-/// provider registry entry or closed backend discriminator.
-pub struct ExternalWorkspaceProvider;
+/// registry entry or closed backend discriminator.
+pub struct ExternalWorkspaceBackend;
 
 #[async_trait]
-impl WorkspaceProvider for ExternalWorkspaceProvider {
-    fn id(&self) -> WorkspaceProviderId {
-        WorkspaceProviderId::new("example.external-workspace").unwrap()
+impl WorkspaceBackend for ExternalWorkspaceBackend {
+    fn id(&self) -> WorkspaceBackendId {
+        WorkspaceBackendId::new("example.external-workspace").unwrap()
     }
 
     async fn open_workspace(
@@ -100,9 +100,18 @@ impl WorkspaceProvider for ExternalWorkspaceProvider {
 }
 
 #[test]
-fn provider_id_is_open_string_data() {
+fn backend_id_is_open_string_data() {
     assert_eq!(
-        WorkspaceProvider::id(&ExternalWorkspaceProvider).as_str(),
+        WorkspaceBackend::id(&ExternalWorkspaceBackend).as_str(),
         "example.external-workspace"
     );
+}
+
+#[test]
+#[allow(deprecated)]
+fn deprecated_provider_names_remain_compatible() {
+    use everruns_host::{WorkspaceProvider, WorkspaceProviderId};
+
+    let id: WorkspaceProviderId = WorkspaceProvider::id(&ExternalWorkspaceBackend);
+    assert_eq!(id.as_str(), "example.external-workspace");
 }

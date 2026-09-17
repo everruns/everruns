@@ -73,6 +73,10 @@ pub use everruns_builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
 };
+#[deprecated(note = "use WorkspaceBackend")]
+pub use everruns_host::WorkspaceBackend as WorkspaceProvider;
+#[deprecated(note = "use WorkspaceBackendId")]
+pub use everruns_host::WorkspaceBackendId as WorkspaceProviderId;
 pub use everruns_host::{
     Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
     ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, NetworkPolicy,
@@ -106,7 +110,10 @@ pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 #[cfg(feature = "local")]
 pub mod local;
 #[cfg(feature = "local")]
-pub use local::{LocalConfig, LocalGitWorkspaceProvider};
+#[deprecated(note = "use LocalGitWorkspace")]
+pub use local::LocalGitWorkspace as LocalGitWorkspaceProvider;
+#[cfg(feature = "local")]
+pub use local::{LocalConfig, LocalGitWorkspace};
 
 #[cfg(all(test, feature = "macros"))]
 mod tool_macro_tests;
@@ -162,10 +169,10 @@ pub use providers::openai::{OpenAI, OpenAIError};
 // low-level host `AgentBuilder` at the facade root. Advanced hosts that need
 // the low-level builders depend on `everruns-host` directly.
 pub use everruns_host::{
-    Environment, EnvironmentBuilder, Workspace, WorkspaceBinding, WorkspaceCheckpoint,
-    WorkspaceDescriptor, WorkspaceDiff, WorkspaceError, WorkspaceHead, WorkspaceHeadAccess,
-    WorkspaceHeadBuilder, WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest,
-    WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceProvider, WorkspaceProviderId,
+    Environment, EnvironmentBuilder, Workspace, WorkspaceBackend, WorkspaceBackendId,
+    WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError,
+    WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadBuilder, WorkspaceHeadDescriptor,
+    WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus,
 };
 
 // --- Portable message, model, and platform types ------------------------
@@ -217,6 +224,10 @@ pub mod prelude {
     #[cfg(feature = "local")]
     pub use crate::LocalConfig;
     #[cfg(feature = "local")]
+    pub use crate::LocalGitWorkspace;
+    #[cfg(feature = "local")]
+    #[allow(deprecated)]
+    #[deprecated(note = "use LocalGitWorkspace")]
     pub use crate::LocalGitWorkspaceProvider;
     #[cfg(feature = "web-fetch")]
     pub use crate::WebFetch;
@@ -236,10 +247,10 @@ pub mod prelude {
         McpServer, Model, PluginError, ResumeError, RunError, RunOptions, SendDisposition,
         SentMessage, Session, SessionContext, SessionEnvironmentError, SessionEvent,
         SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo, ToolResponse,
-        ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace, WorkspaceDiff,
-        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
-        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError, WorkspaceProvider,
-        WorkspaceProviderId,
+        ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace, WorkspaceBackend,
+        WorkspaceBackendId, WorkspaceDiff, WorkspaceError, WorkspaceHead, WorkspaceHeadAccess,
+        WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
+        WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{
@@ -248,6 +259,9 @@ pub mod prelude {
     };
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};
+    #[allow(deprecated)]
+    #[deprecated(note = "use WorkspaceBackend and WorkspaceBackendId")]
+    pub use crate::{WorkspaceProvider, WorkspaceProviderId};
     pub use everruns_core::turn::TurnStopReason;
     pub use everruns_core::{ContentPart, InputMessage, MessageRole};
 }
