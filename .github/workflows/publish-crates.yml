@@ -126,10 +126,8 @@ jobs:
           set -euo pipefail
           python3 - "$PACKAGE" "$VERSION" <<'PY'
           import json
-          import pathlib
           import subprocess
           import sys
-          import tomllib
 
           package_name, expected_version = sys.argv[1:]
           metadata = json.loads(subprocess.check_output(
@@ -141,12 +139,16 @@ jobs:
           package = matches[0]
           if package.get("publish") == []:
               raise SystemExit(f"Package {package_name} is not publishable")
-          manifest_path = pathlib.Path(package["manifest_path"])
-          with manifest_path.open("rb") as handle:
-              manifest_version = tomllib.load(handle)["package"].get("version")
+          # Use the version Cargo resolved, not the raw manifest string. Published
+          # crates inherit the platform version with `version.workspace = true`,
+          # which reads back from the manifest TOML as {'workspace': True} and can
+          # never equal the tag. Cargo metadata resolves that inheritance and is the
+          # same source crate-release.yml uses to decide what to tag, so the tag and
+          # this check cannot disagree about what a package's version is.
+          manifest_version = package["version"]
           if manifest_version != expected_version:
               raise SystemExit(
-                  f"Tag version {expected_version} does not match {package_name} manifest version "
+                  f"Tag version {expected_version} does not match {package_name} resolved version "
                   f"{manifest_version!r}"
               )
           print(f"Package version verified: {package_name} {expected_version}")
