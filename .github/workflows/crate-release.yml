@@ -10,9 +10,9 @@ name: Crate Release
 #
 # Detection is by crates.io presence, not by diffing the push, so a version bump
 # that merged before this workflow existed is still picked up, and re-runs are
-# idempotent (a version already on crates.io is skipped). The product release and
-# its version bump are unaffected: this only ever touches independently versioned
-# library crates (packages without `publish = false`).
+# idempotent (a version already on crates.io is skipped). Every published crate
+# (a package without `publish = false`) inherits the one platform version, so a
+# product version bump releases the whole publish set here, in dependency order.
 
 on:
   push:
@@ -193,23 +193,3 @@ jobs:
       - name: Nothing to release
         if: steps.plan.outputs.count == '0'
         run: echo "No published crate has a version missing from crates.io; nothing to release."
-
-  # Guard against partial releases: a breaking bump of a foundational crate
-  # (e.g. everruns-host 0.18 -> 0.19) strands any published dependant whose
-  # latest crates.io version still pins the old, now-incompatible requirement.
-  # Such a dependant must be cascade-bumped and republished, or (if absorbed)
-  # yanked — otherwise a downstream consumer resolves two copies of the crate.
-  # Runs after publishing so freshly cascaded versions count as fixed.
-  strand-check:
-    needs: release-crates
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # Same detection the ci.yml pre-merge gate runs, in strict mode: here,
-      # after publishing, a freshly cascaded version already counts as fixed, so
-      # any remaining strand is a genuine partial release to fail on. Uses the
-      # cargo preinstalled on the runner image, as the previous inline check did.
-      - name: Detect stranded published dependants
-        run: python3 scripts/check-publish-cone.py

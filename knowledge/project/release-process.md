@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Release Process Specification"
-description: "Release workflow with CHANGELOG.md."
+description: "Single-version release workflow with CHANGELOG.md."
 tags:
   - everruns
   - project
@@ -30,7 +30,7 @@ metadata, not a second release-notes source: it cannot introduce claims absent f
 
 Release readiness also includes the integration backstops that are intentionally kept off the `pull_request` hot path. Before cutting a release PR or merging it, review the latest push-only live integration workflow runs on `main` and the latest `.github/workflows/integration-live-sweep.yml` result. Do not release through unresolved failures there unless the failure is understood, documented, and explicitly accepted.
 
-Release preparation also **audits the independently versioned library crates** (see [Library Crate Releases](#library-crate-releases)). This audit is a mandatory step of every product release, not an occasional side task: a product bump never carries a library crate's changes to crates.io, so any published crate whose public contract changed since its last release must get its own `/prepare-crate-release` — or the release PR must explicitly record that no published crate contracts changed. The decision must be visible in the PR, never silently skipped.
+Everruns ships **one version for the whole platform** (see [Crate Publishing](#crate-publishing)). The product version and every crates.io package move together, so release preparation carries no per-crate audit: bumping `workspace.package.version` releases the entire publish set. The only crate-level decision a release still makes is recording any crate **retired or absorbed** this cycle, whose orphaned package consumers must migrate off.
 
 ### CHANGELOG.md as Source of Truth
 
@@ -39,7 +39,7 @@ Release preparation also **audits the independently versioned library crates** (
 3. Each version section contains:
    - **What's Changed** (required) - List of commits: `- <message> ([#PR](url))`
    - **Highlights** (optional) - Significant user-facing features and changes (user-written, with PR links). Include only items that are genuinely noteworthy on their own. Do not pad the list to hit a target count: maintenance releases may have few highlights, or omit the section entirely. Internal refactors, CI changes, dependency bumps, spec/docs updates, and minor fixes belong in **What's Changed**, not here.
-   - **Crate Releases** (required) - Records the [library-crate release audit](#library-crate-releases) outcome in the changelog: the independently versioned crates published this cycle with their `old → new` versions, plus any crate deleted/absorbed this cycle and where its API moved. When the audit found no published crate contract changed, state that explicitly rather than omitting the subsection. This keeps the changelog a self-contained record of which crates.io versions correspond to each product release, and must match the release PR's audit note. When the GitHub Release notes were generated at tag time before crate versions were finalized, refresh the release body so the published notes carry the same list.
+   - **Crate Releases** (required) - One line: every published crate ships at the platform version for this release. List only crates **retired or absorbed** this cycle and where their API moved, since those are the packages consumers must migrate off. Under a single platform version the crates.io version of every package is the release version, so the changelog stays a self-contained record without enumerating 40-odd `old → new` rows.
 
 Release notes should not normally include a dedicated "Migration Notes" section. Migration-specific engineering detail belongs in the migration files and migration spec, which remain the source of truth for upgrade and database-migration behavior. If a release has any operator-visible migration caveat, compatibility limitation, or exceptional upgrade requirement, call it out explicitly in the release PR and release notes.
 
@@ -50,89 +50,99 @@ The `/prepare-release` command updates the product version in:
 - `apps/ui/package.json` (version field)
 - `CHANGELOG.md` (new version section)
 
-This version identifies the Everruns product: server, worker, CLI binaries, UI,
-Docker images, and the GitHub release. Published Rust libraries own explicit
-versions in their package manifests and are not bumped or published as a side
-effect of a product release.
+This version identifies the whole platform: server, worker, CLI binaries, UI,
+Docker images, the GitHub release, **and every crates.io package**. Published
+crates inherit it with `version.workspace = true` and never declare a version of
+their own, so bumping `workspace.package.version` is the entire version change a
+release makes. Internal pins in `[workspace.dependencies]` spell the version out
+literally and are moved with `scripts/sync-publish-pin-versions.py --write`.
 
-### Library Crate Releases
+### Crate Publishing
 
-Each crates.io package is versioned and released independently.
+Every crates.io package ships at the platform version. A crate manifest carries
+`version.workspace = true`, never a literal version, and every internal path
+dependency pins that same version. A release republishes the whole set.
 
-**Audit obligation (every product release).** Independent versioning does not mean "ignore the
-crates until someone complains." As part of preparing each product release, audit whether any
-published crate's public contract changed since its last crates.io release and release the changed
-ones. Guidance:
+**Why single-versioned.** Independent crate versions were the source of the
+release failures, not a defence against them. `everruns-provider` is a transitive
+dependency of 37 of the other 40 published crates and `everruns-model-profiles`
+of 38, so at `0.x` — where the minor is the breaking slot — one breaking change
+near the base republished almost the entire workspace anyway. Measured across
+`0.19.0`–`0.28.0`, the last cycles each bumped essentially every published crate
+while only a handful carried a real contract change: `0.27.0` was 8 of 41, and
+`0.28.0` was 4 of 42 — the other 38 were pure cone re-pins. The independence was
+nominal; the bookkeeping was not.
 
-- Published crates are the workspace packages **without** `publish = false`. Diff each one's
-  `src/` and manifest since its previous release.
-- Classifier *public contract*, not churn. Being git-touched over-counts massively — transitive
-  dependency bumps, internal refactors, and pure directory moves (e.g. grouping providers under
-  `crates/drivers/`) are not contract changes. A release candidate is a crate whose exported API,
-  behavior, feature set, or MSRV changed, or a crate that was **deleted/absorbed** (its crates.io
-  package is now orphaned and consumers must migrate to the new location).
-- Record the outcome in the release PR — the crate releases cut, or an explicit "no published
-  crate contracts changed" — so the decision is reviewable rather than assumed.
+That bookkeeping is what failed. Cutting `v0.28.0` took two further full cascades
+and three `fix(release)` commits inside a day — a stranded facade and 12
+stranded dependants ([#3652](https://github.com/everruns/everruns/pull/3652)),
+and a host that reached an immutable `0.23.0` tag it could not publish from
+([#3656](https://github.com/everruns/everruns/pull/3656)).
 
-**Prefer the smallest compatible version bump.** Classify each changed crate breaking vs
-non-breaking — run `cargo semver-checks --package <crate> --baseline-version <last-published>`, which
-is authoritative, rather than eyeballing a diff. Then bump the minimum the change requires:
+The cost was not confined to release week, and it does not track consumer impact
+at all. [#3659](https://github.com/everruns/everruns/pull/3659) settled on a name
+for a contract nobody had adopted yet — `Judgment` became `Classifier` — plus
+folded one crate into another. No consumer was using the old name, so the change
+broke nothing in practice. But renaming an exported item in `everruns-core` is
+breaking *by classification* at `0.x`, so the machinery charged full price: five
+crates with real changes and patch bumps for 23 published dependants that changed
+nothing, each a manifest edit, a pin, and a republish. That is the clearest
+statement of the problem — the release cost was set by where the symbol lived,
+not by what it cost anyone. Under a single version that release is a name and one
+number.
 
-- Non-breaking change (only additions — new items, new modules, new variants added to a
-  `#[non_exhaustive]` enum): bump the **patch** component (`0.18.0 → 0.18.1`).
-- Breaking change (a removed or renamed public item, a changed signature, a tightened bound): bump
-  the **minor** component (`0.18.0 → 0.19.0`) — for `0.x` crates the minor is the breaking slot.
+**What a single version removes, structurally.** These are not checks that were
+relaxed; they are failure modes that can no longer be expressed:
 
-Do not round every changed crate up to the product version for tidiness; a crate that only gained
-API takes a patch bump even in a release where the product minor moved. `cargo-semver-checks` also
-guards against under-bumping (shipping a breaking change as a patch), so run it on every crate you
-release.
+- **Stranding and partial cones.** Every crate pins the version every crate is
+  published at, so a published dependant cannot be left pinning an incompatible
+  predecessor. `check-publish-cone.py` and the Crate Release `strand-check` job
+  are deleted.
+- **Under-bumping.** Every release advances the `0.x` breaking slot, which is the
+  largest bump any API change could demand. `cargo-semver-checks` had nothing
+  left to classify — its own gate already skipped candidates that advance the
+  breaking slot — so `check-semver-bumps.py` and the sharded **Crate Semver
+  Bumps** job are deleted, along with ~45 minutes of rustdoc builds per release.
+- **Cascade planning.** There is no per-crate bump to choose, so
+  `plan-crate-release.py` is deleted.
+- **Source drift at a published version.** The `--check-source-versions` guard
+  existed to stop a crate's source changing while its version stayed put. A
+  release now bumps every crate unconditionally, so a forgotten per-crate bump is
+  impossible and the guard is gone. Between releases the tree carries the last
+  released version while source moves on — exactly how `apps/ui/package.json`
+  has always behaved.
 
-**Run the bump gate before merging, not only in CI.** `python3 scripts/check-semver-bumps.py`
-resolves the crates this change releases (a published package whose manifest version is not yet on
-crates.io) and runs `cargo-semver-checks` against each one's latest crates.io release. Ordinary
-changes bump no crate versions and the gate finds nothing to classify, so it is only ever
-meaningful on a release change — run it there before opening the PR, and take the bump it requires.
-CI runs the same script in the **Crate Semver Bumps** job.
+**What it costs, deliberately.** A crate's version no longer claims "this crate
+changed". `everruns-anthropic` moves with the platform whether or not it was
+touched, and `CHANGELOG.md` is the record of what actually changed. Every release
+is a breaking-slot bump for every consumer — which was already true in practice,
+since recent cycles bumped everything regardless. All 41 packages are republished
+each release; crates.io rate-limits this to roughly one publish per minute after
+an initial burst, which the dependency-ordered **Crate Release** workflow absorbs.
 
-The gate does not invoke `cargo-semver-checks` when the declared version already advances the
-breaking slot: the minor component for `0.x`, the patch component for `0.0.x`, or the major
-component for stable crates. No API classification can demand a larger increment. This also keeps
-an old baseline that no longer compiles against its registry dependencies from blocking an already
-correct breaking bump. Patch releases still fail closed into full API classification.
+**What single-versioning does not fix.** Two failure modes are orthogonal to
+version choice and keep their guards:
 
-For candidates that still need classification, the gate prefers the exact
-`crate/<package>/v<version>` release tag as the baseline. The tag includes the historical workspace
-and lockfile, so later crate publications cannot make an old baseline resolve a new, incompatible
-dependency graph. If the tag is unavailable, the gate uses the crates.io baseline and still fails
-closed on build or classification errors.
+- A published crate depending on a **private or registry-restricted** workspace
+  package. This is [#3656](https://github.com/everruns/everruns/pull/3656), and
+  `sync-publish-pin-versions.py` rejects it.
+- A **new crate name** the registry token cannot publish, which fails mid-cascade
+  and leaves a partial set. This is
+  [#3648](https://github.com/everruns/everruns/pull/3648), and a bigger publish
+  set makes it costlier, not cheaper. Confirm a new package name is publishable
+  with the current `CARGO_REGISTRY_TOKEN` **before** merging the change that adds
+  it; until then keep it `publish = false`.
 
-An under-bump is not caught by the publish-cone gate below, which compares version *requirements*
-rather than API. `everruns-host` 0.20.4 shipped API breakage in the patch slot: the `^0.20.3` pin of
-every published dependant still admitted it, so `strand-check` stayed green while the published
-`everruns` facade resolved the new host and no longer compiled for downstream consumers
-([#665](https://github.com/everruns/yolop/issues/665)). Under-bumps are unrecoverable once
-published — crates.io versions are immutable, and yanking the new version breaks everything already
-released against it — which is why the classification happens before merge. Run against that
-release, `check-semver-bumps.py` demands the breaking slot for host 0.20.4.
+**Keep additive changes additive: `#[non_exhaustive]` on churn-prone public
+types.** The cascade argument for this is gone, but the downstream one is not.
+At `0.x` the minor is the breaking slot, so adding an enum variant or a public
+struct field is a breaking change for **external consumers**: `LlmErrorKind`
+gained a variant in `0.25.0` and another in `0.27.0`, and each hard-broke every
+consumer's `match`. On a `#[non_exhaustive]` enum the compiler has already forced
+a `_` arm, so the addition cannot break them when they upgrade.
 
-**Keep additive changes additive: `#[non_exhaustive]` on churn-prone public types.** At `0.x` the
-minor is the breaking slot, so `cargo-semver-checks` classifies *adding* an enum variant or a public
-struct field as breaking. That is what turns a routine additive release into a whole-cone cascade:
-`everruns-provider` is a transitive dependency of 37 of the other 40 published crates and
-`everruns-model-profiles` of 38, so one breaking bump near the base republishes almost the entire
-workspace. Measured across `0.19.0`-`0.27.0`, the last three cycles each bumped essentially every
-published crate, and in `0.27.0` only 8 of 41 carried a real contract change; the other 33 were pure
-cone re-pins.
-
-`#[non_exhaustive]` removes that class of cascade at the source. It also fixes the downstream cost
-the bump count hides: `LlmErrorKind` gained a variant in `0.25.0` and another in `0.27.0`, and each
-one hard-broke every external consumer's `match`. On a `#[non_exhaustive]` enum the compiler has
-already forced that consumer to write a `_` arm, so the addition cannot break them, and the crate
-takes a patch bump that every dependant's caret still admits.
-
-The types carrying it are the ones with a demonstrated break, not every public type: see
-[`LlmErrorKind`](../../crates/provider/src/error.rs), the two
+The types carrying it are the ones with a demonstrated break, not every public
+type: see [`LlmErrorKind`](../../crates/provider/src/error.rs), the two
 [`ContentPart`](../../crates/core/src/message.rs) enums,
 [`CapabilityStatus`](../../crates/core/src/capability_types.rs),
 [`ModelCost`/`CostTier`](../../crates/model-profiles/src/types.rs), and
@@ -140,88 +150,56 @@ The types carrying it are the ones with a demonstrated break, not every public t
 Two consequences are deliberate:
 
 - A `#[non_exhaustive]` **struct** cannot be built with a struct expression (or
-  `..Default::default()`) from outside its crate, so each one owns a constructor - `new`,
-  `for_provider`, or `Default` - and callers assign the public fields they need.
-- Exhaustiveness checking is lost for *sibling workspace crates*, not just external consumers, so a
-  new variant now falls into a `_` arm instead of failing the build. Every such arm says so and
-  states what it does with an unrecognized value; they are unreachable in-workspace, where all
-  crates compile against one version of the base crate.
+  `..Default::default()`) from outside its crate, so each one owns a constructor -
+  `new`, `for_provider`, or `Default` - and callers assign the public fields they
+  need.
+- Exhaustiveness checking is lost for *sibling workspace crates*, not just
+  external consumers, so a new variant now falls into a `_` arm instead of
+  failing the build. Every such arm says so and states what it does with an
+  unrecognized value; they are unreachable in-workspace, where all crates compile
+  against one version of the base crate.
 
-Adding a **required trait method** is breaking for the same reason and is not covered by
-`#[non_exhaustive]` (this is what `everruns-platform` `0.19.0` hit with
-`SandboxCheckpointStore::rollback_current_checkpoint`). Ship a new trait method with a default body
-unless breaking implementors is the point.
+Adding a **required trait method** is breaking for the same reason and is not
+covered by `#[non_exhaustive]` (this is what `everruns-platform` `0.19.0` hit with
+`SandboxCheckpointStore::rollback_current_checkpoint`). Ship a new trait method
+with a default body unless breaking implementors is the point.
 
-This narrows the cascade; it does not end it. Replaying `0.19.0`-`0.27.0`, only `0.21.0` would have
-avoided its cascade outright and `0.25.0` would have shrunk from ~38 crates to ~13. The rest broke
-through genuine API *removals* - the SessionBinding unification, the exposure-policy move, the
-OpenRouter routing refactor, retiring `platform_management` - which no versioning scheme makes
-compatible. The remaining lever is the publish graph itself: 26 of the 41 published crates are
-wire-protocol drivers and integrations that have never had an independent contract change and
-already move in lockstep, so they pay cone cost without using the independent versioning they were
-split for.
+**`#[doc(hidden)]` is not a private boundary.** If a published crate calls an
+item, that item is public contract whatever it is annotated with. The published
+`everruns` facade drove a hidden steering surface on `everruns-host`
+([`crates/host/src/runtime.rs`](../../crates/host/src/runtime.rs)) across a
+crates.io boundary, which is the whole of
+[#665](https://github.com/everruns/yolop/issues/665). That surface is documented
+public contract now. Document such an item rather than hiding it.
 
-**Never `#[doc(hidden)]` an item another published crate calls.** `cargo-semver-checks` excludes
-hidden items by design — the attribute declares "not public API, free to change without a bump" —
-so no API-diffing gate can cover them, this one included. That exemption holds only while the item
-stays inside one crate. `#[doc(hidden)]` hides an item from rustdoc and from the gate; it does not
-make it private, and a contract crossing a crates.io boundary is public whatever it is annotated
-with.
+**Retired and absorbed crates.** A single version cannot republish a package that
+no longer exists. When a crate is deleted or absorbed, **yank** its orphaned
+version with the **Yank Crate** workflow so new resolutions stop selecting it, and
+record in the changelog where its API moved.
 
-This is the whole of [#665](https://github.com/everruns/yolop/issues/665): the published `everruns`
-facade drives a hidden steering surface on `everruns-host`
-([`crates/host/src/runtime.rs`](../../crates/host/src/runtime.rs)) under a caret pin, so a host
-patch release changed an API a separately versioned crates.io package depends on, invisibly to both
-gates. That surface is now documented public contract, which puts it back under the bump gate:
-break it and the gate demands the minor slot, the old facade's caret stops admitting the new host,
-and `strand-check` forces the cascade. The rule generalizes — if a published crate calls it, it is
-contract, so document it rather than hiding it.
+**The gate.** One check enforces all of this:
 
-**A breaking bump is not done until its dependants are handled — the whole cone, not just the
-crate.** A crates.io package is immutable, so a published dependant that pins the old, now-incompatible
-requirement (`everruns-host = "^0.18.0"` when host is now `0.19.0`) will forever resolve the old
-version, and a downstream consumer that also pulls the new one ends up compiling **two copies** — the
-error surfaces inside the stranded upstream crate, not the consumer's code. This is the classic
-partial release. For every crate that takes a **breaking** bump, close the cone:
+```bash
+python3 scripts/sync-publish-pin-versions.py --check   # --write to fix drift
+```
 
-- **Live dependants** whose own contract did not change still need a **patch bump and republish** so
-  their new crates.io version pins the compatible requirement. (Optional/`dev`-only dependencies are
-  lower urgency but should still be cascaded for a clean graph.)
-- **Absorbed/deleted dependants** cannot be republished — **yank** their orphaned version with the
-  **Yank Crate** workflow so new resolutions stop selecting them.
+It fails on a published crate that declares a literal version, an internal pin
+that does not match the platform version, or a published crate depending on a
+private workspace package. CI runs it in the **Lockfile** job and again in
+**Publish Crate** before the registry token is used.
 
-The **Crate Release** workflow's `strand-check` job enforces this: it fails the run when any
-published crate's latest version pins a workspace crate at a requirement the current workspace
-version no longer satisfies. A red `strand-check` means finish the cone (cascade-bump or yank) before
-calling the release complete.
+**Publishing.** On merge to `main` the **Crate Release** workflow
+(`.github/workflows/crate-release.yml`) compares each published crate's version
+against crates.io, creates `crate/<package>/v<version>` for any version not yet
+published, and dispatches **Publish Crate** for it in dependency order, so a
+dependant never publishes before the dependency it pins. Detection is by
+crates.io presence, so re-runs are idempotent and a version already published is
+skipped. `workflow_dispatch` with `dry_run: true` previews the set.
 
-To release a changed crate:
-
-1. Bump only the package whose public contract changed, by the smallest compatible increment above.
-2. Run `python3 scripts/sync-publish-pin-versions.py --write` so published
-   dependants reference the dependency package's current version.
-3. Run `python3 scripts/check-semver-bumps.py` and confirm every bump is large enough for the API
-   it carries.
-4. Validate and merge the release change to `main`.
-
-Tagging and publishing are then automated — the same schema as the product
-release, where tags are created by CI rather than pushed by hand. On merge to
-`main` the **Crate Release** workflow (`.github/workflows/crate-release.yml`)
-compares each published crate's manifest version against crates.io, creates the
-`crate/<package>/v<version>` tag for any version not yet published, and
-dispatches **Publish Crate** for it. When several crates release together it
-orders them by dependency so a dependant never publishes before the dependency it
-pins is on crates.io. Detection is by crates.io presence, so a bump that merged
-before the tag existed is still picked up and re-runs are idempotent (a version
-already published is skipped). `workflow_dispatch` with `dry_run: true` previews
-the set.
-
-**Publish Crate** validates the selected manifest version, derives internal path
-dependency pins from Cargo metadata, and publishes only that package. Manual
-tagging remains a fallback when the workflow is unavailable, publishing
-dependencies before dependants; do not recreate a lockstep workspace release.
-Publishing cannot be completed from a sandbox whose egress policy blocks tag
-pushes — the CI workflow is the supported path.
+**Publish Crate** validates the selected manifest version, derives internal pins
+from Cargo metadata, and publishes only that package. Publishing cannot be
+completed from a sandbox whose egress policy blocks tag pushes — the CI workflow
+is the supported path.
 
 ### Migration Handling
 
@@ -235,8 +213,15 @@ If the release has an operator-visible migration caveat, compatibility limitatio
 
 ### Lock File Updates
 
-Lock files must be updated when preparing a release:
-- `Cargo.lock` - Run `cargo generate-lockfile` to sync product or crate version changes
+Lock files must be updated when preparing a release. Under a single platform
+version every lockfile that resolves a workspace crate records that version, so
+the out-of-workspace ones are not optional — a missed one fails its `--locked`
+build against the new version:
+- `Cargo.lock` - Run `cargo generate-lockfile`
+- `crates/everruns/tests/fixtures/external-consumer/Cargo.lock`,
+  `evals/generic/Cargo.lock`, `evals/guardrail-calibration/Cargo.lock`,
+  `evals/platform-capability/Cargo.lock`,
+  `examples/weekend-concierge-host/Cargo.lock` - Run `cargo generate-lockfile` in each
 - `apps/ui/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/ui` to regenerate
 - `apps/docs/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/docs` to regenerate
 
@@ -265,12 +250,12 @@ The workflow will extract release notes from CHANGELOG.md and create the GitHub 
 4. Release card: `release-card-vX.Y.Z.png`, rendered from the reviewed `release-card.yml`
 5. Docker images tagged with version (triggered via `workflow_dispatch` from Release workflow)
 6. Pre-built CLI binaries attached as release assets (triggered via `workflow_dispatch` from Release workflow)
-7. crates.io packages are not published by the product release; each uses its
-   own trusted package tag and **Publish Crate** workflow
+7. crates.io packages ship at the same version; each is published from its own
+   trusted `crate/<package>/v<version>` tag by the **Publish Crate** workflow
 
 > **Note:** Tags created by `GITHUB_TOKEN` don't trigger other workflows (GitHub anti-recursion).
 > The Release workflow explicitly dispatches Docker Publish and CLI Binaries
-> after creating the product release. Independent crate publishing validates a
+> after creating the product release. Crate publishing validates a
 > `crate/<package>/v<semver>` tag, the selected manifest version, the expected
 > commit SHA, and reachability from `origin/main` before the crates.io token is
 > used.

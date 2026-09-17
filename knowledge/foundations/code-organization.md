@@ -68,8 +68,9 @@ should be folded into that owner. Conversely, mechanical consolidation must not
 erase one of those boundaries merely to reduce the workspace package count.
 
 Repository folders may group related packages without merging their package
-identity. `crates/drivers/` is such a grouping: its children remain separate,
-independently versioned integrations over the common provider SPI.
+identity. `crates/drivers/` is such a grouping: its children remain separate
+crates.io packages over the common provider SPI, published at the shared
+platform version.
 
 Thin LLM provider crates (`openai`, `anthropic`, `gemini`, `bedrock`, `mai`,
 `fireworks`, `openrouter`) depend on `everruns-provider`, **not**
@@ -177,19 +178,22 @@ Two pin conventions follow from package publishability:
 - **Unpublished** crates reference path deps without a version
   (`{ path = "../../provider" }` for crates nested under `crates/drivers/`;
   top-level workspace crates use their corresponding sibling path).
-- **Published** crates own explicit package versions rather than inheriting the
-  product workspace version. Their internal path dependencies carry the target
-  package's current version, including dependencies inherited from
-  `[workspace.dependencies]`. `scripts/sync-publish-pin-versions.py` discovers
-  both packages and edges from Cargo metadata, so there is no release allowlist
-  to update when a crate moves or versions diverge.
+- **Published** crates inherit the one platform version with
+  `version.workspace = true` and never declare a version of their own. Their
+  internal path dependencies pin that same version, including dependencies
+  inherited from `[workspace.dependencies]`, so the publish set moves as a unit
+  and a stranded dependant cannot be expressed.
+  `scripts/sync-publish-pin-versions.py` discovers both packages and edges from
+  Cargo metadata, so there is no release allowlist to update when a crate moves.
+  See `knowledge/project/release-process.md` for why the platform is
+  single-versioned.
 - **Dev-dependencies** stay version-less by default: `cargo publish` strips a
   version-less path dev-dependency, which keeps siblings that dev-depend on each
   other free of a publish-order deadlock. A dev-dependency that needs features the
   workspace entry does not carry (`everruns-ard` dev-depends on `everruns-host`
   with `direct-egress`) spells out its own version and is then synced like any
-  other pin, because a breaking bump would otherwise leave the published crate
-  requesting a version that no longer exists.
+  other pin, because a release moves every crate's version and would otherwise
+  leave the published crate requesting a version that no longer exists.
 
 ## Formatting
 
