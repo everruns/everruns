@@ -48,9 +48,9 @@ pub trait UserConnectionResolver: Send + Sync {
     /// `actsAs` reads exactly one store and nothing else (EVE-1029, D2 of
     /// `knowledge/integrations/agent-mcp-attachments.md`):
     ///
-    /// - [`McpServerActsAs::None`] reads no connection store at all.
-    /// - [`McpServerActsAs::Service`] reads only the agent identity's grant.
-    /// - [`McpServerActsAs::User`] reads only the invoking user's grant, and
+    /// - [`crate::mcp_server::McpServerActsAs::None`] reads no connection store at all.
+    /// - [`crate::mcp_server::McpServerActsAs::Service`] reads only the agent identity's grant.
+    /// - [`crate::mcp_server::McpServerActsAs::User`] reads only the invoking user's grant, and
     ///   only when a human actually initiated the session.
     ///
     /// `Ok(None)` means "no credential", which callers surface as
