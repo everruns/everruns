@@ -75,6 +75,13 @@ SELECT
     'active'
 FROM migrated_app_webhook_triggers;
 
+UPDATE budgets AS budget
+SET subject_type = 'app_channel'
+FROM migrated_app_webhook_triggers AS migrated
+WHERE budget.org_id = migrated.org_id
+  AND budget.subject_type = 'agent_endpoint'
+  AND budget.subject_id = migrated.ingress_id;
+
 DELETE FROM agent_endpoints AS endpoint
 USING migrated_app_webhook_triggers AS migrated
 WHERE endpoint.id = migrated.endpoint_id;

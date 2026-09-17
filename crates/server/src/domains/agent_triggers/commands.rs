@@ -1503,6 +1503,7 @@ async fn find_or_create_trigger_session(
                 agent.id,
                 execution_context.owner_principal_id,
                 execution_context.resolved_owner_user_id,
+                source,
                 req,
             )
             .await

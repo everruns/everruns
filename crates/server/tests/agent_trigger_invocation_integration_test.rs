@@ -12,14 +12,18 @@ use serde_json::{Value, json};
 use test_harness::TestServer;
 
 use everruns_core::DEFAULT_ORG_ID;
+use everruns_platform::SessionSource;
 use everruns_provider::typed_id::{
     AgentId, AgentIdentityId, AppChannelId, HarnessId, SessionId, TriggerId,
 };
 use everruns_server::domains::agent_triggers::invoke_agent_trigger;
+use everruns_server::domains::budgets::BudgetService;
 use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;
 use everruns_server::event_delivery::EventDelivery;
-use everruns_server::storage::models::CreateAgentTriggerRow;
+use everruns_server::storage::models::{
+    CreateAgentTriggerRow, CreateBudgetLedgerRow, CreateBudgetRow,
+};
 
 async fn create_agent(server: &TestServer, name: &str) -> Value {
     server
@@ -94,6 +98,17 @@ async fn webhook_trigger_can_be_created() {
         .assert_status(StatusCode::ACCEPTED)
         .json();
     assert!(invoked["created_session"].as_bool().unwrap());
+    let session_id: SessionId = invoked["session_id"].as_str().unwrap().parse().unwrap();
+    let session = server
+        .db
+        .get_session(DEFAULT_ORG_ID, session_id)
+        .await
+        .expect("get webhook session")
+        .expect("webhook session exists");
+    assert_eq!(
+        SessionSource::from(session.source.as_str()),
+        SessionSource::Webhook
+    );
 }
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
@@ -372,6 +387,89 @@ async fn migrated_webhook_trigger_ephemeral_sessions_and_rate_limit_are_preserve
     .await
     .assert_status(StatusCode::TOO_MANY_REQUESTS);
 }
+#[tokio::test]
+async fn migrated_webhook_budget_is_selected_and_enforced_after_real_invocation() {
+    let server = TestServer::new().await;
+    let (app_id, _, ingress_id) = create_migrated_webhook_trigger(
+        &server,
+        "budgeted-migrated-webhook",
+        "shared_session",
+        "{{payload.action}}",
+        None,
+    )
+    .await;
+    let budget = server
+        .db
+        .create_budget(CreateBudgetRow {
+            org_id: DEFAULT_ORG_ID,
+            subject_type: "app_channel".into(),
+            subject_id: ingress_id.clone(),
+            currency: "tokens".into(),
+            limit: 100.0,
+            soft_limit: Some(25.0),
+            period: None,
+            metadata: Some(json!({"policy": "migrated-webhook-cap"})),
+        })
+        .await
+        .expect("create preexisting webhook budget");
+    server
+        .db
+        .create_budget_ledger_entry(CreateBudgetLedgerRow {
+            budget_id: budget.id,
+            amount: 100.0,
+            meter_source: "llm_tokens".into(),
+            ref_type: None,
+            ref_id: None,
+            session_id: None,
+            description: None,
+        })
+        .await
+        .expect("exhaust preexisting webhook budget");
+    server
+        .db
+        .set_budget_status(budget.id, "exhausted")
+        .await
+        .expect("set webhook budget status");
+
+    let invoked: Value = invoke_webhook(
+        &server,
+        &format!("/v1/apps/{app_id}/webhooks/{ingress_id}"),
+        ("x-everruns-webhook-token", "migrated-secret"),
+        "budget-check",
+    )
+    .await
+    .assert_status(StatusCode::ACCEPTED)
+    .json();
+    let session_id = invoked["session_id"].as_str().unwrap();
+    let session = server
+        .db
+        .get_session(DEFAULT_ORG_ID, session_id.parse().unwrap())
+        .await
+        .expect("get webhook session")
+        .expect("webhook session exists");
+    assert_eq!(session.endpoint_id, None);
+
+    let service = BudgetService::new(server.db.clone());
+    let selected = service
+        .list_budgets_for_session_hierarchy(DEFAULT_ORG_ID, session_id, None)
+        .await;
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].id, budget.id);
+    assert_eq!(selected[0].subject_type, "app_channel");
+    assert_eq!(selected[0].subject_id, ingress_id);
+    assert_eq!(selected[0].soft_limit, Some(25.0));
+    assert_eq!(
+        selected[0].metadata,
+        Some(json!({"policy": "migrated-webhook-cap"}))
+    );
+    assert_eq!(selected[0].status, "exhausted");
+
+    let enforcement = service
+        .check_budgets_for_session(DEFAULT_ORG_ID, session_id, None)
+        .await;
+    assert_eq!(enforcement.action, "stop");
+    assert_eq!(enforcement.budget_id.map(|id| id.uuid()), Some(budget.id));
+}
 
 #[tokio::test]
 async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
@@ -430,6 +528,10 @@ async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
         .await
         .expect("get session")
         .expect("session exists");
+    assert_eq!(
+        SessionSource::from(session.source.as_str()),
+        SessionSource::Schedule
+    );
     assert_eq!(
         session
             .harness_id

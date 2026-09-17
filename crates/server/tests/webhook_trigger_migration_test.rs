@@ -71,6 +71,22 @@ async fn webhook_channel_migration_preserves_ingress_config_and_execution_contex
             archived_at TIMESTAMPTZ,
             deleted_at TIMESTAMPTZ
         );
+        CREATE TEMPORARY TABLE budgets (
+            id UUID PRIMARY KEY,
+            org_id BIGINT NOT NULL,
+            subject_type TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            currency TEXT NOT NULL,
+            "limit" DOUBLE PRECISION NOT NULL,
+            soft_limit DOUBLE PRECISION,
+            balance DOUBLE PRECISION NOT NULL,
+            period JSONB,
+            metadata JSONB,
+            status TEXT NOT NULL,
+            period_started_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL
+        );
 
         INSERT INTO agents (
             id, org_id, public_id, name, display_name, system_prompt,
@@ -182,6 +198,43 @@ async fn webhook_channel_migration_preserves_ingress_config_and_execution_contex
             NULL,
             NULL
         );
+        INSERT INTO budgets (
+            id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
+            balance, period, metadata, status, period_started_at, created_at, updated_at
+        )
+        VALUES
+        (
+            '00000000-0000-0000-0000-000000000011',
+            42,
+            'agent_endpoint',
+            'appchan_00000000000000000000000000000007',
+            'tokens',
+            100,
+            25,
+            0,
+            '{"type":"rolling","window":"1d"}',
+            '{"policy":"preserve-me"}',
+            'exhausted',
+            '2026-09-01T00:00:00Z',
+            '2026-08-01T00:00:00Z',
+            '2026-09-01T01:00:00Z'
+        ),
+        (
+            '00000000-0000-0000-0000-000000000012',
+            42,
+            'agent_endpoint',
+            'appchan_00000000000000000000000000000009',
+            'usd',
+            50,
+            NULL,
+            40,
+            NULL,
+            '{"policy":"unrelated"}',
+            'active',
+            NULL,
+            '2026-08-02T00:00:00Z',
+            '2026-09-02T01:00:00Z'
+        );
         "#,
     )
     .execute(&mut *transaction)
@@ -263,6 +316,73 @@ async fn webhook_channel_migration_preserves_ingress_config_and_execution_contex
         synthesized_agent_id
     );
     assert!(triggers[2].get::<bool, _>("enabled"));
+
+    let migrated_budget = sqlx::query(
+        r#"
+        SELECT subject_type, subject_id, currency, "limit", soft_limit, balance,
+               period, metadata, status, period_started_at, created_at
+        FROM budgets
+        WHERE id = '00000000-0000-0000-0000-000000000011'
+        "#,
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .expect("read migrated webhook endpoint budget");
+    assert_eq!(
+        migrated_budget.get::<String, _>("subject_type"),
+        "app_channel"
+    );
+    assert_eq!(
+        migrated_budget.get::<String, _>("subject_id"),
+        "appchan_00000000000000000000000000000007"
+    );
+    assert_eq!(migrated_budget.get::<String, _>("currency"), "tokens");
+    assert_eq!(migrated_budget.get::<f64, _>("limit"), 100.0);
+    assert_eq!(
+        migrated_budget.get::<Option<f64>, _>("soft_limit"),
+        Some(25.0)
+    );
+    assert_eq!(migrated_budget.get::<f64, _>("balance"), 0.0);
+    assert_eq!(
+        migrated_budget.get::<Option<serde_json::Value>, _>("period"),
+        Some(serde_json::json!({"type": "rolling", "window": "1d"}))
+    );
+    assert_eq!(
+        migrated_budget.get::<Option<serde_json::Value>, _>("metadata"),
+        Some(serde_json::json!({"policy": "preserve-me"}))
+    );
+    assert_eq!(migrated_budget.get::<String, _>("status"), "exhausted");
+    assert_eq!(
+        migrated_budget
+            .get::<Option<chrono::DateTime<chrono::Utc>>, _>("period_started_at")
+            .expect("period start"),
+        "2026-09-01T00:00:00Z"
+            .parse::<chrono::DateTime<chrono::Utc>>()
+            .unwrap()
+    );
+    assert_eq!(
+        migrated_budget.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+        "2026-08-01T00:00:00Z"
+            .parse::<chrono::DateTime<chrono::Utc>>()
+            .unwrap()
+    );
+
+    let unrelated_budget = sqlx::query(
+        "SELECT subject_type, metadata
+         FROM budgets
+         WHERE id = '00000000-0000-0000-0000-000000000012'",
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .expect("read unrelated endpoint budget");
+    assert_eq!(
+        unrelated_budget.get::<String, _>("subject_type"),
+        "agent_endpoint"
+    );
+    assert_eq!(
+        unrelated_budget.get::<Option<serde_json::Value>, _>("metadata"),
+        Some(serde_json::json!({"policy": "unrelated"}))
+    );
 
     let migrated = &triggers[0];
     assert_eq!(migrated.get::<i64, _>("org_id"), 42);
