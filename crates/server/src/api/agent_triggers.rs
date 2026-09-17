@@ -18,7 +18,7 @@ use crate::domains::common::Command;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::services::CapabilityService;
-use crate::storage::StorageBackend;
+use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -38,6 +38,7 @@ use super::common::{ApiResult, ErrorResponse, impl_auth_state};
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
+    pub encryption: Option<Arc<EncryptionService>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
@@ -48,6 +49,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
         workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
         capability_service: Arc<CapabilityService>,
         auth: AuthState,
@@ -56,6 +58,7 @@ impl AppState {
     ) -> Self {
         Self {
             db,
+            encryption,
             workflow_store,
             capability_service,
             auth,
@@ -69,7 +72,7 @@ impl AppState {
             Caller::from(org),
             self.db.clone(),
             self.capability_service.clone(),
-            None,
+            self.encryption.clone(),
             self.auth.permission_resolver.clone(),
         )
         .with_feature_flags(org.feature_flags.clone())

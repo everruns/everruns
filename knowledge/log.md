@@ -2,6 +2,18 @@
 
 ## 2026-09-17
 
+* **Which identity an MCP server acts under was a side effect of its auth mode,
+  not a stated property.** `api_key` happened to be org-wide, `oauth` happened to
+  be per-user, and `agent_identity_connections` silently shadowed
+  `user_connections` whenever a session carried an identity - so the account a
+  write landed under could change with session wiring, with no config change and
+  no event saying so. There was also no way to express "the agent itself", which
+  is what scheduled work and the Linear case need. `agent-mcp-attachments.md`
+  proposes `actsAs` (`none`/`service`/`user`) as an explicit, fail-closed
+  property of each attachment, demotes org MCP servers to presets that supply
+  transport and OAuth client registration only, and restricts unattended runs to
+  `service` so they stop borrowing whichever human the session resolved to.
+
 * **The Framework had no harness, so every embedding application rebuilt one by
   hand and no two agreed.** `everruns` collapses harness, agent, and session into
   one builder and synthesizes an anonymous harness per session, so a built-in
@@ -29,6 +41,20 @@
   against the derived schema before creating a child session. The bounds reuse
   the constants the blueprint's tools already clamp against, so schema and
   runtime cannot drift.
+
+* **Slack approvals, task progress, and the second-token problem are one
+  missing capability, not three features.** All three reduce to an agent being
+  unable to act on its own Slack channel with that channel's identity. The
+  approval half needs no new protocol: `setup_connection` and `url_elicitation`
+  already establish pause-and-consent via [Client
+  Hints](runtime-resources/client-hints.md), and Slack becomes a third client of
+  it — including the degradation path, which is exactly today's behaviour when a
+  surface cannot draw the card. Task state is already on `ToolContext`; the gap
+  is rendering, and it belongs in the delivery adapter rather than in model
+  narration. Recorded as [Slack Agent
+  Actions](integrations/slack-agent-actions.md), which also settles that an
+  approval click binds to both the pending tool call and an identified Slack
+  user, defaulting to the requester.
 
 ## 2026-09-15
 

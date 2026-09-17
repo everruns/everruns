@@ -85,7 +85,7 @@ function getStatusIcon(status: ScheduleExecutionStatus) {
       return <SkipForward className="h-4 w-4 text-yellow-500" />;
     case "pending":
     default:
-      return <Clock className="h-4 w-4 text-gray-500" />;
+      return <Clock className="h-4 w-4 text-muted-foreground" />;
   }
 }
 
@@ -412,7 +412,7 @@ export default function ScheduleDetailPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Clock
-                  className={`h-6 w-6 ${schedule.enabled ? "text-green-500" : "text-gray-400"}`}
+                  className={`h-6 w-6 ${schedule.enabled ? "text-green-500" : "text-muted-foreground"}`}
                 />
                 <div>
                   <CardTitle>

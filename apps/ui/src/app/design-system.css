@@ -14,6 +14,13 @@
  * validate with `pnpm run design:lint`.
  */
 
+/* Dark mode is class-based, not media-query based: the theme provider puts
+   `.dark` on <html> from the everruns_theme cookie so an explicit user choice
+   can override the OS preference. Tailwind v4's default `dark:` variant is
+   `prefers-color-scheme`, which would fire these utilities on a dark-OS
+   machine while the token block below stayed light. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     /* Light mode - grayscale with gold accent */
@@ -43,6 +50,7 @@
     --sidebar-foreground: 0 0% 10%;
     /* Sharp corners */
     --radius: 0px;
+    color-scheme: light;
   }
 
   .dark {
@@ -71,6 +79,7 @@
     /* Sidebar: used by Streamdown code blocks */
     --sidebar: 220 15% 15%;
     --sidebar-foreground: 0 0% 95%;
+    color-scheme: dark;
   }
 }
 

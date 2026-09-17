@@ -38,9 +38,9 @@ function getStatusColor(status: WorkerStatus) {
     case "stopped":
       return "bg-red-500";
     case "stale":
-      return "bg-gray-500";
+      return "bg-muted-foreground";
     default:
-      return "bg-gray-500";
+      return "bg-muted-foreground";
   }
 }
 
