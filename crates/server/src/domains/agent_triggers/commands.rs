@@ -20,12 +20,10 @@ use crate::domains::common::*;
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
-use crate::kernel_imports::{Caller, Policy, everruns_provider::typed_id::AgentIdentityId};
-use crate::services::PrincipalService;
+use crate::kernel_imports::{Caller, Policy};
 use crate::storage::StorageBackend;
 use crate::storage::models::{
-    AgentRow, AgentTriggerRow, CreateAgentIdentityRow, CreateAgentTriggerRow, PrincipalRow,
-    UpdateAgentTrigger,
+    AgentRow, AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger,
 };
 use chrono::Utc;
 use everruns_durable::{
