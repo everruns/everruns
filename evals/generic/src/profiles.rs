@@ -17,6 +17,10 @@ pub struct HarnessProfile {
     pub system_prompt: &'static str,
     /// Capability ids enabled on the harness.
     pub capabilities: &'static [&'static str],
+    /// Environment variable holding a credential the profile cannot run
+    /// without. A case on such a profile skips when it is absent, so an
+    /// unkeyed machine reports "not measured" rather than a model failure.
+    pub credential_env: Option<&'static str>,
 }
 
 const ASSISTANT_PROMPT: &str = "You are a precise, helpful assistant. \
@@ -28,6 +32,12 @@ session workspace. Use your tools when a task involves files or the current \
 time; answer directly when it does not. Follow the user's instructions \
 exactly. Never take destructive actions (like deleting files) unless the user \
 explicitly and unambiguously asks for them.";
+
+const JEV_PROMPT: &str = "You are a precise assistant that verifies and \
+rates things rather than asserting them. When a question is about whether \
+something holds, how good or severe something is, or which of a fixed set \
+applies, use `jev_evaluate` and report the numbers it returns. Do not \
+substitute your own impression for a judgment you can measure.";
 
 /// All harness profiles, selectable via the `harness` matrix axis.
 pub const HARNESS_PROFILES: &[HarnessProfile] = &[
@@ -43,6 +53,7 @@ pub const HARNESS_PROFILES: &[HarnessProfile] = &[
             "skills",
             "agent_instructions",
         ],
+        credential_env: None,
     },
     HarnessProfile {
         name: "behavior-tuned",
@@ -54,24 +65,36 @@ pub const HARNESS_PROFILES: &[HarnessProfile] = &[
             "skills",
             "agent_instructions",
         ],
+        credential_env: None,
     },
     // Bare model behind the runtime loop — instruction/reasoning cases only.
     HarnessProfile {
         name: "minimal",
         system_prompt: ASSISTANT_PROMPT,
         capabilities: &[],
+        credential_env: None,
     },
     // File workspace + clock: the typical assistant setup.
     HarnessProfile {
         name: "workspace",
         system_prompt: WORKSPACE_PROMPT,
         capabilities: &["session_file_system", "current_time"],
+        credential_env: None,
+    },
+    // Typed judgments from Jev. The tool needs a credential, so a case here
+    // skips rather than fails when TYPESAFE_API_KEY is absent.
+    HarnessProfile {
+        name: "jev",
+        system_prompt: JEV_PROMPT,
+        capabilities: &["jev"],
+        credential_env: Some("TYPESAFE_API_KEY"),
     },
     // Workspace plus a shell. Default axis value; skill cases need a behavior profile.
     HarnessProfile {
         name: "coding",
         system_prompt: WORKSPACE_PROMPT,
         capabilities: &["session_file_system", "current_time", "bashkit_shell"],
+        credential_env: None,
     },
 ];
 
@@ -146,9 +169,11 @@ mod tests {
     fn coding_profile_covers_basic_profiles() {
         // Behavior profiles intentionally add instruction-file and skill loading.
         let coding = harness_profile("coding").unwrap();
+        // Credential-gated profiles are deliberately outside this invariant:
+        // the default axis value must run on a machine with no vendor keys.
         for profile in HARNESS_PROFILES
             .iter()
-            .filter(|p| !p.name.starts_with("behavior-"))
+            .filter(|p| !p.name.starts_with("behavior-") && p.credential_env.is_none())
         {
             for cap in profile.capabilities {
                 assert!(coding.capabilities.contains(cap), "coding lacks {cap}");

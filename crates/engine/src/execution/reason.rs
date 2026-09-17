@@ -310,6 +310,10 @@ pub struct ReasonAtom {
     /// end-of-message output guardrails (e.g. moderation). When absent, those
     /// guardrails fail open and the seam is a no-op.
     utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
+    /// Optional judgment service. Powers guardrail checks that ask for a
+    /// calibrated number rather than text to parse. When absent, those checks
+    /// fail open exactly like the utility-model-backed ones.
+    judgment_service: Option<Arc<dyn crate::JudgmentService>>,
     /// Optional session schedule store. Used by the `usage_limit_auto_continue`
     /// capability to schedule a one-shot continuation after a provider usage
     /// limit resets. When absent, the capability degrades to a no-op (no
@@ -351,6 +355,7 @@ impl ReasonAtom {
             partial_stream_store: None,
             reasoning_effort_handle: None,
             utility_llm_service: None,
+            judgment_service: None,
             schedule_store: None,
             compaction_checkpoint_store: None,
         }
@@ -477,6 +482,13 @@ impl ReasonAtom {
     /// guardrails (EVE-573). When unset, those guardrails fail open.
     pub fn with_utility_llm_service(mut self, service: Arc<dyn crate::UtilityLlmService>) -> Self {
         self.utility_llm_service = Some(service);
+        self
+    }
+
+    /// Set the judgment service used by guardrail checks that ask for typed
+    /// answers. When unset, those checks fail open.
+    pub fn with_judgment_service(mut self, service: Arc<dyn crate::JudgmentService>) -> Self {
+        self.judgment_service = Some(service);
         self
     }
 }
@@ -2185,6 +2197,7 @@ impl ReasonAtom {
                     system_prompt: &runtime_agent.system_prompt,
                     message_text: &guarded_output,
                     utility_llm_service: self.utility_llm_service.as_ref(),
+                    judgment_service: self.judgment_service.as_ref(),
                 };
                 tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
             }
@@ -2217,6 +2230,7 @@ impl ReasonAtom {
                 system_prompt: &runtime_agent.system_prompt,
                 message_text: &guarded_output,
                 utility_llm_service: self.utility_llm_service.as_ref(),
+                judgment_service: self.judgment_service.as_ref(),
             };
             tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
         }

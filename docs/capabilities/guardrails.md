@@ -42,11 +42,32 @@ A **check** binds a **rule** to a **stage** with an **on-fail action**.
 | `regex` | Any of the patterns matches the stage text | all | in-process, sync |
 | `blocklist` | Any word/phrase appears as a substring (case-insensitive by default) | all | in-process, sync |
 | `tool_pattern` | The tool name matches a `*`-wildcard glob | `tool_use` only | in-process, sync |
-| `llm_judge` | A natural-language policy, evaluated by the utility LLM | `tool_use`, `tool_output` | async, model-backed |
+| `llm_judge` | A natural-language policy, evaluated by a system model | `tool_use`, `tool_output` | async, model-backed |
 | `mcp` | Decision delegated to an external guardrail served over scoped MCP | `tool_use`, `tool_output` | async, off-platform |
-| `moderation` | The finalized message scored by the utility LLM as a content classifier | `output` only | async, model-backed |
+| `moderation` | The finalized message scored against content categories | `output` only | async, model-backed |
 
 Deterministic rules (`regex`, `blocklist`, `tool_pattern`) run in the streaming and per-tool-call hot path, linear-time, no I/O, with hard limits on check count, entries, and lengths so an authored pattern can never wedge a worker. Model-backed and MCP rules run only in the async hook path (and, for `output`, on a post-generation end-of-message boundary), never on the sync hot path.
+
+### Engines
+
+The two model-backed types, `llm_judge` and `moderation`, choose which system model answers them with `engine`:
+
+- **`utility_llm`** (the default) prompts your org's utility model for a verdict — `allow`/`block` for a judge, 0-100 scores per category for moderation. One request per check.
+- **`jev`** asks [Jev](/integrations/typesafe/), TypeSafe's System One model, a typed question and gets a calibrated probability back. The `threshold` you configure (a percentage, default 50) decides the verdict, and every jev check on a stage is answered in a **single** request. It needs `UTILITY_TYPESAFE_API_KEY` on the deployment.
+
+```json
+{
+  "stage": "tool_use",
+  "type": "llm_judge",
+  "engine": "jev",
+  "threshold": 70,
+  "prompt": "Block any tool call that deletes customer records."
+}
+```
+
+Two reasons to prefer `jev` once your deployment has a key configured. It is cheaper on latency: four judge checks on a tool call cost one round trip instead of four. And the verdict is yours — the model reports how likely a violation is, your threshold decides what to do about it, and there is no written verdict to misparse. For moderation it also reads the *tail* of the distribution rather than a score: content that is probably fine but 30% likely to be a clear violation trips a 30% threshold, where an averaged score would hide it.
+
+`utility_llm` stays the default, so existing configs are unchanged. Both engines fail open, honor `on_fail` and advisory mode identically, and send the same bounded excerpt. A check set to `jev` in a deployment with no judgment service configured is skipped with a warning.
 
 ### On-fail
 
@@ -91,10 +112,10 @@ The `id` is optional but recommended, it is surfaced in reason codes and logs.
 ## Data egress and failure behavior
 
 - **Deterministic checks** (`regex`, `blocklist`, `tool_pattern`) run entirely in-process; no data leaves the platform.
-- **`llm_judge` and `moderation`** send a bounded content excerpt to your org's *own* configured utility LLM, the same provider the agent already uses, not a new third party.
+- **`llm_judge` and `moderation`** send a bounded content excerpt to a system model: with `engine: "utility_llm"`, your org's *own* configured utility LLM, the same provider the agent already uses; with `engine: "jev"`, the deployment's judgment provider. Either way it is an operator-configured destination, not a per-agent one.
 - **`mcp`** sends a bounded content excerpt to an external, operator-configured MCP guardrail endpoint. Tenant scoping is enforced by the host's per-session scoped-MCP resolver, so a config can only reach servers scoped to its own session/org.
 
-Every async check is bounded (10 s timeout, at most 4 calls per invocation) and **fails open**: a timeout, error, or unparseable verdict defaults to `allow`. A guardrail outage, or a hostile MCP endpoint, can only ever *allow*, never make execution more permissive than the no-guardrail baseline in a way that blocks a healthy turn. Model-backed checks flow through utility-LLM accounting, not the session model budget.
+Every async check is bounded (10 s timeout; at most 4 utility-LLM calls per invocation, and one batched request for the judgment engine) and **fails open**: a timeout, error, or unparseable verdict defaults to `allow`. A guardrail outage, or a hostile MCP endpoint, can only ever *allow*, never make execution more permissive than the no-guardrail baseline in a way that blocks a healthy turn. Model-backed checks flow through utility-LLM accounting, not the session model budget.
 
 ## Tuning: dry-run and advisory
 

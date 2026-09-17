@@ -142,6 +142,8 @@ fn tool_pattern(tools: &[&str]) -> GuardrailRule {
 fn llm_judge(prompt: &str) -> GuardrailRule {
     GuardrailRule::LlmJudge {
         prompt: prompt.to_string(),
+        engine: crate::guardrail_checks::GuardrailEngine::default(),
+        threshold: crate::guardrail_checks::default_judge_threshold(),
     }
 }
 
@@ -419,6 +421,7 @@ mod tests {
                     GuardrailRule::Moderation {
                         categories: vec![],
                         threshold: 50,
+                        engine: crate::guardrail_checks::GuardrailEngine::default(),
                     },
                 ),
                 check(

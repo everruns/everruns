@@ -379,6 +379,10 @@ export default defineConfig({
                   ],
                 },
                 {
+                  label: "Reasoning & judgment",
+                  items: [{ label: "TypeSafe", slug: "integrations/typesafe" }],
+                },
+                {
                   label: "Messaging",
                   items: [{ label: "Slack", slug: "integrations/slack" }],
                 },

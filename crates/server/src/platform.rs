@@ -9,7 +9,7 @@
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::deployment::DeploymentGrade;
 use everruns_host::DirectEgressService;
-use everruns_host::{HostComposition, SystemUtilityLlmConfig};
+use everruns_host::{HostComposition, SystemJudgmentConfig, SystemUtilityLlmConfig};
 use everruns_platform::BuiltInHarnessDefinition;
 use everruns_platform::connector::{ConnectorPlugin, ConnectorRegistry};
 use everruns_platform::email::{EmailSender, SystemEmailConfig};
@@ -42,6 +42,10 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
     // paths.
     let egress_service = Arc::new(DirectEgressService::for_runtime_traffic_from_env());
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
+    // Deployment-owned typed-judgment service (UTILITY_TYPESAFE_API_KEY).
+    // Absent key = disabled service; guardrail checks configured for it then
+    // fail open, the same contract as a missing utility model.
+    let judgment_service = SystemJudgmentConfig::from_env().into_service();
 
     // EVE-879: the connector registry and system email sender are hosted
     // control-plane services, composed on `ServerAppBuilder` (see
@@ -52,6 +56,7 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
         .driver_registry(driver_registry)
         .egress_service(egress_service)
         .utility_llm_service(utility_llm_service)
+        .judgment_service(judgment_service)
         .session_file_system_factory(Arc::new(
             crate::domains::session_files::StorageSessionFileSystemFactory,
         ));
@@ -128,4 +133,65 @@ pub fn system_email_sender() -> Arc<dyn EmailSender> {
     SystemEmailConfig::from_env()
         .expect("Invalid system email configuration")
         .into_sender()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The wiring a full-stack run would exercise: the OSS composition a server
+    /// actually builds carries a judgment service, and it is the disabled one
+    /// unless the deployment configured a key. A composition that silently
+    /// carried no service would make every `jev` guardrail check a no-op.
+    #[test]
+    fn oss_composition_carries_a_judgment_service() {
+        let composition = oss_host_composition_for_grade(DeploymentGrade::Dev);
+        let service = composition.judgment_service();
+        // Process env decides which one; both are valid, a missing service is not.
+        let configured = std::env::var(everruns_host::UTILITY_TYPESAFE_API_KEY_ENV)
+            .is_ok_and(|key| !key.trim().is_empty());
+        assert_eq!(
+            service.is_configured(),
+            configured,
+            "judgment service configuration must follow {}",
+            everruns_host::UTILITY_TYPESAFE_API_KEY_ENV
+        );
+        assert_eq!(
+            service.name(),
+            if configured {
+                "TypeSafeJudgmentService"
+            } else {
+                "DisabledJudgmentService"
+            }
+        );
+    }
+
+    /// The `jev` capability reaches the hosted registry in a dev deployment and
+    /// stays out of a prod one, which is what `experimental_only` promises.
+    #[test]
+    fn jev_capability_is_registered_for_dev_deployments_only() {
+        assert!(
+            oss_host_composition_for_grade(DeploymentGrade::Dev)
+                .capability_registry()
+                .has("jev"),
+            "dev deployments should offer the jev capability"
+        );
+        assert!(
+            !oss_host_composition_for_grade(DeploymentGrade::Prod)
+                .capability_registry()
+                .has("jev"),
+            "experimental capabilities must stay out of prod registries"
+        );
+    }
+
+    /// The connector an operator sees in Settings > Connections is registered
+    /// too, otherwise the capability has no way to get a user's key.
+    #[test]
+    fn typesafe_connector_is_registered_for_dev_deployments() {
+        let registry = oss_connector_registry_for_grade(DeploymentGrade::Dev);
+        assert!(
+            registry.get("typesafe").is_some(),
+            "the capability resolves its key from this connection provider"
+        );
+    }
 }
