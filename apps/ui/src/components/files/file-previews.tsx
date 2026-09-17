@@ -281,7 +281,7 @@ export function CSVPreview({ content }: { content: string }) {
   if (headers.length === 0) {
     return (
       <div className="p-4 text-sm text-muted-foreground text-center">
-        <AlertCircle className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+        <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground/60" />
         <p>Empty or invalid CSV</p>
       </div>
     );

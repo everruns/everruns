@@ -185,7 +185,10 @@ gold accent. Descriptive brand names map to systematic tokens as follows:
 Every token has a light and dark value in `design-system.css`; the tokens above
 capture the light theme as the canonical reference. Dark mode uses lighter
 status colors with dark foreground pairs so indicators remain legible on
-charcoal surfaces and solid fills.
+charcoal surfaces and solid fills. Dark mode is class-based: `.dark` on
+`<html>`, set from the `everruns_theme` cookie by `ThemeProvider`. Never use a
+raw palette color for a themed surface unless it is one of the deliberate
+exceptions below.
 
 ## Typography
 
