@@ -61,7 +61,7 @@ content.
 ## Matching and precedence
 
 Scopes are literal path prefixes, not globs, and compare ASCII letters without
-case sensitivity so a deny cannot be bypassed on a case-insensitive provider.
+case sensitivity so a deny cannot be bypassed on a case-insensitive backend.
 `generated` therefore includes `generated/report.md` but not
 `other/generated/report.md`.
 
@@ -92,12 +92,12 @@ src/lib.rs
 ```
 
 Traversal (`..`), NUL bytes, and backslash-separated paths fail closed. Host
-absolute paths are provider-specific and are not portable policy scopes; use
+absolute paths are backend-specific and are not portable policy scopes; use
 `/workspace/...` in application configuration and model instructions.
 
 The policy layer controls visibility and mutation. The selected filesystem
-provider remains responsible for mapping workspace paths to storage. The local
-host provider canonicalizes its root, keeps resolved paths contained, and
+backend remains responsible for mapping workspace paths to storage. The local
+host backend canonicalizes its root, keeps resolved paths contained, and
 rejects symlinks in existing path components before every operation. An
 absolute path outside the configured root cannot expose that host file.
 
@@ -108,29 +108,29 @@ tools or run them in a sandbox.
 
 ## Symlinks and races
 
-The built-in local provider rejects a symlink introduced after the workspace
+The built-in local backend rejects a symlink introduced after the workspace
 was configured because it rechecks components on every operation. This blocks
 normal traversal and symlink-swap attempts between operations.
 
 It is not an OS sandbox. A malicious process running as the same operating
 system user can race a final path check and filesystem syscall. If local
-processes are mutually untrusted, use an isolated sandbox/filesystem provider
+processes are mutually untrusted, use an isolated sandbox/filesystem backend
 or operating-system isolation. Do not use `WorkspacePolicy` as a substitute for
 that process boundary.
 
-## Provider extension
+## Backend extension
 
 The in-process host applies the policy after resolving the platform's
-filesystem factory. In-memory, local-disk, database, and custom providers all
-receive the same policy checks. Provider authors still own containment,
+filesystem factory. In-memory, local-disk, database, and custom backends all
+receive the same policy checks. Backend authors still own containment,
 symlink-safe I/O, quotas, durability, and atomic update guarantees for their
 storage system.
 
 Directory listings and grep are enforced at the same boundary as direct reads.
 Denied files are not opened by policy grep, and denied names, match counts, and
 byte totals are not returned. Recursive deletes inspect descendants through the
-provider before deletion, so opting into recursion does not override a deny or
-protected descendant. Providers with mutable external state must still treat
+backend before deletion, so opting into recursion does not override a deny or
+protected descendant. Backends with mutable external state must still treat
 that preflight-to-delete window as a race boundary.
 
 `WorkspaceRootSet` additional roots are named mounts inside one selected head;

@@ -198,11 +198,11 @@ agent runs on; the Engine is what runs it.
 
 ## Adjacent
 
-`WorkspaceProvider` collides with the LLM `Provider`: `AgentBuilder::provider`
-and `AgentBuilder::workspace_provider` sit in the same builder and mean
-unrelated things, and `Durability::ProviderSnapshot` overloads the word again.
-Renaming the workspace one clears the ambiguity without touching this design.
-Tracked separately.
+The former `WorkspaceProvider` name collided with the LLM `Provider`:
+`AgentBuilder::provider` and `AgentBuilder::workspace_provider` sat in the same
+builder and meant unrelated things. The workspace API now uses
+`WorkspaceBackend` and `AgentBuilder::workspace_backend`. The deprecated
+provider-named aliases remain available during migration.
 
 ## Source index
 

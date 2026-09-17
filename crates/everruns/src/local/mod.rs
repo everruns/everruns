@@ -23,7 +23,9 @@ use std::path::{Path, PathBuf};
 pub use backends::LocalBackends;
 pub use db::SqliteDb;
 pub use error::{LocalError, LocalResult};
-pub use git_workspace::LocalGitWorkspaceProvider;
+pub use git_workspace::LocalGitWorkspace;
+#[deprecated(note = "use LocalGitWorkspace")]
+pub use git_workspace::LocalGitWorkspace as LocalGitWorkspaceProvider;
 pub use platform_store::{LocalPlatformStore, LocalSessionRunner};
 pub use profile::LocalProfile;
 pub use runtime_builder::{LocalRuntimeBuilder, local_capability_registry};

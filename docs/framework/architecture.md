@@ -17,7 +17,7 @@ on the same `everruns-engine` Input/Reason/Act state machine.
 | `Agent` | Immutable behavior: instructions, model and provider, tools, capabilities, files, and lifecycle hooks |
 | `Engine` | Concrete process-local owner of Agent snapshots, session identity, backends, history, and resume authority |
 | `Session` | First-class, engine-bound conversation used for turns, steering, events, cancellation, inspection, and history |
-| `Environment` | Session resources, including one exact provider-owned workspace head and typed extensions |
+| `Environment` | Session resources, including one exact backend-owned workspace head and typed extensions |
 
 New Framework code creates and resumes sessions through an Engine:
 

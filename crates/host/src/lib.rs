@@ -157,11 +157,15 @@ pub use turn_strategy::advance_host_execution;
 pub use utility_llm::{
     OpenAiUtilityLlmService, SystemUtilityLlmConfig, UTILITY_OPENAI_API_KEY_ENV,
 };
+#[deprecated(note = "use WorkspaceBackend")]
+pub use workspace::WorkspaceBackend as WorkspaceProvider;
+#[deprecated(note = "use WorkspaceBackendId")]
+pub use workspace::WorkspaceBackendId as WorkspaceProviderId;
 pub use workspace::{
     Environment, EnvironmentBindingError, EnvironmentBindingStore, EnvironmentBuilder,
-    EnvironmentError, InMemoryEnvironmentBindingStore, Workspace, WorkspaceBinding,
-    WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError, WorkspaceHead,
-    WorkspaceHeadAccess, WorkspaceHeadBuilder, WorkspaceHeadDescriptor, WorkspaceHeadId,
-    WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceProvider,
-    WorkspaceProviderId,
+    EnvironmentError, InMemoryEnvironmentBindingStore, Workspace, WorkspaceBackend,
+    WorkspaceBackendId, WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff,
+    WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadBuilder,
+    WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource,
+    WorkspaceHeadStatus,
 };

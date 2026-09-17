@@ -3,7 +3,7 @@
 `ercode` is a small terminal coding agent built only on the public
 [`everruns`](../../crates/everruns) crate. Agent creation is the center of the
 example: it selects a model, adds typed coding capabilities, and binds a safe
-workspace policy. The surrounding CLI demonstrates provider-owned Git workspace
+workspace policy. The surrounding CLI demonstrates backend-owned Git workspace
 heads, typed session resume, and direct session/workspace binding without importing
 `everruns-core` or `everruns-host` directly.
 
@@ -63,7 +63,7 @@ uses the same session and head.
 ## Two isolated heads from the same base
 
 Run these in separate terminals. The visible names are descriptive; the local
-provider creates distinct durable branches and worktrees, so writes do not
+backend creates distinct durable branches and worktrees, so writes do not
 collide and the original checkout is not edited.
 
 ```bash
@@ -111,10 +111,10 @@ the application, not Framework, must coordinate concurrent edits.
 ## Lifecycle and cleanup
 
 `ercode` never removes a worktree or branch on normal exit, handle drop, failed
-turn, or resume. Inspect provider-created worktrees with `git worktree list`.
+turn, or resume. Inspect backend-created worktrees with `git worktree list`.
 The public lifecycle operation `WorkspaceHead::destroy()` is the explicit way
-for an embedding application to remove provider-owned worktree storage; the
-local Git provider retains its branch for recovery. Archive and destroy are not
+for an embedding application to remove backend-owned worktree storage; the
+local Git backend retains its branch for recovery. Archive and destroy are not
 implicit CLI exit behavior, and deleting the state directory is not a safe
 substitute for lifecycle APIs.
 
