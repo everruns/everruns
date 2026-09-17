@@ -401,7 +401,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.18.11"
+version = "0.18.12"
 dependencies = [
  "async-trait",
  "chrono",
@@ -429,7 +429,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.24.0"
+version = "0.24.1"
 dependencies = [
  "anyhow",
  "async-trait",
