@@ -287,8 +287,8 @@ impl Tool {
             name: handler.name().to_string(),
             display_name: handler.display_name().map(str::to_string),
             description: handler.description().to_string(),
-            input_schema: schema_for::<H::Input>(),
-            output_schema: schema_for::<H::Output>(),
+            input_schema: json_schema_for::<H::Input>(),
+            output_schema: json_schema_for::<H::Output>(),
             hints: handler.hints(),
         };
         Self {
@@ -345,7 +345,48 @@ impl<H: Handler> ErasedHandler for HandlerAdapter<H> {
     }
 }
 
-fn schema_for<T: JsonSchema>() -> Value {
+/// Derive a JSON Schema document from a Rust type.
+///
+/// Tool input/output schemas use this internally. It is public so that other
+/// schema-carrying surfaces — notably agent-blueprint configuration — can keep
+/// one source of truth in the Rust type instead of a hand-written schema that
+/// silently drifts from the struct it describes.
+///
+/// Express a bound once, as a constant shared by the schema attribute and the
+/// code that enforces it at runtime, so the two cannot disagree. Doc comments
+/// become schema descriptions that the calling model reads, so keep them
+/// caller-facing and put implementation notes in ordinary comments.
+///
+/// # Example
+///
+/// ```
+/// use everruns_capability::definition::{self as capability, json_schema_for};
+///
+/// /// The same ceiling the scan loop applies to its own input.
+/// const MAX_REPOS: u32 = 50;
+///
+/// /// Configuration for the repository scout.
+/// #[derive(Default, capability::Deserialize, capability::JsonSchema)]
+/// #[serde(crate = "everruns_capability::serde", deny_unknown_fields, default)]
+/// #[schemars(crate = "everruns_capability::schemars")]
+/// struct ScoutConfig {
+///     /// Maximum number of repositories to scan.
+///     #[schemars(range(min = 1, max = MAX_REPOS))]
+///     max_repos: u32,
+/// }
+///
+/// let schema = json_schema_for::<ScoutConfig>();
+///
+/// assert_eq!(schema["properties"]["max_repos"]["maximum"], MAX_REPOS);
+/// assert_eq!(
+///     schema["properties"]["max_repos"]["description"],
+///     "Maximum number of repositories to scan."
+/// );
+/// // `deny_unknown_fields` closes the object, so unrecognized keys are
+/// // rejected by a validator rather than silently ignored.
+/// assert_eq!(schema["additionalProperties"], false);
+/// ```
+pub fn json_schema_for<T: JsonSchema>() -> Value {
     serde_json::to_value(schemars::schema_for!(T)).unwrap_or(Value::Null)
 }
 

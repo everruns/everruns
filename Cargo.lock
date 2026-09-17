@@ -2776,6 +2776,7 @@ dependencies = [
  "async-trait",
  "base64 0.23.1",
  "chrono",
+ "everruns-capability",
  "everruns-core",
  "everruns-provider",
  "inventory",
@@ -2828,6 +2829,7 @@ name = "everruns-integrations-openrouter-workspace"
 version = "0.18.5"
 dependencies = [
  "async-trait",
+ "everruns-capability",
  "everruns-core",
  "everruns-openrouter",
  "everruns-provider",

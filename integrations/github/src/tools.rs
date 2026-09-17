@@ -103,7 +103,7 @@ fn repo_scope(arguments: &Value) -> String {
         .unwrap_or_default()
 }
 
-fn is_valid_owner_repo(repo: &str) -> bool {
+pub(crate) fn is_valid_owner_repo(repo: &str) -> bool {
     let mut parts = repo.split('/');
     let Some(owner) = parts.next() else {
         return false;

@@ -20,6 +20,9 @@ description = "GitHub-backed agent blueprints for Everruns"
 
 [dependencies]
 everruns-core.workspace = true
+# `definition` supplies `json_schema_for` + schemars so the blueprint config
+# schema is derived from `GitHubScoutConfig` instead of hand-written JSON.
+everruns-capability = { workspace = true, features = ["definition"] }
 everruns-provider.workspace = true
 inventory.workspace = true
 reqwest.workspace = true

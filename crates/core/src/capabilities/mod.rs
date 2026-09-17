@@ -1167,7 +1167,126 @@ impl AgentBlueprint {
     pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools.iter().map(|t| t.to_definition()).collect()
     }
+
+    /// Validate host-provided config against this blueprint's `config_schema`.
+    ///
+    /// Spawn paths call this before creating a child session, so a blueprint's
+    /// declared schema is an enforced contract rather than prompt-level advice.
+    /// Blueprints that declare no schema accept no config at all.
+    pub fn validate_config(
+        &self,
+        config: Option<&serde_json::Value>,
+    ) -> Result<(), BlueprintConfigError> {
+        let Some(schema) = self.config_schema.as_ref() else {
+            return match config {
+                Some(_) => Err(BlueprintConfigError::NotAccepted { id: self.id }),
+                None => Ok(()),
+            };
+        };
+
+        let Some(config) = config else {
+            // Only a schema with required properties makes config mandatory.
+            let required = schema
+                .get("required")
+                .and_then(|r| r.as_array())
+                .is_some_and(|required| !required.is_empty());
+            return if required {
+                Err(BlueprintConfigError::Required { id: self.id })
+            } else {
+                Ok(())
+            };
+        };
+
+        let validator = jsonschema::validator_for(schema).map_err(|error| {
+            BlueprintConfigError::InvalidSchema {
+                id: self.id,
+                reason: error.to_string(),
+            }
+        })?;
+
+        let issues: Vec<String> = validator
+            .iter_errors(config)
+            .map(|error| {
+                let path = error.instance_path().to_string();
+                if path.is_empty() {
+                    error.to_string()
+                } else {
+                    format!("{path}: {error}")
+                }
+            })
+            .collect();
+
+        if issues.is_empty() {
+            Ok(())
+        } else {
+            Err(BlueprintConfigError::Invalid {
+                id: self.id,
+                issues,
+            })
+        }
+    }
 }
+
+/// Why host-provided blueprint configuration was rejected.
+///
+/// `#[non_exhaustive]` keeps new rejection reasons a patch-sized addition for
+/// downstream crates rather than a breaking change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum BlueprintConfigError {
+    /// The blueprint declares no config schema, so it accepts no config.
+    NotAccepted {
+        /// The blueprint that was asked to take config.
+        id: &'static str,
+    },
+    /// The schema has required properties but no config was supplied.
+    Required {
+        /// The blueprint whose schema requires config.
+        id: &'static str,
+    },
+    /// The config did not validate against the schema.
+    Invalid {
+        /// The blueprint the config was addressed to.
+        id: &'static str,
+        /// One entry per schema violation, prefixed with its instance path.
+        issues: Vec<String>,
+    },
+    /// The blueprint's own schema is not a usable JSON Schema document.
+    InvalidSchema {
+        /// The blueprint carrying the unusable schema.
+        id: &'static str,
+        /// Why the schema could not be compiled.
+        reason: String,
+    },
+}
+
+impl std::fmt::Display for BlueprintConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotAccepted { id } => {
+                write!(f, "Blueprint \"{id}\" accepts no config.")
+            }
+            Self::Required { id } => {
+                write!(f, "Blueprint \"{id}\" requires config.")
+            }
+            Self::Invalid { id, issues } => {
+                write!(
+                    f,
+                    "Blueprint \"{id}\" received invalid config: {}",
+                    issues.join("; ")
+                )
+            }
+            Self::InvalidSchema { id, reason } => {
+                write!(
+                    f,
+                    "Blueprint \"{id}\" has an invalid config schema: {reason}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for BlueprintConfigError {}
 
 impl std::fmt::Debug for AgentBlueprint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -3319,6 +3438,87 @@ mod tests {
     fn default_registry_is_empty_and_selects_no_product_preset() {
         assert!(CapabilityRegistry::default().is_empty());
         assert!(CapabilityRegistryBuilder::default().build().is_empty());
+    }
+
+    fn blueprint_with_schema(config_schema: Option<serde_json::Value>) -> AgentBlueprint {
+        AgentBlueprint {
+            id: "test_blueprint",
+            name: "Test Blueprint",
+            description: "Blueprint for config validation tests",
+            model: BlueprintModel::Inherit,
+            system_prompt: "Test prompt",
+            tools: vec![],
+            max_turns: None,
+            config_schema,
+        }
+    }
+
+    #[test]
+    fn blueprint_without_schema_accepts_no_config() {
+        let blueprint = blueprint_with_schema(None);
+
+        assert!(blueprint.validate_config(None).is_ok());
+        assert!(matches!(
+            blueprint.validate_config(Some(&serde_json::json!({"depth": "focused"}))),
+            Err(BlueprintConfigError::NotAccepted { .. })
+        ));
+    }
+
+    #[test]
+    fn blueprint_config_is_required_only_when_the_schema_says_so() {
+        let required = blueprint_with_schema(Some(
+            serde_json::json!({"type": "object", "required": ["repository"]}),
+        ));
+        assert!(matches!(
+            required.validate_config(None),
+            Err(BlueprintConfigError::Required { .. })
+        ));
+
+        let optional = blueprint_with_schema(Some(serde_json::json!({"type": "object"})));
+        assert!(optional.validate_config(None).is_ok());
+    }
+
+    #[test]
+    fn blueprint_config_is_validated_against_the_schema() {
+        let blueprint = blueprint_with_schema(Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "max_candidates": {"type": "integer", "minimum": 1, "maximum": 50}
+            },
+            "additionalProperties": false
+        })));
+
+        assert!(
+            blueprint
+                .validate_config(Some(&serde_json::json!({"max_candidates": 10})))
+                .is_ok()
+        );
+
+        // Out-of-range values and unknown keys are both contract violations.
+        let Err(BlueprintConfigError::Invalid { issues, .. }) =
+            blueprint.validate_config(Some(&serde_json::json!({"max_candidates": 500})))
+        else {
+            panic!("out-of-range config should be rejected");
+        };
+        assert!(
+            issues.iter().any(|issue| issue.contains("max_candidates")),
+            "issue should name the offending property: {issues:?}"
+        );
+
+        assert!(matches!(
+            blueprint.validate_config(Some(&serde_json::json!({"unknown": true}))),
+            Err(BlueprintConfigError::Invalid { .. })
+        ));
+    }
+
+    #[test]
+    fn blueprint_with_unusable_schema_reports_it() {
+        let blueprint = blueprint_with_schema(Some(serde_json::json!({"type": 42})));
+
+        assert!(matches!(
+            blueprint.validate_config(Some(&serde_json::json!({}))),
+            Err(BlueprintConfigError::InvalidSchema { .. })
+        ));
     }
 
     #[tokio::test]
