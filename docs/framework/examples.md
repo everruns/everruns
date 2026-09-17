@@ -44,6 +44,7 @@ in [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/a
 | --- | --- | --- |
 | [`capability_configuration.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/capability_configuration.rs) | Typed Compaction and ToolSearch, a code-defined Definition, and a dynamic third-party reference through one entrypoint | `cargo run -p everruns --example capability_configuration` |
 | [`workspace_policy.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/workspace_policy.rs) | Safe workspace scopes and trusted starter files, fully offline | `cargo run -p everruns --example workspace_policy` |
+| [`direct_llm.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_llm.rs) | One-shot, builder, and streamed model calls with no agent, fully offline | `cargo run -p everruns --example direct_llm` |
 | [`live_session.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/live_session.rs) | Non-blocking send, automatic steering, and optional waiting, fully offline | `cargo run -p everruns --example live_session` |
 | [`hello.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/hello.rs) | Small live-provider agent | `cargo run -p everruns --features openai --example hello` |
 | [`production_agent.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/production_agent.rs) | Tools, files, and production-style setup | `cargo run -p everruns --features openai --example production_agent` |
@@ -59,9 +60,9 @@ in [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/a
 | [`lifecycle_hooks.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/lifecycle_hooks.rs) | Awaited agent, turn, tool, and completion handlers | `cargo run -p everruns --features openai --example lifecycle_hooks` |
 
 Live-provider modes use `gpt-5.6-terra` and require `OPENAI_API_KEY`.
-`capability_configuration`, `canonical_events`, `engine_sessions`,
-`live_session`, `session_work`, `workspace_heads`, `workspace_policy`, and
-`session_history` are fully offline;
+`capability_configuration`, `canonical_events`, `direct_llm`,
+`engine_sessions`, `live_session`, `session_work`, `workspace_heads`,
+`workspace_policy`, and `session_history` are fully offline;
 the GitHub monitor also offers a simulated GitHub flow:
 
 ```bash

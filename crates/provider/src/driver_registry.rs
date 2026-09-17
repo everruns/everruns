@@ -1667,6 +1667,17 @@ pub struct DriverDescriptor {
     pub services: Vec<ServiceKind>,
     /// Credential fields a provider instance must supply.
     pub credential_schema: CredentialFormSchema,
+    /// Environment variable that overrides this driver's default endpoint in
+    /// standalone/dev use (e.g. `OPENAI_BASE_URL`), following the vendor's own
+    /// SDK convention.
+    ///
+    /// Declared here rather than on the credential schema because the base URL
+    /// is not a credential field: it lives on `ProviderConfig`, never in the
+    /// stored credential document, and connectors share the schema type without
+    /// having endpoints at all. `None` for drivers whose vendor defines no
+    /// endpoint variable, or whose endpoint is part of the credential itself
+    /// (Bedrock's region).
+    pub base_url_env: Option<String>,
     /// Optional interactive OAuth connect flow. `Some` makes "Connect with
     /// {provider}" available as an alternative to entering a key by hand.
     pub oauth: Option<DriverOAuthConfig>,
@@ -1689,6 +1700,7 @@ impl DriverDescriptor {
         Self {
             display_name: default_display_name(&id),
             credential_schema: default_credential_schema(&id),
+            base_url_env: None,
             services: vec![ServiceKind::Chat],
             oauth: None,
             chat: Some(Arc::new(factory)),
@@ -1697,9 +1709,42 @@ impl DriverDescriptor {
         }
     }
 
+    /// Declare the environment variable that overrides the default endpoint.
+    pub fn with_base_url_env(mut self, base_url_env: impl Into<String>) -> Self {
+        self.base_url_env = Some(base_url_env.into());
+        self
+    }
+
     /// Whether the driver declares the given service.
     pub fn supports(&self, service: ServiceKind) -> bool {
         self.services.contains(&service)
+    }
+
+    /// Every environment variable this driver declares, credential fields first
+    /// in schema order and the endpoint override last.
+    ///
+    /// Drives actionable "set X or Y" messages and the published credential
+    /// documentation, both of which would otherwise have to restate names the
+    /// driver already owns.
+    pub fn declared_env_vars(&self) -> Vec<String> {
+        self.credential_schema
+            .fields
+            .iter()
+            .flat_map(|field| field.env.iter().cloned())
+            .chain(self.base_url_env.clone())
+            .collect()
+    }
+
+    /// The declared endpoint override, when this driver declares one and it is
+    /// set to a non-empty value in the given environment.
+    pub fn base_url_from_env<F>(&self, lookup: F) -> Option<String>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        self.base_url_env
+            .as_deref()
+            .and_then(lookup)
+            .filter(|value| !value.trim().is_empty())
     }
 }
 
@@ -1724,7 +1769,16 @@ fn default_credential_schema(id: &DriverId) -> CredentialFormSchema {
     if id == &DriverId::LlmSim {
         CredentialFormSchema::empty()
     } else {
-        CredentialFormSchema::api_key(String::new())
+        // No environment variable: the registry cannot know a driver's vendor
+        // convention, and guessing one is what the per-driver declaration
+        // exists to prevent. A driver that wants env resolution overrides this
+        // schema and names its own variables.
+        CredentialFormSchema {
+            fields: vec![
+                crate::credential_schema::FormField::password("api_key", "API Key").required(),
+            ],
+            instructions_markdown: String::new(),
+        }
     }
 }
 
@@ -2441,6 +2495,7 @@ mod tests {
             display_name: "Embeddings Only".into(),
             services: vec![ServiceKind::Embeddings],
             credential_schema: CredentialFormSchema::empty(),
+            base_url_env: None,
             oauth: None,
             chat: None,
             embeddings: None,

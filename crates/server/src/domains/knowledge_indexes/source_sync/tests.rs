@@ -371,6 +371,7 @@ fn test_driver_registry() -> Arc<DriverRegistry> {
         display_name: "Test Embeddings".into(),
         services: vec![ServiceKind::Embeddings],
         credential_schema: CredentialFormSchema::empty(),
+        base_url_env: None,
         oauth: None,
         chat: None,
         embeddings: Some(Arc::new(|_config| {

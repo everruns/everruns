@@ -99,13 +99,23 @@ async fn main() -> anyhow::Result<()> {
 
     println!("=== Turn-Based Execution with New Atoms ===\n");
 
+    // The driver registry comes first: credential resolution is descriptor-driven,
+    // so the drivers must be registered before their declared variables can be read.
+    let driver_registry = {
+        let mut registry = DriverRegistry::new();
+        everruns_openai::register_driver(&mut registry);
+        everruns_anthropic::register_driver(&mut registry);
+        registry
+    };
+
     // Create shared dependencies
     let harness_store = InMemoryHarnessStore::new();
     let agent_store = InMemoryAgentStore::new();
     let session_store = InMemorySessionStore::new();
     let message_retriever = InMemoryMessageRetriever::new();
     let provider_store =
-        InMemoryProviderStore::from_credential_provider(&EnvCredentialProvider).await;
+        InMemoryProviderStore::from_credential_provider(&driver_registry, &EnvCredentialProvider)
+            .await;
     let tools: ToolRegistry = ToolRegistryBuilder::new().tool(GetWeatherTool).build();
 
     // Create a harness in the store
@@ -157,14 +167,8 @@ async fn main() -> anyhow::Result<()> {
     };
     session_store.add_session(session).await;
 
-    // Create capability and driver registries
+    // Create capability registry
     let capability_registry = CapabilityRegistry::new();
-    let driver_registry = {
-        let mut registry = DriverRegistry::new();
-        everruns_openai::register_driver(&mut registry);
-        everruns_anthropic::register_driver(&mut registry);
-        registry
-    };
 
     // =========================================================================
     // Setup: Add user message to store (simulating API layer)

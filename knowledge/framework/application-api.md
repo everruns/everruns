@@ -51,6 +51,8 @@ The Framework owns value-first configuration for:
   task/schedule state;
 - event-derived session history and resume, without promoting writable message
   stores or their file format into the application API.
+- direct, agentless model calls over the same provider values an agent uses,
+  for work that is one prompt and one answer.
 
 The application execution boundary is the concrete `everruns::Engine`.
 `InMemoryEngine` remains a source-compatible alias, not a second
@@ -198,6 +200,29 @@ delivery observable without exposing runtime task records, store registries, or
 platform constants. Distributed route ownership, recurring schedule runners,
 and multi-host lifecycle management remain host concerns.
 
+## Direct model call boundary
+
+Not every application need is an agent. Classification, extraction, summary,
+and similar one-shot work wants the provider edge — driver, endpoint,
+credentials, retries, error classification — without the agent loop. The
+Framework previously offered no promoted path for it: the pieces were public
+but scattered across `everruns` and `everruns-provider`, so the simplest
+possible use required two crates and provider-owned types.
+
+`Model::complete` and `Model::completion` close that. They are a thin
+value-first layer over `Provider`'s existing completion methods, reusing the
+model and provider values an `Agent` already takes, so a direct call and an
+agent call reach a model the same way. Deliberately excluded: conversation
+state, tool execution, workspaces, durability, events, and hooks. A completion
+holds no history of its own — context is whatever the call passes — and work
+that needs any of the excluded concerns uses an Agent instead. The layer adds
+no execution semantics, so it cannot drift from the agent path.
+
+The low-level path stays open and is now self-sufficient from the facade: the
+`Llm*` request/response types a `Provider` or `ChatDriver` call needs are
+re-exported from `everruns`, so calling the driver boundary directly no longer
+forces a second crate dependency.
+
 ## Boundary constraints
 
 - Application and host setup paths must converge before provider resolution and
@@ -234,6 +259,9 @@ and multi-host lifecycle management remain host concerns.
   protections.
 - Local task/schedule state is opt-in. Schedule delivery remains an explicitly
   managed host lifecycle with at-least-once semantics.
+- Direct model calls stay a thin layer over `Provider` with no execution
+  semantics of their own. Anything stateful — history, tools, workspaces,
+  durability — belongs to an Agent, never to a completion.
 
 ## Success bar
 
@@ -259,6 +287,7 @@ entrypoints.
 - `crates/everruns/src/context.rs`
 - `crates/everruns/src/mcp.rs`
 - `crates/everruns/src/plugin.rs`
+- `crates/everruns/src/llm.rs`
 - `crates/everruns/src/local.rs`
 - `crates/everruns/src/work.rs`
 - `crates/everruns/tests/application_parity.rs`

@@ -160,12 +160,21 @@ async fn list_meta_models(
 }
 
 /// Register Meta Model API as a chat provider.
-pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register_descriptor(DriverDescriptor {
+/// This driver's descriptor: identity, services, and the credential schema
+/// that declares its own environment variables.
+pub fn descriptor() -> DriverDescriptor {
+    DriverDescriptor {
         display_name: "Meta Model API".into(),
+        // llama-api-client reads LLAMA_API_KEY. META_API_KEY and MODEL_API_KEY
+        // are not vendor names: they are this repo's own, kept as alternates so
+        // existing example and live-test setups keep working.
         credential_schema: CredentialFormSchema::api_key(
+            "LLAMA_API_KEY",
             "Create an API key in the [Meta Model API dashboard](https://dev.meta.ai/).",
-        ),
+        )
+        .with_api_key_fallback_env("META_API_KEY")
+        .with_api_key_fallback_env("MODEL_API_KEY"),
+        base_url_env: Some("LLAMA_BASE_URL".into()),
         ..DriverDescriptor::chat_only(DriverId::Meta, |config| {
             Provider::new(config.provider.clone(), MetaChatDriver::new())
                 .base_url(
@@ -177,7 +186,25 @@ pub fn register_driver(registry: &mut DriverRegistry) {
                 .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
                 .into_boxed_driver()
         })
-    });
+    }
+}
+
+/// Register the driver with a [`DriverRegistry`].
+pub fn register_driver(registry: &mut DriverRegistry) {
+    registry.register_descriptor(descriptor());
+}
+
+/// Build a provider from this driver's declared environment variables.
+///
+/// Standalone/CLI/dev only: server paths resolve credentials from storage and
+/// must never read the environment.
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> std::result::Result<
+    everruns_provider::Provider,
+    everruns_provider::credential_provider::EnvCredentialError,
+> {
+    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for MetaChatDriver {

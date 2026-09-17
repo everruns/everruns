@@ -255,16 +255,24 @@ fn mai_credential_schema() -> CredentialFormSchema {
             FormField::password("api_key", "Azure AI Foundry API Key")
                 .required()
                 .in_group(API_KEY_GROUP)
-                .with_help("A resource key from your Azure AI Foundry deployment."),
+                .with_help("A resource key from your Azure AI Foundry deployment.")
+                .env("AZURE_AI_API_KEY"),
+            // The OAuth group's names are azure-identity's EnvironmentCredential
+            // variables, so an existing Entra service-principal environment
+            // configures this deployment unchanged. The group resolves only when
+            // all three are present, never half-configured.
             FormField::text("tenant_id", "Directory (tenant) ID")
                 .required()
-                .in_group(OAUTH_GROUP),
+                .in_group(OAUTH_GROUP)
+                .env("AZURE_TENANT_ID"),
             FormField::text("client_id", "Application (client) ID")
                 .required()
-                .in_group(OAUTH_GROUP),
+                .in_group(OAUTH_GROUP)
+                .env("AZURE_CLIENT_ID"),
             FormField::password("client_secret", "Client secret")
                 .required()
-                .in_group(OAUTH_GROUP),
+                .in_group(OAUTH_GROUP)
+                .env("AZURE_CLIENT_SECRET"),
             FormField::text("scope", "Scope")
                 .in_group(OAUTH_GROUP)
                 .with_default(DEFAULT_ENTRA_SCOPE)
@@ -301,10 +309,15 @@ fn mai_credential_schema() -> CredentialFormSchema {
 /// register_driver(&mut registry);
 /// assert!(registry.has_driver(&everruns_provider::DriverId::Mai));
 /// ```
-pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register_descriptor(DriverDescriptor {
+/// This driver's descriptor: identity, services, and the credential schema
+/// that declares its own environment variables.
+pub fn descriptor() -> DriverDescriptor {
+    DriverDescriptor {
         display_name: "Microsoft MAI".into(),
         credential_schema: mai_credential_schema(),
+        // MAI has no vendor-fixed endpoint: the base URL is the customer's own
+        // Azure AI Foundry resource, so it must come from the environment too.
+        base_url_env: Some("AZURE_AI_ENDPOINT".into()),
         ..DriverDescriptor::chat_only(DriverId::Mai, |config| {
             let provider = Provider::new(config.provider.clone(), MaiChatDriver::new()).base_url(
                 mai_api_base_url(config.base_url.clone().unwrap_or_default()),
@@ -316,7 +329,25 @@ pub fn register_driver(registry: &mut DriverRegistry) {
                     .into_boxed_driver(),
             }
         })
-    });
+    }
+}
+
+/// Register the driver with a [`DriverRegistry`].
+pub fn register_driver(registry: &mut DriverRegistry) {
+    registry.register_descriptor(descriptor());
+}
+
+/// Build a provider from this driver's declared environment variables.
+///
+/// Standalone/CLI/dev only: server paths resolve credentials from storage and
+/// must never read the environment.
+pub fn from_env(
+    id: impl Into<everruns_provider::ProviderKey>,
+) -> std::result::Result<
+    everruns_provider::Provider,
+    everruns_provider::credential_provider::EnvCredentialError,
+> {
+    everruns_provider::credential_provider::provider_from_env(&descriptor(), id)
 }
 
 impl Default for MaiChatDriver {
