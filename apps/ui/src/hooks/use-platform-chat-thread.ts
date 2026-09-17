@@ -23,10 +23,13 @@
  * mobile sidebars both render the thread list) and the created thread is only
  * visible to the others once the sessions list has refetched.
  *
- * Creating is gated on a *successful* read of the thread list. A read that
- * failed says nothing about whether the thread exists, and treating it as "no
- * thread yet" is how duplicate pinned threads accumulate — once per page load
- * that happened to hit a transient error.
+ * Creating is gated on a *successful* read of the thread list, which is what
+ * `isRead` reports. A read that has not succeeded says nothing about whether
+ * the thread exists, and treating it as "no thread yet" is how duplicate
+ * pinned threads accumulate — once per page load that happened to hit a
+ * transient error. Note that "not loading and not errored" is *not* that gate:
+ * React Query reports both while a query waits out its retry backoff, with an
+ * empty list in hand, so gating on those two mints a thread on every blip.
  */
 
 import { useEffect } from "react";
@@ -69,7 +72,7 @@ export function usePlatformChatThread(
   const {
     threads,
     isLoading: threadsLoading,
-    error: threadsError,
+    isRead: threadsRead,
   } = useChatThreads({
     includeArchived: true,
     // Scanning the org's sessions would let a busy org hide this user's thread
@@ -89,13 +92,14 @@ export function usePlatformChatThread(
   const isLoading = threadsLoading || harnessesLoading;
 
   useEffect(() => {
-    if (!ensure || isLoading || threadsError || !orgId || !platformChat || thread) return;
+    if (!ensure || !threadsRead || harnessesLoading || !orgId || !platformChat || thread) return;
     if (ensuredOrgIds.has(orgId)) return;
     ensuredOrgIds.add(orgId);
 
     void (async () => {
+      let created;
       try {
-        const session = await createSession.mutateAsync({
+        created = await createSession.mutateAsync({
           request: {
             source: "chat",
             harness_name: PLATFORM_CHAT_HARNESS_NAME,
@@ -103,17 +107,25 @@ export function usePlatformChatThread(
             tags: [CHAT_THREAD_TAG],
           },
         });
-        await pinSession.mutateAsync({ sessionId: session.id });
       } catch {
-        // Best-effort: the app works without the precreated thread, and the
-        // next entry tries again.
+        // Nothing was created, so release the guard and let the next entry try
+        // again. Best-effort: the app works without the precreated thread.
         ensuredOrgIds.delete(orgId);
+        return;
+      }
+
+      try {
+        await pinSession.mutateAsync({ sessionId: created.id });
+      } catch {
+        // The thread exists; only its pin is missing. The guard stays held —
+        // releasing it here retries the *create*, which mints a second thread
+        // to fix a cosmetic pin.
       }
     })();
     // Deliberately not keyed on the mutation objects: they are recreated on
     // every render, and the attempt guard above is what keeps this one-shot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ensure, isLoading, threadsError, orgId, platformChat, thread]);
+  }, [ensure, threadsRead, harnessesLoading, orgId, platformChat, thread]);
 
   return { thread, isLoading };
 }

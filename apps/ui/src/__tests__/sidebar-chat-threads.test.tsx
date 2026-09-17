@@ -46,7 +46,7 @@ function thread(id: string, title: string): Session {
 }
 
 function setThreads(threads: Session[]) {
-  mockUseChatThreads.mockReturnValue({ threads, isLoading: false, error: null });
+  mockUseChatThreads.mockReturnValue({ threads, isLoading: false, isRead: true, error: null });
 }
 
 describe("SidebarChatThreads", () => {
@@ -78,6 +78,7 @@ describe("SidebarChatThreads", () => {
     mockUseChatThreads.mockReturnValue({
       threads: [{ ...thread("sess_pinned", "Pinned thread"), is_pinned: true }],
       isLoading: false,
+      isRead: true,
       error: null,
     });
 
@@ -110,7 +111,12 @@ describe("SidebarChatThreads", () => {
   });
 
   it("renders nothing while the first load is in flight", () => {
-    mockUseChatThreads.mockReturnValue({ threads: [], isLoading: true, error: null });
+    mockUseChatThreads.mockReturnValue({
+      threads: [],
+      isLoading: true,
+      isRead: false,
+      error: null,
+    });
 
     const { container } = render(<SidebarChatThreads pathname="/chats" />);
 

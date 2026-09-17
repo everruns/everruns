@@ -20,6 +20,14 @@ const THREAD_POLL_MS = 15_000;
 export interface UseChatThreadsResult {
   threads: Session[];
   isLoading: boolean;
+  /**
+   * True once the list has actually been read. `!isLoading && !error` is not
+   * the same thing: React Query reports neither while a query sits between
+   * retry attempts or is enabled but has not started fetching, and `threads`
+   * is an empty array in both. A caller that acts on a thread being *absent*
+   * must gate on this, or a transient read failure reads as "no threads yet".
+   */
+  isRead: boolean;
   error: Error | null;
 }
 
@@ -73,6 +81,7 @@ export function useChatThreads(options: UseChatThreadsOptions = {}): UseChatThre
   return {
     threads,
     isLoading: orgLoading || query.isLoading,
+    isRead: query.isSuccess,
     error: (query.error as Error | null) ?? null,
   };
 }
