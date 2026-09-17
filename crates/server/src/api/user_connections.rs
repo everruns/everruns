@@ -11,7 +11,8 @@ use crate::auth::oauth::GitHubAppService;
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService, McpServerSettings};
 use crate::domains::plugins::oauth_anchor::humanize_connection_name;
 use crate::kernel_imports::{
-    Caller, EgressService, McpServerAuthMode, everruns_provider::typed_id::SessionId,
+    Caller, EgressService, McpServerAuthMode,
+    everruns_provider::typed_id::{AgentIdentityId, SessionId},
     everruns_provider::url_validation::validate_safe_url, mcp_oauth_provider_id_for_uuid,
 };
 use crate::oauth_client::{egress_oauth_json, exchange_oauth_code};
@@ -37,7 +38,12 @@ use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
 
 use super::common::{impl_auth_state, sanitized_bad_gateway, sanitized_internal_error};
-use crate::storage::models::{CreateUserConnectionRow, UpsertMcpOAuthSessionCredentials};
+use crate::domains::agent_identities::AGENT_IDENTITY_MANAGE;
+use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
+use crate::domains::mcp_servers::MCP_SERVER_MANAGE;
+use crate::storage::models::{
+    CreateAgentIdentityConnectionRow, CreateUserConnectionRow, UpsertMcpOAuthSessionCredentials,
+};
 
 /// App state for user connections routes
 #[derive(Clone)]
@@ -157,6 +163,10 @@ pub struct OAuthAuthorizeQuery {
     pub return_to: Option<String>,
     pub mode: Option<String>,
     pub session_id: Option<String>,
+    /// Required when `mode = identity`: the agent whose service grant this is.
+    /// The grant is owned by the agent's identity, not by the admin who
+    /// authorizes it (EVE-1030).
+    pub agent_id: Option<String>,
     pub popup: Option<bool>,
 }
 
@@ -173,6 +183,12 @@ struct PendingOAuthState {
     return_to: String,
     mode: String,
     session_id: Option<String>,
+    /// Set only for `mode = identity`. Resolved before the redirect so the
+    /// callback never creates an identity or re-runs the permission check on
+    /// attacker-influenced input — it only writes to the identity that was
+    /// already authorized (EVE-1030).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    agent_identity_id: Option<String>,
     popup: bool,
     code_verifier: String,
 }
@@ -649,6 +665,38 @@ pub async fn authorize_connection(
         _ => None,
     };
 
+    // Identity mode authorizes a grant the agent owns: one credential shared by
+    // every session and every invoking user. That is a different privilege from
+    // connecting your own account, so it is gated and resolved here, before the
+    // redirect — the callback then only writes to an identity that was already
+    // authorized rather than acting on whatever comes back (EVE-1030).
+    let agent_identity_id = match mode.as_str() {
+        "identity" => {
+            let agent_public_id = query.agent_id.ok_or((
+                StatusCode::BAD_REQUEST,
+                "agent_id is required for identity OAuth flows".to_string(),
+            ))?;
+            let caller = Caller::from(&org);
+            enforce_identity_grant_policy(&state, &caller)?;
+
+            let agent = state
+                .db
+                .get_agent_by_public_id(org.org_id, &agent_public_id)
+                .await
+                .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
+                .ok_or((StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
+
+            // Eager creation: a service grant needs an owner now. Same guarded
+            // write as the lazy first-fire path, so the two converge on one
+            // identity under concurrency (EVE-758, EVE-1030).
+            let (identity_id, _principal) = ensure_identity_for_agent(&state.db, org.org_id, &agent)
+                .await
+                .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
+            Some(identity_id.to_string())
+        }
+        _ => None,
+    };
+
     let oauth_state = {
         let bytes: [u8; 16] = rand::rng().random();
         hex::encode(bytes)
@@ -677,6 +725,7 @@ pub async fn authorize_connection(
         return_to,
         mode,
         session_id,
+        agent_identity_id,
         popup,
         code_verifier,
     };
@@ -830,6 +879,78 @@ pub async fn connection_oauth_callback(
                     .map(|value| encryption.encrypt_string(&value.to_rfc3339()))
                     .transpose()
                     .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
+            })
+            .await
+            .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
+    } else if pending.mode == "identity" {
+        let identity_id = pending
+            .agent_identity_id
+            .as_deref()
+            .ok_or((
+                StatusCode::BAD_REQUEST,
+                "Missing agent_identity_id for identity OAuth flow".to_string(),
+            ))?
+            .parse::<AgentIdentityId>()
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Invalid agent_identity_id: {e}"),
+                )
+            })?;
+
+        // Re-check both the permission and org ownership here rather than
+        // trusting the cookie. The state cookie is browser-bound but not
+        // signed, so a planted one must not be able to aim a grant at another
+        // tenant's identity or clear a gate the authorizing user never passed.
+        let caller = Caller::from(&org);
+        enforce_identity_grant_policy(&state, &caller)?;
+
+        // THREAT[TM-TENANT-012]: agent_identity_connections is keyed only by
+        // identity id and carries no org_id, so every writer must prove the
+        // identity belongs to the caller's org first.
+        let identity = state
+            .db
+            .get_agent_identity(org.org_id, identity_id)
+            .await
+            .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
+            .ok_or((
+                StatusCode::NOT_FOUND,
+                "Agent identity not found".to_string(),
+            ))?;
+        if identity.status != "active" {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Agent identity is not active".to_string(),
+            ));
+        }
+
+        let encryption = state.encryption.as_ref().ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Encryption not configured".to_string(),
+        ))?;
+        state
+            .db
+            .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
+                agent_identity_id: identity_id,
+                provider: provider.clone(),
+                connection_type: "oauth".to_string(),
+                provider_user_id: None,
+                provider_username: Some(row.name.clone()),
+                access_token_encrypted: Some(
+                    encryption
+                        .encrypt_string(&token.access_token)
+                        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
+                ),
+                refresh_token_encrypted: token
+                    .refresh_token
+                    .as_deref()
+                    .map(|value| encryption.encrypt_string(value))
+                    .transpose()
+                    .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
+                scopes: token.scope.clone(),
+                expires_at,
+                installation_id: None,
+                provider_metadata: None,
             })
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
@@ -1427,10 +1548,43 @@ fn finalize_oauth_redirect(
     }
 }
 
+/// Gate for authorizing a grant owned by an agent identity.
+///
+/// Requires both manage permissions on purpose: the grant is an org-level MCP
+/// credential (`MCP_SERVER_MANAGE`) that is bound to an agent identity
+/// (`AGENT_IDENTITY_MANAGE`). Connecting your own account stays ungated, as it
+/// spends only your own access (EVE-1030).
+fn enforce_identity_grant_policy(
+    state: &AppState,
+    caller: &Caller,
+) -> Result<(), (StatusCode, String)> {
+    let resolver = state.auth.permission_resolver.as_ref();
+    MCP_SERVER_MANAGE.evaluate_with(resolver, caller).map_err(|_| {
+        (
+            StatusCode::FORBIDDEN,
+            "Permission denied: authorizing an agent service grant requires MCP server management"
+                .to_string(),
+        )
+    })?;
+    AGENT_IDENTITY_MANAGE
+        .evaluate_with(resolver, caller)
+        .map_err(|_| {
+            (
+                StatusCode::FORBIDDEN,
+                "Permission denied: authorizing an agent service grant requires agent identity management"
+                    .to_string(),
+            )
+        })?;
+    Ok(())
+}
+
 fn normalize_oauth_mode(mode: Option<&str>) -> Result<String, (StatusCode, String)> {
     match mode.unwrap_or("user") {
         "user" => Ok("user".to_string()),
         "session" => Ok("session".to_string()),
+        // A grant owned by the agent itself, shared by every session and every
+        // invoking user (EVE-1030).
+        "identity" => Ok("identity".to_string()),
         other => Err((
             StatusCode::BAD_REQUEST,
             format!("Invalid OAuth mode: {other}"),

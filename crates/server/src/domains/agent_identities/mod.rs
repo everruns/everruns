@@ -5,6 +5,7 @@
 use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
+pub mod lifecycle;
 pub mod queries;
 pub mod types;
 
