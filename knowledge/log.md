@@ -114,6 +114,45 @@
   the model at the first tool call. The name was re-examined against the prior art
   and kept; no other product has this middle layer, because no other product
   treats capabilities as composable modules.
+* **Nothing made an agent stop before a consequential action, and the one gate
+  that could was opt-in and unusable by default.** `tool_approval` blocks per
+  call and needs a host that can service an interactive prompt, so a hosted
+  session had no confirmation layer at all and Platform Chat's confirmation
+  rules were prose with no way to actually pause. The new `soft_approval`
+  capability is the other shape of the problem: prompt guidance that asks the
+  model to batch safe work and stop only at destructive or outward-facing
+  actions, with the pause expressed as a `request_approval` tool call so it is
+  renderable and auditable rather than a turn that appears to have died. It is
+  on by default at `normal` for the `generic` and `platform-chat` harnesses,
+  shares the `ApprovalMode` vocabulary with the hard gate, and takes its level
+  from a host-supplied store when the host owns one, which is the seam a
+  terminal host needs to adopt it without losing its own setting. See
+  [Soft Approval](execution/soft-approval.md).
+
+* **A granted approval said what was approved but never who approved it.** The
+  grant was a tool call in the session event log, which is the right record of
+  the conversation and the wrong thing to answer to: it is scoped to one
+  session, and nothing in it names a person. Having the model write an
+  `approved_by` would have been worse, an identity claim by the thing being
+  governed. The tools now stamp only the turn and input message the consent was
+  spoken in, and the server resolves the approver from the authenticated
+  initiator it already writes onto that message, emitting
+  `agent.approval.requested` / `agent.approval.granted` to the org audit log. A
+  turn with no human initiator is recorded as unattributed rather than dropped,
+  because an approval nobody granted is the finding. See
+  [Soft Approval](execution/soft-approval.md).
+
+* **Two audit variants no consumer could observe were classified as a breaking
+  release.** `AgentAction` is public in the published `everruns-platform`, and at
+  `0.x` the minor is the breaking slot, so adding `ApprovalRequested` /
+  `ApprovalGranted` demanded `0.24.1 -> 0.25.0` plus patch re-pins for thirteen
+  published dependants that changed nothing. Single-versioning has since removed
+  that bookkeeping, so the cascade is no longer the reason to care. The enum is
+  `#[non_exhaustive]` for the reason that outlived it: an external `match` on it
+  cannot be broken by a future audit action, which is the break `LlmErrorKind`
+  inflicted twice. No `_` arm was needed, since every match on `AgentAction`
+  lives in the defining crate. See
+  [Release Process](project/release-process.md).
 
 ## 2026-09-16
 

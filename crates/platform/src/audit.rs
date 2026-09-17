@@ -153,7 +153,12 @@ impl fmt::Display for ManagementAction {
 }
 
 /// Agent-domain audit actions.
+///
+/// `#[non_exhaustive]` so a new audit action stays a patch bump: at 0.x the minor is the breaking
+/// slot, so adding a variant to an exhaustive public enum republishes the whole dependant cone and
+/// hard-breaks every external `match`. See knowledge/project/release-process.md.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum AgentAction {
     RunStarted,
     RunCompleted,
@@ -161,6 +166,10 @@ pub enum AgentAction {
     ToolExecuted,
     LlmRequest,
     AppInvocationStarted,
+    /// An agent paused in front of a critical action and asked for consent.
+    ApprovalRequested,
+    /// A human's spoken consent for a critical action was recorded.
+    ApprovalGranted,
 }
 
 impl AgentAction {
@@ -172,6 +181,8 @@ impl AgentAction {
             Self::ToolExecuted => "agent.tool.executed",
             Self::LlmRequest => "agent.llm.request",
             Self::AppInvocationStarted => "agent.app_invocation.started",
+            Self::ApprovalRequested => "agent.approval.requested",
+            Self::ApprovalGranted => "agent.approval.granted",
         }
     }
 }

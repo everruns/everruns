@@ -760,8 +760,17 @@ impl ServerAppBuilder {
             Arc::new(services::UsageTrackingListener::new(db.clone()));
         let budget_service = Arc::new(crate::domains::budgets::BudgetService::new(db.clone()));
         let budget_listener: Arc<dyn EventListener> = budget_service.clone();
-        let mut event_listeners: Vec<Arc<dyn EventListener>> =
-            vec![otel_listener, usage_listener, budget_listener];
+        // Approvals are org-level accountability, not session trivia: a granted
+        // approval outlives the session it was spoken in and has to be
+        // answerable to by actor. See knowledge/execution/soft-approval.md.
+        let approval_audit_listener: Arc<dyn EventListener> =
+            Arc::new(services::ApprovalAuditListener::new(db.clone()));
+        let mut event_listeners: Vec<Arc<dyn EventListener>> = vec![
+            otel_listener,
+            usage_listener,
+            budget_listener,
+            approval_audit_listener,
+        ];
         // Run summaries (EVE-867). Registered only when a utility LLM is
         // configured, so the OSS default adds no listener at all rather than one
         // that wakes on every terminal turn to do nothing.

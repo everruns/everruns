@@ -145,8 +145,11 @@ The types carrying it are the ones with a demonstrated break, not every public
 type: see [`LlmErrorKind`](../../crates/provider/src/error.rs), the two
 [`ContentPart`](../../crates/core/src/message.rs) enums,
 [`CapabilityStatus`](../../crates/core/src/capability_types.rs),
-[`ModelCost`/`CostTier`](../../crates/model-profiles/src/types.rs), and
-[`LlmCallConfig`/`ProviderConfig`/`LlmCompletionMetadata`/`LlmStreamEvent`/`LlmContentPart`](../../crates/provider/src/driver_registry.rs).
+[`ModelCost`/`CostTier`](../../crates/model-profiles/src/types.rs),
+[`LlmCallConfig`/`ProviderConfig`/`LlmCompletionMetadata`/`LlmStreamEvent`/`LlmContentPart`](../../crates/provider/src/driver_registry.rs), and
+[`AgentAction`](../../crates/platform/src/audit.rs), which grows a variant whenever an
+audited agent action is added, and whose two soft-approval variants were classified breaking
+under the previous scheme for a change no consumer could observe.
 Two consequences are deliberate:
 
 - A `#[non_exhaustive]` **struct** cannot be built with a struct expression (or
