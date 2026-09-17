@@ -8,7 +8,9 @@ use serde_json::Value;
 
 use everruns_core::Capability;
 
-use crate::{TypeSafeCapability, TypeSafeClient, evaluate, evaluate::EvaluateInput};
+use typesafe_systemone::TypeSafeClient;
+
+use crate::{TypeSafeCapability, evaluate, evaluate::EvaluateInput};
 
 /// TypeSafe judgments for `AgentBuilder::capability`.
 ///
@@ -25,7 +27,7 @@ impl TypeSafe {
     }
 
     /// Read `TYPESAFE_API_KEY` once at application startup.
-    pub fn from_env() -> crate::Result<Self> {
+    pub fn from_env() -> typesafe_systemone::Result<Self> {
         Ok(Self::with_client(TypeSafeClient::from_env()?))
     }
 

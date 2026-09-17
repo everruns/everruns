@@ -9,7 +9,7 @@
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::deployment::DeploymentGrade;
 use everruns_host::DirectEgressService;
-use everruns_host::{HostComposition, SystemUtilityLlmConfig};
+use everruns_host::{HostComposition, SystemJudgmentConfig, SystemUtilityLlmConfig};
 use everruns_platform::BuiltInHarnessDefinition;
 use everruns_platform::connector::{ConnectorPlugin, ConnectorRegistry};
 use everruns_platform::email::{EmailSender, SystemEmailConfig};
@@ -42,6 +42,10 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
     // paths.
     let egress_service = Arc::new(DirectEgressService::for_runtime_traffic_from_env());
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
+    // Deployment-owned typed-judgment service (TYPESAFE_API_KEY). Absent key =
+    // disabled service; guardrail checks configured for it then fail open, the
+    // same contract as a missing utility model.
+    let judgment_service = SystemJudgmentConfig::from_env().into_service();
 
     // EVE-879: the connector registry and system email sender are hosted
     // control-plane services, composed on `ServerAppBuilder` (see
@@ -52,6 +56,7 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
         .driver_registry(driver_registry)
         .egress_service(egress_service)
         .utility_llm_service(utility_llm_service)
+        .judgment_service(judgment_service)
         .session_file_system_factory(Arc::new(
             crate::domains::session_files::StorageSessionFileSystemFactory,
         ));

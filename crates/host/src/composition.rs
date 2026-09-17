@@ -24,7 +24,7 @@
 
 use crate::{DisabledSessionFileSystemFactory, SessionFileSystemFactory};
 use everruns_core::{
-    Capability, CapabilityRegistry, EgressService, UtilityLlmService,
+    Capability, CapabilityRegistry, EgressService, JudgmentService, UtilityLlmService,
     tool_context::ToolContextExtensions,
 };
 use everruns_provider::driver_registry::DriverRegistry;
@@ -58,6 +58,7 @@ pub struct HostComposition {
     driver_registry: DriverRegistry,
     egress_service: Arc<dyn EgressService>,
     utility_llm_service: Arc<dyn UtilityLlmService>,
+    judgment_service: Arc<dyn JudgmentService>,
     session_file_system_factory: Arc<dyn SessionFileSystemFactory>,
     extensions: ToolContextExtensions,
 }
@@ -70,6 +71,7 @@ impl HostComposition {
             driver_registry,
             egress_service: Arc::new(everruns_core::DisabledEgressService),
             utility_llm_service: Arc::new(everruns_core::DisabledUtilityLlmService),
+            judgment_service: Arc::new(everruns_core::DisabledJudgmentService),
             session_file_system_factory: Arc::new(DisabledSessionFileSystemFactory),
             extensions: ToolContextExtensions::default(),
         }
@@ -170,6 +172,12 @@ impl HostComposition {
         self.utility_llm_service.clone()
     }
 
+    /// System-wide judgment service for capability internals that need typed
+    /// answers rather than text.
+    pub fn judgment_service(&self) -> Arc<dyn JudgmentService> {
+        self.judgment_service.clone()
+    }
+
     /// Factory for the composition-selected session filesystem implementation.
     pub fn session_file_system_factory(&self) -> Arc<dyn SessionFileSystemFactory> {
         self.session_file_system_factory.clone()
@@ -194,6 +202,7 @@ impl Clone for HostComposition {
             driver_registry: self.driver_registry.clone(),
             egress_service: self.egress_service.clone(),
             utility_llm_service: self.utility_llm_service.clone(),
+            judgment_service: self.judgment_service.clone(),
             session_file_system_factory: self.session_file_system_factory.clone(),
             extensions: self.extensions.clone(),
         }
@@ -213,6 +222,7 @@ impl std::fmt::Debug for HostComposition {
             .field("drivers", &self.driver_registry.registered_providers())
             .field("egress_service", &self.egress_service.name())
             .field("utility_llm_service", &self.utility_llm_service.name())
+            .field("judgment_service", &self.judgment_service.name())
             .field(
                 "session_file_system_factory",
                 &self.session_file_system_factory.name(),
@@ -267,6 +277,12 @@ impl HostCompositionBuilder {
     /// Set the system-wide utility LLM service.
     pub fn utility_llm_service(mut self, service: Arc<dyn UtilityLlmService>) -> Self {
         self.composition.utility_llm_service = service;
+        self
+    }
+
+    /// Set the system-wide judgment service.
+    pub fn judgment_service(mut self, service: Arc<dyn JudgmentService>) -> Self {
+        self.composition.judgment_service = service;
         self
     }
 

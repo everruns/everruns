@@ -79,6 +79,15 @@ impl Answer {
     }
 }
 
+impl NoulAnswer {
+    /// Probability that the answer is yes, 0..=1.
+    ///
+    /// The readable name for the [`NoulAnswer::noul`] field.
+    pub fn probability(&self) -> f64 {
+        self.noul
+    }
+}
+
 impl ChoiceAnswer {
     /// Probability assigned to one option, 0 when the option is unknown.
     pub fn probability_of(&self, option: &str) -> f64 {
@@ -173,6 +182,13 @@ impl Judgment {
             Answer::Noul(answer) => Ok(answer.noul),
             other => Err(self.mismatch(id, "noul", other)),
         }
+    }
+
+    /// Probability of yes for a yes/no question.
+    ///
+    /// Alias of [`Judgment::noul`], under the name other TypeSafe clients use.
+    pub fn probability(&self, id: &str) -> Result<f64> {
+        self.noul(id)
     }
 
     /// The answer to a choice question.

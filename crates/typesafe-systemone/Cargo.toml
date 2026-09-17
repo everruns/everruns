@@ -1,0 +1,36 @@
+# TypeSafe System One client.
+# Decision: Vendor SDK with no Everruns dependency, so it is publishable and
+#   usable on its own. The Everruns capability wraps it from
+#   `integrations/typesafe`, and `everruns-host` uses it directly to back the
+#   provider-neutral `JudgmentService`.
+
+[package]
+name = "typesafe-systemone"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/typesafe-systemone"
+description = "Rust client for TypeSafe's System One API: typed judgments (noul, choice, score) with calibrated probabilities"
+readme = "README.md"
+keywords = ["typesafe", "classification", "llm", "ai", "judgment"]
+categories = ["api-bindings", "asynchronous"]
+
+[dependencies]
+reqwest = { workspace = true, features = ["json"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["time"] }
+tracing.workspace = true
+
+[features]
+# Gate real-API tests; CI passes --features integration with TYPESAFE_API_KEY.
+integration = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"

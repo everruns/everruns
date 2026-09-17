@@ -100,8 +100,8 @@ impl TypeSafeClient {
     /// Ask every question in `evaluation` in one round trip.
     ///
     /// ```no_run
-    /// # async fn run() -> Result<(), everruns_integrations_typesafe::Error> {
-    /// use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
+    /// # async fn run() -> Result<(), typesafe_systemone::Error> {
+    /// use typesafe_systemone::{Evaluation, Question, TypeSafeClient};
     ///
     /// let client = TypeSafeClient::from_env()?;
     /// let judgment = client

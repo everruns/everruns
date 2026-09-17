@@ -9,7 +9,7 @@ use everruns_platform::connector::{
     Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 
-use crate::{Error, Evaluation, Question, RetryPolicy, TypeSafeClient};
+use typesafe_systemone::{Error, Evaluation, Question, RetryPolicy, TypeSafeClient};
 
 /// Connector catalog entry for TypeSafe.
 pub struct TypeSafeConnector;

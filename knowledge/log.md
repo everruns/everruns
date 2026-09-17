@@ -1,5 +1,27 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-17
+
+* **Model-backed guardrails had a fail-open that read as allow.** `llm_judge`
+  and `moderation` prompted the utility model for a JSON verdict and parsed it
+  back, so a missing fragment, a parse error, or an unrecognized verdict
+  silently downgraded a block to an allow - and moderation simulated a
+  probability by asking a text model to write 0-100 per category. Both check
+  types now take an `engine`: the new `judgment` engine asks a typed question
+  and gets a calibrated probability, so the configured `threshold` decides in
+  code and there is nothing to misparse. It also answers every check on a stage
+  in one request instead of one per check. `utility_llm` stays the default, so
+  existing configs are unchanged and the two are directly comparable on the same
+  agent. Recorded in [Guardrails](execution/guardrails.md) and the new
+  [Judgment Service](operations/judgment-service.md), with the egress and
+  steering analysis in TM-LLM-037/038.
+
+* **Typed judgments are now an agent-facing capability too.** The `typesafe`
+  integration contributes `typesafe_evaluate`, so an agent can verify or rate
+  something and get numbers back instead of forming a second impression in
+  prose. Its user connection is deliberately separate from the deployment key
+  that backs the judgment service.
+
 ## 2026-09-16
 
 * **Blueprint config schemas were hand-written JSON that nothing validated.**

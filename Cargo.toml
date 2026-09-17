@@ -29,6 +29,7 @@ members = [
     "crates/drivers/openai",
     "crates/drivers/openrouter",
     "crates/turbopuffer",
+    "crates/typesafe-systemone",
     "crates/internal-protocol",
     "crates/cli",
     "crates/durable",
@@ -226,7 +227,8 @@ everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "
 everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.18.5" }
 everruns-integrations-lua = { path = "integrations/lua", version = "0.18.5" }
 everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.18.5" }
-everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.1.0", default-features = false }
+everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.1.0" }
+typesafe-systemone = { path = "crates/typesafe-systemone", version = "0.1.0" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }

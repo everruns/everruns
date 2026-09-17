@@ -87,6 +87,7 @@ pub mod egress;
 pub mod exec_tool_result;
 pub mod execution_context;
 pub mod execution_snapshot;
+pub mod judgment;
 pub mod utility_llm;
 
 // Execution feature decisions (EVE-878): the org/product feature-flag records
@@ -345,6 +346,10 @@ pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllow
 // email delivery is a hosted product side effect, never consumed during a
 // turn. The OAuth 2.1 protocol client moved to `everruns-mcp` (its only
 // consumer), and the connector catalog moved to `everruns-platform`.
+pub use judgment::{
+    DisabledJudgmentService, JudgmentAnswer, JudgmentOutcome, JudgmentQuestion, JudgmentRequest,
+    JudgmentService, JudgmentUsage,
+};
 pub use utility_llm::{
     DisabledUtilityLlmService, UTILITY_LLM_MODEL, UtilityLlmReasoningEffort, UtilityLlmRequest,
     UtilityLlmService,
@@ -460,8 +465,8 @@ pub use events::{
 };
 pub use finalized_tool_calls::{FinalizedToolCallsContext, FinalizedToolCallsHook};
 pub use guardrail_checks::{
-    CompiledJudgeCheck, GuardrailAction, GuardrailHit, GuardrailMode, GuardrailOnFail,
-    GuardrailRule, GuardrailStage, GuardrailsConfig, MAX_JUDGE_PROMPT_LEN,
+    CompiledJudgeCheck, GuardrailAction, GuardrailEngine, GuardrailHit, GuardrailMode,
+    GuardrailOnFail, GuardrailRule, GuardrailStage, GuardrailsConfig, MAX_JUDGE_PROMPT_LEN,
 };
 pub use guardrail_gallery::{
     DataEgress, GuardrailGalleryItem, find_guardrail_gallery_item, guardrail_gallery,

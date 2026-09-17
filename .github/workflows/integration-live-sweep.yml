@@ -55,6 +55,8 @@ jobs:
             required_secret: SPRITES_API_TOKEN
           - name: Brave Search API Tests
             command: cargo test -p everruns-integrations-brave-search --features integration
+          - name: TypeSafe System One API Tests
+            command: cargo test -p typesafe-systemone --features integration
           # ARD Live Registry Tests are quarantined: the public reference
           # registry (https://agenticresourcediscovery.org/api/v1) was
           # decommissioned (now docs-only; 405/404 on the API, registry/api

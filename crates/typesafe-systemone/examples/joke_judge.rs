@@ -1,13 +1,13 @@
 //! Rate jokes with calibrated numbers instead of an opinion in prose.
 //!
 //! ```sh
-//! TYPESAFE_API_KEY=... cargo run -p everruns-integrations-typesafe --example joke_judge
+//! TYPESAFE_API_KEY=... cargo run -p typesafe-systemone --example joke_judge
 //! ```
 //!
 //! The shape to notice: every judgment about one joke goes in a single request,
 //! and the code — not the model — decides what the numbers mean.
 
-use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
+use typesafe_systemone::{Evaluation, Question, TypeSafeClient};
 
 const JOKES: &[&str] = &[
     "I told my wife she was drawing her eyebrows too high. She looked surprised.",

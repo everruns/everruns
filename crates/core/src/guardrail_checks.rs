@@ -123,7 +123,17 @@ pub enum GuardrailRule {
     /// Cost flows through utility-LLM accounting (not the session budget).
     /// Fails open on timeout or LLM error: the verdict defaults to `allow`
     /// so a judge outage never wedges a turn.
-    LlmJudge { prompt: String },
+    LlmJudge {
+        prompt: String,
+        /// Which system model answers the check.
+        #[serde(default)]
+        engine: GuardrailEngine,
+        /// Block threshold as a percentage (`0..=100`). Only meaningful for
+        /// `engine: judgment`, where the answer is a probability rather than a
+        /// verdict; the utility-LLM engine returns block/allow directly.
+        #[serde(default = "default_judge_threshold")]
+        threshold: u8,
+    },
     /// Delegate the guardrail decision to a third-party guardrail served as an
     /// external MCP endpoint, called over Everruns' existing scoped-MCP client.
     /// `server` is a scoped-MCP server reference (sanitized server name) and
@@ -154,11 +164,49 @@ pub enum GuardrailRule {
         categories: Vec<String>,
         #[serde(default = "default_moderation_threshold")]
         threshold: u8,
+        /// Which system model scores the categories.
+        #[serde(default)]
+        engine: GuardrailEngine,
     },
 }
 
 /// Default block threshold (percent) for a moderation check when unspecified.
 pub fn default_moderation_threshold() -> u8 {
+    50
+}
+
+/// Which system model answers a model-backed check.
+///
+/// Both engines fail open and honor the same `threshold`; they differ in what
+/// the model is asked to produce. The utility LLM writes a JSON verdict a call
+/// site has to parse, one request per check. The judgment engine returns a
+/// calibrated probability directly, and every check on a stage rides one
+/// request. `utility_llm` stays the default so existing configs keep their
+/// current behavior; see `knowledge/execution/guardrails.md`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum GuardrailEngine {
+    /// The deployment's utility LLM, prompted for a JSON verdict.
+    #[default]
+    UtilityLlm,
+    /// The deployment's judgment service, asked a typed question.
+    Judgment,
+}
+
+impl GuardrailEngine {
+    /// Stable name for logs and reason metadata.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::UtilityLlm => "utility_llm",
+            Self::Judgment => "judgment",
+        }
+    }
+}
+
+/// Default block threshold (percent) for an `llm_judge` check: block when the
+/// judged probability of a violation reaches one half.
+pub fn default_judge_threshold() -> u8 {
     50
 }
 
@@ -236,8 +284,14 @@ impl GuardrailsConfig {
         let mut moderation_checks = Vec::new();
         for (index, check) in self.checks.iter().enumerate() {
             match &check.rule {
-                GuardrailRule::LlmJudge { prompt } => {
-                    judge_checks.push(compile_judge_check(index, check, prompt)?);
+                GuardrailRule::LlmJudge {
+                    prompt,
+                    engine,
+                    threshold,
+                } => {
+                    judge_checks.push(compile_judge_check(
+                        index, check, prompt, *engine, *threshold,
+                    )?);
                 }
                 GuardrailRule::Mcp { server, tool } => {
                     mcp_checks.push(compile_mcp_check(index, check, server, tool)?);
@@ -245,9 +299,10 @@ impl GuardrailsConfig {
                 GuardrailRule::Moderation {
                     categories,
                     threshold,
+                    engine,
                 } => {
                     moderation_checks.push(compile_moderation_check(
-                        index, check, categories, *threshold,
+                        index, check, categories, *threshold, *engine,
                     )?);
                 }
                 _ => compiled.push(compile_check(index, check)?),
@@ -304,6 +359,10 @@ pub struct CompiledJudgeCheck {
     pub replacement: Option<String>,
     /// The natural-language policy prompt.
     pub prompt: String,
+    /// Which system model answers this check.
+    pub engine: GuardrailEngine,
+    /// Block threshold as a percentage, honored by the judgment engine.
+    pub threshold: u8,
 }
 
 /// A compiled `mcp` check, carried separately from the sync checks because it
@@ -338,6 +397,8 @@ pub struct CompiledModerationCheck {
     /// Block threshold as a percentage (`0..=100`): a category scoring at or
     /// above this value trips the check.
     pub threshold: u8,
+    /// Which system model scores this check.
+    pub engine: GuardrailEngine,
 }
 
 /// Validated, pre-compiled guardrails ready for evaluation.
@@ -402,6 +463,19 @@ impl CompiledGuardrails {
         self.moderation_checks
             .iter()
             .filter(move |c| c.stage == stage)
+    }
+
+    /// Whether any `judgment`-engine check targets `stage`. Lets a hook tell
+    /// "nothing configured" apart from "configured but no service wired", so
+    /// the second case can say so instead of silently passing.
+    pub fn has_judgment_checks_for_stage(&self, stage: GuardrailStage) -> bool {
+        self.judge_checks
+            .iter()
+            .any(|check| check.stage == stage && check.engine == GuardrailEngine::Judgment)
+            || self
+                .moderation_checks
+                .iter()
+                .any(|check| check.stage == stage && check.engine == GuardrailEngine::Judgment)
     }
 
     /// LLM-judge checks that target `stage`. Empty when no `llm_judge` rule
@@ -590,6 +664,8 @@ fn compile_judge_check(
     index: usize,
     check: &GuardrailCheck,
     prompt: &str,
+    engine: GuardrailEngine,
+    threshold: u8,
 ) -> Result<CompiledJudgeCheck, String> {
     let label = match &check.id {
         Some(id) => {
@@ -628,6 +704,11 @@ fn compile_judge_check(
             "check '{label}': replacement exceeds {MAX_REPLACEMENT_LEN} bytes"
         ));
     }
+    if threshold > 100 {
+        return Err(format!(
+            "check '{label}': llm_judge threshold must be 0..=100 (got {threshold})"
+        ));
+    }
     Ok(CompiledJudgeCheck {
         index,
         label,
@@ -635,6 +716,8 @@ fn compile_judge_check(
         on_fail: check.on_fail,
         replacement: check.replacement.clone(),
         prompt: prompt.to_string(),
+        engine,
+        threshold,
     })
 }
 
@@ -699,6 +782,7 @@ fn compile_moderation_check(
     check: &GuardrailCheck,
     categories: &[String],
     threshold: u8,
+    engine: GuardrailEngine,
 ) -> Result<CompiledModerationCheck, String> {
     let label = match &check.id {
         Some(id) => {
@@ -752,6 +836,7 @@ fn compile_moderation_check(
         replacement: check.replacement.clone(),
         categories,
         threshold,
+        engine,
     })
 }
 
@@ -1225,6 +1310,8 @@ mod tests {
                 replacement: None,
                 rule: GuardrailRule::LlmJudge {
                     prompt: "Block responses that contain PII.".into(),
+                    engine: GuardrailEngine::UtilityLlm,
+                    threshold: default_judge_threshold(),
                 },
             }],
         };

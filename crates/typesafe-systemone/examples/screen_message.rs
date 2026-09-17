@@ -1,14 +1,14 @@
 //! Screen one message for several hazards in a single request.
 //!
 //! ```sh
-//! TYPESAFE_API_KEY=... cargo run -p everruns-integrations-typesafe --example screen_message
+//! TYPESAFE_API_KEY=... cargo run -p typesafe-systemone --example screen_message
 //! ```
 //!
 //! This is the shape Everruns' `guardrails` capability uses: every policy for a
 //! stage becomes one question, they all ride one round trip, and the block
 //! threshold is a number your code owns.
 
-use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
+use typesafe_systemone::{Evaluation, Question, TypeSafeClient};
 
 /// Categories scored on every message, with the level that trips a block.
 const HAZARDS: &[(&str, &str)] = &[

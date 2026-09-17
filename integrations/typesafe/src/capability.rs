@@ -8,9 +8,9 @@ use everruns_provider::tool_types::ToolHints;
 use serde_json::Value;
 use tracing::debug;
 
-use crate::{
-    CAPABILITY_ID, TYPESAFE_API_KEY_SECRET, TYPESAFE_CONNECTION_PROVIDER, TypeSafeClient, evaluate,
-};
+use typesafe_systemone::TypeSafeClient;
+
+use crate::{CAPABILITY_ID, TYPESAFE_API_KEY_SECRET, TYPESAFE_CONNECTION_PROVIDER, evaluate};
 
 #[cfg(feature = "hosted")]
 inventory::submit! {

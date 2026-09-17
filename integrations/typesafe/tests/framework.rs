@@ -1,7 +1,5 @@
 //! The published integration executes through the ordinary Framework facade.
 
-#![cfg(feature = "capability")]
-
 use everruns::IntoCapability;
 use everruns_core::Capability;
 use everruns_integrations_typesafe::{TypeSafe, TypeSafeCapability, TypeSafeClient};

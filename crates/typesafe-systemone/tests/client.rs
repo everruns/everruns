@@ -3,10 +3,10 @@
 
 use std::time::Duration;
 
-use everruns_integrations_typesafe::{
+use serde_json::json;
+use typesafe_systemone::{
     Error, Evaluation, Question, RetryPolicy, TypeSafeClient, client::DEFAULT_BASE_URL,
 };
-use serde_json::json;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{body_json, header, method, path},
@@ -300,4 +300,37 @@ async fn retries_can_be_disabled() {
 #[test]
 fn the_default_endpoint_is_the_documented_one() {
     assert_eq!(DEFAULT_BASE_URL, "https://api.typesafe.ai");
+}
+
+#[tokio::test]
+async fn boolean_and_probability_alias_the_wire_names() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_json(json!({
+            "state": "Charged twice. Please refund the duplicate.",
+            "model": "jev-latest",
+            "questions": {"refund": {"type": "noul", "instructions": "Is a refund requested?"}}
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "jev-1.13.0",
+            "answers": {"refund": {"type": "noul", "noul": 0.97}},
+            "usage": {"input_tokens": 1, "output_tokens": 1}
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let judgment = client(&server)
+        .evaluate(
+            Evaluation::new("Charged twice. Please refund the duplicate.")
+                .ask("refund", Question::boolean("Is a refund requested?")),
+        )
+        .await
+        .expect("evaluation succeeds");
+
+    assert_eq!(judgment.probability("refund").unwrap(), 0.97);
+    assert_eq!(
+        judgment.probability("refund").unwrap(),
+        judgment.noul("refund").unwrap()
+    );
 }

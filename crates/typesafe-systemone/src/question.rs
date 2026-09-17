@@ -62,7 +62,7 @@ impl Question {
     /// A yes/no question.
     ///
     /// ```
-    /// use everruns_integrations_typesafe::Question;
+    /// use typesafe_systemone::Question;
     /// let q = Question::noul("Does this message convey urgency?");
     /// ```
     pub fn noul(instructions: impl Into<Value>) -> Self {
@@ -70,6 +70,14 @@ impl Question {
             instructions: instructions.into(),
             criteria: None,
         }
+    }
+
+    /// A yes/no question, named as other TypeSafe clients name it.
+    ///
+    /// Alias of [`Question::noul`]; `noul` is the name on the wire and in
+    /// TypeSafe's own docs, `boolean` is the one the AI SDK uses.
+    pub fn boolean(instructions: impl Into<Value>) -> Self {
+        Self::noul(instructions)
     }
 
     /// Describe what yes and no mean for a [`Question::noul`]. No-op on the
@@ -87,7 +95,7 @@ impl Question {
     /// A single-selection question over the given options.
     ///
     /// ```
-    /// use everruns_integrations_typesafe::Question;
+    /// use typesafe_systemone::Question;
     /// let q = Question::choice(
     ///     "Which team should handle this?",
     ///     [("billing", "Payments, invoicing, refunds"), ("technical", "Bugs and outages")],
@@ -123,7 +131,7 @@ impl Question {
     /// A graded question over ordered levels, lowest first.
     ///
     /// ```
-    /// use everruns_integrations_typesafe::Question;
+    /// use typesafe_systemone::Question;
     /// let q = Question::score(
     ///     "How funny is this joke?",
     ///     ["Not funny at all", "Mildly amusing", "Genuinely funny", "Hilarious"],
