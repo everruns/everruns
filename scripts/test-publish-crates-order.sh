@@ -8,6 +8,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 python3 scripts/sync-publish-pin-versions.py --check
+python3 scripts/plan-crate-release.py --self-test
 
 python3 - <<'PY'
 import importlib.util
@@ -21,6 +22,7 @@ import tomllib
 repo = pathlib.Path.cwd()
 workflow = (repo / ".github/workflows/publish-crates.yml").read_text()
 release = (repo / ".github/workflows/release.yml").read_text()
+crate_release = (repo / ".github/workflows/crate-release.yml").read_text()
 failures: list[str] = []
 
 
@@ -36,6 +38,13 @@ require('cargo publish --locked --no-verify --package "$PACKAGE"' in workflow, "
 require("CRATES=(" not in workflow, "workflow must not retain a bulk crate publish list")
 require("workspace package version" not in workflow.lower(), "workflow must not validate against the product workspace version")
 require("publish-crates" not in release and "publish-crate" not in release, "product releases must not dispatch library publishing")
+require("run-name: Publish " in workflow, "publish workflow must expose correlated inputs in its run name")
+require("correlation:" in workflow, "publish workflow must require a correlation input")
+require('--ref "$TAG"' in crate_release, "crate controller must dispatch from the trusted package tag")
+require(
+    "scripts/select_publish_run.py" in crate_release,
+    "crate controller must select the uniquely correlated publish run",
+)
 
 metadata = json.loads(subprocess.check_output(
     ["cargo", "metadata", "--no-deps", "--format-version", "1"], text=True
@@ -115,6 +124,44 @@ with tempfile.TemporaryDirectory() as directory:
         not sync.rewrite_inline_dependency(fixture, "dev-dependencies", "everruns-host", "0.21.0"),
         "rewriting an already-current pin must report no change",
     )
+
+selector_spec = importlib.util.spec_from_file_location(
+    "select_publish_run", repo / "scripts/select_publish_run.py"
+)
+selector = importlib.util.module_from_spec(selector_spec)
+selector_spec.loader.exec_module(selector)
+package = "everruns-core"
+tag = "crate/everruns-core/v0.24.0"
+sha = "a" * 40
+correlation = f"100-1-4-{sha}"
+intended = {
+    "databaseId": 42,
+    "displayTitle": selector.expected_title(package, tag, sha, correlation),
+    "event": "workflow_dispatch",
+    "headSha": sha,
+}
+runs = [
+    {
+        "databaseId": 99,
+        "displayTitle": selector.expected_title(
+            "everruns-host",
+            "crate/everruns-host/v0.23.0",
+            sha,
+            f"manual-{sha}",
+        ),
+        "event": "workflow_dispatch",
+        "headSha": sha,
+    },
+    intended,
+]
+require(
+    selector.select_run(runs, package, tag, sha, correlation) == 42,
+    "newer concurrent unrelated dispatch must not displace the intended run",
+)
+require(
+    selector.select_run(runs, package, tag, "b" * 40, correlation) is None,
+    "publish-run selection must reject the wrong release SHA",
+)
 
 legacy_macros = repo / "crates/everruns-macros"
 require(not legacy_macros.exists(), "legacy crates/everruns-macros path must not exist")

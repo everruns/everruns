@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.18.9"
+version = "0.18.11"
 dependencies = [
  "async-trait",
  "chrono",
@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capability"
-version = "0.18.3"
+version = "0.18.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.22.0"
+version = "0.24.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -451,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.19.1"
+version = "0.19.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -484,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -509,14 +509,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-model-profiles"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "everruns-provider"
-version = "0.23.0"
+version = "0.25.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2400,9 +2400,9 @@ checksum = "0b993bddc193ae5bd0d623b49ec06ac3e9312875fdae725a975c51db1cc1677f"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.25"
+version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab72a15cf68d77cb0987d3684aa8a45c5ef827e8cb49ee2f30bfd7ba2feb519f"
+checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
 name = "unsafe-libyaml"

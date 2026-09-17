@@ -158,6 +158,15 @@ def latest_published_version(records: list[tuple[str, bool]]) -> str | None:
     return best
 
 
+def selected_baseline_version(
+    records: list[tuple[str, bool]], exact_version: str | None = None
+) -> str | None:
+    """Select an exact published version, or the latest non-yanked baseline."""
+    if exact_version is not None:
+        return exact_version if any(version == exact_version for version, _ in records) else None
+    return latest_published_version(records)
+
+
 def normalize_package_version(text: str) -> str:
     """Neutralize only the `[package] version = ...` line (a pure bump)."""
     out, section = [], None
@@ -172,33 +181,74 @@ def normalize_package_version(text: str) -> str:
     return "".join(out)
 
 
-def trees_equal(workspace_dir: str, baseline_dir: str) -> bool:
+GENERATED_PACKAGE_FILES = {
+    ".cargo_vcs_info.json",
+    "Cargo.lock",
+}
+PACKAGE_LIST_ONLY_FILES = GENERATED_PACKAGE_FILES | {"Cargo.toml.orig"}
+
+
+def package_files(name: str) -> set[str]:
+    """Files Cargo will include from the current workspace package."""
+    output = subprocess.check_output(
+        [
+            "cargo",
+            "package",
+            "--list",
+            "--allow-dirty",
+            "--locked",
+            "--package",
+            name,
+        ],
+        text=True,
+    )
+    return {
+        line.strip()
+        for line in output.splitlines()
+        if line.strip() and line.strip() not in PACKAGE_LIST_ONLY_FILES
+    }
+
+
+def trees_equal(
+    workspace_dir: str,
+    baseline_dir: str,
+    current_package_files: set[str] | None = None,
+) -> bool:
     """True when the packaged baseline tree matches the workspace crate.
 
-    Every file shipped in the .crate must match (with only the package
-    version line neutralized); any content difference, or any extra
-    workspace file outside target/, means "not equal" and the crate falls
-    through to the full semver check. Cargo.toml.orig / .cargo_vcs_info.json
-    exist only in the packaged tree and are ignored.
+    Every source file shipped in the .crate must match, with only the package
+    version line neutralized. Cargo-generated metadata and lockfiles are
+    ignored. ``current_package_files`` comes from ``cargo package --list`` so
+    package excludes do not look like source changes, while newly shipped files
+    still do.
     """
-    packaged_only = {"Cargo.toml.orig", ".cargo_vcs_info.json"}
-    baseline_files: set[str] = set()
+    baseline_paths: dict[str, str] = {}
+    original_manifest = os.path.join(baseline_dir, "Cargo.toml.orig")
     for root, _dirs, files in os.walk(baseline_dir):
         for name in files:
             rel = os.path.relpath(os.path.join(root, name), baseline_dir)
-            if rel not in packaged_only:
-                baseline_files.add(rel)
-    workspace_files: set[str] = set()
-    for root, dirs, files in os.walk(workspace_dir):
-        dirs[:] = [d for d in dirs if d != "target"]
-        for name in files:
-            workspace_files.add(os.path.relpath(os.path.join(root, name), workspace_dir))
+            if rel not in GENERATED_PACKAGE_FILES:
+                if rel == "Cargo.toml.orig":
+                    baseline_paths["Cargo.toml"] = os.path.join(root, name)
+                elif rel != "Cargo.toml" or not os.path.isfile(original_manifest):
+                    baseline_paths[rel] = os.path.join(root, name)
+    baseline_files = set(baseline_paths)
+    if current_package_files is None:
+        workspace_files: set[str] = set()
+        for root, dirs, files in os.walk(workspace_dir):
+            dirs[:] = [d for d in dirs if d != "target"]
+            for name in files:
+                workspace_files.add(
+                    os.path.relpath(os.path.join(root, name), workspace_dir)
+                )
+    else:
+        workspace_files = current_package_files - GENERATED_PACKAGE_FILES
     if baseline_files - workspace_files:
         return False
-    if workspace_files - baseline_files - packaged_only:
+    if workspace_files - baseline_files:
         return False
     for rel in baseline_files:
-        with open(os.path.join(baseline_dir, rel), "rb") as fh:
+        with open(baseline_paths[rel], "rb") as fh:
             baseline_bytes = fh.read()
         with open(os.path.join(workspace_dir, rel), "rb") as fh:
             workspace_bytes = fh.read()
@@ -233,19 +283,23 @@ def manifest_dirs() -> dict[str, str]:
     return _manifest_dirs
 
 
-def identical_to_baseline(name: str, records=None) -> tuple[bool, str]:
+def identical_to_baseline(
+    name: str, records=None, exact_version: str | None = None
+) -> tuple[bool, str]:
     """Whether a candidate's source is identical to its published baseline.
 
-    Downloads the baseline .crate and compares trees. Returns (True, reason)
-    only on a byte-level match (modulo the package version line); every other
-    outcome -- including any infrastructure failure -- returns False so the
-    crate gets the full semver check. This function must never turn the gate
-    green by itself.
+    Downloads either ``exact_version`` (including a yanked release) or the latest
+    non-yanked .crate and compares trees. Returns (True, reason) only on a
+    byte-level match (modulo the package version line); every other outcome --
+    including any infrastructure failure -- returns False so the crate gets the
+    full semver check. This function must never turn the gate green by itself.
     """
     if records is None:
         records = index_records(name)
-    baseline = latest_published_version(records)
+    baseline = selected_baseline_version(records, exact_version)
     if baseline is None:
+        if exact_version is not None:
+            return False, f"published baseline {exact_version} not found"
         return False, "no published baseline to compare against"
     try:
         crate_dir = manifest_dirs()[name]
@@ -258,17 +312,11 @@ def identical_to_baseline(name: str, records=None) -> tuple[bool, str]:
             with urllib.request.urlopen(request, timeout=60) as response:
                 payload = response.read()
             with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
-                try:
-                    archive.extractall(tmp, filter="data")
-                except TypeError:
-                    # Python < 3.12 predates the filter= parameter; the
-                    # tarball comes from crates.io over TLS, so plain
-                    # extraction is acceptable here.
-                    archive.extractall(tmp)
+                archive.extractall(tmp, filter="data")
             unpacked = os.path.join(tmp, f"{name}-{baseline}")
             if not os.path.isdir(unpacked):
                 return False, "baseline archive layout unexpected"
-            if trees_equal(crate_dir, unpacked):
+            if trees_equal(crate_dir, unpacked, package_files(name)):
                 return True, f"source identical to published {name} {baseline}"
             return False, f"source differs from published {name} {baseline}"
     except Exception as exc:  # noqa: BLE001 -- fail open by design
@@ -304,6 +352,48 @@ def run_semver_checks(packages: list[str]) -> int:
         argv += ["--package", name]
     print(f"$ {' '.join(argv)}", flush=True)
     return subprocess.call(argv)
+
+
+def same_version_packages(
+    current: dict[str, str], published: dict[str, set[str]]
+) -> list[str]:
+    """Published packages whose workspace version is already burned upstream."""
+    return sorted(
+        name
+        for name, version in current.items()
+        if version in (published.get(name) or set())
+    )
+
+
+def check_published_source_versions() -> int:
+    """Reject packaged source changes that reuse an already-published version."""
+    current = workspace_versions()
+    published = fetch_many(current, published_versions)
+    packages = same_version_packages(current, published)
+    baselines = fetch_many(packages, index_records)
+    drift: list[tuple[str, str, str]] = []
+    for name in packages:
+        identical, reason = identical_to_baseline(
+            name, baselines[name], exact_version=current[name]
+        )
+        if not identical:
+            drift.append((name, current[name], reason))
+    if not drift:
+        print(
+            f"Published source versions are unchanged across {len(packages)} package(s)."
+        )
+        return 0
+    print(
+        "::error::Packaged source changed without a new crate version. "
+        "Published versions are immutable:"
+    )
+    for name, version, reason in drift:
+        print(f"  - {name} {version}: {reason}")
+    print(
+        "Run `python3 scripts/plan-crate-release.py`, apply the required bumps, "
+        "sync internal pins, and close the publish cone before merging."
+    )
+    return 1
 
 
 def run_check(plan_only: bool, candidates_only: bool, shard=None) -> int:
@@ -454,6 +544,16 @@ def self_test() -> int:
         latest_published_version([("0.1.0", False), ("0.2.0", False)]),
         "0.2.0",
     )
+    expect(
+        "exact baseline allows yanked version",
+        selected_baseline_version([("0.18.1", True), ("0.18.2", False)], "0.18.1"),
+        "0.18.1",
+    )
+    expect(
+        "missing exact baseline fails",
+        selected_baseline_version([("0.18.2", False)], "0.18.1"),
+        None,
+    )
     expect("no baseline", latest_published_version([]), None)
     expect(
         "prerelease below release",
@@ -465,9 +565,17 @@ def self_test() -> int:
         fetch_many(["b", "a"], lambda n: n.upper()),
         {"b": "B", "a": "A"},
     )
+    expect(
+        "same-version packages are sorted",
+        same_version_packages(
+            {"b": "0.2.0", "a": "0.1.0", "new": "0.1.0"},
+            {"b": {"0.2.0"}, "a": {"0.1.0"}, "new": set()},
+        ),
+        ["a", "b"],
+    )
 
-    before = '[package]\nname = "demo"\nversion = "0.18.2"\nedition = "2021"\n'
-    after = '[package]\nname = "demo"\nversion = "0.19.0"\nedition = "2021"\n'
+    before = '[package]\nname = "demo"\nversion = "0.18.1"\nedition = "2021"\n'
+    after = '[package]\nname = "demo"\nversion = "0.18.2"\nedition = "2021"\n'
     expect(
         "pure bump compares equal",
         normalize_package_version(before) == normalize_package_version(after),
@@ -481,15 +589,22 @@ def self_test() -> int:
         False,
     )
 
-    with tempfile.TemporaryDirectory() as work, tempfile.TemporaryDirectory() as base:
+    with (
+        tempfile.TemporaryDirectory() as work,
+        tempfile.TemporaryDirectory() as base,
+        tempfile.TemporaryDirectory() as newer,
+    ):
         os.makedirs(os.path.join(work, "src"))
         os.makedirs(os.path.join(base, "src"))
+        os.makedirs(os.path.join(newer, "src"))
         with open(os.path.join(work, "Cargo.toml"), "w") as fh:
-            fh.write(after)
+            fh.write(before)
         with open(os.path.join(base, "Cargo.toml"), "w") as fh:
             fh.write(before)
         with open(os.path.join(base, "Cargo.toml.orig"), "w") as fh:
-            fh.write("orig\n")
+            fh.write(before)
+        with open(os.path.join(base, "Cargo.lock"), "w") as fh:
+            fh.write("generated\n")
         with open(os.path.join(work, "src", "lib.rs"), "w") as fh:
             fh.write("pub fn f() {}\n")
         with open(os.path.join(base, "src", "lib.rs"), "w") as fh:
@@ -503,6 +618,34 @@ def self_test() -> int:
         with open(os.path.join(work, "extra.rs"), "w") as fh:
             fh.write("// new\n")
         expect("extra workspace file detected", trees_equal(work, base), False)
+        expect(
+            "package excludes ignore workspace-only files",
+            trees_equal(work, base, {"Cargo.toml", "src/lib.rs"}),
+            True,
+        )
+        expect(
+            "new packaged files are detected",
+            trees_equal(work, base, {"Cargo.toml", "src/lib.rs", "extra.rs"}),
+            False,
+        )
+        with open(os.path.join(newer, "Cargo.toml.orig"), "w") as fh:
+            fh.write(after)
+        with open(os.path.join(newer, "src", "lib.rs"), "w") as fh:
+            fh.write("pub fn g() {}\n")
+        records = [("0.18.1", True), ("0.18.2", False)]
+        archives = {"0.18.1": base, "0.18.2": newer}
+        exact = selected_baseline_version(records, "0.18.1")
+        latest = selected_baseline_version(records)
+        expect(
+            "current source matches its exact older archive",
+            trees_equal(work, archives[exact], {"Cargo.toml", "src/lib.rs"}),
+            True,
+        )
+        expect(
+            "current source differs from the newer archive",
+            trees_equal(work, archives[latest], {"Cargo.toml", "src/lib.rs"}),
+            False,
+        )
 
     for failure in failures:
         print(f"  FAIL {failure}")
@@ -531,6 +674,11 @@ def main() -> int:
         help="run the network-free checks of the planning logic",
     )
     parser.add_argument(
+        "--check-source-versions",
+        action="store_true",
+        help="reject packaged source changes at versions already on crates.io",
+    )
+    parser.add_argument(
         "--shard",
         default=None,
         metavar="INDEX/COUNT",
@@ -539,6 +687,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.self_test:
         return self_test()
+    if args.check_source_versions:
+        return check_published_source_versions()
     shard = None
     if args.shard:
         try:

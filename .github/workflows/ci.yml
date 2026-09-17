@@ -184,6 +184,8 @@ jobs:
               # a report script reached main with its own test never running.
               - 'scripts/report_*.py'
               - 'scripts/lib/**'
+              - 'scripts/select_publish_run.py'
+              - 'scripts/plan-crate-release.py'
               - 'scripts/sync-publish-pin-versions.py'
               # scripts/test-publish-crates-order.sh reads the publish workflow
               # and the workspace member manifests it publishes.
@@ -458,6 +460,25 @@ jobs:
       - name: Check released crates are bumped large enough
         if: steps.plan.outputs.found == 'true'
         run: python3 scripts/check-semver-bumps.py --shard ${{ matrix.shard }}/4
+
+  published-source-versions:
+    name: Published Source Version Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Self-test the semver-bump gate
+        run: python3 scripts/check-semver-bumps.py --self-test
+
+      - name: Reject changed source at an immutable crate version
+        run: python3 scripts/check-semver-bumps.py --check-source-versions
 
   msrv:
     name: Published Crate MSRV
