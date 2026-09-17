@@ -1259,37 +1259,29 @@ jobs:
       - name: Run migrations
         run: sqlx migrate run --source crates/server/migrations
 
-      # One build wave per shard. Each `cargo test` invocation otherwise pays its
-      # own codegen+link pass: everruns-server, everruns-worker and
-      # everruns-integrations-e2b were each measured compiling 3x within a single
-      # shard, ~6m of a 16m job. --no-run builds every target the run steps below
-      # need, so those steps link nothing and only execute. The run steps stay
-      # split so a failure still names the area it came from.
-      - name: Build server test binaries
+      # Keep the number of `cargo test` invocations per shard to a minimum.
+      # everruns-server, everruns-worker and everruns-integrations-e2b recompile
+      # on EVERY separate invocation against this package -- ~1m50 each -- even
+      # immediately after a `--no-run` build of the exact same targets, so a
+      # prebuild step does not help here (it was tried and only added a wave).
+      # Within one invocation they compile once, which is why the domain shard
+      # runs as a single command. The server shard needs two because its suites
+      # disagree on --test-threads: the lib's 2451 unit tests run in 18s in
+      # parallel and serializing them to merge the groups costs more than the
+      # wave it saves. The in-memory TestServer contracts ride along with --lib
+      # rather than rebuilding in the pure-test job.
+      - name: Run server unit tests (require DB) and in-memory API contracts
         if: ${{ matrix.shard == 'server' }}
         run: |
-          cargo test -p everruns-server --no-run \
+          cargo test -p everruns-server \
             --lib \
-            --test api_integration_test \
-            --test repository_integration_test \
-            --test repository_conformance_test \
             --test mcp_url_consent_test \
             --test mcp_url_elicitation_test \
             --test sse_replay_test
 
-      - name: Run server unit tests (require DB for storage layer)
-        if: ${{ matrix.shard == 'server' }}
-        run: cargo test -p everruns-server --lib
-
       - name: Run server integration tests (API + repository)
         if: ${{ matrix.shard == 'server' }}
         run: cargo test -p everruns-server --test api_integration_test --test repository_integration_test --test repository_conformance_test -- --test-threads=1
-
-      # These contracts use in-memory TestServer instances, but share the server
-      # compilation above instead of rebuilding it in the pure-test job.
-      - name: Run in-memory server API contracts
-        if: ${{ matrix.shard == 'server' }}
-        run: cargo test -p everruns-server --test mcp_url_consent_test --test mcp_url_elicitation_test --test sse_replay_test
 
       # Domain suite: the blob-offload contracts against the in-memory
       # object_store backend, the domain-focused integration tests, and the
