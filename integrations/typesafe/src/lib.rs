@@ -1,8 +1,8 @@
 //! [TypeSafe](https://typesafe.ai) typed judgments for Everruns agents.
 //!
-//! This crate is the Everruns capability. The vendor client it runs on is the
-//! standalone [`typesafe_systemone`] crate, which carries no Everruns
-//! dependency and can be used on its own.
+//! This crate is the [Everruns](https://everruns.com) capability. The vendor
+//! client it runs on is the standalone [`typesafe_systemone`] crate, which
+//! carries no Everruns dependency and can be used on its own.
 //!
 //! The `typesafe` capability contributes one tool, `typesafe_evaluate`: the
 //! agent hands it content and its own typed questions, and gets calibrated

@@ -22,9 +22,11 @@ answer: verification, rating, routing, extraction, moderation, reranking.
 typesafe-systemone = "0.1"
 ```
 
-No Everruns dependency: this is the TypeSafe client on its own. The Everruns
-capability built on it is
-[`everruns-integrations-typesafe`](https://crates.io/crates/everruns-integrations-typesafe).
+No Everruns dependency: this is the TypeSafe client on its own. It is
+maintained alongside [Everruns](https://everruns.com), the durable agentic
+harness engine, which wraps it as an agent capability in
+[`everruns-integrations-typesafe`](https://crates.io/crates/everruns-integrations-typesafe)
+— but nothing here requires it.
 
 The `integration` feature compiles the real-API smoke tests; it is off by
 default and needs `TYPESAFE_API_KEY`.
@@ -62,6 +64,17 @@ if judgment.noul("is_joke")? > 0.5 && humor.probability_at_or_above(2) > 0.5 {
 Questions asked together run in parallel inside one request and cannot see each
 other's answers. Batching is the cheap path: ask everything the code might
 need, including questions only one branch will read.
+
+## What It Provides
+
+- `TypeSafeClient` over the System One endpoint, with a request builder that
+  validates before it spends a round trip
+- The three question types — `noul`, `choice`, `score` — and their typed answers,
+  with the full probability distribution the model returned
+- Accessors that turn a distribution into a decision: `probability_at_or_above`,
+  `normalized`, `nearest_label`, `confidence`
+- Bounded retries for transport failures, `429`, and `5xx`, honoring `Retry-After`
+- Errors that never echo your API key, even when the upstream body does
 
 ## The three primitives
 
@@ -103,10 +116,10 @@ instead of forming a second impression in prose.
 }
 ```
 
-The same client also backs Everruns' `guardrails` capability when a check sets
-`"engine": "judgment"`, which turns one round trip per policy into one round
-trip per stage. See
-[`knowledge/execution/guardrails.md`](../../knowledge/execution/guardrails.md).
+The same client also backs Everruns'
+[guardrails](https://docs.everruns.com/capabilities/guardrails/) when a check
+sets `"engine": "judgment"`, which turns one round trip per policy into one
+round trip per stage.
 
 ## Examples
 

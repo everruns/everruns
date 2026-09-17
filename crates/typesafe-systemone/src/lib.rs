@@ -9,6 +9,10 @@
 //! Reach for it where you would otherwise prompt a chat model and parse JSON
 //! out of its answer: verification, rating, routing, moderation, reranking.
 //!
+//! The crate stands alone — it has no Everruns dependency — and is maintained
+//! alongside [Everruns](https://everruns.com), which wraps it as an agent
+//! capability in `everruns-integrations-typesafe`.
+//!
 //! # Example
 //!
 //! ```no_run
