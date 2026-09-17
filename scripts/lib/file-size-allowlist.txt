@@ -90,7 +90,6 @@
 4254 crates/server/tests/mcp_endpoint_test.rs
 4917 crates/server/tests/repository_integration_test.rs
 2110 crates/server/tests/slack_integration_test.rs
-6793 crates/server/tests/workflow_test.rs
 1737 crates/test-support/src/capabilities/fake_aws.rs
 4728 crates/test-support/tests/reason_atom_test.rs
 4386 crates/worker/src/grpc_adapters.rs
