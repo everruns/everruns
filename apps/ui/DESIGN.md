@@ -169,7 +169,12 @@ gold accent. Descriptive brand names map to systematic tokens as follows:
 - **Destructive (`hsl(0 84% 60%)`):** Errors and irreversible actions only.
 
 Every token has a light and dark value in `design-system.css`; the tokens above
-capture the light theme as the canonical reference.
+capture the light theme as the canonical reference. Dark mode is class-based:
+`.dark` on `<html>`, set from the `everruns_theme` cookie by `ThemeProvider`.
+Never reach for a raw palette color (`text-gray-500`, `bg-white`) for a themed
+surface — it will not follow the switch. The exceptions are deliberate: scrim
+overlays (`bg-black/50`), text on a saturated fill (`text-white` on
+`bg-destructive`), and the white document canvas behind user file previews.
 
 ## Typography
 

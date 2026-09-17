@@ -1,19 +1,19 @@
-version: 0.27.0
-date: 2026-09-15
+version: 0.28.0
+date: 2026-09-16
 headline:
-  - Agents,
-  - now in Slack.
+  - One home for
+  - agent exposure.
 summary:
-  - The Slack agent surface goes live end to end,
-  - sessions gain explicit environments,
-  - and ingress routes mount on endpoint IDs.
+  - Endpoints and triggers gain a single home,
+  - sessions and budgets attribute to endpoints,
+  - and channels re-parent from App to Agent.
 highlights:
-  - title: Slack agent surface
-    description: Agents run natively in Slack — streaming replies, a stop button, and live status.
-    source: "#3560"
-  - title: Session environments
-    description: A session declares where its commands run and what they may touch.
-    source: "#3599"
-  - title: Endpoint-ID ingress routing
-    description: Ingress routes mount on endpoint IDs with reserved routing tag prefixes.
-    source: "#3593"
+  - title: Agent exposure management
+    description: An agent's endpoints and triggers get one home, with a cross-agent Exposures view.
+    source: "#3624"
+  - title: Endpoint-attributed budgets
+    description: Sessions and budgets attribute to endpoints; Slack and FCP endpoint budgets enforce.
+    source: "#3623"
+  - title: Channels re-parent to Agent
+    description: Channels move from the retired App abstraction to the agent.
+    source: "#3618"

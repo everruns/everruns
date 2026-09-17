@@ -185,7 +185,7 @@ export function ModelRow({
                   aria-label={model.healthy ? "Model healthy" : "Model not ready"}
                   className={
                     "inline-block h-2.5 w-2.5 rounded-full " +
-                    (model.healthy ? "bg-green-500" : "bg-gray-300")
+                    (model.healthy ? "bg-green-500" : "bg-muted-foreground/40")
                   }
                 />
               </TooltipTrigger>

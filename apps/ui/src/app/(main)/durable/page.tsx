@@ -49,7 +49,7 @@ function getHealthStatusColor(status: string) {
     case "unhealthy":
       return "bg-red-500";
     default:
-      return "bg-gray-500";
+      return "bg-muted-foreground";
   }
 }
 
@@ -248,7 +248,7 @@ export default function DurableDashboardPage() {
                       {schedule.enabled ? (
                         <Play className="h-4 w-4 text-green-500" />
                       ) : (
-                        <Pause className="h-4 w-4 text-gray-400" />
+                        <Pause className="h-4 w-4 text-muted-foreground" />
                       )}
                       <div>
                         <p className="text-sm font-medium">{schedule.name}</p>
@@ -452,6 +452,6 @@ function WorkflowStatusIcon({ status }: { status: string }) {
     case "cancelled":
       return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
     default:
-      return <Clock className="h-4 w-4 text-gray-500" />;
+      return <Clock className="h-4 w-4 text-muted-foreground" />;
   }
 }
