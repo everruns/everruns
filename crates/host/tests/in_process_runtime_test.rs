@@ -3,14 +3,19 @@ use everruns_builtins::InfinityContextCapability;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    AgentDefinition, Capability, CapabilityRegistry, CapabilityStatus, ExecutionSession,
-    InitialFile, Message, MessageRole, WorkspacePolicy, session_files::SessionFileSystem,
+    AgentDefinition, CapabilityRegistry, ExecutionSession, InitialFile, Message, MessageRole,
+    WorkspacePolicy, session_files::SessionFileSystem,
 };
+// Only the bashkit-gated prompt-hook test defines a capability of its own or
+// appends accepted input.
+#[cfg(feature = "bashkit")]
+use everruns_core::{Capability, CapabilityStatus};
+#[cfg(feature = "bashkit")]
+use everruns_host::AcceptedTurnInput;
 use everruns_host::HostComposition;
 use everruns_host::{
-    AcceptedTurnInput, AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntimeBuilder,
-    RealDiskFileStore, SessionBuilder, SessionFileSystemFactory, SessionFileSystemFactoryContext,
-    TurnStopReason,
+    AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntimeBuilder, RealDiskFileStore,
+    SessionBuilder, SessionFileSystemFactory, SessionFileSystemFactoryContext, TurnStopReason,
 };
 use everruns_llmsim::LlmSimConfig;
 use everruns_llmsim::LlmSimRuntimeExt;

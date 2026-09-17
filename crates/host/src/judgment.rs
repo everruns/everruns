@@ -280,7 +280,11 @@ mod tests {
         }))
         .expect("answer");
         let converted = from_vendor_answer(&answer);
-        assert_eq!(converted.probability_at_or_above(1), Some(0.9));
+        // Summed float mass, so compare with a tolerance rather than exactly.
+        let tail = converted
+            .probability_at_or_above(1)
+            .expect("a score answer");
+        assert!((tail - 0.9).abs() < 1e-9, "{tail}");
         assert_eq!(converted.confidence(), Some(0.7));
         let JudgmentAnswer::Score { probabilities, .. } = &converted else {
             panic!("expected a score answer");
@@ -328,12 +332,11 @@ mod tests {
     #[test]
     fn env_config_is_disabled_without_a_key() {
         // Set/unset is process-global; assert the branch logic directly instead.
-        assert!(matches!(
-            SystemJudgmentConfig::Disabled
+        assert!(
+            !SystemJudgmentConfig::Disabled
                 .into_service()
-                .is_configured(),
-            false
-        ));
+                .is_configured()
+        );
         assert!(
             SystemJudgmentConfig::TypeSafe {
                 api_key: "k".to_string()
