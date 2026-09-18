@@ -1,6 +1,6 @@
 //! The provider-agnostic message a driver sends, and what it is made of.
 //!
-//! [`LlmMessage`] is the one message shape every driver converts from, whatever
+//! [`Message`] is the one message shape every driver converts from, whatever
 //! its vendor's wire format. Callers holding OpenAI chat JSON convert with
 //! [`openai_wire`](crate::openai_wire) rather than building these by hand.
 
@@ -8,11 +8,11 @@ use crate::tool_types::ToolCall;
 
 /// Message format for LLM calls (provider-agnostic)
 #[derive(Debug, Clone)]
-pub struct LlmMessage {
+pub struct Message {
     /// Provider-native call identities, retained alongside portable fallbacks.
     pub native_tool_calls: Vec<crate::native_async::NativeToolCall>,
-    pub role: LlmMessageRole,
-    pub content: LlmMessageContent,
+    pub role: MessageRole,
+    pub content: MessageContent,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub tool_call_id: Option<String>,
     /// Execution phase for assistant messages.
@@ -32,13 +32,13 @@ pub struct LlmMessage {
     pub configuration_update: Option<crate::model::ReasoningEffort>,
 }
 
-impl LlmMessage {
+impl Message {
     /// Create a message with text content
-    pub fn text(role: LlmMessageRole, content: impl Into<String>) -> Self {
+    pub fn text(role: MessageRole, content: impl Into<String>) -> Self {
         Self {
             native_tool_calls: Vec::new(),
             role,
-            content: LlmMessageContent::Text(content.into()),
+            content: MessageContent::Text(content.into()),
             tool_calls: None,
             tool_call_id: None,
             phase: None,
@@ -48,11 +48,11 @@ impl LlmMessage {
     }
 
     /// Create a message with content parts (text, images, audio)
-    pub fn parts(role: LlmMessageRole, parts: Vec<LlmContentPart>) -> Self {
+    pub fn parts(role: MessageRole, parts: Vec<LlmContentPart>) -> Self {
         Self {
             native_tool_calls: Vec::new(),
             role,
-            content: LlmMessageContent::Parts(parts),
+            content: MessageContent::Parts(parts),
             tool_calls: None,
             tool_call_id: None,
             phase: None,
@@ -72,10 +72,10 @@ impl LlmMessage {
     /// into user messages from external channels.
     pub fn prepend_text_prefix(&mut self, prefix: &str) {
         match &mut self.content {
-            LlmMessageContent::Text(text) => {
+            MessageContent::Text(text) => {
                 *text = format!("{}{}", prefix, text);
             }
-            LlmMessageContent::Parts(parts) => {
+            MessageContent::Parts(parts) => {
                 for part in parts.iter_mut() {
                     if let LlmContentPart::Text { text } = part {
                         *text = format!("{}{}", prefix, text);
@@ -104,10 +104,10 @@ impl LlmMessage {
 /// OpenResponses `instructions`) must accumulate rather than overwrite — otherwise
 /// the real agent system prompt is silently dropped and only the last notice
 /// survives. Returns `None` when there are no system messages.
-pub fn fold_system_messages(messages: &[LlmMessage]) -> Option<String> {
+pub fn fold_system_messages(messages: &[Message]) -> Option<String> {
     let mut system: Option<String> = None;
     for msg in messages {
-        if msg.role == LlmMessageRole::System {
+        if msg.role == MessageRole::System {
             let text = msg.content.to_text();
             system = Some(match system.take() {
                 Some(existing) if !existing.is_empty() => format!("{existing}\n\n{text}"),
@@ -120,19 +120,19 @@ pub fn fold_system_messages(messages: &[LlmMessage]) -> Option<String> {
 
 /// Message content - either a simple string or array of content parts
 #[derive(Debug, Clone)]
-pub enum LlmMessageContent {
+pub enum MessageContent {
     /// Simple text content
     Text(String),
     /// Array of content parts (text, images, audio)
     Parts(Vec<LlmContentPart>),
 }
 
-impl LlmMessageContent {
+impl MessageContent {
     /// Convert to plain text (concatenates text parts, ignores media)
     pub fn to_text(&self) -> String {
         match self {
-            LlmMessageContent::Text(s) => s.clone(),
-            LlmMessageContent::Parts(parts) => parts
+            MessageContent::Text(s) => s.clone(),
+            MessageContent::Parts(parts) => parts
                 .iter()
                 .filter_map(|p| match p {
                     LlmContentPart::Text { text } => Some(text.clone()),
@@ -145,24 +145,24 @@ impl LlmMessageContent {
 
     /// Check if content is simple text
     pub fn is_text(&self) -> bool {
-        matches!(self, LlmMessageContent::Text(_))
+        matches!(self, MessageContent::Text(_))
     }
 
     /// Check if content has multiple parts
     pub fn is_parts(&self) -> bool {
-        matches!(self, LlmMessageContent::Parts(_))
+        matches!(self, MessageContent::Parts(_))
     }
 }
 
-impl From<String> for LlmMessageContent {
+impl From<String> for MessageContent {
     fn from(s: String) -> Self {
-        LlmMessageContent::Text(s)
+        MessageContent::Text(s)
     }
 }
 
-impl From<&str> for LlmMessageContent {
+impl From<&str> for MessageContent {
     fn from(s: &str) -> Self {
-        LlmMessageContent::Text(s.to_string())
+        MessageContent::Text(s.to_string())
     }
 }
 
@@ -213,7 +213,7 @@ impl LlmContentPart {
 
 /// Message role for LLM calls
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LlmMessageRole {
+pub enum MessageRole {
     System,
     User,
     Assistant,

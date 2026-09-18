@@ -141,7 +141,7 @@ pin DNS only after private-range validation.
 
 ### Message Types
 
-1. **LlmMessage**: Provider-agnostic message format
+1. **Message**: Provider-agnostic message format
    - `role`: System, User, Assistant, Tool
    - `content`: Text or multipart (text, images, audio)
    - `tool_calls`: Optional tool calls (assistant messages)
@@ -248,7 +248,7 @@ Anthropic requires `max_tokens` in every request (cannot be omitted), so the dri
 
 Agents can override `max_tokens` via agent config. Cost guardrails should be configurable per-agent or per-org, not baked into driver code.
 
-3. **LlmMessage Extended Fields**:
+3. **Message Extended Fields**:
    - `reasoning`: Ordered provider reasoning artifacts for this assistant turn
 
 ### Reasoning Support

@@ -54,9 +54,9 @@ async fn history_is_stably_ordered_and_pages_at_exact_boundaries() {
     let exact = session.history().limit(2).unwrap().page().await.unwrap();
     assert_eq!(exact.len(), 2);
     assert!(exact.next_cursor.is_none());
-    assert_eq!(exact.messages[0].role, MessageRole::User);
+    assert_eq!(exact.messages[0].role, StoredMessageRole::User);
     assert_eq!(exact.messages[0].text(), "first input");
-    assert_eq!(exact.messages[1].role, MessageRole::Agent);
+    assert_eq!(exact.messages[1].role, StoredMessageRole::Agent);
     assert_eq!(exact.messages[1].text(), "assistant reply");
 
     session.run("second input").await.unwrap();

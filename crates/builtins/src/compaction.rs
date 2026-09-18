@@ -14,7 +14,7 @@ use super::{
     Capability, CapabilityLocalization, CapabilityStatus, ModelViewContext, ModelViewProvider,
 };
 use crate::events::TokenUsage;
-use crate::message::{ContentPart, Message, MessageRole};
+use crate::message::{ContentPart, Message as StoredMessage, MessageRole as StoredMessageRole};
 use crate::message_filter::MessageFilterProvider;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -312,15 +312,15 @@ impl CompactionPolicy for ConfiguredCompactionPolicy {
         }
     }
 
-    fn estimate_total_tokens(&self, messages: &[LlmMessage]) -> usize {
+    fn estimate_total_tokens(&self, messages: &[Message]) -> usize {
         estimate_total_tokens(messages)
     }
 
-    fn total_tool_result_bytes(&self, messages: &[Message]) -> usize {
+    fn total_tool_result_bytes(&self, messages: &[StoredMessage]) -> usize {
         total_tool_result_bytes(messages)
     }
 
-    fn should_compact_proactively(&self, messages: &[LlmMessage], context_window: usize) -> bool {
+    fn should_compact_proactively(&self, messages: &[Message], context_window: usize) -> bool {
         should_compact_proactively(messages, &self.config, context_window)
     }
 
@@ -338,10 +338,7 @@ impl CompactionPolicy for ConfiguredCompactionPolicy {
         )
     }
 
-    fn apply_observation_masking(
-        &self,
-        messages: &[LlmMessage],
-    ) -> ExecutionObservationMaskingResult {
+    fn apply_observation_masking(&self, messages: &[Message]) -> ExecutionObservationMaskingResult {
         let result = apply_observation_masking(messages, &self.config.observation_masking);
         ExecutionObservationMaskingResult {
             messages: result.messages,
@@ -351,10 +348,10 @@ impl CompactionPolicy for ConfiguredCompactionPolicy {
 
     fn aggressive_trim(
         &self,
-        messages: &[LlmMessage],
+        messages: &[Message],
         target_tokens: usize,
         preserve_system: bool,
-    ) -> Vec<LlmMessage> {
+    ) -> Vec<Message> {
         aggressive_trim(messages, target_tokens, preserve_system)
     }
 
@@ -362,16 +359,16 @@ impl CompactionPolicy for ConfiguredCompactionPolicy {
         build_summarization_prompt(&self.config.summarization)
     }
 
-    fn format_messages_for_summarization(&self, messages: &[LlmMessage]) -> String {
+    fn format_messages_for_summarization(&self, messages: &[Message]) -> String {
         format_messages_for_summarization(messages)
     }
 
     fn compose_summary_with_recent(
         &self,
-        system_message: Option<LlmMessage>,
+        system_message: Option<Message>,
         summary_text: &str,
-        recent_messages: &[LlmMessage],
-    ) -> Vec<LlmMessage> {
+        recent_messages: &[Message],
+    ) -> Vec<Message> {
         compose_summary_with_recent(system_message, summary_text, recent_messages)
     }
 }
@@ -532,10 +529,10 @@ struct CompactionModelViewProvider;
 impl ModelViewProvider for CompactionModelViewProvider {
     fn apply_model_view(
         &self,
-        messages: Vec<Message>,
+        messages: Vec<StoredMessage>,
         config: &serde_json::Value,
         context: &ModelViewContext<'_>,
-    ) -> Vec<Message> {
+    ) -> Vec<StoredMessage> {
         let config = RuntimeCompactionConfig::from_json(config);
         let masking = build_model_view_messages_owned(messages, &config, context.prior_usage);
         if masking.masked_count > 0 {
@@ -575,7 +572,7 @@ impl MessageFilterProvider for CompactionFilterProvider {
         // The filter provider signals that compaction is active on this session.
         // Actual observation masking is applied at LLM message construction time
         // (in ReasonAtom) rather than at message query time, because masking
-        // operates on LlmMessage format, not the storage Message format.
+        // operates on the provider `Message` format, not the storage `StoredMessage` format.
         //
         // The proactive compaction check in ReasonAtom reads the compaction config
         // and applies masking + budget checks before the LLM call.
@@ -594,10 +591,10 @@ impl MessageFilterProvider for CompactionFilterProvider {
 ///
 /// This is intentionally simple. More accurate estimation (tiktoken, etc.) can
 /// be swapped in later, but char/4 is sufficient for budget decisions.
-pub fn estimate_tokens(msg: &LlmMessage) -> usize {
+pub fn estimate_tokens(msg: &Message) -> usize {
     let text_len = match &msg.content {
-        LlmMessageContent::Text(t) => t.len(),
-        LlmMessageContent::Parts(parts) => parts
+        MessageContent::Text(t) => t.len(),
+        MessageContent::Parts(parts) => parts
             .iter()
             .map(|p| match p {
                 LlmContentPart::Text { text } => text.len(),
@@ -622,7 +619,7 @@ pub fn estimate_tokens(msg: &LlmMessage) -> usize {
 }
 
 /// Estimate total tokens for a slice of messages.
-pub fn estimate_total_tokens(messages: &[LlmMessage]) -> usize {
+pub fn estimate_total_tokens(messages: &[Message]) -> usize {
     messages.iter().map(estimate_tokens).sum()
 }
 
@@ -631,7 +628,7 @@ pub fn estimate_total_tokens(messages: &[LlmMessage]) -> usize {
 /// Returns `true` if the estimated tokens exceed `budget_percent` of the model's
 /// context window.
 pub fn should_compact_proactively(
-    messages: &[LlmMessage],
+    messages: &[Message],
     config: &RuntimeCompactionConfig,
     context_window_tokens: usize,
 ) -> bool {
@@ -676,10 +673,10 @@ pub fn should_compact_for_cost(
 /// (e.g. `activate_skill` results and their tool call messages), and the
 /// most recent messages. This is the last resort — lossy, no recovery.
 pub fn aggressive_trim(
-    messages: &[LlmMessage],
+    messages: &[Message],
     target_tokens: usize,
     has_system_prompt: bool,
-) -> Vec<LlmMessage> {
+) -> Vec<Message> {
     let mut result = Vec::new();
     let mut token_budget = target_tokens;
 
@@ -727,14 +724,14 @@ pub fn aggressive_trim(
     // If protected messages alone exceed the remaining budget, keep as many
     // protected messages as possible (newest first) and skip non-protected.
     if protected_budget > token_budget {
-        let mut protected_with_indices: Vec<(usize, LlmMessage)> = protected_indices
+        let mut protected_with_indices: Vec<(usize, Message)> = protected_indices
             .iter()
             .map(|&idx| (idx, conversation[idx].clone()))
             .collect();
         protected_with_indices.sort_by_key(|(i, _)| *i);
 
         let mut remaining = token_budget;
-        let mut kept: Vec<(usize, LlmMessage)> = Vec::new();
+        let mut kept: Vec<(usize, Message)> = Vec::new();
         for (idx, msg) in protected_with_indices.into_iter().rev() {
             let t = estimate_tokens(&msg);
             if t <= remaining {
@@ -765,7 +762,7 @@ pub fn aggressive_trim(
     }
 
     // Merge protected + kept messages in original order
-    let mut all_kept: Vec<(usize, LlmMessage)> = Vec::new();
+    let mut all_kept: Vec<(usize, Message)> = Vec::new();
     for &idx in &protected_indices {
         all_kept.push((idx, conversation[idx].clone()));
     }
@@ -864,9 +861,9 @@ fn default_warm_messages() -> usize {
 ///
 /// Returns a vec of (tier, message) pairs in original order.
 pub fn classify_memory_tiers<'a>(
-    messages: &'a [LlmMessage],
+    messages: &'a [Message],
     config: &HierarchicalMemoryConfig,
-) -> Vec<(MemoryTier, &'a LlmMessage)> {
+) -> Vec<(MemoryTier, &'a Message)> {
     let len = messages.len();
     messages
         .iter()
@@ -893,11 +890,11 @@ pub fn classify_memory_tiers<'a>(
 /// Protected messages (e.g. `activate_skill` results) in cold/warm tiers are
 /// promoted to the output verbatim — they are never dropped or masked.
 pub fn apply_hierarchical_memory(
-    messages: &[LlmMessage],
+    messages: &[Message],
     config: &HierarchicalMemoryConfig,
     masking_config: &ObservationMaskingConfig,
     cold_summary: Option<&str>,
-) -> Vec<LlmMessage> {
+) -> Vec<Message> {
     let len = messages.len();
     let hot_start = len.saturating_sub(config.hot_messages);
     let warm_start = hot_start.saturating_sub(config.warm_messages);
@@ -908,7 +905,7 @@ pub fn apply_hierarchical_memory(
     if warm_start > 0 {
         // Extract protected messages from cold tier before dropping
         let cold_msgs = &messages[..warm_start];
-        let protected_cold: Vec<LlmMessage> = cold_msgs
+        let protected_cold: Vec<Message> = cold_msgs
             .iter()
             .filter(|m| is_protected_tool_result(cold_msgs, m) || is_protected_tool_call_message(m))
             .cloned()
@@ -955,7 +952,7 @@ pub fn apply_hierarchical_memory(
 // Protected Tool Detection
 // ============================================================================
 
-use crate::driver_registry::{LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole};
+use crate::driver_registry::{LlmContentPart, Message, MessageContent, MessageRole};
 
 /// Tool names whose results must be protected from compaction.
 ///
@@ -970,8 +967,8 @@ const PROTECTED_TOOL_NAMES: &[&str] = &["activate_skill"];
 ///
 /// Looks up the tool_call_id in preceding assistant messages to find the tool name.
 /// Returns `true` if the tool name is in `PROTECTED_TOOL_NAMES`.
-fn is_protected_tool_result(messages: &[LlmMessage], tool_msg: &LlmMessage) -> bool {
-    if tool_msg.role != LlmMessageRole::Tool {
+fn is_protected_tool_result(messages: &[Message], tool_msg: &Message) -> bool {
+    if tool_msg.role != MessageRole::Tool {
         return false;
     }
     let tool_name = find_tool_call_name(messages, tool_msg);
@@ -981,8 +978,8 @@ fn is_protected_tool_result(messages: &[LlmMessage], tool_msg: &LlmMessage) -> b
 /// Check if an assistant message contains a tool call to a protected tool.
 ///
 /// Returns `true` if any tool call in the message targets a protected tool name.
-fn is_protected_tool_call_message(msg: &LlmMessage) -> bool {
-    if msg.role != LlmMessageRole::Assistant {
+fn is_protected_tool_call_message(msg: &Message) -> bool {
+    if msg.role != MessageRole::Assistant {
         return false;
     }
     msg.tool_calls.as_ref().is_some_and(|calls| {
@@ -1000,7 +997,7 @@ fn is_protected_tool_call_message(msg: &LlmMessage) -> bool {
 #[derive(Debug)]
 pub struct ObservationMaskingResult {
     /// The masked messages.
-    pub messages: Vec<LlmMessage>,
+    pub messages: Vec<Message>,
     /// Number of tool outputs that were masked.
     pub masked_count: usize,
 }
@@ -1013,7 +1010,7 @@ pub struct ObservationMaskingResult {
 /// Protected tool results (e.g. `activate_skill`) are never masked — they contain
 /// durable behavioral instructions that must survive compaction.
 pub fn apply_observation_masking(
-    messages: &[LlmMessage],
+    messages: &[Message],
     config: &ObservationMaskingConfig,
 ) -> ObservationMaskingResult {
     apply_observation_masking_with_protected(messages, config, &std::collections::HashSet::new())
@@ -1023,7 +1020,7 @@ pub fn apply_observation_masking(
 #[derive(Debug)]
 pub struct CostControlMaskingResult {
     /// Messages after stale bulky tool results were replaced by summaries.
-    pub messages: Vec<Message>,
+    pub messages: Vec<StoredMessage>,
     /// Number of tool-result messages that were masked.
     pub masked_count: usize,
     /// Tool-result payload bytes before masking.
@@ -1038,7 +1035,7 @@ pub struct CostControlMaskingResult {
 /// view used for provider serialization when the compaction capability is
 /// configured.
 pub fn build_model_view_messages(
-    stored_messages: &[Message],
+    stored_messages: &[StoredMessage],
     compaction_config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
@@ -1049,7 +1046,7 @@ pub fn build_model_view_messages(
 ///
 /// This avoids cloning the message list when masking does not apply.
 pub fn build_model_view_messages_owned(
-    stored_messages: Vec<Message>,
+    stored_messages: Vec<StoredMessage>,
     compaction_config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
@@ -1065,7 +1062,7 @@ pub fn build_model_view_messages_owned(
 /// from being paid for repeatedly even when a large-context model still has
 /// room.
 pub fn apply_cost_control_masking(
-    messages: &[Message],
+    messages: &[StoredMessage],
     config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
@@ -1073,7 +1070,7 @@ pub fn apply_cost_control_masking(
 }
 
 fn apply_cost_control_masking_owned(
-    messages: Vec<Message>,
+    messages: Vec<StoredMessage>,
     config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
@@ -1082,7 +1079,7 @@ fn apply_cost_control_masking_owned(
         .iter()
         .enumerate()
         .filter(|(_, message)| {
-            message.role == MessageRole::ToolResult
+            message.role == StoredMessageRole::ToolResult
                 && !is_protected_message_tool_result(&messages, message)
         })
         .map(|(index, _)| index)
@@ -1141,7 +1138,7 @@ fn apply_cost_control_masking_owned(
 
     let tool_result_bytes_after = masked_messages
         .iter()
-        .filter(|message| message.role == MessageRole::ToolResult)
+        .filter(|message| message.role == StoredMessageRole::ToolResult)
         .map(message_tool_result_len)
         .sum();
 
@@ -1180,8 +1177,8 @@ fn should_apply_cost_control_masking(
     total_prompt > 0 && (cache_read as f32 / total_prompt as f32) < config.min_cache_read_ratio
 }
 
-fn is_protected_message_tool_result(messages: &[Message], tool_msg: &Message) -> bool {
-    if tool_msg.role != MessageRole::ToolResult {
+fn is_protected_message_tool_result(messages: &[StoredMessage], tool_msg: &StoredMessage) -> bool {
+    if tool_msg.role != StoredMessageRole::ToolResult {
         return false;
     }
     let tool_name = find_message_tool_call_name(messages, tool_msg);
@@ -1196,7 +1193,7 @@ struct ReadResultKey {
 }
 
 fn related_recent_paginated_read_results(
-    messages: &[Message],
+    messages: &[StoredMessage],
     tool_indices: &[usize],
     keep_recent: usize,
 ) -> HashSet<usize> {
@@ -1229,7 +1226,10 @@ fn related_recent_paginated_read_results(
     protected
 }
 
-fn paginated_read_result_key(messages: &[Message], tool_msg: &Message) -> Option<ReadResultKey> {
+fn paginated_read_result_key(
+    messages: &[StoredMessage],
+    tool_msg: &StoredMessage,
+) -> Option<ReadResultKey> {
     let tool_name = find_message_tool_call_name(messages, tool_msg);
     if !is_read_file_tool_name(&tool_name) {
         return None;
@@ -1258,13 +1258,13 @@ fn is_read_file_tool_name(tool_name: &str) -> bool {
     )
 }
 
-fn find_message_tool_call_name(messages: &[Message], tool_msg: &Message) -> String {
+fn find_message_tool_call_name(messages: &[StoredMessage], tool_msg: &StoredMessage) -> String {
     let Some(call_id) = tool_msg.tool_call_id() else {
         return "unknown_tool".to_string();
     };
 
     for msg in messages.iter().rev() {
-        if msg.role != MessageRole::Agent {
+        if msg.role != StoredMessageRole::Agent {
             continue;
         }
         for tool_call in msg.tool_calls() {
@@ -1277,7 +1277,7 @@ fn find_message_tool_call_name(messages: &[Message], tool_msg: &Message) -> Stri
     "unknown_tool".to_string()
 }
 
-fn message_tool_result_len(message: &Message) -> usize {
+fn message_tool_result_len(message: &StoredMessage) -> usize {
     let Some(result) = message.tool_result_content() else {
         return 0;
     };
@@ -1290,16 +1290,16 @@ fn message_tool_result_len(message: &Message) -> usize {
 }
 
 /// Aggregate raw tool-result payload bytes without allocating or overflowing.
-pub fn total_tool_result_bytes(messages: &[Message]) -> usize {
+pub fn total_tool_result_bytes(messages: &[StoredMessage]) -> usize {
     messages
         .iter()
-        .filter(|message| message.role == MessageRole::ToolResult)
+        .filter(|message| message.role == StoredMessageRole::ToolResult)
         .fold(0usize, |total, message| {
             total.saturating_add(message_tool_result_len(message))
         })
 }
 
-fn mask_tool_result_message(message: &Message, tool_name: &str) -> Message {
+fn mask_tool_result_message(message: &StoredMessage, tool_name: &str) -> StoredMessage {
     let Some(result) = message.tool_result_content() else {
         return message.clone();
     };
@@ -1544,7 +1544,7 @@ fn truncate_inline(text: &str, max_chars: usize) -> String {
 /// tool_call_ids. This is needed when the message slice doesn't contain the
 /// assistant tool-call message (e.g. warm tier where the call is in cold tier).
 fn apply_observation_masking_with_protected(
-    messages: &[LlmMessage],
+    messages: &[Message],
     config: &ObservationMaskingConfig,
     extra_protected_call_ids: &std::collections::HashSet<String>,
 ) -> ObservationMaskingResult {
@@ -1553,7 +1553,7 @@ fn apply_observation_masking_with_protected(
         .iter()
         .enumerate()
         .filter(|(_, m)| {
-            m.role == LlmMessageRole::Tool
+            m.role == MessageRole::Tool
                 && !is_protected_tool_result(messages, m)
                 && !m
                     .tool_call_id
@@ -1584,10 +1584,10 @@ fn apply_observation_masking_with_protected(
                 MaskingSummaryFormat::OneLine => format_one_line_summary(&tool_name, &msg.content),
                 MaskingSummaryFormat::HeadTail => format_head_tail_summary(&msg.content),
             };
-            result.push(LlmMessage {
+            result.push(Message {
                 native_tool_calls: Vec::new(),
-                role: LlmMessageRole::Tool,
-                content: LlmMessageContent::Text(summary),
+                role: MessageRole::Tool,
+                content: MessageContent::Text(summary),
                 tool_calls: msg.tool_calls.clone(),
                 tool_call_id: msg.tool_call_id.clone(),
                 phase: msg.phase,
@@ -1607,13 +1607,13 @@ fn apply_observation_masking_with_protected(
 }
 
 /// Find the tool name from a preceding assistant message that issued the tool call.
-fn find_tool_call_name(messages: &[LlmMessage], tool_msg: &LlmMessage) -> String {
+fn find_tool_call_name(messages: &[Message], tool_msg: &Message) -> String {
     let Some(ref call_id) = tool_msg.tool_call_id else {
         return "unknown_tool".to_string();
     };
 
     for msg in messages.iter().rev() {
-        if msg.role == LlmMessageRole::Assistant
+        if msg.role == MessageRole::Assistant
             && let Some(ref tool_calls) = msg.tool_calls
         {
             for tc in tool_calls {
@@ -1627,10 +1627,10 @@ fn find_tool_call_name(messages: &[LlmMessage], tool_msg: &LlmMessage) -> String
     "unknown_tool".to_string()
 }
 
-fn extract_text(content: &LlmMessageContent) -> String {
+fn extract_text(content: &MessageContent) -> String {
     match content {
-        LlmMessageContent::Text(t) => t.clone(),
-        LlmMessageContent::Parts(parts) => parts
+        MessageContent::Text(t) => t.clone(),
+        MessageContent::Parts(parts) => parts
             .iter()
             .filter_map(|p| {
                 if let LlmContentPart::Text { text } = p {
@@ -1644,7 +1644,7 @@ fn extract_text(content: &LlmMessageContent) -> String {
     }
 }
 
-fn format_one_line_summary(tool_name: &str, content: &LlmMessageContent) -> String {
+fn format_one_line_summary(tool_name: &str, content: &MessageContent) -> String {
     let text = extract_text(content);
     let line_count = text.lines().count();
     let byte_len = text.len();
@@ -1656,7 +1656,7 @@ fn format_one_line_summary(tool_name: &str, content: &LlmMessageContent) -> Stri
     }
 }
 
-fn format_head_tail_summary(content: &LlmMessageContent) -> String {
+fn format_head_tail_summary(content: &MessageContent) -> String {
     let text = extract_text(content);
     let lines: Vec<&str> = text.lines().collect();
 
@@ -1721,14 +1721,14 @@ or paraphrase skill instructions.
 }
 
 /// Format messages into a text block for the summarization prompt.
-pub fn format_messages_for_summarization(messages: &[LlmMessage]) -> String {
+pub fn format_messages_for_summarization(messages: &[Message]) -> String {
     let mut parts = Vec::new();
     for msg in messages {
         let role = match msg.role {
-            LlmMessageRole::System => "system",
-            LlmMessageRole::User => "user",
-            LlmMessageRole::Assistant => "assistant",
-            LlmMessageRole::Tool => "tool",
+            MessageRole::System => "system",
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+            MessageRole::Tool => "tool",
         };
 
         let content = extract_text(&msg.content);
@@ -1772,11 +1772,11 @@ fn truncate_at_char_boundary(content: &str, max_bytes: usize) -> &str {
 }
 
 /// Build a summary system message that replaces compacted messages in context.
-pub fn build_summary_message(summary_text: &str) -> LlmMessage {
-    LlmMessage {
+pub fn build_summary_message(summary_text: &str) -> Message {
+    Message {
         native_tool_calls: Vec::new(),
-        role: LlmMessageRole::System,
-        content: LlmMessageContent::Text(format!(
+        role: MessageRole::System,
+        content: MessageContent::Text(format!(
             "[CONVERSATION_SUMMARY]\n{summary_text}\n[/CONVERSATION_SUMMARY]"
         )),
         tool_calls: None,
@@ -1793,10 +1793,10 @@ pub fn build_summary_message(summary_text: &str) -> LlmMessage {
 /// no visible call unless that call is also in `recent_messages`. Incomplete pieces
 /// are removed from this prompt-facing view; stored history remains unchanged.
 pub fn compose_summary_with_recent(
-    system_message: Option<LlmMessage>,
+    system_message: Option<Message>,
     summary_text: &str,
-    recent_messages: &[LlmMessage],
-) -> Vec<LlmMessage> {
+    recent_messages: &[Message],
+) -> Vec<Message> {
     let mut messages = Vec::with_capacity(recent_messages.len() + 2);
     if let Some(system_message) = system_message {
         messages.push(system_message);
@@ -1831,7 +1831,7 @@ mod tests {
     use crate::tool_types::ToolCall;
     use serde_json::json;
 
-    fn assert_complete_tool_exchanges(messages: &[LlmMessage]) {
+    fn assert_complete_tool_exchanges(messages: &[Message]) {
         let calls: std::collections::HashSet<_> = messages
             .iter()
             .flat_map(|message| message.tool_calls.iter().flatten())
@@ -1844,11 +1844,11 @@ mod tests {
         assert_eq!(calls, results, "tool calls and results must remain atomic");
     }
 
-    fn make_user_msg(text: &str) -> LlmMessage {
-        LlmMessage {
+    fn make_user_msg(text: &str) -> Message {
+        Message {
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::User,
-            content: LlmMessageContent::Text(text.to_string()),
+            role: MessageRole::User,
+            content: MessageContent::Text(text.to_string()),
             tool_calls: None,
             tool_call_id: None,
             phase: None,
@@ -1857,11 +1857,11 @@ mod tests {
         }
     }
 
-    fn make_assistant_msg(text: &str) -> LlmMessage {
-        LlmMessage {
+    fn make_assistant_msg(text: &str) -> Message {
+        Message {
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text(text.to_string()),
+            role: MessageRole::Assistant,
+            content: MessageContent::Text(text.to_string()),
             tool_calls: None,
             tool_call_id: None,
             phase: None,
@@ -1870,11 +1870,11 @@ mod tests {
         }
     }
 
-    fn make_assistant_with_tool_call(call_id: &str, tool_name: &str) -> LlmMessage {
-        LlmMessage {
+    fn make_assistant_with_tool_call(call_id: &str, tool_name: &str) -> Message {
+        Message {
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text(String::new()),
+            role: MessageRole::Assistant,
+            content: MessageContent::Text(String::new()),
             tool_calls: Some(vec![ToolCall {
                 id: call_id.to_string(),
                 name: tool_name.to_string(),
@@ -1887,11 +1887,11 @@ mod tests {
         }
     }
 
-    fn make_assistant_with_tool_calls(calls: &[(&str, &str)]) -> LlmMessage {
-        LlmMessage {
+    fn make_assistant_with_tool_calls(calls: &[(&str, &str)]) -> Message {
+        Message {
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text(String::new()),
+            role: MessageRole::Assistant,
+            content: MessageContent::Text(String::new()),
             tool_calls: Some(
                 calls
                     .iter()
@@ -1909,11 +1909,11 @@ mod tests {
         }
     }
 
-    fn make_tool_result(call_id: &str, output: &str) -> LlmMessage {
-        LlmMessage {
+    fn make_tool_result(call_id: &str, output: &str) -> Message {
+        Message {
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text(output.to_string()),
+            role: MessageRole::Tool,
+            content: MessageContent::Text(output.to_string()),
             tool_calls: None,
             tool_call_id: Some(call_id.to_string()),
             phase: None,
@@ -2083,9 +2083,9 @@ mod tests {
         call_id: &str,
         tool_name: &str,
         result: serde_json::Value,
-    ) -> Vec<Message> {
+    ) -> Vec<StoredMessage> {
         vec![
-            Message::assistant_with_tools(
+            StoredMessage::assistant_with_tools(
                 "",
                 vec![ToolCall {
                     id: call_id.to_string(),
@@ -2093,13 +2093,13 @@ mod tests {
                     arguments: json!({"path": "/workspace/src/lib.rs"}),
                 }],
             ),
-            Message::tool_result(call_id, Some(result), None),
+            StoredMessage::tool_result(call_id, Some(result), None),
         ]
     }
 
     #[test]
     fn test_cost_control_masks_old_read_file_results() {
-        let mut messages = vec![Message::user("inspect files")];
+        let mut messages = vec![StoredMessage::user("inspect files")];
         for index in 0..5 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),
@@ -2148,7 +2148,7 @@ mod tests {
 
     #[test]
     fn test_cost_control_keeps_recent_paginated_read_group() {
-        let mut messages = vec![Message::user("inspect saved output")];
+        let mut messages = vec![StoredMessage::user("inspect saved output")];
         messages.extend(make_message_tool_turn(
             "call_bash",
             "bash",
@@ -2211,7 +2211,7 @@ mod tests {
 
     #[test]
     fn test_model_view_masks_with_compaction_config() {
-        let mut messages = vec![Message::user("inspect files repeatedly")];
+        let mut messages = vec![StoredMessage::user("inspect files repeatedly")];
         for index in 0..9 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),
@@ -2247,7 +2247,7 @@ mod tests {
 
     #[test]
     fn test_compaction_capability_contributes_model_view_provider() {
-        let mut messages = vec![Message::user("inspect files repeatedly")];
+        let mut messages = vec![StoredMessage::user("inspect files repeatedly")];
         for index in 0..9 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),
@@ -2278,7 +2278,7 @@ mod tests {
 
     #[test]
     fn test_model_view_respects_disabled_cost_control_config() {
-        let mut messages = vec![Message::user("inspect files repeatedly")];
+        let mut messages = vec![StoredMessage::user("inspect files repeatedly")];
         for index in 0..5 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),
@@ -2311,7 +2311,7 @@ mod tests {
 
     #[test]
     fn test_cost_control_uses_prior_usage_signal() {
-        let mut messages = vec![Message::user("run commands")];
+        let mut messages = vec![StoredMessage::user("run commands")];
         for index in 0..3 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),
@@ -2387,7 +2387,7 @@ mod tests {
 
     #[test]
     fn test_model_view_uses_provider_cache_signal_from_compaction_config() {
-        let mut messages = vec![Message::user("run commands")];
+        let mut messages = vec![StoredMessage::user("run commands")];
         for index in 0..3 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),
@@ -2553,7 +2553,7 @@ mod tests {
 
         // First tool result should be masked
         let masked = &result.messages[2];
-        assert_eq!(masked.role, LlmMessageRole::Tool);
+        assert_eq!(masked.role, MessageRole::Tool);
         let text = extract_text(&masked.content);
         assert!(
             text.starts_with('['),
@@ -2791,7 +2791,7 @@ mod tests {
     #[test]
     fn test_build_summary_message() {
         let msg = build_summary_message("The user asked about APIs.");
-        assert_eq!(msg.role, LlmMessageRole::System);
+        assert_eq!(msg.role, MessageRole::System);
         let text = extract_text(&msg.content);
         assert!(text.contains("[CONVERSATION_SUMMARY]"));
         assert!(text.contains("The user asked about APIs."));
@@ -2804,19 +2804,19 @@ mod tests {
 
     #[test]
     fn test_head_tail_short_content_unchanged() {
-        let content = LlmMessageContent::Text("line1\nline2\nline3".to_string());
+        let content = MessageContent::Text("line1\nline2\nline3".to_string());
         assert_eq!(format_head_tail_summary(&content), "line1\nline2\nline3");
     }
 
     #[test]
     fn test_head_tail_exactly_six_lines() {
-        let content = LlmMessageContent::Text("1\n2\n3\n4\n5\n6".to_string());
+        let content = MessageContent::Text("1\n2\n3\n4\n5\n6".to_string());
         assert_eq!(format_head_tail_summary(&content), "1\n2\n3\n4\n5\n6");
     }
 
     #[test]
     fn test_head_tail_seven_lines() {
-        let content = LlmMessageContent::Text("1\n2\n3\n4\n5\n6\n7".to_string());
+        let content = MessageContent::Text("1\n2\n3\n4\n5\n6\n7".to_string());
         let result = format_head_tail_summary(&content);
         assert!(result.contains("1\n2\n3"));
         assert!(result.contains("5\n6\n7"));
@@ -2829,28 +2829,28 @@ mod tests {
 
     #[test]
     fn test_one_line_empty_output() {
-        let result = format_one_line_summary("bash", &LlmMessageContent::Text(String::new()));
+        let result = format_one_line_summary("bash", &MessageContent::Text(String::new()));
         assert_eq!(result, "[bash → ]");
     }
 
     #[test]
     fn test_one_line_exactly_100_chars() {
         let text = "x".repeat(100);
-        let result = format_one_line_summary("bash", &LlmMessageContent::Text(text.clone()));
+        let result = format_one_line_summary("bash", &MessageContent::Text(text.clone()));
         assert!(result.contains(&text));
     }
 
     #[test]
     fn test_one_line_101_chars_summarized() {
         let text = "x".repeat(101);
-        let result = format_one_line_summary("bash", &LlmMessageContent::Text(text));
+        let result = format_one_line_summary("bash", &MessageContent::Text(text));
         assert!(result.contains("lines"));
         assert!(result.contains("bytes"));
     }
 
     #[test]
     fn test_one_line_multipart_content() {
-        let content = LlmMessageContent::Parts(vec![
+        let content = MessageContent::Parts(vec![
             LlmContentPart::Text {
                 text: "part1".to_string(),
             },
@@ -3005,7 +3005,7 @@ mod tests {
             result.len()
         );
         // Should keep system prompt (first)
-        assert_eq!(result[0].role, LlmMessageRole::User);
+        assert_eq!(result[0].role, MessageRole::User);
     }
 
     #[test]
@@ -3034,7 +3034,7 @@ mod tests {
             result.len()
         );
         let kept_task = result.iter().any(|m| match &m.content {
-            LlmMessageContent::Text(t) => t.contains("TASK"),
+            MessageContent::Text(t) => t.contains("TASK"),
             _ => false,
         });
         assert!(kept_task, "the original task must be anchored, not dropped");
@@ -3091,7 +3091,7 @@ mod tests {
 
     #[test]
     fn test_classify_memory_tiers_basic() {
-        let messages: Vec<LlmMessage> = (0..30)
+        let messages: Vec<Message> = (0..30)
             .map(|i| make_user_msg(&format!("msg {i}")))
             .collect();
 
@@ -3118,8 +3118,7 @@ mod tests {
 
     #[test]
     fn test_classify_memory_tiers_all_hot() {
-        let messages: Vec<LlmMessage> =
-            (0..3).map(|i| make_user_msg(&format!("msg {i}"))).collect();
+        let messages: Vec<Message> = (0..3).map(|i| make_user_msg(&format!("msg {i}"))).collect();
 
         let config = HierarchicalMemoryConfig::default(); // 20 hot
 
@@ -3331,7 +3330,7 @@ mod tests {
 
         // Verify skill messages are preserved
         let has_skill_result = result.iter().any(|m| {
-            m.role == LlmMessageRole::Tool
+            m.role == MessageRole::Tool
                 && extract_text(&m.content) == "Important skill instructions"
         });
         assert!(
@@ -3552,7 +3551,7 @@ mod tests {
         // Must not exceed budget — non-protected messages dropped
         let has_non_protected = result
             .iter()
-            .any(|m| m.role == LlmMessageRole::User && extract_text(&m.content).contains('z'));
+            .any(|m| m.role == MessageRole::User && extract_text(&m.content).contains('z'));
         assert!(
             !has_non_protected,
             "Non-protected messages must be dropped when protected exceed budget"

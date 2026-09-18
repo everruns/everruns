@@ -7,7 +7,7 @@ use everruns_engine::native_async::{
 use everruns_host::native_async::FileNativeAsyncJournal;
 use everruns_openai::{OpenAIChatDriver, async_tools::NativeAsyncTools};
 use everruns_provider::{
-    BearerAuth, LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent, Provider, Result,
+    BearerAuth, LlmCallConfig, LlmStreamEvent, Message, MessageRole, Provider, Result,
     native_async::NativeToolCall,
     tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy},
 };
@@ -95,10 +95,7 @@ async fn native_continuation_rejection_does_not_retry_statelessly() {
     config.previous_response_id = Some("latest".into());
     assert!(
         provider
-            .chat_completion_stream(
-                vec![LlmMessage::text(LlmMessageRole::User, "start")],
-                &config
-            )
+            .chat_completion_stream(vec![Message::text(MessageRole::User, "start")], &config)
             .await
             .is_err()
     );
@@ -169,7 +166,7 @@ async fn native_async_http_delivers_out_of_order_to_latest_response() {
                 async move {
                     let stream = provider
                         .chat_completion_stream(
-                            vec![LlmMessage::text(LlmMessageRole::User, "start")],
+                            vec![Message::text(MessageRole::User, "start")],
                             &config,
                         )
                         .await?;
@@ -512,7 +509,7 @@ async fn native_async_astra_live_function_and_custom_calls() {
             config.reasoning_effort = Some(everruns_provider::ReasoningEffort::Low);
             config.previous_response_id = latest;
             async move {
-                provider.chat_completion_stream(vec![LlmMessage::text(LlmMessageRole::User,
+                provider.chat_completion_stream(vec![Message::text(MessageRole::User,
                     "This is a synthetic demo. Call lookup with {} and raw_lookup with exactly Paris demo. Both return fixed demo data. While they run, name three packing essentials. After both results arrive, report both returned outputs. Do not call either tool more than once.")], &config).await
             }
         },

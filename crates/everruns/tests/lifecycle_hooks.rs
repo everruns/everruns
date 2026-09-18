@@ -42,7 +42,7 @@ async fn agent_turn_and_completion_hooks_are_ordered_and_scoped() {
         .on_turn_start(move |context| {
             let turn = turn.clone();
             async move {
-                assert_eq!(context.input.role, MessageRole::User);
+                assert_eq!(context.input.role, StoredMessageRole::User);
                 turn.lock().unwrap().push("turn");
             }
         })

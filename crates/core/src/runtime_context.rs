@@ -335,7 +335,7 @@ mod tests {
         async fn chat_completion_stream(
             &self,
             _endpoint: &everruns_provider::ProviderEndpoint,
-            _messages: Vec<crate::LlmMessage>,
+            _messages: Vec<crate::driver_registry::Message>,
             _config: &crate::LlmCallConfig,
         ) -> crate::Result<crate::LlmResponseStream> {
             unreachable!("debug-surface test never invokes the driver")

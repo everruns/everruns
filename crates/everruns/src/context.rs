@@ -2,7 +2,7 @@
 
 use everruns_core::AssembledTurnContext;
 
-use crate::{ContentPart, MessageRole};
+use crate::{ContentPart, StoredMessageRole};
 use everruns_provider::model_spec::ModelSpec;
 
 /// The effective context a session will send to its model on the next turn.
@@ -30,7 +30,7 @@ pub struct SessionContext {
 #[derive(Debug, Clone)]
 pub struct ContextMessage {
     /// The message's conversational role.
-    pub role: MessageRole,
+    pub role: StoredMessageRole,
     /// Structured text, image, tool-call, and tool-result content.
     pub content: Vec<ContentPart>,
 }

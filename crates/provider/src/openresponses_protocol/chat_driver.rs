@@ -28,8 +28,8 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream,
-    LlmStreamEvent, disjoint_prompt_tokens,
+    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message,
+    disjoint_prompt_tokens,
 };
 use crate::error::{AgentLoopError, Result};
 use crate::openresponses_types::StreamingEvent;
@@ -46,7 +46,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         crate::openai_compat::validate_config(config)?;

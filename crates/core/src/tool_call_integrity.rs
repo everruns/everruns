@@ -4,19 +4,22 @@
 //! copies so an assistant tool call is never exposed without its result, and a
 //! stateless request never exposes a result without its call.
 
-use crate::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
-use crate::message::{ContentPart, Message};
+use crate::driver_registry::{Message, MessageContent, MessageRole};
+// `StoredMessage` is the lossless session-storage message; the unaliased
+// `Message` above is the provider-facing wire message. Both views need the
+// same tool-call integrity rules, hence the pair of near-identical helpers.
+use crate::message::{ContentPart, Message as StoredMessage};
 use std::collections::HashSet;
 
-/// Keep only complete tool-call/result exchanges in a prompt-facing `Message` view.
+/// Keep only complete tool-call/result exchanges in a prompt-facing `StoredMessage` view.
 ///
 /// Stateful Responses requests may legitimately carry a result whose call lives in
 /// `previous_response_id`; `allow_unmatched_results` preserves that delta shape.
 /// Calls without visible results are always removed rather than synthesized.
 pub fn retain_complete_message_tool_exchanges(
-    messages: &[Message],
+    messages: &[StoredMessage],
     allow_unmatched_results: bool,
-) -> Vec<Message> {
+) -> Vec<StoredMessage> {
     let result_ids: HashSet<String> = messages
         .iter()
         .flat_map(|message| message.content.iter())
@@ -26,7 +29,7 @@ pub fn retain_complete_message_tool_exchanges(
         })
         .collect();
 
-    let calls_filtered: Vec<Message> = messages
+    let calls_filtered: Vec<StoredMessage> = messages
         .iter()
         .filter_map(|message| {
             let mut message = message.clone();
@@ -70,11 +73,11 @@ pub fn retain_complete_message_tool_exchanges(
         .collect()
 }
 
-/// Keep only complete tool-call/result exchanges in a reduced `LlmMessage` view.
+/// Keep only complete tool-call/result exchanges in a reduced `Message` view.
 ///
 /// This is strict because compaction operates on a self-contained transcript; it
 /// never synthesizes execution results and can only reduce the selected output.
-pub fn retain_complete_llm_tool_exchanges(messages: Vec<LlmMessage>) -> Vec<LlmMessage> {
+pub fn retain_complete_llm_tool_exchanges(messages: Vec<Message>) -> Vec<Message> {
     retain_complete_llm_tool_exchanges_for_request(messages, false)
 }
 
@@ -83,16 +86,16 @@ pub fn retain_complete_llm_tool_exchanges(messages: Vec<LlmMessage>) -> Vec<LlmM
 /// `allow_unmatched_results` is reserved for stateful Responses continuations,
 /// where the matching call is stored behind `previous_response_id`.
 pub fn retain_complete_llm_tool_exchanges_for_request(
-    messages: Vec<LlmMessage>,
+    messages: Vec<Message>,
     allow_unmatched_results: bool,
-) -> Vec<LlmMessage> {
+) -> Vec<Message> {
     let result_ids: HashSet<String> = messages
         .iter()
-        .filter(|message| message.role == LlmMessageRole::Tool)
+        .filter(|message| message.role == MessageRole::Tool)
         .filter_map(|message| message.tool_call_id.clone())
         .collect();
 
-    let calls_filtered: Vec<LlmMessage> = messages
+    let calls_filtered: Vec<Message> = messages
         .into_iter()
         .filter_map(|mut message| {
             let had_calls = message.tool_calls.is_some();
@@ -115,7 +118,7 @@ pub fn retain_complete_llm_tool_exchanges_for_request(
     calls_filtered
         .into_iter()
         .filter(|message| {
-            message.role != LlmMessageRole::Tool
+            message.role != MessageRole::Tool
                 || message
                     .tool_call_id
                     .as_deref()
@@ -124,7 +127,7 @@ pub fn retain_complete_llm_tool_exchanges_for_request(
         .collect()
 }
 
-fn message_has_visible_content(message: &Message) -> bool {
+fn message_has_visible_content(message: &StoredMessage) -> bool {
     message.content.iter().any(|part| match part {
         ContentPart::Text(text) => !text.text.is_empty(),
         ContentPart::Image(_) | ContentPart::ImageFile(_) | ContentPart::File(_) => true,
@@ -135,10 +138,10 @@ fn message_has_visible_content(message: &Message) -> bool {
     })
 }
 
-fn llm_message_has_visible_content(message: &LlmMessage) -> bool {
+fn llm_message_has_visible_content(message: &Message) -> bool {
     let has_content = match &message.content {
-        LlmMessageContent::Text(text) => !text.is_empty(),
-        LlmMessageContent::Parts(parts) => !parts.is_empty(),
+        MessageContent::Text(text) => !text.is_empty(),
+        MessageContent::Parts(parts) => !parts.is_empty(),
     };
     has_content || message.tool_calls.is_some() || !message.reasoning.is_empty()
 }
@@ -146,15 +149,15 @@ fn llm_message_has_visible_content(message: &LlmMessage) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::driver_registry::{LlmMessageContent, LlmMessageRole};
+    use crate::driver_registry::{MessageContent, MessageRole};
     use crate::tool_types::ToolCall;
     use serde_json::json;
 
-    fn assistant_batch() -> LlmMessage {
-        LlmMessage {
+    fn assistant_batch() -> Message {
+        Message {
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text(String::new()),
+            role: MessageRole::Assistant,
+            content: MessageContent::Text(String::new()),
             tool_calls: Some(vec![
                 ToolCall {
                     id: "call_skill".to_string(),
@@ -174,11 +177,11 @@ mod tests {
         }
     }
 
-    fn tool_result(id: &str) -> LlmMessage {
-        LlmMessage {
+    fn tool_result(id: &str) -> Message {
+        Message {
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("result".to_string()),
+            role: MessageRole::Tool,
+            content: MessageContent::Text("result".to_string()),
             tool_calls: None,
             tool_call_id: Some(id.to_string()),
             phase: None,
@@ -187,12 +190,12 @@ mod tests {
         }
     }
 
-    fn assert_text_messages(actual: &[LlmMessage], expected: &[LlmMessage]) {
+    fn assert_text_messages(actual: &[Message], expected: &[Message]) {
         assert_eq!(actual.len(), expected.len());
         for (actual, expected) in actual.iter().zip(expected) {
             assert_eq!(actual.role, expected.role);
             match (&actual.content, &expected.content) {
-                (LlmMessageContent::Text(actual), LlmMessageContent::Text(expected)) => {
+                (MessageContent::Text(actual), MessageContent::Text(expected)) => {
                     assert_eq!(actual, expected);
                 }
                 _ => panic!("expected text messages"),
@@ -211,7 +214,7 @@ mod tests {
     #[test]
     fn llm_reduction_prunes_only_the_unmatched_parallel_call() {
         let mut batch = assistant_batch();
-        batch.content = LlmMessageContent::Text("Keep this text".into());
+        batch.content = MessageContent::Text("Keep this text".into());
         batch.configuration_update = Some(everruns_provider::model::ReasoningEffort::High);
         batch.phase = Some(everruns_provider::execution_phase::ExecutionPhase::Commentary);
         batch
@@ -254,7 +257,7 @@ mod tests {
     #[test]
     fn removing_all_llm_calls_preserves_independent_visible_text() {
         let mut batch = assistant_batch();
-        batch.content = LlmMessageContent::Text("Keep α".into());
+        batch.content = MessageContent::Text("Keep α".into());
         batch.configuration_update = Some(everruns_provider::model::ReasoningEffort::Low);
         let mut expected = batch.clone();
         expected.tool_calls = None;
@@ -266,7 +269,7 @@ mod tests {
 
     #[test]
     fn message_reduction_allows_stateful_result_deltas_only_when_requested() {
-        let result = Message::tool_result(
+        let result = StoredMessage::tool_result(
             "call_bash",
             Some(json!({"output":"done","exit_code":0})),
             None,
@@ -289,15 +292,15 @@ mod tests {
     #[test]
     fn message_reduction_preserves_matched_parts_and_does_not_mutate_source_history() {
         let calls = assistant_batch().tool_calls.unwrap();
-        let batch = Message::assistant_with_tools("Visible α", calls);
-        let matched = Message::tool_result(
+        let batch = StoredMessage::assistant_with_tools("Visible α", calls);
+        let matched = StoredMessage::tool_result(
             "call_skill",
             Some(json!({"skill":"ops","instructions":"Body"})),
             None,
         );
-        let orphan = Message::tool_result("orphan", Some(json!("orphan result")), None);
+        let orphan = StoredMessage::tool_result("orphan", Some(json!("orphan result")), None);
         let source = vec![
-            Message::user("Question"),
+            StoredMessage::user("Question"),
             batch.clone(),
             matched.clone(),
             orphan.clone(),
@@ -319,7 +322,7 @@ mod tests {
             );
         }
         assert_eq!(serde_json::to_value(&source).unwrap(), before);
-        let orphan_call = Message::assistant_with_tools(
+        let orphan_call = StoredMessage::assistant_with_tools(
             "",
             vec![ToolCall {
                 id: "missing".into(),

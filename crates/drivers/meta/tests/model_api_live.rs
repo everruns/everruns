@@ -6,7 +6,7 @@
 //!   `doppler run -- cargo test -p everruns-meta --test model_api_live -- --ignored --nocapture`
 
 use everruns_meta::provider;
-use everruns_provider::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
+use everruns_provider::driver_registry::{LlmCallConfig, Message, MessageRole};
 use everruns_provider::model::ReasoningEffort;
 use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
@@ -53,8 +53,8 @@ fn config(tools: Vec<ToolDefinition>, parallel_tool_calls: Option<bool>) -> LlmC
 #[ignore = "live network + MODEL_API_KEY"]
 async fn contributor_completes_text_response() {
     let provider = provider("meta", api_key());
-    let messages = vec![LlmMessage::text(
-        LlmMessageRole::User,
+    let messages = vec![Message::text(
+        MessageRole::User,
         "Reply with exactly: muse-live-ok",
     )];
 
@@ -76,12 +76,12 @@ async fn contributor_completes_text_response() {
 async fn contributor_accepts_parallel_tool_calls() {
     let provider = provider("meta", api_key());
     let messages = vec![
-        LlmMessage::text(
-            LlmMessageRole::System,
+        Message::text(
+            MessageRole::System,
             "Always call the supplied tools rather than guessing.",
         ),
-        LlmMessage::text(
-            LlmMessageRole::User,
+        Message::text(
+            MessageRole::User,
             "Get both the current weather and the current local time in Paris.",
         ),
     ];

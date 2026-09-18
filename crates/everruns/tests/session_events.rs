@@ -296,7 +296,7 @@ async fn send_routes_to_the_active_turn_and_returns_before_completion() {
     let user_text: Vec<String> = history
         .messages
         .iter()
-        .filter(|message| message.role == MessageRole::User)
+        .filter(|message| message.role == StoredMessageRole::User)
         .map(|message| message.text())
         .collect();
     assert_eq!(user_text, ["Plan my trip", "Prefer trains"]);
@@ -399,7 +399,7 @@ async fn turn_handle_cancellation_emits_a_correlated_terminal_event() {
     let user_text: Vec<String> = history
         .messages
         .iter()
-        .filter(|message| message.role == MessageRole::User)
+        .filter(|message| message.role == StoredMessageRole::User)
         .map(|message| message.text())
         .collect();
     assert_eq!(user_text, ["hi", "include this"]);

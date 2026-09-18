@@ -357,8 +357,7 @@ pub use utility_llm::{
 
 // Private provider-contract imports used by kernel implementation modules.
 pub(crate) use driver_registry::{
-    LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponse, LlmResponseStream,
-    ProviderOpaqueContext,
+    LlmCallConfig, LlmResponse, LlmResponseStream, ProviderOpaqueContext,
 };
 
 // Transport-neutral native compaction contracts. Concrete OpenAI/OpenResponses

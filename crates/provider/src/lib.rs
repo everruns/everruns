@@ -79,8 +79,8 @@ pub use driver_registry::{
     BoxedChatDriver, BoxedEmbeddingsDriver, ChatDriver, DiscoveredModel, DriverDescriptor,
     DriverFactory, DriverId, DriverOAuthConfig, DriverOAuthFlow, DriverRegistry, EmbedRequest,
     EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig,
-    LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamError, LlmStreamEvent, ProviderConfig,
+    LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmResponse, LlmResponseStream,
+    LlmStreamError, LlmStreamEvent, Message, MessageContent, MessageRole, ProviderConfig,
     ProviderMetadata, ProviderOpaqueContext, ServiceKind, fold_system_messages,
 };
 pub use error::{

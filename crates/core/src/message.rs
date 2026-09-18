@@ -957,7 +957,7 @@ impl Message {
     /// Create a tool result message with images.
     ///
     /// Images are included as `ContentPart::Image` alongside the `ToolResult` part.
-    /// When converted to `LlmMessage`, images become native image content blocks
+    /// When converted to `Message`, images become native image content blocks
     /// that the LLM can see visually (not just stringified base64).
     pub fn tool_result_with_images(
         tool_call_id: impl Into<String>,
@@ -1050,7 +1050,7 @@ impl Message {
             .map(|part| match part {
                 ContentPart::Text(t) => t.text.clone(),
                 // Reasoning is replayed as provider-native artifacts on
-                // `LlmMessage::reasoning`; it must never be flattened into
+                // `Message::reasoning`; it must never be flattened into
                 // prompt text. Filtered out below.
                 ContentPart::Reasoning(_) => String::new(),
                 ContentPart::Image(_) => "[Image]".to_string(),

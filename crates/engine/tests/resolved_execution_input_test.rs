@@ -32,7 +32,7 @@ impl ChatDriver for FixedDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        _messages: Vec<everruns_provider::driver_registry::Message>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         Ok(Box::pin(stream::iter([

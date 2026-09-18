@@ -16,7 +16,7 @@ use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_helpers::fetch_models;
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
-    LlmMessage, LlmResponse, LlmResponseStream,
+    LlmResponse, LlmResponseStream, Message,
 };
 use everruns_provider::error::Result;
 use everruns_provider::openai_protocol::{models_url_for_api_url, url_host_eq};
@@ -60,7 +60,7 @@ impl ChatDriver for OpenRouterChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         self.inner
@@ -79,7 +79,7 @@ impl ChatDriver for OpenRouterChatDriver {
     async fn chat_completion_non_streaming(
         &self,
         endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         self.inner
@@ -246,7 +246,7 @@ mod tests {
 
     #[tokio::test]
     async fn direct_and_registered_providers_send_complete_authenticated_requests() {
-        use everruns_provider::driver_registry::LlmMessageRole;
+        use everruns_provider::driver_registry::MessageRole;
         use serde_json::{Value, json};
         use wiremock::matchers::{header, method, path, query_param};
         use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -271,7 +271,7 @@ mod tests {
                 let url = format!("{}{suffix}?route=custom", server.uri());
                 let mut config = base_config("vendor/model");
                 config.parallel_tool_calls = Some(false);
-                let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+                let messages = vec![Message::text(MessageRole::User, "hello")];
                 let response = if registered {
                     registry
                         .create_chat_driver(
@@ -335,7 +335,7 @@ mod tests {
 
     #[tokio::test]
     async fn billing_pressure_402_reaches_consumers_with_reason_and_retry_after() {
-        use everruns_provider::driver_registry::LlmMessageRole;
+        use everruns_provider::driver_registry::MessageRole;
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -378,7 +378,7 @@ mod tests {
             let result = provider("billing-test", "synthetic-key")
                 .base_url(format!("{}/v1", server.uri()))
                 .chat_completion_stream(
-                    vec![LlmMessage::text(LlmMessageRole::User, "hello")],
+                    vec![Message::text(MessageRole::User, "hello")],
                     &base_config("vendor/model"),
                 )
                 .await;

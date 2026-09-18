@@ -13,7 +13,7 @@ use everruns_host::{
 };
 
 use crate::engine::SessionExecution;
-use crate::{ContentPart, MessageRole, SessionId};
+use crate::{ContentPart, SessionId, StoredMessageRole};
 
 const MAX_CURSOR_TOKEN_LEN: usize = 4096;
 const CURSOR_PREFIX: &str = "eh1.";
@@ -210,7 +210,7 @@ pub struct SessionMessage {
     /// Opaque message identifier.
     pub id: String,
     /// Conversational role of the message.
-    pub role: MessageRole,
+    pub role: StoredMessageRole,
     /// Structured text, image, tool-call, and tool-result content.
     pub content: Vec<ContentPart>,
     /// Timestamp recorded by the canonical event.

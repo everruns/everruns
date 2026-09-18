@@ -167,7 +167,7 @@ struct NativeCompactRetryDriver {
 }
 
 type CapturedLlmCall = (
-    Vec<everruns_provider::driver_registry::LlmMessage>,
+    Vec<everruns_provider::driver_registry::Message>,
     everruns_provider::driver_registry::LlmCallConfig,
 );
 
@@ -198,7 +198,7 @@ impl everruns_provider::driver_registry::ChatDriver for ProactiveCompactDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        messages: Vec<everruns_provider::driver_registry::Message>,
         config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
@@ -483,7 +483,7 @@ impl everruns_provider::driver_registry::ChatDriver for NativeCompactFailureDriv
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        _messages: Vec<everruns_provider::driver_registry::Message>,
         _config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
@@ -524,7 +524,7 @@ impl everruns_provider::driver_registry::ChatDriver for NativeCompactRetryDriver
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        messages: Vec<everruns_provider::driver_registry::Message>,
         config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
@@ -639,7 +639,7 @@ impl everruns_provider::driver_registry::ChatDriver for FlakyStreamDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        _messages: Vec<everruns_provider::driver_registry::Message>,
         config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
@@ -696,7 +696,7 @@ impl everruns_provider::driver_registry::ChatDriver for StallingStreamDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        messages: Vec<everruns_provider::driver_registry::Message>,
         config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
@@ -744,7 +744,7 @@ impl everruns_provider::driver_registry::ChatDriver for ThinkingLeakDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        _messages: Vec<everruns_provider::driver_registry::Message>,
         config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
@@ -781,7 +781,7 @@ impl everruns_provider::driver_registry::ChatDriver for SpeedCapturingDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        _messages: Vec<everruns_provider::driver_registry::Message>,
         config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
@@ -1041,10 +1041,10 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
     assert!(resumed_config.provider_opaque_context.is_some());
     assert!(resumed_config.previous_response_id.is_none());
     assert!(resumed_messages.iter().any(|message| {
-        matches!(&message.content, everruns_provider::driver_registry::LlmMessageContent::Text(text) if text == "surviving raw suffix")
+        matches!(&message.content, everruns_provider::driver_registry::MessageContent::Text(text) if text == "surviving raw suffix")
     }));
     assert!(!resumed_messages.iter().any(|message| {
-        matches!(&message.content, everruns_provider::driver_registry::LlmMessageContent::Text(text) if text == "latest delta")
+        matches!(&message.content, everruns_provider::driver_registry::MessageContent::Text(text) if text == "latest delta")
     }));
     drop(resumed_calls);
 
@@ -1089,7 +1089,7 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
     let (messages, config) = calls.last().unwrap();
     assert!(config.provider_opaque_context.is_none());
     assert!(messages.iter().any(|message| {
-        matches!(&message.content, everruns_provider::driver_registry::LlmMessageContent::Text(text) if text == "latest delta")
+        matches!(&message.content, everruns_provider::driver_registry::MessageContent::Text(text) if text == "latest delta")
     }));
 }
 
@@ -1372,7 +1372,7 @@ async fn cumulative_cost_compacts_below_window_budget_and_preserves_raw_history(
     assert!(messages.iter().any(|message| {
         matches!(
             &message.content,
-            everruns_provider::driver_registry::LlmMessageContent::Text(text)
+            everruns_provider::driver_registry::MessageContent::Text(text)
                 if text.contains("Latest validation passed")
         )
     }));
@@ -2872,11 +2872,9 @@ async fn test_driver_registry_integration() {
         .expect("Should create LlmSim driver");
 
     // Test the driver
-    use everruns_provider::driver_registry::{
-        ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole,
-    };
+    use everruns_provider::driver_registry::{ChatDriver, LlmCallConfig, Message, MessageRole};
 
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "Hello")];
+    let messages = vec![Message::text(MessageRole::User, "Hello")];
     let call_config = LlmCallConfig::new("test");
 
     let response = driver
@@ -3218,7 +3216,7 @@ impl everruns_provider::driver_registry::ChatDriver for ToolCallsThenErrorDriver
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        _messages: Vec<everruns_provider::driver_registry::Message>,
         _config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
@@ -3313,7 +3311,7 @@ impl everruns_provider::driver_registry::ChatDriver for TextThenErrorDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        _messages: Vec<everruns_provider::driver_registry::Message>,
         _config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
@@ -3405,7 +3403,7 @@ impl everruns_provider::driver_registry::ChatDriver for PureErrorDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        _messages: Vec<everruns_provider::driver_registry::Message>,
         _config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
@@ -3755,7 +3753,7 @@ async fn test_reason_atom_keeps_non_placeholder_messages_that_share_prefixes() {
     let assistant_messages: Vec<String> = captured
         .iter()
         .filter(|message| {
-            message.role == everruns_provider::driver_registry::LlmMessageRole::Assistant
+            message.role == everruns_provider::driver_registry::MessageRole::Assistant
         })
         .map(|message| message.content_as_text())
         .collect();
@@ -3778,14 +3776,14 @@ impl everruns_provider::driver_registry::ChatDriver for SystemPromptCapturingDri
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        messages: Vec<everruns_provider::driver_registry::Message>,
         config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
         // Capture the system message
         if let Some(sys) = messages
             .iter()
-            .find(|m| m.role == everruns_provider::driver_registry::LlmMessageRole::System)
+            .find(|m| m.role == everruns_provider::driver_registry::MessageRole::System)
         {
             *self.captured_system.lock().await = Some(sys.content_as_text());
         }
@@ -3809,7 +3807,7 @@ impl everruns_provider::driver_registry::ChatDriver for SystemPromptCapturingDri
 
 #[derive(Clone, Debug)]
 struct ConversationCapturingDriver {
-    captured_messages: Arc<Mutex<Vec<everruns_provider::driver_registry::LlmMessage>>>,
+    captured_messages: Arc<Mutex<Vec<everruns_provider::driver_registry::Message>>>,
 }
 
 #[async_trait]
@@ -3817,7 +3815,7 @@ impl everruns_provider::driver_registry::ChatDriver for ConversationCapturingDri
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        messages: Vec<everruns_provider::driver_registry::Message>,
         config: &everruns_provider::driver_registry::LlmCallConfig,
     ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
     {
@@ -3841,7 +3839,7 @@ impl everruns_provider::driver_registry::ChatDriver for ConversationCapturingDri
 }
 
 fn create_conversation_capturing_driver_registry(
-    captured_messages: Arc<Mutex<Vec<everruns_provider::driver_registry::LlmMessage>>>,
+    captured_messages: Arc<Mutex<Vec<everruns_provider::driver_registry::Message>>>,
 ) -> DriverRegistry {
     let mut registry = DriverRegistry::new();
     registry.register(DriverId::LlmSim, move |_config| {

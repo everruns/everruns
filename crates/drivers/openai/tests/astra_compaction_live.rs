@@ -5,7 +5,7 @@
 
 use everruns_provider::compact::{CompactRequest, messages_to_compact_input};
 use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmMessage, LlmMessageRole, ProviderOpaqueContext,
+    LlmCallConfig, Message, MessageRole, ProviderOpaqueContext,
 };
 use everruns_provider::reasoning_updates::ReasoningState;
 use everruns_provider::{ProviderEndpoint, ReasoningEffort};
@@ -32,8 +32,8 @@ async fn astra_compaction_preserves_facts_constraints_and_continuation() {
         effective: Some(ReasoningEffort::Low),
         pending: None,
     });
-    let mut history = vec![LlmMessage::text(
-        LlmMessageRole::User,
+    let mut history = vec![Message::text(
+        MessageRole::User,
         format!(
             "Remember code={nonce}, timezone=Pacific/Auckland, guard=read-only. Preserve these exact facts and constraints. Reply only ACK for now."
         ),
@@ -43,11 +43,11 @@ async fn astra_compaction_preserves_facts_constraints_and_continuation() {
         .await
         .expect("initial live response");
     assert!(first.tool_calls.as_ref().is_none_or(Vec::is_empty));
-    let mut first_message = LlmMessage::text(LlmMessageRole::Assistant, first.text);
+    let mut first_message = Message::text(MessageRole::Assistant, first.text);
     first_message.reasoning = first.reasoning;
     history.push(first_message);
-    history.push(LlmMessage::text(
-        LlmMessageRole::User,
+    history.push(Message::text(
+        MessageRole::User,
         "Continue to preserve the original facts and constraints. Reply only ACK again.",
     ));
     config.previous_response_id = Some(first.metadata.response_id.expect("stateful response ID"));
@@ -59,7 +59,7 @@ async fn astra_compaction_preserves_facts_constraints_and_continuation() {
         .expect("live reasoning update");
     assert!(second.tool_calls.as_ref().is_none_or(Vec::is_empty));
     history[2].configuration_update = Some(ReasoningEffort::High);
-    let mut second_message = LlmMessage::text(LlmMessageRole::Assistant, second.text);
+    let mut second_message = Message::text(MessageRole::Assistant, second.text);
     second_message.reasoning = second.reasoning;
     history.push(second_message);
     config.reasoning_state.as_mut().unwrap().pending = None;
@@ -102,7 +102,7 @@ async fn astra_compaction_preserves_facts_constraints_and_continuation() {
     // Cross the same JSON persistence boundary used by native checkpoints.
     config.provider_opaque_context = Some(serde_json::from_value(json!(context)).unwrap());
     config.previous_response_id = None;
-    let continuation = provider.chat_completion(vec![LlmMessage::text(LlmMessageRole::User,
+    let continuation = provider.chat_completion(vec![Message::text(MessageRole::User,
         "Return only a JSON object with the original code, timezone, and guard. Use keys code, timezone, guard. Do not invent or reset any value.")], &config)
         .await.expect("fresh post-compaction continuation");
     let facts: serde_json::Value =

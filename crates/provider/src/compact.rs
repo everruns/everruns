@@ -1,6 +1,6 @@
 //! Transport-neutral native compaction request and response contracts.
 
-use crate::driver_registry::{LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole};
+use crate::driver_registry::{LlmContentPart, Message, MessageContent, MessageRole};
 use serde::{Deserialize, Serialize};
 
 /// Request body for the Open Responses `/v1/responses/compact` endpoint.
@@ -222,7 +222,7 @@ impl CompactInputItem {
     ///
     /// Assistant tool calls expand to function-call items and tool messages
     /// become function-call outputs.
-    pub fn from_llm_message(msg: &LlmMessage) -> Vec<Self> {
+    pub fn from_llm_message(msg: &Message) -> Vec<Self> {
         let mut items = Vec::new();
         if let Some(effort) = msg.configuration_update {
             items.push(Self::ConfigurationUpdate {
@@ -247,18 +247,18 @@ impl CompactInputItem {
             }
         }
         let role = match msg.role {
-            LlmMessageRole::System => "developer",
-            LlmMessageRole::User => "user",
-            LlmMessageRole::Assistant => "assistant",
-            LlmMessageRole::Tool => "tool",
+            MessageRole::System => "developer",
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+            MessageRole::Tool => "tool",
         };
 
-        if msg.role == LlmMessageRole::Tool
+        if msg.role == MessageRole::Tool
             && let Some(tool_call_id) = &msg.tool_call_id
         {
             let output = match &msg.content {
-                LlmMessageContent::Text(text) => text.clone(),
-                LlmMessageContent::Parts(parts) => parts
+                MessageContent::Text(text) => text.clone(),
+                MessageContent::Parts(parts) => parts
                     .iter()
                     .filter_map(|part| match part {
                         LlmContentPart::Text { text } => Some(text.clone()),
@@ -284,7 +284,7 @@ impl CompactInputItem {
                 role: role.to_string(),
                 content,
             };
-            if msg.role == LlmMessageRole::Assistant
+            if msg.role == MessageRole::Assistant
                 && let Some(phase) = msg.phase
             {
                 let mut value = serde_json::json!(message);
@@ -295,7 +295,7 @@ impl CompactInputItem {
             }
         }
 
-        if msg.role == LlmMessageRole::Assistant
+        if msg.role == MessageRole::Assistant
             && let Some(tool_calls) = &msg.tool_calls
         {
             items.extend(tool_calls.iter().map(|call| Self::FunctionCall {
@@ -320,10 +320,10 @@ impl CompactInputItem {
         }
     }
 
-    fn content_from_llm_message(msg: &LlmMessage) -> CompactContent {
+    fn content_from_llm_message(msg: &Message) -> CompactContent {
         match &msg.content {
-            LlmMessageContent::Text(text) => CompactContent::Text(text.clone()),
-            LlmMessageContent::Parts(parts) => {
+            MessageContent::Text(text) => CompactContent::Text(text.clone()),
+            MessageContent::Parts(parts) => {
                 let compact_parts = parts
                     .iter()
                     .filter_map(|part| match part {
@@ -354,7 +354,7 @@ impl CompactInputItem {
 }
 
 /// Convert provider-neutral messages into ordered native compact input items.
-pub fn messages_to_compact_input(messages: &[LlmMessage]) -> Vec<CompactInputItem> {
+pub fn messages_to_compact_input(messages: &[Message]) -> Vec<CompactInputItem> {
     messages
         .iter()
         .flat_map(CompactInputItem::from_llm_message)
@@ -505,7 +505,7 @@ mod tests {
 
     #[test]
     fn message_conversion_keeps_roles_call_order_and_supported_content() {
-        let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "checking");
+        let mut assistant = Message::text(MessageRole::Assistant, "checking");
         assistant.configuration_update = Some(crate::model::ReasoningEffort::High);
         assistant.phase = Some(crate::execution_phase::ExecutionPhase::Commentary);
         assistant.reasoning = vec![
@@ -526,8 +526,8 @@ mod tests {
             name: "lookup".into(),
             arguments: json!({"q":1}),
         }]);
-        let mut result = LlmMessage::parts(
-            LlmMessageRole::Tool,
+        let mut result = Message::parts(
+            MessageRole::Tool,
             vec![
                 LlmContentPart::text("do"),
                 LlmContentPart::image("https://images.example/ignored.png"),
@@ -536,9 +536,9 @@ mod tests {
         );
         result.tool_call_id = Some("call-1".into());
         let input = messages_to_compact_input(&[
-            LlmMessage::text(LlmMessageRole::System, "rules"),
-            LlmMessage::parts(
-                LlmMessageRole::User,
+            Message::text(MessageRole::System, "rules"),
+            Message::parts(
+                MessageRole::User,
                 vec![
                     LlmContentPart::text("see"),
                     LlmContentPart::image("https://images.example/a.png"),
@@ -549,10 +549,7 @@ mod tests {
             ),
             assistant,
             result,
-            LlmMessage::parts(
-                LlmMessageRole::User,
-                vec![LlmContentPart::text("only text")],
-            ),
+            Message::parts(MessageRole::User, vec![LlmContentPart::text("only text")]),
         ]);
         assert_eq!(
             serde_json::to_value(input).unwrap(),
@@ -567,7 +564,7 @@ mod tests {
                 {"type":"message","role":"user","content":"only text"}
             ])
         );
-        let mut calls_only = LlmMessage::text(LlmMessageRole::Assistant, "");
+        let mut calls_only = Message::text(MessageRole::Assistant, "");
         calls_only.tool_calls = Some(vec![crate::tool_types::ToolCall {
             id: "call-2".into(),
             name: "clock".into(),

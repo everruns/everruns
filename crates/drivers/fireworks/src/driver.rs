@@ -16,7 +16,7 @@ use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
 use everruns_provider::driver_helpers::fetch_models;
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
-    LlmMessage, LlmResponse, LlmResponseStream,
+    LlmResponse, LlmResponseStream, Message,
 };
 use everruns_provider::error::Result;
 use everruns_provider::model::{Modality, ModelLimits, ModelModalities, ModelProfile};
@@ -87,7 +87,7 @@ impl ChatDriver for FireworksChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         self.inner
@@ -106,7 +106,7 @@ impl ChatDriver for FireworksChatDriver {
     async fn chat_completion_non_streaming(
         &self,
         endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         self.inner
@@ -392,7 +392,7 @@ impl Default for FireworksChatDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::{LlmMessageRole, ProviderConfig, ServiceKind};
+    use everruns_provider::driver_registry::{MessageRole, ProviderConfig, ServiceKind};
     use serde_json::{Value, json};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -426,8 +426,8 @@ mod tests {
                 Mock::given(method("POST")).and(path("/inference/v1/chat/completions")).and(header("authorization", "Bearer synthetic-key")).respond_with(ResponseTemplate::new(200).insert_header("content-type", "text/event-stream").set_body_string("data: {\"id\":\"response-1\",\"choices\":[{\"delta\":{\"content\":\"answer\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}\n\ndata: [DONE]\n\n")).expect(1).mount(&server).await;
                 let url = format!("{}{suffix}", server.uri());
                 let messages = vec![
-                    LlmMessage::text(LlmMessageRole::System, "rules"),
-                    LlmMessage::text(LlmMessageRole::User, "question"),
+                    Message::text(MessageRole::System, "rules"),
+                    Message::text(MessageRole::User, "question"),
                 ];
                 let result = if registered {
                     registry

@@ -67,9 +67,9 @@ Phase is not sent to the provider API. The `ExecutionPhase` value is still set o
 
 1. ReasonAtom completes LLM streaming, collects text and tool calls
 2. Phase is **preserved from the API response** when available (extracted from `response.completed` output items via `LlmCompletionMetadata.phase`). Falls back to derivation: `ExecutionPhase::from_has_tool_calls(has_tool_calls)`
-3. Phase is stored on the `Message` (persisted via events)
-4. On next iteration, message history is converted to `LlmMessage`, phase is preserved
-5. Driver converts `LlmMessage` to provider format:
+3. Phase is stored on the stored `Message` (persisted via events)
+4. On next iteration, message history is converted to the provider-facing `Message`, phase is preserved
+5. Driver converts that `Message` to provider format:
    - OpenAI Responses (GPT-5.4+): maps `ExecutionPhase` → `"commentary"` / `"final_answer"` string
    - Others: phase field is ignored by the driver
 

@@ -489,13 +489,13 @@ async fn test_tool_result_with_images_llm_conversion() {
     // Should be Tool role with tool_call_id
     assert_eq!(
         llm_msg.role,
-        everruns_provider::driver_registry::LlmMessageRole::Tool
+        everruns_provider::driver_registry::MessageRole::Tool
     );
     assert_eq!(llm_msg.tool_call_id, Some("call_456".to_string()));
 
     // Content should have text (JSON result) + 2 images
     match &llm_msg.content {
-        everruns_provider::driver_registry::LlmMessageContent::Parts(parts) => {
+        everruns_provider::driver_registry::MessageContent::Parts(parts) => {
             assert_eq!(parts.len(), 3, "should have 1 text + 2 images");
             assert!(matches!(
                 &parts[0],

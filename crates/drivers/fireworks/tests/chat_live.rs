@@ -10,9 +10,7 @@
 //!   `doppler run -- cargo test -p everruns-fireworks --test chat_live -- --ignored --nocapture`
 
 use everruns_fireworks::provider;
-use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent,
-};
+use everruns_provider::driver_registry::{LlmCallConfig, LlmStreamEvent, Message, MessageRole};
 use futures::StreamExt;
 
 const LIVE_MODEL: &str = "accounts/fireworks/models/gpt-oss-120b";
@@ -33,8 +31,8 @@ async fn fireworks_chat_streams_response() {
     // before emitting the visible answer.
     config.max_tokens = Some(512);
 
-    let messages = vec![LlmMessage::text(
-        LlmMessageRole::User,
+    let messages = vec![Message::text(
+        MessageRole::User,
         "Reply with exactly one word: pong",
     )];
 

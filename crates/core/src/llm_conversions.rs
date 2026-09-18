@@ -12,24 +12,28 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::driver_registry::{
-    LlmCallConfig, LlmCallConfigBuilder, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, truncate_tool_result,
+    LlmCallConfig, LlmCallConfigBuilder, LlmContentPart, Message, MessageContent, MessageRole,
+    truncate_tool_result,
 };
 use crate::file_services::ResolvedFile;
 use crate::image_services::ResolvedImage;
-use crate::message::{ContentPart, Message, MessageRole};
+// Two `Message` types meet in this module: the stored conversation message
+// (`crate::message::Message`, aliased `StoredMessage` here) and the
+// provider-facing wire message (`driver_registry::Message`). The alias keeps
+// every signature in this file unambiguous about which side it is on.
+use crate::message::{ContentPart, Message as StoredMessage, MessageRole as StoredMessageRole};
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolCall;
 
-/// Convert a [`Message`] into an [`LlmMessage`] (text-only; images become
+/// Convert a [`StoredMessage`] into a [`Message`] (text-only; images become
 /// placeholders). For multimodal messages use
 /// [`llm_message_from_message_with_images`].
-pub fn llm_message_from_message(msg: &Message) -> LlmMessage {
+pub fn llm_message_from_message(msg: &StoredMessage) -> Message {
     let role = match msg.role {
-        MessageRole::System => LlmMessageRole::System,
-        MessageRole::User => LlmMessageRole::User,
-        MessageRole::Agent => LlmMessageRole::Assistant,
-        MessageRole::ToolResult => LlmMessageRole::Tool,
+        StoredMessageRole::System => MessageRole::System,
+        StoredMessageRole::User => MessageRole::User,
+        StoredMessageRole::Agent => MessageRole::Assistant,
+        StoredMessageRole::ToolResult => MessageRole::Tool,
     };
 
     let tool_calls: Vec<ToolCall> = msg
@@ -42,7 +46,7 @@ pub fn llm_message_from_message(msg: &Message) -> LlmMessage {
         })
         .collect();
 
-    LlmMessage {
+    Message {
         configuration_update: None,
         native_tool_calls: msg
             .tool_calls()
@@ -50,7 +54,7 @@ pub fn llm_message_from_message(msg: &Message) -> LlmMessage {
             .filter_map(|call| call.native.clone())
             .collect(),
         role,
-        content: LlmMessageContent::Text(msg.content_to_llm_string()),
+        content: MessageContent::Text(msg.content_to_llm_string()),
         tool_calls: if tool_calls.is_empty() {
             None
         } else {
@@ -62,7 +66,7 @@ pub fn llm_message_from_message(msg: &Message) -> LlmMessage {
     }
 }
 
-/// Convert a [`Message`] into an [`LlmMessage`] with resolved images.
+/// Convert a [`StoredMessage`] into a [`Message`] with resolved images.
 ///
 /// - text parts -> `LlmContentPart::Text`
 /// - inline image parts -> `LlmContentPart::Image` (data URL)
@@ -72,25 +76,25 @@ pub fn llm_message_from_message(msg: &Message) -> LlmMessage {
 /// - tool_result parts -> text representation (truncated by the same backstop
 ///   the tool scheduler applies)
 pub fn llm_message_from_message_with_images(
-    msg: &Message,
+    msg: &StoredMessage,
     resolved_images: &HashMap<Uuid, ResolvedImage>,
-) -> LlmMessage {
+) -> Message {
     llm_message_from_message_with_attachments(msg, resolved_images, &HashMap::new())
 }
 
-/// Convert a [`Message`] into an [`LlmMessage`], resolving image and file parts.
+/// Convert a [`StoredMessage`] into a [`Message`], resolving image and file parts.
 ///
 /// `resolved_files` maps file IDs to resolved base64 file content (e.g. PDFs).
 pub fn llm_message_from_message_with_attachments(
-    msg: &Message,
+    msg: &StoredMessage,
     resolved_images: &HashMap<Uuid, ResolvedImage>,
     resolved_files: &HashMap<Uuid, ResolvedFile>,
-) -> LlmMessage {
+) -> Message {
     let role = match msg.role {
-        MessageRole::System => LlmMessageRole::System,
-        MessageRole::User => LlmMessageRole::User,
-        MessageRole::Agent => LlmMessageRole::Assistant,
-        MessageRole::ToolResult => LlmMessageRole::Tool,
+        StoredMessageRole::System => MessageRole::System,
+        StoredMessageRole::User => MessageRole::User,
+        StoredMessageRole::Agent => MessageRole::Assistant,
+        StoredMessageRole::ToolResult => MessageRole::Tool,
     };
 
     let mut parts: Vec<LlmContentPart> = Vec::new();
@@ -98,7 +102,7 @@ pub fn llm_message_from_message_with_attachments(
 
     for part in &msg.content {
         match part {
-            // Reasoning travels on `LlmMessage::reasoning`, not in the content
+            // Reasoning travels on `Message::reasoning`, not in the content
             // parts: drivers replay it in provider-native form and it must
             // never be flattened into prompt text.
             ContentPart::Reasoning(_) => {}
@@ -161,17 +165,17 @@ pub fn llm_message_from_message_with_attachments(
 
     let content = if parts.len() == 1 && matches!(&parts[0], LlmContentPart::Text { .. }) {
         if let LlmContentPart::Text { text } = &parts[0] {
-            LlmMessageContent::Text(text.clone())
+            MessageContent::Text(text.clone())
         } else {
-            LlmMessageContent::Parts(parts)
+            MessageContent::Parts(parts)
         }
     } else if parts.is_empty() {
-        LlmMessageContent::Text(String::new())
+        MessageContent::Text(String::new())
     } else {
-        LlmMessageContent::Parts(parts)
+        MessageContent::Parts(parts)
     };
 
-    LlmMessage {
+    Message {
         configuration_update: None,
         native_tool_calls: msg
             .tool_calls()
@@ -192,17 +196,17 @@ pub fn llm_message_from_message_with_attachments(
 }
 
 /// Whether a message contains image_file references that need resolution.
-pub fn message_has_image_files(msg: &Message) -> bool {
+pub fn message_has_image_files(msg: &StoredMessage) -> bool {
     msg.content.iter().any(|p| p.is_image_file())
 }
 
 /// Returns true if the message has any file (e.g. PDF) attachment parts.
-pub fn message_has_files(msg: &Message) -> bool {
+pub fn message_has_files(msg: &StoredMessage) -> bool {
     msg.content.iter().any(|p| p.is_file())
 }
 
 /// Extract all image_file IDs from a message.
-pub fn extract_file_ids(msg: &Message) -> Vec<Uuid> {
+pub fn extract_file_ids(msg: &StoredMessage) -> Vec<Uuid> {
     msg.content
         .iter()
         .filter_map(|p| match p {
@@ -213,7 +217,7 @@ pub fn extract_file_ids(msg: &Message) -> Vec<Uuid> {
 }
 
 /// Extract all image_file IDs from a message.
-pub fn extract_image_file_ids(msg: &Message) -> Vec<Uuid> {
+pub fn extract_image_file_ids(msg: &StoredMessage) -> Vec<Uuid> {
     msg.content
         .iter()
         .filter_map(|p| match p {
@@ -245,7 +249,7 @@ pub fn llm_call_config_builder_from_agent(runtime_agent: &RuntimeAgent) -> LlmCa
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::driver_registry::{LlmContentPart, LlmMessageContent, LlmMessageRole};
+    use crate::driver_registry::{LlmContentPart, MessageContent, MessageRole};
     use crate::message::TextContentPart;
     use everruns_provider::model::ReasoningEffort;
 
@@ -383,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_message_has_image_files_with_image_file() {
-        let mut message = Message::user("Just text");
+        let mut message = StoredMessage::user("Just text");
         assert!(!message_has_image_files(&message));
         message
             .content
@@ -399,7 +403,7 @@ mod tests {
     fn test_extract_image_file_ids() {
         let first = crate::typed_id::ImageId::new();
         let second = crate::typed_id::ImageId::new();
-        let mut message = Message::user("images");
+        let mut message = StoredMessage::user("images");
         message.content.extend([
             ContentPart::image_file(first),
             ContentPart::image_url("https://example.com/inline"),
@@ -410,7 +414,7 @@ mod tests {
             extract_image_file_ids(&message),
             vec![first.uuid(), second.uuid(), first.uuid()]
         );
-        assert!(extract_image_file_ids(&Message::user("text")).is_empty());
+        assert!(extract_image_file_ids(&StoredMessage::user("text")).is_empty());
     }
 
     #[test]
@@ -418,7 +422,7 @@ mod tests {
         use crate::file_services::ResolvedFile;
 
         let file_id = crate::typed_id::FileId::new();
-        let mut message = Message::user("summarize this");
+        let mut message = StoredMessage::user("summarize this");
         message.content.push(ContentPart::file(file_id));
         assert!(message_has_files(&message));
         assert_eq!(extract_file_ids(&message), vec![file_id.uuid()]);
@@ -433,7 +437,7 @@ mod tests {
         )]);
         let llm = llm_message_from_message_with_attachments(&message, &HashMap::new(), &resolved);
         match &llm.content {
-            LlmMessageContent::Parts(parts) => {
+            MessageContent::Parts(parts) => {
                 assert_eq!(parts.len(), 2);
                 match &parts[1] {
                     LlmContentPart::File { url, filename } => {
@@ -450,7 +454,7 @@ mod tests {
         let llm =
             llm_message_from_message_with_attachments(&message, &HashMap::new(), &HashMap::new());
         match &llm.content {
-            LlmMessageContent::Parts(parts) => match &parts[1] {
+            MessageContent::Parts(parts) => match &parts[1] {
                 LlmContentPart::Text { text } => assert!(text.contains("File not found")),
                 other => panic!("expected placeholder text, got {:?}", other),
             },
@@ -460,9 +464,9 @@ mod tests {
 
     #[test]
     fn test_from_message_with_images_text_only() {
-        let message = Message {
+        let message = StoredMessage {
             id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
+            role: StoredMessageRole::User,
             content: vec![ContentPart::Text(TextContentPart::new("Hello".to_string()))],
             phase: None,
             phase_source: None,
@@ -475,9 +479,9 @@ mod tests {
         let resolved = std::collections::HashMap::new();
         let llm_message = llm_message_from_message_with_images(&message, &resolved);
 
-        assert_eq!(llm_message.role, LlmMessageRole::User);
+        assert_eq!(llm_message.role, MessageRole::User);
         match llm_message.content {
-            LlmMessageContent::Text(text) => assert_eq!(text, "Hello"),
+            MessageContent::Text(text) => assert_eq!(text, "Hello"),
             _ => panic!("Expected text content"),
         }
     }
@@ -486,7 +490,7 @@ mod tests {
     fn test_from_message_with_images_resolved_image() {
         let first = crate::typed_id::ImageId::new();
         let second = crate::typed_id::ImageId::new();
-        let mut message = Message::user("Look at this");
+        let mut message = StoredMessage::user("Look at this");
         message.content.extend([
             ContentPart::image_file(first),
             ContentPart::text("and this"),
@@ -504,9 +508,9 @@ mod tests {
             (first.uuid(), ResolvedImage::new("first-data", "image/png")),
         ]);
         let actual = llm_message_from_message_with_images(&message, &resolved);
-        assert_eq!(actual.role, LlmMessageRole::User);
+        assert_eq!(actual.role, MessageRole::User);
         assert!(
-            matches!(&actual.content, LlmMessageContent::Parts(parts) if matches!(&parts[..],
+            matches!(&actual.content, MessageContent::Parts(parts) if matches!(&parts[..],
             [LlmContentPart::Text { text: a }, LlmContentPart::Image { url: b },
              LlmContentPart::Text { text: c }, LlmContentPart::Image { url: d }]
             if a == "Look at this" && b == "data:image/png;base64,first-data" && c == "and this" && d == "data:image/jpeg;base64,second-data"))
@@ -516,11 +520,11 @@ mod tests {
     #[test]
     fn test_from_message_with_images_unresolved_image() {
         let image_id = crate::typed_id::ImageId::from_uuid(Uuid::from_u128(7));
-        let mut message = Message::user("");
+        let mut message = StoredMessage::user("");
         message.content = vec![ContentPart::image_file(image_id)];
         let actual = llm_message_from_message_with_images(&message, &HashMap::new());
-        assert_eq!(actual.role, LlmMessageRole::User);
-        let LlmMessageContent::Text(text) = actual.content else {
+        assert_eq!(actual.role, MessageRole::User);
+        let MessageContent::Text(text) = actual.content else {
             panic!("single missing-image placeholder must remain text");
         };
         assert_eq!(
@@ -542,7 +546,7 @@ mod tests {
             .with_item_id("rs_1")
             .with_signature("private-signature")
             .with_encrypted("private-encrypted");
-        let mut message = Message::assistant_with_tools("answer", calls.clone())
+        let mut message = StoredMessage::assistant_with_tools("answer", calls.clone())
             .with_phase(ExecutionPhase::Commentary);
         message
             .content
@@ -557,7 +561,7 @@ mod tests {
                 "answer",
             ),
         ] {
-            assert_eq!(actual.role, LlmMessageRole::Assistant);
+            assert_eq!(actual.role, MessageRole::Assistant);
             assert_eq!(actual.phase, Some(ExecutionPhase::Commentary));
             assert_eq!(actual.content.to_text(), expected_text);
             assert_eq!(

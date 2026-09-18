@@ -135,16 +135,16 @@ The first two are caught before any request leaves the process.
 `Completion` is a thin value-first layer over `Provider`, which is public.
 Applications that already hold a `Provider` — or implement their own
 [`ChatDriver`](/framework/custom-providers/) — can call it directly with
-`everruns`'s `LlmMessage`, `LlmMessageRole`, `LlmCallConfig`, and `LlmResponse`
+`everruns`'s `Message`, `MessageRole`, `LlmCallConfig`, and `LlmResponse`
 re-exports:
 
 ```rust
-use everruns::{LlmCallConfig, LlmMessage, LlmMessageRole, Provider};
+use everruns::{LlmCallConfig, Message, MessageRole, Provider};
 
 # async fn run(provider: Provider) -> Result<(), Box<dyn std::error::Error>> {
 let response = provider
     .chat_completion(
-        vec![LlmMessage::text(LlmMessageRole::User, "What is 2 + 2?")],
+        vec![Message::text(MessageRole::User, "What is 2 + 2?")],
         &LlmCallConfig::new("gpt-5.6-terra"),
     )
     .await?;

@@ -5,7 +5,7 @@
 # removed from this list. Do not add an entry by hand to admit a new
 # oversized file — split the file instead.
 4628 apps/ui/src/lib/api/legacy-api-types.ts
-3635 crates/builtins/src/compaction.rs
+3634 crates/builtins/src/compaction.rs
 3081 crates/builtins/src/guardrails.rs
 1590 crates/builtins/src/infinity_context.rs
 1746 crates/builtins/src/progress_guard.rs
@@ -16,7 +16,7 @@
 1691 crates/core/src/message.rs
 1673 crates/core/src/skill.rs
 2277 crates/core/src/tool_narration.rs
-3218 crates/drivers/anthropic/src/driver.rs
+3212 crates/drivers/anthropic/src/driver.rs
 1785 crates/drivers/llmsim/src/lib.rs
 2285 crates/durable/src/engine/executor.rs
 3714 crates/durable/src/persistence/memory.rs
@@ -83,7 +83,7 @@
 4917 crates/server/tests/repository_integration_test.rs
 2110 crates/server/tests/slack_integration_test.rs
 1737 crates/test-support/src/capabilities/fake_aws.rs
-4728 crates/test-support/tests/reason_atom_test.rs
+4726 crates/test-support/tests/reason_atom_test.rs
 4413 crates/worker/src/grpc_adapters.rs
 2500 crates/worker/src/unified_worker.rs
 3816 integrations/bashkit/src/lib.rs

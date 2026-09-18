@@ -14,13 +14,15 @@ use everruns_core::command_host::{
 use everruns_core::execution_loading::{AgentStore, HarnessStore, SessionStore};
 use everruns_core::file_services::{FileResolver, ResolvedFile};
 use everruns_core::image_services::{ImageResolver, ResolvedImage};
-use everruns_core::message::{Controls, Message, MessageRole, patch_dangling_tool_calls};
+use everruns_core::message::{
+    Controls, Message as StoredMessage, MessageRole as StoredMessageRole, patch_dangling_tool_calls,
+};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::provider_resolution::ProviderStore;
 use everruns_core::runtime_context::{AssembledTurnContext, ResolvedModelExecution};
 use everruns_core::session_files::SessionFileSystem;
 use everruns_provider::driver_registry::{
-    ChatDriver, DriverRegistry, LlmCallConfig, LlmMessage, LlmMessageRole, ToolSearchConfig,
+    ChatDriver, DriverRegistry, LlmCallConfig, Message, MessageRole, ToolSearchConfig,
 };
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::runtime_provider::ProviderEndpoint;
@@ -122,7 +124,7 @@ impl StoreCommandHost {
             .await
     }
 
-    async fn resolve_images(&self, messages: &[Message]) -> HashMap<Uuid, ResolvedImage> {
+    async fn resolve_images(&self, messages: &[StoredMessage]) -> HashMap<Uuid, ResolvedImage> {
         let Some(resolver) = &self.image_resolver else {
             return HashMap::new();
         };
@@ -139,7 +141,7 @@ impl StoreCommandHost {
         resolved
     }
 
-    async fn resolve_files(&self, messages: &[Message]) -> HashMap<Uuid, ResolvedFile> {
+    async fn resolve_files(&self, messages: &[StoredMessage]) -> HashMap<Uuid, ResolvedFile> {
         let Some(resolver) = &self.file_resolver else {
             return HashMap::new();
         };
@@ -207,11 +209,11 @@ impl StoreCommandHost {
         let messages = patch_dangling_tool_calls(&request.messages);
         let resolved_images = self.resolve_images(&messages).await;
         let resolved_files = self.resolve_files(&messages).await;
-        let mut llm_messages: Vec<LlmMessage> = request
+        let mut llm_messages: Vec<Message> = request
             .system_prompts
             .iter()
             .filter(|prompt| !prompt.is_empty())
-            .map(|prompt| LlmMessage::text(LlmMessageRole::System, prompt.clone()))
+            .map(|prompt| Message::text(MessageRole::System, prompt.clone()))
             .collect();
         for message in &messages {
             let mut llm_message =
@@ -220,7 +222,7 @@ impl StoreCommandHost {
                     &resolved_images,
                     &resolved_files,
                 );
-            if message.role == MessageRole::User
+            if message.role == StoredMessageRole::User
                 && let Some(actor) = &message.external_actor
             {
                 llm_message.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
@@ -259,7 +261,7 @@ impl StoreCommandHost {
 }
 
 struct PreparedCompletion {
-    llm_messages: Vec<LlmMessage>,
+    llm_messages: Vec<Message>,
     llm_config: LlmCallConfig,
     driver: Arc<dyn ChatDriver>,
     context: UserFacingErrorContext,
