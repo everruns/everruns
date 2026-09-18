@@ -11,30 +11,6 @@ export interface ScopedMcpServer {
 
 export type ScopedMcpServers = Record<string, ScopedMcpServer>;
 
-export interface AgentMcpAttachmentSourceInfo {
-  source: "capability" | "harness" | "agent";
-  source_label: string;
-}
-
-export interface AgentMcpAttachment {
-  name: string;
-  source: "capability" | "harness" | "agent";
-  source_label: string;
-  overridden_sources: AgentMcpAttachmentSourceInfo[];
-  acts_as: McpServerActsAs;
-  preset_name?: string | null;
-  preset_id?: string | null;
-  connection_provider?: string | null;
-  url?: string | null;
-  header_names: string[];
-  tools_available: boolean;
-  tools: string[];
-  state: "ready" | "connection_missing" | "preset_missing";
-  action: "none" | "connect" | "authorize" | "ask_admin";
-  connected_as?: string | null;
-  editable: boolean;
-}
-
 declare module "./legacy-api-types" {
   interface Agent {
     /** MCP attachments authored directly on the agent. */
