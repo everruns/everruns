@@ -9,22 +9,7 @@ answers those in prose, so the call site ends up with a prompt asking for JSON,
 a parser, and a fallback for when the parse fails.
 
 A classifier answers them as numbers instead, and the decision stays in your
-code:
-
-```rust
-use everruns::{Classifier, TypeSafeAI};
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let classifier = Classifier::new("jev-latest", TypeSafeAI::from_env()?);
-let spam = classifier
-    .probability("Is this message spam?", "Claim your prize now!")
-    .await?;
-if spam > 0.9 {
-    println!("quarantined");
-}
-# Ok(())
-# }
-```
+code.
 
 This is the counterpart to [direct model calls](/framework/direct-model-calls/):
 the same shape, a different contract.
@@ -36,30 +21,43 @@ the same shape, a different contract.
 | decides the outcome | the model's words | your threshold, in your code |
 | streams | yes | no — one round trip |
 
-## Install
+## Quick start
 
 ```bash
 cargo add everruns --features typesafe
-export TYPESAFE_API_KEY=...
+cargo add tokio --features macros,rt-multi-thread
+export TYPESAFE_API_KEY=...   # a key from typesafe.ai
 ```
 
-`--features typesafe` bundles the TypeSafe classifier provider: `TypeSafeAI`,
-which `TypeSafeAI::from_env()` builds from `TYPESAFE_API_KEY`, and the `Jev`
-capability for [handing the same tool to an agent](#giving-an-agent-the-classifier).
-Get a key at [typesafe.ai](https://typesafe.ai).
+```rust
+use everruns::{Classifier, TypeSafeAI};
 
-`everruns` itself stays vendor-free without that feature: `Classifier::new`
-takes any `ClassifierService`, exactly as `Model::new` takes any provider.
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let classifier = Classifier::new("jev-latest", TypeSafeAI::from_env()?);
 
-:::note[Not on crates.io yet]
-The `typesafe` feature ships in the next release: the published `everruns`
-0.28.0 does not list it, so the `cargo add` above does not resolve yet. Until
-that release is cut, depend on the repository:
+    let text = "CONGRATULATIONS! You've WON $1,000,000. Click here to claim your prize now!";
+    let spam = classifier.probability("Is this message spam?", text).await?;
 
-```toml
-everruns = { git = "https://github.com/everruns/everruns", features = ["typesafe"] }
+    println!("spam: {spam:.2}");
+    if spam > 0.9 {
+        println!("quarantined");
+    }
+    Ok(())
+}
 ```
-:::
+
+```text
+spam: 0.98
+quarantined
+```
+
+One number, and your own `> 0.9` decides — the model reports how likely, not what
+to do. The same call answers `0.03` for "Standup moved to 10am." and `0.74` for a
+bare "Claim your prize now!"; the middling ones are what a threshold is for.
+
+`--features typesafe` adds `TypeSafeAI` and the `Jev` capability. Without it
+`everruns` names no vendor: `Classifier::new` takes any `ClassifierService`.
 
 ## Three primitives
 
