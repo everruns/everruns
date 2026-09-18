@@ -89,7 +89,7 @@ impl WorkerServiceImpl {
         // Persisted configs may predate an org disabling a feature. Strip
         // feature-gated capabilities at the server/worker boundary so they
         // cannot reappear in the runtime tool surface.
-        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags_cached(
             &self.db,
             req.org_id,
             &everruns_platform::FeatureFlags::current(),
