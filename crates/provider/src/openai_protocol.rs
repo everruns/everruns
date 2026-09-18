@@ -17,8 +17,7 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::{Client, Url};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
@@ -31,6 +30,7 @@ use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
+use crate::openai_types::*;
 use crate::runtime_provider::ProviderEndpoint;
 use crate::stream_accumulator::StreamToolCallAccumulator;
 use crate::stream_reconnect::connect_sse_with_reconnect;
@@ -1048,223 +1048,6 @@ pub fn is_openai_request_too_large(status: reqwest::StatusCode, error_text: &str
     false
 }
 
-// ============================================================================
-// OpenAI API Types
-// ============================================================================
-
-#[derive(Debug, Serialize)]
-struct OpenAiRequest {
-    model: String,
-    messages: Vec<OpenAiMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u32>,
-    stream: bool,
-    /// Request usage info in streaming response (required for token counts)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stream_options: Option<OpenAiStreamOptions>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<Vec<OpenAiTool>>,
-    /// Request-level control over parallel tool calls. Omitted when unset so the
-    /// provider default applies.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    parallel_tool_calls: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_effort: Option<String>,
-    /// Speed selector: OpenAI service tier ("flex", "default", "priority").
-    /// Omitted when `None` so the provider keeps its default ("auto") routing.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    service_tier: Option<String>,
-    /// Verbosity selector ("low", "medium", "high"). Top-level field on the
-    /// Chat Completions API. Omitted when `None` so the provider keeps its
-    /// default ("medium") output length.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    verbosity: Option<String>,
-    /// Metadata for tracking API usage (up to 16 key-value pairs).
-    /// Useful for correlating requests with session_id, agent_id, org_id, etc.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    metadata: Option<std::collections::HashMap<String, String>>,
-}
-
-#[derive(Debug, Serialize)]
-struct OpenAiStreamOptions {
-    include_usage: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-enum OpenAiContent {
-    Text(String),
-    Parts(Vec<OpenAiContentPart>),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-enum OpenAiContentPart {
-    Text {
-        r#type: String,
-        text: String,
-    },
-    ImageUrl {
-        r#type: String,
-        image_url: OpenAiImageUrl,
-    },
-    InputAudio {
-        r#type: String,
-        input_audio: OpenAiInputAudio,
-    },
-    File {
-        r#type: String,
-        file: OpenAiFile,
-    },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiFile {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    filename: Option<String>,
-    file_data: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiImageUrl {
-    url: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiInputAudio {
-    data: String,
-    format: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiMessage {
-    role: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    content: Option<OpenAiContent>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_calls: Option<Vec<OpenAiToolCall>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_call_id: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiTool {
-    r#type: String,
-    function: OpenAiFunction,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiFunction {
-    name: String,
-    description: String,
-    parameters: Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    strict: Option<bool>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiToolCall {
-    id: String,
-    r#type: String,
-    function: OpenAiFunctionCall,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiFunctionCall {
-    name: String,
-    arguments: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)] // id and model are deserialized but used by event listeners, not directly
-struct OpenAiStreamChunk {
-    /// Unique identifier for this completion
-    #[serde(default)]
-    id: Option<String>,
-    /// Model used for completion (may differ from requested)
-    #[serde(default)]
-    model: Option<String>,
-    choices: Vec<OpenAiStreamChoice>,
-    #[serde(default)]
-    usage: Option<OpenAiUsage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiUsage {
-    prompt_tokens: Option<u32>,
-    completion_tokens: Option<u32>,
-    /// Detailed breakdown of prompt tokens (includes cached tokens)
-    #[serde(default)]
-    prompt_tokens_details: Option<OpenAiPromptTokensDetails>,
-    /// Detailed breakdown of completion tokens (includes reasoning tokens)
-    #[serde(default)]
-    completion_tokens_details: Option<OpenAiCompletionTokensDetails>,
-    /// Authoritative per-request cost in USD credits, returned by
-    /// OpenAI-compatible gateways such as OpenRouter. Absent for direct OpenAI.
-    #[serde(default)]
-    cost: Option<f64>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct OpenAiPromptTokensDetails {
-    /// Number of tokens retrieved from cache
-    #[serde(default)]
-    cached_tokens: Option<u32>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct OpenAiCompletionTokensDetails {
-    /// Reasoning tokens billed inside `completion_tokens`
-    #[serde(default)]
-    reasoning_tokens: Option<u32>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiStreamChoice {
-    delta: OpenAiDelta,
-    #[serde(default)]
-    finish_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiDelta {
-    #[serde(default)]
-    content: Option<String>,
-    /// Reasoning text on the Chat Completions wire. Reasoning models reached
-    /// over this protocol (DeepSeek-R1, Qwen, Groq, Fireworks) stream it here;
-    /// vendors split between two field names for the same thing.
-    #[serde(default)]
-    reasoning_content: Option<String>,
-    #[serde(default)]
-    reasoning: Option<String>,
-    #[serde(default)]
-    tool_calls: Option<Vec<OpenAiStreamToolCall>>,
-}
-
-impl OpenAiDelta {
-    fn reasoning_text(&self) -> Option<&str> {
-        self.reasoning_content
-            .as_deref()
-            .or(self.reasoning.as_deref())
-            .filter(|text| !text.is_empty())
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiStreamToolCall {
-    index: u32,
-    id: Option<String>,
-    function: Option<OpenAiStreamFunction>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiStreamFunction {
-    name: Option<String>,
-    arguments: Option<String>,
-}
-
 /// Drains tool calls that were accumulated but not yet emitted, returning a
 /// final `ToolCalls` event for the `[DONE]` handler. Returns `None` when nothing
 /// is pending (the common case, since the finish chunk normally drains them).
@@ -1369,7 +1152,7 @@ fn process_stream_choice(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     // ========================================================================
     // Request-too-large detection tests

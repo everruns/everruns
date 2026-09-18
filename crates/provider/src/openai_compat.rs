@@ -185,26 +185,8 @@ mod tests {
     #[test]
     fn reasoning_effort_is_validated_before_none_is_filtered() {
         let mut config = LlmCallConfig {
-            reasoning_state: None,
-            speed: None,
-            verbosity: None,
             model: "gpt-6-astra".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata: std::collections::HashMap::new(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-            capture_request: false,
-            limits: Default::default(),
+            ..Default::default()
         };
         for effort in [ReasoningEffort::None, ReasoningEffort::Minimal] {
             config.reasoning_effort = Some(effort);

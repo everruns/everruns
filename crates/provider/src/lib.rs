@@ -30,6 +30,8 @@ pub mod driver_helpers;
 pub mod driver_registry;
 pub mod error;
 pub mod execution_phase;
+pub mod llm_error;
+pub mod llm_message;
 pub mod llm_retry;
 pub mod model;
 pub mod model_discovery;
@@ -39,6 +41,8 @@ pub mod native_async;
 pub mod openai_compat;
 #[cfg(feature = "http")]
 pub mod openai_protocol;
+#[cfg(feature = "http")]
+mod openai_types;
 pub mod openai_wire;
 #[cfg(feature = "http")]
 pub mod openresponses_protocol;

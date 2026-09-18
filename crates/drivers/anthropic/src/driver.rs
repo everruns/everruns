@@ -321,10 +321,8 @@ impl AnthropicChatDriver {
                         return RetryDecision::Terminal(AgentLoopError::request_too_large(error_msg));
                     }
 
-                    // Attach the semantic error kind while the HTTP status and
-                    // body are still available (see LlmErrorKind).
-                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
-
+                    // Classified, and its status preserved, while the HTTP
+                    // response is still structured (see LlmError).
                     let message = if attempts > 0 {
                         format!(
                             "{} (after {} retries, last error: {})",
@@ -335,8 +333,7 @@ impl AnthropicChatDriver {
                     } else {
                         error_msg
                     };
-                    RetryDecision::Terminal(AgentLoopError::llm_http_kind(
-                        kind,
+                    RetryDecision::Terminal(AgentLoopError::llm_http(
                         status.as_u16(),
                         &error_text,
                         message,
@@ -1316,8 +1313,7 @@ impl ChatDriver for AnthropicChatDriver {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            // Classified at the boundary so credential checks can tell a
-            // rejected key (401/403) from an outage without parsing strings.
+            // Classified at the boundary: a rejected key is not an outage.
             return Err(AgentLoopError::llm_http(
                 status.as_u16(),
                 &body,

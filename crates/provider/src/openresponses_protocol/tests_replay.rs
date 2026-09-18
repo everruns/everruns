@@ -93,28 +93,11 @@ async fn stateless_gateway_request_replays_full_transcript_on_the_wire() {
     ];
 
     let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
         model: "some/model".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
-        reasoning_effort: None,
-        metadata: std::collections::HashMap::new(),
         // Continuation handle from a prior turn — must be ignored on a
         // stateless gateway.
         previous_response_id: Some("gen-turn-1".to_string()),
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        capture_request: false,
-        limits: Default::default(),
-        reasoning_state: None,
+        ..Default::default()
     };
 
     // Fire the request. The stream body is irrelevant for this assertion.
@@ -232,26 +215,10 @@ async fn rejected_stateful_continuation_replays_repaired_transcript_once() {
         },
     ];
     let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
         model: "gpt-5.4".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
         reasoning_effort: Some(crate::model::ReasoningEffort::High),
-        metadata: std::collections::HashMap::new(),
         previous_response_id: Some("resp_tool_turn".to_string()),
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        capture_request: false,
-        limits: Default::default(),
-        reasoning_state: None,
+        ..Default::default()
     };
 
     let mut stream = driver
@@ -472,26 +439,8 @@ async fn openresponses_stream_skips_done_sentinel() {
     .auth(crate::runtime_provider::BearerAuth::new("test-key"));
     let driver = OpenResponsesProtocolChatDriver::new();
     let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
         model: "openai/gpt-5.6-luna".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
-        reasoning_effort: None,
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        capture_request: false,
-        limits: Default::default(),
-        reasoning_state: None,
+        ..Default::default()
     };
 
     let stream = driver
@@ -1280,26 +1229,9 @@ fn test_request_reasoning_none_is_omitted() {
     // When reasoning effort is "none", the reasoning field should be omitted
     // to avoid API errors on models that don't support reasoning params
     let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
         model: "gpt-5.2".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
         reasoning_effort: Some(crate::model::ReasoningEffort::None),
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        capture_request: false,
-        limits: Default::default(),
-        reasoning_state: None,
+        ..Default::default()
     };
 
     // Simulate the driver's filter logic
@@ -1321,26 +1253,9 @@ fn test_request_reasoning_none_is_omitted() {
 fn test_request_reasoning_high_is_included() {
     // When reasoning effort is "high", the reasoning field should be present
     let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
         model: "gpt-5.2".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
         reasoning_effort: Some(crate::model::ReasoningEffort::High),
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        capture_request: false,
-        limits: Default::default(),
-        reasoning_state: None,
+        ..Default::default()
     };
 
     let reasoning = config
