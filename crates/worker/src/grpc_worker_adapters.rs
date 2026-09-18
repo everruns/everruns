@@ -525,6 +525,20 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn slack_action_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_provider::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
+        Some(Arc::new(
+            crate::grpc_slack_actions::GrpcSlackActionInvoker::new(
+                self.client.clone(),
+                org_id,
+                session_id,
+            ),
+        ))
+    }
+
     fn payment_authority(
         &self,
         org_id: i64,

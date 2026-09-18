@@ -6,6 +6,7 @@ mod catalog_cli;
 pub mod durable_runner;
 pub mod grpc_adapters;
 pub mod grpc_durable_store;
+pub mod grpc_slack_actions;
 pub mod grpc_worker_adapters;
 pub mod leased_resource_cleanup;
 pub mod mcp_elicitation_consent;

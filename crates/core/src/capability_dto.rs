@@ -203,6 +203,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "session_storage" => Some("session-storage"),
         "session_sandbox" => Some("session"),
         "session_sql_database" => Some("sql-database"),
+        "slack" => Some("slack"),
         "subagents" => Some("sub-agents"),
         "stateless_todo_list" => Some("task-management"),
         "bashkit_shell" => Some("bashkit-shell"),

@@ -149,7 +149,7 @@ async fn fetch_image_from_url(url: &str, media_type: &str) -> Result<ResolvedIma
 /// gRPC client wrapper for worker operations
 #[derive(Clone)]
 pub struct GrpcClient {
-    inner: Arc<Mutex<WorkerServiceClient<InterceptedService<Channel, GrpcClientAuth>>>>,
+    pub(crate) inner: Arc<Mutex<WorkerServiceClient<InterceptedService<Channel, GrpcClientAuth>>>>,
 }
 
 /// Max gRPC message size (16MB)

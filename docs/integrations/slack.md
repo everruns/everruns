@@ -270,3 +270,25 @@ Agent-pane messages always use `per_thread` regardless of this setting (see
 - [Slack API Documentation](https://api.slack.com/docs)
 - [Slack Events API](https://api.slack.com/events-api)
 - [Apps Feature Guide](/features/apps/)
+
+## Approvals
+
+An agent that pauses to ask permission before a consequential action renders that
+pause as **Approve** and **Decline** buttons in the Slack thread, rather than as a
+question the person has to answer in prose.
+
+Clicking posts the decision into the conversation, and the agent carries on. The
+click is recorded against the Slack identity that made it, so an approval is
+attributable afterwards.
+
+**Who can click.** Only the person whose message the agent is answering. Anyone
+else who clicks gets a private note saying so, and nothing is recorded. This is
+the default and currently the only policy: seeing a channel is not the same as
+being allowed to approve work in it.
+
+**Setup.** Nothing extra. The generated manifest already points Slack's
+interactivity at your endpoint, so an app created from it can deliver clicks. An
+app created before this existed needs its manifest re-saved once.
+
+**If a thread cannot show buttons**, the agent asks in the thread as before and a
+plain reply answers it. Nothing is lost; the question is just prose.

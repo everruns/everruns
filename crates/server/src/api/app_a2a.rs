@@ -1116,7 +1116,7 @@ async fn handle_message_stream(
     let sse_guard = match state.sse_tracker.try_acquire(auth.org_id, session_id_uuid) {
         Ok(guard) => guard,
         Err(rejection) => {
-            return ErrorResponse::new(rejection.to_string())
+            return ErrorResponse::new(rejection.report("a2a", auth.org_id, &session_id_uuid))
                 .into_response(StatusCode::TOO_MANY_REQUESTS)
                 .into_response();
         }
