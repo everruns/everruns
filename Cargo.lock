@@ -2476,6 +2476,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-foreman-agent"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-example-demo",
+ "everruns-openrouter",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-framework-cli-host"
 version = "0.1.0"
 dependencies = [

@@ -252,7 +252,10 @@ pub use everruns_provider::tool_types::{ToolCall, ToolDefinition};
 pub use everruns_provider::typed_id::{SessionId, WorkspaceId};
 
 // --- Deterministic in-process LLM simulator -----------------------------
-pub use everruns_llmsim::LlmSimConfig;
+// `LlmSimConfig::scripted` takes `SimTurn`s, so the turn, tool-call, and
+// exhaustion types belong here beside it: without them the facade exposes a
+// constructor nothing outside the workspace can call.
+pub use everruns_llmsim::{LlmSimConfig, OnExhausted, SimError, SimToolCall, SimTurn};
 
 /// The common path: everything needed to describe an agent and run turns.
 ///
