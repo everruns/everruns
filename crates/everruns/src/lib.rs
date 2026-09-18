@@ -54,6 +54,7 @@ mod context;
 mod default_workspace;
 mod engine;
 mod events;
+mod harness;
 mod history;
 mod hooks;
 /// Stability: stable — no breaking change without a major bump; see [`stability`].
@@ -108,6 +109,10 @@ pub use everruns_integrations_filesystem::FileSystem;
 pub use everruns_integrations_typesafe::{Jev, TypeSafeAI};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations_web_fetch::WebFetch;
+pub use harness::{
+    Harness, HarnessBuildError, HarnessBuilder, HarnessEnvironmentSessionBuilder,
+    HarnessSessionBuilder,
+};
 pub use history::{
     HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
     ResumeError, SessionMessage,
@@ -281,16 +286,16 @@ pub mod prelude {
         Agent, AgentBuilder, AgentStartContext, Answers, BuildError, CancelError,
         CancellationToken, CapabilityRef, CapabilitySpec, Classification, Classifier,
         ClassifierError, Completion, CompletionContext, CompletionError, Engine, Environment,
-        EventStream, EventStreamError, FunctionTool, HistoryCursor, HistoryCursorParseError,
-        HistoryError, HistoryPage, HistoryPages, HistoryQuery, HookFailure, HookPoint,
-        InMemoryEngine, InitialFile, IntoCapability, IntoHookResult, IntoTool, IntoToolResult,
-        LlmSimConfig, McpServer, Model, PluginError, ResumeError, RunError, RunOptions,
-        SendDisposition, SentMessage, Session, SessionContext, SessionEnvironmentError,
-        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo,
-        ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace,
-        WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff, WorkspaceError, WorkspaceHead,
-        WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
-        WorkspacePolicyError,
+        EventStream, EventStreamError, FunctionTool, Harness, HarnessBuildError, HarnessBuilder,
+        HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages,
+        HistoryQuery, HookFailure, HookPoint, InMemoryEngine, InitialFile, IntoCapability,
+        IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model, PluginError,
+        ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session, SessionContext,
+        SessionEnvironmentError, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
+        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle,
+        TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff,
+        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
+        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{
