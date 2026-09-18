@@ -3,8 +3,8 @@ use std::process::Command;
 use std::sync::Arc;
 
 use everruns::{
-    Agent, Environment, InMemoryEngine, LlmSimConfig, LocalConfig, LocalGitWorkspace, Model,
-    ResumeError, Session, SessionEnvironmentError, ToolCall, Workspace, WorkspaceHeadId,
+    Agent, Environment, Harness, InMemoryEngine, LlmSimConfig, LocalConfig, LocalGitWorkspace,
+    Model, ResumeError, Session, SessionEnvironmentError, ToolCall, Workspace, WorkspaceHeadId,
     WorkspacePolicy,
 };
 use everruns_core::session_files::SessionFileSystem;
@@ -331,7 +331,9 @@ async fn workspace_scoped_compute_extension_addresses_the_selected_head() {
         .unwrap()
         .build()
         .unwrap();
+    let harness = Harness::builder("workspace").build().unwrap();
     let session = create_session(agent(LocalConfig::new(data.path().join("runtime"))))
+        .harness(harness)
         .environment(environment)
         .start()
         .await

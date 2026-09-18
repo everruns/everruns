@@ -19,12 +19,12 @@ use everruns_provider::error::AgentLoopError;
 use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
 
-use crate::Agent;
 use crate::engine::SessionExecution;
 use crate::events::{EventStream, FacadeEventBus, RunOptions};
 use crate::hooks::{
     AgentStartContext, CompletionContext, HookFailure, HookRunState, TurnStartContext,
 };
+use crate::{Agent, Harness};
 
 /// A live, multi-turn conversation with an [`Agent`](crate::Agent).
 ///
@@ -65,6 +65,7 @@ pub(crate) struct SessionInner {
     session_id: SessionId,
     event_bus: Arc<FacadeEventBus>,
     hook_state: Arc<HookRunState>,
+    harness: OnceLock<Harness>,
     environment: OnceLock<everruns_host::Environment>,
     environment_gate: tokio::sync::Mutex<()>,
     commands: OnceCell<mpsc::Sender<Command>>,
@@ -97,11 +98,15 @@ impl Session {
                 session_id,
                 event_bus: Arc::new(FacadeEventBus::new()),
                 hook_state,
+                harness: OnceLock::new(),
                 environment: OnceLock::new(),
                 environment_gate: tokio::sync::Mutex::new(()),
                 commands: OnceCell::new(),
             }),
         };
+        if let Some(harness) = session.inner.execution.harness_snapshot() {
+            let _ = session.inner.harness.set(harness);
+        }
         if let Some(environment) = environment {
             let _ = session.inner.environment.set(environment);
         }
@@ -133,6 +138,17 @@ impl Session {
         EnvironmentSessionBuilder {
             session: self,
             environment,
+        }
+    }
+
+    /// Permanently bind this new session to a Harness.
+    ///
+    /// The Harness remains optional. Without this call, session construction
+    /// follows the existing anonymous-harness path.
+    pub fn harness(self, harness: Harness) -> HarnessSessionBuilder {
+        HarnessSessionBuilder {
+            session: self,
+            harness,
         }
     }
 
@@ -370,6 +386,76 @@ impl Session {
             false => Err(CancelError::TurnFinished),
         }
     }
+
+    fn bind_harness(&self, harness: Harness) -> Result<(), SessionEnvironmentError> {
+        if self.inner.commands.initialized() {
+            return Err(SessionEnvironmentError::AlreadyStarted);
+        }
+        if let Some(bound) = self.inner.harness.get() {
+            return if bound.is_same_binding(&harness) {
+                Ok(())
+            } else {
+                Err(SessionEnvironmentError::HarnessAlreadyBound)
+            };
+        }
+        self.inner.execution.bind_harness(harness.clone())?;
+        self.inner
+            .harness
+            .set(harness)
+            .map_err(|_| SessionEnvironmentError::HarnessAlreadyBound)
+    }
+}
+
+/// A not-yet-running Session with its Harness selected.
+pub struct HarnessSessionBuilder {
+    session: Session,
+    harness: Harness,
+}
+
+impl HarnessSessionBuilder {
+    /// Select an Environment for this Harness-bound Session.
+    pub fn environment(
+        self,
+        environment: everruns_host::Environment,
+    ) -> HarnessEnvironmentSessionBuilder {
+        HarnessEnvironmentSessionBuilder {
+            session: self.session,
+            harness: self.harness,
+            environment,
+        }
+    }
+
+    /// Select a workspace head for this Harness-bound Session.
+    pub fn workspace(self, head: everruns_host::WorkspaceHead) -> HarnessEnvironmentSessionBuilder {
+        self.environment(everruns_host::Environment::new(head))
+    }
+
+    /// Freeze the Harness binding and select the Agent's default Environment.
+    pub async fn start(self) -> Result<Session, SessionEnvironmentError> {
+        self.session.bind_harness(self.harness)?;
+        self.session.start().await?;
+        Ok(self.session)
+    }
+}
+
+/// A not-yet-running Session with its Harness and Environment selected.
+pub struct HarnessEnvironmentSessionBuilder {
+    session: Session,
+    harness: Harness,
+    environment: everruns_host::Environment,
+}
+
+impl HarnessEnvironmentSessionBuilder {
+    /// Persist and freeze both bindings before execution starts.
+    pub async fn start(self) -> Result<Session, SessionEnvironmentError> {
+        self.session.bind_harness(self.harness)?;
+        EnvironmentSessionBuilder {
+            session: self.session,
+            environment: self.environment,
+        }
+        .start()
+        .await
+    }
 }
 
 enum Command {
@@ -406,6 +492,7 @@ struct SessionActor {
     session_id: SessionId,
     event_bus: Arc<FacadeEventBus>,
     hook_state: Arc<HookRunState>,
+    harness: Option<Harness>,
     environment: Option<everruns_host::Environment>,
     runtime: Option<InProcessRuntime>,
     agent_started: bool,
@@ -420,6 +507,7 @@ impl SessionActor {
             session_id: inner.session_id,
             event_bus: inner.event_bus.clone(),
             hook_state: inner.hook_state.clone(),
+            harness: inner.harness.get().cloned(),
             environment: inner.environment.get().cloned(),
             runtime: None,
             agent_started: false,
@@ -660,6 +748,7 @@ impl SessionActor {
                             .clone(),
                         self.session_id,
                         self.environment.clone(),
+                        self.harness.as_ref(),
                         self.event_bus.clone(),
                         self.hook_state.clone(),
                     )
@@ -687,6 +776,14 @@ pub struct EnvironmentSessionBuilder {
 }
 
 impl EnvironmentSessionBuilder {
+    /// Add a Harness to the selected Environment before starting.
+    pub fn harness(self, harness: Harness) -> HarnessEnvironmentSessionBuilder {
+        HarnessEnvironmentSessionBuilder {
+            session: self.session,
+            harness,
+            environment: self.environment,
+        }
+    }
     /// Persist and freeze the head binding before execution starts.
     pub async fn start(self) -> Result<Session, SessionEnvironmentError> {
         let _guard = self.session.inner.environment_gate.lock().await;
@@ -722,6 +819,8 @@ pub enum SessionEnvironmentError {
     AlreadyStarted,
     /// The Session is already bound to a different Environment.
     AlreadyBound,
+    /// The Session is already bound to a different Harness.
+    HarnessAlreadyBound,
     /// Canonical workspace-backend conflict error name.
     ///
     /// Environment binding continues to emit
@@ -753,6 +852,9 @@ impl std::fmt::Display for SessionEnvironmentError {
         match self {
             Self::AlreadyStarted => formatter.write_str("session execution already started"),
             Self::AlreadyBound => formatter.write_str("session is already bound to another head"),
+            Self::HarnessAlreadyBound => {
+                formatter.write_str("session is already bound to another harness")
+            }
             Self::BackendConflict => {
                 formatter.write_str("another workspace backend uses the same backend id")
             }

@@ -1,8 +1,8 @@
 //! Value-first agent description (EVE-832).
 //!
 //! [`Agent::builder`] lets a library user describe an agent — instructions, a
-//! model, optional tools and files — without constructing stored `Harness`,
-//! `Agent`, `Session`, IDs, timestamps, statuses, registries, or a
+//! model, optional tools and files — without constructing stored platform
+//! records, IDs, timestamps, statuses, registries, or a
 //! `HostComposition`. The builder validates the value-first configuration and
 //! adapts it, inside [`AgentBuilder::build`], to the existing runtime builders.
 //!
@@ -610,6 +610,7 @@ impl Agent {
         backends: HostBackends,
         session_id: SessionId,
         environment: Option<Environment>,
+        harness: Option<&crate::Harness>,
         event_sink: Arc<dyn EventSink>,
         hook_state: Arc<crate::hooks::HookRunState>,
     ) -> Result<InProcessRuntime, everruns_provider::error::AgentLoopError> {
@@ -617,6 +618,7 @@ impl Agent {
             backends,
             session_id,
             environment,
+            harness,
             Some(event_sink),
             Some(hook_state),
         )
@@ -632,6 +634,7 @@ impl Agent {
         mut backends: HostBackends,
         session_id: SessionId,
         environment: Option<Environment>,
+        bound_harness: Option<&crate::Harness>,
         event_sink: Option<Arc<dyn EventSink>>,
         hook_state: Option<Arc<crate::hooks::HookRunState>>,
     ) -> Result<InProcessRuntime, everruns_provider::error::AgentLoopError> {
@@ -645,16 +648,21 @@ impl Agent {
                 crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID,
             ));
         }
-        let mut harness =
-            HarnessBuilder::new(&self.name, &self.instructions).capabilities(capabilities.clone());
-        if let Some(parallel) = self.parallel_tool_calls {
-            harness = harness.parallel_tool_calls(parallel);
-        }
-        for file in &self.initial_files {
-            harness = harness.initial_file(file.clone());
-        }
-        let harness_id = harness.harness_id();
-        let harness = harness.build();
+        let harness = match bound_harness {
+            Some(harness) => harness.seeded(),
+            None => {
+                let mut harness = HarnessBuilder::new(&self.name, &self.instructions)
+                    .capabilities(capabilities.clone());
+                if let Some(parallel) = self.parallel_tool_calls {
+                    harness = harness.parallel_tool_calls(parallel);
+                }
+                for file in &self.initial_files {
+                    harness = harness.initial_file(file.clone());
+                }
+                harness.build()
+            }
+        };
+        let harness_id = harness.id;
 
         // EVE-877: the builder produces a portable AgentDefinition; the
         // harness link lives on the session, not the definition.
@@ -1413,7 +1421,9 @@ fn legacy_workspace_provider_conflict() -> crate::SessionEnvironmentError {
 fn legacy_workspace_provider_unavailable(provider_id: String) -> crate::ResumeError {
     crate::ResumeError::WorkspaceProviderUnavailable { provider_id }
 }
-fn framework_capability_registry(hosted_base: bool) -> everruns_core::CapabilityRegistry {
+pub(crate) fn framework_capability_registry(
+    hosted_base: bool,
+) -> everruns_core::CapabilityRegistry {
     #[cfg(not(feature = "builtins"))]
     let _ = hosted_base;
     let registry = everruns_core::CapabilityRegistry::new();
@@ -1432,7 +1442,7 @@ fn framework_capability_registry(hosted_base: bool) -> everruns_core::Capability
     everruns_host::compose_runtime_capability_registry(registry)
 }
 
-fn validate_registered_capability_config(
+pub(crate) fn validate_registered_capability_config(
     registry: &everruns_core::CapabilityRegistry,
     id: &str,
     config: &serde_json::Value,
@@ -1793,7 +1803,14 @@ mod tests {
 
         let session_id = SessionId::new();
         let runtime = agent
-            .build_runtime_with_backends(HostBackends::in_memory(), session_id, None, None, None)
+            .build_runtime_with_backends(
+                HostBackends::in_memory(),
+                session_id,
+                None,
+                None,
+                None,
+                None,
+            )
             .await
             .expect("runtime builds");
         let visible = runtime
@@ -1840,6 +1857,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .await
             .expect("openai runtime builds offline");
@@ -1856,7 +1874,14 @@ mod tests {
 
         let session_id = SessionId::new();
         let runtime = agent
-            .build_runtime_with_backends(HostBackends::in_memory(), session_id, None, None, None)
+            .build_runtime_with_backends(
+                HostBackends::in_memory(),
+                session_id,
+                None,
+                None,
+                None,
+                None,
+            )
             .await
             .expect("runtime builds");
         // The seeded session id is usable directly: a caller can run a turn
