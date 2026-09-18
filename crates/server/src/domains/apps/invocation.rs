@@ -326,7 +326,7 @@ async fn find_or_create_invocation_session(
         .create_from_app(
             &everruns_core::Caller::internal(app.org_id),
             app.harness_id.uuid(),
-            app.agent_id.map(|agent_id| agent_id.uuid()),
+            Some(app.agent_internal_id),
             app.agent_id,
             app.historical_app_id,
             app.agent_version_policy.clone(),
@@ -397,7 +397,7 @@ async fn dispatch_invocation_message(
                 org_id: app.org_id,
                 user_id: None,
                 harness_id: app.harness_id.uuid(),
-                agent_id: app.agent_id.map(|agent_id| agent_id.uuid()),
+                agent_id: Some(app.agent_internal_id),
                 session_id: session_id.uuid(),
                 event_metadata: Some(execution_metadata::app_message_metadata(
                     app.public_id,

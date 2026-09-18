@@ -164,13 +164,13 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
              organizations, agents, agent_endpoints, agent_triggers,
              harnesses, harness_capabilities, agent_capabilities, agent_versions,
              principals, users, sessions, workspaces, session_participants,
-             events, images, memories, models
+             events, event_sequences, images, memories, models
          TO {role};
          GRANT INSERT ON
              sessions, workspaces, session_participants, events, images,
-             memories, reporting_outbox, audit_logs
+             event_sequences, memories, reporting_outbox, audit_logs
          TO {role};
-         GRANT UPDATE ON sessions, agent_endpoints TO {role};"
+         GRANT UPDATE ON sessions, agent_endpoints, event_sequences TO {role};"
     );
     sqlx::raw_sql(sqlx::AssertSqlSafe(grants.as_str()))
         .execute(&pool)
