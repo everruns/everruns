@@ -50,7 +50,7 @@ above):
 | Provider | Input | Output | Cache Read | Cache Creation |
 |----------|-------|--------|------------|----------------|
 | OpenAI Chat Completions | `usage.prompt_tokens` (less cached) | `usage.completion_tokens` | `usage.prompt_tokens_details.cached_tokens` | N/A |
-| OpenAI Responses | Inclusive input less reads and writes | Output count | Cached input | Cache writes; see [wire parser](../../crates/provider/src/openresponses_protocol.rs) |
+| OpenAI Responses | Inclusive input less reads and writes | Output count | Cached input | Cache writes; see [wire parser](../../crates/provider/src/openresponses_protocol/mod.rs) |
 | Anthropic | `usage.input_tokens` | `usage.output_tokens` | `usage.cache_read_input_tokens` | `usage.cache_creation_input_tokens` |
 
 ### OpenAI Streaming Requirement
