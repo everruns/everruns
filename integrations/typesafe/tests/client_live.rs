@@ -1,14 +1,14 @@
 //! Real API smoke tests for TypeSafe.
 //!
 //! Gated behind the `integration` feature — only compiled when run with:
-//!   cargo test -p typesafe-systemone --features integration
+//!   cargo test -p everruns-integrations-typesafe --features integration
 //!
 //! The key comes from Doppler as TYPESAFE_API_KEY. Tests panic when it is
 //! missing, so a dropped credential never looks like a pass.
 
 #![cfg(feature = "integration")]
 
-use typesafe_systemone::{Evaluation, Question, TypeSafeClient};
+use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
 
 macro_rules! require_api_key {
     () => {

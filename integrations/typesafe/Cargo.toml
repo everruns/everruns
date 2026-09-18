@@ -1,16 +1,17 @@
 # TypeSafe Integration
-# Decision: The vendor client lives in the standalone `typesafe-systemone` crate
-#   so it is publishable and usable outside Everruns; this crate is only the
-#   capability, its tool, and the connector catalog entry.
+# Decision: One crate, not two. The vendor client, the capability and its tool,
+#   the connector catalog entry, and the classifier that backs guardrail
+#   `jev` checks all live here. A separate client crate would have to sit below
+#   `everruns-host` for the service to use it; keeping the service here instead
+#   lets the platform wire it from above, which is the direction that already
+#   works (server and worker depend on integrations, never the reverse).
 # Decision: API key resolved via user connections (connection_resolver), with a
-#   session-secret fallback, same contract as brave-search.
+#   session-secret fallback, same contract as brave-search. The deployment-owned
+#   `UTILITY_TYPESAFE_API_KEY` that backs guardrails is a separate credential.
 
 [package]
 name = "everruns-integrations-typesafe"
-version = "0.1.0"
-# Not published yet: depends on typesafe-systemone, which is currently private
-# (crates.io 403 for the new name). Keep private until that is resolved.
-publish = false
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -24,8 +25,6 @@ keywords = ["everruns", "typesafe", "agents", "classification", "llm"]
 categories = ["api-bindings", "development-tools"]
 
 [dependencies]
-typesafe-systemone.workspace = true
-
 everruns-capability = { workspace = true, features = ["definition"] }
 everruns-core.workspace = true
 everruns-provider.workspace = true
@@ -35,13 +34,19 @@ everruns-platform = { workspace = true, optional = true }
 inventory = { workspace = true, optional = true }
 
 async-trait.workspace = true
+reqwest = { workspace = true, features = ["json"] }
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
 
 [features]
 default = ["hosted"]
 hosted = ["dep:everruns-platform", "dep:inventory"]
+# Gate real-API tests; CI passes these with the matching credential set.
+integration = []
+live-tests = []
 
 [dev-dependencies]
 everruns = { path = "../../crates/everruns" }

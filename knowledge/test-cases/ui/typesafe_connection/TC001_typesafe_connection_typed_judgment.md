@@ -1,6 +1,6 @@
 ---
 type: Test Case
-title: "TC001: TypeSafe Connection - Typed Judgment"
+title: "TC001: TypeSafe Connection - Typed Classification"
 description: "Verify that an agent with the TypeSafe capability prompts for an API key via Settings > Connections, validates it, and returns calibrated numbers from jev_evaluate rather than a prose opinion."
 tags:
   - everruns
@@ -8,7 +8,7 @@ tags:
   - ui
   - typesafe-connection
 ---
-# TC001: TypeSafe Connection - Typed Judgment
+# TC001: TypeSafe Connection - Typed Classification
 
 ## Description
 
@@ -29,13 +29,13 @@ Settings > Connections, validates it, and returns calibrated numbers from
 
 | Field | Value |
 |-------|-------|
-| Capability | `[Experimental] Jev Judgments` |
+| Capability | `[Experimental] Jev Classifications` |
 | First Message | Rate this joke with jev_evaluate: "I told my wife she was drawing her eyebrows too high. She looked surprised." Ask whether it is a joke and how funny it is on a four-level scale. Report the numbers. |
 | TypeSafe API Key | Valid key from typesafe.ai |
 
 ## Steps
 
-1. Create an agent and enable the **[Experimental] Jev Judgments**
+1. Create an agent and enable the **[Experimental] Jev Classifications**
    capability. Save.
 2. Start a session with the agent and send the first message.
 3. Observe the tool call. **Expected:** the turn fails with a message naming

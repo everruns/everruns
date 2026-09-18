@@ -23,14 +23,15 @@ and JSON arrive dynamically:
 
 ```rust
 use everruns::{
-    Agent, CapabilityRef, CompactionConfig, Model, ToolSearch,
+    Agent, CapabilityRef, CompactionConfig, OpenAI, ToolSearch,
 };
 use serde_json::json;
 
 let weather_definition = build_weather_capability();
 let agent = Agent::builder()
     .instructions("Use configured capabilities when relevant.")
-    .model(Model::simulated("done"))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .capability(CompactionConfig::new().budget_percent(0.85))
     .capability(ToolSearch::automatic())
     .capability(weather_definition)
@@ -39,6 +40,7 @@ let agent = Agent::builder()
             .config(json!({ "mode": "database-driven" })),
     )
     .build()?;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 `ToolSearch::automatic` uses hosted deferred loading on supported models and
@@ -136,10 +138,11 @@ async fn fahrenheit(celsius: f64) -> f64 {
 
 let agent = everruns::Agent::builder()
     .instructions("Use the conversion tool.")
-    .model(everruns::Model::simulated("done"))
+    .provider(everruns::OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .tool(fahrenheit())
     .build()?;
-# Ok::<(), everruns::BuildError>(())
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 Prefer this until you need a capability-level contract.
@@ -152,7 +155,7 @@ more typed handlers. `AgentBuilder::capability` installs its implementation on
 the private in-process runtime and activates that stable id once.
 
 ```rust
-use everruns::{Agent, Model, capability};
+use everruns::{Agent, OpenAI, capability};
 
 #[derive(capability::Deserialize, capability::JsonSchema)]
 #[serde(crate = "everruns::capability::serde")]
@@ -218,10 +221,11 @@ let records = capability::Definition::new(
 
 let agent = Agent::builder()
     .instructions("Answer with verified record data.")
-    .model(Model::simulated("done"))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .capability(records)
     .build()?;
-# Ok::<(), everruns::BuildError>(())
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 Both input and output types must satisfy the compile-time protocol bounds. The

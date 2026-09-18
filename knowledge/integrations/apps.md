@@ -14,7 +14,7 @@ An App is a deployable unit that binds a Harness and Agent to one or more invoca
 
 See [app-invocation-channels.md](app-invocation-channels.md) for webhook behavior and the legacy schedule-channel migration contract.
 
-Authentication for App-published endpoints is described by the shared framework in [app-endpoint-auth.md](app-endpoint-auth.md). AG-UI and A2A keep their existing legacy auth fields for backward compatibility and adopt the shared model when inline `channel_config.auth` is configured.
+Authentication for App-published endpoints is described by the shared framework in [app-endpoint-auth.md](app-endpoint-auth.md). AG-UI and A2A keep their existing legacy auth fields for backward compatibility and adopt the shared model when endpoint `auth` is configured.
 
 ## Concepts
 
@@ -54,7 +54,9 @@ The former App `schedule` channel is deprecated. New schedule channels are rejec
 
 `public_chat` is an isolated, public-facing chat web app bound to a single App's agent (anonymous by default, optional Google sign-in, optional Cloudflare Turnstile bot mitigation, plus branding). It reuses AG-UI streaming and the shared App endpoint auth verifier. See [public-chat.md](public-chat.md).
 
-Channel config is stored as JSONB and validated at the application layer per channel type.
+Channel config is stored as JSONB and validated at the application layer per
+channel type. Endpoint authentication is stored separately in
+`agent_endpoints.auth` or its encrypted counterpart.
 
 **Slack channel config example:**
 ```json
@@ -125,10 +127,11 @@ AG-UI uses an app-scoped anonymous ingress for the initial rollout:
 
 ### App Endpoint Auth
 
-App-published HTTP endpoints can carry an inline auth config at
-`app_channels.channel_config.auth` when their handler is wired into the shared
-verifier. The primary product flow is channel-local: create an Agent, create an
-App/channel, then configure auth directly on that channel. There is
+App-published HTTP endpoints can carry first-class auth at `AppChannel.auth`
+when their handler is wired into the shared verifier. The write API still
+accepts legacy nested `channel_config.auth`, then separates it before storage.
+The primary product flow is channel-local: create an Agent, create an
+App/channel, then configure auth directly on that endpoint. There is
 intentionally no required org-level provider setup in the first iteration. The
 runtime types stay provider-shaped so a later UI can add optional reuse actions
 such as "save as reusable provider" without changing the endpoint verifier.
@@ -160,7 +163,7 @@ Provider modes:
   issuer, audience, expiration, and honoring `nbf`.
 - `oauth2_introspection` validates opaque bearer tokens through the configured
   introspection endpoint, then applies the same scope/claim requirements.
-- `http_basic` stores only a password hash in channel config responses;
+- `http_basic` stores only an encrypted Argon2id password hash;
   plaintext passwords are write-only and normalized before storage.
 - `mtls` validates a configured trusted identity header set by a reverse proxy
   after client certificate verification. Public edges must strip that header

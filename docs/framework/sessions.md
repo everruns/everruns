@@ -7,13 +7,14 @@ An `Agent` is immutable reusable behavior. An `Engine` owns session identity,
 history, and runtime state. A `Session` is an engine-bound live conversation.
 
 ```rust
-use everruns::{Agent, Engine, Model};
+use everruns::{Agent, Engine, OpenAI};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 let agent = Agent::builder()
     .instructions("Remember the conversation.")
-    .model(Model::simulated("Acknowledged."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .build()?;
 
 let engine = Engine::new();

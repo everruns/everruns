@@ -69,6 +69,8 @@ async fn create_app(
                     channel_type: channel_type.to_string(),
                     channel_config,
                     channel_config_encrypted: None,
+                    auth: None,
+                    auth_encrypted: None,
                     durable_schedule_id: None,
                     enabled: true,
                 },

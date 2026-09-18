@@ -19,7 +19,7 @@ Enable the `local` feature to use the public Git-worktree backend:
 ```rust
 use std::sync::Arc;
 use everruns::{
-    Agent, Engine, LocalGitWorkspace, Model, Workspace, WorkspacePolicy,
+    Agent, Engine, LocalGitWorkspace, OpenAI, Workspace, WorkspacePolicy,
 };
 
 # async fn example(repository: &std::path::Path, state: &std::path::Path)
@@ -33,7 +33,8 @@ let head = workspace
     .await?;
 let agent = Agent::builder()
     .instructions("Work in the selected project head.")
-    .model(Model::simulated("ready"))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .workspace_policy(WorkspacePolicy::read_write())
     .build()?;
 let engine = Engine::new();

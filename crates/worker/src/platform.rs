@@ -7,7 +7,8 @@
 
 use everruns_core::DeploymentGrade;
 use everruns_host::DirectEgressService;
-use everruns_host::{HostComposition, SystemJudgmentConfig, SystemUtilityLlmConfig};
+use everruns_host::{HostComposition, SystemUtilityLlmConfig};
+use everruns_integrations_typesafe::SystemClassifierConfig;
 use std::sync::Arc;
 
 /// Build the default worker-side platform definition for the current deployment grade.
@@ -26,8 +27,8 @@ pub fn default_host_composition_for_grade(grade: DeploymentGrade) -> HostComposi
         // egress (capabilities, MCP, integrations) in distributed workers too.
         .egress_service(Arc::new(DirectEgressService::for_runtime_traffic_from_env()))
         .utility_llm_service(SystemUtilityLlmConfig::from_env().into_service())
-        // Guardrail checks on the judgment engine need the same service in a
+        // Guardrail checks on the classifier need the same service in a
         // distributed worker as in the in-process server path.
-        .judgment_service(SystemJudgmentConfig::from_env().into_service())
+        .classifier(SystemClassifierConfig::from_env().into_service())
         .build()
 }

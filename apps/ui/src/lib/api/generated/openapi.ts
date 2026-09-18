@@ -5091,6 +5091,7 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AppChannel: {
+      auth?: null | components["schemas"]["AppEndpointAuthConfig"];
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
       /** @description Channel type (e.g. slack). */
@@ -5119,7 +5120,7 @@ export interface components {
       updated_at: string;
     };
     /**
-     * @description Inline auth config for one App endpoint/channel.
+     * @description Authentication config for one App endpoint/channel.
      * @example {
      *       "mode": "api_key",
      *       "requirements": {
@@ -5140,8 +5141,8 @@ export interface components {
     /**
      * @description App-published endpoint authentication mode.
      *
-     *     Stored inline on `app_channels.channel_config.auth` so users can protect a
-     *     single App/channel without first creating org-level identity-provider state.
+     *     Stored on `AppChannel.auth` so users can protect one endpoint without first
+     *     creating org-level identity-provider state.
      * @enum {string}
      */
     AppEndpointAuthMode:
@@ -5150,7 +5151,7 @@ export interface components {
       | "api_key"
       | "google_oidc"
       | "oidc"
-      | "o_auth2_introspection"
+      | "oauth2_introspection"
       | "http_basic"
       | "mtls";
     /** @description OIDC/OAuth/basic/mTLS provider details for one App endpoint. */
@@ -5170,12 +5171,14 @@ export interface components {
       | {
           client_id?: string | null;
           client_secret?: string | null;
+          client_secret_configured?: boolean;
           introspection_url: string;
           /** @enum {string} */
-          type: "o_auth2_introspection";
+          type: "oauth2_introspection";
         }
       | {
           password?: string | null;
+          password_configured?: boolean;
           password_hash?: string | null;
           /** @enum {string} */
           type: "http_basic";
@@ -5189,6 +5192,7 @@ export interface components {
            *     Write-only: redacted in GET responses. See TM-AUTH-021.
            */
           proxy_secret?: string | null;
+          proxy_secret_configured?: boolean;
           /**
            * @description Header the trusted reverse proxy uses to prove its identity.
            *     Required. Configs without this field fail closed at verification time.

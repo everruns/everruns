@@ -1,8 +1,10 @@
-//! [TypeSafe](https://typesafe.ai) typed judgments for Everruns agents.
+//! [TypeSafe](https://typesafe.ai) typed classification for Everruns agents.
 //!
-//! This crate is the [Everruns](https://everruns.com) capability. The vendor
-//! client it runs on is the standalone [`typesafe_systemone`] crate, which
-//! carries no Everruns dependency and can be used on its own.
+//! One crate covers the whole surface: the vendor [`client`], the agent-facing
+//! `jev` capability, the connector an operator configures, and the
+//! [`TypeSafeClassifier`] the platform wires in to back guardrail checks. It
+//! brings typed classification — a calibrated number rather than prose — to the
+//! [Everruns](https://everruns.com) ecosystem.
 //!
 //! The `jev` capability contributes one tool, `jev_evaluate`: the
 //! agent hands it content and its own typed questions, and gets calibrated
@@ -36,6 +38,8 @@
 #![warn(missing_docs)]
 
 mod capability;
+mod classifier;
+pub mod client;
 #[cfg(feature = "hosted")]
 mod connection;
 mod evaluate;
@@ -47,10 +51,14 @@ pub use connection::TypeSafeConnector;
 pub use evaluate::EvaluateInput;
 pub use framework::Jev;
 
-/// The client this capability runs on, re-exported so embedders do not need a
-/// second dependency to build one.
-pub use typesafe_systemone as client;
-pub use typesafe_systemone::{Error, Evaluation, Question, Result, TypeSafeClient};
+/// The classifier the platform wires into its host composition, and the
+/// deployment credential that enables it.
+pub use classifier::{
+    CLASSIFIER_MODEL, SystemClassifierConfig, TypeSafeClassifier, UTILITY_TYPESAFE_API_KEY_ENV,
+};
+/// The vendor client this capability runs on, re-exported at the crate root so
+/// callers reach it without naming the module.
+pub use client::{Error, Evaluation, Question, Result, RetryPolicy, TypeSafeClient};
 
 /// Capability id.
 ///
@@ -59,6 +67,6 @@ pub use typesafe_systemone::{Error, Evaluation, Question, Result, TypeSafeClient
 /// account issues them.
 pub const CAPABILITY_ID: &str = "jev";
 /// Session-secret name used when no user connection is configured.
-pub const TYPESAFE_API_KEY_SECRET: &str = typesafe_systemone::API_KEY_ENV;
+pub const TYPESAFE_API_KEY_SECRET: &str = client::API_KEY_ENV;
 /// Connection provider id for the hosted connector catalog.
 pub const TYPESAFE_CONNECTION_PROVIDER: &str = "typesafe";

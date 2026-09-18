@@ -1021,6 +1021,8 @@ async fn fcp_post_returns_404_for_app_without_fcp_channel() {
                 channel_type: "webhook".to_string(),
                 channel_config: json!({ "token": "wh", "message": "Run." }),
                 channel_config_encrypted: None,
+                auth: None,
+                auth_encrypted: None,
                 durable_schedule_id: None,
                 enabled: true,
             },

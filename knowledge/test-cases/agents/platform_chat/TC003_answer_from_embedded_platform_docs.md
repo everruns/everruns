@@ -103,6 +103,6 @@ documented in Everruns' own docs.
 
 ## Notes
 
-- The exact wording may vary by model. Judge against the factual content, the docs lookup behavior, and the persisted transcript.
+- The exact wording may vary by model. Classifier against the factual content, the docs lookup behavior, and the persisted transcript.
 - This case is intentionally repo-specific. A correct answer should line up with `docs/capabilities/platform.md` and the `platform` capability implementation.
 - If the environment falls back to `llmsim-default`, treat the run as invalid for this case: the simulated model returns canned text and does not prove embedded-docs retrieval.

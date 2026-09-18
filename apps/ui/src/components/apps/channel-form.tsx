@@ -194,12 +194,13 @@ export function getDefaultChannelFormState(
   }
   if (channel.channel_type === "ag_ui") {
     const config = channel.channel_config as AgUiChannelConfig;
+    const auth = channel.auth ?? config.auth;
     return {
       ...base,
       kind: "ag_ui",
       agUiToken: secretValue(config.token, config.token_configured),
       agUiAnonymous: config.anonymous ?? true,
-      agUiAuth: config.auth,
+      agUiAuth: auth,
       agUiExpirationHours:
         typeof config.session_expiration_seconds === "number"
           ? config.session_expiration_seconds / 3600
@@ -236,6 +237,7 @@ export function getDefaultChannelFormState(
   }
   if (channel.channel_type === "public_chat") {
     const config = channel.channel_config as PublicChatChannelConfig;
+    const auth = channel.auth ?? config.auth;
     return {
       ...base,
       kind: "public_chat",
@@ -259,12 +261,12 @@ export function getDefaultChannelFormState(
       publicChatTurnstileSiteKey: config.captcha?.site_key ?? "",
       // Secret key is write-only and never returned; always start blank.
       publicChatTurnstileSecretKey: "",
-      publicChatGoogleEnabled: config.auth?.provider?.type === "google_oidc",
+      publicChatGoogleEnabled: auth?.provider?.type === "google_oidc",
       publicChatGoogleClientId:
-        config.auth?.provider?.type === "google_oidc" ? config.auth.provider.client_id : "",
+        auth?.provider?.type === "google_oidc" ? auth.provider.client_id : "",
       publicChatGoogleAllowedDomains:
-        config.auth?.provider?.type === "google_oidc"
-          ? (config.auth.provider.allowed_domains ?? []).join(", ")
+        auth?.provider?.type === "google_oidc"
+          ? (auth.provider.allowed_domains ?? []).join(", ")
           : "",
     };
   }

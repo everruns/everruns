@@ -1,4 +1,5 @@
 name: Publish Crate
+run-name: Publish ${{ github.event.client_payload.package || github.event.inputs.package }} ${{ github.event.client_payload.tag || github.event.inputs.tag }} @ ${{ github.event.client_payload.sha || github.event.inputs.sha }} [${{ github.event.client_payload.correlation || github.event.inputs.correlation || 'external' }}]
 
 on:
   repository_dispatch:
@@ -15,6 +16,10 @@ on:
         type: string
       sha:
         description: '40-character commit SHA the tag must resolve to'
+        required: true
+        type: string
+      correlation:
+        description: 'Unique safe token used by the release controller to identify this run'
         required: true
         type: string
 
@@ -37,6 +42,7 @@ jobs:
         id: release
         env:
           DISPATCH_PACKAGE: ${{ github.event.client_payload.package || github.event.inputs.package || '' }}
+          DISPATCH_CORRELATION: ${{ github.event.client_payload.correlation || github.event.inputs.correlation || '' }}
           DISPATCH_SHA: ${{ github.event.client_payload.sha || github.event.inputs.sha || '' }}
           DISPATCH_TAG: ${{ github.event.client_payload.tag || github.event.inputs.tag || '' }}
           EVENT_NAME: ${{ github.event_name }}
@@ -62,6 +68,10 @@ jobs:
           fi
           if [[ ! "$DISPATCH_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
             echo "::error::Dispatch must include the 40-character release commit SHA"
+            exit 1
+          fi
+          if [ -n "$DISPATCH_CORRELATION" ] && [[ ! "$DISPATCH_CORRELATION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "::error::Invalid publish-run correlation token"
             exit 1
           fi
 
@@ -116,10 +126,8 @@ jobs:
           set -euo pipefail
           python3 - "$PACKAGE" "$VERSION" <<'PY'
           import json
-          import pathlib
           import subprocess
           import sys
-          import tomllib
 
           package_name, expected_version = sys.argv[1:]
           metadata = json.loads(subprocess.check_output(
@@ -131,12 +139,16 @@ jobs:
           package = matches[0]
           if package.get("publish") == []:
               raise SystemExit(f"Package {package_name} is not publishable")
-          manifest_path = pathlib.Path(package["manifest_path"])
-          with manifest_path.open("rb") as handle:
-              manifest_version = tomllib.load(handle)["package"].get("version")
+          # Use the version Cargo resolved, not the raw manifest string. Published
+          # crates inherit the platform version with `version.workspace = true`,
+          # which reads back from the manifest TOML as {'workspace': True} and can
+          # never equal the tag. Cargo metadata resolves that inheritance and is the
+          # same source crate-release.yml uses to decide what to tag, so the tag and
+          # this check cannot disagree about what a package's version is.
+          manifest_version = package["version"]
           if manifest_version != expected_version:
               raise SystemExit(
-                  f"Tag version {expected_version} does not match {package_name} manifest version "
+                  f"Tag version {expected_version} does not match {package_name} resolved version "
                   f"{manifest_version!r}"
               )
           print(f"Package version verified: {package_name} {expected_version}")

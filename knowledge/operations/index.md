@@ -15,6 +15,6 @@
 * [Email Sending](email.md) - Internal email delivery abstraction.
 * [Egress Service](egress.md) - Host-owned outbound network boundary and future gateway.
 * [Utility LLM Service](utility-llm.md) - Internal utility LLM service for capability internals.
-* [Judgment Service](judgment-service.md) - Internal typed-judgment service for capability internals.
+* [Classifier Service](classifier-service.md) - Internal typed-classifier for capability internals.
 * [Voice Sessions](voice.md) - Voice Sessions.
 * [Session Counts](session-counts.md) - Denormalized session counters and the reads they exist to keep cheap.

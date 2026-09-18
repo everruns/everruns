@@ -130,6 +130,27 @@ describe("publicly reachable detection", () => {
     ).toBe(false);
   });
 
+  it("prefers first-class auth over legacy nested auth", () => {
+    expect(
+      isAnonymousExposure(
+        channel({
+          channel_type: "public_chat",
+          auth: { mode: "google_oidc" },
+          channel_config: { anonymous: true, auth: { mode: "anonymous" } },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isAnonymousExposure(
+        channel({
+          channel_type: "public_chat",
+          auth: { mode: "anonymous" },
+          channel_config: { anonymous: true, auth: { mode: "google_oidc" } },
+        }),
+      ),
+    ).toBe(true);
+  });
+
   it("does not count one behind a sign-in provider", () => {
     expect(
       isAnonymousExposure(

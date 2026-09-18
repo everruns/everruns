@@ -18,7 +18,7 @@ into an app-owned session, with a published-app + enabled-channel gate.
 The first cut implemented the **API key** authentication scheme from the A2A
 security model. A2A channels now also adopt the shared App endpoint auth model
 documented in [`knowledge/integrations/apps.md`](apps.md): each channel may keep the generated
-bearer API key or attach inline `channel_config.auth` for HTTP Basic,
+bearer API key or attach first-class endpoint auth for HTTP Basic,
 Google/OIDC JWT bearer, OAuth2 introspection, or mTLS.
 
 A2A is a separate `ChannelType` so an app can advertise itself as an agent to
@@ -81,14 +81,11 @@ pub struct A2aChannelConfig {
     /// limit; the global API limit still applies. Mirrors
     /// `AgUiChannelConfig::rate_limit_per_minute`.
     pub rate_limit_per_minute: Option<u32>,
-    /// Optional inline endpoint auth config. When absent, the generated
-    /// API-key bearer scheme remains the effective auth policy.
-    pub auth: Option<AppEndpointAuthConfig>,
 }
 ```
 
-Storage uses the existing `app_channels` row schema. The migration extends the
-`channel_type` CHECK constraint to allow `'a2a'`.
+Authentication is exposed as `AppChannel.auth` and stored separately from this
+transport config in `agent_endpoints.auth` or `auth_encrypted`.
 
 API key generation:
 
@@ -307,7 +304,7 @@ A2A channels; otherwise `404`. Card shape:
       "tags": ["everruns", "a2a"]
     }
   ],
-  "securitySchemes": { "...": "derived from channel_config.auth" },
+  "securitySchemes": { "...": "derived from AppChannel.auth" },
   "securityRequirements": [{ "...": [] }]
 }
 ```
@@ -447,8 +444,8 @@ request signing. When set, every request must additionally carry a
 timestamp + signature header pair; otherwise the channel keeps the
 existing authentication-only behavior. This closes TM-A2A-010
 (captured-request replay until rotation) without breaking deployments
-that have not opted in. Signing is **orthogonal** to the inline endpoint
-auth (`channel_config.auth`), it layers replay protection on top of
+that have not opted in. Signing is **orthogonal** to first-class endpoint
+auth (`AppChannel.auth`), it layers replay protection on top of
 whichever auth mode the channel uses (default API key, HTTP Basic, OIDC,
 OAuth2, or mTLS).
 

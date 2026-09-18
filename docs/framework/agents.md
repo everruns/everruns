@@ -7,17 +7,18 @@ An `Agent` is an immutable, validated application description. Pass it to an
 application-owned engine to create independent sessions.
 
 ```rust
-use everruns::{Agent, McpServer, Model};
+use everruns::{Agent, McpServer, OpenAI};
 
 let agent = Agent::builder()
     .name("researcher")
     .instructions("Research carefully and cite the evidence you used.")
-    .model(Model::simulated("No network was used."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .file("brief.md", "Investigate the supplied question.")
     .readonly_file("policy.md", "Never expose secrets.")
     .mcp_server(McpServer::http("catalog", "https://example.com/mcp"))
     .build()?;
-# Ok::<(), everruns::BuildError>(())
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 Builder validation catches blank instructions, a missing model, duplicate

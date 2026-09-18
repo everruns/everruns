@@ -366,7 +366,7 @@ struct JudgeVerdict {
     reason: String,
 }
 
-/// Judge verdict plus the judge call's token usage (input, output).
+/// Classifier verdict plus the judge call's token usage (input, output).
 type JudgeOutcome = (bool, f64, String, u32, u32);
 
 async fn judge_case(

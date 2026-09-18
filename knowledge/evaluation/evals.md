@@ -233,7 +233,7 @@ published results are tracked in
 - Scorer failures do not expose internal provider or storage errors to public
   consumers.
 
-## Coverage of model-backed judgment
+## Coverage of model-backed classification
 
 Recorded here rather than in the specs these cover, so the picture has one home.
 
@@ -257,7 +257,7 @@ not enough to move the default from 50. The corpus is deliberately a plain JSONL
 file so a deployment can re-run it on its own traffic, which is what the specs
 mean by "validate thresholds against your own data and consequences".
 
-**Typed-judgment tool use is graded on the questions, not just the call.** The
+**Classifier tool use is graded on the questions, not just the call.** The
 [Generic study](../../evals/generic/README.md)'s `jev` harness profile carries
 the `jev` capability and measures whether a model reaches for a
 measurement instead of asserting one — and, through the `jev_questions`

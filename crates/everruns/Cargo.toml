@@ -8,7 +8,7 @@
 
 [package]
 name = "everruns"
-version = "0.21.2"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -104,6 +104,9 @@ a2a = ["local", "everruns-platform/a2a"]
 # default so the standard facade build pulls in no provider or Reqwest edge; the
 # `OpenAI` config type and its driver wiring compile only with this feature.
 openai = ["dep:everruns-openai"]
+# Typed classification: the TypeSafe-backed `ClassifierService` behind
+# `Classifier`, re-exported so one import reaches both halves.
+jev = ["dep:everruns-integrations-typesafe"]
 
 [dependencies]
 # Neutral capability contract (EVE-873): `CapabilityId`/`CapabilityRef`,
@@ -127,6 +130,7 @@ everruns-integrations-duckduckgo = { workspace = true, optional = true }
 # workspace inheritance; the workspace dependency carries the independently
 # versioned provider package's current release baseline.
 everruns-openai = { workspace = true, optional = true }
+everruns-integrations-typesafe = { workspace = true, optional = true }
 async-trait.workspace = true
 uuid.workspace = true
 base64.workspace = true

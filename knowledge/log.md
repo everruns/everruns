@@ -2,6 +2,26 @@
 
 ## 2026-09-17
 
+* **Framework APIs gain stability tiers: LLM surface stable, classifier alpha.** Rust's `#[stable]` / `#[unstable]` are nightly-only, so `crates/everruns` marks stability with one-line rustdoc banners defined in the new `crates/everruns/src/stability.rs` helper, recorded in `knowledge/framework/api-stability.md`. First pass marks `llm` stable and `classifier` alpha; unmarked items stay provisional (treat as alpha).
+
+* **Two crates for TypeSafe became one, by removing the constraint instead of
+  working around it.** The vendor client sat in `crates/drivers/typesafe` only
+  because `everruns-host` held the classifier, and a host dependency
+  cannot point at an integration crate without closing the loop
+  (integration → platform → host). Moving the service into
+  `integrations/typesafe` inverts that: `crates/server` and `crates/worker`
+  already depend on integrations, so they compose it into `HostComposition`
+  from above. Host no longer knows TypeSafe exists, and the client has one
+  home.
+
+* **Classifications got the same promoted surface direct model calls got.** `Classifier`
+  and `Classifier::about` mirror `Model::complete` and `Model::completion` over the
+  `ClassifierService` contract core already owned — state plus typed questions in,
+  calibrated numbers out, and the threshold that decides an outcome staying in
+  the caller's code. No streaming, because a classification is one round trip. The
+  facade names no vendor: `Classifier::new` takes any service the way `Model::new`
+  takes any provider, and `Classifier::simulated` keeps tests offline.
+
 * **The agent-facing surface is named for the model, the credential surface for
   the vendor.** The capability is `jev` and its tool is `jev_evaluate`, matching
   the guardrail engine value: an agent author is choosing the thing that
@@ -26,7 +46,7 @@
   its role.** The engine value is `jev`, not the service behind it: an agent
   author is choosing between prose a parser has to trust and a calibrated
   number from a specific model, so the config says which model. If the
-  judgment service is
+  classifier is
   ever backed by something else, the value gains a sibling rather than changing
   meaning. The deployment credential became `UTILITY_TYPESAFE_API_KEY`, mirroring
   `UTILITY_OPENAI_API_KEY` — both are platform-owned credentials for internal
@@ -47,7 +67,7 @@
   in one request instead of one per check. `utility_llm` stays the default, so
   existing configs are unchanged and the two are directly comparable on the same
   agent. Recorded in [Guardrails](execution/guardrails.md) and the new
-  [Judgment Service](operations/judgment-service.md), with the egress and
+  [Classifier Service](operations/classifier-service.md), with the egress and
   steering analysis in TM-LLM-037/038.
 
 * **Operators had no single place to learn what the system model keys do.**
@@ -66,7 +86,7 @@
   integration contributes `jev_evaluate`, so an agent can verify or rate
   something and get numbers back instead of forming a second impression in
   prose. Its user connection is deliberately separate from the deployment key
-  that backs the judgment service.
+  that backs the classifier.
 
 * **Which identity an MCP server acts under was a side effect of its auth mode,
   not a stated property.** `api_key` happened to be org-wide, `oauth` happened to
@@ -94,6 +114,45 @@
   the model at the first tool call. The name was re-examined against the prior art
   and kept; no other product has this middle layer, because no other product
   treats capabilities as composable modules.
+* **Nothing made an agent stop before a consequential action, and the one gate
+  that could was opt-in and unusable by default.** `tool_approval` blocks per
+  call and needs a host that can service an interactive prompt, so a hosted
+  session had no confirmation layer at all and Platform Chat's confirmation
+  rules were prose with no way to actually pause. The new `soft_approval`
+  capability is the other shape of the problem: prompt guidance that asks the
+  model to batch safe work and stop only at destructive or outward-facing
+  actions, with the pause expressed as a `request_approval` tool call so it is
+  renderable and auditable rather than a turn that appears to have died. It is
+  on by default at `normal` for the `generic` and `platform-chat` harnesses,
+  shares the `ApprovalMode` vocabulary with the hard gate, and takes its level
+  from a host-supplied store when the host owns one, which is the seam a
+  terminal host needs to adopt it without losing its own setting. See
+  [Soft Approval](execution/soft-approval.md).
+
+* **A granted approval said what was approved but never who approved it.** The
+  grant was a tool call in the session event log, which is the right record of
+  the conversation and the wrong thing to answer to: it is scoped to one
+  session, and nothing in it names a person. Having the model write an
+  `approved_by` would have been worse, an identity claim by the thing being
+  governed. The tools now stamp only the turn and input message the consent was
+  spoken in, and the server resolves the approver from the authenticated
+  initiator it already writes onto that message, emitting
+  `agent.approval.requested` / `agent.approval.granted` to the org audit log. A
+  turn with no human initiator is recorded as unattributed rather than dropped,
+  because an approval nobody granted is the finding. See
+  [Soft Approval](execution/soft-approval.md).
+
+* **Two audit variants no consumer could observe were classified as a breaking
+  release.** `AgentAction` is public in the published `everruns-platform`, and at
+  `0.x` the minor is the breaking slot, so adding `ApprovalRequested` /
+  `ApprovalGranted` demanded `0.24.1 -> 0.25.0` plus patch re-pins for thirteen
+  published dependants that changed nothing. Single-versioning has since removed
+  that bookkeeping, so the cascade is no longer the reason to care. The enum is
+  `#[non_exhaustive]` for the reason that outlived it: an external `match` on it
+  cannot be broken by a future audit action, which is the break `LlmErrorKind`
+  inflicted twice. No `_` arm was needed, since every match on `AgentAction`
+  lives in the defining crate. See
+  [Release Process](project/release-process.md).
 
 ## 2026-09-16
 

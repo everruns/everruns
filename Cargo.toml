@@ -17,8 +17,9 @@ members = [
     "crates/model-profiles",
     "crates/mcp",
     "crates/llm-tests",
-    # LLM wire-protocol drivers. Package names stay independently versioned;
-    # the directory is only a repository organization boundary.
+    # LLM wire-protocol drivers. Package names stay separate crates.io packages
+    # at the shared platform version; the directory is only a repository
+    # organization boundary.
     "crates/drivers/anthropic",
     "crates/drivers/bedrock",
     "crates/drivers/fireworks",
@@ -28,10 +29,6 @@ members = [
     "crates/drivers/meta",
     "crates/drivers/openai",
     "crates/drivers/openrouter",
-    # Judgment driver: typed decisions rather than chat completions, so it
-    # is not registered in `DriverRegistry`. Filed here because it is a
-    # vendor client below the platform layer, like its neighbours.
-    "crates/drivers/typesafe",
     "crates/turbopuffer",
     "crates/internal-protocol",
     "crates/cli",
@@ -79,6 +76,12 @@ exclude = [
 ]
 
 [workspace.package]
+# The single platform version. Server, worker, CLI, UI, Docker images and every
+# crates.io package ship at this number; published crates inherit it with
+# `version.workspace = true` and never declare a version of their own. The
+# `[workspace.dependencies]` pins below spell it out literally and move with it
+# (`scripts/sync-publish-pin-versions.py --write`). Rationale and the failure
+# modes this removes: knowledge/project/release-process.md.
 version = "0.28.0"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
@@ -210,29 +213,28 @@ futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = "0.2.0"
-everruns-capability = { path = "crates/capability", version = "0.18.4", default-features = false }
-everruns-builtins = { path = "crates/builtins", version = "0.18.10" }
-everruns-core = { path = "crates/core", version = "0.23.0" }
-everruns-engine = { path = "crates/engine", version = "0.19.2" }
-everruns-host = { path = "crates/host", version = "0.22.1" }
-everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.18.9", default-features = false }
-everruns-test-support = { path = "crates/test-support", version = "0.18.2", default-features = false }
-everruns-platform = { path = "crates/platform", version = "0.23.0" }
-everruns-provider = { path = "crates/provider", version = "0.24.0", default-features = false }
-everruns-model-profiles = { path = "crates/model-profiles", version = "0.3.0" }
-everruns-mcp = { path = "crates/mcp", version = "0.19.7" }
-everruns-ard = { path = "crates/ard", version = "0.18.0" }
-everruns-openai = { path = "crates/drivers/openai", version = "0.18.7" }
-everruns = { path = "crates/everruns", version = "0.18.0" }
-everruns-macros = { path = "crates/macros", version = "0.18.4" }
-everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.18.7" }
-everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.18.6" }
-everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.18.6" }
-everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.18.6" }
-everruns-integrations-lua = { path = "integrations/lua", version = "0.18.6" }
-everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.18.6" }
-everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.1.0" }
-typesafe-systemone = { path = "crates/drivers/typesafe", version = "0.1.0" }
+everruns-capability = { path = "crates/capability", version = "0.28.0", default-features = false }
+everruns-builtins = { path = "crates/builtins", version = "0.28.0" }
+everruns-core = { path = "crates/core", version = "0.28.0" }
+everruns-engine = { path = "crates/engine", version = "0.28.0" }
+everruns-host = { path = "crates/host", version = "0.28.0" }
+everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.28.0", default-features = false }
+everruns-test-support = { path = "crates/test-support", version = "0.28.0", default-features = false }
+everruns-platform = { path = "crates/platform", version = "0.28.0" }
+everruns-provider = { path = "crates/provider", version = "0.28.0", default-features = false }
+everruns-model-profiles = { path = "crates/model-profiles", version = "0.28.0" }
+everruns-mcp = { path = "crates/mcp", version = "0.28.0" }
+everruns-ard = { path = "crates/ard", version = "0.28.0" }
+everruns-openai = { path = "crates/drivers/openai", version = "0.28.0" }
+everruns = { path = "crates/everruns", version = "0.28.0" }
+everruns-macros = { path = "crates/macros", version = "0.28.0" }
+everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.28.0" }
+everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.28.0" }
+everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.28.0" }
+everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.28.0" }
+everruns-integrations-lua = { path = "integrations/lua", version = "0.28.0" }
+everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.28.0" }
+everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.28.0" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }

@@ -37,18 +37,18 @@ fn missing_agent_error(app_id: Uuid) -> anyhow::Error {
 const INSERT_CHANNEL_SQL: &str = r#"
     INSERT INTO agent_endpoints (
         app_id, agent_id, public_id, channel_type, channel_config,
-        channel_config_encrypted, durable_schedule_id, enabled,
+        channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled,
         status, agent_identity_id, agent_version_policy, agent_version_id,
         owner_principal_id, resolved_owner_user_id
     )
     SELECT
-        app.id, app.agent_id, $2, $3, $4, $5, $6, $7,
-        CASE WHEN $7 THEN 'draft' ELSE 'disabled' END,
+        app.id, app.agent_id, $2, $3, $4, $5, $6, $7, $8, $9,
+        CASE WHEN $9 THEN 'draft' ELSE 'disabled' END,
         app.agent_identity_id, app.agent_version_policy, app.agent_version_id,
         app.owner_principal_id, app.resolved_owner_user_id
     FROM apps AS app
     WHERE app.id = $1 AND app.agent_id IS NOT NULL
-    RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
+    RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
 "#;
 
 fn schedule_cap_lock_key(org_id: i64) -> i64 {
@@ -73,6 +73,8 @@ impl Database {
             .bind(&input.channel_type)
             .bind(&input.channel_config)
             .bind(&input.channel_config_encrypted)
+            .bind(&input.auth)
+            .bind(&input.auth_encrypted)
             .bind(input.durable_schedule_id)
             .bind(input.enabled)
             .fetch_optional(&self.pool)
@@ -115,6 +117,8 @@ impl Database {
             .bind(&input.channel_type)
             .bind(&input.channel_config)
             .bind(&input.channel_config_encrypted)
+            .bind(&input.auth)
+            .bind(&input.auth_encrypted)
             .bind(input.durable_schedule_id)
             .bind(input.enabled)
             .fetch_optional(&mut *tx)
@@ -127,7 +131,7 @@ impl Database {
     pub async fn list_app_channels(&self, app_id: Uuid) -> Result<Vec<AppChannelRow>> {
         let rows = sqlx::query_as::<_, AppChannelRow>(
             r#"
-            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
+            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
             FROM agent_endpoints
             WHERE app_id = $1
             ORDER BY created_at ASC
@@ -172,7 +176,7 @@ impl Database {
     ) -> Result<Option<AppChannelRow>> {
         let row = sqlx::query_as::<_, AppChannelRow>(
             r#"
-            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
+            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
             FROM agent_endpoints
             WHERE public_id = $1
             "#,
@@ -219,27 +223,34 @@ impl Database {
             SET
                 channel_type = COALESCE($2, ae.channel_type),
                 channel_config = COALESCE($3, ae.channel_config),
-                channel_config_encrypted = COALESCE($4, ae.channel_config_encrypted),
-                durable_schedule_id = CASE WHEN $5 THEN $6 ELSE ae.durable_schedule_id END,
-                enabled = COALESCE($7, ae.enabled),
+                channel_config_encrypted = CASE WHEN $4 THEN $5 ELSE ae.channel_config_encrypted END,
+                auth = CASE WHEN $6 THEN $7 ELSE ae.auth END,
+                auth_encrypted = CASE WHEN $8 THEN $9 ELSE ae.auth_encrypted END,
+                durable_schedule_id = CASE WHEN $10 THEN $11 ELSE ae.durable_schedule_id END,
+                enabled = COALESCE($12, ae.enabled),
                 -- `status` is authoritative for ingress (EVE-1007). An explicit
                 -- value wins; otherwise an `enabled` change still moves it, so
                 -- the App API's enable/disable cannot leave a disabled endpoint
                 -- reachable while that API is still the everyday control.
-                status = COALESCE($8, CASE
-                    WHEN NOT COALESCE($7, ae.enabled) THEN 'disabled'
+                status = COALESCE($13, CASE
+                    WHEN NOT COALESCE($12, ae.enabled) THEN 'disabled'
                     WHEN (SELECT a.status FROM apps AS a WHERE a.id = ae.app_id) = 'published' THEN 'live'
                     ELSE 'draft'
                 END),
                 updated_at = NOW()
             WHERE ae.id = $1
-            RETURNING ae.id, ae.app_id, ae.public_id, ae.channel_type, ae.channel_config, ae.channel_config_encrypted, ae.durable_schedule_id, ae.enabled, ae.status, ae.created_at, ae.updated_at
+            RETURNING ae.id, ae.app_id, ae.public_id, ae.channel_type, ae.channel_config, ae.channel_config_encrypted, ae.auth, ae.auth_encrypted, ae.durable_schedule_id, ae.enabled, ae.status, ae.created_at, ae.updated_at
             "#,
         )
         .bind(id)
         .bind(&input.channel_type)
         .bind(&input.channel_config)
-        .bind(&input.channel_config_encrypted)
+        .bind(input.channel_config_encrypted.is_changed())
+        .bind(input.channel_config_encrypted.into_value())
+        .bind(input.auth.is_changed())
+        .bind(input.auth.into_value())
+        .bind(input.auth_encrypted.is_changed())
+        .bind(input.auth_encrypted.into_value())
         .bind(input.durable_schedule_id.is_changed())
         .bind(input.durable_schedule_id.into_value())
         .bind(input.enabled)
@@ -283,27 +294,34 @@ impl Database {
             SET
                 channel_type = COALESCE($2, ae.channel_type),
                 channel_config = COALESCE($3, ae.channel_config),
-                channel_config_encrypted = COALESCE($4, ae.channel_config_encrypted),
-                durable_schedule_id = CASE WHEN $5 THEN $6 ELSE ae.durable_schedule_id END,
-                enabled = COALESCE($7, ae.enabled),
+                channel_config_encrypted = CASE WHEN $4 THEN $5 ELSE ae.channel_config_encrypted END,
+                auth = CASE WHEN $6 THEN $7 ELSE ae.auth END,
+                auth_encrypted = CASE WHEN $8 THEN $9 ELSE ae.auth_encrypted END,
+                durable_schedule_id = CASE WHEN $10 THEN $11 ELSE ae.durable_schedule_id END,
+                enabled = COALESCE($12, ae.enabled),
                 -- `status` is authoritative for ingress (EVE-1007). An explicit
                 -- value wins; otherwise an `enabled` change still moves it, so
                 -- the App API's enable/disable cannot leave a disabled endpoint
                 -- reachable while that API is still the everyday control.
-                status = COALESCE($8, CASE
-                    WHEN NOT COALESCE($7, ae.enabled) THEN 'disabled'
+                status = COALESCE($13, CASE
+                    WHEN NOT COALESCE($12, ae.enabled) THEN 'disabled'
                     WHEN (SELECT a.status FROM apps AS a WHERE a.id = ae.app_id) = 'published' THEN 'live'
                     ELSE 'draft'
                 END),
                 updated_at = NOW()
             WHERE ae.id = $1
-            RETURNING ae.id, ae.app_id, ae.public_id, ae.channel_type, ae.channel_config, ae.channel_config_encrypted, ae.durable_schedule_id, ae.enabled, ae.status, ae.created_at, ae.updated_at
+            RETURNING ae.id, ae.app_id, ae.public_id, ae.channel_type, ae.channel_config, ae.channel_config_encrypted, ae.auth, ae.auth_encrypted, ae.durable_schedule_id, ae.enabled, ae.status, ae.created_at, ae.updated_at
             "#,
         )
         .bind(id)
         .bind(&input.channel_type)
         .bind(&input.channel_config)
-        .bind(&input.channel_config_encrypted)
+        .bind(input.channel_config_encrypted.is_changed())
+        .bind(input.channel_config_encrypted.into_value())
+        .bind(input.auth.is_changed())
+        .bind(input.auth.into_value())
+        .bind(input.auth_encrypted.is_changed())
+        .bind(input.auth_encrypted.into_value())
         .bind(input.durable_schedule_id.is_changed())
         .bind(input.durable_schedule_id.into_value())
         .bind(input.enabled)

@@ -14,7 +14,8 @@ use everruns::prelude::*;
 
 let agent = Agent::builder()
     .instructions("Answer concisely.")
-    .model(Model::simulated("Hello!"))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .build()?;
 let engine = Engine::new();
 let mut session = engine.create(agent);

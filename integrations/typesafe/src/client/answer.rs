@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, Result};
+use crate::client::{Error, Result};
 
 /// One answer, matching the type of the question that produced it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

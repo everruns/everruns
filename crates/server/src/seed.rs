@@ -2971,7 +2971,7 @@ mod tests {
             .iter()
             .map(|c| c.capability_id())
             .collect();
-        assert_eq!(cap_ids.len(), 23);
+        assert_eq!(cap_ids.len(), 24);
         assert!(cap_ids.contains(&"human_intent"));
         assert!(cap_ids.contains(&"session_file_system"));
         assert!(cap_ids.contains(&"bashkit_shell"));
@@ -2995,6 +2995,7 @@ mod tests {
         assert!(cap_ids.contains(&"parallel_tool_calls"));
         assert!(cap_ids.contains(&"citation_retrieval"));
         assert!(cap_ids.contains(&"citation_verification"));
+        assert!(cap_ids.contains(&"soft_approval"));
         // Verify compaction default config
         let compaction_cap = generic
             .capabilities

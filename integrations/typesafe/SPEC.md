@@ -1,19 +1,20 @@
 # TypeSafe Integration
 
-This crate is the Everruns capability only. The vendor client is the standalone
-[`typesafe-systemone`](../../crates/drivers/typesafe/README.md) crate, which
-carries no Everruns dependency — so it can be published and used on its own, and
-so `everruns-host` can depend on it without the cycle an integration crate
-creates (integrations depend on `everruns-platform`, which depends on the host).
+This crate owns the whole TypeSafe surface: the vendor [`client`](src/client/),
+the `jev` capability and its tool, the connector catalog entry, and the
+deployment classifier that backs guardrail checks. The published
+`everruns-host` stays provider-neutral — it no longer depends on TypeSafe at
+all, because the platform composes the classifier from above.
 
 ## Split
 
-- [`crates/drivers/typesafe`](../../crates/drivers/typesafe/) owns the HTTP
+- [`src/client`](src/client/) owns the HTTP
   endpoint, the three question types, the typed answers, retries, and the
   credential-safe error contract.
 - This crate owns `capability` (the hosted capability and its tool), `evaluate`
   (the tool protocol), `framework` (the embedder adapter), and `connection`
-  (the connector-catalog entry).
+  (the connector-catalog entry). It also owns `system_judgment`, the deployment
+  adapter from the vendor client to `everruns_core::JudgmentService`.
 
 ## Capability
 
@@ -46,15 +47,13 @@ question the API accepts — one noul over a two-word state — because there is
 dedicated auth probe; `401`/`403` means the key is invalid, `429` means it is
 valid but throttled.
 
-## Relationship to the judgment service
+## Relationship to the classifier
 
-Everruns' guardrails do **not** depend on this crate. They call
-`everruns_core::JudgmentService`, a provider-neutral trait that `everruns-host`
-implements on top of the same client. That keeps `everruns-builtins` free of
-network and vendor edges, the way `UtilityLlmService` does for chat completions,
-and it keeps the two credentials separate: the guardrail path uses a
-deployment-owned `UTILITY_TYPESAFE_API_KEY`, this capability uses the user's
-connection or the `TYPESAFE_API_KEY` session secret. See
+This crate owns the whole TypeSafe surface: the vendor [`client`](src/client/),
+the `jev` capability and its tool, the connector catalog entry, and the
+deployment classifier that backs guardrail checks. The published
+`everruns-host` stays provider-neutral — it no longer depends on TypeSafe at
+all, because the platform composes the classifier from above.
 [`knowledge/operations/judgment-service.md`](../../knowledge/operations/judgment-service.md).
 
 ## Tests
@@ -66,4 +65,4 @@ connection or the `TYPESAFE_API_KEY` session secret. See
 The client's own coverage — wire shape, retries, terminal statuses, credential
 safety, pre-flight validation, and the real-API smoke tests behind the
 `integration` feature — lives in
-[`crates/drivers/typesafe/tests`](../../crates/drivers/typesafe/tests/).
+[`tests/client.rs`](tests/client.rs).

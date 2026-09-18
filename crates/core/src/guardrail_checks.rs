@@ -191,11 +191,11 @@ pub enum GuardrailEngine {
     #[default]
     UtilityLlm,
     /// Jev, TypeSafe's System One model, asked a typed question through the
-    /// deployment's judgment service.
+    /// deployment's classifier.
     ///
     /// The config names the model rather than the service because that is what
     /// an author is choosing between: prose a parser has to trust, or a
-    /// calibrated number. If the judgment service is ever backed by a different
+    /// calibrated number. If the classifier is ever backed by a different
     /// model, this value gains a sibling rather than changing meaning.
     Jev,
 }
@@ -367,7 +367,7 @@ pub struct CompiledJudgeCheck {
     pub prompt: String,
     /// Which system model answers this check.
     pub engine: GuardrailEngine,
-    /// Block threshold as a percentage, honored by the judgment engine.
+    /// Block threshold as a percentage, honored by the classifier.
     pub threshold: u8,
 }
 
@@ -1347,7 +1347,7 @@ mod tests {
         let hits = compiled.evaluate(GuardrailStage::ToolUse, "{}", Some("bash_exec"), &no_skip());
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].rule_type, "tool_pattern");
-        // Judge check is available for async evaluation
+        // Classifier check is available for async evaluation
         let judges: Vec<_> = compiled
             .judge_checks_for_stage(GuardrailStage::ToolUse)
             .collect();

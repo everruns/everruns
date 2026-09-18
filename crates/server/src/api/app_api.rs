@@ -575,7 +575,7 @@ async fn authenticate_request(
         .api_endpoint_config()
         .ok_or_else(|| bad_request("Invalid api_endpoint channel configuration"))?;
 
-    if let Some(auth) = config.auth.as_ref() {
+    if let Some(auth) = channel.auth.as_ref() {
         if auth.mode == everruns_platform::AppEndpointAuthMode::ApiKey {
             verify_api_key(headers, &config.api_key_hash)?;
         } else {

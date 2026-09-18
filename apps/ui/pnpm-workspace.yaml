@@ -21,45 +21,34 @@ onlyBuiltDependencies:
   - unrs-resolver
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
-# Security fixes for GHSA advisories, pinned to exact patched versions via the
-# overrides above: postcss 8.5.23 (GHSA-r28c-9q8g-f849), sharp 0.35.4
+# Security fixes for GHSA advisories remain pinned to exact patched versions via
+# the overrides above: postcss 8.5.23 (GHSA-r28c-9q8g-f849), sharp 0.35.4
 # (GHSA-rgj7-g3m4-5g8c — libheif GHSA-g89c-p67h-r497 and GHSA-2jg2-4ch7-h545,
 # reached through next's optional image pipeline; supersedes the earlier 0.35.3
 # pin, which the advisory covers), js-yaml 4.3.2 (GHSA-2883-xcg3-v3hh —
 # maxTotalMergeKeys does not bound CPU for empty merge sources, so 4.3.1, pinned
 # here for CVE-2026-59870, is still inside the advisory; transitive dev-dep via
-# jest) — all matured past the 7-day window.
+# jest).
 # fast-uri 3.1.6 supersedes the earlier 3.1.5 pin (GHSA-v2hh-gcrm-f6hx — host
 # confusion via literal IPv6). Four further advisories landed against every 3.x
 # up to and including 3.1.5, all reached transitively through @rjsf/utils:
 # GHSA-5jgf-p345-68v8 and GHSA-jqff-g426-hqxp (host confusion via skipped IDN
 # processing and via percent-encoded scheme normalization), GHSA-f65p-4m7j-42xc
 # and GHSA-fph4-wmhf-6fwf (SSRF via repeated hostname percent-decoding). 3.1.6
-# is the only patched release for all four and is still inside the 7-day window,
-# so it needs an exemption. Staying on the 3.x line keeps the override inside
-# the range its dependents declare; 4.x is outside every advisory but is a major
-# bump this pin does not need to take.
+# is the only patched release for all four. Staying on the 3.x line keeps the
+# override inside the range its dependents declare; 4.x is outside every
+# advisory but is a major bump this pin does not need to take.
 # brace-expansion 1.1.18 / 2.1.4 (GHSA-mh99-v99m-4gvg
-# — DoS via unbounded expansion, transitive dev-dep via jest/openapi-typescript)
-# are the patched releases and are likewise still inside the maturity window.
-# Same for the current advisory batch, all reached transitively and all still
-# inside the window: dompurify 3.4.13 (IN_PLACE hook removal leaves a detached
-# executable subtree — XSS, via @streamdown/mermaid > mermaid), mermaid 11.16.1
-# (prototype pollution in the config APIs and in architecture diagrams, CSS
-# injection into sibling elements, and XY-chart/radar DoS — one release fixes
-# all five), and nanoid 3.3.18 (custom generators loop indefinitely at size 0,
-# via @tailwindcss/postcss > postcss). GHSA-2v37-7h3g-55p8 was widened to
+# — DoS via unbounded expansion, transitive dev-dep via jest/openapi-typescript),
+# dompurify 3.4.13 (IN_PLACE hook removal leaves a detached executable subtree —
+# XSS, via @streamdown/mermaid > mermaid), mermaid 11.16.1 (prototype pollution
+# in the config APIs and in architecture diagrams, CSS injection into sibling
+# elements, and XY-chart/radar DoS), and nanoid 3.3.18 (custom generators loop
+# indefinitely at size 0, via @tailwindcss/postcss > postcss) are also patched.
+# GHSA-2v37-7h3g-55p8 was widened to
 # `<3.3.18` on 2026-08-13 after 3.3.17 proved an incomplete fix, so 3.3.17 —
 # pinned here as the patched release — was still inside the advisory. 3.3.18 is
 # the actual fix.
-# All exact-pinned via the overrides above, so an exemption cannot pull any other
-# freshly published version; it only lets the security fix land before maturity.
-minimumReleaseAgeExclude:
-  - fast-uri
-  - brace-expansion
-  - dompurify
-  - mermaid
-  - nanoid
 allowBuilds:
   sharp: true
   unrs-resolver: true

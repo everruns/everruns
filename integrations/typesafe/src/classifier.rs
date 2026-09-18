@@ -1,20 +1,26 @@
-//! Deployment-owned TypeSafe judgment service wiring.
+//! Deployment-owned TypeSafe classifier wiring.
 //!
-//! Core owns the neutral contract (`JudgmentService`); this module owns the
-//! vendor. Nothing above core learns that the judgments come from TypeSafe.
+//! Core owns the neutral contract (`ClassifierService`); this module owns the
+//! vendor. Nothing above core learns that the classifications come from TypeSafe.
+//!
+//! It lives in this crate rather than in `everruns-host` so the vendor client
+//! needs only one home: the platform composes the service from above
+//! (`crates/server/src/platform.rs`, `crates/worker/src/platform.rs`), which is
+//! the direction that already works — server and worker depend on integrations,
+//! never the reverse.
 
 use std::collections::BTreeMap;
 
+use crate::client::{
+    Answer, Evaluation, Question, RetryPolicy, TypeSafeClient, question::DEFAULT_MODEL,
+};
 use async_trait::async_trait;
 use everruns_core::{
-    DisabledJudgmentService, JudgmentAnswer, JudgmentOutcome, JudgmentQuestion, JudgmentRequest,
-    JudgmentService, JudgmentUsage,
+    ClassificationAnswer, ClassificationOutcome, ClassificationQuestion, ClassificationRequest,
+    ClassificationUsage, ClassifierService, DisabledClassifierService,
 };
 use everruns_provider::error::{AgentLoopError, Result};
 use std::sync::Arc;
-use typesafe_systemone::{
-    Answer, Evaluation, Question, RetryPolicy, TypeSafeClient, question::DEFAULT_MODEL,
-};
 
 /// Environment variable used by the deployment-owned judgment client.
 ///
@@ -24,29 +30,45 @@ use typesafe_systemone::{
 /// session secret instead, and the two must never be the same key.
 pub const UTILITY_TYPESAFE_API_KEY_ENV: &str = "UTILITY_TYPESAFE_API_KEY";
 
-/// The model this deployment asks for. Fixed for the same reason the utility
-/// LLM model is: call sites must not be able to turn it into a selectable one.
-pub const JUDGMENT_MODEL: &str = DEFAULT_MODEL;
+/// The model this service asks for when neither the request nor the service
+/// names one.
+///
+/// The platform pins its classifier to this by never naming a model: the knob
+/// is absent from the config an agent can write. Other deployments, and
+/// embedders, are free to choose — there will be other classifiers and other
+/// models, and the type should not be the thing preventing that.
+pub const CLASSIFIER_MODEL: &str = DEFAULT_MODEL;
 
-/// TypeSafe-backed implementation of core's provider-neutral judgment service.
+/// TypeSafe-backed implementation of core's provider-neutral classifier.
 #[derive(Clone)]
-pub struct TypeSafeJudgmentService {
+pub struct TypeSafeClassifier {
     client: TypeSafeClient,
+    model: Option<String>,
 }
 
-impl std::fmt::Debug for TypeSafeJudgmentService {
+impl std::fmt::Debug for TypeSafeClassifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TypeSafeJudgmentService")
-            .field("model", &JUDGMENT_MODEL)
+        f.debug_struct("TypeSafeClassifier")
+            .field("model", &self.model.as_deref().unwrap_or(CLASSIFIER_MODEL))
             .field("configured", &true)
             .finish()
     }
 }
 
-impl TypeSafeJudgmentService {
+impl TypeSafeClassifier {
+    /// Construct the service from the application's own `TYPESAFE_API_KEY`.
+    ///
+    /// This is the embedder's path — an application holding its own key, the
+    /// same variable [`TypeSafeClient::from_env`] reads. The platform's
+    /// deployment credential is a different variable and a different account:
+    /// see [`SystemClassifierConfig::from_env`].
+    pub fn from_env() -> crate::client::Result<Self> {
+        Ok(Self::with_client(TypeSafeClient::from_env()?))
+    }
+
     /// Construct the fixed-model service with a deployment-owned key.
     pub fn new(api_key: impl Into<String>) -> Self {
-        // THREAT[TM-LLM-037]: Judgment credentials remain deployment-owned and
+        // THREAT[TM-LLM-037]: Classification credentials remain deployment-owned and
         // never become agent- or session-configurable, the same posture
         // TM-LLM-021 gives the utility LLM key. The agent-facing `jev`
         // capability is a separate surface with its own user-scoped connection,
@@ -56,7 +78,19 @@ impl TypeSafeJudgmentService {
 
     /// Supply a client, including a trusted custom endpoint for tests.
     pub fn with_client(client: TypeSafeClient) -> Self {
-        Self { client }
+        Self {
+            client,
+            model: None,
+        }
+    }
+
+    /// Ask a particular model rather than the vendor's default.
+    ///
+    /// A request that names its own model still wins: this is the default for
+    /// callers that name none.
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
     }
 
     /// A client that does not retry, for callers on a latency-critical seam.
@@ -73,35 +107,39 @@ impl TypeSafeJudgmentService {
 }
 
 #[async_trait]
-impl JudgmentService for TypeSafeJudgmentService {
+impl ClassifierService for TypeSafeClassifier {
     fn is_configured(&self) -> bool {
         true
     }
 
-    async fn evaluate(&self, request: JudgmentRequest) -> Result<JudgmentOutcome> {
+    async fn evaluate(&self, request: ClassificationRequest) -> Result<ClassificationOutcome> {
         if request.is_empty() {
             return Err(AgentLoopError::llm(
-                "judgment request must carry at least one question",
+                "classification request must carry at least one question",
             ));
         }
         let mut evaluation = Evaluation::new(request.state.clone());
+        // The caller's model when they named one, this service's otherwise.
+        // Guardrails never name one, so the deployment stays on its default.
+        if let Some(model) = request.model.as_deref().or(self.model.as_deref()) {
+            evaluation = evaluation.model(model);
+        }
         for (id, question) in &request.questions {
             evaluation = evaluation.ask(id.clone(), to_vendor_question(question));
         }
 
-        let judgment =
-            self.client.evaluate(evaluation).await.map_err(|error| {
-                AgentLoopError::llm(format!("judgment request failed: {error}"))
-            })?;
+        let judgment = self.client.evaluate(evaluation).await.map_err(|error| {
+            AgentLoopError::llm(format!("classification request failed: {error}"))
+        })?;
 
-        Ok(JudgmentOutcome {
+        Ok(ClassificationOutcome {
             model: judgment.model.clone(),
             answers: judgment
                 .answers
                 .iter()
                 .map(|(id, answer)| (id.clone(), from_vendor_answer(answer)))
                 .collect(),
-            usage: JudgmentUsage {
+            usage: ClassificationUsage {
                 input_tokens: judgment.usage.input_tokens,
                 output_tokens: judgment.usage.output_tokens,
             },
@@ -109,13 +147,13 @@ impl JudgmentService for TypeSafeJudgmentService {
     }
 
     fn name(&self) -> &'static str {
-        "TypeSafeJudgmentService"
+        "TypeSafeClassifier"
     }
 }
 
-fn to_vendor_question(question: &JudgmentQuestion) -> Question {
+fn to_vendor_question(question: &ClassificationQuestion) -> Question {
     match question {
-        JudgmentQuestion::Noul {
+        ClassificationQuestion::Noul {
             instructions,
             yes,
             no,
@@ -126,7 +164,7 @@ fn to_vendor_question(question: &JudgmentQuestion) -> Question {
                 _ => built,
             }
         }
-        JudgmentQuestion::Choice {
+        ClassificationQuestion::Choice {
             instructions,
             options,
         } => Question::choice(
@@ -141,24 +179,24 @@ fn to_vendor_question(question: &JudgmentQuestion) -> Question {
                 )
             }),
         ),
-        JudgmentQuestion::Score {
+        ClassificationQuestion::Score {
             instructions,
             levels,
         } => Question::score(instructions.as_str(), levels.clone()),
     }
 }
 
-fn from_vendor_answer(answer: &Answer) -> JudgmentAnswer {
+fn from_vendor_answer(answer: &Answer) -> ClassificationAnswer {
     match answer {
-        Answer::Noul(noul) => JudgmentAnswer::Noul {
+        Answer::Noul(noul) => ClassificationAnswer::Noul {
             probability: noul.noul,
         },
-        Answer::Choice(choice) => JudgmentAnswer::Choice {
+        Answer::Choice(choice) => ClassificationAnswer::Choice {
             selected: choice.choice.clone(),
             probabilities: choice.probabilities.clone(),
             confidence: choice.confidence,
         },
-        Answer::Score(score) => JudgmentAnswer::Score {
+        Answer::Score(score) => ClassificationAnswer::Score {
             score: score.score,
             // Level keys arrive as strings; unparseable keys are dropped rather
             // than defaulted, so a malformed level never reads as level 0.
@@ -177,31 +215,31 @@ fn from_vendor_answer(answer: &Answer) -> JudgmentAnswer {
     }
 }
 
-/// Deployment startup configuration for the concrete judgment service.
+/// Deployment startup configuration for the concrete classifier.
 #[derive(Clone, PartialEq, Eq)]
-pub enum SystemJudgmentConfig {
-    /// Judgment calls are unavailable; dependent checks fail open.
+pub enum SystemClassifierConfig {
+    /// Classification calls are unavailable; dependent checks fail open.
     Disabled,
-    /// Enable the TypeSafe judgment service with a system-owned API key.
+    /// Enable the TypeSafe classifier with a system-owned API key.
     TypeSafe {
         /// Deployment-owned credential.
         api_key: String,
     },
 }
 
-impl std::fmt::Debug for SystemJudgmentConfig {
+impl std::fmt::Debug for SystemClassifierConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Disabled => f.debug_struct("SystemJudgmentConfig::Disabled").finish(),
+            Self::Disabled => f.debug_struct("SystemClassifierConfig::Disabled").finish(),
             Self::TypeSafe { .. } => f
-                .debug_struct("SystemJudgmentConfig::TypeSafe")
+                .debug_struct("SystemClassifierConfig::TypeSafe")
                 .field("api_key", &"<redacted>")
                 .finish(),
         }
     }
 }
 
-impl SystemJudgmentConfig {
+impl SystemClassifierConfig {
     /// Resolve judgment configuration from the process environment.
     pub fn from_env() -> Self {
         match std::env::var(UTILITY_TYPESAFE_API_KEY_ENV)
@@ -214,14 +252,12 @@ impl SystemJudgmentConfig {
     }
 
     /// Materialize the configured service behind core's neutral trait.
-    pub fn into_service(self) -> Arc<dyn JudgmentService> {
+    pub fn into_service(self) -> Arc<dyn ClassifierService> {
         match self {
-            Self::Disabled => Arc::new(DisabledJudgmentService),
+            Self::Disabled => Arc::new(DisabledClassifierService),
             // Guardrails are the primary caller and sit on latency-critical
             // seams, so the deployment client does not retry.
-            Self::TypeSafe { api_key } => {
-                Arc::new(TypeSafeJudgmentService::without_retries(api_key))
-            }
+            Self::TypeSafe { api_key } => Arc::new(TypeSafeClassifier::without_retries(api_key)),
         }
     }
 }
@@ -234,7 +270,7 @@ mod tests {
     fn system_config_debug_redacts_api_key() {
         let debug = format!(
             "{:?}",
-            SystemJudgmentConfig::TypeSafe {
+            SystemClassifierConfig::TypeSafe {
                 api_key: "ts-secret-value".to_string(),
             }
         );
@@ -244,13 +280,13 @@ mod tests {
 
     #[test]
     fn service_debug_never_renders_the_key() {
-        let service = TypeSafeJudgmentService::new("ts-secret-value");
+        let service = TypeSafeClassifier::new("ts-secret-value");
         assert!(!format!("{service:?}").contains("ts-secret-value"));
     }
 
     #[test]
     fn questions_translate_to_the_vendor_shape() {
-        let noul = to_vendor_question(&JudgmentQuestion::Noul {
+        let noul = to_vendor_question(&ClassificationQuestion::Noul {
             instructions: "Is it urgent?".to_string(),
             yes: Some("Time-sensitive".to_string()),
             no: Some("No urgency".to_string()),
@@ -259,7 +295,7 @@ mod tests {
         assert_eq!(wire["type"], "noul");
         assert_eq!(wire["criteria"]["true"], "Time-sensitive");
 
-        let choice = to_vendor_question(&JudgmentQuestion::Choice {
+        let choice = to_vendor_question(&ClassificationQuestion::Choice {
             instructions: "Which team?".to_string(),
             options: vec![
                 ("billing".to_string(), Some("Money".to_string())),
@@ -270,7 +306,7 @@ mod tests {
         assert_eq!(wire["criteria"]["billing"], "Money");
         assert_eq!(wire["criteria"]["technical"], serde_json::Value::Null);
 
-        let score = to_vendor_question(&JudgmentQuestion::score("How bad?", ["Fine", "Bad"]));
+        let score = to_vendor_question(&ClassificationQuestion::score("How bad?", ["Fine", "Bad"]));
         let wire = serde_json::to_value(&score).expect("serializes");
         assert_eq!(wire["criteria"][1], "Bad");
     }
@@ -292,7 +328,7 @@ mod tests {
             .expect("a score answer");
         assert!((tail - 0.9).abs() < 1e-9, "{tail}");
         assert_eq!(converted.confidence(), Some(0.7));
-        let JudgmentAnswer::Score { probabilities, .. } = &converted else {
+        let ClassificationAnswer::Score { probabilities, .. } = &converted else {
             panic!("expected a score answer");
         };
         assert_eq!(probabilities.len(), 3);
@@ -312,7 +348,7 @@ mod tests {
             "confidence": 0.8
         }))
         .expect("answer");
-        let JudgmentAnswer::Choice {
+        let ClassificationAnswer::Choice {
             selected,
             probabilities,
             confidence,
@@ -327,9 +363,9 @@ mod tests {
 
     #[tokio::test]
     async fn empty_requests_are_rejected_before_any_round_trip() {
-        let service = TypeSafeJudgmentService::new("unused");
+        let service = TypeSafeClassifier::new("unused");
         let error = service
-            .evaluate(JudgmentRequest::new("state"))
+            .evaluate(ClassificationRequest::new("state"))
             .await
             .unwrap_err();
         assert!(error.to_string().contains("at least one question"));
@@ -339,12 +375,12 @@ mod tests {
     fn env_config_is_disabled_without_a_key() {
         // Set/unset is process-global; assert the branch logic directly instead.
         assert!(
-            !SystemJudgmentConfig::Disabled
+            !SystemClassifierConfig::Disabled
                 .into_service()
                 .is_configured()
         );
         assert!(
-            SystemJudgmentConfig::TypeSafe {
+            SystemClassifierConfig::TypeSafe {
                 api_key: "k".to_string()
             }
             .into_service()

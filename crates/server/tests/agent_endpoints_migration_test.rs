@@ -442,6 +442,8 @@ async fn endpoint_creation_requires_the_app_to_have_an_agent() {
                 channel_type: "slack".to_string(),
                 channel_config: serde_json::json!({}),
                 channel_config_encrypted: None,
+                auth: None,
+                auth_encrypted: None,
                 durable_schedule_id: None,
                 enabled: true,
             },
@@ -548,4 +550,81 @@ async fn deleting_an_endpoint_removes_it_from_the_view() {
         .await
         .expect("count view rows");
     assert_eq!(remaining, 0);
+}
+
+#[tokio::test]
+async fn endpoint_auth_migration_only_backfills_plaintext_transport_rows() {
+    let pool = pool().await;
+    let mut tx = pool.begin().await.expect("begin transaction");
+    sqlx::raw_sql(
+        "SET LOCAL search_path TO pg_temp;
+         CREATE TABLE agent_endpoints (
+             id UUID PRIMARY KEY,
+             app_id UUID NOT NULL,
+             public_id TEXT NOT NULL,
+             channel_type TEXT NOT NULL,
+             channel_config JSONB NOT NULL,
+             channel_config_encrypted BYTEA,
+             durable_schedule_id UUID,
+             enabled BOOLEAN NOT NULL,
+             created_at TIMESTAMPTZ NOT NULL,
+             updated_at TIMESTAMPTZ NOT NULL
+         );
+         CREATE VIEW app_channels AS SELECT * FROM agent_endpoints;",
+    )
+    .execute(&mut *tx)
+    .await
+    .expect("create pre-migration schema");
+
+    let plaintext_id = Uuid::now_v7();
+    let encrypted_id = Uuid::now_v7();
+    for (id, ciphertext) in [(plaintext_id, None), (encrypted_id, Some(vec![1_u8]))] {
+        sqlx::query(
+            "INSERT INTO agent_endpoints (
+                 id, app_id, public_id, channel_type, channel_config,
+                 channel_config_encrypted, enabled, created_at, updated_at
+             ) VALUES ($1, $2, $3, 'ag_ui', $4, $5, true, NOW(), NOW())",
+        )
+        .bind(id)
+        .bind(Uuid::now_v7())
+        .bind(format!("appchan_{}", hex32()))
+        .bind(serde_json::json!({
+            "anonymous": false,
+            "auth": {"mode": "google_oidc"}
+        }))
+        .bind(ciphertext)
+        .execute(&mut *tx)
+        .await
+        .expect("seed pre-migration endpoint");
+    }
+
+    sqlx::raw_sql(include_str!("../migrations/139_agent_endpoint_auth.sql"))
+        .execute(&mut *tx)
+        .await
+        .expect("apply endpoint auth migration");
+
+    let (config, auth): (serde_json::Value, Option<serde_json::Value>) =
+        sqlx::query_as("SELECT channel_config, auth FROM agent_endpoints WHERE id = $1")
+            .bind(plaintext_id)
+            .fetch_one(&mut *tx)
+            .await
+            .expect("read plaintext row");
+    assert!(config.get("auth").is_none());
+    assert_eq!(auth.unwrap()["mode"], "google_oidc");
+
+    let (config, auth): (serde_json::Value, Option<serde_json::Value>) =
+        sqlx::query_as("SELECT channel_config, auth FROM agent_endpoints WHERE id = $1")
+            .bind(encrypted_id)
+            .fetch_one(&mut *tx)
+            .await
+            .expect("read encrypted row");
+    assert_eq!(config["auth"]["mode"], "google_oidc");
+    assert!(auth.is_none());
+
+    let _: (Option<serde_json::Value>, Option<Vec<u8>>) =
+        sqlx::query_as("SELECT auth, auth_encrypted FROM app_channels WHERE id = $1")
+            .bind(plaintext_id)
+            .fetch_one(&mut *tx)
+            .await
+            .expect("compatibility view exposes auth columns");
 }

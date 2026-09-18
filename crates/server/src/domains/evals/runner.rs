@@ -834,7 +834,7 @@ fn score_citation_faithful(
 }
 
 const CITATION_JUDGE_RUBRIC: &str = "You are judging citation faithfulness. Each numbered item is a CLAIM the agent \
-     made and the SOURCE it cited. Judge whether each SOURCE actually supports its \
+     made and the SOURCE it cited. Classifier whether each SOURCE actually supports its \
      CLAIM. `value` is the fraction of items whose source supports the claim \
      (1.0 = all supported, 0.0 = none). Penalize claims whose source is unrelated \
      or contradicts them.";

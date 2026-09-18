@@ -1,14 +1,26 @@
 #!/usr/bin/env python3
-"""Validate or update internal dependency pins for independently versioned crates.
+"""Validate or update internal dependency pins against the single platform version.
 
-Published workspace packages own explicit versions. Every path dependency from
-a published package must carry the current version of the package it targets;
-workspace-inherited dependencies obtain that pin from ``Cargo.toml``. A
-dev-dependency counts only once it declares a version of its own (see
-``dependency_tables``).
+Every published workspace package carries the one platform version by inheriting
+``version.workspace = true``; none declares a literal version of its own. Every
+path dependency from a published package must pin that same version, so a
+release republishes the whole set at one number and no published crate can be
+left pinning an incompatible predecessor. Workspace-inherited dependencies
+obtain that pin from ``Cargo.toml``; a dev-dependency counts only once it
+declares a version of its own (see ``dependency_tables``).
+
+This is the gate that keeps the single-version invariant honest. It replaces the
+cone/strand and semver-bump machinery that independent crate versions needed:
+with one version across the publish set, a stranded dependant is unrepresentable
+and every release advances the 0.x breaking slot, so there is no bump size left
+to classify. See knowledge/project/release-process.md.
+
+It also rejects a published package that depends on a private or
+registry-restricted workspace package, which no version scheme prevents: that is
+how ``everruns-host`` 0.23.0 reached an immutable tag it could not publish from.
 
 The package graph is discovered from Cargo metadata. There are no package or
-dependency allowlists to update when crates move or versions diverge.
+dependency allowlists to update when crates move.
 """
 
 from __future__ import annotations
@@ -38,6 +50,41 @@ def metadata() -> dict[str, Any]:
         text=True,
     )
     return json.loads(output)
+
+
+def crates_io_publishable(package: dict[str, Any]) -> bool:
+    """Whether Cargo permits publishing this package to crates.io."""
+    registries = package.get("publish")
+    return registries is None or (
+        isinstance(registries, list) and "crates-io" in registries
+    )
+
+
+def private_dependency_failures(packages: list[dict[str, Any]]) -> list[str]:
+    """Reject publishable packages that Cargo cannot resolve from crates.io."""
+    by_directory = {
+        Path(package["manifest_path"]).resolve().parent: package for package in packages
+    }
+    failures: list[str] = []
+    for package in sorted(packages, key=lambda item: item["name"]):
+        if not crates_io_publishable(package):
+            continue
+        for dependency in package.get("dependencies", []):
+            if dependency.get("kind") not in (None, "normal", "build"):
+                continue
+            path = dependency.get("path")
+            if not isinstance(path, str):
+                continue
+            target = by_directory.get(Path(path).resolve())
+            if target is None or crates_io_publishable(target):
+                continue
+            article = "an optional" if dependency.get("optional") else "a"
+            failures.append(
+                f"{package['name']}: {dependency['name']} is {article} "
+                f"{dependency.get('kind') or 'normal'} path dependency on non-crates.io "
+                f"workspace package {target['name']}"
+            )
+    return failures
 
 
 # Dev-dependencies are pinned only where the declaration already carries a
@@ -150,19 +197,25 @@ def main() -> int:
     published = {
         manifest: package
         for manifest, package in packages.items()
-        if package.get("publish") != []
+        if crates_io_publishable(package)
     }
     root_path = REPO / "Cargo.toml"
     root = load(root_path)
     workspace_dependencies = root["workspace"].get("dependencies", {})
     failures: list[str] = []
     rewrites: dict[tuple[Path, str, str], str] = {}
+    failures.extend(private_dependency_failures(cargo["packages"]))
 
     for manifest_path, package in sorted(published.items(), key=lambda item: item[1]["name"]):
         manifest = load(manifest_path)
-        if not isinstance(manifest.get("package", {}).get("version"), str):
+        # The single-version invariant, checked against the raw manifest: Cargo
+        # metadata reports the resolved version either way, so only the TOML
+        # shows whether the package inherits the platform version or pins its
+        # own. A literal version here is how independent versioning creeps back.
+        if manifest.get("package", {}).get("version") != {"workspace": True}:
             failures.append(
-                f"{manifest_path.relative_to(REPO)}: published package must declare an explicit version"
+                f"{manifest_path.relative_to(REPO)}: published package must inherit the "
+                "platform version with `version.workspace = true`"
             )
 
         for kind, table in dependency_tables(manifest):
@@ -197,11 +250,11 @@ def main() -> int:
 
     if check_only:
         if failures:
-            print("independent crate version validation failed:", file=sys.stderr)
+            print("platform version validation failed:", file=sys.stderr)
             for failure in failures:
                 print(f"  {failure}", file=sys.stderr)
             return 1
-        print(f"independent crate versions and pins verified for {len(published)} package(s)")
+        print(f"platform version and internal pins verified for {len(published)} package(s)")
         return 0
 
     changed = 0

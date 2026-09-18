@@ -363,7 +363,8 @@ async fn resolve_published_channel(
         );
         return Err(not_found());
     }
-    let config = channel.public_chat_config().ok_or_else(not_found)?;
+    let mut config = channel.public_chat_config().ok_or_else(not_found)?;
+    config.auth = channel.auth.as_deref().cloned();
     let endpoint_internal_id = channel.internal_id;
     Ok((app, endpoint_internal_id, config))
 }

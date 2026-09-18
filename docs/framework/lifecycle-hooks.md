@@ -12,7 +12,8 @@ use everruns::prelude::*;
 
 let agent = Agent::builder()
     .instructions("You are concise.")
-    .model(Model::simulated("Ready."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .on_agent_start(|context| async move {
         println!("starting {}", context.session_id);
     })

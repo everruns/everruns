@@ -22,12 +22,13 @@ on the same `everruns-engine` Input/Reason/Act state machine.
 New Framework code creates and resumes sessions through an Engine:
 
 ```rust
-use everruns::{Agent, Engine, Model};
+use everruns::{Agent, Engine, OpenAI};
 
 # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 let agent = Agent::builder()
     .instructions("Answer concisely.")
-    .model(Model::simulated("Ready."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .build()?;
 
 let engine = Engine::new();

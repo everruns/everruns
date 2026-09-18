@@ -1,3 +1,5 @@
+//! Stability: stable — no breaking change without a major bump; see [`stability`](crate::stability).
+//!
 //! Direct model calls, without an agent.
 //!
 //! Some work is one prompt and one answer: classify a string, draft a summary,

@@ -43,14 +43,16 @@ Integration packages can expose typed values through `IntoCapability`. Brave
 Search supports the ordinary Framework builder:
 
 ```rust
-use everruns::{Agent, Model};
+use everruns::{Agent, OpenAI};
 use everruns_integrations_brave_search::BraveSearch;
 
 let agent = Agent::builder()
     .instructions("Search and cite primary sources.")
-    .model(Model::simulated("Ready."))
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .capability(BraveSearch::from_env()?)
     .build()?;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 Depend on `everruns-integrations-brave-search` with `default-features = false`

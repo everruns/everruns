@@ -52,7 +52,9 @@ The Framework owns value-first configuration for:
 - event-derived session history and resume, without promoting writable message
   stores or their file format into the application API.
 - direct, agentless model calls over the same provider values an agent uses,
-  for work that is one prompt and one answer.
+  for work that is one prompt and one answer;
+- direct, agentless classification over the same `ClassifierService` the platform's
+  guardrails use, for work whose answer is a number rather than prose.
 
 The application execution boundary is the concrete `everruns::Engine`.
 `InMemoryEngine` remains a source-compatible alias, not a second
@@ -223,6 +225,54 @@ The low-level path stays open and is now self-sufficient from the facade: the
 re-exported from `everruns`, so calling the driver boundary directly no longer
 forces a second crate dependency.
 
+## Direct classification boundary
+
+The counterpart to the direct model call, for work whose answer is a number
+rather than prose. *Is this claim supported? How severe is this? Which queue?*
+A chat model answers those in text a call site must parse and trust, and every
+such site grows the same three things: a prompt asking for JSON, a parser, and
+a fallback for when the parse fails. In anything enforcing a policy that
+fallback is a silent bypass.
+
+`Classifier::probability` and `Classifier::about` close that the same way `Model` closed
+the direct completion: a thin value-first layer over the `ClassifierService`
+contract core already owns, reaching a classifier the way `Model` reaches a
+chat model. The contract differs because the work differs — state plus typed
+questions in, calibrated answers out, and the threshold that decides an outcome
+stays in the caller's code. There is nothing to stream, because a classification is
+one round trip.
+
+The concrete service is supplied, never assumed: `Classifier::new` takes any
+`ClassifierService`, exactly as `Model::new` takes any `Provider`, so the facade
+depends on no vendor. `Classifier::simulated` keeps tests and examples offline, the
+role `Model::simulated` plays for completions. `everruns` re-exports the TypeSafe
+service behind its `jev` feature, the way it re-exports `OpenAI`, so one import
+reaches both halves without the vendor entering the default build.
+
+The model is named, not fixed. `Model::new` takes a model id because a provider
+is transport and serves many; a classifier service has a default of its own, so
+`Classifier::model` and `Classification::model` are overrides — per classifier
+and per call. That asymmetry is the whole of it: there will be other
+classifiers, and pinning a version rather than tracking a vendor default is the
+caller's decision. A deployment that must pin one does so by not exposing the
+knob in the config it accepts, not by the type being unable to carry one.
+
+Deliberately excluded, and for the same reasons as the completion layer:
+history, tools, workspaces, durability, events, hooks. Also excluded: retry and
+threshold policy. A classification returns the distribution; what counts as a block,
+a routing decision, or an escalation is the application's, and burying it in
+the layer would recreate the parse-and-trust problem one level down.
+
+- Direct classification stays a thin layer over `ClassifierService` with no
+  policy of its own. The number is the layer's output; the decision is the
+  caller's.
+- Two paths, split by who writes the questions: `Classifier` when the
+  application asks and decides, the `jev` capability when the agent asks as part
+  of its own work. Both reach the same tool contract, so behavior matches
+  whether the Framework is embedded or the platform runs it.
+- Question ids are caller-side labels and never reach the model, so each
+  question must carry its whole meaning in its instructions.
+
 ## Boundary constraints
 
 - Application and host setup paths must converge before provider resolution and
@@ -267,7 +317,16 @@ forces a second crate dependency.
 
 Every application surface promoted in an atomic unit has a downstream-style
 compile/run fixture that imports only `everruns`, uses offline simulation and
-temporary files, and does not require credentials or network access. The same
+temporary files, and does not require credentials or network access.
+
+This governs **fixtures**, not public documentation. It says a promoted surface
+must be *provable* without credentials; it does not say the simulator is how the
+surface should be *introduced*. Read as a docs rule it inverts the product:
+every page opens on a canned response, and a reader meets a test double before
+they meet a model. Public pages lead with a real provider doing real work, and
+mention the simulator afterwards, as a testing tool. Snippets on interior
+reference pages may still use `Model::simulated` when the model is incidental to
+the API being shown. The same
 bar applies when the event/history, hooks, task/wake, workspace-policy, and
 capability-SPI units land. Product worker/server and local host behavior must
 remain aligned through the shared engine kernel. Facade-only dependency guards
@@ -288,6 +347,7 @@ entrypoints.
 - `crates/everruns/src/mcp.rs`
 - `crates/everruns/src/plugin.rs`
 - `crates/everruns/src/llm.rs`
+- `crates/everruns/src/classifier.rs`
 - `crates/everruns/src/local.rs`
 - `crates/everruns/src/work.rs`
 - `crates/everruns/tests/application_parity.rs`
