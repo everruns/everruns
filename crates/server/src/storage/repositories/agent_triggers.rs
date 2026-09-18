@@ -156,7 +156,7 @@ impl Database {
             UPDATE agent_triggers
             SET durable_schedule_id = $3, updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, execution_app_public_id, execution_app_name, execution_agent_version_policy, execution_agent_version_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
