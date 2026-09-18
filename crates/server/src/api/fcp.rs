@@ -537,7 +537,7 @@ async fn message(
                 org_id: context.app.org_id,
                 user_id: None,
                 harness_id: context.app.harness_id.uuid(),
-                agent_id: context.app.agent_id.map(|agent_id| agent_id.uuid()),
+                agent_id: Some(context.app.agent_internal_id),
                 session_id: resolved.session_id,
                 event_metadata: Some(execution_metadata::app_message_metadata(
                     context.app.public_id,
@@ -815,7 +815,7 @@ async fn resolve_session(
         .create_from_app(
             &Caller::internal(app.org_id),
             app.harness_id.uuid(),
-            app.agent_id.map(|agent_id| agent_id.uuid()),
+            Some(app.agent_internal_id),
             app.agent_id,
             app.historical_app_id,
             app.agent_version_policy.clone(),

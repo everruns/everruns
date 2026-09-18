@@ -60,7 +60,7 @@
 1868 crates/server/src/auth/middleware.rs
 3599 crates/server/src/auth/routes.rs
 4712 crates/server/src/direct_worker_adapters.rs
-1528 crates/server/src/domains/agent_triggers/commands.rs
+1543 crates/server/src/domains/agent_triggers/commands.rs
 2483 crates/server/src/domains/agents/commands.rs
 1898 crates/server/src/domains/budgets/tests.rs
 1872 crates/server/src/domains/common.rs
@@ -74,8 +74,8 @@
 3874 crates/server/src/seed.rs
 1570 crates/server/src/services/provider_resolver.rs
 4592 crates/server/src/slack_delivery.rs
-4551 crates/server/src/storage/memory/tests.rs
-3872 crates/server/src/storage/models.rs
+4555 crates/server/src/storage/memory/tests.rs
+3880 crates/server/src/storage/models.rs
 2589 crates/server/tests/app_a2a_integration_test.rs
 1745 crates/server/tests/evals_integration_test.rs
 4254 crates/server/tests/mcp_endpoint_test.rs
