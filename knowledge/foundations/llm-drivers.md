@@ -534,15 +534,24 @@ to the Microsoft-vendor profiles in `crates/model-profiles/src/profiles.rs` (the
 
 ### Catalog Fallback for Unrecognized Endpoints
 
-A driver returns `Ok(None)` for an endpoint it does not recognize, which
-covers every proxy, gateway and self-hosted server. Most of those do serve
-`GET <base>/models`, so the OpenAI drivers fall back to
-`model_discovery::list_openai_compatible_models_best_effort` rather than
-reporting no catalog for an endpoint that has one. The fallback is
-best-effort by design: the caller asked *whether* a catalog exists, and for an
-endpoint nobody promised one for, "no" is the answer rather than an error. It
-reuses the same `validate_safe_url` and shared-client path as the primary
-listing, so the SSRF posture is unchanged (TM-API-013).
+A vendor driver returns `Ok(None)` for an endpoint it does not recognize, and
+that gate stays where it is. It is a **credential boundary**, not merely a
+capability check: the base URL is org-configured and the listing URL is
+*derived* from it, so anything the driver sends there resolves the provider's
+key against a host that may only look like the vendor
+(`api.openai.com.evil.example`, `resource.openai.azure.com@evil.example`,
+`evil.example/api.openai.com`). Attaching a generic OpenAI-compatible fallback
+to a vendor driver would hand the key to exactly those hosts, so it is not
+done. `public_discovery_gates_both_protocols_before_accessing_credentials`
+pins this with those cases.
+
+A caller that *does* want a catalog from a host it trusts — a proxy, a
+gateway, its own server — calls
+`model_discovery::list_openai_compatible_models_best_effort` itself. That is
+the deliberate step the trust decision deserves. It is best-effort: the caller
+asked *whether* a catalog exists, so an endpoint that serves none answers "no"
+rather than erroring, and it reuses `validate_safe_url` and the shared
+DNS-pinned client (TM-API-013).
 
 Enrichment keeps the capability metadata: `DiscoveredProviderModel::profile`
 carries the curated registry profile merged with whatever the provider's API
