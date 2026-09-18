@@ -801,7 +801,7 @@ async fn catalog_preview_discovery_never_uses_legacy_connection_tokens() {
             &db,
             everruns_core::DEFAULT_ORG_ID,
             &servers,
-            Some(SessionId::new()),
+            None,
             Some(&resolver_trait),
             &egress,
         )
@@ -813,6 +813,33 @@ async fn catalog_preview_discovery_never_uses_legacy_connection_tokens() {
 
     assert_eq!(resolver.calls.load(Ordering::SeqCst), 0);
     assert_eq!(egress.calls.load(Ordering::SeqCst), 6);
+}
+#[tokio::test]
+async fn runtime_catalog_discovery_without_cache_identity_fails_closed() {
+    let db = StorageBackend::in_memory();
+    seed_catalog_server(&db, "linear", true).await;
+    let resolver = Arc::new(CountingConnectionResolver::default());
+    let resolver_trait: Arc<dyn UserConnectionResolver> = resolver.clone();
+    let egress = CatalogPreviewEgress::default();
+    let servers = ScopedMcpServers::from([(
+        "docs".to_string(),
+        catalog_server("linear", McpServerActsAs::User),
+    )]);
+
+    let tools = build_materialized_scoped_mcp_tool_definitions(
+        &db,
+        everruns_core::DEFAULT_ORG_ID,
+        &servers,
+        Some(SessionId::new()),
+        Some(&resolver_trait),
+        &egress,
+    )
+    .await
+    .unwrap();
+
+    assert!(tools.is_empty());
+    assert_eq!(resolver.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(egress.calls.load(Ordering::SeqCst), 0);
 }
 
 #[test]

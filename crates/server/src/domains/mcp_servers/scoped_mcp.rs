@@ -625,12 +625,9 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
         let source = servers
             .get(name)
             .expect("materialized server keeps its name");
-        let cacheable_identity = !server.acts_as.is_none()
-            && source.preset.is_some()
-            && session_id.is_some()
-            && cache_context.is_some()
-            && connection_resolver.is_some();
-        if !cacheable_identity {
+        let runtime_identity_attachment =
+            !server.acts_as.is_none() && source.preset.is_some() && session_id.is_some();
+        if !runtime_identity_attachment {
             definitions.extend(
                 build_scoped_mcp_tool_definitions(
                     &ScopedMcpServers::from([(name.clone(), server.clone())]),
@@ -642,6 +639,15 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
             );
             continue;
         }
+        let (Some(cache_context), Some(connection_resolver)) = (cache_context, connection_resolver)
+        else {
+            tracing::warn!(
+                server_name = %name,
+                acts_as = %server.acts_as,
+                "Skipping catalog MCP discovery because runtime identity context is unavailable"
+            );
+            continue;
+        };
 
         let preset_name = source
             .preset
@@ -663,9 +669,9 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
             preset_id,
             name,
             server,
-            session_id.expect("cacheable catalog attachment has a session"),
-            cache_context.expect("cacheable catalog attachment has cache context"),
-            connection_resolver.expect("cacheable catalog attachment has a resolver"),
+            session_id.expect("runtime identity attachment has a session"),
+            cache_context,
+            connection_resolver,
             egress_service,
         )
         .await;
