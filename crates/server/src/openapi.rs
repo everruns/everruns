@@ -33,7 +33,7 @@ use everruns_provider::provider::{
 };
 use serde_json::json;
 use utoipa::openapi::extensions::Extensions;
-use utoipa::openapi::{RefOr, Schema};
+use utoipa::openapi::{Deprecated, RefOr, Schema};
 use utoipa::{Modify, OpenApi};
 
 const SDK_RESPONSE_WRAPPERS: &[(&str, &str, &str)] = &[
@@ -58,6 +58,16 @@ struct SdkMetadata;
 
 impl Modify for SdkMetadata {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        for path in ["/v1/apps", "/v1/apps/{app_id}"] {
+            if let Some(operation) = openapi
+                .paths
+                .paths
+                .get_mut(path)
+                .and_then(|item| item.get.as_mut())
+            {
+                operation.deprecated = Some(Deprecated::True);
+            }
+        }
         let Some(components) = openapi.components.as_mut() else {
             return;
         };
@@ -149,11 +159,6 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::fcp::handshake,
         api::fcp::message_legacy,
         api::fcp::message_endpoint,
-        api::apps::list_app_runs,
-        api::apps::add_a2a_channel,
-        api::apps::regenerate_a2a_key,
-        api::apps::add_api_endpoint_channel,
-        api::apps::regenerate_api_endpoint_key,
         api::app_api::create_session,
         api::app_api::create_session_endpoint,
         api::app_api::post_message,
@@ -170,16 +175,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agent_triggers::update_agent_trigger,
         api::agent_triggers::delete_agent_trigger,
         api::agent_triggers::trigger_agent_trigger,
-        api::apps::create_app,
         api::apps::list_apps,
         api::apps::get_app,
-        api::apps::update_app,
-        api::apps::delete_app,
-        api::apps::publish_app,
-        api::apps::publish_channel,
-        api::apps::unpublish_channel,
-        api::apps::unpublish_app,
-        api::apps::app_config,
         api::events::stream_sse,
         api::events::list_events,
         api::events::events_summary,
@@ -512,16 +509,6 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::voice::VoiceEndResponse,
             api::voice::VoiceSessionResponse<api::voice::VoiceCallResponse>,
             api::app_webhooks::WebhookInvocationResponse,
-            api::apps::ListAppRunsQuery,
-            api::apps::AddA2aChannelHttpRequest,
-            api::apps::AddApiEndpointChannelHttpRequest,
-            domains::apps::types::AppRunEvent,
-            domains::apps::types::AppRunBucket,
-            domains::apps::types::AppRunListResponse,
-            domains::apps::AddA2aChannelOutput,
-            domains::apps::RegenerateA2aApiKeyOutput,
-            domains::apps::AddApiEndpointChannelOutput,
-            domains::apps::RegenerateApiEndpointApiKeyOutput,
             // Agent triggers (EVE-757)
             everruns_platform::AgentTrigger,
             everruns_platform::AgentTriggerType,

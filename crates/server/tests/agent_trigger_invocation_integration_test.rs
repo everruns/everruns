@@ -143,18 +143,18 @@ async fn create_migrated_webhook_trigger(
 ) -> (String, String, String) {
     let agent = create_agent(server, &format!("{name}-agent")).await;
     let agent_public_id = agent["id"].as_str().unwrap().to_string();
-    let app: Value = server
-        .post(
-            "/v1/apps",
+    let app = server
+        .seed_app_endpoint(
+            name,
+            &agent_public_id,
+            "webhook",
             json!({
-                "name": name,
-                "harness_id": server.seed_generic_harness_id.clone(),
-                "agent_id": agent_public_id,
+                "token": "archival-endpoint-secret",
+                "session_mode": session_mode,
+                "message": message,
             }),
         )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
+        .await;
     let app_public_id = app["id"].as_str().unwrap().to_string();
     let app_row = server
         .db

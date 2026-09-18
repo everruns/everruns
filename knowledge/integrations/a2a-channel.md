@@ -10,19 +10,19 @@ tags:
 
 ## Abstract
 
-The A2A channel exposes an Everruns App as an **Agent2Agent (A2A) protocol**
-endpoint so other agents can invoke the app over JSON-RPC. It is a sibling of
-the `webhook` channel: app-scoped ingress that injects a rendered user message
-into an app-owned session, with a published-app + enabled-channel gate.
+The A2A channel exposes an Everruns agent as an **Agent2Agent (A2A) protocol**
+endpoint so other agents can invoke it over JSON-RPC. It is a sibling of the
+`webhook` transport and injects a rendered user message into an endpoint-owned
+session after endpoint liveness is established.
 
 The first cut implemented the **API key** authentication scheme from the A2A
-security model. A2A channels now also adopt the shared App endpoint auth model
+security model. A2A channels now also adopt the shared endpoint auth model
 documented in [`knowledge/integrations/apps.md`](apps.md): each channel may keep the generated
 bearer API key or attach first-class endpoint auth for HTTP Basic,
 Google/OIDC JWT bearer, OAuth2 introspection, or mTLS.
 
-A2A is a separate `ChannelType` so an app can advertise itself as an agent to
-other agents without conflating it with bare HTTP webhook ingress.
+A2A is a separate endpoint type so an agent can advertise itself to other
+agents without conflating it with bare HTTP webhook ingress.
 
 References:
 
@@ -33,8 +33,8 @@ References:
 
 ## Goals
 
-1. Let an Everruns App act as a discoverable A2A agent for other agents
-2. Reuse the existing App lifecycle, ownership, harness, agent, and identity
+1. Let an Everruns agent act as a discoverable A2A agent for other agents
+2. Reuse endpoint liveness, ownership, harness, agent, and identity
 3. Authenticate inbound calls with a hashed API key (no plaintext at rest)
 4. Reuse `SessionBinding` for session routing (shared / per-invocation)
 5. Publish a minimal **Agent Card** for protocol discovery
@@ -49,7 +49,7 @@ References:
    identified by the underlying session id (`task_id == contextId`); a
    shared session reuses the same task id across follow-up messages.
 
-This spec covers **inbound** A2A only, exposing an Everruns App as an A2A
+This spec covers **inbound** A2A only, exposing an Everruns agent as an A2A
 server for other agents to call. The complementary **outbound** direction,
 letting an Everruns agent call an external A2A agent, lives as a separate
 capability spec, [`knowledge/integrations/a2a-capability.md`](a2a-capability.md), and a
@@ -84,8 +84,8 @@ pub struct A2aChannelConfig {
 }
 ```
 
-Authentication is exposed as `AppChannel.auth` and stored separately from this
-transport config in `agent_endpoints.auth` or `auth_encrypted`.
+Authentication is stored separately from transport config in
+`agent_endpoints.auth` or `auth_encrypted`.
 
 API key generation:
 
@@ -94,19 +94,23 @@ API key generation:
   platform `evr_` API keys.
 - Hash: `SHA-256` of the full key, hex-encoded. Matches `auth/api_key.rs`.
 - Display prefix: first 8 hex chars after `evra2a_`, suffixed with `...`.
-- Plaintext returned **only once**: in the `AddA2aChannel` / regenerate
-  command response. Subsequent reads expose only `api_key_prefix`.
+- Existing plaintext keys were returned only once when their endpoint was
+  created or regenerated. Frozen reads expose only `api_key_prefix`.
 
 ## Endpoints
 
 ### Inbound JSON-RPC
 
-`POST /v1/apps/{app_id}/a2a/{channel_id}`
+Canonical: `POST /v1/e/{endpoint_id}/a2a`.
+
+Permanent compatibility alias:
+`POST /v1/apps/{legacy_app_id}/a2a/{endpoint_id}`. It resolves the endpoint
+without reading `apps` or `app_channels`.
 
 - Content-Type: `application/json`
 - Auth: `Authorization: Bearer <api_key>` (the `apiKey` scheme in the Agent
   Card uses `bearer` for unification with the standard HTTP header).
-- If `auth` is configured, the endpoint uses that shared App endpoint auth
+- If `auth` is configured, the endpoint uses that shared endpoint auth
   policy instead. `auth.mode = api_key` keeps generated-key behavior;
   `google_oidc`, `oidc`, and `oauth2_introspection` use bearer tokens;
   `http_basic` uses HTTP Basic; `mtls` uses the configured trusted reverse

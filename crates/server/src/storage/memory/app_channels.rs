@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use crate::errors::BadRequestError;
+use crate::storage::IngressEndpointRow;
 use anyhow::Result;
 use uuid::Uuid;
 
@@ -16,6 +17,23 @@ fn derive_status(enabled: bool, app_status: Option<&str>) -> String {
         "draft"
     }
     .to_string()
+}
+
+impl InMemoryDatabase {
+    fn sync_ingress_endpoint(&self, channel: &AppChannelRow) {
+        let mut endpoints = self.ingress_endpoints.write();
+        let Some(endpoint) = endpoints.get_mut(&channel.id) else {
+            return;
+        };
+        endpoint.channel_type = channel.channel_type.clone();
+        endpoint.channel_config = channel.channel_config.clone();
+        endpoint.channel_config_encrypted = channel.channel_config_encrypted.clone();
+        endpoint.auth = channel.auth.clone();
+        endpoint.auth_encrypted = channel.auth_encrypted.clone();
+        endpoint.enabled = channel.enabled;
+        endpoint.endpoint_status = channel.status.clone();
+        endpoint.updated_at = channel.updated_at;
+    }
 }
 
 fn initial_status(enabled: bool) -> String {
@@ -82,7 +100,11 @@ impl InMemoryDatabase {
             created_at: now,
             updated_at: now,
         };
+        let ingress = self.ingress_endpoint_row(row.clone());
         self.app_channels.write().insert(id, row.clone());
+        if let Some(ingress) = ingress {
+            self.ingress_endpoints.write().insert(id, ingress);
+        }
         Ok(row)
     }
 
@@ -133,7 +155,12 @@ impl InMemoryDatabase {
             created_at: now,
             updated_at: now,
         };
+        let ingress = self.ingress_endpoint_row(row.clone());
         channels.insert(id, row.clone());
+        drop(channels);
+        if let Some(ingress) = ingress {
+            self.ingress_endpoints.write().insert(id, ingress);
+        }
         Ok(row)
     }
 
@@ -162,6 +189,77 @@ impl InMemoryDatabase {
             .values()
             .find(|ch| ch.public_id == public_id)
             .cloned())
+    }
+
+    pub async fn get_ingress_endpoint_by_public_id(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<IngressEndpointRow>> {
+        Ok(self
+            .ingress_endpoints
+            .read()
+            .values()
+            .find(|endpoint| endpoint.endpoint_public_id == public_id)
+            .cloned())
+    }
+
+    pub async fn list_ingress_endpoints_by_legacy_alias(
+        &self,
+        legacy_app_public_id: &str,
+        channel_type: &str,
+    ) -> Result<Vec<IngressEndpointRow>> {
+        let mut endpoints: Vec<_> = self
+            .ingress_endpoints
+            .read()
+            .values()
+            .filter(|endpoint| {
+                endpoint.legacy_app_public_id == legacy_app_public_id
+                    && endpoint.channel_type == channel_type
+                    && endpoint.enabled
+            })
+            .cloned()
+            .collect();
+        endpoints.sort_by_key(|endpoint| (endpoint.created_at, endpoint.endpoint_id));
+        Ok(endpoints)
+    }
+
+    fn ingress_endpoint_row(&self, channel: AppChannelRow) -> Option<IngressEndpointRow> {
+        let app = self.apps.read().get(&channel.app_id)?.clone();
+        let agent_id = app.agent_id?;
+        let agent = self
+            .agents
+            .read()
+            .values()
+            .find(|agent| agent.id.uuid() == agent_id)?
+            .clone();
+        Some(IngressEndpointRow {
+            endpoint_id: channel.id,
+            endpoint_public_id: channel.public_id,
+            legacy_app_id: app.id,
+            legacy_app_public_id: app.public_id,
+            org_id: app.org_id,
+            agent_id,
+            agent_public_id: agent.public_id,
+            agent_name: agent.display_name.unwrap_or(agent.name),
+            agent_description: agent.description,
+            harness_id: agent.harness_id.uuid(),
+            agent_status: agent.status,
+            exposures_suspended: agent.exposures_suspended,
+            agent_identity_id: app.agent_identity_id,
+            agent_version_policy: app.agent_version_policy,
+            agent_version_id: app.agent_version_id,
+            owner_principal_id: app.owner_principal_id.uuid(),
+            resolved_owner_user_id: app.resolved_owner_user_id,
+            channel_type: channel.channel_type,
+            channel_config: channel.channel_config,
+            channel_config_encrypted: channel.channel_config_encrypted,
+            auth: channel.auth,
+            auth_encrypted: channel.auth_encrypted,
+            enabled: channel.enabled,
+            endpoint_status: channel.status,
+            created_at: channel.created_at,
+            updated_at: channel.updated_at,
+        })
     }
 
     pub async fn get_agent_endpoint_public_id(
@@ -222,7 +320,10 @@ impl InMemoryDatabase {
             ch.status = status;
         }
         ch.updated_at = Self::now();
-        Ok(Some(ch.clone()))
+        let updated = ch.clone();
+        drop(channels);
+        self.sync_ingress_endpoint(&updated);
+        Ok(Some(updated))
     }
 
     pub async fn update_app_channel_enforcing_schedule_cap(
@@ -283,12 +384,18 @@ impl InMemoryDatabase {
             ch.status = status;
         }
         ch.updated_at = Self::now();
-        Ok(Some(ch.clone()))
+        let updated = ch.clone();
+        drop(channels);
+        self.sync_ingress_endpoint(&updated);
+        Ok(Some(updated))
     }
 
     pub async fn delete_app_channel(&self, id: Uuid) -> Result<bool> {
         let mut channels = self.app_channels.write();
-        Ok(channels.remove(&id).is_some())
+        let removed = channels.remove(&id).is_some();
+        drop(channels);
+        self.ingress_endpoints.write().remove(&id);
+        Ok(removed)
     }
 
     /// See the PostgreSQL backend.
@@ -326,6 +433,15 @@ impl InMemoryDatabase {
                 ch.status = "draft".to_string();
                 changed += 1;
             }
+        }
+        let updated: Vec<_> = channels
+            .values()
+            .filter(|channel| channel.app_id == app_id)
+            .cloned()
+            .collect();
+        drop(channels);
+        for channel in updated {
+            self.sync_ingress_endpoint(&channel);
         }
         Ok(changed)
     }

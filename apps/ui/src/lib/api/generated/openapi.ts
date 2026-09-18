@@ -521,26 +521,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/apps - List all non-archived apps */
+    /** @deprecated */
     get: operations["list_apps"];
-    put?: never;
-    /** POST /v1/apps - Create a new app */
-    post: operations["create_app"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/config": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** GET /v1/apps/config */
-    get: operations["app_config"];
     put?: never;
     post?: never;
     delete?: never;
@@ -556,46 +538,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/apps/{app_id} - Get app by ID */
+    /** @deprecated */
     get: operations["get_app"];
     put?: never;
     post?: never;
-    /** DELETE /v1/apps/{app_id} - Archive app */
-    delete: operations["delete_app"];
-    options?: never;
-    head?: never;
-    /** PATCH /v1/apps/{app_id} - Update app */
-    patch: operations["update_app"];
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/a2a-channels": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/a2a-channels - Add an A2A channel (returns plaintext key once). */
-    post: operations["add_a2a_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/a2a-channels/{channel_id}/regenerate-key": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Regenerate an A2A channel API key. Returns the new plaintext key exactly once and invalidates the previous key. */
-    post: operations["regenerate_a2a_key"];
     delete?: never;
     options?: never;
     head?: never;
@@ -630,40 +576,6 @@ export interface paths {
     get: operations["agent_card_legacy"];
     put?: never;
     post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/api-endpoint-channels": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/api-endpoint-channels - Add an api_endpoint channel (returns plaintext key once). */
-    post: operations["add_api_endpoint_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/api-endpoint-channels/{channel_id}/regenerate-key": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Regenerate an api_endpoint channel API key. Returns the new plaintext key exactly once and invalidates the previous key. */
-    post: operations["regenerate_api_endpoint_key"];
     delete?: never;
     options?: never;
     head?: never;
@@ -738,43 +650,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/apps/{app_id}/channels/{channel_id}/publish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * PATCH /v1/apps/{app_id}/channels/{channel_id} - Update a channel
-     *     POST /v1/apps/{app_id}/channels/{channel_id}/publish - Publish one endpoint
-     */
-    post: operations["publish_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/channels/{channel_id}/unpublish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/channels/{channel_id}/unpublish - Unpublish one endpoint */
-    post: operations["unpublish_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/apps/{app_id}/fcp": {
     parameters: {
       query?: never;
@@ -791,57 +666,6 @@ export interface paths {
     put?: never;
     /** `POST /v1/apps/{app_id}/fcp` — text-in, text-out. */
     post: operations["message_legacy"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/publish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/publish - Publish app (start accepting requests) */
-    post: operations["publish_app"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/runs": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** GET /v1/apps/{app_id}/runs - Recent app invocation runs */
-    get: operations["list_app_runs"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/unpublish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/unpublish - Unpublish app (stop accepting requests) */
-    post: operations["unpublish_app"];
     delete?: never;
     options?: never;
     head?: never;
@@ -4399,66 +4223,6 @@ export interface components {
       /** @description Tool calls to be executed */
       tool_calls: components["schemas"]["ToolCallSummary"][];
     };
-    /** @description Request body for the `add_a2a_channel_http` operation. */
-    AddA2aChannelHttpRequest: {
-      /**
-       * @description Public agent card description advertised by the A2A endpoint. Defaults to the app description when omitted.
-       * @example Triages incoming support tickets and routes to the right team
-       */
-      agent_card_description?: string | null;
-      /**
-       * @description Public agent card name advertised by the A2A endpoint. Defaults to the app name when omitted.
-       * @example Support Triage Agent
-       */
-      agent_card_name?: string | null;
-      auth?: null | components["schemas"]["AppEndpointAuthConfig"];
-      /**
-       * @description Whether this resource is enabled.
-       * @example true
-       */
-      enabled?: boolean | null;
-      /**
-       * @description First user message sent to the agent on each invocation; can reference incoming A2A payload via templating.
-       * @example Process incoming A2A request and return a structured response.
-       */
-      message: string;
-      /** @description How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `SessionBinding`. */
-      session_mode?: components["schemas"]["SessionBinding"];
-    };
-    /**
-     * @description Output of [`AddA2aChannelCmd`] — includes the plaintext API key (returned
-     *     **once**, never persisted) plus the resulting [`AppChannel`].
-     */
-    AddA2aChannelOutput: {
-      /** @description Plaintext API key. Persist this — it cannot be recovered later. */
-      api_key: string;
-      /** @description The created A2A channel. */
-      channel: components["schemas"]["AppChannel"];
-    };
-    /** @description Request body for the `add_api_endpoint_channel_http` operation. */
-    AddApiEndpointChannelHttpRequest: {
-      auth?: null | components["schemas"]["AppEndpointAuthConfig"];
-      /**
-       * @description Whether this resource is enabled.
-       * @example true
-       */
-      enabled?: boolean | null;
-      /**
-       * @description How invocations route into sessions (`shared_session` to reuse one
-       *     durable session, or `session_per_invocation` for a fresh session).
-       */
-      session_mode?: components["schemas"]["SessionBinding"];
-    };
-    /**
-     * @description Output of [`AddApiEndpointChannelCmd`] — includes the plaintext API key
-     *     (returned **once**, never persisted) plus the resulting [`AppChannel`].
-     */
-    AddApiEndpointChannelOutput: {
-      /** @description Plaintext API key. Persist this — it cannot be recovered later. */
-      api_key: string;
-      /** @description The created api_endpoint channel. */
-      channel: components["schemas"]["AppChannel"];
-    };
     /** @description Request to add a participant to a session. */
     AddSessionParticipantRequest: {
       /**
@@ -5217,61 +4981,6 @@ export interface components {
       scopes?: string[];
       /** @description Allowlist of `sub` claim values. Empty list disables subject filtering. */
       subjects?: string[];
-    };
-    /** @description One bucket of the run-history histogram (per-hour aggregate). */
-    AppRunBucket: {
-      /**
-       * Format: int32
-       * @description Count of runs that failed in this bucket.
-       */
-      err: number;
-      /**
-       * Format: date-time
-       * @description Bucket start (top of the hour, RFC 3339).
-       */
-      hour: string;
-      /**
-       * Format: int32
-       * @description Count of runs that completed successfully in this bucket.
-       */
-      ok: number;
-      /**
-       * Format: int32
-       * @description Count of runs still running when the bucket was queried.
-       */
-      running?: number | null;
-    };
-    /** @description Single app-channel invocation record (one run = one channel-side event). */
-    AppRunEvent: {
-      /** @description App that received the invocation. */
-      app_id: string;
-      /** @description Channel that originated the invocation. */
-      channel_id: string;
-      /** @description Human-readable channel name when set. */
-      channel_name?: string | null;
-      /** @description Channel kind (slack, ag_ui, webhook, a2a, fcp, public_chat). */
-      channel_type: components["schemas"]["ChannelType"];
-      /**
-       * Format: date-time
-       * @description Timestamp the run finished, if any (RFC 3339).
-       */
-      completed_at?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp the run started (RFC 3339).
-       */
-      created_at: string;
-      /** @description Prefixed public identifier of this run event. */
-      id: string;
-      /** @description Terminal status (`ok`, `err`, `running`). */
-      status: string;
-    };
-    /** @description Paged response for the app run history endpoint, optionally including a per-hour histogram. */
-    AppRunListResponse: {
-      /** @description Per-hour aggregate buckets when the caller asked for them. */
-      buckets?: components["schemas"]["AppRunBucket"][] | null;
-      /** @description Page of run events ordered newest first. */
-      data: components["schemas"]["AppRunEvent"][];
     };
     /**
      * @description App lifecycle status.
@@ -6591,50 +6300,6 @@ export interface components {
        * @example Tightened the refund-window check and added a regression test.
        */
       summary?: string | null;
-    };
-    /** @description Request to create a new app */
-    CreateAppRequest: {
-      /**
-       * @description ID of the agent to use. The command validation requires this field even
-       *     though it remains optional in the wire shape for a clear domain error.
-       * @example agent_01933b5a00007000800000000000001
-       */
-      agent_id?: string | null;
-      /**
-       * @description Optional resident agent identity for unattended/channel execution.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      agent_identity_id?: string | null;
-      /** @example agentver_01933b5a00007000800000000000001 */
-      agent_version_id?: string | null;
-      /**
-       * @description How an App resolves the Agent version it runs.
-       *     Example shape is defined on `AgentVersionPolicy`.
-       */
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"];
-      /**
-       * @description Initial channel configuration. Shape depends on `channel_type`, for
-       *     example `{"token": "whk_redacted", "message": "Run support triage"}`
-       *     for `webhook`. New schedule and webhook channels are rejected; use agent
-       *     triggers.
-       */
-      channel_config?: Record<string, unknown> | null;
-      channel_type?: null | components["schemas"]["ChannelType"];
-      /**
-       * @description Description of what the app does.
-       * @example Customer support bot connected to Slack
-       */
-      description?: string | null;
-      /**
-       * @description ID of the harness to use.
-       * @example harness_01933b5a00007000800000000000001
-       */
-      harness_id: string;
-      /**
-       * @description Display name of the app.
-       * @example Support Bot
-       */
-      name: string;
     };
     /** @description Request to create a branch */
     CreateBranchRequest: {
@@ -9755,16 +9420,6 @@ export interface components {
       ref_type?: string | null;
       /** @description Session context for this entry. */
       session_id?: string | null;
-    };
-    /**
-     * @description Query parameters for listing recent app invocation runs — a relative
-     *     time window and an optional bucketing hint for the dashboard.
-     */
-    ListAppRunsQuery: {
-      /** @description Optional grouping. Currently only `hour` is supported. */
-      groupBy?: string | null;
-      /** @description Time window to include, such as 24h, 60m, or 7d. */
-      window?: string | null;
     };
     /**
      * @description Query parameters for listing executions of a schedule — optional status
@@ -14709,34 +14364,6 @@ export interface components {
      */
     RecoveryMode: "finalize" | "restart";
     /**
-     * @description Output of [`RegenerateA2aApiKeyCmd`] — includes the newly generated
-     *     plaintext API key (returned **once**, never persisted) plus the updated
-     *     [`AppChannel`].
-     */
-    RegenerateA2aApiKeyOutput: {
-      /**
-       * @description New plaintext API key. Persist this — it cannot be recovered later.
-       *     The previous key is invalidated immediately.
-       */
-      api_key: string;
-      /** @description The updated A2A channel. */
-      channel: components["schemas"]["AppChannel"];
-    };
-    /**
-     * @description Output of [`RegenerateApiEndpointApiKeyCmd`] — includes the newly generated
-     *     plaintext API key (returned **once**, never persisted) plus the updated
-     *     [`AppChannel`].
-     */
-    RegenerateApiEndpointApiKeyOutput: {
-      /**
-       * @description New plaintext API key. Persist this — it cannot be recovered later.
-       *     The previous key is invalidated immediately.
-       */
-      api_key: string;
-      /** @description The updated api_endpoint channel. */
-      channel: components["schemas"]["AppChannel"];
-    };
-    /**
      * @description One column header in a `ReportResult`. The ordered `columns` list
      *     declares the key set of each row in `rows`.
      */
@@ -17497,34 +17124,6 @@ export interface components {
       timezone?: string | null;
       /** @description Replacement webhook token. */
       token?: string | null;
-    };
-    /** @description Request to update an app. Only provided fields will be updated. */
-    UpdateAppRequest: {
-      /**
-       * @description ID of the agent to use.
-       * @example agent_01933b5a00007000800000000000001
-       */
-      agent_id?: string | null;
-      /** @description Optional resident agent identity for unattended/channel execution. */
-      agent_identity_id?: string | null;
-      agent_version_id?: string | null;
-      agent_version_policy?: null | components["schemas"]["AgentVersionPolicy"];
-      /**
-       * @description Description of what the app does.
-       * @example Customer support bot connected to Slack
-       */
-      description?: string | null;
-      /**
-       * @description ID of the harness to use.
-       * @example harness_01933b5a00007000800000000000001
-       */
-      harness_id?: string | null;
-      /**
-       * @description Display name of the app.
-       * @example Support Bot
-       */
-      name?: string | null;
-      status?: null | components["schemas"]["AppStatus"];
     };
     /** @description Request body for changing a spending budget. */
     UpdateBudgetRequest: {
@@ -21697,7 +21296,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description List of apps */
+      /** @description Archival list of Apps */
       200: {
         headers: {
           [name: string]: unknown;
@@ -21715,68 +21314,6 @@ export interface operations {
       };
     };
   };
-  create_app: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateAppRequest"];
-      };
-    };
-    responses: {
-      /** @description App created successfully */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_App"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  app_config: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Resource config for apps */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ResourceConfigResponse"];
-        };
-      };
-    };
-  };
   get_app: {
     parameters: {
       query?: never;
@@ -21789,7 +21326,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description App found */
+      /** @description Archival App record */
       200: {
         headers: {
           [name: string]: unknown;
@@ -21798,7 +21335,7 @@ export interface operations {
           "application/json": components["schemas"]["WithUrls_App"];
         };
       };
-      /** @description Invalid app ID */
+      /** @description Invalid App ID */
       400: {
         headers: {
           [name: string]: unknown;
@@ -21818,226 +21355,6 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
-      };
-    };
-  };
-  delete_app: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description App archived successfully */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Invalid app ID */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  update_app: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UpdateAppRequest"];
-      };
-    };
-    responses: {
-      /** @description App updated successfully */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_App"];
-        };
-      };
-      /** @description Invalid app ID or input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  add_a2a_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["AddA2aChannelHttpRequest"];
-      };
-    };
-    responses: {
-      /** @description A2A channel created. The `api_key` field is the plaintext key returned exactly once and never recoverable later. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AddA2aChannelOutput"];
-        };
-      };
-      /** @description Validation error */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  regenerate_a2a_key: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description A2A channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description API key rotated. The `api_key` field is the new plaintext key returned exactly once; the previous key is invalidated immediately. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["RegenerateA2aApiKeyOutput"];
-        };
-      };
-      /** @description Invalid app/channel ID or channel is not an A2A channel */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or A2A channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
       };
     };
   };
@@ -22117,130 +21434,6 @@ export interface operations {
         content?: never;
       };
       /** @description App or channel not found / unpublished / disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  add_api_endpoint_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["AddApiEndpointChannelHttpRequest"];
-      };
-    };
-    responses: {
-      /** @description api_endpoint channel created. The `api_key` field is the plaintext key returned exactly once and never recoverable later. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AddApiEndpointChannelOutput"];
-        };
-      };
-      /** @description Validation error */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  regenerate_api_endpoint_key: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description api_endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description API key rotated. The `api_key` field is the new plaintext key returned exactly once; the previous key is invalidated immediately. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["RegenerateApiEndpointApiKeyOutput"];
-        };
-      };
-      /** @description Invalid app/channel ID or channel is not an api_endpoint channel */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or api_endpoint channel not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -22509,92 +21702,6 @@ export interface operations {
       };
     };
   };
-  publish_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID (prefixed) */
-        app_id: string;
-        /** @description Channel ID (prefixed) */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Endpoint published */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppChannel"];
-        };
-      };
-      /** @description Invalid request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  unpublish_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID (prefixed) */
-        app_id: string;
-        /** @description Channel ID (prefixed) */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Endpoint unpublished */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppChannel"];
-        };
-      };
-      /** @description Invalid request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
   handshake: {
     parameters: {
       query?: never;
@@ -22724,167 +21831,6 @@ export interface operations {
         content: {
           "text/markdown": unknown;
         };
-      };
-    };
-  };
-  publish_app: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description App published */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_App"];
-        };
-      };
-      /** @description Invalid app ID */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  list_app_runs: {
-    parameters: {
-      query?: {
-        /** @description Time window to include, such as 24h, 60m, or 7d. */
-        window?: string | null;
-        /** @description Optional grouping. Currently only `hour` is supported. */
-        groupBy?: string | null;
-      };
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Recent app invocation runs */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppRunListResponse"];
-        };
-      };
-      /** @description Invalid app ID or query */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  unpublish_app: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description App unpublished */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_App"];
-        };
-      };
-      /** @description Invalid app ID */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
       };
     };
   };

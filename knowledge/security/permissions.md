@@ -20,7 +20,7 @@ Identifier for an action. Format: `org:<resource>:<action>`.
 
 See `crates/core/src/permissions.rs` for the full `Permission` enum with all variants.
 
-Permissions are scoped **per domain**: each managed resource (apps, MCP servers, plugins, skills, capabilities, agent identities, harnesses, providers, …) has its own `Org<Domain>View` / `Org<Domain>Manage` (and, where applicable, `Org<Domain>Dangerous`) permission rather than sharing one coarse grant. This keeps the role map least-privilege-ready: a custom resolver or a future role can grant one domain without implying the others (EVE-656, TM-AUTHZ-013).
+Permissions are scoped **per domain**: each managed resource (MCP servers, plugins, skills, capabilities, agent identities, harnesses, providers, …) has its own `Org<Domain>View` / `Org<Domain>Manage` (and, where applicable, `Org<Domain>Dangerous`) permission rather than sharing one coarse grant. This keeps the role map least-privilege-ready: a custom resolver or a future role can grant one domain without implying the others (EVE-656, TM-AUTHZ-013).
 
 ### Rule
 
@@ -135,7 +135,6 @@ Per-resource config endpoints return which policies the caller satisfies.
 ```
 GET /v1/harnesses/config
 GET /v1/agents/config
-GET /v1/apps/config
 GET /v1/sessions/config
 GET /v1/mcp-servers/config
 GET /v1/providers/config

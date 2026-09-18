@@ -21,14 +21,13 @@ parameter collection, and error guidance happen in natural language, the
 same way a person would ask a service what it does. See the upstream FCP
 specification at `https://github.com/everruns/fcp/blob/main/SPEC.md`.
 
-This spec captures the *channel*, how the protocol is exposed by an App
-in this repo, the isolation invariants it must keep, and how operators
-configure it.
+This spec captures how an existing FCP agent endpoint is exposed, the
+isolation invariants it must keep, and its frozen configuration.
 
 ## Goals
 
 1. Provide an unattended, anonymous-by-default text-in / text-out
-   endpoint for any published App.
+   endpoint for an agent.
 2. Make every response, success or error, readable and actionable
    without parsing.
 3. Keep FCP's auth, rate-limit, and error surface isolated from every
@@ -45,15 +44,27 @@ configure it.
 
 ## Endpoints
 
+Canonical:
+
 ```
-GET  /v1/apps/{app_id}/fcp
-POST /v1/apps/{app_id}/fcp
+GET  /v1/e/{endpoint_id}/fcp
+POST /v1/e/{endpoint_id}/fcp
 ```
+
+Permanent compatibility aliases:
+
+```
+GET  /v1/apps/{legacy_app_id}/fcp
+POST /v1/apps/{legacy_app_id}/fcp
+```
+
+Aliases resolve from endpoint-owned legacy identity without reading `apps` or
+`app_channels`.
 
 Both routes always respond with `Content-Type: text/markdown; charset=utf-8`.
 
 - `GET` returns the configured handshake (or a generated one).
-- `POST` runs one turn through the app's agent and returns the assistant's
+- `POST` runs one turn through the endpoint's agent and returns the assistant's
   final Markdown reply.
 
 ## Configuration
@@ -67,7 +78,7 @@ Both routes always respond with `Content-Type: text/markdown; charset=utf-8`.
 | `token`                     | none         | Shared bearer secret; validated by constant-time comparison.                                |
 | `handshake`                 | generated    | Optional Markdown override for the `GET` body.                                              |
 | `session_expiration_seconds`| `21600` (6h) | Cookie lifetime; `0` disables expiration.                                                   |
-| `rate_limit_per_minute`     | none         | Per-app, per-IP cap counted in the FCP-specific limiter namespace.                          |
+| `rate_limit_per_minute`     | none         | Per-endpoint, per-IP cap counted in the FCP-specific limiter namespace.                     |
 | `response_timeout_seconds`  | `120`        | Maximum seconds the endpoint waits for the agent's reply before returning `504`.            |
 
 `auth` (the inline IdP/Basic/mTLS verifier used by AG-UI and A2A) is
@@ -89,11 +100,13 @@ with anything else.
 3. **No platform-user auth.** FCP requests never carry an Everruns user
    session, API token, or cookie. The platform's auth middleware is not
    on the FCP route path.
-4. **No internal-state leaks.** Every error path collapses through a
+4. **No frozen-App dependency.** Endpoint lookup and liveness read
+   `agent_endpoints` and `agents`, not `apps` or `app_channels`.
+5. **No internal-state leaks.** Every error path collapses through a
    small set of sanitized responses (`not_found_response`,
    `unauthorized_response`, `turn_error_response`, etc.). A caller cannot
-   distinguish "no such app" from "app exists but unpublished" from
-   "channel disabled". `turn.failed` causes pass through `PublicError` so
+   distinguish "no such endpoint" from "endpoint not live" from
+   "agent suspended". `turn.failed` causes pass through `PublicError` so
    provider details (OpenAI/Anthropic vocabulary, stack traces, internal
    codes) never reach the wire.
 
@@ -150,10 +163,9 @@ FCP sessions are reused via the `fcp_session` cookie:
 - Expired sessions return `410 Gone` with body instructing the client to
   drop the cookie.
 
-All sessions adopt the App's owner principal (`session.owner_principal_id
-= app.owner_principal_id`), matching the invariants in
-`knowledge/integrations/app-invocation-channels.md` so reuse, budgets, and audit logs
-remain consistent across all app channels.
+All sessions adopt the endpoint's owner principal. Frozen App attribution and
+historical `fcp:app:` tags remain alongside endpoint tags for compatibility.
+See `knowledge/integrations/app-invocation-channels.md`.
 
 ## Migration
 
@@ -177,15 +189,13 @@ Coverage in `crates/server/src/api/fcp.rs::tests` includes:
    leak no provider/internal vocabulary; 401 names the right headers and
    points at the handshake; 429 includes the configured limit.
 
-Core coverage in `crates/platform/src/app.rs::tests` ensures `ChannelType`
-serde/display round-trips include `fcp` and that `App::fcp_channel()` /
-`AppChannel::fcp_config()` work end-to-end.
+Core coverage ensures the FCP transport type and configuration round-trip.
 
 ## Related
 
 - Upstream FCP specification: <https://github.com/everruns/fcp>
-- `knowledge/integrations/app-invocation-channels.md`, common app-channel invariants
-  (session ownership, internal tag prefixes).
+- `knowledge/integrations/app-invocation-channels.md`, retained compatibility
+  invariants for session ownership and reserved tag prefixes.
 - `knowledge/execution/public-endpoints.md`, error-sanitization contract used by all
   unauthenticated app channels.
 - `knowledge/security/threat-model.md`, TM-AUTHZ-005, TM-AUTHZ-006, TM-DOS-010,

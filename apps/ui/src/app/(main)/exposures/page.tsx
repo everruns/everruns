@@ -86,12 +86,12 @@ type StateFilter = "all" | "live" | "public" | "idle";
 /// What in this org is reachable from outside right now.
 ///
 /// An Agent detail page cannot answer this by construction — it shows one
-/// agent — which is why this view outlives the Apps list it replaces. It is
-/// read-mostly: rows link into the owning agent's Integrations tab, where the
-/// editing lives. The one write here is the incident action.
+/// agent — which is why this view outlives the Apps list it replaces. Rows
+/// link into the owning agent's Integrations tab. The one write here is
+/// the agent-level incident action.
 export default function ExposuresPage() {
   const { exposures, isLoading } = useOrgExposures();
-  const { can } = usePolicies("apps");
+  const { can } = usePolicies("agents");
   const suspendExposures = useSuspendAgentExposures();
   const resumeExposures = useResumeAgentExposures();
   const [search, setSearch] = useState("");
@@ -100,7 +100,7 @@ export default function ExposuresPage() {
 
   usePageTitle("Exposures");
 
-  const canManage = can("app.manage");
+  const canManage = can("agent.manage");
 
   const transports = useMemo(
     () => Array.from(new Set(exposures.map((exposure) => exposure.channel.channel_type))).sort(),

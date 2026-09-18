@@ -21,6 +21,62 @@ fn contains_key(value: &Value, needle: &str) -> bool {
 fn retired_cost_tier_extension_is_not_emitted() {
     assert!(!contains_key(&spec_value(), "x-cost-tier"));
 }
+#[test]
+fn app_openapi_surface_is_read_only_and_deprecated() {
+    let spec = spec_value();
+    let paths = spec
+        .pointer("/paths")
+        .and_then(Value::as_object)
+        .expect("OpenAPI paths exist");
+
+    assert_eq!(
+        paths
+            .get("/v1/apps")
+            .and_then(|item| item.pointer("/get/deprecated"))
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        paths
+            .get("/v1/apps/{app_id}")
+            .and_then(|item| item.pointer("/get/deprecated"))
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+
+    for path in ["/v1/apps", "/v1/apps/{app_id}"] {
+        let operations = paths[path].as_object().expect("path item is an object");
+        assert_eq!(operations.len(), 1, "{path} has only one operation");
+        assert!(operations.contains_key("get"), "{path} is read-only");
+    }
+    for retired in [
+        "/v1/apps/{app_id}/publish",
+        "/v1/apps/{app_id}/unpublish",
+        "/v1/apps/{app_id}/run",
+        "/v1/apps/{app_id}/runs",
+        "/v1/apps/{app_id}/channels",
+        "/v1/apps/{app_id}/channels/{channel_id}",
+    ] {
+        assert!(
+            !paths.contains_key(retired),
+            "stale management path {retired}"
+        );
+    }
+
+    let schemas = spec
+        .pointer("/components/schemas")
+        .and_then(Value::as_object)
+        .expect("OpenAPI schemas exist");
+    for retired in [
+        "CreateAppRequest",
+        "UpdateAppRequest",
+        "AddChannelRequest",
+        "UpdateChannelRequest",
+        "RunAppRequest",
+    ] {
+        assert!(!schemas.contains_key(retired), "stale schema {retired}");
+    }
+}
 
 #[test]
 fn scoped_mcp_schema_uses_public_wire_names() {

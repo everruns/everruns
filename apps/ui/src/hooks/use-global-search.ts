@@ -12,9 +12,8 @@
  * 8. Capabilities (client-side filter over cached list)
  * 9. ID-based lookup (detects prefixed IDs and provides direct navigation)
  * 10. Evals (client-side filter over cached list)
- * 11. Apps (client-side filter over cached list)
- * 12. Agent Identities (client-side filter over cached list)
- * 13. Memories, knowledge indexes, plugins, observers, and saved reports
+ * 11. Agent Identities (client-side filter over cached list)
+ * 12. Memories, knowledge indexes, plugins, observers, and saved reports
  *
  * All entity searches are client-side over already-fetched React Query data.
  * Backend search endpoints are available for server-side filtering when needed.
@@ -27,7 +26,6 @@ import {
   Shield,
   Boxes,
   UserRound,
-  Rocket,
   Settings,
   Cog,
   Workflow,
@@ -57,7 +55,6 @@ import { useSkills } from "@/hooks/use-skills";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { useCapabilities, useDeclarativeCapabilities } from "@/hooks/use-capabilities";
 import { useEvals } from "@/hooks/use-evals";
-import { useApps } from "@/hooks/use-apps";
 import { useAgentIdentities } from "@/hooks/use-agent-identities";
 import { useMemories } from "@/hooks/use-memory";
 import { useKnowledgeIndexes } from "@/hooks/use-knowledge-indexes";
@@ -80,7 +77,6 @@ export type SearchResultCategory =
   | "skill"
   | "mcp_server"
   | "capability"
-  | "app"
   | "eval"
   | "memory"
   | "knowledge_index"
@@ -174,12 +170,6 @@ const NAVIGATION_PAGES: NavigationPage[] = [
   registryPage(registryNavigationByHref["/models"]),
   registryPage(registryNavigationByHref["/capabilities"]),
   registryPage(registryNavigationByHref["/plugins"], "plugins"),
-  {
-    title: "Apps",
-    href: "/apps",
-    icon: Rocket,
-    keywords: ["deploy", "channel"],
-  },
   {
     title: "Evals",
     href: "/evals",
@@ -305,7 +295,6 @@ const ID_PREFIX_MAP: Record<
     listOnly: true,
   },
   eval_: { category: "eval", label: "Eval", path: "/evals", flag: "evals" },
-  app_: { category: "app", label: "App", path: "/apps" },
   mem_: { category: "id", label: "Memory", path: "/memory", flag: "memory" },
   kidx_: {
     category: "knowledge_index",
@@ -378,7 +367,6 @@ export function useGlobalSearch(query: string) {
     enabled: entitySearchEnabled,
   });
   const { data: evalsData } = useEvals({ enabled: evalsEnabled && entitySearchEnabled });
-  const { data: appsData } = useApps({ enabled: entitySearchEnabled });
   const { data: agentIdentitiesData } = useAgentIdentities({ enabled: entitySearchEnabled });
   const { data: memoriesData } = useMemories({ enabled: memoryEnabled && entitySearchEnabled });
   const { data: knowledgeIndexesData } = useKnowledgeIndexes({
@@ -400,7 +388,6 @@ export function useGlobalSearch(query: string) {
   const capabilities = capabilitiesData ?? EMPTY_ARRAY;
   const declarativeCapabilities = declarativeCapabilitiesData ?? EMPTY_ARRAY;
   const evals = evalsEnabled ? (evalsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
-  const apps = appsData ?? EMPTY_ARRAY;
   const agentIdentities = agentIdentitiesData ?? EMPTY_ARRAY;
   const memories = memoryEnabled ? (memoriesData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const knowledgeIndexes = knowledgeEnabled ? (knowledgeIndexesData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
@@ -453,8 +440,6 @@ export function useGlobalSearch(query: string) {
           resolvedName = c?.display_name ?? c?.name;
         } else if (prefix === "eval_") {
           resolvedName = evals.find((e) => e.id === idValue)?.name;
-        } else if (prefix === "app_") {
-          resolvedName = apps.find((a) => a.id === idValue)?.name;
         } else if (prefix === "identity_") {
           resolvedName = agentIdentities.find((ai) => ai.id === idValue)?.name;
         } else if (prefix === "mem_") {
@@ -701,24 +686,7 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 11. Apps
-    let appCount = 0;
-    for (const app of apps) {
-      if (appCount >= MAX_PER_CATEGORY) break;
-      if (matchesTokens(tokens, app.name, app.description, app.id, "app")) {
-        results.push({
-          id: `app:${app.id}`,
-          category: "app",
-          icon: Rocket,
-          title: app.name,
-          subtitle: `Apps > ${app.name}`,
-          href: `/apps/${app.id}`,
-        });
-        appCount++;
-      }
-    }
-
-    // 12. Agent Identities
+    // 11. Agent Identities
     let identityCount = 0;
     for (const identity of agentIdentities) {
       if (identityCount >= MAX_PER_CATEGORY) break;
@@ -842,7 +810,6 @@ export function useGlobalSearch(query: string) {
     capabilities,
     declarativeCapabilities,
     evals,
-    apps,
     agentIdentities,
     memories,
     knowledgeIndexes,

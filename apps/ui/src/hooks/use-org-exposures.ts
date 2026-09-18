@@ -7,7 +7,6 @@ import { isTriggerChannel } from "./use-agent-endpoints";
 import type {
   Agent,
   AgUiChannelConfig,
-  App,
   AppChannel,
   PublicChatChannelConfig,
 } from "@/lib/api/types";
@@ -80,7 +79,6 @@ export function isAnonymousExposure(channel: AppChannel): boolean {
 
 export interface OrgExposure {
   channel: AppChannel;
-  app: App;
   agent: Agent | undefined;
   state: ExposureState;
   /// Configured to accept callers with no credential, whatever its current
@@ -115,7 +113,6 @@ export function useOrgExposures() {
         const anonymous = isAnonymousExposure(channel);
         return {
           channel,
-          app,
           agent,
           state,
           anonymous,

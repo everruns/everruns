@@ -7,6 +7,7 @@ use axum::http::{Method, StatusCode};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_server::storage::models::AuditLogQuery;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use test_harness::TestServer;
 use tokio::time::{Duration, sleep};
 
@@ -25,41 +26,22 @@ async fn create_app_with_api_endpoint(server: &TestServer, name: &str) -> (Value
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let app: Value = server
-        .post(
-            "/v1/apps",
+    let api_key = format!("evr_app_{}", uuid::Uuid::new_v4().simple());
+    let api_key_hash = hex::encode(Sha256::digest(api_key.as_bytes()));
+    let app = server
+        .seed_app_endpoint(
+            name,
+            agent["id"].as_str().unwrap(),
+            "api_endpoint",
             json!({
-                "name": name,
-                "harness_id": server.seed_generic_harness_id.clone(),
-                "agent_id": agent["id"],
+                "session_mode": "shared_session",
+                "api_key_hash": api_key_hash,
+                "api_key_prefix": &api_key[..12],
             }),
         )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let app_id = app["id"].as_str().unwrap().to_string();
-    let response: Value = server
-        .post(
-            &format!("/v1/apps/{app_id}/api-endpoint-channels"),
-            json!({ "session_mode": "shared_session" }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let api_key = response["api_key"].as_str().unwrap().to_string();
-    // The generated key is prefix-scoped and returned exactly once.
-    assert!(api_key.starts_with("evr_app_"), "key was {api_key}");
-    // The persisted channel must never echo the key hash on read.
-    assert!(response["channel"]["channel_config"]["api_key_hash"].is_null());
-
-    let app_after: Value = server
-        .get(&format!("/v1/apps/{app_id}"))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    (app_after, api_key)
+        .await;
+    assert!(app["channels"][0]["channel_config"]["api_key_hash"].is_null());
+    (app, api_key)
 }
 
 #[tokio::test]
@@ -88,10 +70,7 @@ async fn api_endpoint_legacy_app_channel_mismatch_is_not_found() {
 }
 
 async fn publish_app(server: &TestServer, app_id: &str) {
-    server
-        .post(&format!("/v1/apps/{app_id}/publish"), json!({}))
-        .await
-        .assert_status(StatusCode::OK);
+    server.set_app_endpoints_live(app_id, true).await;
 }
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
@@ -315,57 +294,6 @@ async fn api_endpoint_key_cannot_reach_another_apps_session() {
         )
         .await
         .assert_status(StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn api_endpoint_regenerate_key_invalidates_previous() {
-    let server = TestServer::in_memory().await;
-    let (app, old_key) = create_app_with_api_endpoint(&server, "api-endpoint-rotate").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
-
-    let rotated: Value = server
-        .post(
-            &format!("/v1/apps/{app_id}/api-endpoint-channels/{channel_id}/regenerate-key"),
-            json!({}),
-        )
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    let new_key = rotated["api_key"].as_str().unwrap().to_string();
-    assert_ne!(new_key, old_key);
-
-    let path = format!("/v1/apps/{app_id}/api/{channel_id}/sessions");
-    let body = serde_json::to_vec(&json!({ "message": "hi" })).unwrap();
-
-    // Old key no longer works.
-    server
-        .request_raw(
-            Method::POST,
-            &path,
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {old_key}")),
-            ],
-            body.clone(),
-        )
-        .await
-        .assert_status(StatusCode::UNAUTHORIZED);
-
-    // New key works.
-    server
-        .request_raw(
-            Method::POST,
-            &path,
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {new_key}")),
-            ],
-            body,
-        )
-        .await
-        .assert_status(StatusCode::CREATED);
 }
 
 #[tokio::test]

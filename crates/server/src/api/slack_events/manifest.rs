@@ -5,7 +5,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use everruns_platform::{App, ConversationStarter, SlackChannelConfig};
+use everruns_platform::{ConversationStarter, SlackChannelConfig};
 
 use super::super::common::ErrorResponse;
 
@@ -105,7 +105,7 @@ pub(crate) fn slack_webhook_url(api_base_url: &str, channel_public_id: &str) -> 
 /// cosmetic next to that.
 pub(crate) async fn resolve_manifest_starters(
     state: &SlackState,
-    app: &App,
+    app: &crate::api::app_ingress::IngressContext,
 ) -> Vec<ConversationStarter> {
     let agent_starters = match app.agent_id.as_ref() {
         Some(agent_id) => {

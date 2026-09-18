@@ -76,6 +76,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use uuid::Uuid;
 
+use super::IngressEndpointRow;
 use super::mcp_tool_cache::*;
 use super::models::*;
 
@@ -172,6 +173,7 @@ pub struct InMemoryDatabase {
     apps: RwLock<HashMap<Uuid, AppRow>>,
     // App channels (distribution channels per app)
     app_channels: RwLock<HashMap<Uuid, AppChannelRow>>,
+    ingress_endpoints: RwLock<HashMap<Uuid, IngressEndpointRow>>,
     // Agent identities (virtual principals)
     agent_identities: RwLock<HashMap<AgentIdentityId, AgentIdentityRow>>,
     // Agent triggers (agent-owned invocation triggers)
@@ -330,6 +332,7 @@ impl Default for InMemoryDatabase {
             audit_logs: RwLock::new(Vec::new()),
             apps: RwLock::new(HashMap::new()),
             app_channels: RwLock::new(HashMap::new()),
+            ingress_endpoints: RwLock::new(HashMap::new()),
             agent_identities: RwLock::new(HashMap::new()),
             agent_triggers: RwLock::new(HashMap::new()),
             principals: RwLock::new(HashMap::new()),

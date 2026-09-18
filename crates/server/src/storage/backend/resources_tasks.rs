@@ -683,6 +683,26 @@ impl StorageBackend {
         dispatch!(self, get_app_channel_by_public_id, public_id)
     }
 
+    pub async fn get_ingress_endpoint_by_public_id(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<IngressEndpointRow>> {
+        dispatch!(self, get_ingress_endpoint_by_public_id, public_id)
+    }
+
+    pub async fn list_ingress_endpoints_by_legacy_alias(
+        &self,
+        legacy_app_public_id: &str,
+        channel_type: &str,
+    ) -> Result<Vec<IngressEndpointRow>> {
+        dispatch!(
+            self,
+            list_ingress_endpoints_by_legacy_alias,
+            legacy_app_public_id,
+            channel_type
+        )
+    }
+
     pub async fn get_agent_endpoint_public_id(
         &self,
         org_id: i64,

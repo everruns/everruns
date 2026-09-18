@@ -10,6 +10,7 @@
 // App on insert, which is exactly where those values came from before the
 // re-parenting. A new endpoint's status is independent of App publish state.
 
+use super::super::IngressEndpointRow;
 use super::super::models::*;
 use super::Database;
 use crate::errors::BadRequestError;
@@ -36,13 +37,13 @@ fn missing_agent_error(app_id: Uuid) -> anyhow::Error {
 /// missing or still agent-less, which callers turn into `missing_agent_error`.
 const INSERT_CHANNEL_SQL: &str = r#"
     INSERT INTO agent_endpoints (
-        app_id, agent_id, public_id, channel_type, channel_config,
+        app_id, legacy_app_public_id, agent_id, public_id, channel_type, channel_config,
         channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled,
         status, agent_identity_id, agent_version_policy, agent_version_id,
         owner_principal_id, resolved_owner_user_id
     )
     SELECT
-        app.id, app.agent_id, $2, $3, $4, $5, $6, $7, $8, $9,
+        app.id, app.public_id, app.agent_id, $2, $3, $4, $5, $6, $7, $8, $9,
         CASE WHEN $9 THEN 'draft' ELSE 'disabled' END,
         app.agent_identity_id, app.agent_version_policy, app.agent_version_id,
         app.owner_principal_id, app.resolved_owner_user_id
@@ -82,6 +83,99 @@ impl Database {
             .ok_or_else(|| missing_agent_error(app_id))?;
 
         Ok(row)
+    }
+
+    pub async fn get_ingress_endpoint_by_public_id(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<IngressEndpointRow>> {
+        sqlx::query_as::<_, IngressEndpointRow>(
+            r#"
+            SELECT
+                ae.id AS endpoint_id,
+                ae.public_id AS endpoint_public_id,
+                ae.app_id AS legacy_app_id,
+                ae.legacy_app_public_id,
+                agent.org_id,
+                ae.agent_id,
+                agent.public_id AS agent_public_id,
+                COALESCE(agent.display_name, agent.name) AS agent_name,
+                agent.description AS agent_description,
+                agent.harness_id,
+                agent.status AS agent_status,
+                agent.exposures_suspended,
+                ae.agent_identity_id,
+                ae.agent_version_policy,
+                ae.agent_version_id,
+                ae.owner_principal_id,
+                ae.resolved_owner_user_id,
+                ae.channel_type,
+                ae.channel_config,
+                ae.channel_config_encrypted,
+                ae.auth,
+                ae.auth_encrypted,
+                ae.enabled,
+                ae.status AS endpoint_status,
+                ae.created_at,
+                ae.updated_at
+            FROM agent_endpoints AS ae
+            JOIN agents AS agent ON agent.id = ae.agent_id
+            WHERE ae.public_id = $1
+            "#,
+        )
+        .bind(public_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(Into::into)
+    }
+
+    pub async fn list_ingress_endpoints_by_legacy_alias(
+        &self,
+        legacy_app_public_id: &str,
+        channel_type: &str,
+    ) -> Result<Vec<IngressEndpointRow>> {
+        sqlx::query_as::<_, IngressEndpointRow>(
+            r#"
+            SELECT
+                ae.id AS endpoint_id,
+                ae.public_id AS endpoint_public_id,
+                ae.app_id AS legacy_app_id,
+                ae.legacy_app_public_id,
+                agent.org_id,
+                ae.agent_id,
+                agent.public_id AS agent_public_id,
+                COALESCE(agent.display_name, agent.name) AS agent_name,
+                agent.description AS agent_description,
+                agent.harness_id,
+                agent.status AS agent_status,
+                agent.exposures_suspended,
+                ae.agent_identity_id,
+                ae.agent_version_policy,
+                ae.agent_version_id,
+                ae.owner_principal_id,
+                ae.resolved_owner_user_id,
+                ae.channel_type,
+                ae.channel_config,
+                ae.channel_config_encrypted,
+                ae.auth,
+                ae.auth_encrypted,
+                ae.enabled,
+                ae.status AS endpoint_status,
+                ae.created_at,
+                ae.updated_at
+            FROM agent_endpoints AS ae
+            JOIN agents AS agent ON agent.id = ae.agent_id
+            WHERE ae.legacy_app_public_id = $1
+              AND ae.channel_type = $2
+              AND ae.enabled = true
+            ORDER BY ae.created_at, ae.id
+            "#,
+        )
+        .bind(legacy_app_public_id)
+        .bind(channel_type)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
     }
 
     pub async fn create_app_channel_enforcing_schedule_cap(

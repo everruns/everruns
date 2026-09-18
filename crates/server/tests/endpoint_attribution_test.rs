@@ -194,10 +194,12 @@ async fn seed_endpoint(
     let endpoint_id = Uuid::now_v7();
     let public_id = format!("appchan_{}", hex32());
     sqlx::query(
-        "INSERT INTO agent_endpoints (id, agent_id, app_id, public_id, channel_type,
+        "INSERT INTO agent_endpoints (id, agent_id, app_id, legacy_app_public_id,
+                                      public_id, channel_type,
                                       channel_config, enabled, status, agent_version_policy,
                                       owner_principal_id)
-         VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, true, 'live', 'default', $6)",
+         VALUES ($1, $2, $3, (SELECT public_id FROM apps WHERE id = $3),
+                 $4, $5, '{}'::jsonb, true, 'live', 'default', $6)",
     )
     .bind(endpoint_id)
     .bind(org.agent_id)

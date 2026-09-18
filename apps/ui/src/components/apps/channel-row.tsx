@@ -25,7 +25,6 @@ import { CronLabel } from "@/components/apps/cron-label";
 import { MiniTimeline, type TimelineBin } from "@/components/apps/mini-timeline";
 import type {
   AgUiChannelConfig,
-  App,
   AppChannel,
   ChannelType,
   PublicChatChannelConfig,
@@ -82,7 +81,7 @@ function channelName(channel: AppChannel): string {
   return getChannelTypeDisplayName(channel.channel_type);
 }
 
-function channelSubline(channel: AppChannel, _app: App): React.ReactNode {
+function channelSubline(channel: AppChannel): React.ReactNode {
   const { description } = getEndpointLifecyclePresentation(channel);
 
   if (channel.channel_type === "schedule") {
@@ -143,7 +142,6 @@ function detailText(channel: AppChannel): string {
 
 export function ChannelRow({
   channel,
-  app,
   expanded,
   onToggle,
   onRunNow,
@@ -154,19 +152,16 @@ export function ChannelRow({
   timeline = [],
 }: {
   channel: AppChannel;
-  app: App;
   expanded: boolean;
   onToggle: () => void;
   onRunNow?: () => void;
-  /// Per-endpoint publish (EVE-1007). Omitted where the caller has no write
-  /// path — the App detail page keeps its App-level switch.
   onPublishChange?: (publish: boolean) => void;
   publishPending?: boolean;
   /// "How do I call this" for this endpoint specifically. Rendered inside the
   /// expanded row rather than a separate tab, so the snippet can carry this
   /// endpoint's real URL instead of a placeholder.
   usePanel?: React.ReactNode;
-  configureHref: string;
+  configureHref?: string;
   timeline?: TimelineBin[];
 }) {
   const Icon = iconFor(channel.channel_type);
@@ -209,7 +204,7 @@ export function ChannelRow({
                 <Badge variant="outline">{getChannelTypeDisplayName(channel.channel_type)}</Badge>
                 <Badge variant={isLive ? "default" : "secondary"}>{lifecycle.label}</Badge>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">{channelSubline(channel, app)}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{channelSubline(channel)}</p>
             </div>
           </div>
         </button>
@@ -237,25 +232,31 @@ export function ChannelRow({
               aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}`}
             />
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className={buttonVariants({ variant: "ghost", size: "icon" })}
-              aria-label="Channel actions"
-            >
-              <MoreHorizontal className="size-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuPositioner>
-              <DropdownMenuContent>
-                <DropdownMenuItem render={<Link href={configureHref} />}>
-                  Configure
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={onRunNow} disabled={!canRunNow}>
-                  <Play className="size-4" />
-                  Run now
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenuPositioner>
-          </DropdownMenu>
+          {(configureHref || onRunNow) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={buttonVariants({ variant: "ghost", size: "icon" })}
+                aria-label="Channel actions"
+              >
+                <MoreHorizontal className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuPositioner>
+                <DropdownMenuContent>
+                  {configureHref && (
+                    <DropdownMenuItem render={<Link href={configureHref} />}>
+                      Configure
+                    </DropdownMenuItem>
+                  )}
+                  {onRunNow && (
+                    <DropdownMenuItem onClick={onRunNow} disabled={!canRunNow}>
+                      <Play className="size-4" />
+                      Run now
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenuPositioner>
+            </DropdownMenu>
+          )}
         </div>
       </div>
       {expanded && (
@@ -274,9 +275,11 @@ export function ChannelRow({
                 <ChevronDown className="size-4 rotate-180 transition-transform" />
                 Collapse
               </Button>
-              <Link href={configureHref} className={buttonVariants({ size: "sm" })}>
-                Configure
-              </Link>
+              {configureHref && (
+                <Link href={configureHref} className={buttonVariants({ size: "sm" })}>
+                  Configure
+                </Link>
+              )}
             </div>
           </div>
           {usePanel && <div className="mt-4 border-t pt-4">{usePanel}</div>}

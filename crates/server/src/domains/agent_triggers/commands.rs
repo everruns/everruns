@@ -12,7 +12,7 @@ use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
 use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
 use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
-use crate::domains::apps::commands::{
+use crate::domains::apps::invocation::{
     calculate_schedule_next_trigger, cron_min_interval_seconds, normalize_cron_expression,
     render_message_template,
 };

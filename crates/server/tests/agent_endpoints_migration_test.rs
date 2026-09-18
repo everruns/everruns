@@ -19,9 +19,14 @@
 
 mod test_harness;
 
+use everruns_platform::ChannelType;
 use everruns_provider::typed_id::PrincipalId;
+use everruns_server::api::app_ingress::{
+    LegacyEndpointMatch, endpoint_liveness, resolve_endpoint, resolve_legacy_endpoint,
+};
 use everruns_server::storage::Database;
-use sqlx::{PgPool, Row};
+use everruns_server::storage::StorageBackend;
+use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use test_harness::get_database_url;
 use uuid::Uuid;
 
@@ -31,12 +36,130 @@ async fn pool() -> PgPool {
         .expect("Failed to connect to PostgreSQL")
 }
 
+#[tokio::test]
+async fn ingress_resolution_works_with_apps_and_compatibility_view_unreadable() {
+    let pool = pool().await;
+    let fixture = seed(&pool, "endpoint-no-app-reads", "published").await;
+    let channel_types = [
+        ChannelType::AgUi,
+        ChannelType::Fcp,
+        ChannelType::A2a,
+        ChannelType::ApiEndpoint,
+        ChannelType::PublicChat,
+        ChannelType::Webhook,
+        ChannelType::Schedule,
+    ];
+    let mut endpoint_ids = vec![(ChannelType::Slack, fixture.endpoint_public_id.clone())];
+
+    for channel_type in channel_types {
+        let endpoint_public_id = format!("appchan_{}", hex32());
+        sqlx::query(
+            "INSERT INTO agent_endpoints (
+                 id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
+                 channel_config, enabled, status, agent_version_policy, owner_principal_id
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb, true, 'live', 'default', $7)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(fixture.agent_id)
+        .bind(fixture.app_id)
+        .bind(&fixture.app_public_id)
+        .bind(&endpoint_public_id)
+        .bind(channel_type.to_string())
+        .bind(fixture.owner_principal_id)
+        .execute(&pool)
+        .await
+        .expect("seed endpoint");
+        endpoint_ids.push((channel_type, endpoint_public_id));
+    }
+
+    let role = format!("ingress_no_apps_{}", Uuid::new_v4().simple());
+    let create_role = format!("CREATE ROLE {role} NOLOGIN");
+    sqlx::query(sqlx::AssertSqlSafe(create_role.as_str()))
+        .execute(&pool)
+        .await
+        .expect("create restricted ingress role");
+    let grants = format!(
+        "GRANT USAGE ON SCHEMA public TO {role};
+         GRANT SELECT ON agents, agent_endpoints TO {role};"
+    );
+    sqlx::raw_sql(sqlx::AssertSqlSafe(grants.as_str()))
+        .execute(&pool)
+        .await
+        .expect("grant endpoint-only ingress reads");
+
+    let role_for_connect = role.clone();
+    let restricted_pool = PgPoolOptions::new()
+        .max_connections(1)
+        .after_connect(move |connection, _metadata| {
+            let statement = format!("SET ROLE {}", role_for_connect);
+            Box::pin(async move {
+                sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
+                    .execute(connection)
+                    .await?;
+                Ok(())
+            })
+        })
+        .connect(&get_database_url())
+        .await
+        .expect("connect with restricted ingress role");
+    let restricted_db = StorageBackend::Postgres(Database::new(restricted_pool.clone()));
+
+    assert!(
+        sqlx::query("SELECT 1 FROM apps")
+            .execute(&restricted_pool)
+            .await
+            .is_err(),
+        "the regression role must not be able to read apps"
+    );
+    assert!(
+        sqlx::query("SELECT 1 FROM app_channels")
+            .execute(&restricted_pool)
+            .await
+            .is_err(),
+        "the regression role must not be able to read app_channels"
+    );
+
+    for (channel_type, endpoint_public_id) in endpoint_ids {
+        let (context, endpoint) = resolve_endpoint(&restricted_db, None, &endpoint_public_id)
+            .await
+            .expect("resolve endpoint without App reads")
+            .expect("endpoint exists");
+        assert_eq!(endpoint.channel_type, channel_type);
+        assert_eq!(context.public_id.to_string(), fixture.app_public_id);
+        endpoint_liveness(&context, &endpoint).expect("endpoint is live");
+
+        match resolve_legacy_endpoint(&restricted_db, None, &fixture.app_public_id, channel_type)
+            .await
+            .expect("resolve legacy alias without App reads")
+        {
+            LegacyEndpointMatch::One(endpoint) => {
+                let (legacy_context, legacy_endpoint) = *endpoint;
+                assert_eq!(legacy_context.public_id.to_string(), fixture.app_public_id);
+                assert_eq!(legacy_endpoint.public_id.to_string(), endpoint_public_id);
+            }
+            LegacyEndpointMatch::NotFound => panic!("legacy endpoint was not found"),
+            LegacyEndpointMatch::Ambiguous => panic!("legacy endpoint resolution was ambiguous"),
+        }
+    }
+
+    restricted_pool.close().await;
+    let drop_role = format!("DROP ROLE {role}");
+    sqlx::query(sqlx::AssertSqlSafe(drop_role.as_str()))
+        .execute(&pool)
+        .await
+        .expect("drop restricted ingress role");
+}
+
 /// One isolated org + agent + app + endpoint + owner principal, seeded directly
 /// so the test exercises the migrated schema rather than the App create path.
 struct Fixture {
     org_id: i64,
     app_id: Uuid,
+    app_public_id: String,
+    agent_id: Uuid,
     endpoint_id: Uuid,
+    endpoint_public_id: String,
     owner_principal_id: Uuid,
     workspace_id: Uuid,
 }
@@ -98,6 +221,7 @@ async fn seed(pool: &PgPool, org_name: &str, app_status: &str) -> Fixture {
     .expect("seed agent");
 
     let app_id = Uuid::now_v7();
+    let app_public_id = format!("app_{}", hex32());
     sqlx::query(
         "INSERT INTO apps (id, org_id, public_id, name, harness_id, agent_id, status,
                            agent_version_policy, owner_principal_id, channel_type, channel_config)
@@ -105,7 +229,7 @@ async fn seed(pool: &PgPool, org_name: &str, app_status: &str) -> Fixture {
     )
     .bind(app_id)
     .bind(org_id)
-    .bind(format!("app_{}", hex32()))
+    .bind(&app_public_id)
     .bind(format!("app-{}", hex32()))
     .bind(harness_id)
     .bind(agent_id)
@@ -116,16 +240,18 @@ async fn seed(pool: &PgPool, org_name: &str, app_status: &str) -> Fixture {
     .expect("seed app");
 
     let endpoint_id = Uuid::now_v7();
+    let endpoint_public_id = format!("appchan_{}", hex32());
     sqlx::query(
-        "INSERT INTO agent_endpoints (id, agent_id, app_id, public_id, channel_type,
+        "INSERT INTO agent_endpoints (id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
                                       channel_config, enabled, status, agent_version_policy,
                                       owner_principal_id)
-         VALUES ($1, $2, $3, $4, 'slack', '{}'::jsonb, true, 'live', 'default', $5)",
+         VALUES ($1, $2, $3, $4, $5, 'slack', '{}'::jsonb, true, 'live', 'default', $6)",
     )
     .bind(endpoint_id)
     .bind(agent_id)
     .bind(app_id)
-    .bind(format!("appchan_{}", hex32()))
+    .bind(&app_public_id)
+    .bind(&endpoint_public_id)
     .bind(owner_principal_id)
     .execute(pool)
     .await
@@ -134,7 +260,10 @@ async fn seed(pool: &PgPool, org_name: &str, app_status: &str) -> Fixture {
     Fixture {
         org_id,
         app_id,
+        app_public_id,
+        agent_id,
         endpoint_id,
+        endpoint_public_id,
         owner_principal_id,
         workspace_id,
     }

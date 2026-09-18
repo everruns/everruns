@@ -71,10 +71,10 @@ Current API-visible experimental flags include:
 - `skills`, `memory`, `knowledge`, and `plugins`: gate their management pages, sidebar entries,
   global-search results, management APIs, Platform/MCP command discovery, and corresponding runtime
   capabilities. Direct calls return `feature_not_enabled` while the org-effective flag is off.
-- `agent_versions`: gates immutable Agent snapshots, forks, rollback, version diffs, and App version binding. See `knowledge/runtime-resources/agent-versions.md`.
+- `agent_versions`: gates immutable Agent snapshots, forks, rollback, and version diffs. See `knowledge/runtime-resources/agent-versions.md`.
 - `agent_delegation`: gates outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`). Deployment disablement prevents registration; org-effective disablement removes them from API and Platform listings, assignment, and runtime tool construction. Env var: `FEATURE_AGENT_DELEGATION`. See EVE-506.
 - `observers`: gates online scoring of production sessions (`/v1/observers`), the `turn.completed` matching listener, and the background scoring worker. When off, no observer routes are mounted and no listener/worker is registered. Env var: `FEATURE_OBSERVERS`. See `knowledge/evaluation/online-evals.md`.
-- `public_chat`: gates the Public Chat feature, the public endpoints (`/v1/apps/{app_id}/public-chat[/config]`), `public_chat` channel creation/editing, the builder UI (channel-type picker), and the public web route. The public endpoints are gated on the deployment flag; channel creation and the builder UI are gated on the org-effective flag. Env var: `FEATURE_PUBLIC_CHAT`. See `knowledge/integrations/public-chat.md`.
+- `public_chat`: gates the canonical endpoint routes and permanent App-shaped aliases, plus the isolated public web route. This is a deployment-level ingress gate; App-channel creation and the retired builder UI are not part of the flag contract. Env var: `FEATURE_PUBLIC_CHAT`. See `knowledge/integrations/public-chat.md`.
 - `environments`: gates the session environment surface, `GET /v1/sessions/{id}/environment` and
   `GET /v1/environment-targets`, plus the Workspace-tab panel. **Platform-managed**: org-scoped, so
   an operator enrols one tenant at a time, but the tenant cannot enrol itself. The deployment gate

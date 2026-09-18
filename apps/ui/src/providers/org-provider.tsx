@@ -45,7 +45,6 @@ export function hasPermission(currentRole: OrgRole, requiredRole: OrgRole): bool
 const ENTITY_PREFIXES = [
   "/agent-identities/",
   "/agents/",
-  "/apps/",
   "/capabilities/",
   "/evals/",
   "/harnesses/",

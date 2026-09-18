@@ -1,43 +1,239 @@
 use std::sync::Arc;
 
-use everruns_platform::{App, AppChannel, ChannelType};
+use everruns_platform::app::{ScheduleChannelConfig, WebhookChannelConfig};
+use everruns_platform::{
+    A2aChannelConfig, AgUiChannelConfig, AgentVersionPolicy, ApiEndpointChannelConfig,
+    AppEndpointAuthConfig, ChannelType, EndpointStatus, FcpChannelConfig, PublicChatChannelConfig,
+    SlackChannelConfig,
+};
+use everruns_provider::typed_id::{
+    AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId,
+};
+use uuid::Uuid;
 
-use crate::domains::apps::queries;
-use crate::storage::{EncryptionService, StorageBackend};
+use crate::storage::{EncryptionService, IngressEndpointRow, StorageBackend};
+
+#[derive(Debug, Clone)]
+pub struct IngressContext {
+    pub public_id: AppId,
+    pub internal_id: Uuid,
+    pub org_id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub harness_id: HarnessId,
+    pub agent_id: Option<AgentId>,
+    pub agent_internal_id: Uuid,
+    pub agent_identity_id: Option<AgentIdentityId>,
+    pub agent_version_policy: AgentVersionPolicy,
+    pub agent_version_id: Option<AgentVersionId>,
+    pub owner_principal_id: PrincipalId,
+    pub resolved_owner_user_id: Option<Uuid>,
+    agent_status: String,
+    exposures_suspended: bool,
+}
+
+impl IngressContext {
+    pub fn matches_legacy_app_id(&self, legacy_app_id: &str) -> bool {
+        self.public_id.to_string() == legacy_app_id
+    }
+}
+
+#[cfg(test)]
+impl IngressContext {
+    pub(crate) fn for_test(name: &str, description: Option<&str>) -> Self {
+        Self {
+            public_id: AppId::from_seed(1),
+            internal_id: Uuid::nil(),
+            org_id: 1,
+            name: name.to_string(),
+            description: description.map(str::to_string),
+            harness_id: HarnessId::from_seed(2),
+            agent_id: Some(AgentId::from_seed(4)),
+            agent_internal_id: Uuid::nil(),
+            agent_identity_id: None,
+            agent_version_policy: AgentVersionPolicy::Default,
+            agent_version_id: None,
+            owner_principal_id: PrincipalId::from_seed(3),
+            resolved_owner_user_id: None,
+            agent_status: "active".to_string(),
+            exposures_suspended: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IngressEndpoint {
+    pub public_id: AppChannelId,
+    pub internal_id: Uuid,
+    pub channel_type: ChannelType,
+    pub channel_config: serde_json::Value,
+    pub auth: Option<Box<AppEndpointAuthConfig>>,
+    pub enabled: bool,
+    pub status: EndpointStatus,
+}
+
+impl IngressEndpoint {
+    pub fn slack_config(&self) -> Option<SlackChannelConfig> {
+        self.config(ChannelType::Slack)
+    }
+
+    pub fn ag_ui_config(&self) -> Option<AgUiChannelConfig> {
+        self.config(ChannelType::AgUi)
+    }
+
+    pub fn schedule_config(&self) -> Option<ScheduleChannelConfig> {
+        self.config(ChannelType::Schedule)
+    }
+
+    pub fn webhook_config(&self) -> Option<WebhookChannelConfig> {
+        self.config(ChannelType::Webhook)
+    }
+
+    pub fn fcp_config(&self) -> Option<FcpChannelConfig> {
+        self.config(ChannelType::Fcp)
+    }
+
+    pub fn a2a_config(&self) -> Option<A2aChannelConfig> {
+        self.config(ChannelType::A2a)
+    }
+
+    pub fn api_endpoint_config(&self) -> Option<ApiEndpointChannelConfig> {
+        self.config(ChannelType::ApiEndpoint)
+    }
+
+    pub fn public_chat_config(&self) -> Option<PublicChatChannelConfig> {
+        self.config(ChannelType::PublicChat)
+    }
+
+    fn config<T: serde::de::DeserializeOwned>(&self, expected: ChannelType) -> Option<T> {
+        if self.channel_type != expected {
+            return None;
+        }
+        serde_json::from_value(self.channel_config.clone()).ok()
+    }
+}
 
 pub async fn resolve_endpoint(
     db: &StorageBackend,
     encryption: Option<&Arc<EncryptionService>>,
-    channel_id: &str,
-) -> anyhow::Result<Option<(App, AppChannel)>> {
-    let Some(app) = queries::get_by_channel_public_id_unscoped(db, encryption, channel_id).await?
-    else {
-        return Ok(None);
-    };
-    let channel = app
-        .channels
-        .iter()
-        .find(|channel| channel.public_id.to_string() == channel_id)
-        .cloned();
-    Ok(channel.map(|channel| (app, channel)))
+    endpoint_id: &str,
+) -> anyhow::Result<Option<(IngressContext, IngressEndpoint)>> {
+    db.get_ingress_endpoint_by_public_id(endpoint_id)
+        .await?
+        .map(|row| row_to_ingress(encryption, row))
+        .transpose()
 }
 
-/// Why an endpoint is not accepting traffic. Callers collapse every variant into
-/// one generic rejection; this exists so the reason can be logged server-side.
-///
-/// THREAT[TM-TENANT-002]: an unauthenticated caller must not be able to tell
-/// "endpoint does not exist" from "endpoint exists but is not live". Do not
-/// surface these variants, or distinct status codes for them, to a caller.
+pub async fn resolve_legacy_endpoint(
+    db: &StorageBackend,
+    encryption: Option<&Arc<EncryptionService>>,
+    legacy_app_id: &str,
+    channel_type: ChannelType,
+) -> anyhow::Result<LegacyEndpointMatch> {
+    let rows = db
+        .list_ingress_endpoints_by_legacy_alias(legacy_app_id, &channel_type.to_string())
+        .await?;
+    let mut endpoints = rows.into_iter().map(|row| row_to_ingress(encryption, row));
+    let Some(endpoint) = endpoints.next() else {
+        return Ok(LegacyEndpointMatch::NotFound);
+    };
+    if endpoints.next().is_some() {
+        return Ok(LegacyEndpointMatch::Ambiguous);
+    }
+    Ok(LegacyEndpointMatch::One(Box::new(endpoint?)))
+}
+
+fn row_to_ingress(
+    encryption: Option<&Arc<EncryptionService>>,
+    row: IngressEndpointRow,
+) -> anyhow::Result<(IngressContext, IngressEndpoint)> {
+    let public_id = row
+        .endpoint_public_id
+        .parse()
+        .unwrap_or_else(|_| AppChannelId::from_uuid(row.endpoint_id));
+    let mut channel_config = decrypt_json(
+        encryption,
+        row.channel_config_encrypted.as_deref(),
+        &row.channel_config,
+        "endpoint configuration",
+    );
+    let legacy_auth = channel_config
+        .as_object_mut()
+        .and_then(|object| object.remove("auth"));
+    let auth = if row.auth.is_some() || row.auth_encrypted.is_some() {
+        Some(endpoint_auth_fail_closed(decrypt_json(
+            encryption,
+            row.auth_encrypted.as_deref(),
+            &row.auth.clone().unwrap_or(serde_json::Value::Null),
+            "endpoint authentication",
+        )))
+    } else {
+        legacy_auth.map(endpoint_auth_fail_closed)
+    };
+    let context = IngressContext {
+        public_id: row.legacy_app_public_id.parse()?,
+        internal_id: row.legacy_app_id,
+        org_id: row.org_id,
+        name: row.agent_name,
+        description: row.agent_description,
+        harness_id: HarnessId::from_uuid(row.harness_id),
+        agent_id: Some(row.agent_public_id.parse()?),
+        agent_internal_id: row.agent_id,
+        agent_identity_id: row.agent_identity_id.map(AgentIdentityId::from_uuid),
+        agent_version_policy: AgentVersionPolicy::from(row.agent_version_policy.as_str()),
+        agent_version_id: row.agent_version_id.map(AgentVersionId::from_uuid),
+        owner_principal_id: PrincipalId::from_uuid(row.owner_principal_id),
+        resolved_owner_user_id: row.resolved_owner_user_id,
+        agent_status: row.agent_status,
+        exposures_suspended: row.exposures_suspended,
+    };
+    let endpoint = IngressEndpoint {
+        public_id,
+        internal_id: row.endpoint_id,
+        channel_type: ChannelType::from_str_opt(&row.channel_type).unwrap_or(ChannelType::Slack),
+        channel_config,
+        auth,
+        enabled: row.enabled,
+        status: EndpointStatus::from(row.endpoint_status.as_str()),
+    };
+    Ok((context, endpoint))
+}
+
+fn decrypt_json(
+    encryption: Option<&Arc<EncryptionService>>,
+    encrypted: Option<&[u8]>,
+    plaintext: &serde_json::Value,
+    field: &str,
+) -> serde_json::Value {
+    let Some(encrypted) = encrypted else {
+        return plaintext.clone();
+    };
+    let Some(encryption) = encryption else {
+        tracing::error!(field, "Encrypted ingress field cannot be decrypted");
+        return serde_json::Value::Null;
+    };
+    encryption
+        .decrypt_to_string(encrypted)
+        .and_then(|json| serde_json::from_str(&json).map_err(Into::into))
+        .unwrap_or_else(|error| {
+            tracing::error!(%error, field, "Failed to decrypt ingress field");
+            serde_json::Value::Null
+        })
+}
+
+fn endpoint_auth_fail_closed(value: serde_json::Value) -> Box<AppEndpointAuthConfig> {
+    Box::new(serde_json::from_value(value).unwrap_or_else(|error| {
+        tracing::error!(%error, "Failed to parse endpoint authentication");
+        serde_json::from_value(serde_json::json!({"mode": "http_basic"}))
+            .expect("fail-closed endpoint authentication is valid")
+    }))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotLive {
-    /// The endpoint's own status is `draft` or `disabled`.
     EndpointNotLive,
-    /// The owning agent is archived or deleted.
     AgentNotActive,
-    /// The agent-level incident switch is on.
     ExposuresSuspended,
-    /// The endpoint has no owning agent to resolve liveness against.
-    NoAgent,
 }
 
 impl NotLive {
@@ -46,76 +242,28 @@ impl NotLive {
             NotLive::EndpointNotLive => "endpoint not live",
             NotLive::AgentNotActive => "agent not active",
             NotLive::ExposuresSuspended => "agent exposures suspended",
-            NotLive::NoAgent => "endpoint has no agent",
         }
     }
 }
 
-/// Decide whether an endpoint accepts traffic (EVE-1007):
-///
-/// ```text
-/// live(endpoint) = endpoint.status == live
-///               && agent.status == active
-///               && !agent.exposures_suspended
-/// ```
-///
-/// The agent-level terms are folded in **here, at resolution time**, and are
-/// never denormalized onto the endpoint row. Writing rows when an agent is
-/// archived would create a second writer for endpoint status and make the
-/// archive un-restorable — the same reasoning that keeps the harness overlay
-/// chain behind the platform loading boundary.
-///
-/// `App.status` and `AppChannel.enabled` are deliberately **not** consulted.
-/// They were the old two-dimensional gate, and reading them here would put back
-/// the coupling that made publishing one endpoint expose its siblings.
-pub async fn endpoint_liveness(
-    db: &StorageBackend,
-    app: &App,
-    endpoint: &AppChannel,
-) -> anyhow::Result<Result<(), NotLive>> {
+pub fn endpoint_liveness(
+    context: &IngressContext,
+    endpoint: &IngressEndpoint,
+) -> Result<(), NotLive> {
     if !endpoint.status.is_live() {
-        return Ok(Err(NotLive::EndpointNotLive));
+        return Err(NotLive::EndpointNotLive);
     }
-
-    let Some(agent_id) = app.agent_id.as_ref() else {
-        return Ok(Err(NotLive::NoAgent));
-    };
-    // `App::agent_id` carries the agent's *public* id, so resolve by that rather
-    // than treating it as an internal key — the two coincide only when the
-    // public id happened to be minted from the internal uuid.
-    let Some(agent) = db
-        .get_agent_by_public_id(app.org_id, &agent_id.to_string())
-        .await?
-    else {
-        return Ok(Err(NotLive::NoAgent));
-    };
-
-    if agent.status != "active" {
-        return Ok(Err(NotLive::AgentNotActive));
+    if context.agent_status != "active" {
+        return Err(NotLive::AgentNotActive);
     }
-    if agent.exposures_suspended {
-        return Ok(Err(NotLive::ExposuresSuspended));
+    if context.exposures_suspended {
+        return Err(NotLive::ExposuresSuspended);
     }
-    Ok(Ok(()))
+    Ok(())
 }
 
-pub enum LegacyChannelMatch {
+pub enum LegacyEndpointMatch {
     NotFound,
-    One(AppChannel),
+    One(Box<(IngressContext, IngressEndpoint)>),
     Ambiguous,
-}
-
-pub fn resolve_legacy_channel(app: &App, channel_type: ChannelType) -> LegacyChannelMatch {
-    let mut channels = app
-        .channels
-        .iter()
-        .filter(|channel| channel.channel_type == channel_type && channel.enabled);
-    let Some(channel) = channels.next().cloned() else {
-        return LegacyChannelMatch::NotFound;
-    };
-    if channels.next().is_some() {
-        LegacyChannelMatch::Ambiguous
-    } else {
-        LegacyChannelMatch::One(channel)
-    }
 }

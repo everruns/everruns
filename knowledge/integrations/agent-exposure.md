@@ -223,8 +223,9 @@ POST /v1/e/{endpoint_id}/sessions
 GET  /c/{endpoint_slug}
 ```
 
-Old `/v1/apps/{app_id}/…` paths stay mounted permanently as aliases that resolve the
-endpoint and ignore the app segment. Nothing installed breaks, ever. Deprecate in docs,
+Old `/v1/apps/{app_id}/…` paths stay mounted permanently as aliases that resolve from
+`agent_endpoints.legacy_app_public_id`. They never read the frozen `apps` table or the
+`app_channels` compatibility view. Nothing installed breaks, ever. Deprecate in docs,
 not in code.
 
 Worth doing on its own merits: `/v1/apps/{app_id}/ag-ui` carries no channel segment, so an
@@ -284,29 +285,17 @@ the neutral module; transport config stays typed per transport.
 
 ## Integrations tab
 
-The App detail page is already the right page, on the wrong entity — a channels-first
-operations page with a stat strip, expandable channel rows, a live activity rail, and an
-inline agent-identity control. Re-home it as an **Integrations** tab on Agent detail,
-alongside today's Overview / Preview / Credentials / Triggers / Versions / Stats
-(`apps/ui/src/components/agents/agent-tabs.tsx`):
+Agent detail owns an **Integrations** tab alongside Overview / Preview /
+Credentials / Triggers / Versions / Stats:
 
 - Stat strip: Health / Invocations 24h / Success rate / Activity, unchanged.
-- **Endpoints** section: expandable rows, per-row publish toggle, per-row identity and
-  version policy.
+- **Endpoints** section: read-only endpoint inventory.
 - **Triggers** section: absorbs today's Triggers tab. Read-only UI renders a
   human-readable cron description plus timezone; raw cron only inside the editable input.
-- Header: agent identity control, and the suspend-all-exposures switch.
-- Editors stay full-page routes, not dialogs, matching the current convention:
-  `/agents/{agentId}/endpoints/new`, `/agents/{agentId}/endpoints/{endpointId}`,
-  `/agents/{agentId}/triggers/{triggerId}`.
+- Header: agent identity control and the suspend-all-exposures switch.
+- App and endpoint editor routes are retired. Triggers keep their agent-owned editor.
 
-The existing **Integrate** tab (the `IntegrationGuide` snippet page) folds *into* the
-expanded endpoint row as a "use it" panel. A snippet that carries the real endpoint URL
-and key beats a generic guide, and it removes a tab whose name would otherwise collide
-with Integrations.
-
-`Credentials` stays the org-wide read view of endpoint keys and tokens; the endpoint row
-stays the only write path. One writer, one reader.
+`Credentials` stays the org-wide read view of endpoint keys and tokens.
 
 The `/apps` list page does not simply disappear. Its real job is answering "what in this
 org is reachable from outside right now", which is a question security asks and no agent

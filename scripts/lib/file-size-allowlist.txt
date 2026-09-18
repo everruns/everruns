@@ -62,7 +62,6 @@
 4780 crates/server/src/direct_worker_adapters.rs
 1606 crates/server/src/domains/agent_triggers/commands.rs
 3548 crates/server/src/domains/agents/commands.rs
-4741 crates/server/src/domains/apps/commands.rs
 1898 crates/server/src/domains/budgets/tests.rs
 1872 crates/server/src/domains/common.rs
 2114 crates/server/src/domains/evals/service.rs
@@ -81,7 +80,6 @@
 1743 crates/server/tests/evals_integration_test.rs
 4254 crates/server/tests/mcp_endpoint_test.rs
 4917 crates/server/tests/repository_integration_test.rs
-2110 crates/server/tests/slack_integration_test.rs
 1737 crates/test-support/src/capabilities/fake_aws.rs
 4728 crates/test-support/tests/reason_atom_test.rs
 4413 crates/worker/src/grpc_adapters.rs

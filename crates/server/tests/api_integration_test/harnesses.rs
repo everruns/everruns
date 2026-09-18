@@ -1,5 +1,6 @@
 //! API integration tests: harnesses.
 
+use crate::support::seed_archival_app;
 use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_core::DEFAULT_ORG_ID;
@@ -7,6 +8,7 @@ use everruns_durable::UpdateField;
 use everruns_platform::Agent;
 use everruns_platform::Harness;
 use everruns_platform::Session;
+use everruns_provider::typed_id::AgentId;
 use everruns_server::storage::models::UpdateOrganizationSettings;
 use serde_json::{Value, json};
 use test_harness::TestServer;
@@ -671,17 +673,14 @@ async fn test_delete_harness_referenced_by_app_returns_conflict() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": "Harness Delete Blocker",
-                "harness_id": harness.id,
-                "agent_id": agent["id"]
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED);
+    seed_archival_app(
+        &server,
+        "Harness Delete Blocker",
+        harness.id,
+        Some(agent["id"].as_str().unwrap().parse::<AgentId>().unwrap()),
+        None,
+    )
+    .await;
 
     server
         .delete(&format!("/v1/harnesses/{}", harness.id))
@@ -760,70 +759,4 @@ async fn test_delete_org_default_harness_returns_conflict() {
         .delete(&format!("/v1/harnesses/{}", harness.id))
         .await
         .assert_status(StatusCode::CONFLICT);
-}
-
-#[tokio::test]
-async fn test_create_app_missing_harness_returns_not_found() {
-    let server = TestServer::new().await;
-
-    // Create an agent to use
-    let agent: Value = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "app-missing-harness-agent",
-                "display_name": "Test Agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": "Test App",
-                "harness_id": "harness_ffffffffffffffffffffffffffffffff",
-                "agent_id": agent["id"]
-            }),
-        )
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_update_app_missing_harness_returns_not_found() {
-    let server = TestServer::new().await;
-
-    // Create agent and app
-    let agent: Value = server
-        .post(
-            "/v1/agents",
-            json!({ "name": "update-app-harness-agent", "display_name": "Test Agent", "system_prompt": "Test" }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let app: Value = server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": "Test App",
-                "harness_id": server.seed_generic_harness_id,
-                "agent_id": agent["id"]
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    server
-        .patch(
-            &format!("/v1/apps/{}", app["id"].as_str().unwrap()),
-            json!({ "harness_id": "harness_ffffffffffffffffffffffffffffffff" }),
-        )
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
 }
