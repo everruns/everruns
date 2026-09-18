@@ -6,7 +6,7 @@
     "input_schema": {
       "$defs": {
         "AppEndpointAuthConfig": {
-          "description": "Inline auth config for one App endpoint/channel.",
+          "description": "Authentication config for one App endpoint/channel.",
           "example": {
             "mode": "api_key",
             "requirements": {
@@ -42,14 +42,14 @@
           "type": "object"
         },
         "AppEndpointAuthMode": {
-          "description": "App-published endpoint authentication mode.\n\nStored inline on `app_channels.channel_config.auth` so users can protect a\nsingle App/channel without first creating org-level identity-provider state.",
+          "description": "App-published endpoint authentication mode.\n\nStored on `AppChannel.auth` so users can protect one endpoint without first\ncreating org-level identity-provider state.",
           "enum": [
             "anonymous",
             "shared_secret",
             "api_key",
             "google_oidc",
             "oidc",
-            "o_auth2_introspection",
+            "oauth2_introspection",
             "http_basic",
             "mtls"
           ],
@@ -120,12 +120,15 @@
                     "null"
                   ]
                 },
+                "client_secret_configured": {
+                  "type": "boolean"
+                },
                 "introspection_url": {
                   "type": "string"
                 },
                 "type": {
                   "enum": [
-                    "o_auth2_introspection"
+                    "oauth2_introspection"
                   ],
                   "type": "string"
                 }
@@ -143,6 +146,9 @@
                     "string",
                     "null"
                   ]
+                },
+                "password_configured": {
+                  "type": "boolean"
                 },
                 "password_hash": {
                   "type": [
@@ -183,6 +189,9 @@
                     "string",
                     "null"
                   ]
+                },
+                "proxy_secret_configured": {
+                  "type": "boolean"
                 },
                 "proxy_secret_header": {
                   "description": "Header the trusted reverse proxy uses to prove its identity.\nRequired. Configs without this field fail closed at verification time.",
@@ -255,13 +264,16 @@
           },
           "type": "object"
         },
-        "InvocationSessionMode": {
-          "description": "How app-triggered invocations route into sessions.",
+        "SessionBinding": {
+          "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
           "enum": [
+            "per_thread",
+            "per_channel",
+            "per_user",
             "shared_session",
             "session_per_invocation"
           ],
-          "example": "shared_session",
+          "example": "per_thread",
           "type": "string"
         }
       },
@@ -304,7 +316,7 @@
           "type": "string"
         },
         "session_mode": {
-          "$ref": "#/$defs/InvocationSessionMode"
+          "$ref": "#/$defs/SessionBinding"
         }
       },
       "required": [
@@ -327,7 +339,7 @@
     "input_schema": {
       "$defs": {
         "AppEndpointAuthConfig": {
-          "description": "Inline auth config for one App endpoint/channel.",
+          "description": "Authentication config for one App endpoint/channel.",
           "example": {
             "mode": "api_key",
             "requirements": {
@@ -363,14 +375,14 @@
           "type": "object"
         },
         "AppEndpointAuthMode": {
-          "description": "App-published endpoint authentication mode.\n\nStored inline on `app_channels.channel_config.auth` so users can protect a\nsingle App/channel without first creating org-level identity-provider state.",
+          "description": "App-published endpoint authentication mode.\n\nStored on `AppChannel.auth` so users can protect one endpoint without first\ncreating org-level identity-provider state.",
           "enum": [
             "anonymous",
             "shared_secret",
             "api_key",
             "google_oidc",
             "oidc",
-            "o_auth2_introspection",
+            "oauth2_introspection",
             "http_basic",
             "mtls"
           ],
@@ -441,12 +453,15 @@
                     "null"
                   ]
                 },
+                "client_secret_configured": {
+                  "type": "boolean"
+                },
                 "introspection_url": {
                   "type": "string"
                 },
                 "type": {
                   "enum": [
-                    "o_auth2_introspection"
+                    "oauth2_introspection"
                   ],
                   "type": "string"
                 }
@@ -464,6 +479,9 @@
                     "string",
                     "null"
                   ]
+                },
+                "password_configured": {
+                  "type": "boolean"
                 },
                 "password_hash": {
                   "type": [
@@ -504,6 +522,9 @@
                     "string",
                     "null"
                   ]
+                },
+                "proxy_secret_configured": {
+                  "type": "boolean"
                 },
                 "proxy_secret_header": {
                   "description": "Header the trusted reverse proxy uses to prove its identity.\nRequired. Configs without this field fail closed at verification time.",
@@ -576,13 +597,16 @@
           },
           "type": "object"
         },
-        "InvocationSessionMode": {
-          "description": "How app-triggered invocations route into sessions.",
+        "SessionBinding": {
+          "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
           "enum": [
+            "per_thread",
+            "per_channel",
+            "per_user",
             "shared_session",
             "session_per_invocation"
           ],
-          "example": "shared_session",
+          "example": "per_thread",
           "type": "string"
         }
       },
@@ -610,7 +634,7 @@
           ]
         },
         "session_mode": {
-          "$ref": "#/$defs/InvocationSessionMode"
+          "$ref": "#/$defs/SessionBinding"
         }
       },
       "required": [
@@ -702,13 +726,16 @@
     "description": "Add a schedule invocation channel to an app using flat args. cron_expression accepts 5-field or 7-field cron; 5-field input is normalized to 7-field cron.",
     "input_schema": {
       "$defs": {
-        "InvocationSessionMode": {
-          "description": "How app-triggered invocations route into sessions.",
+        "SessionBinding": {
+          "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
           "enum": [
+            "per_thread",
+            "per_channel",
+            "per_user",
             "shared_session",
             "session_per_invocation"
           ],
-          "example": "shared_session",
+          "example": "per_thread",
           "type": "string"
         }
       },
@@ -733,7 +760,7 @@
           "type": "string"
         },
         "session_mode": {
-          "$ref": "#/$defs/InvocationSessionMode"
+          "$ref": "#/$defs/SessionBinding"
         },
         "timezone": {
           "type": [
@@ -843,13 +870,16 @@
     "description": "Add a webhook invocation channel to an app using flat args.",
     "input_schema": {
       "$defs": {
-        "InvocationSessionMode": {
-          "description": "How app-triggered invocations route into sessions.",
+        "SessionBinding": {
+          "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
           "enum": [
+            "per_thread",
+            "per_channel",
+            "per_user",
             "shared_session",
             "session_per_invocation"
           ],
-          "example": "shared_session",
+          "example": "per_thread",
           "type": "string"
         }
       },
@@ -870,7 +900,7 @@
           "type": "string"
         },
         "session_mode": {
-          "$ref": "#/$defs/InvocationSessionMode"
+          "$ref": "#/$defs/SessionBinding"
         },
         "token": {
           "type": "string"
@@ -916,6 +946,10 @@
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
             "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
               "args": {
                 "description": "Arguments passed to the stdio `command`.",
                 "items": {
@@ -976,6 +1010,17 @@
               "url": {
                 "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
                 "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  }
+                ]
               }
             },
             "type": "object"
@@ -1103,6 +1148,16 @@
           "example": "auto",
           "type": "string"
         },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user"
+          ],
+          "example": "service",
+          "type": "string"
+        },
         "McpServerAuthMode": {
           "description": "MCP server authentication mode.",
           "enum": [
@@ -1111,6 +1166,11 @@
             "oauth"
           ],
           "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
           "type": "string"
         },
         "McpServerTransportType": {
@@ -1882,6 +1942,10 @@
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
             "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
               "args": {
                 "description": "Arguments passed to the stdio `command`.",
                 "items": {
@@ -1942,6 +2006,17 @@
               "url": {
                 "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
                 "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  }
+                ]
               }
             },
             "type": "object"
@@ -2117,6 +2192,16 @@
           "example": "auto",
           "type": "string"
         },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user"
+          ],
+          "example": "service",
+          "type": "string"
+        },
         "McpServerAuthMode": {
           "description": "MCP server authentication mode.",
           "enum": [
@@ -2125,6 +2210,11 @@
             "oauth"
           ],
           "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
           "type": "string"
         },
         "McpServerTransportType": {
@@ -2651,49 +2741,85 @@
   {
     "category": "agent_triggers",
     "cli": null,
-    "description": "Create a schedule trigger that wakes an agent on a cron.",
+    "description": "Create a schedule or webhook trigger for an agent.",
     "input_schema": {
       "$defs": {
+        "AgentTriggerType": {
+          "description": "The kind of event that fires an agent trigger.",
+          "enum": [
+            "schedule",
+            "webhook"
+          ],
+          "type": "string"
+        },
         "CreateAgentTriggerRequest": {
-          "description": "Request to create a schedule trigger on an agent.",
+          "description": "Request to create a trigger on an agent.",
           "properties": {
+            "auth": {
+              "description": "Shared endpoint auth is not supported by webhook triggers."
+            },
             "cron_expression": {
               "description": "Cron expression that drives the durable schedule. Accepts 5-field\n(min hour day month weekday) or 7-field (sec … year) form.",
               "example": "0 9 * * *",
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "enabled": {
               "description": "Whether the trigger is active on creation (default `true`).",
               "type": "boolean"
             },
             "message": {
-              "description": "Message content or `{{template}}` sent when the schedule fires.",
+              "description": "Message content or `{{template}}` sent when the trigger fires.",
               "example": "Run the daily digest",
               "type": "string"
             },
+            "rate_limit_per_minute": {
+              "description": "Optional per-ingress, per-IP webhook request limit.",
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "session_mode": {
-              "$ref": "#/$defs/InvocationSessionMode",
+              "$ref": "#/$defs/SessionBinding",
               "description": "Whether invocations reuse a stable session or create a new one."
             },
             "timezone": {
               "description": "IANA timezone identifier for cron evaluation (default `UTC`).",
               "example": "UTC",
               "type": "string"
+            },
+            "token": {
+              "description": "Shared secret for webhook triggers.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "trigger_type": {
+              "$ref": "#/$defs/AgentTriggerType",
+              "description": "Trigger kind. Omitted values retain the schedule API default."
             }
           },
           "required": [
-            "cron_expression",
             "message"
           ],
           "type": "object"
         },
-        "InvocationSessionMode": {
-          "description": "How app-triggered invocations route into sessions.",
+        "SessionBinding": {
+          "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
           "enum": [
+            "per_thread",
+            "per_channel",
+            "per_user",
             "shared_session",
             "session_per_invocation"
           ],
-          "example": "shared_session",
+          "example": "per_thread",
           "type": "string"
         }
       },
@@ -2714,7 +2840,7 @@
           "type": "object"
         }
       ],
-      "description": "Create a schedule trigger on an agent."
+      "description": "Create a trigger on an agent."
     },
     "method": "POST",
     "name": "create_agent_trigger",
@@ -2857,7 +2983,7 @@
           "description": "How an App resolves the Agent version it runs.\nExample shape is defined on `AgentVersionPolicy`."
         },
         "channel_config": {
-          "description": "Initial channel configuration. Shape depends on `channel_type`, for\nexample `{\"token\": \"whk_redacted\", \"message\": \"Run support triage\"}`\nfor `webhook`. New schedule channels are rejected; use agent triggers.",
+          "description": "Initial channel configuration. Shape depends on `channel_type`, for\nexample `{\"token\": \"whk_redacted\", \"message\": \"Run support triage\"}`\nfor `webhook`. New schedule and webhook channels are rejected; use agent\ntriggers.",
           "type": [
             "object",
             "null"
@@ -4026,6 +4152,10 @@
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
             "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
               "args": {
                 "description": "Arguments passed to the stdio `command`.",
                 "items": {
@@ -4086,6 +4216,17 @@
               "url": {
                 "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
                 "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  }
+                ]
               }
             },
             "type": "object"
@@ -4154,6 +4295,16 @@
           "example": "auto",
           "type": "string"
         },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user"
+          ],
+          "example": "service",
+          "type": "string"
+        },
         "McpServerAuthMode": {
           "description": "MCP server authentication mode.",
           "enum": [
@@ -4162,6 +4313,11 @@
             "oauth"
           ],
           "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
           "type": "string"
         },
         "McpServerTransportType": {
@@ -6621,6 +6777,10 @@
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
             "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
               "args": {
                 "description": "Arguments passed to the stdio `command`.",
                 "items": {
@@ -6681,6 +6841,17 @@
               "url": {
                 "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
                 "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  }
+                ]
               }
             },
             "type": "object"
@@ -6834,6 +7005,16 @@
           "example": "auto",
           "type": "string"
         },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user"
+          ],
+          "example": "service",
+          "type": "string"
+        },
         "McpServerAuthMode": {
           "description": "MCP server authentication mode.",
           "enum": [
@@ -6842,6 +7023,11 @@
             "oauth"
           ],
           "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
           "type": "string"
         },
         "McpServerTransportType": {
@@ -10099,6 +10285,29 @@
     "read_only": true
   },
   {
+    "category": "environments",
+    "cli": null,
+    "description": "Inspect where a session's commands run and what they may touch.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_environment",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/environment",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
     "category": "sessions",
     "cli": "sessions facets",
     "description": "Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions.",
@@ -10474,6 +10683,10 @@
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
             "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
               "args": {
                 "description": "Arguments passed to the stdio `command`.",
                 "items": {
@@ -10534,6 +10747,17 @@
               "url": {
                 "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
                 "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  }
+                ]
               }
             },
             "type": "object"
@@ -10709,6 +10933,16 @@
           "example": "auto",
           "type": "string"
         },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user"
+          ],
+          "example": "service",
+          "type": "string"
+        },
         "McpServerAuthMode": {
           "description": "MCP server authentication mode.",
           "enum": [
@@ -10717,6 +10951,11 @@
             "oauth"
           ],
           "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
           "type": "string"
         },
         "McpServerTransportType": {
@@ -12058,6 +12297,20 @@
     "name": "list_declarative_capabilities",
     "output_shape": "unknown",
     "path": "/v1/capabilities/declarative",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "environments",
+    "cli": null,
+    "description": "List the environment targets this deployment can offer.",
+    "input_schema": {
+      "default": null
+    },
+    "method": "GET",
+    "name": "list_environment_targets",
+    "output_shape": "unknown",
+    "path": "/v1/environment-targets",
     "positional_arg": null,
     "read_only": true
   },
@@ -13850,6 +14103,10 @@
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
             "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
               "args": {
                 "description": "Arguments passed to the stdio `command`.",
                 "items": {
@@ -13910,6 +14167,17 @@
               "url": {
                 "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
                 "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  }
+                ]
               }
             },
             "type": "object"
@@ -14037,6 +14305,16 @@
           "example": "auto",
           "type": "string"
         },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user"
+          ],
+          "example": "service",
+          "type": "string"
+        },
         "McpServerAuthMode": {
           "description": "MCP server authentication mode.",
           "enum": [
@@ -14045,6 +14323,11 @@
             "oauth"
           ],
           "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
           "type": "string"
         },
         "McpServerTransportType": {
@@ -14296,6 +14579,10 @@
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
             "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
               "args": {
                 "description": "Arguments passed to the stdio `command`.",
                 "items": {
@@ -14356,6 +14643,17 @@
               "url": {
                 "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
                 "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  }
+                ]
               }
             },
             "type": "object"
@@ -14376,6 +14674,16 @@
           "example": "auto",
           "type": "string"
         },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user"
+          ],
+          "example": "service",
+          "type": "string"
+        },
         "McpServerAuthMode": {
           "description": "MCP server authentication mode.",
           "enum": [
@@ -14384,6 +14692,11 @@
             "oauth"
           ],
           "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
           "type": "string"
         },
         "McpServerTransportType": {
@@ -14466,6 +14779,35 @@
   {
     "category": "apps",
     "cli": null,
+    "description": "Publish one endpoint, leaving its siblings unchanged.",
+    "input_schema": {
+      "description": "Publish a single endpoint without touching its siblings.",
+      "properties": {
+        "app_id": {
+          "description": "App's prefixed public identifier.",
+          "type": "string"
+        },
+        "channel_id": {
+          "description": "Channel's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "app_id",
+        "channel_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "publish_app_channel",
+    "output_shape": "unknown",
+    "path": "/v1/apps/{id}/channels/{channel_id}/publish",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "apps",
+    "cli": null,
     "description": "Regenerate the A2A channel API key. Returns the new plaintext exactly once and invalidates the previous key.",
     "input_schema": {
       "description": "Regenerate the API key for an A2A channel. Returns the new plaintext key\nexactly once and invalidates the previous key.",
@@ -14543,6 +14885,30 @@
     "path": "/v1/resolve-org",
     "positional_arg": "id",
     "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": "agents exposures resume",
+    "description": "Let an agent's live endpoints accept traffic again.",
+    "input_schema": {
+      "description": "Clear the agent-level exposure suspend, restoring the previously live set.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "resume_agent_exposures",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/exposures/resume",
+    "positional_arg": "agent_id",
+    "read_only": false
   },
   {
     "category": "schedules",
@@ -15066,6 +15432,30 @@
     "read_only": false
   },
   {
+    "category": "agents",
+    "cli": "agents exposures suspend",
+    "description": "Stop every endpoint on an agent from accepting traffic.",
+    "input_schema": {
+      "description": "Take every endpoint on an agent off the internet in one action (EVE-1007).\n\nThis is the incident control, and is deliberately separate from archiving and\nfrom per-endpoint publish: it leaves every endpoint's own `status` untouched,\nso resuming restores exactly the set that was live before — which is what\nmakes it safe to reach for under pressure.",
+      "properties": {
+        "agent_id": {
+          "description": "Agent's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "suspend_agent_exposures",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/exposures/suspend",
+    "positional_arg": "agent_id",
+    "read_only": false
+  },
+  {
     "category": "knowledge_indexes",
     "cli": null,
     "description": "Enqueue a manual sync of a knowledge index.",
@@ -15412,6 +15802,35 @@
     "read_only": false
   },
   {
+    "category": "apps",
+    "cli": null,
+    "description": "Stop one endpoint accepting traffic, leaving its siblings unchanged.",
+    "input_schema": {
+      "description": "Unpublish a single endpoint without touching its siblings.",
+      "properties": {
+        "app_id": {
+          "description": "App's prefixed public identifier.",
+          "type": "string"
+        },
+        "channel_id": {
+          "description": "Channel's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "app_id",
+        "channel_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "unpublish_app_channel",
+    "output_shape": "unknown",
+    "path": "/v1/apps/{id}/channels/{channel_id}/unpublish",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agents",
     "cli": "agents update",
     "description": "Update an agent. Only provided fields are changed.",
@@ -15447,6 +15866,10 @@
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
             "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
               "args": {
                 "description": "Arguments passed to the stdio `command`.",
                 "items": {
@@ -15507,6 +15930,17 @@
               "url": {
                 "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
                 "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  }
+                ]
               }
             },
             "type": "object"
@@ -15682,6 +16116,16 @@
           "example": "auto",
           "type": "string"
         },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user"
+          ],
+          "example": "service",
+          "type": "string"
+        },
         "McpServerAuthMode": {
           "description": "MCP server authentication mode.",
           "enum": [
@@ -15690,6 +16134,11 @@
             "oauth"
           ],
           "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
           "type": "string"
         },
         "McpServerTransportType": {
@@ -16248,18 +16697,24 @@
     "description": "Update an agent trigger. Only provided fields change.",
     "input_schema": {
       "$defs": {
-        "InvocationSessionMode": {
-          "description": "How app-triggered invocations route into sessions.",
+        "SessionBinding": {
+          "description": "What identity keys a session, for every exposure and every transport.\n\nOne enum replaces the former `SessionStrategy` (messaging channels) and\n`InvocationSessionMode` (triggers and request/reply endpoints), which asked\nthe same question with disjoint vocabularies and forced every new surface to\npick a side (EVE-1005).\n\n**The serialized values are deliberately the legacy ones.** Every variant\nrenames in Rust but serializes exactly as it did before, with the new name\naccepted as a read alias. Persisted `channel_config` JSONB therefore needs no\nmigration, and the API and UI keep exchanging the values they already do.\nMoving the wire vocabulary is a separate, migration-bearing change.\n\n`Requester` keys on the **transport's own external actor id** — the Slack\nuser id, the Public Chat visitor id — never on an Everruns principal. Those\nactors are unrelated to Everruns accounts (a Public Chat visitor is anonymous\nor Google-signed-in), so there is one consistent answer rather than a split\nvariant: whatever the transport calls the requester, scoped by the\n`{platform}:` tag prefix that already namespaces it.",
           "enum": [
+            "per_thread",
+            "per_channel",
+            "per_user",
             "shared_session",
             "session_per_invocation"
           ],
-          "example": "shared_session",
+          "example": "per_thread",
           "type": "string"
         },
         "UpdateAgentTriggerRequest": {
-          "description": "Request to update a schedule trigger. Only provided fields change; the rest\nare preserved from the stored config.",
+          "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
           "properties": {
+            "auth": {
+              "description": "Shared endpoint auth is not supported by webhook triggers."
+            },
             "cron_expression": {
               "description": "Replacement cron expression.",
               "type": [
@@ -16281,19 +16736,35 @@
                 "null"
               ]
             },
+            "rate_limit_per_minute": {
+              "description": "Replacement per-ingress, per-IP webhook request limit.",
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "session_mode": {
               "oneOf": [
                 {
                   "type": "null"
                 },
                 {
-                  "$ref": "#/$defs/InvocationSessionMode",
+                  "$ref": "#/$defs/SessionBinding",
                   "description": "Replacement session reuse strategy."
                 }
               ]
             },
             "timezone": {
               "description": "Replacement IANA timezone identifier.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "token": {
+              "description": "Replacement webhook token.",
               "type": [
                 "string",
                 "null"
@@ -17538,6 +18009,10 @@
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
             "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
               "args": {
                 "description": "Arguments passed to the stdio `command`.",
                 "items": {
@@ -17598,6 +18073,17 @@
               "url": {
                 "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
                 "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  }
+                ]
               }
             },
             "type": "object"
@@ -17676,6 +18162,16 @@
           "example": "auto",
           "type": "string"
         },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user"
+          ],
+          "example": "service",
+          "type": "string"
+        },
         "McpServerAuthMode": {
           "description": "MCP server authentication mode.",
           "enum": [
@@ -17684,6 +18180,11 @@
             "oauth"
           ],
           "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
           "type": "string"
         },
         "McpServerTransportType": {
@@ -20199,6 +20700,10 @@
           "additionalProperties": {
             "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
             "properties": {
+              "actsAs": {
+                "$ref": "#/$defs/McpServerActsAs",
+                "description": "Identity whose grant this attachment requests."
+              },
               "args": {
                 "description": "Arguments passed to the stdio `command`.",
                 "items": {
@@ -20259,6 +20764,17 @@
               "url": {
                 "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
                 "type": "string"
+              },
+              "use": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/McpServerPresetRef",
+                    "description": "Organization catalog preset that supplies transport and authentication policy."
+                  }
+                ]
               }
             },
             "type": "object"
@@ -20623,6 +21139,16 @@
           "example": "auto",
           "type": "string"
         },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user"
+          ],
+          "example": "service",
+          "type": "string"
+        },
         "McpServerAuthMode": {
           "description": "MCP server authentication mode.",
           "enum": [
@@ -20631,6 +21157,11 @@
             "oauth"
           ],
           "example": "api_key",
+          "type": "string"
+        },
+        "McpServerPresetRef": {
+          "description": "Reference to an organization MCP server catalog entry.",
+          "example": "catalog:linear",
           "type": "string"
         },
         "McpServerTransportType": {

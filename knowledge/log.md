@@ -151,6 +151,18 @@
 
 ## 2026-09-15
 
+* **Platform Chat v2 is behind an org-opt-in feature flag.** It is a different way
+  to do what the current surface already does, not a deployment capability an
+  operator runs, so `platform_chat_v2` is `experimental` and not
+  `platform_managed`: an org admin turns it on, and `for_org` keeps it off until
+  they do even where the deployment allows it. The gate reads on list and on
+  session creation rather than at provisioning, because built-ins are seeded by
+  name when an org is created and gating there would leave an org that enables
+  the flag later without the harness until something re-provisioned. Hiding is
+  not a control on its own — a harness id is stable and guessable — so selecting
+  a gated harness is rejected as well. See
+  [Platform Chat v2](harnesses/platform-chat-v2.md).
+
 * **Per-crate versioning was bumping more crates per release, not fewer, and the
   cause was additive change being classified as breaking.** At `0.x` the minor is
   the breaking slot, so adding an enum variant or a struct field to a base crate

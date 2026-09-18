@@ -666,6 +666,60 @@
     ]
   },
   {
+    "wire_name": "resume_agent_exposures",
+    "path": [
+      "agents",
+      "exposures"
+    ],
+    "verb": "resume",
+    "description": "Let an agent's live endpoints accept traffic again.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/exposures/resume",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Put a suspended agent back on its exposed surfaces",
+        "command": "everruns agents exposures resume agt_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "suspend_agent_exposures",
+    "path": [
+      "agents",
+      "exposures"
+    ],
+    "verb": "suspend",
+    "description": "Stop every endpoint on an agent from accepting traffic.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/exposures/suspend",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop an agent answering on its exposed surfaces without deleting it",
+        "command": "everruns agents exposures suspend agt_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "get_agent",
     "path": [
       "agents"
@@ -1016,7 +1070,7 @@
       "triggers"
     ],
     "verb": "create",
-    "description": "Create a schedule trigger that wakes an agent on a cron.",
+    "description": "Create a schedule or webhook trigger for an agent.",
     "method": "POST",
     "http_path": "/v1/agents/{agent_id}/triggers",
     "args": [
@@ -1028,10 +1082,17 @@
         "help": "Owning agent's prefixed public identifier."
       },
       {
+        "field": "auth",
+        "long": "auth",
+        "kind": "json",
+        "required": false,
+        "help": "Shared endpoint auth is not supported by webhook triggers."
+      },
+      {
         "field": "cron_expression",
         "long": "cron-expression",
         "kind": "string",
-        "required": true,
+        "required": false,
         "help": "Cron expression that drives the durable schedule."
       },
       {
@@ -1046,15 +1107,25 @@
         "long": "message",
         "kind": "string",
         "required": true,
-        "help": "Message content or `{{template}}` sent when the schedule fires."
+        "help": "Message content or `{{template}}` sent when the trigger fires."
+      },
+      {
+        "field": "rate_limit_per_minute",
+        "long": "rate-limit-per-minute",
+        "kind": "integer",
+        "required": false,
+        "help": "Optional per-ingress, per-IP webhook request limit."
       },
       {
         "field": "session_mode",
         "long": "session-mode",
         "kind": "string",
         "required": false,
-        "help": "How app-triggered invocations route into sessions.",
+        "help": "What identity keys a session, for every exposure and every transport.  One enum replaces the ...",
         "choices": [
+          "per_thread",
+          "per_channel",
+          "per_user",
           "shared_session",
           "session_per_invocation"
         ]
@@ -1065,6 +1136,24 @@
         "kind": "string",
         "required": false,
         "help": "IANA timezone identifier for cron evaluation (default `UTC`)."
+      },
+      {
+        "field": "token",
+        "long": "token",
+        "kind": "string",
+        "required": false,
+        "help": "Shared secret for webhook triggers."
+      },
+      {
+        "field": "trigger_type",
+        "long": "trigger-type",
+        "kind": "string",
+        "required": false,
+        "help": "The kind of event that fires an agent trigger.",
+        "choices": [
+          "schedule",
+          "webhook"
+        ]
       }
     ]
   },
@@ -1212,6 +1301,13 @@
         "required": true
       },
       {
+        "field": "auth",
+        "long": "auth",
+        "kind": "json",
+        "required": false,
+        "help": "Shared endpoint auth is not supported by webhook triggers."
+      },
+      {
         "field": "cron_expression",
         "long": "cron-expression",
         "kind": "string",
@@ -1233,6 +1329,13 @@
         "help": "Replacement message sent when the trigger fires."
       },
       {
+        "field": "rate_limit_per_minute",
+        "long": "rate-limit-per-minute",
+        "kind": "integer",
+        "required": false,
+        "help": "Replacement per-ingress, per-IP webhook request limit."
+      },
+      {
         "field": "session_mode",
         "long": "session-mode",
         "kind": "string",
@@ -1244,6 +1347,13 @@
         "kind": "string",
         "required": false,
         "help": "Replacement IANA timezone identifier."
+      },
+      {
+        "field": "token",
+        "long": "token",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement webhook token."
       },
       {
         "field": "trigger_id",
@@ -1854,8 +1964,11 @@
         "long": "session-mode",
         "kind": "string",
         "required": false,
-        "help": "How app-triggered invocations route into sessions.",
+        "help": "What identity keys a session, for every exposure and every transport.  One enum replaces the ...",
         "choices": [
+          "per_thread",
+          "per_channel",
+          "per_user",
           "shared_session",
           "session_per_invocation"
         ]
@@ -1926,8 +2039,11 @@
         "long": "session-mode",
         "kind": "string",
         "required": false,
-        "help": "How app-triggered invocations route into sessions.",
+        "help": "What identity keys a session, for every exposure and every transport.  One enum replaces the ...",
         "choices": [
+          "per_thread",
+          "per_channel",
+          "per_user",
           "shared_session",
           "session_per_invocation"
         ]
@@ -2083,8 +2199,11 @@
         "long": "session-mode",
         "kind": "string",
         "required": false,
-        "help": "How app-triggered invocations route into sessions.",
+        "help": "What identity keys a session, for every exposure and every transport.  One enum replaces the ...",
         "choices": [
+          "per_thread",
+          "per_channel",
+          "per_user",
           "shared_session",
           "session_per_invocation"
         ]
@@ -2139,8 +2258,11 @@
         "long": "session-mode",
         "kind": "string",
         "required": false,
-        "help": "How app-triggered invocations route into sessions.",
+        "help": "What identity keys a session, for every exposure and every transport.  One enum replaces the ...",
         "choices": [
+          "per_thread",
+          "per_channel",
+          "per_user",
           "shared_session",
           "session_per_invocation"
         ]
@@ -2213,6 +2335,33 @@
     ]
   },
   {
+    "wire_name": "publish_app_channel",
+    "path": [
+      "apps",
+      "channels"
+    ],
+    "verb": "publish",
+    "description": "Publish one endpoint, leaving its siblings unchanged.",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/channels/{channel_id}/publish",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true,
+        "help": "Channel's prefixed public identifier."
+      }
+    ]
+  },
+  {
     "wire_name": "trigger_app_schedule_channel",
     "path": [
       "apps",
@@ -2222,6 +2371,33 @@
     "description": "Manually trigger an app schedule channel. Use app_id and channel_id from list_app_channels.",
     "method": "POST",
     "http_path": "/v1/apps/{id}/channels/{channel_id}/trigger",
+    "args": [
+      {
+        "field": "app_id",
+        "long": "app-id",
+        "kind": "string",
+        "required": true,
+        "help": "App's prefixed public identifier."
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true,
+        "help": "Channel's prefixed public identifier."
+      }
+    ]
+  },
+  {
+    "wire_name": "unpublish_app_channel",
+    "path": [
+      "apps",
+      "channels"
+    ],
+    "verb": "unpublish",
+    "description": "Stop one endpoint accepting traffic, leaving its siblings unchanged.",
+    "method": "POST",
+    "http_path": "/v1/apps/{id}/channels/{channel_id}/unpublish",
     "args": [
       {
         "field": "app_id",
@@ -3480,6 +3656,17 @@
         "help": "New timezone (IANA name)."
       }
     ]
+  },
+  {
+    "wire_name": "list_environment_targets",
+    "path": [
+      "environment-targets"
+    ],
+    "verb": "list",
+    "description": "List the environment targets this deployment can offer.",
+    "method": "GET",
+    "http_path": "/v1/environment-targets",
+    "args": []
   },
   {
     "wire_name": "import_atif_trajectories",
@@ -8015,6 +8202,26 @@
       {
         "intent": "Archive a session, keeping it restorable",
         "command": "everruns sessions delete ses_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_environment",
+    "path": [
+      "sessions",
+      "environment"
+    ],
+    "verb": "get",
+    "description": "Inspect where a session's commands run and what they may touch.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/environment",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
       }
     ]
   },

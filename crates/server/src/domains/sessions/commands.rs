@@ -222,11 +222,23 @@ impl Command for CreateSession {
         .map_err(classify_anyhow)?;
         req.harness_id = Some(harness_id);
 
-        ctx.db
+        let harness = ctx
+            .db
             .get_harness(ctx.org_id(), harness_id)
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
+
+        // A feature-gated harness is hidden from the list, and hiding is not a
+        // control: its id is stable and guessable from any org that has it on.
+        // Reject the selection too, so the flag decides use rather than
+        // discoverability.
+        if !crate::domains::harnesses::commands::feature_gated_harness_is_visible(
+            &ctx.feature_flags,
+            &harness.name,
+        ) {
+            return Err(CommandError::not_found("Harness"));
+        }
 
         if let Some(model_id) = req.model_id {
             ctx.db

@@ -1667,10 +1667,14 @@ impl Command for SuspendAgentExposures {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents", "exposures"], "suspend")
-                .with_examples(&["everruns agents exposures suspend --agent_id agt_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion.
+        const ROUTE: CliRoute = CliRoute::new(&["agents", "exposures"], "suspend")
+            .with_args(&[CliArg::new("agent_id").at(1).long("agent")])
+            .with_examples(&[CliExample::new(
+                "Stop an agent answering on its exposed surfaces without deleting it",
+                "everruns agents exposures suspend agt_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -1709,10 +1713,14 @@ impl Command for ResumeAgentExposures {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["agents", "exposures"], "resume")
-                .with_examples(&["everruns agents exposures resume --agent_id agt_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion.
+        const ROUTE: CliRoute = CliRoute::new(&["agents", "exposures"], "resume")
+            .with_args(&[CliArg::new("agent_id").at(1).long("agent")])
+            .with_examples(&[CliExample::new(
+                "Put a suspended agent back on its exposed surfaces",
+                "everruns agents exposures resume agt_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
