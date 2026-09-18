@@ -61,6 +61,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     let a2a_key = "evra2a_migration_key";
     let api_key = "evr_app_migration_key";
     let slack_signing_secret = "migration-slack-signing-secret";
+    let migrated_webhook_token = "migration-trigger-webhook-token";
     seed_ingress_endpoint(
         &pool,
         &fixture,
@@ -68,6 +69,8 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         json!({"anonymous": true, "token": ag_ui_token}),
     )
     .await;
+    let migrated_webhook_id =
+        seed_migrated_webhook_trigger(&pool, &fixture, migrated_webhook_token).await;
     seed_ingress_endpoint(
         &pool,
         &fixture,
@@ -399,6 +402,34 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     let webhook_result = response_json(webhook_response).await;
     assert_eq!(webhook_result["accepted"], true);
     assert_eq!(webhook_result["created_session"], true);
+    let migrated_webhook_headers = [("x-everruns-webhook-token", migrated_webhook_token)];
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/e/{migrated_webhook_id}/webhook"),
+        &migrated_webhook_headers,
+        br#"{"event":"canonical"}"#,
+        StatusCode::ACCEPTED,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/webhooks/{migrated_webhook_id}"),
+        &migrated_webhook_headers,
+        br#"{"event":"legacy"}"#,
+        StatusCode::ACCEPTED,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/app_wrong_alias/webhooks/{migrated_webhook_id}"),
+        &migrated_webhook_headers,
+        br#"{"event":"mismatch"}"#,
+        StatusCode::NOT_FOUND,
+    )
+    .await;
     assert_route_status(
         &router,
         Method::GET,
@@ -501,8 +532,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
 
     restricted_pool.close().await;
     let drop_role = format!(
-        "REVOKE ALL PRIVILEGES ON SCHEMA public FROM {role};
-         REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM {role};
+        "DROP OWNED BY {role};
          DROP ROLE {role};"
     );
     sqlx::raw_sql(sqlx::AssertSqlSafe(drop_role.as_str()))
@@ -511,6 +541,34 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         .expect("drop restricted ingress role");
 }
 
+async fn seed_migrated_webhook_trigger(pool: &PgPool, fixture: &Fixture, token: &str) -> String {
+    let ingress_id = format!("appchan_{}", hex32());
+    sqlx::query(
+        "INSERT INTO agent_triggers (
+             id, org_id, agent_id, trigger_type, ingress_id, config, enabled,
+             execution_harness_id, execution_owner_principal_id, execution_app_id,
+             execution_app_public_id, execution_app_name,
+             execution_agent_version_policy, execution_agent_version_id
+         )
+         SELECT $1, app.org_id, app.agent_id, 'webhook', $2, $3, true,
+                app.harness_id, app.owner_principal_id, app.id, app.public_id, app.name,
+                app.agent_version_policy, app.agent_version_id
+         FROM apps AS app
+         WHERE app.id = $4",
+    )
+    .bind(Uuid::now_v7())
+    .bind(&ingress_id)
+    .bind(json!({
+        "token": token,
+        "message": "{{webhook.body}}",
+        "session_mode": "session_per_invocation"
+    }))
+    .bind(fixture.app_id)
+    .execute(pool)
+    .await
+    .expect("seed migrated webhook trigger");
+    ingress_id
+}
 async fn seed_ingress_endpoint(
     pool: &PgPool,
     fixture: &Fixture,

@@ -22,7 +22,7 @@ use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;
 use everruns_server::event_delivery::EventDelivery;
 use everruns_server::storage::models::{
-    CreateAgentTriggerRow, CreateBudgetLedgerRow, CreateBudgetRow,
+    CreateAgentTriggerRow, CreateBudgetLedgerRow, CreateBudgetRow, UpdateApp,
 };
 
 async fn create_agent(server: &TestServer, name: &str) -> Value {
@@ -83,6 +83,14 @@ async fn webhook_trigger_can_be_created() {
     assert!(trigger["config"].get("token").is_none());
     let ingress_id = trigger["ingress_id"].as_str().unwrap();
     assert!(ingress_id.starts_with("appchan_"));
+    invoke_webhook(
+        &server,
+        &format!("/v1/apps/app_not_a_migrated_alias/webhooks/{ingress_id}"),
+        ("x-everruns-webhook-token", "webhook-secret"),
+        "native-alias",
+    )
+    .await
+    .assert_status(StatusCode::NOT_FOUND);
 
     let invoked: Value = server
         .request_raw(
@@ -274,6 +282,34 @@ async fn migrated_webhook_trigger_preserves_routes_auth_templates_and_shared_ses
         None,
     )
     .await;
+    let app_row = server
+        .db
+        .get_app_by_public_id(DEFAULT_ORG_ID, &app_id)
+        .await
+        .expect("get archival App")
+        .expect("archival App exists");
+    server
+        .db
+        .update_app(
+            DEFAULT_ORG_ID,
+            app_row.id,
+            UpdateApp {
+                name: Some("mutated-archival-name".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("mutate archival App")
+        .expect("archival App exists");
+
+    invoke_webhook(
+        &server,
+        &format!("/v1/apps/app_wrong_alias/webhooks/{ingress_id}"),
+        ("x-everruns-webhook-token", "migrated-secret"),
+        "mismatched-alias",
+    )
+    .await
+    .assert_status(StatusCode::NOT_FOUND);
 
     for path in [
         format!("/v1/apps/{app_id}/webhooks/{ingress_id}"),
