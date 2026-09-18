@@ -176,7 +176,7 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
             ToolContext::with_stores(
                 session_id,
                 std::sync::Arc::new(SessionAdapter::new(adapters.clone())),
-                adapters.storage_store(),
+                adapters.storage_store_unscoped(),
             )
             .with_session_task_registry(registry.clone())
             .with_egress_service_opt(adapters.egress_service())

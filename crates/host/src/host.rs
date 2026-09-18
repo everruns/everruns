@@ -228,7 +228,12 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn storage_store(&self) -> Option<Arc<dyn SessionStorageStore>> {
+    /// The session key/value and secret store, scoped to the caller's org.
+    ///
+    /// Org-scoped like `image_artifact_store`: the store backs both the agent's
+    /// own runtime tools and the org-scoped command surface, so the two cannot
+    /// agree on what a session is without it.
+    fn storage_store(&self, _org_id: i64) -> Option<Arc<dyn SessionStorageStore>> {
         None
     }
 
@@ -708,7 +713,7 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
     };
     ToolContextServices {
         file_store: Some(adapter.file_store()),
-        storage_store: adapter.storage_store(),
+        storage_store: adapter.storage_store(org_id),
         image_store: adapter.image_artifact_store(org_id),
         provider_credential_store: adapter.provider_credential_store(org_id),
         utility_llm_service: adapter.utility_llm_service(),
@@ -1460,7 +1465,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         adapter.driver_registry(),
     )
     .with_file_store(adapter.file_store());
-    let context_resolver = match adapter.storage_store() {
+    let context_resolver = match adapter.storage_store(org_id) {
         Some(store) => context_resolver.with_session_storage(store),
         None => context_resolver,
     };
@@ -1520,7 +1525,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         // Lets `channel_context` read the session's persisted ThreadContext at
         // prompt-assembly time (EVE-977). `None` when the adapter has no store;
         // the capability then contributes nothing.
-        adapter.storage_store(),
+        adapter.storage_store(org_id),
     )
     .await?;
     let input = ReasonInput {

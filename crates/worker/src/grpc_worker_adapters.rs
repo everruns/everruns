@@ -427,8 +427,9 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn sqldb_store(
         &self,
+        org_id: i64,
     ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
-        Arc::new(GrpcAdapter::new(self.client.clone()))
+        Arc::new(GrpcAdapter::new_org_scoped(self.client.clone(), org_id))
     }
 
     fn native_async_store(
@@ -443,7 +444,16 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Some(Arc::new(GrpcAdapter::new(self.client.clone())))
     }
 
-    fn storage_store(&self) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+    fn storage_store(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+        Arc::new(GrpcAdapter::new_org_scoped(self.client.clone(), org_id))
+    }
+
+    fn storage_store_unscoped(
+        &self,
+    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
         Arc::new(GrpcAdapter::new(self.client.clone()))
     }
 
