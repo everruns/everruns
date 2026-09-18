@@ -44,6 +44,14 @@
 //!
 //! A classification keeps no history, runs no tools, and has no session — those stay
 //! with [`Agent`](crate::Agent).
+//!
+//! The three primitives are System One's, and this API keeps their names rather
+//! than inventing synonyms, so the vendor's own pages read as documentation for
+//! these methods too: [Noul](https://docs.typesafe.ai/primitives/noul),
+//! [Choice](https://docs.typesafe.ai/primitives/choice),
+//! [Score](https://docs.typesafe.ai/primitives/score), and
+//! [Confidence](https://docs.typesafe.ai/confidence) for what a `choice` or
+//! `score` reports alongside its answer.
 
 use std::fmt;
 use std::sync::Arc;
@@ -276,7 +284,29 @@ impl Classification {
     /// Ask whether something holds, answered as the probability of yes.
     ///
     /// `instructions` must carry the whole question: `id` labels the answer for
-    /// your code and never reaches the model.
+    /// your code and never reaches the model. Read the number as a probability,
+    /// not a grade — 0.5 means yes and no are near-equally likely, not
+    /// "medium".
+    ///
+    /// ```
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let classifier = everruns::Classifier::simulated(0.96);
+    /// let answers = classifier
+    ///     .about("Wire the deposit today or the unit goes to another buyer.")
+    ///     .noul("pressure", "Does this message apply time pressure?")
+    ///     .send()
+    ///     .await?;
+    ///
+    /// if answers.probability("pressure")? > 0.9 {
+    ///     // your code decides; the model only measured
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// TypeSafe documents the primitive as
+    /// [Noul](https://docs.typesafe.ai/primitives/noul).
     pub fn noul(self, id: impl Into<String>, instructions: impl Into<String>) -> Self {
         self.ask(id, ClassificationQuestion::noul(instructions))
     }
@@ -285,6 +315,30 @@ impl Classification {
     ///
     /// Worth the extra words when "yes" is ambiguous — say what a yes covers
     /// and what a no covers, and the boundary stops being the model's guess.
+    ///
+    /// ```
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let classifier = everruns::Classifier::simulated(0.2);
+    /// let answers = classifier
+    ///     .about("Refunded on 3 Jan. Customer says it never arrived.")
+    ///     .noul_between(
+    ///         "resolved",
+    ///         "Is this ticket resolved?",
+    ///         "The refund reached the customer and they confirmed it",
+    ///         "The refund is unconfirmed, disputed, or still in progress",
+    ///     )
+    ///     .send()
+    ///     .await?;
+    /// # let _ = answers.probability("resolved")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// The `yes`/`no` criteria are what TypeSafe calls a Noul's criteria; see
+    /// [Noul](https://docs.typesafe.ai/primitives/noul) and
+    /// [Advanced: structure](https://docs.typesafe.ai/primitives/advanced) for
+    /// giving them JSON structure rather than a sentence.
     pub fn noul_between(
         self,
         id: impl Into<String>,
@@ -304,7 +358,32 @@ impl Classification {
 
     /// Ask for exactly one option from a set, with the distribution behind it.
     ///
-    /// Needs at least two options; fewer is not a choice.
+    /// Needs at least two options; fewer is not a choice. [`Answers::selected`]
+    /// takes the winner, and [`Answers::probability`] is not how you read one —
+    /// the shape is a distribution, so ask for the answer you built.
+    ///
+    /// ```
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let classifier = everruns::Classifier::simulated(0.5);
+    /// let answers = classifier
+    ///     .about("My card was charged twice for one order.")
+    ///     .choice(
+    ///         "queue",
+    ///         "Which team should handle this message?",
+    ///         ["billing", "technical", "sales"],
+    ///     )
+    ///     .send()
+    ///     .await?;
+    ///
+    /// let team: &str = answers.selected("queue")?;
+    /// # let _ = team;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// TypeSafe documents the primitive as
+    /// [Choice](https://docs.typesafe.ai/primitives/choice).
     pub fn choice<O, S>(
         self,
         id: impl Into<String>,
@@ -332,6 +411,38 @@ impl Classification {
     /// Each level describes a concrete situation, not a grade: "Minor
     /// annoyance" reads on its own where "2 out of 5" does not. Needs at least
     /// two levels.
+    ///
+    /// The answer is a weighted position, so it lands between levels;
+    /// [`Answers::tail`] asks the more useful question — the probability of
+    /// being *at least* a given level.
+    ///
+    /// ```
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let classifier = everruns::Classifier::simulated(0.5);
+    /// let answers = classifier
+    ///     .about("I've been on hold for two hours and my card was charged twice.")
+    ///     .score(
+    ///         "severity",
+    ///         "How severe is the problem the writer describes?",
+    ///         [
+    ///             "A minor annoyance",
+    ///             "A real problem with their account",
+    ///             "Serious harm requiring immediate action",
+    ///         ],
+    ///     )
+    ///     .send()
+    ///     .await?;
+    ///
+    /// let position = answers.score("severity")?;        // e.g. 1.4 of 2
+    /// let at_least_real = answers.tail("severity", 1)?; // P(level >= 1)
+    /// # let _ = (position, at_least_real);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// TypeSafe documents the primitive as
+    /// [Score](https://docs.typesafe.ai/primitives/score).
     pub fn score<L, S>(
         self,
         id: impl Into<String>,
@@ -466,6 +577,31 @@ impl Answers {
     }
 
     /// The probability mass at or above `level` for a `score` question.
+    ///
+    /// The question worth asking for an escalation rule. A weighted score of
+    /// 0.9 can hide a real chance of the worst level; the tail does not.
+    ///
+    /// ```
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let classifier = everruns::Classifier::simulated(0.5);
+    /// let answers = classifier
+    ///     .about("The deploy dropped the customers table.")
+    ///     .score(
+    ///         "severity",
+    ///         "How severe is the incident described?",
+    ///         ["Cosmetic", "Degraded service", "Data loss"],
+    ///     )
+    ///     .send()
+    ///     .await?;
+    ///
+    /// // Not `score("severity")? > 1.5` — that averages a tail risk away.
+    /// if answers.tail("severity", 2)? > 0.3 {
+    ///     // page someone
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn tail(&self, id: &str, level: usize) -> Result<f64, ClassifierError> {
         match self.answer(id)? {
             ClassificationAnswer::Score { probabilities, .. } => Ok(probabilities
@@ -488,6 +624,11 @@ impl Answers {
     }
 
     /// The whole outcome, including usage.
+    ///
+    /// The escape hatch for what the accessors do not surface — token counts,
+    /// and the per-option or per-level distributions behind a `choice` or
+    /// `score`, including the `confidence` TypeSafe documents under
+    /// [Confidence](https://docs.typesafe.ai/confidence).
     pub fn outcome(&self) -> &ClassificationOutcome {
         &self.0
     }

@@ -73,13 +73,24 @@ let queue: &str = answers.selected("queue")?;
 
 - **`noul`** — whether something holds, as the probability of yes. A value near
   0.5 means yes and no are near-equally likely, not "medium".
+  ([Noul](https://docs.typesafe.ai/primitives/noul))
 - **`choice`** — exactly one option from your set, with the distribution behind
   it. Needs at least two options.
+  ([Choice](https://docs.typesafe.ai/primitives/choice))
 - **`score`** — a position along levels you define, lowest first. Needs at least
-  two levels.
+  two levels. ([Score](https://docs.typesafe.ai/primitives/score))
+
+The three are System One's own, so TypeSafe's
+[Primitives](https://docs.typesafe.ai/primitives) documents what each answer
+means and how to choose between them, and
+[State](https://docs.typesafe.ai/concepts/state) covers what to put in the
+`about(...)` value. Everruns names them the same way rather than inventing
+synonyms.
 
 Questions in one call are answered **in parallel inside a single request**, so
-asking five costs one round trip, not five.
+asking five costs one round trip, not five. TypeSafe calls leaning on that
+[speculative fan-out](https://docs.typesafe.ai/patterns/fan-out): ask the
+questions you *might* need, and let your code decide which ones mattered.
 
 ## Ids are yours; instructions are the model's
 
