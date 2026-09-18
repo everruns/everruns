@@ -25,6 +25,11 @@ The following data remains in place and must not be rewritten as part of App ret
 - reserved session-tag prefixes such as `app:`, `app_channel:`, `slack:app:`, and `ag_ui:app:`
 
 No new App or App-channel write surface exists. Internal compatibility code can read these records for archival responses and historical session behavior.
+## Agent endpoint management
+
+Authenticated endpoint management lives below the Agent API. It supports listing, creating, reading, editing, deleting, publishing, and unpublishing Agent-owned endpoints. The Agent Integrations tab provides the same management lifecycle.
+
+New schedules continue to use Agent triggers, which establish the durable workflow binding. A migrated schedule endpoint remains editable and can run immediately from its Agent-owned endpoint surface.
 
 ## Archival API
 
@@ -58,7 +63,7 @@ Alias lookups preserve endpoint-route tenant and error behavior. A mismatched Ap
 
 Ingress can continue to create sessions with `sessions.app_id` and the reserved App routing tags. Those values are compatibility attribution, not evidence that Apps remain a live management domain. Session ownership and budget attribution keep their existing semantics.
 
-Scheduled proactive execution belongs to Agent triggers. Any grandfathered schedule compatibility path remains endpoint-owned and must satisfy the same no-App-read ingress rule.
+Scheduled proactive execution belongs to Agent triggers. Any grandfathered schedule compatibility path remains endpoint-owned, supports its existing run-now control, and must satisfy the same no-App-read ingress rule.
 
 ## IDs
 

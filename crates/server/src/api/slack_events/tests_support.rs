@@ -47,6 +47,8 @@ pub(crate) fn test_app() -> TestIngress {
             auth: None,
             enabled: true,
             status: EndpointStatus::Live,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
         }],
     }
 }

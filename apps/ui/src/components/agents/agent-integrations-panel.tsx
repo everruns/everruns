@@ -1,12 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { useResumeAgentExposures, useSuspendAgentExposures } from "@/hooks/use-agents";
-import { useAgentEndpoints, isTriggerChannel } from "@/hooks/use-agent-endpoints";
+import {
+  isTriggerChannel,
+  useAgentEndpoints,
+  usePublishAgentEndpoint,
+  useTriggerAgentEndpoint,
+} from "@/hooks/use-agent-endpoints";
 import { useAgentTriggers } from "@/hooks/use-agent-triggers";
 import { usePolicies } from "@/hooks/use-policies";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { buttonVariants } from "@/components/ui/button";
 import { ChannelRow } from "@/components/apps/channel-row";
 import { MiniTimeline } from "@/components/apps/mini-timeline";
 import { type StatStripStats } from "@/components/apps/stat-strip";
@@ -73,10 +81,13 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const { can } = usePolicies("agents");
   const suspendExposures = useSuspendAgentExposures();
   const resumeExposures = useResumeAgentExposures();
+  const publishEndpoint = usePublishAgentEndpoint(agent.id);
+  const triggerEndpoint = useTriggerAgentEndpoint(agent.id);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const suspended = agent.exposures_suspended ?? false;
   const canManage = can("agent.manage");
+  const canDangerous = can("agent.dangerous");
 
   const stats = useMemo(
     () => buildStats(endpoints, triggers.length, suspended),
@@ -118,6 +129,15 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                   agent
                 </p>
               </div>
+              {canManage && (
+                <Link
+                  href={`/agents/${agent.id}/endpoints/new`}
+                  className={buttonVariants({ size: "sm" })}
+                >
+                  <Plus className="size-4" />
+                  Add endpoint
+                </Link>
+              )}
             </div>
 
             {isLoading ? (
@@ -141,6 +161,15 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                       setExpandedId((current) => (current === channel.id ? null : channel.id))
                     }
                     usePanel={<EndpointUsePanel channel={channel} />}
+                    configureHref={
+                      canManage ? `/agents/${agent.id}/endpoints/${channel.id}` : undefined
+                    }
+                    onPublishChange={
+                      canDangerous
+                        ? (publish) => publishEndpoint.mutate({ endpointId: channel.id, publish })
+                        : undefined
+                    }
+                    publishPending={publishEndpoint.isPending}
                   />
                 ))}
               </div>
@@ -163,6 +192,16 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     onToggle={() =>
                       setExpandedId((current) => (current === channel.id ? null : channel.id))
                     }
+                    configureHref={
+                      canManage ? `/agents/${agent.id}/endpoints/${channel.id}` : undefined
+                    }
+                    onPublishChange={
+                      canDangerous
+                        ? (publish) => publishEndpoint.mutate({ endpointId: channel.id, publish })
+                        : undefined
+                    }
+                    publishPending={publishEndpoint.isPending}
+                    onRunNow={canManage ? () => triggerEndpoint.mutate(channel.id) : undefined}
                   />
                 ))}
               </div>

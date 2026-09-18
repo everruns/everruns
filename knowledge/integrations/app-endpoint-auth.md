@@ -13,8 +13,8 @@ tags:
 Agent endpoints such as AG-UI and A2A need a shared authentication model so
 enterprise schemes can be added once instead of reimplemented per transport.
 Authentication configuration is endpoint-local. There is no required
-organization-level provider setup. Frozen endpoint configuration remains
-readable even though App management and its editor UI are retired.
+organization-level provider setup. Agent-owned endpoint APIs and editors
+manage the configuration; App management and App editor routes are retired.
 
 ## Goals
 
@@ -160,9 +160,10 @@ Webhook behavior:
   provider misconfiguration.
 
 ## UI
-
-Agent Integrations presents endpoint inventory as read-only. App and endpoint
-editor routes are retired.
+Agent Integrations presents endpoint inventory and Agent-owned create and
+configure flows for supported endpoint types. The inventory also exposes
+publish, unpublish, delete, and migrated schedule run-now controls. App editor
+routes are retired.
 
 ## Threat Model
 

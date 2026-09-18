@@ -18,16 +18,26 @@
 //! Run with: cargo test -p everruns-server --test agent_endpoints_migration_test -- --test-threads=1
 
 mod test_harness;
+use std::sync::Arc;
+
+use axum::{
+    Router,
+    body::Body,
+    http::{Method, Request, StatusCode},
+};
+use everruns_durable::InMemoryWorkflowEventStore;
 
 use everruns_platform::ChannelType;
 use everruns_provider::typed_id::PrincipalId;
-use everruns_server::api::app_ingress::{
-    LegacyEndpointMatch, endpoint_liveness, resolve_endpoint, resolve_legacy_endpoint,
-};
+use everruns_server::EventDelivery;
+use everruns_server::api;
 use everruns_server::storage::Database;
 use everruns_server::storage::StorageBackend;
+use everruns_worker::{RunnerBackend, create_runner_with_backend};
+use serde_json::{Value, json};
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use test_harness::get_database_url;
+use tower::ServiceExt;
 use uuid::Uuid;
 
 async fn pool() -> PgPool {
@@ -37,41 +47,69 @@ async fn pool() -> PgPool {
 }
 
 #[tokio::test]
-async fn ingress_resolution_works_with_apps_and_compatibility_view_unreadable() {
+async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable() {
     let pool = pool().await;
     let fixture = seed(&pool, "endpoint-no-app-reads", "published").await;
-    let channel_types = [
+    seed_ingress_endpoint(
+        &pool,
+        &fixture,
         ChannelType::AgUi,
-        ChannelType::Fcp,
-        ChannelType::A2a,
-        ChannelType::ApiEndpoint,
+        json!({"anonymous": true, "token": "expected"}),
+    )
+    .await;
+    seed_ingress_endpoint(
+        &pool,
+        &fixture,
         ChannelType::PublicChat,
+        json!({"anonymous": true, "token": "expected"}),
+    )
+    .await;
+    seed_ingress_endpoint(
+        &pool,
+        &fixture,
+        ChannelType::Fcp,
+        json!({"anonymous": false, "token": "expected"}),
+    )
+    .await;
+    let webhook_id = seed_ingress_endpoint(
+        &pool,
+        &fixture,
         ChannelType::Webhook,
+        json!({"token": "expected", "message": "{{body}}"}),
+    )
+    .await;
+    let a2a_id = seed_ingress_endpoint(
+        &pool,
+        &fixture,
+        ChannelType::A2a,
+        json!({
+            "api_key_hash": "never-matches",
+            "api_key_prefix": "evra2a_test...",
+            "message": "{{message}}"
+        }),
+    )
+    .await;
+    let api_id = seed_ingress_endpoint(
+        &pool,
+        &fixture,
+        ChannelType::ApiEndpoint,
+        json!({
+            "api_key_hash": "never-matches",
+            "api_key_prefix": "evr_app_test..."
+        }),
+    )
+    .await;
+    seed_ingress_endpoint(
+        &pool,
+        &fixture,
         ChannelType::Schedule,
-    ];
-    let mut endpoint_ids = vec![(ChannelType::Slack, fixture.endpoint_public_id.clone())];
-
-    for channel_type in channel_types {
-        let endpoint_public_id = format!("appchan_{}", hex32());
-        sqlx::query(
-            "INSERT INTO agent_endpoints (
-                 id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
-                 channel_config, enabled, status, agent_version_policy, owner_principal_id
-             )
-             VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb, true, 'live', 'default', $7)",
-        )
-        .bind(Uuid::now_v7())
-        .bind(fixture.agent_id)
-        .bind(fixture.app_id)
-        .bind(&fixture.app_public_id)
-        .bind(&endpoint_public_id)
-        .bind(channel_type.to_string())
-        .bind(fixture.owner_principal_id)
-        .execute(&pool)
-        .await
-        .expect("seed endpoint");
-        endpoint_ids.push((channel_type, endpoint_public_id));
-    }
+        json!({
+            "cron_expression": "0 * * * *",
+            "timezone": "UTC",
+            "message": "scheduled"
+        }),
+    )
+    .await;
 
     let role = format!("ingress_no_apps_{}", Uuid::new_v4().simple());
     let create_role = format!("CREATE ROLE {role} NOLOGIN");
@@ -81,7 +119,7 @@ async fn ingress_resolution_works_with_apps_and_compatibility_view_unreadable() 
         .expect("create restricted ingress role");
     let grants = format!(
         "GRANT USAGE ON SCHEMA public TO {role};
-         GRANT SELECT ON agents, agent_endpoints TO {role};"
+         GRANT SELECT ON agents, agent_endpoints, agent_triggers TO {role};"
     );
     sqlx::raw_sql(sqlx::AssertSqlSafe(grants.as_str()))
         .execute(&pool)
@@ -103,7 +141,9 @@ async fn ingress_resolution_works_with_apps_and_compatibility_view_unreadable() 
         .connect(&get_database_url())
         .await
         .expect("connect with restricted ingress role");
-    let restricted_db = StorageBackend::Postgres(Database::new(restricted_pool.clone()));
+    let restricted_db = Arc::new(StorageBackend::Postgres(Database::new(
+        restricted_pool.clone(),
+    )));
 
     assert!(
         sqlx::query("SELECT 1 FROM apps")
@@ -119,36 +159,279 @@ async fn ingress_resolution_works_with_apps_and_compatibility_view_unreadable() 
             .is_err(),
         "the regression role must not be able to read app_channels"
     );
+    let router = ingress_router(restricted_db).await;
+    let app_id = &fixture.app_public_id;
 
-    for (channel_type, endpoint_public_id) in endpoint_ids {
-        let (context, endpoint) = resolve_endpoint(&restricted_db, None, &endpoint_public_id)
-            .await
-            .expect("resolve endpoint without App reads")
-            .expect("endpoint exists");
-        assert_eq!(endpoint.channel_type, channel_type);
-        assert_eq!(context.public_id.to_string(), fixture.app_public_id);
-        endpoint_liveness(&context, &endpoint).expect("endpoint is live");
-
-        match resolve_legacy_endpoint(&restricted_db, None, &fixture.app_public_id, channel_type)
-            .await
-            .expect("resolve legacy alias without App reads")
-        {
-            LegacyEndpointMatch::One(endpoint) => {
-                let (legacy_context, legacy_endpoint) = *endpoint;
-                assert_eq!(legacy_context.public_id.to_string(), fixture.app_public_id);
-                assert_eq!(legacy_endpoint.public_id.to_string(), endpoint_public_id);
-            }
-            LegacyEndpointMatch::NotFound => panic!("legacy endpoint was not found"),
-            LegacyEndpointMatch::Ambiguous => panic!("legacy endpoint resolution was ambiguous"),
-        }
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/ag-ui"),
+        &[("content-type", "application/json")],
+        br#"{}"#,
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/ag-ui/images"),
+        &[("content-type", "multipart/form-data; boundary=empty")],
+        b"--empty--\r\n",
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::GET,
+        &format!("/v1/apps/{app_id}/public-chat/config"),
+        &[],
+        b"",
+        StatusCode::OK,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/public-chat"),
+        &[("content-type", "application/json")],
+        br#"{}"#,
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::GET,
+        &format!("/v1/apps/{app_id}/fcp"),
+        &[],
+        b"",
+        StatusCode::OK,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/fcp"),
+        &[("content-type", "text/plain")],
+        b"hello",
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::GET,
+        &format!("/v1/apps/{app_id}/slack/manifest"),
+        &[],
+        b"",
+        StatusCode::OK,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/slack/events"),
+        &[("content-type", "application/json")],
+        br#"{}"#,
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/slack/interactivity"),
+        &[("content-type", "application/x-www-form-urlencoded")],
+        b"payload=%7B%7D",
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/webhooks/{webhook_id}"),
+        &[("content-type", "application/json")],
+        br#"{}"#,
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::GET,
+        &format!("/v1/apps/{app_id}/a2a/{a2a_id}/.well-known/agent-card.json"),
+        &[],
+        b"",
+        StatusCode::OK,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/a2a/{a2a_id}"),
+        &[("content-type", "application/json")],
+        br#"{"jsonrpc":"2.0","id":1,"method":"message/send","params":{}}"#,
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    for (method, suffix) in [
+        (Method::POST, "sessions"),
+        (Method::GET, "sessions/ses_missing"),
+        (Method::POST, "sessions/ses_missing/messages"),
+        (Method::POST, "sessions/ses_missing/cancel"),
+    ] {
+        assert_route_status(
+            &router,
+            method,
+            &format!("/v1/apps/{app_id}/api/{api_id}/{suffix}"),
+            &[("content-type", "application/json")],
+            br#"{"message":"hello"}"#,
+            StatusCode::UNAUTHORIZED,
+        )
+        .await;
     }
 
     restricted_pool.close().await;
-    let drop_role = format!("DROP ROLE {role}");
-    sqlx::query(sqlx::AssertSqlSafe(drop_role.as_str()))
+    let drop_role = format!(
+        "REVOKE ALL PRIVILEGES ON SCHEMA public FROM {role};
+         REVOKE ALL PRIVILEGES ON agents, agent_endpoints, agent_triggers FROM {role};
+         DROP ROLE {role};"
+    );
+    sqlx::raw_sql(sqlx::AssertSqlSafe(drop_role.as_str()))
         .execute(&pool)
         .await
         .expect("drop restricted ingress role");
+}
+
+async fn seed_ingress_endpoint(
+    pool: &PgPool,
+    fixture: &Fixture,
+    channel_type: ChannelType,
+    channel_config: Value,
+) -> String {
+    let endpoint_public_id = format!("appchan_{}", hex32());
+    sqlx::query(
+        "INSERT INTO agent_endpoints (
+             id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
+             channel_config, enabled, status, agent_version_policy, owner_principal_id
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, true, 'live', 'default', $8)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(fixture.agent_id)
+    .bind(fixture.app_id)
+    .bind(&fixture.app_public_id)
+    .bind(&endpoint_public_id)
+    .bind(channel_type.to_string())
+    .bind(channel_config)
+    .bind(fixture.owner_principal_id)
+    .execute(pool)
+    .await
+    .expect("seed ingress endpoint");
+    endpoint_public_id
+}
+
+async fn ingress_router(db: Arc<StorageBackend>) -> Router {
+    let runner = create_runner_with_backend(RunnerBackend::SharedInMemory(Arc::new(
+        InMemoryWorkflowEventStore::new(),
+    )))
+    .await
+    .expect("create ingress test runner");
+    let event_delivery = EventDelivery::in_memory();
+    let sse_tracker = Arc::new(api::sse::SseConnectionTracker::new(
+        api::sse::SseConnectionLimits::default(),
+    ));
+    let ag_ui_state = api::ag_ui::AgUiState::new(
+        db.clone(),
+        None,
+        runner.clone(),
+        false,
+        event_delivery.clone(),
+        sse_tracker.clone(),
+        api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-ag-ui"),
+    );
+    let public_chat_state = api::ag_ui::AgUiState::new(
+        db.clone(),
+        None,
+        runner.clone(),
+        false,
+        event_delivery.clone(),
+        sse_tracker.clone(),
+        api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-public-chat"),
+    )
+    .with_public_chat_enabled(true);
+    let fcp_state = api::fcp::FcpState::new(
+        db.clone(),
+        None,
+        runner.clone(),
+        false,
+        event_delivery.clone(),
+        api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-fcp"),
+    );
+    let slack_state = api::slack_events::SlackState::new(
+        db.clone(),
+        None,
+        runner.clone(),
+        None,
+        false,
+        event_delivery.clone(),
+        "https://example.com/api".to_string(),
+    );
+    let webhook_state = api::app_webhooks::AppWebhookState::new(
+        db.clone(),
+        None,
+        runner.clone(),
+        false,
+        event_delivery.clone(),
+        api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-webhook"),
+    );
+    let a2a_state = api::app_a2a::AppA2aState::new(
+        db.clone(),
+        None,
+        runner.clone(),
+        false,
+        event_delivery.clone(),
+        sse_tracker,
+        api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-a2a"),
+        api::a2a_signing::A2aReplayStore::in_memory(),
+    );
+    let api_state = api::app_api::AppApiState::new(
+        db,
+        None,
+        runner,
+        false,
+        event_delivery,
+        api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-api"),
+    );
+
+    Router::new()
+        .merge(api::ag_ui::routes(ag_ui_state))
+        .merge(api::public_chat::routes(public_chat_state))
+        .merge(api::fcp::routes(fcp_state))
+        .merge(api::slack_events::routes(slack_state))
+        .merge(api::app_webhooks::routes(webhook_state))
+        .merge(api::app_a2a::routes(a2a_state))
+        .merge(api::app_api::routes(api_state))
+}
+
+async fn assert_route_status(
+    router: &Router,
+    method: Method,
+    uri: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+    expected: StatusCode,
+) {
+    let mut request = Request::builder().method(method).uri(uri);
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    let response = router
+        .clone()
+        .oneshot(
+            request
+                .body(Body::from(body.to_vec()))
+                .expect("build ingress request"),
+        )
+        .await
+        .expect("run ingress request");
+    assert_eq!(response.status(), expected, "{uri}");
 }
 
 /// One isolated org + agent + app + endpoint + owner principal, seeded directly
@@ -159,7 +442,6 @@ struct Fixture {
     app_public_id: String,
     agent_id: Uuid,
     endpoint_id: Uuid,
-    endpoint_public_id: String,
     owner_principal_id: Uuid,
     workspace_id: Uuid,
 }
@@ -263,7 +545,6 @@ async fn seed(pool: &PgPool, org_name: &str, app_status: &str) -> Fixture {
         app_public_id,
         agent_id,
         endpoint_id,
-        endpoint_public_id,
         owner_principal_id,
         workspace_id,
     }

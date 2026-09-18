@@ -1,8 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
-import { useApps } from "./use-apps";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  createAgentEndpoint,
+  deleteAgentEndpoint,
+  listAgentEndpoints,
+  publishAgentEndpoint,
+  triggerAgentEndpoint,
+  unpublishAgentEndpoint,
+  updateAgentEndpoint,
+  type CreateAgentEndpointRequest,
+  type UpdateAgentEndpointRequest,
+} from "@/lib/api/agent-endpoints";
 import type { AppChannel } from "@/lib/api/types";
+import { queryKeys } from "@/lib/query-keys";
 
 export interface AgentEndpoint {
   channel: AppChannel;
@@ -19,14 +30,59 @@ export function isTriggerChannel(channel: AppChannel): boolean {
 }
 
 export function useAgentEndpoints(agentId: string | undefined) {
-  const { data: apps, isLoading, error } = useApps();
+  const query = useQuery({
+    queryKey: queryKeys.agentEndpoints.list(agentId ?? ""),
+    queryFn: () => listAgentEndpoints(agentId as string),
+    enabled: !!agentId,
+  });
+  return {
+    ...query,
+    endpoints: (query.data ?? []).map((channel) => ({ channel })),
+  };
+}
 
-  const endpoints = useMemo<AgentEndpoint[]>(() => {
-    if (!agentId || !apps) return [];
-    return apps
-      .filter((app) => app.agent_id === agentId)
-      .flatMap((app) => app.channels.map((channel) => ({ channel })));
-  }, [agentId, apps]);
+function useEndpointMutation<TVariables, TResult>(
+  agentId: string,
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agentEndpoints.all(agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
+    },
+  });
+}
 
-  return { endpoints, isLoading, error };
+export function useCreateAgentEndpoint(agentId: string) {
+  return useEndpointMutation(agentId, (request: CreateAgentEndpointRequest) =>
+    createAgentEndpoint(agentId, request),
+  );
+}
+
+export function useUpdateAgentEndpoint(agentId: string, endpointId: string) {
+  return useEndpointMutation(agentId, (request: UpdateAgentEndpointRequest) =>
+    updateAgentEndpoint(agentId, endpointId, request),
+  );
+}
+
+export function useDeleteAgentEndpoint(agentId: string, endpointId: string) {
+  return useEndpointMutation(agentId, () => deleteAgentEndpoint(agentId, endpointId));
+}
+
+export function usePublishAgentEndpoint(agentId: string) {
+  return useEndpointMutation(
+    agentId,
+    ({ endpointId, publish }: { endpointId: string; publish: boolean }) =>
+      publish
+        ? publishAgentEndpoint(agentId, endpointId)
+        : unpublishAgentEndpoint(agentId, endpointId),
+  );
+}
+
+export function useTriggerAgentEndpoint(agentId: string) {
+  return useEndpointMutation(agentId, (endpointId: string) =>
+    triggerAgentEndpoint(agentId, endpointId),
+  );
 }

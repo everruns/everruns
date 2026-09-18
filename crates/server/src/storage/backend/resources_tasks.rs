@@ -690,6 +690,57 @@ impl StorageBackend {
         dispatch!(self, get_ingress_endpoint_by_public_id, public_id)
     }
 
+    pub async fn list_agent_endpoints(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+    ) -> Result<Vec<IngressEndpointRow>> {
+        dispatch!(self, list_agent_endpoints, org_id, agent_id)
+    }
+
+    pub async fn get_agent_endpoint(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        public_id: &str,
+    ) -> Result<Option<IngressEndpointRow>> {
+        dispatch!(self, get_agent_endpoint, org_id, agent_id, public_id)
+    }
+
+    pub async fn create_agent_endpoint(
+        &self,
+        org_id: i64,
+        input: CreateAgentEndpointRow,
+    ) -> Result<IngressEndpointRow> {
+        dispatch!(self, create_agent_endpoint, org_id, input)
+    }
+
+    pub async fn update_agent_endpoint(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        public_id: &str,
+        input: UpdateAgentEndpointRow,
+    ) -> Result<Option<IngressEndpointRow>> {
+        dispatch!(
+            self,
+            update_agent_endpoint,
+            org_id,
+            agent_id,
+            public_id,
+            input
+        )
+    }
+
+    pub async fn delete_agent_endpoint(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        public_id: &str,
+    ) -> Result<bool> {
+        dispatch!(self, delete_agent_endpoint, org_id, agent_id, public_id)
+    }
+
     pub async fn list_ingress_endpoints_by_legacy_alias(
         &self,
         legacy_app_public_id: &str,

@@ -291,15 +291,22 @@ async fn find_or_create_invocation_session(
 ) -> Result<(SessionId, bool), CommandError> {
     let shared_tags = app_session_tags(app, channel);
     if session_mode == SessionBinding::Endpoint
-        && let Some(existing) = db
-            .find_app_session_by_tags_and_owner(
-                app.org_id,
-                app.internal_id,
-                app.owner_principal_id,
-                &shared_tags,
-            )
-            .await
-            .map_err(classify_anyhow)?
+        && let Some(existing) = match app.historical_app_id {
+            Some(app_id) => {
+                db.find_app_session_by_tags_and_owner(
+                    app.org_id,
+                    app_id,
+                    app.owner_principal_id,
+                    &shared_tags,
+                )
+                .await
+            }
+            None => {
+                db.find_session_by_tags_and_owner(app.org_id, app.owner_principal_id, &shared_tags)
+                    .await
+            }
+        }
+        .map_err(classify_anyhow)?
     {
         return Ok((existing.id, false));
     }
@@ -321,7 +328,9 @@ async fn find_or_create_invocation_session(
             app.harness_id.uuid(),
             app.agent_id.map(|agent_id| agent_id.uuid()),
             app.agent_id,
-            app.internal_id,
+            app.historical_app_id,
+            app.agent_version_policy.clone(),
+            app.agent_version_id,
             Some(channel.internal_id),
             // Pass the App's owner so the resulting session matches the
             // owner-keyed lookup in `find_app_session_by_tags_and_owner` —
@@ -555,6 +564,32 @@ pub async fn invoke_scheduled_app_channel(
     if !app.matches_legacy_app_id(app_id) {
         return Err(CommandError::not_found("Endpoint"));
     }
+    invoke_scheduled_endpoint_inner(db, session_service, message_service, app, channel).await
+}
+
+pub async fn invoke_scheduled_agent_endpoint(
+    db: &Arc<crate::storage::StorageBackend>,
+    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
+    session_service: &SessionService,
+    message_service: &MessageService,
+    org_id: i64,
+    channel_id: &str,
+) -> Result<AppInvocationResult, CommandError> {
+    let (app, channel) = crate::api::app_ingress::resolve_endpoint(db, encryption, channel_id)
+        .await
+        .map_err(classify_anyhow)?
+        .filter(|(context, _)| context.org_id == org_id)
+        .ok_or_else(|| CommandError::not_found("Endpoint"))?;
+    invoke_scheduled_endpoint_inner(db, session_service, message_service, app, channel).await
+}
+
+async fn invoke_scheduled_endpoint_inner(
+    db: &Arc<crate::storage::StorageBackend>,
+    session_service: &SessionService,
+    message_service: &MessageService,
+    app: crate::api::app_ingress::IngressContext,
+    channel: crate::api::app_ingress::IngressEndpoint,
+) -> Result<AppInvocationResult, CommandError> {
     let config = channel
         .schedule_config()
         .ok_or_else(|| CommandError::bad_request("Invalid schedule channel configuration"))?;

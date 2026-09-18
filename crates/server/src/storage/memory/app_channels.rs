@@ -3,7 +3,7 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use crate::errors::BadRequestError;
-use crate::storage::IngressEndpointRow;
+use crate::storage::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
 use anyhow::Result;
 use uuid::Uuid;
 
@@ -213,7 +213,7 @@ impl InMemoryDatabase {
             .read()
             .values()
             .filter(|endpoint| {
-                endpoint.legacy_app_public_id == legacy_app_public_id
+                endpoint.legacy_app_public_id.as_deref() == Some(legacy_app_public_id)
                     && endpoint.channel_type == channel_type
                     && endpoint.enabled
             })
@@ -221,6 +221,158 @@ impl InMemoryDatabase {
             .collect();
         endpoints.sort_by_key(|endpoint| (endpoint.created_at, endpoint.endpoint_id));
         Ok(endpoints)
+    }
+
+    pub async fn list_agent_endpoints(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+    ) -> Result<Vec<IngressEndpointRow>> {
+        let mut endpoints: Vec<_> = self
+            .ingress_endpoints
+            .read()
+            .values()
+            .filter(|endpoint| endpoint.org_id == org_id && endpoint.agent_id == agent_id)
+            .cloned()
+            .collect();
+        endpoints.sort_by_key(|endpoint| (endpoint.created_at, endpoint.endpoint_id));
+        Ok(endpoints)
+    }
+
+    pub async fn get_agent_endpoint(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        public_id: &str,
+    ) -> Result<Option<IngressEndpointRow>> {
+        Ok(self
+            .ingress_endpoints
+            .read()
+            .values()
+            .find(|endpoint| {
+                endpoint.org_id == org_id
+                    && endpoint.agent_id == agent_id
+                    && endpoint.endpoint_public_id == public_id
+            })
+            .cloned())
+    }
+
+    pub async fn create_agent_endpoint(
+        &self,
+        org_id: i64,
+        input: CreateAgentEndpointRow,
+    ) -> Result<IngressEndpointRow> {
+        let agent = self
+            .agents
+            .read()
+            .values()
+            .find(|agent| {
+                agent.org_id == org_id
+                    && agent.id.uuid() == input.agent_id
+                    && agent.status == "active"
+            })
+            .cloned()
+            .ok_or_else(|| BadRequestError::new("Agent was not found or is not active"))?;
+        let now = Self::now();
+        let endpoint_id = Uuid::now_v7();
+        let row = IngressEndpointRow {
+            endpoint_id,
+            endpoint_public_id: input.public_id,
+            legacy_app_id: None,
+            legacy_app_public_id: None,
+            org_id,
+            agent_id: input.agent_id,
+            agent_public_id: agent.public_id,
+            agent_name: agent.display_name.unwrap_or(agent.name),
+            agent_description: agent.description,
+            harness_id: agent.harness_id.uuid(),
+            agent_status: agent.status,
+            exposures_suspended: agent.exposures_suspended,
+            agent_identity_id: input.agent_identity_id,
+            agent_version_policy: input.agent_version_policy,
+            agent_version_id: input.agent_version_id,
+            owner_principal_id: input.owner_principal_id,
+            resolved_owner_user_id: input.resolved_owner_user_id,
+            channel_type: input.channel_type,
+            channel_config: input.channel_config,
+            channel_config_encrypted: input.channel_config_encrypted,
+            auth: input.auth,
+            auth_encrypted: input.auth_encrypted,
+            enabled: input.enabled,
+            endpoint_status: input.status,
+            created_at: now,
+            updated_at: now,
+        };
+        self.ingress_endpoints
+            .write()
+            .insert(endpoint_id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn update_agent_endpoint(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        public_id: &str,
+        input: UpdateAgentEndpointRow,
+    ) -> Result<Option<IngressEndpointRow>> {
+        let mut endpoints = self.ingress_endpoints.write();
+        let Some(endpoint) = endpoints.values_mut().find(|endpoint| {
+            endpoint.org_id == org_id
+                && endpoint.agent_id == agent_id
+                && endpoint.endpoint_public_id == public_id
+        }) else {
+            return Ok(None);
+        };
+        if let Some(channel_type) = input.channel_type {
+            endpoint.channel_type = channel_type;
+        }
+        if let Some(channel_config) = input.channel_config {
+            endpoint.channel_config = channel_config;
+        }
+        input
+            .channel_config_encrypted
+            .apply(&mut endpoint.channel_config_encrypted);
+        input.auth.apply(&mut endpoint.auth);
+        input.auth_encrypted.apply(&mut endpoint.auth_encrypted);
+        if let Some(enabled) = input.enabled {
+            endpoint.enabled = enabled;
+        }
+        if let Some(status) = input.status {
+            endpoint.endpoint_status = status;
+        }
+        endpoint.updated_at = Self::now();
+        Ok(Some(endpoint.clone()))
+    }
+
+    pub async fn delete_agent_endpoint(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        public_id: &str,
+    ) -> Result<bool> {
+        let mut endpoints = self.ingress_endpoints.write();
+        let Some(id) = endpoints
+            .values()
+            .find(|endpoint| {
+                endpoint.org_id == org_id
+                    && endpoint.agent_id == agent_id
+                    && endpoint.endpoint_public_id == public_id
+            })
+            .map(|endpoint| endpoint.endpoint_id)
+        else {
+            return Ok(false);
+        };
+        if let Some(endpoint) = endpoints.get_mut(&id)
+            && endpoint.legacy_app_id.is_some()
+        {
+            endpoint.enabled = false;
+            endpoint.endpoint_status = "disabled".to_string();
+            endpoint.updated_at = Self::now();
+        } else {
+            endpoints.remove(&id);
+        }
+        Ok(true)
     }
 
     fn ingress_endpoint_row(&self, channel: AppChannelRow) -> Option<IngressEndpointRow> {
@@ -235,8 +387,8 @@ impl InMemoryDatabase {
         Some(IngressEndpointRow {
             endpoint_id: channel.id,
             endpoint_public_id: channel.public_id,
-            legacy_app_id: app.id,
-            legacy_app_public_id: app.public_id,
+            legacy_app_id: Some(app.id),
+            legacy_app_public_id: Some(app.public_id),
             org_id: app.org_id,
             agent_id,
             agent_public_id: agent.public_id,

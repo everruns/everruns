@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use everruns_platform::app::{ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_platform::{
-    A2aChannelConfig, AgUiChannelConfig, AgentVersionPolicy, ApiEndpointChannelConfig,
+    A2aChannelConfig, AgUiChannelConfig, AgentVersionPolicy, ApiEndpointChannelConfig, AppChannel,
     AppEndpointAuthConfig, ChannelType, EndpointStatus, FcpChannelConfig, PublicChatChannelConfig,
     SlackChannelConfig,
 };
@@ -17,6 +17,8 @@ use crate::storage::{EncryptionService, IngressEndpointRow, StorageBackend};
 pub struct IngressContext {
     pub public_id: AppId,
     pub internal_id: Uuid,
+    pub historical_app_id: Option<Uuid>,
+    legacy_app_public_id: Option<String>,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
@@ -34,7 +36,7 @@ pub struct IngressContext {
 
 impl IngressContext {
     pub fn matches_legacy_app_id(&self, legacy_app_id: &str) -> bool {
-        self.public_id.to_string() == legacy_app_id
+        self.legacy_app_public_id.as_deref() == Some(legacy_app_id)
     }
 }
 
@@ -44,6 +46,8 @@ impl IngressContext {
         Self {
             public_id: AppId::from_seed(1),
             internal_id: Uuid::nil(),
+            historical_app_id: Some(Uuid::nil()),
+            legacy_app_public_id: Some(AppId::from_seed(1).to_string()),
             org_id: 1,
             name: name.to_string(),
             description: description.map(str::to_string),
@@ -70,9 +74,24 @@ pub struct IngressEndpoint {
     pub auth: Option<Box<AppEndpointAuthConfig>>,
     pub enabled: bool,
     pub status: EndpointStatus,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl IngressEndpoint {
+    pub fn into_channel(self) -> AppChannel {
+        AppChannel {
+            public_id: self.public_id,
+            internal_id: self.internal_id,
+            channel_type: self.channel_type,
+            channel_config: self.channel_config,
+            enabled: self.enabled,
+            status: self.status,
+            auth: self.auth,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        }
+    }
     pub fn slack_config(&self) -> Option<SlackChannelConfig> {
         self.config(ChannelType::Slack)
     }
@@ -143,11 +162,11 @@ pub async fn resolve_legacy_endpoint(
     Ok(LegacyEndpointMatch::One(Box::new(endpoint?)))
 }
 
-fn row_to_ingress(
+pub(crate) fn row_to_ingress(
     encryption: Option<&Arc<EncryptionService>>,
     row: IngressEndpointRow,
 ) -> anyhow::Result<(IngressContext, IngressEndpoint)> {
-    let public_id = row
+    let endpoint_public_id = row
         .endpoint_public_id
         .parse()
         .unwrap_or_else(|_| AppChannelId::from_uuid(row.endpoint_id));
@@ -170,9 +189,16 @@ fn row_to_ingress(
     } else {
         legacy_auth.map(endpoint_auth_fail_closed)
     };
+    let app_public_id = row
+        .legacy_app_public_id
+        .as_deref()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or_else(|| AppId::from_uuid(row.endpoint_id));
     let context = IngressContext {
-        public_id: row.legacy_app_public_id.parse()?,
-        internal_id: row.legacy_app_id,
+        public_id: app_public_id,
+        internal_id: row.legacy_app_id.unwrap_or(row.endpoint_id),
+        historical_app_id: row.legacy_app_id,
+        legacy_app_public_id: row.legacy_app_public_id,
         org_id: row.org_id,
         name: row.agent_name,
         description: row.agent_description,
@@ -188,13 +214,15 @@ fn row_to_ingress(
         exposures_suspended: row.exposures_suspended,
     };
     let endpoint = IngressEndpoint {
-        public_id,
+        public_id: endpoint_public_id,
         internal_id: row.endpoint_id,
         channel_type: ChannelType::from_str_opt(&row.channel_type).unwrap_or(ChannelType::Slack),
         channel_config,
         auth,
         enabled: row.enabled,
         status: EndpointStatus::from(row.endpoint_status.as_str()),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
     };
     Ok((context, endpoint))
 }

@@ -8,15 +8,15 @@ FROM apps AS app
 WHERE app.id = endpoint.app_id;
 
 ALTER TABLE agent_endpoints
-    ALTER COLUMN legacy_app_public_id SET NOT NULL;
+    ALTER COLUMN app_id DROP NOT NULL;
 
 CREATE INDEX idx_agent_endpoints_legacy_app_channel_type
     ON agent_endpoints (legacy_app_public_id, channel_type);
 
 COMMENT ON COLUMN agent_endpoints.app_id IS
-    'Archival foreign key to the App that created this endpoint. Traffic resolution does not read apps.';
+    'Optional archival foreign key to the App that created this endpoint. Native Agent endpoints leave it null.';
 COMMENT ON COLUMN agent_endpoints.legacy_app_public_id IS
-    'Immutable alias identity for permanent /v1/apps/{app_id}/... ingress routes.';
+    'Immutable alias identity for permanent /v1/apps/{app_id}/... ingress routes. Native Agent endpoints leave it null.';
 COMMENT ON COLUMN sessions.app_id IS
     'Archival provenance for sessions created through the retired App model. endpoint_id is the live ingress pointer.';
 

@@ -1403,7 +1403,9 @@ async fn find_or_create_trigger_session(
                 execution_context.harness_id.uuid(),
                 Some(agent.id.uuid()),
                 Some(agent.id),
-                app_id,
+                Some(app_id),
+                everruns_platform::AgentVersionPolicy::Default,
+                None,
                 // Migrated App schedules (migration 106) kept
                 // `execution_app_id` but never an endpoint pointer, so there
                 // is nothing structural to record here.

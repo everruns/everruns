@@ -220,6 +220,86 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/endpoints": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_agent_endpoints"];
+    put?: never;
+    post: operations["create_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/endpoints/{endpoint_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["get_agent_endpoint"];
+    put?: never;
+    post?: never;
+    delete: operations["delete_agent_endpoint"];
+    options?: never;
+    head?: never;
+    patch: operations["update_agent_endpoint"];
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["publish_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["trigger_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["unpublish_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/export": {
     parameters: {
       query?: never;
@@ -6118,6 +6198,11 @@ export interface components {
        * @example visti_send
        */
       tool_name: string;
+    };
+    CreateAgentEndpointRequest: {
+      channel_config?: unknown;
+      channel_type: components["schemas"]["ChannelType"];
+      enabled?: boolean;
     };
     /** @description Request to create a new agent */
     CreateAgentRequest: {
@@ -16808,6 +16893,10 @@ export interface components {
       /** @description The tool name, if known. */
       tool_name?: string | null;
     };
+    TriggerAgentEndpointOutput: {
+      created_session: boolean;
+      session_id: components["schemas"]["sessionId"];
+    };
     TriggerAgentTriggerOutput: {
       created_session: boolean;
       /** @description Session's prefixed public identifier. */
@@ -16975,6 +17064,10 @@ export interface components {
      * @enum {string}
      */
     TurnWaitStatus: "completed" | "failed" | "timeout";
+    UpdateAgentEndpointRequest: {
+      channel_config?: unknown;
+      enabled?: boolean | null;
+    };
     /** @description Request to update an agent. Only provided fields will be updated. */
     UpdateAgentRequest: {
       /**
@@ -20447,6 +20540,307 @@ export interface operations {
         content?: never;
       };
       /** @description Credential binding not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_endpoints: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent endpoints */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"][];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  create_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAgentEndpointRequest"];
+      };
+    };
+    responses: {
+      /** @description Endpoint created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Invalid endpoint */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent endpoint */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  delete_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint deleted */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateAgentEndpointRequest"];
+      };
+    };
+    responses: {
+      /** @description Endpoint updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Invalid endpoint */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  publish_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint published */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  trigger_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint triggered */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TriggerAgentEndpointOutput"];
+        };
+      };
+      /** @description Endpoint cannot run */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  unpublish_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint unpublished */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Endpoint not found */
       404: {
         headers: {
           [name: string]: unknown;

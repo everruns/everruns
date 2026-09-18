@@ -640,6 +640,235 @@
     ]
   },
   {
+    "wire_name": "create_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "create",
+    "description": "Create an ingress endpoint for an agent.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/endpoints",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "channel_config",
+        "long": "channel-config",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "channel_type",
+        "long": "channel-type",
+        "kind": "string",
+        "required": true,
+        "help": "Supported channel types for app distribution.",
+        "choices": [
+          "slack",
+          "ag_ui",
+          "schedule",
+          "webhook",
+          "a2a",
+          "fcp",
+          "api_endpoint",
+          "public_chat"
+        ]
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "delete",
+    "description": "Delete an agent ingress endpoint.",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "get",
+    "description": "Get an agent ingress endpoint.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_endpoints",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "list",
+    "description": "List an agent's ingress endpoints.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/endpoints",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "publish_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "publish",
+    "description": "Publish an agent ingress endpoint.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "trigger_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "trigger",
+    "description": "Run an agent schedule endpoint now.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "unpublish_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "unpublish",
+    "description": "Unpublish an agent ingress endpoint.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "update_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "update",
+    "description": "Update an agent ingress endpoint.",
+    "method": "PATCH",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "channel_config",
+        "long": "channel-config",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
     "wire_name": "export_agent",
     "path": [
       "agents"
@@ -1907,33 +2136,6 @@
       {
         "intent": "Point new sessions at a different version",
         "command": "everruns agents versions set-default --agent agt_01h9 --version-id ver_01h9"
-      }
-    ]
-  },
-  {
-    "wire_name": "list_app_budgets",
-    "path": [
-      "apps",
-      "budgets"
-    ],
-    "verb": "list",
-    "description": "List budgets attached to an app and (optionally) its channels.",
-    "method": "GET",
-    "http_path": "/v1/apps/{app_id}/budgets",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "include_channels",
-        "long": "include-channels",
-        "kind": "boolean",
-        "required": false,
-        "help": "When true include budgets attached to any of the app's channels (`app_channel:<id>`) in addit..."
       }
     ]
   },

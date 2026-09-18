@@ -874,6 +874,428 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/endpoints": {
+      "get": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "operationId": "list_agent_endpoints",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent endpoints",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppChannel"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "operationId": "create_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentEndpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Endpoint created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid endpoint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/endpoints/{endpoint_id}": {
+      "get": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "operationId": "get_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent endpoint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "operationId": "delete_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Endpoint deleted"
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "operationId": "update_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentEndpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Endpoint updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid endpoint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish": {
+      "post": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "operationId": "publish_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Endpoint published",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger": {
+      "post": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "operationId": "trigger_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Endpoint triggered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerAgentEndpointOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Endpoint cannot run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish": {
+      "post": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "operationId": "unpublish_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Endpoint unpublished",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/export": {
       "get": {
         "tags": [
@@ -19831,6 +20253,21 @@
           }
         }
       },
+      "CreateAgentEndpointRequest": {
+        "type": "object",
+        "required": [
+          "channel_type"
+        ],
+        "properties": {
+          "channel_config": {},
+          "channel_type": {
+            "$ref": "#/components/schemas/ChannelType"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
       "CreateAgentRequest": {
         "type": "object",
         "description": "Request to create a new agent",
@@ -38459,6 +38896,21 @@
           }
         }
       },
+      "TriggerAgentEndpointOutput": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "created_session"
+        ],
+        "properties": {
+          "created_session": {
+            "type": "boolean"
+          },
+          "session_id": {
+            "$ref": "#/components/schemas/sessionId"
+          }
+        }
+      },
       "TriggerAgentTriggerOutput": {
         "type": "object",
         "required": [
@@ -38796,6 +39248,18 @@
           "timeout"
         ],
         "example": "completed"
+      },
+      "UpdateAgentEndpointRequest": {
+        "type": "object",
+        "properties": {
+          "channel_config": {},
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
       },
       "UpdateAgentRequest": {
         "type": "object",

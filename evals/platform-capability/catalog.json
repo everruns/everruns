@@ -1848,6 +1848,67 @@
     "read_only": false
   },
   {
+    "category": "agent_endpoints",
+    "cli": null,
+    "description": "Create an ingress endpoint for an agent.",
+    "input_schema": {
+      "$defs": {
+        "ChannelType": {
+          "description": "Supported channel types for app distribution.",
+          "enum": [
+            "slack",
+            "ag_ui",
+            "schedule",
+            "webhook",
+            "a2a",
+            "fcp",
+            "api_endpoint",
+            "public_chat"
+          ],
+          "example": "webhook",
+          "type": "string"
+        },
+        "CreateAgentEndpointRequest": {
+          "properties": {
+            "channel_config": {},
+            "channel_type": {
+              "$ref": "#/$defs/ChannelType"
+            },
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "channel_type"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CreateAgentEndpointRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "create_agent_endpoint",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/endpoints",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agent_identities",
     "cli": null,
     "description": "Create a new agent identity (virtual principal for unattended execution).",
@@ -6775,6 +6836,32 @@
     "read_only": false
   },
   {
+    "category": "agent_endpoints",
+    "cli": null,
+    "description": "Delete an agent ingress endpoint.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "endpoint_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "endpoint_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "delete_agent_endpoint",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agent_identities",
     "cli": null,
     "description": "Archive an agent identity (soft delete). Can be restored.",
@@ -8329,6 +8416,32 @@
     "output_shape": "unknown",
     "path": "/v1/agents/{id}",
     "positional_arg": "id",
+    "read_only": true
+  },
+  {
+    "category": "agent_endpoints",
+    "cli": null,
+    "description": "Get an agent ingress endpoint.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "endpoint_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "endpoint_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_agent_endpoint",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "positional_arg": null,
     "read_only": true
   },
   {
@@ -10727,6 +10840,28 @@
     "read_only": true
   },
   {
+    "category": "agent_endpoints",
+    "cli": null,
+    "description": "List an agent's ingress endpoints.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_endpoints",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/endpoints",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "agents",
     "cli": null,
     "description": "List recent health check runs for an agent.",
@@ -10892,33 +11027,6 @@
     "output_shape": "paginated",
     "path": "/v1/agents",
     "positional_arg": null,
-    "read_only": true
-  },
-  {
-    "category": "budgets",
-    "cli": null,
-    "description": "List budgets attached to an app and (optionally) its channels.",
-    "input_schema": {
-      "properties": {
-        "app_id": {
-          "description": "App's prefixed public identifier.",
-          "type": "string"
-        },
-        "include_channels": {
-          "description": "When true include budgets attached to any of the app's channels\n(`app_channel:<id>`) in addition to the app itself.",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "app_id"
-      ],
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "list_app_budgets",
-    "output_shape": "unknown",
-    "path": "/v1/apps/{app_id}/budgets",
-    "positional_arg": "app_id",
     "read_only": true
   },
   {
@@ -13589,6 +13697,32 @@
     "read_only": true
   },
   {
+    "category": "agent_endpoints",
+    "cli": null,
+    "description": "Publish an agent ingress endpoint.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "endpoint_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "endpoint_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "publish_agent_endpoint",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "organizations",
     "cli": "orgs resolve",
     "description": "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
@@ -14330,6 +14464,32 @@
     "read_only": false
   },
   {
+    "category": "agent_endpoints",
+    "cli": null,
+    "description": "Run an agent schedule endpoint now.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "endpoint_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "endpoint_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "trigger_agent_endpoint",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agents",
     "cli": null,
     "description": "Run a behavioral health check (generated smoke tests) against an agent.",
@@ -14470,6 +14630,32 @@
     "name": "unpin_session",
     "output_shape": "unknown",
     "path": "/v1/sessions/{session_id}/pin",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agent_endpoints",
+    "cli": null,
+    "description": "Unpublish an agent ingress endpoint.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "endpoint_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "endpoint_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "unpublish_agent_endpoint",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish",
     "positional_arg": null,
     "read_only": false
   },
@@ -15242,6 +15428,53 @@
     "output_shape": "unknown",
     "path": "/v1/agents/{id}",
     "positional_arg": "id",
+    "read_only": false
+  },
+  {
+    "category": "agent_endpoints",
+    "cli": null,
+    "description": "Update an agent ingress endpoint.",
+    "input_schema": {
+      "$defs": {
+        "UpdateAgentEndpointRequest": {
+          "properties": {
+            "channel_config": {},
+            "enabled": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UpdateAgentEndpointRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            },
+            "endpoint_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id",
+            "endpoint_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "PATCH",
+    "name": "update_agent_endpoint",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "positional_arg": null,
     "read_only": false
   },
   {

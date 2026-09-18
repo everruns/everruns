@@ -411,7 +411,6 @@ impl CommandMeta {
             "notifications" => Some("notifications"),
             "payments" => Some("machine_payments"),
             _ => match self.name {
-                "list_app_budgets" => Some("app_budgets"),
                 "list_agent_versions"
                 | "create_agent_version"
                 | "set_default_agent_version"
@@ -1459,7 +1458,6 @@ mod error_tests {
                 "payments",
                 Some("machine_payments"),
             ),
-            ("list_app_budgets", "budgets", Some("app_budgets")),
             ("create_agent_version", "agents", Some("agent_versions")),
             ("list_agents", "agents", None),
         ] {

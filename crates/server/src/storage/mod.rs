@@ -53,7 +53,7 @@ pub use encryption::{
     generate_encryption_key,
 };
 pub use harness_store::{DbHarnessStore, create_db_harness_store};
-pub use ingress::IngressEndpointRow;
+pub use ingress::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
 pub use leased_resource_store::{
     DbLeasedResourceStore, row_to_domain as leased_resource_row_to_domain,
 };

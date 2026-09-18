@@ -70,6 +70,7 @@ impl SessionService {
             None,
             None,
             None,
+            None,
             source,
             req,
         )
@@ -95,7 +96,9 @@ impl SessionService {
         harness_id: Uuid,
         agent_internal_id: Option<Uuid>,
         agent_public_id: Option<AgentId>,
-        app_internal_id: Uuid,
+        app_internal_id: Option<Uuid>,
+        agent_version_policy: AgentVersionPolicy,
+        agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
         // Internal id of the endpoint this ingress resolved, recorded as
         // `sessions.endpoint_id` so provenance names the door, not the bundle
         // (EVE-1004). `None` only where the caller genuinely has no endpoint
@@ -114,7 +117,8 @@ impl SessionService {
             harness_id,
             agent_internal_id,
             agent_public_id,
-            Some(app_internal_id),
+            Some((agent_version_policy, agent_version_id)),
+            app_internal_id,
             endpoint_internal_id,
             Some((owner_principal_id, resolved_owner_user_id)),
             source,
@@ -148,6 +152,7 @@ impl SessionService {
             Some(agent_public_id),
             None,
             None,
+            None,
             Some((owner_principal_id, resolved_owner_user_id)),
             source,
             req,
@@ -162,6 +167,10 @@ impl SessionService {
         harness_id: Uuid,
         agent_internal_id: Option<Uuid>,
         agent_public_id: Option<AgentId>,
+        agent_version_selection: Option<(
+            AgentVersionPolicy,
+            Option<everruns_provider::typed_id::AgentVersionId>,
+        )>,
         app_id: Option<Uuid>,
         // Endpoint whose ingress is creating this session (EVE-1004). Every
         // app-channel path knows its endpoint, so this is passed rather than
@@ -236,25 +245,12 @@ impl SessionService {
 
         let resolved_agent_version = if FeatureFlags::current().agent_versions {
             if let Some(agent_id) = agent_id {
-                let app_row = match app_id {
-                    Some(app_internal_id) => self.db.get_app_by_id(org_id, app_internal_id).await?,
-                    None => None,
-                };
-                match app_row
-                    .as_ref()
-                    .map(|app| AgentVersionPolicy::from(app.agent_version_policy.as_str()))
-                    .unwrap_or_default()
-                {
+                let (version_policy, pinned_version_id) =
+                    agent_version_selection.unwrap_or_default();
+                match version_policy {
                     AgentVersionPolicy::Pinned => {
-                        if let Some(version_id) = app_row.and_then(|app| app.agent_version_id) {
-                            self.db
-                                .get_agent_version(
-                                    org_id,
-                                    everruns_provider::typed_id::AgentVersionId::from_uuid(
-                                        version_id,
-                                    ),
-                                )
-                                .await?
+                        if let Some(version_id) = pinned_version_id {
+                            self.db.get_agent_version(org_id, version_id).await?
                         } else {
                             None
                         }

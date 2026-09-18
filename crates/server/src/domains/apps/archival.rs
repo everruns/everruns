@@ -121,7 +121,7 @@ fn redact_inline_endpoint_auth(config: &mut Value) {
     }
 }
 
-fn redact_channel_for_response(mut channel: AppChannel) -> AppChannel {
+pub(crate) fn redact_channel_for_response(mut channel: AppChannel) -> AppChannel {
     if let Some(auth) = channel.auth.take() {
         let mut wrapped = json!({ "auth": auth });
         redact_inline_endpoint_auth(&mut wrapped);

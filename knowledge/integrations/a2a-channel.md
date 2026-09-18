@@ -8,6 +8,15 @@ tags:
 ---
 # A2A Channel
 
+## Status
+
+A2A ingress is endpoint-owned. Canonical routes use the endpoint ID. Existing
+App-shaped routes, routing tags, API key material, and session attribution
+remain permanent compatibility contracts. App management, App key creation,
+and App key rotation are retired. Generic Agent endpoint APIs can manage
+existing A2A endpoint rows, but the current endpoint picker does not create
+new A2A credentials.
+
 ## Abstract
 
 The A2A channel exposes an Everruns agent as an **Agent2Agent (A2A) protocol**
@@ -165,8 +174,8 @@ that key off the JSON-RPC `id` and `error.code` see a structured response:
 | HTTP | JSON-RPC code | Reason                                |
 |------|---------------|---------------------------------------|
 | 401  |, | Missing or invalid API key            |
-| 403  |, | App not published or channel disabled |
-| 404  |, | App or channel not found              |
+| 403  |, | Endpoint is not live                   |
+| 404  |, | Endpoint not found                     |
 | 400  |, | Invalid path-level input (e.g. malformed channel ID) |
 | 400  | `-32600`      | Invalid Request (malformed envelope, returned with HTTP 400) |
 | 200  | `-32601`      | Method not found (only canonical `message/send`, `message/stream`, `tasks/get`, `tasks/cancel` and their legacy linked-client aliases are supported) |
@@ -278,8 +287,8 @@ contract because:
 `GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json`
 
 Unauthenticated. Returns the published Agent Card so other agents can
-discover the endpoint. Only returned for **published** apps with **enabled**
-A2A channels; otherwise `404`. Card shape:
+discover the endpoint. Only returned for **live**, enabled A2A endpoints;
+otherwise `404`. Card shape:
 
 ```json
 {
@@ -365,43 +374,37 @@ common app-channel invocation helper, not by the A2A HTTP adapter.
 
 ## Lifecycle
 
-- Publish/unpublish controls whether the endpoint accepts traffic.
-- Disabling the channel rejects further requests with `403`.
-- Deleting the channel removes the row; sessions previously created remain.
-- Updating the API key replaces `api_key_hash` and `api_key_prefix` and
-  invalidates previously issued keys.
+- Agent endpoint publish/unpublish controls whether the endpoint accepts
+  traffic.
+- Disabling or suspending the endpoint rejects further requests.
+- Deleting the endpoint removes its row; previously created sessions remain.
+- Existing API keys remain frozen compatibility credentials. No App key
+  creation or regeneration operation remains.
 
 ## Surfaces
 
-A2A channels are reachable through the same surfaces as other channels:
-
-- HTTP app APIs:
-  - `POST /v1/apps/{id}/a2a-channels`, create channel + return plaintext key once
-  - `POST /v1/apps/{id}/a2a-channels/{channel_id}/regenerate-key`, rotate key
-  - `PATCH /v1/apps/{id}/channels/{channel_id}`, update non-secret fields
-  - `DELETE /v1/apps/{id}/channels/{channel_id}`, delete channel
-- MCP/bash command catalog: `add_a2a_app_channel` flat command, plus
-  `update_app_channel` / `delete_app_channel`
-- `platform` capability (the same commands through `discover`/`query`/`execute`)
-- Apps UI (`/apps/{id}` detail page → channels list → A2A entry)
+A2A invocation uses the canonical `/v1/e/{endpoint_id}/a2a` routes and their
+permanent App-shaped aliases. Endpoint configuration uses the Agent endpoint
+HTTP APIs and matching command catalog. There is no App management API or Apps
+UI. The current endpoint picker does not offer A2A because no replacement
+credential-generation flow exists.
 
 ## Testing
 
 Coverage required:
 
-1. Channel CRUD: create generates an API key, only the hash and prefix are
-   stored, rotation replaces both.
+1. Endpoint reads redact the stored API key digest and preserve its display
+   prefix.
 2. Inbound `message/send` returns a terminal completed task and creates a
    user message in the routed session.
 3. Shared-session vs per-invocation routing.
-4. Auth: missing / wrong / disabled / unpublished all return the documented
+4. Auth: missing / wrong / disabled / suspended all return the documented
    JSON-RPC error codes.
-5. Agent Card returns 404 when the app is unpublished or the channel is
+5. Agent Card returns 404 when the endpoint is not live or the endpoint is
    disabled, and returns the documented shape when live.
-6. Method gating: `message/stream`, `tasks/get`, etc. return `-32601 Method
-   not found`.
-7. Validation: empty text parts rejected; non-`message/send` methods
-   rejected; malformed envelopes rejected.
+6. Method gating accepts the four documented methods and rejects other
+   methods with `-32601 Method not found`.
+7. Validation: empty text parts and malformed envelopes are rejected.
 8. Structured result: a session that reported a schema-bound `result.json`
    surfaces it as the `tasks/get` artifact `DataPart`; a session with no
    reported result has no `artifacts`; the artifact is not leaked to a

@@ -10,18 +10,15 @@ tags:
 ---
 # Agent Exposure (retiring the App abstraction)
 
-> Status: **Accepted, partially implemented.** The direction is decided; the phases are
-> tracked as separate issues in Linear (OSS project, EVE team), EVE-998 through EVE-1011.
-> Phases 0, 1, 4 and the publish half of 6 have landed: App is hidden from the product
-> surface, grandfathered agent-less Apps have synthesized Agents, channels live in
-> `agent_endpoints` owned by an Agent, and publish is per-endpoint with an agent-level
-> exposure suspend.
-> [apps.md](apps.md) remains the accurate description of what exists today and stays
-> authoritative until the final phase removes it.
+> Status: **Accepted and implemented.** The phases were tracked as EVE-998 through
+> EVE-1011. App data is frozen for compatibility and historical attribution. Agent-owned
+> endpoints are the management and ingress source of truth.
+> [apps.md](apps.md) is the authoritative description of the retained compatibility
+> contract.
 >
-> One decision beyond the original proposal: **App is hidden from the product surface
-> before it is deleted.** Hiding is reversible, needs no migration, and stops new Apps
-> accumulating while the model moves underneath. Deleting the table stays last.
+> One decision beyond the original proposal: **App data is frozen rather than deleted.**
+> Historical rows, foreign keys, budget subject values, and route aliases stay stable
+> while all management and traffic-serving ownership moves to the Agent domain.
 
 ## Abstract
 
@@ -42,7 +39,7 @@ two collections beneath it:
 - **Triggers** — an alarm clock. Something fires, a message is injected, nobody is
   listening. Schedule (exists today), webhook (moves here from channels).
 
-`apps` is then deleted. No ingress URL changes for anyone already installed, because
+`apps` is then frozen. No ingress URL changes for anyone already installed, because
 endpoint identity moves *off* the owning entity and onto the endpoint itself.
 
 ## Why an Agent can absorb this now
@@ -289,11 +286,12 @@ Agent detail owns an **Integrations** tab alongside Overview / Preview /
 Credentials / Triggers / Versions / Stats:
 
 - Stat strip: Health / Invocations 24h / Success rate / Activity, unchanged.
-- **Endpoints** section: read-only endpoint inventory.
+- **Endpoints** section: endpoint inventory with create, edit, publish, unpublish, delete,
+  and migrated schedule run-now controls.
 - **Triggers** section: absorbs today's Triggers tab. Read-only UI renders a
   human-readable cron description plus timezone; raw cron only inside the editable input.
 - Header: agent identity control and the suspend-all-exposures switch.
-- App and endpoint editor routes are retired. Triggers keep their agent-owned editor.
+- App editor routes are retired. Endpoint and trigger editors are Agent-owned.
 
 `Credentials` stays the org-wide read view of endpoint keys and tokens.
 
@@ -333,7 +331,7 @@ rest proceeds.
    reserved forever. Must precede phase 4.
 4. **`agent_endpoints`** (EVE-1003, landed) with an `agent_id` FK, backfilled from
    `app_channels ⋈ apps`. `app_channels` is now a read-only view over `agent_endpoints`,
-   kept for one release; every writer targets the table. `status`, `agent_identity_id`,
+   retained for compatibility; every writer targets the table. `status`, `agent_identity_id`,
    `agent_version_policy`/`agent_version_id`, and `owner_principal_id`/
    `resolved_owner_user_id` are first-class endpoint columns. The `auth` config did not
    move: it lives inside the channel-config encryption envelope, so lifting it is its own
@@ -348,18 +346,20 @@ rest proceeds.
    id, so only the subject type's name moves). `app` budgets have no 1:1 successor and fan
    out to one budget per endpoint, **preserving** the cap rather than dividing it: dividing
    would tighten every existing cap without consent, and the App budget stays enforced
-   alongside until phase 8, so the original ceiling keeps binding meanwhile.
-   `sessions.app_id` and the `app`/`app_channel` subject types survive until phase 8.
+   alongside, so the original ceiling keeps binding. `sessions.app_id` and the
+   `app`/`app_channel` subject types remain permanent historical attribution.
 5. **Unify the binding enums** (EVE-1005); move webhook from endpoint to trigger type
    (EVE-1006).
 6. **Per-endpoint publish**, `agent.exposures_suspended`, stop reading `App.status`
    (EVE-1007, landed). Every ingress gate resolves liveness through one helper,
    `app_ingress::endpoint_liveness`. The App publish switch remains, and now drives the
-   endpoints it owns, until the App domain is deleted. The Slack manifest and bot identity
+   endpoints it owns, until App management is retired. The Slack manifest and bot identity
    move to the endpoint separately (EVE-1008).
 7. **UI**: Integrations tab with endpoint and trigger editors (EVE-1009), cross-agent
    Exposures view (EVE-1010).
-8. **Delete** the `apps` table and the App domain (EVE-1011). Route aliases stay.
+8. **Freeze** the `apps` table and retire App management (EVE-1011). Historical records,
+   attribution, budget subject values, and permanent route aliases stay. Ingress and
+   Agent endpoint management no longer read or write Apps.
 
 ## What this costs
 

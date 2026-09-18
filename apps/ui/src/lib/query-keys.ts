@@ -23,6 +23,13 @@ export const queryKeys = {
       ["agent", org, agentId, "versions", "diff", from, to] as const,
   },
 
+  agentEndpoints: {
+    all: (agentId: string) => ["agent-endpoints", agentId] as const,
+    list: (agentId: string) => ["agent-endpoints", agentId, "list"] as const,
+    detail: (agentId: string, endpointId: string) =>
+      ["agent-endpoints", agentId, endpointId] as const,
+  },
+
   agentTriggers: {
     all: (agentId: string) => ["agent-triggers", agentId] as const,
     list: (agentId: string) => ["agent-triggers", agentId, "list"] as const,
