@@ -45,8 +45,10 @@ static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     // The environment half is derived; what remains is this capability's own
     // lifecycle guidance, which is the tool contract rather than a description
     // of the world.
-    let mut prompt =
-        String::from("## Session Sandbox\n\nThis session owns one managed sandbox.\n\n");
+    // No hand-written "this session owns one managed sandbox" line: the derived
+    // preamble's first sentence already says what the sandbox is, and a second
+    // wording of the same fact is exactly the drift this issue removes.
+    let mut prompt = String::from("## Session Sandbox\n\n");
     if let Some(preamble) = environment_preamble(&environment_facts()) {
         prompt.push_str(&preamble);
         prompt.push_str("\n\n");
