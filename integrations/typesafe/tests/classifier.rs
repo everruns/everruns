@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! The deployment classifier over a mock endpoint.
 //!
 //! `classifier_live.rs` proves the judgments are calibrated; this proves the
