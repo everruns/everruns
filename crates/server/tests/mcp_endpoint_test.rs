@@ -1962,23 +1962,18 @@ async fn test_mcp_execute_rejects_app_trigger_channels_and_supports_webhook_trig
         .expect("agent id")
         .to_string();
 
-    let create_resp = mcp_tool_call(
-        &server,
-        "execute",
-        json!({
-            "commands": format!(
-                "create_app --name '{app_name}' --description 'repo checks' --harness_id {} --agent_id {agent_id}",
-                server.seed_generic_harness_id,
-            )
-        }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&create_resp),
-        "create_app failed: {}",
-        tool_text(&create_resp)
-    );
-    let app = tool_json(&create_resp);
+    let app = server
+        .seed_app_endpoint(
+            &app_name,
+            &agent_id,
+            "webhook",
+            json!({
+                "token": "fixture-secret",
+                "session_mode": "session_per_invocation",
+                "message": "process fixture payload",
+            }),
+        )
+        .await;
     let app_id = app["id"].as_str().expect("app id");
 
     let add_schedule_resp = mcp_tool_call(
