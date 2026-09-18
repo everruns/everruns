@@ -465,6 +465,46 @@ async fn identity_oauth_callback_rechecks_permission_before_writing_grant() {
 }
 
 #[tokio::test]
+async fn identity_oauth_callback_rejects_deleted_authorized_agent_without_grant() {
+    let (state, org, server_id, agent_public_id, _) = identity_oauth_fixture(true).await;
+    let provider = mcp_oauth_provider_id_for_uuid(server_id);
+    let (jar, _) = begin_identity_oauth(state.clone(), org.clone(), server_id, agent_public_id)
+        .await
+        .unwrap();
+    let pending = pending_state(&jar, &provider);
+    let agent_id: AgentId = pending.agent_id.as_deref().unwrap().parse().unwrap();
+    let identity_id: AgentIdentityId = pending
+        .agent_identity_id
+        .as_deref()
+        .unwrap()
+        .parse()
+        .unwrap();
+    state.db.delete_agent(org.org_id, agent_id).await.unwrap();
+
+    let error = connection_oauth_callback(
+        State(state.clone()),
+        org,
+        jar,
+        Path(provider.clone()),
+        Query(OAuthCallbackQuery {
+            code: "code".to_string(),
+            state: Some(pending.state),
+        }),
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    assert!(
+        state
+            .db
+            .get_agent_identity_connection(identity_id, &provider)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+#[tokio::test]
 async fn oauth_discovery_rejects_mismatched_issuer() {
     let error = discover_oauth_server_metadata(&MismatchedIssuerEgress, "https://8.8.8.8").await;
 

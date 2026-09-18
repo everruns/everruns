@@ -3,7 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
-use everruns_provider::typed_id::AgentIdentityId;
+use everruns_provider::typed_id::{AgentId, AgentIdentityId};
 
 impl Database {
     // ============================================
@@ -51,6 +51,66 @@ impl Database {
         .bind(input.installation_id)
         .bind(&input.provider_metadata)
         .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn upsert_agent_identity_connection_for_active_agent(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+        input: CreateAgentIdentityConnectionRow,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        let row = sqlx::query_as::<_, AgentIdentityConnectionRow>(
+            r#"
+            WITH eligible AS (
+                SELECT a.agent_identity_id
+                FROM agents AS a
+                JOIN agent_identities AS i ON i.id = a.agent_identity_id
+                WHERE a.org_id = $1
+                  AND a.id = $2
+                  AND a.status = 'active'
+                  AND a.agent_identity_id = $3
+                  AND i.org_id = $1
+                  AND i.status = 'active'
+                FOR UPDATE OF a, i
+            )
+            INSERT INTO agent_identity_connections
+                (agent_identity_id, provider, connection_type, provider_user_id, provider_username,
+                 access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata)
+            SELECT agent_identity_id, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+            FROM eligible
+            ON CONFLICT (agent_identity_id, provider) DO UPDATE SET
+                connection_type = EXCLUDED.connection_type,
+                provider_user_id = EXCLUDED.provider_user_id,
+                provider_username = EXCLUDED.provider_username,
+                access_token_encrypted = EXCLUDED.access_token_encrypted,
+                refresh_token_encrypted = EXCLUDED.refresh_token_encrypted,
+                scopes = EXCLUDED.scopes,
+                expires_at = EXCLUDED.expires_at,
+                installation_id = EXCLUDED.installation_id,
+                provider_metadata = EXCLUDED.provider_metadata,
+                updated_at = NOW()
+            RETURNING id, agent_identity_id, provider, connection_type, provider_user_id,
+                      provider_username, access_token_encrypted, refresh_token_encrypted,
+                      scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(agent_id)
+        .bind(input.agent_identity_id)
+        .bind(&input.provider)
+        .bind(&input.connection_type)
+        .bind(&input.provider_user_id)
+        .bind(&input.provider_username)
+        .bind(&input.access_token_encrypted)
+        .bind(&input.refresh_token_encrypted)
+        .bind(&input.scopes)
+        .bind(input.expires_at)
+        .bind(input.installation_id)
+        .bind(&input.provider_metadata)
+        .fetch_optional(&self.pool)
         .await?;
 
         Ok(row)

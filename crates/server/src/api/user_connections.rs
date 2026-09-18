@@ -12,7 +12,7 @@ use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService, McpS
 use crate::domains::plugins::oauth_anchor::humanize_connection_name;
 use crate::kernel_imports::{
     Caller, EgressService, McpServerAuthMode,
-    everruns_provider::typed_id::{AgentIdentityId, SessionId},
+    everruns_provider::typed_id::{AgentId, AgentIdentityId, SessionId},
     everruns_provider::url_validation::validate_safe_url,
     mcp_oauth_provider_id_for_uuid,
 };
@@ -189,6 +189,8 @@ struct PendingOAuthState {
     /// identity that was authorized (EVE-1030).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     agent_identity_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    agent_id: Option<String>,
     popup: bool,
     code_verifier: String,
 }
@@ -723,15 +725,16 @@ pub async fn authorize_connection(
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
 
-    let agent_identity_id = match identity_agent {
+    let (agent_id, agent_identity_id) = match identity_agent {
         Some(agent) => {
+            let agent_id = agent.id.to_string();
             let (identity_id, _principal) =
                 ensure_identity_for_agent(&state.db, org.org_id, &agent)
                     .await
                     .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
-            Some(identity_id.to_string())
+            (Some(agent_id), Some(identity_id.to_string()))
         }
-        None => None,
+        None => (None, None),
     };
 
     let pending = PendingOAuthState {
@@ -741,6 +744,7 @@ pub async fn authorize_connection(
         mode,
         session_id,
         agent_identity_id,
+        agent_id,
         popup,
         code_verifier,
     };
@@ -904,6 +908,15 @@ pub async fn connection_oauth_callback(
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
     } else if pending.mode == "identity" {
+        let agent_id = pending
+            .agent_id
+            .as_deref()
+            .ok_or((
+                StatusCode::BAD_REQUEST,
+                "Missing agent_id for identity OAuth flow".to_string(),
+            ))?
+            .parse::<AgentId>()
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid agent_id: {e}")))?;
         let identity_id = pending
             .agent_identity_id
             .as_deref()
@@ -926,55 +939,46 @@ pub async fn connection_oauth_callback(
         let caller = Caller::from(&org);
         enforce_identity_grant_policy(&state, &caller)?;
 
-        // THREAT[TM-TENANT-012]: agent_identity_connections is keyed only by
-        // identity id and carries no org_id, so every writer must prove the
-        // identity belongs to the caller's org first.
-        let identity = state
-            .db
-            .get_agent_identity(org.org_id, identity_id)
-            .await
-            .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
-            .ok_or((
-                StatusCode::NOT_FOUND,
-                "Agent identity not found".to_string(),
-            ))?;
-        if identity.status != "active" {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Agent identity is not active".to_string(),
-            ));
-        }
-
         let encryption = state.encryption.as_ref().ok_or((
             StatusCode::INTERNAL_SERVER_ERROR,
             "Encryption not configured".to_string(),
         ))?;
-        state
+        let connection = state
             .db
-            .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-                agent_identity_id: identity_id,
-                provider: provider.clone(),
-                connection_type: "oauth".to_string(),
-                provider_user_id: None,
-                provider_username: Some(row.name.clone()),
-                access_token_encrypted: Some(
-                    encryption
-                        .encrypt_string(&token.access_token)
+            .upsert_agent_identity_connection_for_active_agent(
+                org.org_id,
+                agent_id,
+                CreateAgentIdentityConnectionRow {
+                    agent_identity_id: identity_id,
+                    provider: provider.clone(),
+                    connection_type: "oauth".to_string(),
+                    provider_user_id: None,
+                    provider_username: Some(row.name.clone()),
+                    access_token_encrypted: Some(
+                        encryption
+                            .encrypt_string(&token.access_token)
+                            .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
+                    ),
+                    refresh_token_encrypted: token
+                        .refresh_token
+                        .as_deref()
+                        .map(|value| encryption.encrypt_string(value))
+                        .transpose()
                         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
-                ),
-                refresh_token_encrypted: token
-                    .refresh_token
-                    .as_deref()
-                    .map(|value| encryption.encrypt_string(value))
-                    .transpose()
-                    .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
-                scopes: token.scope.clone(),
-                expires_at,
-                installation_id: None,
-                provider_metadata: None,
-            })
+                    scopes: token.scope.clone(),
+                    expires_at,
+                    installation_id: None,
+                    provider_metadata: None,
+                },
+            )
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
+        if connection.is_none() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Agent is no longer active with the authorized identity".to_string(),
+            ));
+        }
     } else {
         let encryption = state.encryption.as_ref().ok_or((
             StatusCode::INTERNAL_SERVER_ERROR,

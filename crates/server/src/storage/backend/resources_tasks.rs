@@ -27,6 +27,21 @@ impl StorageBackend {
         dispatch!(self, upsert_agent_identity_connection, input)
     }
 
+    pub async fn upsert_agent_identity_connection_for_active_agent(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+        input: CreateAgentIdentityConnectionRow,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        dispatch!(
+            self,
+            upsert_agent_identity_connection_for_active_agent,
+            org_id,
+            agent_id,
+            input
+        )
+    }
+
     pub async fn get_agent_identity_connection(
         &self,
         identity_id: AgentIdentityId,
