@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { AlertTriangle, ChevronDown, Link2, Plus, Trash2, Unplug, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -23,6 +23,23 @@ import {
 } from "@/hooks/use-agents";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import type { Agent, AgentMcpAttachment, McpServerActsAs, ScopedMcpServers } from "@/lib/api/types";
+function attachmentPrefix(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "_");
+}
+
+function presetHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+function presetAuthLabel(authMode: string): string {
+  if (authMode === "oauth") return "OAuth";
+  if (authMode === "api_key") return "API key";
+  return "No auth";
+}
 
 function identityLabel(actsAs: McpServerActsAs): string {
   switch (actsAs) {
@@ -51,23 +68,25 @@ function connectionHref(agentId: string, attachment: AgentMcpAttachment): string
 function McpAttachmentRow({
   agentId,
   attachment,
+  hasCollision,
   onRemove,
 }: {
   agentId: string;
   attachment: AgentMcpAttachment;
+  hasCollision: boolean;
   onRemove: (attachment: AgentMcpAttachment) => void;
 }) {
+  const toolsId = useId();
   const [toolsOpen, setToolsOpen] = useState(false);
   const revoke = useRevokeAgentMcpConnection(agentId);
   const connectHref = connectionHref(agentId, attachment);
-  const toolsId = `mcp-tools-${attachment.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <CardTitle className="flex flex-wrap items-center gap-2">
-            <span>{attachment.name}</span>
+            <span className="break-all">{attachment.name}</span>
             <Badge variant="outline">{identityLabel(attachment.acts_as)}</Badge>
           </CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -77,6 +96,12 @@ function McpAttachmentRow({
             <p className="text-xs text-muted-foreground">
               Overrides:{" "}
               {attachment.overridden_sources.map((source) => source.source_label).join(", ")}
+            </p>
+          )}
+          {hasCollision && (
+            <p className="flex items-center gap-1 text-xs text-destructive">
+              <AlertTriangle className="size-3" />
+              Tool prefix collides with another attachment name.
             </p>
           )}
         </div>
@@ -109,9 +134,14 @@ function McpAttachmentRow({
         )}
 
         {attachment.state === "preset_missing" ? (
-          <div className="flex items-center gap-2 text-sm text-destructive">
-            <AlertTriangle className="size-4" />
-            This preset is no longer available.
+          <div className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+            <span className="flex items-center gap-2">
+              <AlertTriangle className="size-4" />
+              This preset is no longer available.
+            </span>
+            <LinkButton href="/mcp-servers" variant="outline" size="sm">
+              View catalog
+            </LinkButton>
           </div>
         ) : attachment.state === "connection_missing" ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -156,6 +186,9 @@ function McpAttachmentRow({
             <Wrench className="size-4" />
             Tools
             <Badge variant="secondary">{attachment.tools.length}</Badge>
+            {!attachment.tools_available && (
+              <span className="text-xs text-muted-foreground">Unavailable</span>
+            )}
             <ChevronDown
               className={`size-4 transition-transform ${toolsOpen ? "rotate-180" : ""}`}
             />
@@ -209,6 +242,14 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
   }, [presets, search]);
   const selectedPresetRecord = presets.find((preset) => preset.name === selectedPreset);
   const identityDisabled = selectedPresetRecord?.auth_mode !== "oauth";
+  const prefixCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const attachment of attachments.data ?? []) {
+      const prefix = attachmentPrefix(attachment.name);
+      counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
+    }
+    return counts;
+  }, [attachments.data]);
 
   const saveAuthoredAttachments = async (mcpServers: ScopedMcpServers) => {
     await updateAgent.mutateAsync({ agentId: agent.id, request: { mcpServers } });
@@ -342,6 +383,7 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
               key={attachment.name}
               agentId={agent.id}
               attachment={attachment}
+              hasCollision={(prefixCounts.get(attachmentPrefix(attachment.name)) ?? 0) > 1}
               onRemove={setRemoveTarget}
             />
           ))}
@@ -426,6 +468,9 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
                           {preset.description}
                         </span>
                       )}
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {presetHost(preset.url)} · {presetAuthLabel(preset.auth_mode)}
+                      </span>
                     </button>
                   ))
                 ) : (
@@ -538,8 +583,8 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
           <DialogHeader>
             <DialogTitle>Remove MCP attachment?</DialogTitle>
             <DialogDescription>
-              Remove {removeTarget?.name} from this agent. Existing user and service grants are not
-              revoked.
+              Remove {removeTarget?.name} from this agent. New sessions will no longer be able to
+              use it. Existing user and service grants are not revoked.
             </DialogDescription>
           </DialogHeader>
           {removeError && <p className="text-sm text-destructive">{removeError}</p>}

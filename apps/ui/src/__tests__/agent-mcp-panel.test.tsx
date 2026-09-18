@@ -70,17 +70,21 @@ const attachment: AgentMcpAttachment = {
   editable: true,
 };
 
+function showAttachments(...attachments: AgentMcpAttachment[]) {
+  mockUseAgentMcpAttachments.mockReturnValue({
+    data: attachments,
+    isLoading: false,
+    error: null,
+    refetch: mockRefetch,
+  });
+}
+
 describe("AgentMcpPanel", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRefetch.mockResolvedValue({});
     mockUpdateAgent.mockResolvedValue({});
-    mockUseAgentMcpAttachments.mockReturnValue({
-      data: [attachment],
-      isLoading: false,
-      error: null,
-      refetch: mockRefetch,
-    });
+    showAttachments(attachment);
     mockUseMcpServers.mockReturnValue({
       data: [
         {
@@ -136,6 +140,108 @@ describe("AgentMcpPanel", () => {
     expect(toolsButton).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("search_repositories")).toBeInTheDocument();
     expect(screen.getByText("get_file_contents")).toBeInTheDocument();
+  });
+  it("offers authorization for a missing service grant when allowed", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      state: "connection_missing",
+      action: "authorize",
+      connected_as: null,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByRole("link", { name: "Authorize" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("mode=identity"),
+    );
+    expect(screen.queryByText("Ask an admin")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Connect" })).not.toBeInTheDocument();
+  });
+
+  it("shows ask-an-admin without an unusable service action", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      state: "connection_missing",
+      action: "ask_admin",
+      connected_as: null,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Ask an admin")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Authorize" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Connect" })).not.toBeInTheDocument();
+  });
+
+  it("offers connection for the invoking user's missing grant", () => {
+    showAttachments({
+      ...attachment,
+      state: "connection_missing",
+      action: "connect",
+      connected_as: null,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByRole("link", { name: "Connect" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("mode=user"),
+    );
+    expect(screen.queryByRole("link", { name: "Authorize" })).not.toBeInTheDocument();
+  });
+
+  it("keeps capability attachments read-only and links to the capability", () => {
+    showAttachments({
+      ...attachment,
+      source: "capability",
+      source_label: "Capability: web search",
+      editable: false,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByRole("link", { name: "View capability" })).toHaveAttribute(
+      "href",
+      "/capabilities",
+    );
+    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+  });
+
+  it("shows a repair path for missing presets without hiding the row", () => {
+    showAttachments({
+      ...attachment,
+      state: "preset_missing",
+      action: "none",
+      connected_as: null,
+      tools_available: false,
+      tools: [],
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("This preset is no longer available.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View catalog" })).toHaveAttribute(
+      "href",
+      "/mcp-servers",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Tools 0 Unavailable/ }));
+    expect(screen.getByText("No cached tools are available.")).toBeInTheDocument();
+  });
+
+  it("calls out attachment names with colliding tool prefixes", () => {
+    showAttachments(
+      { ...attachment, name: "github-tools" },
+      { ...attachment, name: "github_tools" },
+    );
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getAllByText("Tool prefix collides with another attachment name.")).toHaveLength(
+      2,
+    );
   });
 
   it("adds a selected preset with the selected identity mode", async () => {
