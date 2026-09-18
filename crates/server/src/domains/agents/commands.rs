@@ -2031,7 +2031,6 @@ impl Command for PreviewAgent {
                 &self.mcp_servers,
                 None,
                 None,
-                None,
                 ctx.capability_service.egress_service().as_ref(),
             )
             .await

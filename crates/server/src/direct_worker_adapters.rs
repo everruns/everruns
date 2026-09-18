@@ -1592,12 +1592,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     org_id,
                     &effective,
                     Some(session.id),
-                    Some(
-                        crate::domains::mcp_servers::scoped_mcp::ScopedMcpCacheContext {
-                            agent_id: session.agent_id.map(|id| id.uuid()),
-                            user_id: session.resolved_owner_user_id,
-                        },
-                    ),
                     self.connection_resolver.as_ref(),
                     egress.as_ref(),
                 )

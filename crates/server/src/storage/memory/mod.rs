@@ -76,6 +76,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use uuid::Uuid;
 
+use super::mcp_tool_cache::*;
 use super::models::*;
 
 /// Max search tokens to prevent performance degradation from long inputs.
