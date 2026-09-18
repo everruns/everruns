@@ -113,7 +113,7 @@ is it, which of these* — ask for a judgment instead of parsing one out of text
 ```rust
 use everruns::{Classifier, TypeSafeAI};
 
-let judge = Classifier::new(TypeSafeAI::from_env()?);
+let judge = Classifier::new("jev-latest", TypeSafeAI::from_env()?);
 let spam = judge.probability("Is this message spam?", text).await?;
 ```
 

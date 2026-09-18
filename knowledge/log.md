@@ -31,6 +31,16 @@
   application name. See
   [Framework Application API Boundaries](framework/application-api.md).
 
+* **A default a caller never sees is worse than an argument they must write.**
+  `Classifier::new` took only a service, letting the service's own `jev-latest`
+  stand in when no model was named — which read as convenience but meant a
+  calibrated threshold could move under a caller who never chose a version.
+  It now takes the model up front, exactly as `Model::new` does, so the pair
+  reads as one shape: the service is transport, the model is what answers.
+  `ClassificationRequest::model` stays optional, because the platform composes
+  requests that deliberately name none (THREAT[TM-LLM-037]). See
+  [Classifier Service](operations/classifier-service.md).
+
 * **A vendor name can collide with the host language.** The provider type was
   `TypeSafe`, which is the company — but in Rust `TypeSafe` reads as a marker
   about type safety, and `TypeSafeClient` reads as "a type-safe client". The

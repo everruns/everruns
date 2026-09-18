@@ -124,41 +124,38 @@ pub struct Classifier {
 }
 
 impl Classifier {
-    /// Reach a classifier through `service`.
+    /// Select a model and the service used to reach it.
+    ///
+    /// Reads as [`Model::new`](crate::Model::new) does, and for the same
+    /// reason: the service is transport, the model is the thing that answers,
+    /// and naming it is the caller's decision rather than a default they
+    /// inherit without noticing. There will be other classifiers and other
+    /// versions of this one, and a threshold calibrated against one version is
+    /// not evidence about the next.
     ///
     /// The concrete service comes from an integration — for TypeSafe's System
-    /// One, `everruns_integrations_typesafe::TypeSafeAI` — the
-    /// same way a [`Model`](crate::Model) takes its provider from a driver.
-    pub fn new(service: impl ClassifierService + 'static) -> Self {
+    /// One, `everruns_integrations_typesafe::TypeSafeAI`.
+    ///
+    /// ```no_run
+    /// # use everruns::{Classifier, TypeSafeAI};
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let classifier = Classifier::new("jev-latest", TypeSafeAI::from_env()?);
+    /// # let _ = classifier;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(model: impl Into<String>, service: impl ClassifierService + 'static) -> Self {
         Self {
             service: Some(Arc::new(service)),
-            model: None,
+            model: Some(model.into()),
         }
     }
 
-    /// Ask a particular model rather than the service's default.
-    ///
-    /// `Model` takes its id up front because a provider is pure transport and
-    /// serves many models with no default. A classifier service has one, so the
-    /// id is an override rather than a required argument — but it is an
-    /// override that exists, because there will be other classifiers and other
-    /// models.
-    ///
-    /// ```
-    /// # use everruns::Classifier;
-    /// let classifier = Classifier::simulated(0.5).model("jev-latest");
-    /// # let _ = classifier;
-    /// ```
-    pub fn model(mut self, model: impl Into<String>) -> Self {
-        self.model = Some(model.into());
-        self
-    }
-
-    /// Reach a classifier through a service that is already shared.
-    pub fn shared(service: Arc<dyn ClassifierService>) -> Self {
+    /// Select a model, reaching it through a service that is already shared.
+    pub fn shared(model: impl Into<String>, service: Arc<dyn ClassifierService>) -> Self {
         Self {
             service: Some(service),
-            model: None,
+            model: Some(model.into()),
         }
     }
 
@@ -169,7 +166,7 @@ impl Classifier {
     /// mass evenly, so tests exercise the shape without asserting a vendor's
     /// numbers.
     pub fn simulated(probability: f64) -> Self {
-        Self::new(SimulatedClassifierService { probability })
+        Self::new(SIMULATED_MODEL, SimulatedClassifierService { probability })
     }
 
     /// Whether the underlying service is configured to answer at all.
@@ -496,6 +493,10 @@ impl Answers {
     }
 }
 
+/// The model id [`Classifier::simulated`] reports, the way `Model::simulated`
+/// reports `llmsim-model`: a stubbed answer must never pass for a real one.
+const SIMULATED_MODEL: &str = "simulated";
+
 /// Deterministic classifications for offline use; see [`Classifier::simulated`].
 #[derive(Debug)]
 struct SimulatedClassifierService {
@@ -519,7 +520,7 @@ impl ClassifierService for SimulatedClassifierService {
         // Names itself rather than a vendor model: `Answers::model` must never
         // let a stubbed answer pass for one a real classifier gave.
         let mut outcome = ClassificationOutcome {
-            model: "simulated".to_string(),
+            model: SIMULATED_MODEL.to_string(),
             ..ClassificationOutcome::default()
         };
         for (id, question) in &request.questions {
@@ -626,7 +627,10 @@ mod tests {
 
         // A service the deployment never configured answers nothing, and says
         // so rather than looking like a confident negative.
-        let disabled = Classifier::new(everruns_core::classifier::DisabledClassifierService);
+        let disabled = Classifier::new(
+            "jev-latest",
+            everruns_core::classifier::DisabledClassifierService,
+        );
         assert!(!disabled.is_configured());
         let unconfigured = disabled.about("x").noul("q", "Is it?").send().await;
         assert!(matches!(unconfigured, Err(ClassifierError::Unconfigured)));
@@ -670,9 +674,9 @@ mod model_selection_tests {
     }
 
     #[tokio::test]
-    async fn a_model_is_selectable_and_a_call_outranks_the_classifier() {
+    async fn the_classifiers_model_travels_and_a_call_outranks_it() {
         let service = Arc::new(RecordingService::default());
-        let classifier = Classifier::shared(service.clone()).model("jev-1.13.0");
+        let classifier = Classifier::shared("jev-1.13.0", service.clone());
 
         // No per-call model: the classifier's choice travels with the request.
         let _ = classifier
@@ -687,12 +691,6 @@ mod model_selection_tests {
             .model("jev-latest")
             .send()
             .await;
-        // A classifier with no model leaves the choice to the service.
-        let _ = Classifier::shared(service.clone())
-            .about("x")
-            .noul("q", "Does it hold?")
-            .send()
-            .await;
 
         let seen = service.seen.lock().expect("lock").clone();
         assert_eq!(
@@ -700,9 +698,24 @@ mod model_selection_tests {
             vec![
                 Some("jev-1.13.0".to_string()),
                 Some("jev-latest".to_string()),
-                None,
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn a_request_built_without_a_classifier_can_still_leave_the_model_open() {
+        // `Classifier` always names a model, but the wire contract does not
+        // require one: the platform composes requests directly and leaves the
+        // choice to the service, so the knob stays absent from every surface an
+        // agent can write (THREAT[TM-LLM-037]).
+        let service = RecordingService::default();
+        let request = ClassificationRequest::new(serde_json::json!("x"))
+            .ask("q", ClassificationQuestion::noul("Does it hold?"));
+        assert_eq!(request.model, None);
+
+        let _ = service.evaluate(request).await;
+
+        assert_eq!(service.seen.lock().expect("lock").clone(), vec![None]);
     }
 
     #[tokio::test]

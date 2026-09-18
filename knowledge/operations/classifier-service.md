@@ -123,15 +123,17 @@ gets no type because Jev is a model. What an agent sees stays model-named, since
 is what answers it: the `Jev` capability, the `jev_evaluate` tool, and the `jev`
 guardrail engine.
 
-- The model is selectable, and defaulted rather than required. A service has
-  its own default (`jev-latest`); `TypeSafeAI::model` overrides it for
-  every call, and `ClassificationRequest::model` overrides it for one. This is
-  the difference from the utility LLM service, whose model is fixed: there will
-  be other classifiers and other versions of this one, and pinning
-  `jev-1.13.0` rather than tracking a vendor default is a caller's decision.
-  The platform still pins its own: the knob is absent from the guardrail config
-  an agent author writes, rather than absent from the type
-  (THREAT[TM-LLM-037]).
+- The model is named, not defaulted. `Classifier::new` takes it up front the
+  way `Model::new` does, because the service is transport and the model is what
+  answers; `ClassificationRequest::model` overrides it for one call. This is the
+  difference from the utility LLM service, whose model is fixed: there will be
+  other classifiers and other versions of this one, and a threshold calibrated
+  against one version is not evidence about the next, so inheriting a vendor
+  default silently is the wrong default. The service keeps its own default for
+  the wire contract — `ClassificationRequest::model` stays optional — which is
+  how the platform composes a request that names no model: the knob is absent
+  from the guardrail config an agent author writes, rather than absent from the
+  type (THREAT[TM-LLM-037]).
 - Ids pass through verbatim; nothing here rewrites them, matching the catalog
   contract that ids are the provider's own
   ([`crates/everruns/src/models.rs`](../../crates/everruns/src/models.rs)). The

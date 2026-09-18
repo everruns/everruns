@@ -15,7 +15,7 @@ code:
 use everruns::{Classifier, TypeSafeAI};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let classifier = Classifier::new(TypeSafeAI::from_env()?);
+let classifier = Classifier::new("jev-latest", TypeSafeAI::from_env()?);
 let spam = classifier
     .probability("Is this message spam?", "Claim your prize now!")
     .await?;
@@ -175,28 +175,48 @@ takes any `ClassifierService`, exactly as `Model::new` takes any provider.
 
 ## Choosing a model
 
-A service has a default model, so naming one is an override rather than a
-required argument — the difference from [`Model::new`](/framework/direct-model-calls/),
-where a provider is pure transport and serves many models with no default.
+The model is named up front, the way [`Model::new`](/framework/direct-model-calls/)
+names one: the service is transport, and the model is the thing that answers.
+There is no default to inherit without noticing, because a threshold calibrated
+against one version is not evidence about the next.
+
+Ids are the provider's own, so they are spelled the way the vendor spells them.
+`jev-latest` is TypeSafe's alias for the current Jev, so it tracks whatever the
+current version is; an exact id like `jev-1.13.0` pins one, so a vendor update
+cannot move your thresholds under you. Bare `jev` is not an id the API knows —
+nothing here rewrites what you pass.
+
+Ask for the alias and read back what answered, which is the id to pin once a
+threshold is calibrated:
 
 ```rust
-# use everruns::Classifier;
-# fn run(classifier: Classifier) {
-let classifier = classifier.model("jev-latest");
-# let _ = classifier;
+# use everruns::Answers;
+# fn run(answers: Answers) {
+let version = answers.model(); // "jev-1.13.0" for a "jev-latest" request
+# let _ = version;
 # }
 ```
 
-Ids are the provider's own, so they are spelled the way the vendor spells them.
-`jev-latest` is TypeSafe's alias for the current Jev and is what `TypeSafeAI`
-asks for when you name nothing; an exact id like `jev-1.13.0` pins a version so
-a vendor update cannot move your thresholds under you. Bare `jev` is not an id the
-API knows — nothing here rewrites what you pass.
+A single call can name a different model with the same method on the request
+builder, and it wins for that call:
 
-A single call can override the model again with the same method on the builder.
-A deployment that must pin one does so by never exposing the knob in the config
-an agent writes — not by the type being unable to carry one, because there will
-be other classifiers and other models.
+```rust
+# use everruns::Classifier;
+# async fn run(classifier: Classifier) -> Result<(), Box<dyn std::error::Error>> {
+let answers = classifier
+    .about("...")
+    .noul("urgent", "Does this convey urgency?")
+    .model("jev-1.13.0")
+    .send()
+    .await?;
+# let _ = answers;
+# Ok(())
+# }
+```
+
+A deployment that must pin a model does so by never exposing the knob in the
+config an agent writes — not by the type being unable to carry one, because
+there will be other classifiers and other models.
 
 A deployment running the Everruns platform configures a separate
 `UTILITY_TYPESAFE_API_KEY` for its [guardrails](/capabilities/guardrails/) — a
