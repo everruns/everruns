@@ -1183,6 +1183,133 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/mcp-attachments": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "operationId": "list_agent_mcp_attachments",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Effective MCP attachments for the agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentMcpAttachment"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or harness not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/mcp-attachments/{name}/connection": {
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "operationId": "revoke_agent_mcp_connection",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Effective MCP attachment name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "MCP connection revoked"
+          },
+          "400": {
+            "description": "Attachment does not use a connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent, attachment, preset, or connection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/stats": {
       "get": {
         "tags": [
@@ -17788,6 +17915,136 @@
             "$ref": "#/components/schemas/AgentHarnessStatus"
           }
         }
+      },
+      "AgentMcpAttachment": {
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "source_label",
+          "overridden_sources",
+          "acts_as",
+          "header_names",
+          "tools_available",
+          "tools",
+          "state",
+          "action",
+          "editable"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/AgentMcpAttachmentAction"
+          },
+          "acts_as": {
+            "$ref": "#/components/schemas/McpServerActsAs"
+          },
+          "connected_as": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connection_provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "editable": {
+            "type": "boolean"
+          },
+          "header_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "overridden_sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentMcpAttachmentSourceInfo"
+            }
+          },
+          "preset_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preset_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/AgentMcpAttachmentSource"
+          },
+          "source_label": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AgentMcpAttachmentState"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tools_available": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AgentMcpAttachmentAction": {
+        "type": "string",
+        "enum": [
+          "none",
+          "connect",
+          "authorize",
+          "ask_admin"
+        ]
+      },
+      "AgentMcpAttachmentSource": {
+        "type": "string",
+        "enum": [
+          "capability",
+          "harness",
+          "agent"
+        ]
+      },
+      "AgentMcpAttachmentSourceInfo": {
+        "type": "object",
+        "required": [
+          "source",
+          "source_label"
+        ],
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/AgentMcpAttachmentSource"
+          },
+          "source_label": {
+            "type": "string"
+          }
+        }
+      },
+      "AgentMcpAttachmentState": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "connection_missing",
+          "preset_missing"
+        ]
       },
       "AgentMessage": {
         "type": "object",

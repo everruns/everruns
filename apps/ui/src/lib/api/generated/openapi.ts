@@ -323,6 +323,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/mcp-attachments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_agent_mcp_attachments"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/mcp-attachments/{name}/connection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations["revoke_agent_mcp_connection"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/stats": {
     parameters: {
       query?: never;
@@ -4723,6 +4755,34 @@ export interface components {
       source: components["schemas"]["AgentHarnessSource"];
       status: components["schemas"]["AgentHarnessStatus"];
     };
+    AgentMcpAttachment: {
+      action: components["schemas"]["AgentMcpAttachmentAction"];
+      acts_as: components["schemas"]["McpServerActsAs"];
+      connected_as?: string | null;
+      connection_provider?: string | null;
+      editable: boolean;
+      header_names: string[];
+      name: string;
+      overridden_sources: components["schemas"]["AgentMcpAttachmentSourceInfo"][];
+      preset_id?: string | null;
+      preset_name?: string | null;
+      source: components["schemas"]["AgentMcpAttachmentSource"];
+      source_label: string;
+      state: components["schemas"]["AgentMcpAttachmentState"];
+      tools: string[];
+      tools_available: boolean;
+      url?: string | null;
+    };
+    /** @enum {string} */
+    AgentMcpAttachmentAction: "none" | "connect" | "authorize" | "ask_admin";
+    /** @enum {string} */
+    AgentMcpAttachmentSource: "capability" | "harness" | "agent";
+    AgentMcpAttachmentSourceInfo: {
+      source: components["schemas"]["AgentMcpAttachmentSource"];
+      source_label: string;
+    };
+    /** @enum {string} */
+    AgentMcpAttachmentState: "ready" | "connection_missing" | "preset_missing";
     AgentMessage: {
       role: string;
       text: string;
@@ -21096,6 +21156,106 @@ export interface operations {
       };
       /** @description Run not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_mcp_attachments: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Effective MCP attachments for the agent */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentMcpAttachment"][];
+        };
+      };
+      /** @description Agent or harness not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  revoke_agent_mcp_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+        /** @description Effective MCP attachment name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description MCP connection revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Attachment does not use a connection */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent, attachment, preset, or connection not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
         headers: {
           [name: string]: unknown;
         };

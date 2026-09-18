@@ -809,7 +809,7 @@ pub async fn list_agent_mcp_attachments(
         everruns_core::merge_capabilities(&harness.capabilities, &agent.capabilities);
     let capability_servers = everruns_core::capabilities::collect_capability_mcp_servers(
         &effective_capabilities,
-        state.host_composition.capability_registry(),
+        state.host_composition.capability_registry().as_ref(),
     );
     let mut effective = BTreeMap::new();
     merge_sourced_mcp_layer(
@@ -993,7 +993,7 @@ pub async fn revoke_agent_mcp_connection(
         everruns_core::merge_capabilities(&harness.capabilities, &agent.capabilities);
     let capability_servers = everruns_core::capabilities::collect_capability_mcp_servers(
         &effective_capabilities,
-        state.host_composition.capability_registry(),
+        state.host_composition.capability_registry().as_ref(),
     );
     let mut servers =
         everruns_core::merge_scoped_mcp_servers(&capability_servers, &harness.mcp_servers);
