@@ -7,9 +7,7 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use everruns_core::{
-    Caller, McpServerActsAs, PermissionResolver, ScopedMcpServer, ScopedMcpServers,
-};
+use everruns_core::{Caller, McpServerActsAs, ScopedMcpServer, ScopedMcpServers};
 use everruns_provider::typed_id::AgentId;
 use serde::Serialize;
 use std::collections::BTreeMap;
