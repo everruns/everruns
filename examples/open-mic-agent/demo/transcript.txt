@@ -1,0 +1,57 @@
+MODEL: claude-sonnet-5
+
+QUESTION
+Book submission mic_late into tonight's line-up. Measure the bit before you decide.
+
+> read_house_rules
+
+< read_house_rules: OK
+# 🐔 The Rubber Chicken — open mic house rules (fictional club)
+
+## Measure first
+
+Every submission gets the same four questions, asked in one `jev_evaluate` call
+over the bit's text:
+
+- `laugh` (noul) — Would a general club audience laugh out loud at this bit?
+- `clean` (noul) — Is this bit fine for the all-ages 7pm room: no profanity, no
+  sex, no drinking or drugs as the punchline?
+- `style` (choice) — pun, observational, storytelling, absurdist.
+- `polish` (score) — a rough first draft that still needs writing / works, but
+  runs long between laughs / stage-ready, tight from the first line.
+
+Ask them with these ids and these levels, word f
+[excerpt; full result supplied to agent]
+
+> read_submission
+  submission_id: mic_late
+
+< read_submission: OK
+bit: "Tequila is the only drink that makes you fluent in a language you never studied and illiterate in the one you were raised in. At my cousin's bachelor party I ordered a round in what I believed was flawless Spanish and apparently proposed to the bartender. He said yes. My fiancee says she respects the hustle but she wants the ring back."
+comic: "Marco Vellani"
+first_timer: false
+minutes: 5
+title: "Tequila Fluency"
+
+> jev_evaluate
+  state: Tequila is the only drink that makes you fluent in a language you never studied and illiterate in the one you were raised in. At my cousin's bachelor party I ordered a round in what I believed was flawless Spanish and a…
+  laugh   noul    Would a general club audience laugh out loud at this bit?
+  clean   noul    Is this bit fine for the all-ages 7pm room: no profanity, no sex, no drinking…
+  style   choice  What comedic style is this bit? [absurdist | observational | pun | storytelli…
+  polish  score   Rate how polished this bit is as a piece of stand-up writing. [3 levels]
+
+< jev_evaluate: OK
+  clean   noul    0.05
+  laugh   noul    0.65
+  polish  score   1.88 of 2  stage-ready, tight from the first line
+  style   choice  storytelling (0.91)
+  model: jev-1.13.0
+
+ANSWER
+
+1. 🌙 Late Slot — Marco Vellani, "Tequila Fluency"
+2. laugh 0.65 · clean 0.05 · style storytelling · polish stage-ready, tight from the first line (tail 0.99)
+3. "🌙 Late slot, 11pm, 18+ — laugh ≥ 0.35 and clean below 0.75."
+4. The bachelor-party twist and the fiancée tag land well — keep the drinking-as-punchline edge for the 18+ room; tighten the setup line for pacing.
+
+Completed: 3 iterations, 3 tool calls

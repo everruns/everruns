@@ -8,11 +8,14 @@
 //!
 //! [`run`] suits agents whose tools return prose; [`shell::run`] suits agents
 //! driving a shell, where the payload is an exec result worth decoding.
+//! [`classification`] decodes the one other payload worth decoding in place:
+//! typed questions and the distributions they come back as.
 //!
 //! These observers print tool arguments and results. The example agents expose
 //! public or self-contained demo data; review what a tool can return before
 //! pointing an observer at one that handles private data.
 
+pub mod classification;
 pub mod shell;
 
 use everruns::{Session, SessionEventKind, Turn};
@@ -33,12 +36,17 @@ pub async fn run(session: &Session, question: &str) -> Result<Turn, Box<dyn std:
                 println!("\n> {tool_name}");
                 let data = event.canonical_json();
                 if let Some(arguments) = data["data"]["tool_call"]["arguments"].as_object() {
-                    for (key, value) in arguments {
-                        let value = value
-                            .as_str()
-                            .map(str::to_owned)
-                            .unwrap_or_else(|| value.to_string());
-                        text(&format!("  {key}: {value}"));
+                    match classification::questions(arguments) {
+                        Some(rendered) => text(&rendered),
+                        None => {
+                            for (key, value) in arguments {
+                                let value = value
+                                    .as_str()
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| value.to_string());
+                                text(&format!("  {key}: {value}"));
+                            }
+                        }
                     }
                 }
             }
@@ -101,6 +109,11 @@ pub fn show(label: &str, text: &str) {
 fn preview(body: &str) -> String {
     // Only public/demo data belongs here; review this before using private tools.
     let parsed = serde_json::from_str::<Value>(body).ok();
+    if let Some(value) = &parsed
+        && let Some(rendered) = classification::answers(value)
+    {
+        return rendered;
+    }
     if let Some(value) = &parsed
         && let Some(results) = value["results"].as_array()
     {

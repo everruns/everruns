@@ -269,6 +269,10 @@ the hosted [TypeSafe integration](/integrations/typesafe/) gives platform
 agents — same name, same schema — so behavior matches whether you embed the
 Framework or run on Everruns.
 
+The [Open Mic Agent](/framework/examples/open-mic-agent/) is a complete program
+on this path: it measures comedy submissions with `jev_evaluate` and books them
+by thresholds written in a rules file rather than by the model's taste.
+
 Which one to reach for:
 
 | | you decide | the agent decides |

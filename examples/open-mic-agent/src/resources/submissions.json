@@ -1,0 +1,30 @@
+{
+  "mic_pun": {
+    "comic": "Dana Ruiz",
+    "title": "Bread Winner",
+    "minutes": 5,
+    "first_timer": false,
+    "bit": "I got fired from the bakery for stealing dough, which is unfair, because I kneaded it. My manager said letting me go was the yeast he could do. I said fine, but I am the bread winner in this family, and he said Dana, that is the third time you have said crust instead of trust in this meeting."
+  },
+  "mic_late": {
+    "comic": "Marco Vellani",
+    "title": "Tequila Fluency",
+    "minutes": 5,
+    "first_timer": false,
+    "bit": "Tequila is the only drink that makes you fluent in a language you never studied and illiterate in the one you were raised in. At my cousin's bachelor party I ordered a round in what I believed was flawless Spanish and apparently proposed to the bartender. He said yes. My fiancee says she respects the hustle but she wants the ring back."
+  },
+  "mic_flat": {
+    "comic": "Priya Raghunathan",
+    "title": "Gerald the Printer",
+    "minutes": 4,
+    "first_timer": true,
+    "bit": "So our printer is named Gerald. And if you have ever filed a B-12 toner requisition, you already know where this is going. You know. The Q3 rollover. I am not even going to do the voice. I will just say: Marcus, from Logistics. That is the whole bit. Marcus knows."
+  },
+  "mic_long": {
+    "comic": "Sam Okafor",
+    "title": "Nine Minutes About Owls",
+    "minutes": 9,
+    "first_timer": false,
+    "bit": "I have nine minutes of material about owls and I will not be cutting a second of it. Owls are the only bird that looks at you like you have personally disappointed it. A pigeon sees you and thinks: food. A seagull sees you and thinks: target. An owl sees you and thinks: we talked about this. You cannot out-stare an owl. I have tried, at a sanctuary, for forty minutes, in front of a school group. The educator asked me to leave. The owl agreed with her."
+  }
+}

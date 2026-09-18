@@ -1,0 +1,15 @@
+[package]
+name = "everruns-open-mic-agent"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+
+[dependencies]
+everruns = { path = "../../crates/everruns", features = ["typesafe"] }
+everruns-anthropic = { path = "../../crates/drivers/anthropic" }
+everruns-example-demo = { path = "../demo-support" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

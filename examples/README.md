@@ -11,11 +11,12 @@ repository: these Cargo packages depend on local workspace crates.
 | [Code Review](coding-review-agent/) | Execute a fixed reproduction before reporting a defect | `cargo run -p everruns-coding-review-agent` |
 | [Research](research-agent/) | Search and fetch primary sources | `cargo run -p everruns-research-agent` |
 | [Incident Commander](incident-commander-agent/) | Investigate evidence and persist a safe update | `cargo run -p everruns-incident-commander-agent` |
+| [Open Mic](open-mic-agent/) | Measure content with a classifier, then decide by written thresholds | `cargo run -p everruns-open-mic-agent` |
 | [Bashkit Repo](bashkit-repo-agent/) | Modify and verify a repository through a sandboxed shell | `cargo run -p everruns-bashkit-repo-agent` |
 
 Each README lists credentials, contrasting scenarios, expected outcomes, and
-limits. Support Agent, Everruns Support Agent, and Bashkit Repo Agent use the
-reference layout: crate metadata and the README stay at the root, executable
+limits. Support Agent, Everruns Support Agent, Open Mic Agent, and Bashkit Repo
+Agent use the reference layout: crate metadata and the README stay at the root, executable
 code and bundled resources live in `src/`, and recording collateral lives in
 `demo/`. Live runs incur provider/search charges.
 Offline tests exercise tool behavior, not model quality. The default engine is

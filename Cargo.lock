@@ -3078,6 +3078,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-open-mic-agent"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-anthropic",
+ "everruns-example-demo",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-openai"
 version = "0.28.0"
 dependencies = [
