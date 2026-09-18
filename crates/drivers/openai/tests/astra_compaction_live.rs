@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live acceptance gate for Astra configuration updates and explicit compaction.
 //! Run only after the account has credits:
 //! doppler run --project everruns-dev --config dev -- cargo test -p everruns-openai --test astra_compaction_live -- --ignored --nocapture

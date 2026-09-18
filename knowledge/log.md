@@ -21,6 +21,26 @@
   the caller's code. No streaming, because a classification is one round trip. The
   facade names no vendor: `Classifier::new` takes any service the way `Model::new`
   takes any provider, and `Classifier::simulated` keeps tests offline.
+* **A model id was promoted without the catalog behind it.** Applications could
+  select a model and call it through the facade, but not ask a provider which
+  models it serves: discovery, the profile registry, and driver-kind identity
+  sat in `everruns-provider`, so any model picker took a second crate and
+  provider-owned types. `everruns::models` promotes listing and metadata on the
+  same value-first terms as direct model calls, and a `Provider` now carries the
+  driver kind it speaks so profiles resolve for a provider keyed by an
+  application name. See
+  [Framework Application API Boundaries](framework/application-api.md).
+
+* **A vendor name can collide with the host language.** The provider type was
+  `TypeSafe`, which is the company — but in Rust `TypeSafe` reads as a marker
+  about type safety, and `TypeSafeClient` reads as "a type-safe client". The
+  vendor never has this problem; we do, because the name landed in a type
+  position. `TypeSafeAI` is the company's own full name, cases like the
+  neighbouring `OpenAI`, and can only be read as a company. Type names moved;
+  the `TYPESAFE_API_KEY` variables, the `typesafe` feature and crate, and the
+  stored `typesafe` connection provider did not — they are not type positions,
+  and the provider string is persisted. See
+  [Classifier Service](operations/classifier-service.md).
 
 * **The agent-facing surface is named for the model, the credential surface for
   the vendor.** The capability is `jev` and its tool is `jev_evaluate`, matching
@@ -87,6 +107,22 @@
   something and get numbers back instead of forming a second impression in
   prose. Its user connection is deliberately separate from the deployment key
   that backs the classifier.
+* **Integration registration was a linker side effect.** Integration crates
+  submitted their capabilities and connectors through `inventory::submit!`, and
+  `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` each carried an
+  `extern crate` block so the linker kept those crates and their link-section
+  submissions. A registry's contents therefore depended on what a binary
+  happened to link: dropping a line removed an integration with no compile
+  error, the set was maintained in four places (two manifests, two `extern
+  crate` blocks), and `everruns-platform`'s own tests saw a different registry
+  than production because platform does not depend on the integration crates.
+  Each crate now publishes `CAPABILITY_PLUGINS` / `CONNECTOR_PLUGINS` consts and
+  the new `crates/integrations-catalog` names every one, with
+  `scripts/lib/check-integration-catalog.sh` failing a crate that publishes
+  plugins without a catalog entry. Embedders filter or extend `CATALOG`.
+  `SessionSandboxProviderPlugin` and the `CommandDescriptor` catalog still use
+  inventory and are unaffected — every catalog entry references its crate by
+  path, so the crate stays linked.
 
 * **Which identity an MCP server acts under was a side effect of its auth mode,
   not a stated property.** `api_key` happened to be org-wide, `oauth` happened to

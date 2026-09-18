@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live Sprites API integration tests.
 //!
 //! These tests hit the real Sprites API and are gated behind:

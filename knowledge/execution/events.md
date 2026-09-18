@@ -20,7 +20,7 @@ payload structs, type registry, HTTP query fields, or SQL schema.
 
 ## Sources of truth
 
-- [`crates/core/src/events.rs`](../../crates/core/src/events.rs) owns the serialized
+- [`crates/core/src/events/mod.rs`](../../crates/core/src/events/mod.rs) owns the serialized
   event envelope, event type constants, payload structs, the type-to-payload
   mapping, and the valid filter registry.
 - [`docs/api/openapi.json`](../../docs/api/openapi.json) is the generated
@@ -34,7 +34,7 @@ payload structs, type registry, HTTP query fields, or SQL schema.
 - [`crates/server/migrations/001_base_schema.sql`](../../crates/server/migrations/001_base_schema.sql)
   and later migrations own storage columns, constraints, indexes, sequence
   allocation, and immutability triggers.
-- The tests in [`crates/core/src/events.rs`](../../crates/core/src/events.rs) cover
+- The tests in [`crates/core/src/events/mod.rs`](../../crates/core/src/events/mod.rs) cover
   serialization, round trips, forward compatibility, and the type mapping.
   [`crates/server/tests/workflow_test.rs`](../../crates/server/tests/workflow_test.rs)
   covers API filtering of unsupported events, while
@@ -51,7 +51,7 @@ must not become a second schema registry.
 The event protocol is a public API contract.
 
 The top-level envelope is stable. Its exact serialized fields and types are
-defined by `Event` in `crates/core/src/events.rs`. Payload shape is selected by
+defined by `Event` in `crates/core/src/events/mod.rs`. Payload shape is selected by
 the event's `type` through the single type-to-payload mapping in the same file.
 
 The following changes are backward-compatible:
@@ -76,7 +76,7 @@ remain in storage for audit and aggregate queries.
 
 Adding a constant is not enough to add an event. The payload type, mapping,
 filter registry, OpenAPI export, emission path, and round-trip tests must stay
-coherent. Tests in `crates/core/src/events.rs` are the executable contract for
+coherent. Tests in `crates/core/src/events/mod.rs` are the executable contract for
 that coherence.
 
 ## Embedding facade surfaces

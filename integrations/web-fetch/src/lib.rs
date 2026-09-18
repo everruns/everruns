@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! FetchKit-backed web fetch capability for Everruns agents.
 //!
 //! Requests cross the host egress contract, downloads use the session

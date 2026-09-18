@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! OpenAI Image Generation integration.
 //!
 //! Provides the `gpt_image_gen` capability with `generate_image` and
@@ -21,4 +22,6 @@
 mod image_capability;
 mod images;
 
-pub use image_capability::{EditImageTool, GenerateImageTool, GptImageGenCapability};
+pub use image_capability::{
+    CAPABILITY_PLUGINS, EditImageTool, GenerateImageTool, GptImageGenCapability,
+};

@@ -95,13 +95,25 @@ let answer = model.complete("Name the three primary colors.").await?;
 
 See [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/).
 
+Picking that model id is the same provider, asked a different question:
+
+```rust
+use everruns::{OpenAI, models};
+
+for model in models::list(OpenAI::from_env()?).await? {
+    println!("{} — {}", model.id(), model.display_name().unwrap_or("?"));
+}
+```
+
+See [Model catalogs](https://docs.everruns.com/framework/model-catalogs/).
+
 And when the answer is a number rather than prose — *does this hold, how severe
 is it, which of these* — ask for a judgment instead of parsing one out of text:
 
 ```rust
-use everruns::{Classifier, TypeSafeClassifier};
+use everruns::{Classifier, TypeSafeAI};
 
-let judge = Classifier::new(TypeSafeClassifier::from_env()?);
+let judge = Classifier::new(TypeSafeAI::from_env()?);
 let spam = judge.probability("Is this message spam?", text).await?;
 ```
 
@@ -273,6 +285,7 @@ includes the exact command for each one.
 - [Agents](https://docs.everruns.com/framework/agents/)
 - [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/)
+- [Model catalogs](https://docs.everruns.com/framework/model-catalogs/)
 - [Direct classification](https://docs.everruns.com/framework/direct-classification/)
 - [Credentials](https://docs.everruns.com/framework/credentials/)
 - [Sessions](https://docs.everruns.com/framework/sessions/)

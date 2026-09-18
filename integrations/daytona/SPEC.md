@@ -341,9 +341,13 @@ The `daytona_api_call` tool is opt-in via capability config (`enable_api_calling
 
 `integrations/daytona/` → `everruns-integrations-daytona`
 
-External integration crate, auto-registered via `inventory::submit!` plugin system.
+External integration crate. It publishes plugin consts and is named in
+`crates/integrations-catalog`.
 
-**Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_daytona;`, otherwise the linker optimizes out the crate and `inventory::submit!` registrations silently disappear. See [architecture.md](../../knowledge/foundations/architecture.md#integration-plugin-force-linking).
+**Catalog entry required**: `crates/integrations-catalog` must carry a `CatalogEntry` for
+this crate, otherwise its capabilities and connectors never register.
+`scripts/lib/check-integration-catalog.sh` enforces this. See
+[architecture.md](../../knowledge/foundations/architecture.md#integration-catalog).
 
 | File | Purpose |
 |------|---------|
@@ -353,7 +357,7 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 | `src/openapi_spec.rs` | Embedded Daytona OpenAPI spec (YAML) for session filesystem mount |
 | `src/state.rs` | API types (`SandboxInfo`, `ExecResult`, `SandboxState`), session state helpers |
 | `src/tools.rs` | 11 tool implementations (`DaytonaCreateSandboxTool`, `DaytonaApiCallTool`, etc.) |
-| `tests/plugin_registration.rs` | Integration tests for inventory registration |
+| `tests/plugin_registration.rs` | Integration tests for the published plugin consts |
 | `tests/tool_integration.rs` | Integration tests: tool execution + wiremock Daytona API |
 | `tests/live_api_test.rs` | Live API integration tests (feature-gated: `daytona-live-tests`; fail-closed on missing `DAYTONA_API_KEY`, see `knowledge/integrations/integrations.md`) |
 

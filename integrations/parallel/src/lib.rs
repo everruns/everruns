@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Parallel web search and fetch for Everruns agents.
 //!
 //! `everruns-integrations-parallel` is part of the
@@ -37,33 +38,29 @@ use serde_json::{Value, json};
 use connection::ParallelConnector;
 pub use payments::ParallelPaymentsCapability;
 
-inventory::submit! {
+/// Capability plugins this crate contributes to a hosted catalog.
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
         experimental_only: true,
         feature_flag: None,
         factory: || Box::new(ParallelCapability),
-    }
-}
-
-// Paid Parallel tools route spend through the core `PaymentAuthority`. Gated by
-// the deployment-controlled `machine_payments` feature flag (off by default on all envs,
-// including dev, because spend is irreversible) rather than the experimental
-// grade gate, so it can be enabled deliberately in any environment.
-inventory::submit! {
+    },
+    // Paid Parallel tools route spend through the core `PaymentAuthority`. Gated by
+    // the deployment-controlled `machine_payments` feature flag (off by default on all envs,
+    // including dev, because spend is irreversible) rather than the experimental
+    // grade gate, so it can be enabled deliberately in any environment.
     IntegrationPlugin {
         experimental_only: false,
         feature_flag: Some("machine_payments"),
         factory: || Box::new(ParallelPaymentsCapability),
-    }
-}
+    },
+];
 
-inventory::submit! {
-    ConnectorPlugin {
-        experimental_only: true,
-        factory: || Box::new(ParallelConnector),
-    }
-}
-
+/// Connector plugins this crate contributes to a hosted catalog.
+pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
+    experimental_only: true,
+    factory: || Box::new(ParallelConnector),
+}];
 pub const PARALLEL_CAPABILITY_ID: &str = "parallel_search";
 pub const PARALLEL_PROVIDER_ID: &str = "parallel";
 pub const PARALLEL_SERVER_NAME: &str = "Parallel";

@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // Parametrized agent-run tests against real LLM endpoints.
 //
 // Uses rstest to run every scenario against every provider × model combination

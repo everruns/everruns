@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Cursor Cloud Agents integration for Everruns.
 //!
 //! This integration contributes tools for launching and managing Cursor Cloud
@@ -31,21 +32,18 @@ use tools::{
     CursorListRepositoriesTool,
 };
 
-inventory::submit! {
-    IntegrationPlugin {
-        experimental_only: false,
-        feature_flag: None,
-        factory: || Box::new(CursorCapability),
-    }
-}
+/// Capability plugins this crate contributes to a hosted catalog.
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    experimental_only: false,
+    feature_flag: None,
+    factory: || Box::new(CursorCapability),
+}];
 
-inventory::submit! {
-    ConnectorPlugin {
-        experimental_only: false,
-        factory: || Box::new(CursorConnector),
-    }
-}
-
+/// Connector plugins this crate contributes to a hosted catalog.
+pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
+    experimental_only: false,
+    factory: || Box::new(CursorConnector),
+}];
 pub const CURSOR_API_BASE: &str = "https://api.cursor.com";
 pub const CURSOR_API_KEY_SECRET: &str = "CURSOR_API_KEY";
 pub const CURSOR_CONNECTION_PROVIDER: &str = "cursor";

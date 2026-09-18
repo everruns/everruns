@@ -1,7 +1,7 @@
 # OpenAI Image Generation Integration
 # Decision: Lives as an integration crate (not in the `everruns-openai` driver
 # crate) so the provider crate stays a pure ChatDriver with no dependency on
-# core's capability/tool/session runtime. Auto-registered via the inventory
+# core's capability/tool/session runtime. Named in the integration catalog via the
 # IntegrationPlugin system, exactly like the other integration crates.
 
 [package]
@@ -24,7 +24,6 @@ documentation = "https://docs.rs/everruns-integrations-openai-image"
 # same as the other integration crates.
 everruns-core.workspace = true
 everruns-provider = { workspace = true, features = ["http"] }
-inventory.workspace = true
 
 # HTTP client for the OpenAI Image API (multipart uploads for edits)
 reqwest = { workspace = true, features = ["multipart"] }
@@ -49,3 +48,6 @@ tracing.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
+
+[lints]
+workspace = true

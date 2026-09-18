@@ -237,20 +237,50 @@ durable paths reuse the same engine phase wiring.
 
 See [knowledge/foundations/runtime.md](runtime.md) for the public embedded runtime contract.
 
-### Integration Plugin Force-Linking
+### Integration Catalog
 
-Integration crates (`docker`, `daytona`, `e2b`) register capabilities at startup via `inventory::submit!`. The `inventory` crate uses linker sections, if the crate is not explicitly referenced, Rust's linker will optimize it out and the `submit!` registrations silently disappear.
+`crates/integrations-catalog` is the one place that names every integration
+crate composed into the hosted product. Each integration crate publishes its
+contributions as plain consts — `CAPABILITY_PLUGINS` (`IntegrationPlugin`) and
+`CONNECTOR_PLUGINS` (`ConnectorPlugin`) — and `CATALOG` lists one
+`CatalogEntry` per crate. Server and worker both compose from
+`oss_capability_registry_for_grade` / `register_connectors`.
 
-**Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must have `extern crate` statements for every integration crate** (see those files for the current list).
+The catalog sits above `everruns-platform` because integration crates depend on
+platform for the connector and sandbox contracts, so platform cannot name them.
+`hosted_capability_registry_for_grade` therefore excludes integrations; only the
+catalog's composition has the full set. Registration order is builtins →
+integrations → hosted capabilities, so a hosted capability still wins a
+canonical-id collision.
 
 Adding a new integration crate requires:
-1. Create the crate under `integrations/`
-2. Add it as a dependency in `crates/server/Cargo.toml` and `crates/worker/Cargo.toml`
-3. Add `extern crate` to both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs`
+1. Create the crate under `integrations/`, publishing its plugin consts.
+2. Add it as a dependency of `crates/integrations-catalog`.
+3. Add a `CatalogEntry` to `CATALOG`.
 
-Without step 3, the crate compiles but its capabilities are never registered. There is no compile-time error, the integration simply does not appear at runtime.
+`scripts/lib/check-integration-catalog.sh` (pre-push + CI) fails if a crate
+publishes plugin consts without a catalog entry, if capability or connector
+plugins go back to `inventory::submit!`, or if a binary force-links an
+integration crate.
 
-Important: inventory discovery is now confined to default presets. Embedders can bypass those presets entirely by constructing `HostComposition` directly.
+Decision: registration used to happen through `inventory::submit!`, with
+`extern crate` lines in `crates/server/src/lib.rs` and
+`crates/worker/src/lib.rs` forcing each crate to link so its linker-section
+submissions survived. That made a registry's contents a linker side effect —
+a forgotten line dropped an integration with no compile error, the list was
+maintained in four places, and the registry a binary built depended on what it
+happened to link, so platform's own tests saw a different set than production.
+Naming the catalog costs one entry per integration, gets the compiler to check
+that the named crate and its consts exist, and makes linkage a consequence of a
+real reference.
+
+Embedders that want a different set start from `CATALOG`, filter or extend it,
+and register the result — or bypass the presets entirely by constructing
+`HostComposition` directly.
+
+`SessionSandboxProviderPlugin` and the CLI/MCP `CommandDescriptor` catalog still
+use `inventory`; both are unaffected, because every catalog entry references its
+crate by path and so keeps it linked.
 
 ### Server Entrypoint
 

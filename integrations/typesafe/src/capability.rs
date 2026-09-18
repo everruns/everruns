@@ -8,26 +8,26 @@ use everruns_provider::tool_types::ToolHints;
 use serde_json::Value;
 use tracing::debug;
 
-use crate::client::TypeSafeClient;
+use crate::client::TypeSafeAIClient;
 
 use crate::{CAPABILITY_ID, TYPESAFE_API_KEY_SECRET, TYPESAFE_CONNECTION_PROVIDER, evaluate};
 
+/// This crate's capability contributions, named by `everruns-integrations-catalog`.
 #[cfg(feature = "hosted")]
-inventory::submit! {
-    everruns_core::capabilities::IntegrationPlugin {
+pub const CAPABILITY_PLUGINS: &[everruns_core::capabilities::IntegrationPlugin] =
+    &[everruns_core::capabilities::IntegrationPlugin {
         experimental_only: true,
         feature_flag: None,
         factory: || Box::new(JevCapability),
-    }
-}
+    }];
 
+/// This crate's connector contributions, named by `everruns-integrations-catalog`.
 #[cfg(feature = "hosted")]
-inventory::submit! {
-    everruns_platform::connector::ConnectorPlugin {
+pub const CONNECTOR_PLUGINS: &[everruns_platform::connector::ConnectorPlugin] =
+    &[everruns_platform::connector::ConnectorPlugin {
         experimental_only: true,
-        factory: || Box::new(crate::TypeSafeConnector),
-    }
-}
+        factory: || Box::new(crate::TypeSafeAIConnector),
+    }];
 
 const SYSTEM_PROMPT_ADDITION: &str = "`jev_evaluate` answers typed questions about content \
     with calibrated numbers: a probability for yes/no, a selected option with its distribution, or \
@@ -172,7 +172,7 @@ impl Tool for JevEvaluateTool {
             Ok(key) => key,
             Err(error) => return error,
         };
-        match evaluate::evaluate(&TypeSafeClient::new(api_key), input).await {
+        match evaluate::evaluate(&TypeSafeAIClient::new(api_key), input).await {
             Ok(result) => ToolExecutionResult::success(result),
             Err(error) => ToolExecutionResult::tool_error(error),
         }

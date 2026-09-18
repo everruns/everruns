@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! OpenRouter workspace, model-scout, and server-tool integrations for Everruns.
 //!
 //! This crate keeps provider-workspace HTTP behavior outside the neutral

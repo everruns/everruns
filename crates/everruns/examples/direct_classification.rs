@@ -10,7 +10,7 @@
 //! ```
 //! TypeSafe System One (requires TYPESAFE_API_KEY):
 //! ```text
-//! cargo run -p everruns --features jev --example direct_classification -- --live
+//! cargo run -p everruns --features typesafe --example direct_classification -- --live
 //! ```
 //! An optional positional argument replaces the content being classified.
 
@@ -32,14 +32,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let classifier = if live {
-        #[cfg(feature = "jev")]
+        #[cfg(feature = "typesafe")]
         {
             println!("TypeSafe System One over HTTP.\n");
-            Classifier::new(everruns::TypeSafeClassifier::from_env()?)
+            Classifier::new(everruns::TypeSafeAI::from_env()?)
         }
-        #[cfg(not(feature = "jev"))]
+        #[cfg(not(feature = "typesafe"))]
         {
-            return Err("Live mode requires: cargo run -p everruns --features jev --example direct_classification -- --live".into());
+            return Err("Live mode requires: cargo run -p everruns --features typesafe --example direct_classification -- --live".into());
         }
     } else {
         println!("Offline simulator: fixed answers; no model inference.\n");

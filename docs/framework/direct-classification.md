@@ -12,10 +12,10 @@ A classifier answers them as numbers instead, and the decision stays in your
 code:
 
 ```rust
-use everruns::{Classifier, TypeSafeClassifier};
+use everruns::{Classifier, TypeSafeAI};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let classifier = Classifier::new(TypeSafeClassifier::from_env()?);
+let classifier = Classifier::new(TypeSafeAI::from_env()?);
 let spam = classifier
     .probability("Is this message spam?", "Claim your prize now!")
     .await?;
@@ -35,23 +35,6 @@ the same shape, a different contract.
 | you get back | text | calibrated numbers |
 | decides the outcome | the model's words | your threshold, in your code |
 | streams | yes | no — one round trip |
-
-## Offline by default
-
-`Classifier::simulated` needs no credentials and no network, so classifications are
-testable the same way agents and completions are:
-
-```rust
-use everruns::Classifier;
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let p = Classifier::simulated(0.93)
-    .probability("Does this convey urgency?", "Two hours on hold.")
-    .await?;
-assert!(p > 0.9);
-# Ok(())
-# }
-```
 
 ## Three primitives
 
@@ -180,11 +163,11 @@ guardrails included.
 
 ## Credentials
 
-`TypeSafeClassifier::from_env()` reads your application's own
-`TYPESAFE_API_KEY`, and requires the `jev` feature:
+`TypeSafeAI::from_env()` reads your application's own
+`TYPESAFE_API_KEY`, and requires the `typesafe` feature:
 
 ```toml
-everruns = { version = "0.28", features = ["jev"] }
+everruns = { version = "0.28", features = ["typesafe"] }
 ```
 
 `everruns` itself stays vendor-free without that feature: `Classifier::new`
@@ -199,16 +182,21 @@ where a provider is pure transport and serves many models with no default.
 ```rust
 # use everruns::Classifier;
 # fn run(classifier: Classifier) {
-// Pin a version rather than tracking the vendor's default.
-let pinned = classifier.model("jev-1.13.0");
-# let _ = pinned;
+let classifier = classifier.model("jev-latest");
+# let _ = classifier;
 # }
 ```
 
-A single call can override it again with the same method on the builder. A
-deployment that must pin a model does so by never exposing the knob in the
-config an agent writes — not by the type being unable to carry one, because
-there will be other classifiers and other models.
+Ids are the provider's own, so they are spelled the way the vendor spells them.
+`jev-latest` is TypeSafe's alias for the current Jev and is what `TypeSafeAI`
+asks for when you name nothing; an exact id like `jev-1.13.0` pins a version so
+a vendor update cannot move your thresholds under you. Bare `jev` is not an id the
+API knows — nothing here rewrites what you pass.
+
+A single call can override the model again with the same method on the builder.
+A deployment that must pin one does so by never exposing the knob in the config
+an agent writes — not by the type being unable to carry one, because there will
+be other classifiers and other models.
 
 A deployment running the Everruns platform configures a separate
 `UTILITY_TYPESAFE_API_KEY` for its [guardrails](/capabilities/guardrails/) — a
@@ -266,8 +254,35 @@ Reach for an [agent](/framework/agents/) as soon as the work needs any of those.
 Typed output guarantees the interface, not the truth: validate thresholds
 against your own data and consequences.
 
+## Testing without a credential
+
+`Classifier::simulated` returns a fixed number from an in-process stub. It is a
+**test double**, not a local classifier: it runs no inference, reads nothing
+from the state you pass it, and is not a way to classify without a provider. It
+exists so tests and examples can assert on the code around a classification
+without a network call or an API key.
+
+Real work always goes through a classifier service — `TypeSafeAI` above, or
+your own `ClassifierService`.
+
+```rust
+use everruns::Classifier;
+
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let p = Classifier::simulated(0.93)
+    .probability("Does this convey urgency?", "Two hours on hold.")
+    .await?;
+assert!(p > 0.9);
+# Ok(())
+# }
+```
+
+Because the answer is fixed, a simulated classification proves your threshold
+logic runs — never that a real classifier would return that number.
+
 The runnable version of this page is
-[`direct_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_classification.rs),
-which runs offline without an API key, and
-[`agent_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_classification.rs)
-for the agent path.
+[`direct_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_classification.rs).
+It uses the stub by default so it runs with no key; pass `--live` (with
+`--features typesafe` and `TYPESAFE_API_KEY` set) to send the same questions to a
+real classifier. [`agent_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_classification.rs)
+does the same for the agent path.

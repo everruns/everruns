@@ -8,22 +8,6 @@
 //   doesn't reflect real overhead.
 #![allow(clippy::result_large_err)]
 
-// Force-link plugin crates so inventory::submit! registrations are included
-extern crate everruns_ard;
-extern crate everruns_integrations_brave_search;
-extern crate everruns_integrations_browserless;
-extern crate everruns_integrations_cursor;
-extern crate everruns_integrations_daytona;
-extern crate everruns_integrations_deno;
-extern crate everruns_integrations_docker;
-extern crate everruns_integrations_duckduckgo;
-extern crate everruns_integrations_e2b;
-extern crate everruns_integrations_github;
-extern crate everruns_integrations_openai_image;
-extern crate everruns_integrations_parallel;
-extern crate everruns_integrations_sprites;
-extern crate everruns_integrations_typesafe;
-
 // Shared low-level security primitives (constant-time comparison, etc.)
 pub mod security;
 

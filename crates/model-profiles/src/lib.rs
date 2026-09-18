@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Model profile data and types shared by the
 //! [Everruns](https://everruns.com) provider crates.
 //!

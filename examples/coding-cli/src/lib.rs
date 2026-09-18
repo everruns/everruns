@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! A minimal coding agent built only on the public `everruns` library.
 //!
 //! The example opens backend-owned Git workspace heads, binds them directly

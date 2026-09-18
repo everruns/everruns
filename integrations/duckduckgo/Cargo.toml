@@ -1,5 +1,5 @@
 # DuckDuckGo Integration
-# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: External integration crate, named in crates/integrations-catalog
 # Decision: Experimental-only (gated behind DeploymentGrade::Dev)
 # Decision: No API key required (DuckDuckGo Instant Answer API is free)
 
@@ -22,7 +22,6 @@ readme = "README.md"
 everruns-capability.workspace = true
 everruns-core.workspace = true
 everruns-provider.workspace = true
-inventory.workspace = true
 
 # HTTP client for DuckDuckGo API
 reqwest.workspace = true
@@ -42,3 +41,6 @@ integration = [] # Gate real-API tests; CI passes --features integration
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
+
+[lints]
+workspace = true

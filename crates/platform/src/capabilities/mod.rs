@@ -132,20 +132,6 @@ fn register_environment_capabilities(
 ) {
 }
 
-/// Register inventory-discovered integrations selected by product deployment policy.
-fn register_inventory_capabilities(
-    registry: &mut everruns_core::CapabilityRegistry,
-    grade: everruns_core::DeploymentGrade,
-) {
-    let feature_decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
-    registry.register_inventory_plugins(|plugin| {
-        (!plugin.experimental_only || grade.experimental_features_enabled())
-            && plugin
-                .feature_flag
-                .is_none_or(|flag| feature_decisions.is_enabled(flag))
-    });
-}
-
 /// Register every hosted product capability while preserving stable IDs,
 /// configuration schemas, feature gates, and task-executor registrations.
 pub fn register_hosted_capabilities(
@@ -181,17 +167,45 @@ pub fn register_hosted_capabilities(
     registry.register(CitationVerificationCapability);
     register_environment_capabilities(registry);
     register_platform_capabilities(registry);
+    #[cfg(feature = "container-sandbox")]
+    {
+        let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
+        registry.register_plugins(
+            crate::container_sandbox::CAPABILITY_PLUGINS.iter(),
+            |plugin| {
+                (!plugin.experimental_only || grade.experimental_features_enabled())
+                    && plugin
+                        .feature_flag
+                        .is_none_or(|flag| decisions.is_enabled(flag))
+            },
+        );
+    }
 }
 
-/// Portable builtins plus the hosted product catalog for a deployment grade.
-pub fn hosted_capability_registry_for_grade(
-    grade: everruns_core::DeploymentGrade,
-) -> everruns_core::capabilities::CapabilityRegistry {
+/// The portable built-in capabilities every hosted registry starts from.
+///
+/// Split out so a composer that also registers integrations can interleave
+/// them in the documented order: builtins, then integrations, then hosted
+/// capabilities, so a hosted capability wins a canonical-id collision.
+pub fn portable_capability_registry() -> everruns_core::capabilities::CapabilityRegistry {
+    #[allow(unused_mut)]
     let mut registry = everruns_core::capabilities::CapabilityRegistry::new();
     #[cfg(feature = "portable-builtins")]
     everruns_builtins::register_portable_capabilities(&mut registry)
         .expect("portable built-in catalog must have unique capability IDs");
-    register_inventory_capabilities(&mut registry, grade);
+    registry
+}
+
+/// Portable builtins plus the hosted product catalog for a deployment grade.
+///
+/// Integration crates are not included: they depend on `everruns-platform`, so
+/// the catalog that names them (`everruns-integrations-catalog`) sits above it.
+/// Binaries that serve integrations compose all three — see
+/// `everruns_integrations_catalog::oss_capability_registry_for_grade`.
+pub fn hosted_capability_registry_for_grade(
+    grade: everruns_core::DeploymentGrade,
+) -> everruns_core::capabilities::CapabilityRegistry {
+    let mut registry = portable_capability_registry();
     register_hosted_capabilities(&mut registry, grade);
     registry
 }

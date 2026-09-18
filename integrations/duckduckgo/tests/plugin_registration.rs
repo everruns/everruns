@@ -1,15 +1,15 @@
-//! Integration test: verify DuckDuckGo plugin registers via inventory.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+//! Integration test: verify DuckDuckGo plugin is published by the crate catalog.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
 
-// Force linker to include the integration crate's inventory submissions.
-use everruns_integrations_duckduckgo as _;
+use everruns_integrations_duckduckgo::CAPABILITY_PLUGINS;
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
-    registry.register_inventory_plugins(|plugin| {
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         (!plugin.experimental_only || grade.experimental_features_enabled())
             && plugin
                 .feature_flag
@@ -19,20 +19,20 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 #[test]
-fn test_duckduckgo_plugin_is_submitted() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+fn test_duckduckgo_plugin_is_published() {
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     assert!(
         plugins.iter().any(|p| {
             let cap = (p.factory)();
             cap.id() == "duckduckgo"
         }),
-        "DuckDuckGo IntegrationPlugin should be submitted via inventory"
+        "DuckDuckGo IntegrationPlugin should be published in CAPABILITY_PLUGINS"
     );
 }
 
 #[test]
 fn test_duckduckgo_plugin_is_experimental() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let duckduckgo = plugins
         .iter()
         .find(|p| {

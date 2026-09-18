@@ -1,15 +1,16 @@
-//! Integration test: verify Parallel plugin registers via inventory.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+//! Integration test: verify Parallel plugin is published by the crate catalog.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_platform::connector::ConnectorPlugin;
 
-use everruns_integrations_parallel as _;
+use everruns_integrations_parallel::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
-    registry.register_inventory_plugins(|plugin| {
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         (!plugin.experimental_only || grade.experimental_features_enabled())
             && plugin
                 .feature_flag
@@ -19,20 +20,20 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 #[test]
-fn parallel_plugin_is_submitted() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+fn parallel_plugin_is_published() {
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     assert!(
         plugins.iter().any(|p| {
             let cap = (p.factory)();
             cap.id() == "parallel_search"
         }),
-        "Parallel IntegrationPlugin should be submitted via inventory"
+        "Parallel IntegrationPlugin should be published in CAPABILITY_PLUGINS"
     );
 }
 
 #[test]
 fn parallel_plugin_is_experimental() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let plugin = plugins
         .iter()
         .find(|p| {
@@ -69,7 +70,7 @@ fn restore_env(key: &str, prev: Option<String>) {
 
 #[test]
 fn payments_plugin_is_flag_gated_not_experimental() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let plugin = plugins
         .iter()
         .find(|p| (p.factory)().id() == "parallel")
@@ -104,20 +105,20 @@ fn payments_capability_enabled_by_flag() {
 }
 
 #[test]
-fn connection_provider_is_submitted() {
-    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
+fn connection_provider_is_published() {
+    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
     assert!(
         plugins.iter().any(|p| {
             let provider = (p.factory)();
             provider.provider_id() == "parallel"
         }),
-        "Parallel ConnectorPlugin should be submitted via inventory"
+        "Parallel ConnectorPlugin should be published in CONNECTOR_PLUGINS"
     );
 }
 
 #[test]
 fn connection_provider_has_api_key_form() {
-    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
+    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
     let plugin = plugins
         .iter()
         .find(|p| {

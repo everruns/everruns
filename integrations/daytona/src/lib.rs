@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Daytona cloud sandboxes for Everruns agents.
 //!
 //! `everruns-integrations-daytona` is part of the
@@ -59,21 +60,18 @@ use tools::{
 // Plugin Registration
 // ============================================================================
 
-inventory::submit! {
-    IntegrationPlugin {
-        experimental_only: false,
-        feature_flag: None,
-        factory: || Box::new(DaytonaCapability),
-    }
-}
+/// Capability plugins this crate contributes to a hosted catalog.
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    experimental_only: false,
+    feature_flag: None,
+    factory: || Box::new(DaytonaCapability),
+}];
 
-inventory::submit! {
-    ConnectorPlugin {
-        experimental_only: true,
-        factory: || Box::new(DaytonaConnector),
-    }
-}
-
+/// Connector plugins this crate contributes to a hosted catalog.
+pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
+    experimental_only: true,
+    factory: || Box::new(DaytonaConnector),
+}];
 inventory::submit! {
     everruns_platform::session_sandbox::SessionSandboxProviderPlugin {
         factory: || Box::new(DaytonaSessionSandboxProvider),

@@ -28,7 +28,7 @@ status-code tables.
 - [`crates/engine/src/execution/act_hooks.rs`](../../crates/engine/src/execution/act_hooks.rs)
   owns client-call detection, request-event emission, output limiting, and
   pause signaling.
-- [`crates/core/src/events.rs`](../../crates/core/src/events.rs) owns the exact
+- [`crates/core/src/events/mod.rs`](../../crates/core/src/events/mod.rs) owns the exact
   tool-request event payload.
 - [`crates/server/src/api/tool_results.rs`](../../crates/server/src/api/tool_results.rs)
   owns result submission, response shape, status validation, event persistence,
@@ -74,7 +74,7 @@ The request event is the authoritative list of pending calls. Clients correlate
 by tool-call ID and should use optional server-authored display summaries rather
 than inventing user-facing narration when present.
 
-The exact event envelope and payload live in `crates/core/src/events.rs`; see
+The exact event envelope and payload live in `crates/core/src/events/mod.rs`; see
 [`events.md`](events.md) for compatibility rules.
 
 ## Result submission

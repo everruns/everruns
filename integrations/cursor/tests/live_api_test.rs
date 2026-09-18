@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live API smoke tests for Cursor Cloud Agents.
 //!
 //! Run with:

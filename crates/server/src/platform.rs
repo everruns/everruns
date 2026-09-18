@@ -1,10 +1,10 @@
 //! Default OSS platform definition helpers.
 //!
 //! The default OSS platform stays centralized here so server startup, org
-//! initialization, and docs can all point to the same preset. Inventory-based
-//! integration discovery is intentionally confined to this module; embedders
-//! can start from the OSS preset or construct a `HostComposition` manually
-//! without depending on inventory registration.
+//! initialization, and docs can all point to the same preset. The integration
+//! catalog is intentionally confined to this module; embedders can start from
+//! the OSS preset, filter `everruns_integrations_catalog::CATALOG`, or
+//! construct a `HostComposition` manually.
 
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::deployment::DeploymentGrade;
@@ -12,7 +12,7 @@ use everruns_host::DirectEgressService;
 use everruns_host::{HostComposition, SystemUtilityLlmConfig};
 use everruns_integrations_typesafe::SystemClassifierConfig;
 use everruns_platform::BuiltInHarnessDefinition;
-use everruns_platform::connector::{ConnectorPlugin, ConnectorRegistry};
+use everruns_platform::connector::ConnectorRegistry;
 use everruns_platform::email::{EmailSender, SystemEmailConfig};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -36,8 +36,7 @@ pub fn oss_host_composition() -> HostComposition {
 
 /// Build the default OSS `HostComposition` for an explicit deployment grade.
 pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition {
-    let capability_registry =
-        everruns_platform::capabilities::hosted_capability_registry_for_grade(grade);
+    let capability_registry = oss_capability_registry_for_grade(grade);
     let driver_registry = everruns_worker::create_driver_registry();
     // Runtime egress honors EVERRUNS_SYSTEM_ALLOWLIST_ENABLED for tenant/agent
     // paths.
@@ -109,15 +108,23 @@ pub fn oss_connector_registry() -> ConnectorRegistry {
 /// Build the default OSS connector registry for an explicit grade.
 pub fn oss_connector_registry_for_grade(grade: DeploymentGrade) -> ConnectorRegistry {
     let mut registry = ConnectorRegistry::new();
-
-    for plugin in inventory::iter::<ConnectorPlugin> {
-        if plugin.experimental_only && !grade.experimental_features_enabled() {
-            continue;
-        }
-        registry.register_boxed((plugin.factory)());
-    }
-
+    everruns_integrations_catalog::register_connectors(&mut registry, grade);
     registry
+}
+
+/// Build the default OSS capability registry for the current deployment grade.
+pub fn oss_capability_registry() -> everruns_core::capabilities::CapabilityRegistry {
+    everruns_integrations_catalog::oss_capability_registry()
+}
+
+/// Build the default OSS capability registry for an explicit grade.
+///
+/// Portable builtins, the integrations named in
+/// `everruns_integrations_catalog::CATALOG`, then the hosted product catalog.
+pub fn oss_capability_registry_for_grade(
+    grade: DeploymentGrade,
+) -> everruns_core::capabilities::CapabilityRegistry {
+    everruns_integrations_catalog::oss_capability_registry_for_grade(grade)
 }
 
 /// Built-in harness templates for the default OSS platform.
@@ -161,7 +168,7 @@ mod tests {
         assert_eq!(
             service.name(),
             if configured {
-                "TypeSafeClassifier"
+                "TypeSafeAI"
             } else {
                 "DisabledClassifierService"
             }

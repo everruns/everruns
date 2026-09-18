@@ -35,3 +35,6 @@ chrono.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 uuid.workspace = true
 wiremock = "0.6"
+
+[lints]
+workspace = true

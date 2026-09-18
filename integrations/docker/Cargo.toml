@@ -1,5 +1,5 @@
 # Docker Container Integration
-# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: External integration crate, named in crates/integrations-catalog
 # Decision: Experimental-only (gated behind DeploymentGrade::Dev)
 
 [package]
@@ -20,7 +20,6 @@ documentation = "https://docs.rs/everruns-integrations-docker"
 [dependencies]
 everruns-core.workspace = true
 everruns-provider.workspace = true
-inventory.workspace = true
 
 # Serialization
 serde.workspace = true
@@ -37,3 +36,6 @@ base64 = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 uuid = { workspace = true }
+
+[lints]
+workspace = true

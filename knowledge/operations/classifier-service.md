@@ -99,12 +99,32 @@ already depend on integrations, so they compose the service into
 `HostComposition` from above, and the client needs only one home. Host no
 longer knows TypeSafe exists.
 
-The crate is published, so the `everruns` facade re-exports `TypeSafeClassifier`
-and `Jev` behind its `jev` feature: an embedding application reaches both halves
-through one import, exactly as it does for OpenAI.
+The crate is published, so the `everruns` facade re-exports `TypeSafeAI` and
+`Jev` behind its `typesafe` feature: an embedding application reaches both
+halves through one import, exactly as it does for OpenAI.
+
+**Named by layer.** The vendor's own concept model has three
+([docs.typesafe.ai](https://docs.typesafe.ai/concepts/system-one)): TypeSafe is
+the company and the account that issues the key; **System One is a class of
+model**, not a product — models built to return typed decisions and calibrated
+probabilities rather than text, the way "LLM" names a class; and Jev is
+TypeSafe's flagship model and the first System One model. `ClassifierService` is
+this repo's vendor-neutral name for that class, which is why its primitives are
+System One's three and why core can name no vendor.
+
+So the provider type is `TypeSafeAI`, mirroring `OpenAI` — transport and
+credentials, named for the account. It carries the company's full name because
+the short one collides with the host language: in Rust, `TypeSafe` reads as a
+marker about type safety and `TypeSafeClient` as "a type-safe client". Only type
+names moved; the `TYPESAFE_API_KEY` variables, the `typesafe` feature and crate,
+and the stored `typesafe` connection provider are not type positions. The model
+is a string id (`jev-latest`, `jev-1.13.0`), the way `gpt-5.6-terra` is. Jev
+gets no type because Jev is a model. What an agent sees stays model-named, since a model
+is what answers it: the `Jev` capability, the `jev_evaluate` tool, and the `jev`
+guardrail engine.
 
 - The model is selectable, and defaulted rather than required. A service has
-  its own default (`jev-latest`); `TypeSafeClassifier::model` overrides it for
+  its own default (`jev-latest`); `TypeSafeAI::model` overrides it for
   every call, and `ClassificationRequest::model` overrides it for one. This is
   the difference from the utility LLM service, whose model is fixed: there will
   be other classifiers and other versions of this one, and pinning
@@ -112,8 +132,15 @@ through one import, exactly as it does for OpenAI.
   The platform still pins its own: the knob is absent from the guardrail config
   an agent author writes, rather than absent from the type
   (THREAT[TM-LLM-037]).
+- Ids pass through verbatim; nothing here rewrites them, matching the catalog
+  contract that ids are the provider's own
+  ([`crates/everruns/src/models.rs`](../../crates/everruns/src/models.rs)). The
+  vendor accepts `jev-latest` and exact versions, and rejects bare `jev` with
+  `Unknown model`. Mapping `jev` to `jev-latest` here would invent an id the
+  vendor does not know, so a value copied out of our docs into the vendor's own
+  API would fail, and an answer would report a version for an id never sent.
 - Two credentials, two audiences: `SystemClassifierConfig::from_env` reads the
-  platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafeClassifier::from_env`
+  platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafeAI::from_env`
   reads an embedding application's own `TYPESAFE_API_KEY` — the latter is what
   [`Classifier`](../framework/application-api.md#direct-classification-boundary) uses outside the platform.
 - Configured from process environment: `UTILITY_TYPESAFE_API_KEY`. Unset or

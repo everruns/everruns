@@ -106,7 +106,7 @@ a2a = ["local", "everruns-platform/a2a"]
 openai = ["dep:everruns-openai"]
 # Typed classification: the TypeSafe-backed `ClassifierService` behind
 # `Classifier`, re-exported so one import reaches both halves.
-jev = ["dep:everruns-integrations-typesafe"]
+typesafe = ["dep:everruns-integrations-typesafe"]
 
 [dependencies]
 # Neutral capability contract (EVE-873): `CapabilityId`/`CapabilityRef`,

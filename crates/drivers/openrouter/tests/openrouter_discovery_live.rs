@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live smoke test for OpenRouter model discovery.
 //!
 //! Exercises the real `OpenRouterChatDriver::list_models` path against

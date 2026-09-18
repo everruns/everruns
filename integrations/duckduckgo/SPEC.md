@@ -128,7 +128,8 @@ Dedicated workflow `.github/workflows/duckduckgo-integration.yml`:
 
 `integrations/duckduckgo/` → `everruns-integrations-duckduckgo`
 
-External integration crate, auto-registered via `inventory::submit!` plugin system.
+External integration crate. It publishes plugin consts and is named in
+`crates/integrations-catalog`.
 
 **Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_duckduckgo;`.
 
@@ -137,7 +138,7 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 | `src/lib.rs` | Plugin registration, constants, `DuckDuckGoCapability` impl |
 | `src/client.rs` | `DuckDuckGoClient` HTTP client, API response types |
 | `src/tools.rs` | `DuckDuckGoSearchTool` implementation, response formatting |
-| `tests/plugin_registration.rs` | Integration tests for inventory registration and dev/prod gating |
+| `tests/plugin_registration.rs` | Integration tests for the published plugin consts and dev/prod gating |
 | `tests/smoke_real_api.rs` | Real-API smoke tests (behind `integration` feature) |
 
 ## Capability Registration
