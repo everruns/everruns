@@ -20,7 +20,7 @@ pub fn default_host_composition() -> HostComposition {
 pub fn default_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition {
     HostComposition::builder()
         .capability_registry(
-            everruns_platform::capabilities::hosted_capability_registry_for_grade(grade),
+            everruns_integrations_catalog::oss_capability_registry_for_grade(grade),
         )
         .driver_registry(crate::create_driver_registry())
         // Honor EVERRUNS_SYSTEM_ALLOWLIST_ENABLED for tenant/agent runtime
@@ -31,4 +31,57 @@ pub fn default_host_composition_for_grade(grade: DeploymentGrade) -> HostComposi
         // distributed worker as in the in-process server path.
         .classifier(SystemClassifierConfig::from_env().into_service())
         .build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A distributed worker runs the same guardrail checks as the in-process
+    /// server path, so it has to carry the same classifier. The server's
+    /// `oss_composition_carries_a_classifier` asserts this for its side; drift
+    /// between the two would make `jev` checks silently no-op under a
+    /// distributed deployment while passing every in-process test.
+    #[test]
+    fn worker_composition_carries_the_same_classifier_as_the_server() {
+        let composition = default_host_composition_for_grade(DeploymentGrade::Dev);
+        let service = composition.classifier();
+        // Process env decides which one; both are valid, a missing service is not.
+        let configured =
+            std::env::var(everruns_integrations_typesafe::UTILITY_TYPESAFE_API_KEY_ENV)
+                .is_ok_and(|key| !key.trim().is_empty());
+        assert_eq!(
+            service.is_configured(),
+            configured,
+            "classifier configuration must follow {}",
+            everruns_integrations_typesafe::UTILITY_TYPESAFE_API_KEY_ENV
+        );
+        assert_eq!(
+            service.name(),
+            if configured {
+                "TypeSafeAI"
+            } else {
+                "DisabledClassifierService"
+            }
+        );
+    }
+
+    /// The worker advertises the same experimental gating the server does: a
+    /// tool the server offered in dev must resolve in the worker that executes
+    /// it, and must stay out of a prod worker either way.
+    #[test]
+    fn jev_capability_follows_the_deployment_grade() {
+        assert!(
+            default_host_composition_for_grade(DeploymentGrade::Dev)
+                .capability_registry()
+                .has("jev"),
+            "dev workers execute what a dev server offers"
+        );
+        assert!(
+            !default_host_composition_for_grade(DeploymentGrade::Prod)
+                .capability_registry()
+                .has("jev"),
+            "experimental capabilities must stay out of prod registries"
+        );
+    }
 }

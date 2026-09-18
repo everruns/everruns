@@ -12,7 +12,7 @@ use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService, McpS
 use crate::domains::plugins::oauth_anchor::humanize_connection_name;
 use crate::kernel_imports::{
     Caller, EgressService, McpServerAuthMode,
-    everruns_provider::typed_id::{AgentIdentityId, SessionId},
+    everruns_provider::typed_id::{AgentId, AgentIdentityId, SessionId},
     everruns_provider::url_validation::validate_safe_url,
     mcp_oauth_provider_id_for_uuid,
 };
@@ -183,10 +183,11 @@ struct PendingOAuthState {
     return_to: String,
     mode: String,
     session_id: Option<String>,
-    /// Set only for `mode = identity`. Resolved before the redirect so the
-    /// callback never creates an identity or re-runs the permission check on
-    /// attacker-influenced input — it only writes to the identity that was
-    /// already authorized (EVE-1030).
+    /// Set only for `mode = identity`. These bind the callback to the exact
+    /// agent and identity resolved before the redirect. The callback atomically
+    /// requires both to remain active, linked, and in the authorized org.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    agent_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     agent_identity_id: Option<String>,
     popup: bool,
@@ -674,8 +675,8 @@ pub async fn authorize_connection(
     // Identity mode authorizes a grant the agent owns: one credential shared by
     // every session and every invoking user. That is a different privilege from
     // connecting your own account, so it is gated and resolved here, before the
-    // redirect — the callback then only writes to an identity that was already
-    // authorized rather than acting on whatever comes back (EVE-1030).
+    // redirect. The callback writes only while this exact agent remains linked
+    // to the identity that was authorized (EVE-1030).
     let identity_agent = match mode.as_str() {
         "identity" => {
             let agent_public_id = query.agent_id.ok_or((
@@ -683,6 +684,8 @@ pub async fn authorize_connection(
                 "agent_id is required for identity OAuth flows".to_string(),
             ))?;
             let caller = Caller::from(&org);
+            // THREAT[TM-AUTHZ-018]: service grants require MCP management
+            // authority before any discovery, registration, or identity write.
             enforce_identity_grant_policy(&state, &caller)?;
 
             let agent = state
@@ -721,15 +724,16 @@ pub async fn authorize_connection(
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
 
-    let agent_identity_id = match identity_agent {
+    let (agent_id, agent_identity_id) = match identity_agent {
         Some(agent) => {
+            let agent_id = agent.id.to_string();
             let (identity_id, _principal) =
                 ensure_identity_for_agent(&state.db, org.org_id, &agent)
                     .await
                     .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
-            Some(identity_id.to_string())
+            (Some(agent_id), Some(identity_id.to_string()))
         }
-        None => None,
+        None => (None, None),
     };
 
     let pending = PendingOAuthState {
@@ -739,6 +743,7 @@ pub async fn authorize_connection(
         mode,
         session_id,
         agent_identity_id,
+        agent_id,
         popup,
         code_verifier,
     };
@@ -902,6 +907,15 @@ pub async fn connection_oauth_callback(
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
     } else if pending.mode == "identity" {
+        let agent_id = pending
+            .agent_id
+            .as_deref()
+            .ok_or((
+                StatusCode::BAD_REQUEST,
+                "Missing agent_id for identity OAuth flow".to_string(),
+            ))?
+            .parse::<AgentId>()
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid agent_id: {e}")))?;
         let identity_id = pending
             .agent_identity_id
             .as_deref()
@@ -924,55 +938,46 @@ pub async fn connection_oauth_callback(
         let caller = Caller::from(&org);
         enforce_identity_grant_policy(&state, &caller)?;
 
-        // THREAT[TM-TENANT-012]: agent_identity_connections is keyed only by
-        // identity id and carries no org_id, so every writer must prove the
-        // identity belongs to the caller's org first.
-        let identity = state
-            .db
-            .get_agent_identity(org.org_id, identity_id)
-            .await
-            .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
-            .ok_or((
-                StatusCode::NOT_FOUND,
-                "Agent identity not found".to_string(),
-            ))?;
-        if identity.status != "active" {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Agent identity is not active".to_string(),
-            ));
-        }
-
         let encryption = state.encryption.as_ref().ok_or((
             StatusCode::INTERNAL_SERVER_ERROR,
             "Encryption not configured".to_string(),
         ))?;
-        state
+        let connection = state
             .db
-            .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
-                agent_identity_id: identity_id,
-                provider: provider.clone(),
-                connection_type: "oauth".to_string(),
-                provider_user_id: None,
-                provider_username: Some(row.name.clone()),
-                access_token_encrypted: Some(
-                    encryption
-                        .encrypt_string(&token.access_token)
+            .upsert_agent_identity_connection_for_active_agent(
+                org.org_id,
+                agent_id,
+                CreateAgentIdentityConnectionRow {
+                    agent_identity_id: identity_id,
+                    provider: provider.clone(),
+                    connection_type: "oauth".to_string(),
+                    provider_user_id: None,
+                    provider_username: Some(row.name.clone()),
+                    access_token_encrypted: Some(
+                        encryption
+                            .encrypt_string(&token.access_token)
+                            .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
+                    ),
+                    refresh_token_encrypted: token
+                        .refresh_token
+                        .as_deref()
+                        .map(|value| encryption.encrypt_string(value))
+                        .transpose()
                         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
-                ),
-                refresh_token_encrypted: token
-                    .refresh_token
-                    .as_deref()
-                    .map(|value| encryption.encrypt_string(value))
-                    .transpose()
-                    .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
-                scopes: token.scope.clone(),
-                expires_at,
-                installation_id: None,
-                provider_metadata: None,
-            })
+                    scopes: token.scope.clone(),
+                    expires_at,
+                    installation_id: None,
+                    provider_metadata: None,
+                },
+            )
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
+        if connection.is_none() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Agent is no longer active with the authorized identity".to_string(),
+            ));
+        }
     } else {
         let encryption = state.encryption.as_ref().ok_or((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1008,11 +1013,6 @@ pub async fn connection_oauth_callback(
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
     }
-
-    let _ = state
-        .mcp_service
-        .cache_tools_for_bearer_token(&Caller::from(&org), server_id, &token.access_token)
-        .await;
 
     let redirect_target = finalize_oauth_redirect(
         &state.auth_config,
@@ -1636,280 +1636,5 @@ fn parse_and_validate_url(url: &str) -> Result<Url, (StatusCode, String)> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use everruns_core::EgressRequest;
-
-    #[test]
-    fn valid_state_accepted() {
-        let state_value = "abc123deadbeef";
-        let jar = CookieJar::new().add(Cookie::new(
-            GITHUB_INSTALL_STATE_COOKIE,
-            state_value.to_string(),
-        ));
-        let result = validate_install_state(&jar, Some(state_value));
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), state_value);
-    }
-
-    #[test]
-    fn missing_cookie_rejected() {
-        let jar = CookieJar::new();
-        let (status, msg) = validate_install_state(&jar, Some("abc123")).unwrap_err();
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(msg.contains("expired"));
-    }
-
-    #[test]
-    fn missing_query_state_rejected() {
-        let jar = CookieJar::new().add(Cookie::new(
-            GITHUB_INSTALL_STATE_COOKIE,
-            "abc123".to_string(),
-        ));
-        let (status, msg) = validate_install_state(&jar, None).unwrap_err();
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(msg.contains("Missing state"));
-    }
-
-    #[test]
-    fn mismatched_state_rejected() {
-        let jar = CookieJar::new().add(Cookie::new(
-            GITHUB_INSTALL_STATE_COOKIE,
-            "correct_state".to_string(),
-        ));
-        let (status, msg) = validate_install_state(&jar, Some("wrong_state")).unwrap_err();
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(msg.contains("Invalid installation state"));
-    }
-
-    #[test]
-    fn both_missing_reports_expired() {
-        let jar = CookieJar::new();
-        // Cookie checked first — reports expired state
-        let (status, _) = validate_install_state(&jar, None).unwrap_err();
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-    }
-
-    #[test]
-    fn state_cookie_has_secure_properties() {
-        let state_value = "test_state";
-        let cookie = Cookie::build((GITHUB_INSTALL_STATE_COOKIE, state_value))
-            .path("/")
-            .http_only(true)
-            .secure(true)
-            .same_site(SameSite::Lax)
-            .max_age(time::Duration::minutes(10))
-            .build();
-
-        assert_eq!(cookie.name(), GITHUB_INSTALL_STATE_COOKIE);
-        assert_eq!(cookie.value(), state_value);
-        assert!(cookie.http_only().unwrap_or(false));
-        assert!(cookie.secure().unwrap_or(false));
-        assert_eq!(cookie.same_site(), Some(SameSite::Lax));
-        assert_eq!(cookie.max_age(), Some(time::Duration::minutes(10)));
-        assert_eq!(cookie.path(), Some("/"));
-    }
-
-    #[test]
-    fn callback_query_deserialize_with_state() {
-        let json = r#"{"installation_id": 12345, "state": "abc123"}"#;
-        let query: GitHubInstallationCallbackQuery = serde_json::from_str(json).unwrap();
-        assert_eq!(query.installation_id, 12345);
-        assert_eq!(query.state, Some("abc123".to_string()));
-    }
-
-    #[test]
-    fn callback_query_deserialize_without_state() {
-        let json = r#"{"installation_id": 12345}"#;
-        let query: GitHubInstallationCallbackQuery = serde_json::from_str(json).unwrap();
-        assert_eq!(query.installation_id, 12345);
-        assert_eq!(query.state, None);
-    }
-
-    // =========================================================================
-    // GitHub installation callback security negative tests (EVE-54 / EVE-61)
-    // =========================================================================
-
-    #[test]
-    fn empty_cookie_does_not_match_nonempty_query() {
-        let jar = CookieJar::new().add(Cookie::new(GITHUB_INSTALL_STATE_COOKIE, "".to_string()));
-        let result = validate_install_state(&jar, Some("attacker_state"));
-        assert!(
-            result.is_err(),
-            "empty cookie must not match non-empty query"
-        );
-    }
-
-    #[test]
-    fn nonempty_cookie_does_not_match_empty_query() {
-        let jar = CookieJar::new().add(Cookie::new(
-            GITHUB_INSTALL_STATE_COOKIE,
-            "real_state".to_string(),
-        ));
-        let result = validate_install_state(&jar, Some(""));
-        assert!(
-            result.is_err(),
-            "non-empty cookie must not match empty query"
-        );
-    }
-
-    #[test]
-    fn whitespace_padded_state_rejected() {
-        let jar = CookieJar::new().add(Cookie::new(
-            GITHUB_INSTALL_STATE_COOKIE,
-            "abc123".to_string(),
-        ));
-        let result = validate_install_state(&jar, Some(" abc123 "));
-        assert!(result.is_err(), "whitespace-padded state must not match");
-    }
-
-    #[test]
-    fn all_state_failures_return_bad_request() {
-        let (status, _) = validate_install_state(&CookieJar::new(), Some("x")).unwrap_err();
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        let jar = CookieJar::new().add(Cookie::new(GITHUB_INSTALL_STATE_COOKIE, "x".to_string()));
-        let (status, _) = validate_install_state(&jar, None).unwrap_err();
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        let (status, _) = validate_install_state(&jar, Some("y")).unwrap_err();
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-    }
-
-    // =========================================================================
-    // VerifyConnectionResponse serialization tests
-    // =========================================================================
-
-    #[test]
-    fn verify_response_valid_serializes_without_error() {
-        let resp = VerifyConnectionResponse {
-            valid: true,
-            error: None,
-        };
-        let json = serde_json::to_value(&resp).unwrap();
-        assert_eq!(json["valid"], true);
-        assert!(
-            json.get("error").is_none(),
-            "error field should be skipped when None"
-        );
-    }
-
-    #[test]
-    fn existing_plugin_anchor_uses_manifest_connection_display_name() {
-        let settings = serde_json::json!({
-            "plugin_anchor": {"plugin": "resend", "server": "resend"}
-        });
-        let display_names = HashMap::from([("resend".to_string(), "Resend".to_string())]);
-
-        assert_eq!(
-            mcp_connection_display_name(&settings, "resend", &display_names),
-            "Resend"
-        );
-    }
-
-    #[test]
-    fn plugin_connection_label_distinguishes_multiple_servers() {
-        let settings = serde_json::json!({
-            "plugin_anchor": {"plugin": "mail-suite", "server": "transactional"}
-        });
-
-        assert_eq!(
-            mcp_connection_display_name(&settings, "plugin-mail", &HashMap::new()),
-            "Mail Suite — transactional"
-        );
-    }
-
-    #[test]
-    fn verify_response_invalid_serializes_with_error() {
-        let resp = VerifyConnectionResponse {
-            valid: false,
-            error: Some("Invalid API key".to_string()),
-        };
-        let json = serde_json::to_value(&resp).unwrap();
-        assert_eq!(json["valid"], false);
-        assert_eq!(json["error"], "Invalid API key");
-    }
-
-    #[test]
-    fn normalize_oauth_mode_defaults_to_user() {
-        assert_eq!(normalize_oauth_mode(None).unwrap(), "user");
-        assert_eq!(normalize_oauth_mode(Some("session")).unwrap(), "session");
-    }
-
-    #[test]
-    fn normalize_oauth_mode_rejects_unknown_values() {
-        let err = normalize_oauth_mode(Some("admin")).unwrap_err();
-        assert_eq!(err.0, StatusCode::BAD_REQUEST);
-    }
-
-    #[test]
-    fn resource_origin_preserves_non_default_port() {
-        let url = reqwest::Url::parse("https://example.com:8443/v1/mcp").unwrap();
-        assert_eq!(resource_origin(&url).unwrap(), "https://example.com:8443");
-    }
-
-    #[test]
-    fn resource_origin_brackets_ipv6_hosts() {
-        let url = reqwest::Url::parse("https://[::1]:8443/v1/mcp").unwrap();
-        assert_eq!(resource_origin(&url).unwrap(), "https://[::1]:8443");
-    }
-
-    /// Egress that fails the test if it is ever asked to send — used to prove
-    /// that a blocked URL is rejected by `egress_oauth_json` before any request
-    /// leaves the boundary (EVE-623).
-    struct NeverSendEgress;
-
-    #[async_trait::async_trait]
-    impl EgressService for NeverSendEgress {
-        async fn send(
-            &self,
-            request: EgressRequest,
-        ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
-            panic!(
-                "egress_oauth_json must not send blocked URL: {}",
-                request.url
-            );
-        }
-
-        async fn send_stream(
-            &self,
-            _request: EgressRequest,
-        ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
-            panic!("send_stream should not be called");
-        }
-    }
-
-    #[tokio::test]
-    async fn oauth_egress_blocks_private_ip_literal_before_send() {
-        // A token/registration/discovery endpoint that resolves to a private or
-        // metadata address must be refused at the egress boundary, not fetched.
-        let egress = NeverSendEgress;
-        for url in [
-            "http://127.0.0.1/token",
-            "http://169.254.169.254/latest/meta-data/",
-            "http://10.0.0.1/oauth/register",
-        ] {
-            let result: Result<serde_json::Value, _> =
-                egress_oauth_json(&egress, "GET", url, &[], Vec::new()).await;
-            let (status, _msg) = result.expect_err("blocked URL must error");
-            assert_eq!(
-                status,
-                StatusCode::BAD_REQUEST,
-                "url {url} should be blocked"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn oauth_egress_blocks_localhost_hostname_before_send() {
-        let egress = NeverSendEgress;
-        let result: Result<serde_json::Value, _> = egress_oauth_json(
-            &egress,
-            "POST",
-            "http://localhost:9000/token",
-            &[],
-            Vec::new(),
-        )
-        .await;
-        let (status, _) = result.expect_err("localhost must be blocked");
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-    }
-}
+#[path = "user_connections_tests.rs"]
+mod tests;

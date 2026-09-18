@@ -1,0 +1,22 @@
+[package]
+name = "everruns-cli-contract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The `everruns` command-line contract: one grammar, shared by the CLI and the agent-facing command tree."
+documentation = "https://docs.rs/everruns-cli-contract"
+readme = "README.md"
+
+[dependencies]
+# The contract is a clap grammar, so it is expressed in clap rather than
+# described alongside it. `string` because a contract assembled from data owns
+# its names and cannot hand clap `&'static str`; `color` so ColorChoice::Never
+# is a call that exists rather than one that compiles only when another crate
+# in the build happens to have turned colour on.
+clap = { workspace = true, features = ["string", "color"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[lints]
+workspace = true

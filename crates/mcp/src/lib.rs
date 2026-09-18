@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Transport-agnostic [MCP](https://modelcontextprotocol.io) (Model Context
 //! Protocol) client for Everruns agents.
 //!
@@ -56,8 +57,11 @@ pub use elicitation::{
     UrlElicitationHandler, UrlElicitationPending, consent_storage_key, validate_elicitation_url,
 };
 pub use executor::{McpConnectionResolver, McpExecutor, StaticConnectionResolver};
-pub use http::{HttpTransport, http_call_tool, http_list_tools, http_send_rpc};
-pub use protocol::{ClientCapabilities, Negotiated};
+pub use http::{
+    HttpToolsList, HttpTransport, http_call_tool, http_list_tools,
+    http_list_tools_with_cache_hints, http_send_rpc,
+};
+pub use protocol::{CacheHints, CacheScope, ClientCapabilities, Negotiated};
 pub use result::{extract_json_from_response, map_tool_call_result};
 pub use transport::{McpConnection, McpEndpoint, McpSecretBinding, McpTransport};
 

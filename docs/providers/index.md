@@ -1,6 +1,6 @@
 ---
 title: Model Providers
-description: Connect Everruns to OpenAI, Anthropic, Google Gemini, Meta Model API, AWS Bedrock, OpenRouter, Fireworks AI, and more. Configure provider credentials once and run any agent on any model.
+description: Connect Everruns to OpenAI, Anthropic, Google Gemini, Meta Model API, AWS Bedrock, OpenRouter, Fireworks AI, and more.
 sidebar:
   label: Overview
   order: 0

@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! GitHub-backed blueprints for Everruns.
 //!
 //! This crate registers the `github_scout` capability through Everruns' inventory
@@ -33,14 +34,12 @@ use serde::{Deserialize, Serialize};
 
 use tools::{ReadGitHubFileTool, SearchGitHubCodeTool, SearchGitHubIssuesTool};
 
-inventory::submit! {
-    IntegrationPlugin {
-        experimental_only: false,
-        feature_flag: None,
-        factory: || Box::new(GitHubScoutCapability),
-    }
-}
-
+/// Capability plugins this crate contributes to a hosted catalog.
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    experimental_only: false,
+    feature_flag: None,
+    factory: || Box::new(GitHubScoutCapability),
+}];
 pub const GITHUB_API_BASE: &str = "https://api.github.com";
 pub const GITHUB_CONNECTION_PROVIDER: &str = "github";
 pub const GITHUB_TOKEN_SECRET: &str = "GITHUB_TOKEN";

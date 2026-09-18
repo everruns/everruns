@@ -1,6 +1,6 @@
 ---
 title: Auto Tool Search
-description: Model-adaptive deferred tool loading. Uses the provider's hosted tool search where available (OpenAI or Claude) and a provider-agnostic client-side fallback everywhere else, reducing prompt token usage for agents with many tools.
+description: Deferred tool loading that uses the provider's hosted tool search where available (OpenAI or Claude) and a client-side fallback everywhere else.
 sidebar:
   order: 89
 ---

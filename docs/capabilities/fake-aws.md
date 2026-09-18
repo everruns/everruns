@@ -1,8 +1,6 @@
 ---
-title: Fake AWS Tools for Cloud Agent Demos
-description: Demo cloud-operations agents with simulated AWS tools for EC2, RDS, S3, IAM, security groups, and CloudWatch without using real infrastructure or cloud cost.
-sidebar:
-  label: Fake AWS
+title: Fake AWS
+description: Simulated AWS tools for EC2, RDS, S3, IAM, security groups, and CloudWatch, for demoing cloud-operations agents without real infrastructure.
 ---
 
 | | |

@@ -13,16 +13,48 @@
 
 #[cfg(feature = "http")]
 use crate::driver_helpers::shared_request_http_client;
-use crate::driver_registry::{DiscoveredModel, DriverId, DriverRegistry, ProviderConfig};
+use chrono::{DateTime, Utc};
+
+use crate::driver_registry::{DriverId, DriverRegistry, ProviderConfig};
 #[cfg(feature = "http")]
 use crate::error::AgentLoopError;
 use crate::error::Result;
 use crate::model_profiles::get_model_profile;
 
+/// Model information discovered from a provider's list_models API
+///
+/// Represents a model available from a provider. Used for dynamic model discovery
+/// to sync available models from provider APIs into the database.
+///
+/// The `discovered_profile` field carries structured capability/limit metadata
+/// parsed from the provider's API response (e.g., Anthropic's capabilities object).
+/// During model sync, this profile is merged with hardcoded profiles: hardcoded
+/// values take precedence (they include cost data not available from APIs),
+/// but discovered data fills gaps for models without hardcoded profiles.
+#[derive(Debug, Clone)]
+pub struct DiscoveredModel {
+    /// Model identifier (e.g., "gpt-5.2", "claude-opus-4-5-20251101")
+    pub model_id: String,
+    /// Human-readable display name (if provided by API)
+    pub display_name: Option<String>,
+    /// When the model was created/released
+    pub created_at: Option<DateTime<Utc>>,
+    /// Owner or organization (e.g., "openai", "system")
+    pub owned_by: Option<String>,
+    /// Service capabilities advertised for this concrete model (for example,
+    /// `chat` or `embeddings`). These are distinct from provider-level
+    /// services: an OpenAI provider supports both, but each model does not.
+    pub capabilities: Vec<String>,
+    /// Structured profile built from provider API metadata (capabilities, limits).
+    /// Populated by drivers that return rich model metadata (e.g., Anthropic /v1/models).
+    pub discovered_profile: Option<crate::model::ModelProfile>,
+}
+
 /// One model offered by a provider, ready for display: the bare id plus
 /// human-readable metadata merged from the provider's API response and the
 /// model profile registry.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct DiscoveredProviderModel {
     /// Bare model id, as chat calls and profile lookups expect it.
     pub model_id: String,
@@ -30,6 +62,16 @@ pub struct DiscoveredProviderModel {
     pub display_name: Option<String>,
     /// Short description, when a profile or the provider supplies one.
     pub description: Option<String>,
+    /// What this model can do: context window, modalities, reasoning and
+    /// tool-calling support, prices.
+    ///
+    /// Merged from the curated registry and what the provider's own API
+    /// reported, so a model the registry has never heard of — a self-hosted
+    /// deployment, an id released this morning — still carries the limits its
+    /// provider advertises. Enrichment used to drop this, leaving a catalog
+    /// consumer with an id and a label and nothing to answer a capability
+    /// question with.
+    pub profile: Option<crate::model::ModelProfile>,
 }
 
 /// Query a provider's models API through its driver.
@@ -108,9 +150,32 @@ pub fn enrich_with_profiles(
                 model_id: model.model_id,
                 display_name,
                 description,
+                profile: merge_profiles(core_profile, api_profile),
             }
         })
         .collect()
+}
+
+/// Combine the curated profile with the one the provider's API reported.
+///
+/// The curated profile wins where both speak: it carries what an API never
+/// returns (prices, knowledge cutoff) and is written for display. The API
+/// fills what curation has not covered — the whole answer for a model the
+/// registry does not carry, and the gaps for one it does.
+fn merge_profiles(
+    core: Option<crate::model::ModelProfile>,
+    api: Option<crate::model::ModelProfile>,
+) -> Option<crate::model::ModelProfile> {
+    match (core, api) {
+        (Some(mut core), Some(api)) => {
+            core.limits = core.limits.or(api.limits);
+            core.modalities = core.modalities.or(api.modalities);
+            core.knowledge = core.knowledge.or(api.knowledge);
+            core.release_date = core.release_date.or(api.release_date);
+            Some(core)
+        }
+        (core, api) => core.or(api),
+    }
 }
 
 #[cfg(feature = "http")]
@@ -147,6 +212,28 @@ pub async fn list_openai_compatible_models(
     // shared client so redirects, private DNS results, and hung responses are
     // rejected at request time.
     list_openai_compatible_models_with_client(&shared_request_http_client(), &resolved).await
+}
+
+/// The same fallback, for a driver that has declined to list a host itself.
+///
+/// A driver returns no catalog for an endpoint it does not recognize — a
+/// proxy, a gateway, a self-hosted server. Most of those do serve
+/// `GET <base>/models`, and the ones that do not simply answer with an error,
+/// so trying costs one request and turns "no catalog" into a real catalog for
+/// the common case. A failure is *not* propagated: the caller asked whether a
+/// catalog exists, and for an endpoint nobody promised one for, "no" is the
+/// answer, not an error.
+#[cfg(feature = "http")]
+pub async fn list_openai_compatible_models_best_effort(
+    endpoint: &crate::runtime_provider::ProviderEndpoint,
+) -> Option<Vec<DiscoveredModel>> {
+    match list_openai_compatible_models(endpoint).await {
+        Ok(models) => models.filter(|models| !models.is_empty()),
+        Err(error) => {
+            tracing::debug!(%error, "endpoint serves no OpenAI-compatible model listing");
+            None
+        }
+    }
 }
 
 #[cfg(feature = "http")]
@@ -191,7 +278,7 @@ async fn list_openai_compatible_models_with_client(
 
 /// Models reordered for display, plus how many leading entries belong in the
 /// recommended section.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RankedDiscoveredModels {
     /// Recommended models first, then the rest of the catalog.
     pub models: Vec<DiscoveredProviderModel>,
@@ -439,6 +526,7 @@ mod tests {
             model_id: id.into(),
             display_name: None,
             description: None,
+            profile: None,
         }
     }
 
@@ -451,6 +539,7 @@ mod tests {
             let mut api_profile = get_model_profile(&DriverId::OpenAI, "gpt-5.5").unwrap();
             api_profile.description = Some("API description".into());
             input.discovered_profile = Some(api_profile.clone());
+            let curated = get_model_profile(&DriverId::OpenAI, "gpt-5.5");
             assert_eq!(
                 enrich_with_profiles(&DriverId::OpenAI, vec![input]),
                 vec![DiscoveredProviderModel {
@@ -463,12 +552,15 @@ mod tests {
                         }
                         .into()
                     ),
-                    description: Some(description.into())
+                    description: Some(description.into()),
+                    // Curation wins for a model it carries, so the merged
+                    // profile is the registry's.
+                    profile: curated.clone(),
                 }]
             );
             let mut unknown = bare_discovered("totally-new-model");
             unknown.display_name = Some("New model".into());
-            unknown.discovered_profile = Some(api_profile);
+            unknown.discovered_profile = Some(api_profile.clone());
             assert_eq!(
                 enrich_with_profiles(
                     &DriverId::OpenAI,
@@ -478,12 +570,50 @@ mod tests {
                     DiscoveredProviderModel {
                         model_id: "totally-new-model".into(),
                         display_name: Some("New model".into()),
-                        description: Some("API description".into())
+                        description: Some("API description".into()),
+                        // Nothing curated to merge with, so what the provider
+                        // reported is the whole answer — and it survives.
+                        profile: Some(api_profile.clone()),
                     },
                     model("bare-unknown")
                 ]
             );
         }
+    }
+
+    #[test]
+    fn capability_metadata_survives_enrichment_for_a_model_no_registry_carries() {
+        // The case a self-hosted or brand-new id lands in: the registry has
+        // nothing, so what the endpoint reported is the only answer there is.
+        let mut reported = get_model_profile(&DriverId::OpenAI, "gpt-5.5").unwrap();
+        reported.name = "Local Qwen".into();
+        let mut model = bare_discovered("qwen3-30b");
+        model.discovered_profile = Some(reported.clone());
+
+        let enriched = enrich_with_profiles(&DriverId::OpenAI, vec![model]);
+        let profile = enriched[0]
+            .profile
+            .as_ref()
+            .expect("the reported capabilities must survive");
+        assert_eq!(profile.limits, reported.limits);
+        assert_eq!(profile.reasoning, reported.reasoning);
+        assert_eq!(profile.tool_call, reported.tool_call);
+    }
+
+    #[test]
+    fn curation_wins_over_the_api_but_only_where_it_speaks() {
+        let curated = get_model_profile(&DriverId::OpenAI, "gpt-5.5").unwrap();
+        let mut api = curated.clone();
+        api.name = "Gateway label".into();
+        api.knowledge = Some("2099-01-01".into());
+
+        let mut bare_curated = curated.clone();
+        bare_curated.knowledge = None;
+        let merged = merge_profiles(Some(bare_curated), Some(api.clone()))
+            .expect("both sides present yields a profile");
+        // Curation owns the name; the API filled the gap curation left.
+        assert_eq!(merged.name, curated.name);
+        assert_eq!(merged.knowledge.as_deref(), Some("2099-01-01"));
     }
 
     #[test]
@@ -512,7 +642,8 @@ mod tests {
                 DiscoveredProviderModel {
                     model_id: "qwen3".into(),
                     display_name: Some("Qwen display".into()),
-                    description: None
+                    description: None,
+                    profile: None,
                 },
                 model("a-no-date"),
                 model("z-no-date")
@@ -603,6 +734,7 @@ mod tests {
                 model_id: "gpt-5.5".into(),
                 display_name: Some("Gateway".into()),
                 description: Some("Keep me".into()),
+                profile: None,
             },
             model("gpt-5.2"),
         ];
@@ -717,6 +849,7 @@ mod tests {
                 model_id: "acme/nebula".into(),
                 display_name: Some("Luna Nebula".into()),
                 description: None,
+                profile: None,
             },
         ];
         assert_eq!(

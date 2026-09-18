@@ -3019,9 +3019,8 @@ mod tests {
     #[test]
     fn test_generic_harness_capabilities_are_registered() {
         // Verify all capability IDs referenced by Generic harness exist in the registry
-        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
-            everruns_core::DeploymentGrade::Dev,
-        );
+        let registry =
+            crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
 
         let built_in_harnesses = built_in_harnesses();
         let generic = built_in_harnesses
@@ -3046,9 +3045,8 @@ mod tests {
         unsafe { std::env::set_var("FEATURE_CONTAINER_SANDBOX", "true") };
         unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
 
-        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
-            everruns_core::DeploymentGrade::Dev,
-        );
+        let registry =
+            crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
 
         // Container example is always present in the example catalogue but its
         // capabilities only appear in `/v1/harness-examples` when registered.
@@ -3072,9 +3070,8 @@ mod tests {
         unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
         unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
 
-        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
-            everruns_core::DeploymentGrade::Dev,
-        );
+        let registry =
+            crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
 
         // The Coding (Container) example is filtered out of `/v1/harness-examples`
         // when its `container_sandbox` capability isn't registered. We assert
@@ -3104,9 +3101,8 @@ mod tests {
     async fn test_generic_harness_capabilities_produce_bash_tool() {
         use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
 
-        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
-            everruns_core::DeploymentGrade::Dev,
-        );
+        let registry =
+            crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
 
         let built_in_harnesses = built_in_harnesses();
         let generic = built_in_harnesses
@@ -3154,9 +3150,8 @@ mod tests {
     async fn test_generic_harness_collected_tools_have_implementations() {
         use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
 
-        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
-            everruns_core::DeploymentGrade::Dev,
-        );
+        let registry =
+            crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
 
         let built_in_harnesses = built_in_harnesses();
         let generic = built_in_harnesses
@@ -3205,9 +3200,8 @@ mod tests {
     async fn test_generic_harness_capabilities_produce_skills_tools() {
         use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
 
-        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
-            everruns_core::DeploymentGrade::Dev,
-        );
+        let registry =
+            crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
 
         let built_in_harnesses = built_in_harnesses();
         let generic = built_in_harnesses

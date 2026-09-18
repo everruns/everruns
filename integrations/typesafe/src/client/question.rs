@@ -4,8 +4,18 @@
 //! what the answer *means*:
 //!
 //! - [`Question::noul`] — whether a condition holds, as the probability of yes.
+//!   ([Noul](https://docs.typesafe.ai/primitives/noul))
 //! - [`Question::choice`] — exactly one option out of a set you define.
+//!   ([Choice](https://docs.typesafe.ai/primitives/choice))
 //! - [`Question::score`] — a position along ordered levels you describe.
+//!   ([Score](https://docs.typesafe.ai/primitives/score))
+//!
+//! TypeSafe documents all three, and how to choose between them, under
+//! [Primitives](https://docs.typesafe.ai/primitives). The state each question
+//! is asked about has its own guidance in
+//! [State](https://docs.typesafe.ai/concepts/state), and what the returned
+//! `confidence` means — and how it differs from the probability — is in
+//! [Confidence](https://docs.typesafe.ai/confidence).
 
 use std::collections::BTreeMap;
 
@@ -13,6 +23,10 @@ use serde::Serialize;
 use serde_json::Value;
 
 /// TypeSafe's flagship System One model.
+///
+/// An alias the vendor resolves to a version, not a literal it echoes back: a
+/// request naming it is answered by a `jev-*` release, and the answer reports
+/// which. See [Models](https://docs.typesafe.ai/models).
 pub const DEFAULT_MODEL: &str = "jev-latest";
 
 /// One typed question.
@@ -24,6 +38,8 @@ pub const DEFAULT_MODEL: &str = "jev-latest";
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Question {
     /// Yes/no, answered as the probability of yes.
+    ///
+    /// See [Noul](https://docs.typesafe.ai/primitives/noul).
     Noul {
         /// The yes/no question to evaluate.
         instructions: Value,
@@ -32,6 +48,8 @@ pub enum Question {
         criteria: Option<NoulCriteria>,
     },
     /// One option from a defined set.
+    ///
+    /// See [Choice](https://docs.typesafe.ai/primitives/choice).
     Choice {
         /// What the model should decide.
         instructions: Value,
@@ -39,6 +57,8 @@ pub enum Question {
         criteria: BTreeMap<String, Option<Value>>,
     },
     /// A position along ordered levels.
+    ///
+    /// See [Score](https://docs.typesafe.ai/primitives/score).
     Score {
         /// What the model should rate.
         instructions: Value,

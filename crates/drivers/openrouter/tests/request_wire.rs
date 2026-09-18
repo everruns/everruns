@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // Wire-level tests for OpenRouter request decoration.
 //
 // These exercise the full path: `OpenRouterChatDriver` builds an Open Responses

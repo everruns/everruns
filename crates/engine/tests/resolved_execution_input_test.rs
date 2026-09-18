@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! A downstream-style pure-kernel fixture: project values, assemble from
 //! already-resolved inputs, and execute without implementing platform stores.
 

@@ -3324,6 +3324,18 @@ impl Command for AddScheduleChannelCmd {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        // Three commands share POST /v1/apps/{id}/channels, so the derived
+        // spelling collides. The kind moves into the verb, matching the flat
+        // name, rather than inventing a noun the REST surface does not have.
+        const ROUTE: CliRoute = CliRoute::new(&["apps", "channels"], "add-schedule")
+            .with_examples(&[CliExample::new(
+                "Attach a schedule that wakes an app on a cadence",
+                "everruns apps channels add-schedule --app-id app_01h9 --cron-expression '0 * * * *' --message 'Daily digest'",
+            )]);
+        Some(ROUTE)
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&APP_MANAGE)
     }
@@ -3447,6 +3459,18 @@ impl Command for AddWebhookChannelCmd {
             method: "POST",
             path: "/v1/apps/{id}/channels",
         }
+    }
+
+    fn cli() -> Option<CliRoute> {
+        // Three commands share POST /v1/apps/{id}/channels, so the derived
+        // spelling collides. The kind moves into the verb, matching the flat
+        // name, rather than inventing a noun the REST surface does not have.
+        const ROUTE: CliRoute = CliRoute::new(&["apps", "channels"], "add-webhook")
+            .with_examples(&[CliExample::new(
+                "Attach a webhook so an external service can trigger an app",
+                "everruns apps channels add-webhook --app-id app_01h9 --message 'Incoming webhook' --token wht_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {

@@ -1,5 +1,5 @@
 # Deno Sandbox Integration
-# Decision: External integration crate, auto-registered via inventory plugin system.
+# Decision: External integration crate, named in crates/integrations-catalog
 
 [package]
 name = "everruns-integrations-deno"
@@ -22,7 +22,6 @@ everruns-provider.workspace = true
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
 everruns-platform.workspace = true
-inventory.workspace = true
 reqwest = { workspace = true, features = ["multipart"] }
 serde.workspace = true
 serde_json.workspace = true
@@ -44,3 +43,6 @@ urlencoding = "2.1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
+
+[lints]
+workspace = true

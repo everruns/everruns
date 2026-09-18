@@ -424,28 +424,27 @@ Tools are discovered from MCP servers via the `tools/list` JSON-RPC method:
 
 ### Tool Caching
 
-Tools are cached per server (`cached_tools` + `tools_cached_at`) and served with
-a bounded stale-while-revalidate strategy so recent stale caches avoid blocking
-agent tool resolution on an upstream `tools/list`, while untrusted tool
-definitions cannot remain registered indefinitely after refresh failures:
+Organization MCP capabilities without an acting identity use the server row
+(`cached_tools` + `tools_cached_at`) and its bounded stale-while-revalidate
+behavior. OAuth catalog attachments use a separate cache keyed by their declared
+acting identity:
 
-- **Fresh** (within the 1h TTL): cached tools are returned directly.
-- **Stale but within the maximum stale lifetime** (older than the TTL, under 24h,
-  with a prior successful fetch): cached tools are returned immediately and a
-  refresh is kicked off in the background. OAuth servers are excluded, they
-  cannot self-refresh without a user connection token, so they take the blocking
-  path instead of spawning a no-op background refresh.
-- **Expired stale** (24h or older), **cold** (never fetched), or **forced**: the
-  caller blocks on a refresh. Batch agent tool resolution omits expired stale
-  tools if that refresh fails rather than registering the old definitions.
-- The 24h max-stale window also bounds **OAuth** servers: since they can't
-  self-refresh without a user connection token, their cached tools are served
-  only while inside the window. Past 24h the blocking refresh fails (and batch
-  resolution omits them) until the user reconnects, so revoked/poisoned OAuth
-  tool metadata can't be served indefinitely either.
-- Concurrent refreshes for the same server are coalesced (single-flight), so a
-  burst of agent runs triggers at most one upstream fetch rather than a herd.
-- Force refresh is available via API.
+| `actsAs` | Identity key | Storage |
+|---|---|---|
+| `none` | preset | organization server row |
+| `service` | preset + agent | persistent service cache |
+| `user` | preset + user | process memory only |
+
+The server-provided `ttlMs` controls freshness for identity-scoped entries. A
+missing, zero, or negative value disables caching. `cacheScope: public` removes
+the credential hash from the key, but never removes the agent or user identity.
+`cacheScope: private` keeps a SHA-256 credential hash in the key.
+
+The connection grant is resolved before every cache lookup. A missing or revoked
+grant cannot serve cached tools and invalidates that identity's entries. Entries
+older than 24 hours are omitted from batch tool resolution. A refresh failure
+may use a stale entry only inside that maximum age. Concurrent first fetches for
+the same identity and authorization context are coalesced.
 
 ### Tool Execution
 

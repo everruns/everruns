@@ -1,4 +1,5 @@
-//! Integration test: verify Brave Search plugin registers via inventory.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+//! Integration test: verify Brave Search plugin is published by the crate catalog.
 
 #![cfg(feature = "hosted")]
 
@@ -6,13 +7,12 @@ use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_platform::connector::ConnectorPlugin;
 
-// Force linker to include the integration crate's inventory submissions.
-use everruns_integrations_brave_search as _;
+use everruns_integrations_brave_search::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
-    registry.register_inventory_plugins(|plugin| {
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         (!plugin.experimental_only || grade.experimental_features_enabled())
             && plugin
                 .feature_flag
@@ -22,20 +22,20 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 #[test]
-fn test_brave_search_plugin_is_submitted() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+fn test_brave_search_plugin_is_published() {
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     assert!(
         plugins.iter().any(|p| {
             let cap = (p.factory)();
             cap.id() == "brave_search"
         }),
-        "Brave Search IntegrationPlugin should be submitted via inventory"
+        "Brave Search IntegrationPlugin should be published in CAPABILITY_PLUGINS"
     );
 }
 
 #[test]
 fn test_brave_search_plugin_is_experimental() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let brave_search = plugins
         .iter()
         .find(|p| {
@@ -84,20 +84,20 @@ fn test_brave_search_capability_metadata() {
 }
 
 #[test]
-fn test_brave_search_connection_provider_is_submitted() {
-    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
+fn test_brave_search_connection_provider_is_published() {
+    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
     assert!(
         plugins.iter().any(|p| {
             let provider = (p.factory)();
             provider.provider_id() == "brave_search"
         }),
-        "Brave Search ConnectorPlugin should be submitted via inventory"
+        "Brave Search ConnectorPlugin should be published in CONNECTOR_PLUGINS"
     );
 }
 
 #[test]
 fn test_brave_search_connection_provider_is_experimental() {
-    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
+    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
     let brave_search = plugins
         .iter()
         .find(|p| {
@@ -114,7 +114,7 @@ fn test_brave_search_connection_provider_is_experimental() {
 
 #[test]
 fn test_brave_search_connection_provider_has_form_schema() {
-    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
+    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
     let plugin = plugins
         .iter()
         .find(|p| {

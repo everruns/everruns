@@ -81,6 +81,72 @@ impl DriverId {
     /// document a public deep-link by generation id, so the generation template
     /// passes the id best-effort; worst case it lands on the Logs page where the
     /// generation can be found by recency.
+    /// The driver whose vendor serves `base_url`, by host.
+    ///
+    /// A configured base URL is often the only thing an embedder has — it comes
+    /// from a settings file, an env var, or a request — and picking the driver
+    /// from it is otherwise a hand-rolled `host.contains("openrouter")` in
+    /// every consumer. Matching is on the host only, so a vendor's path
+    /// variations and proxy ports do not change the answer.
+    ///
+    /// `None` means the host is not one Everruns recognizes, which is the
+    /// common and correct case for a self-hosted or gateway endpoint: those
+    /// speak an OpenAI-compatible wire, so the caller picks
+    /// [`DriverId::OpenAICompletions`] itself rather than having a vendor
+    /// guessed for it.
+    ///
+    /// ```
+    /// use everruns_provider::DriverId;
+    ///
+    /// assert_eq!(
+    ///     DriverId::for_base_url("https://openrouter.ai/api/v1"),
+    ///     Some(DriverId::OpenRouter)
+    /// );
+    /// assert_eq!(DriverId::for_base_url("http://127.0.0.1:8081/v1"), None);
+    /// ```
+    pub fn for_base_url(base_url: &str) -> Option<DriverId> {
+        let host = url::Url::parse(base_url.trim())
+            .ok()?
+            .host_str()?
+            .to_ascii_lowercase();
+        let host = host.strip_prefix("www.").unwrap_or(&host);
+        let matches = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
+        if matches("openrouter.ai") {
+            return Some(DriverId::OpenRouter);
+        }
+        if matches("openai.azure.com") || matches("azure.com") {
+            return Some(DriverId::AzureOpenAI);
+        }
+        if matches("openai.com") {
+            return Some(DriverId::OpenAI);
+        }
+        if matches("anthropic.com") {
+            return Some(DriverId::Anthropic);
+        }
+        if matches("googleapis.com") {
+            return Some(DriverId::Gemini);
+        }
+        if matches("fireworks.ai") {
+            return Some(DriverId::Fireworks);
+        }
+        None
+    }
+
+    /// The vendor's canonical API base URL, for drivers that have one.
+    ///
+    /// `None` for drivers whose endpoint is per-deployment (Azure, Bedrock) or
+    /// that have no HTTP endpoint at all.
+    pub fn default_base_url(&self) -> Option<&'static str> {
+        match self.as_str() {
+            "openai" | "openai_completions" => Some("https://api.openai.com/v1"),
+            "openrouter" => Some("https://openrouter.ai/api/v1"),
+            "anthropic" => Some("https://api.anthropic.com"),
+            "gemini" => Some("https://generativelanguage.googleapis.com"),
+            "fireworks" => Some("https://api.fireworks.ai/inference/v1"),
+            _ => None,
+        }
+    }
+
     pub fn default_trace_templates(&self) -> (Option<String>, Option<String>) {
         if self == &DriverId::OpenRouter {
             (
@@ -184,6 +250,62 @@ mod tests {
         ids.insert(driver);
         ids.insert(DriverId::external("CUSTOM-DRIVER"));
         assert_eq!(ids.len(), 1, "normalization must preserve hash identity");
+    }
+
+    #[test]
+    fn a_vendor_base_url_selects_its_driver_by_host() {
+        for (url, expected) in [
+            ("https://api.openai.com/v1", DriverId::OpenAI),
+            ("https://openrouter.ai/api/v1", DriverId::OpenRouter),
+            ("https://api.anthropic.com", DriverId::Anthropic),
+            (
+                "https://generativelanguage.googleapis.com/v1beta",
+                DriverId::Gemini,
+            ),
+            ("https://api.fireworks.ai/inference/v1", DriverId::Fireworks),
+            (
+                "https://contoso.openai.azure.com/openai",
+                DriverId::AzureOpenAI,
+            ),
+        ] {
+            assert_eq!(DriverId::for_base_url(url), Some(expected.clone()), "{url}");
+        }
+    }
+
+    #[test]
+    fn an_unrecognized_host_is_left_to_the_caller() {
+        // Self-hosted and gateway endpoints speak an OpenAI-compatible wire;
+        // guessing a vendor for them would be wrong, not helpful.
+        for url in [
+            "http://127.0.0.1:8081/v1",
+            "https://llm.internal.example/v1",
+            "not a url",
+            "",
+        ] {
+            assert_eq!(DriverId::for_base_url(url), None, "{url}");
+        }
+    }
+
+    #[test]
+    fn a_lookalike_host_is_not_the_vendor() {
+        // Suffix matching is on domain boundaries, so a host that merely ends
+        // in the vendor's name does not match it.
+        assert_eq!(DriverId::for_base_url("https://notopenai.com/v1"), None);
+        assert_eq!(
+            DriverId::for_base_url("https://eu.api.openai.com/v1"),
+            Some(DriverId::OpenAI)
+        );
+    }
+
+    #[test]
+    fn a_driver_with_a_canonical_endpoint_reports_it() {
+        assert_eq!(
+            DriverId::OpenRouter.default_base_url(),
+            Some("https://openrouter.ai/api/v1")
+        );
+        // Per-deployment endpoints have no canonical default to report.
+        assert_eq!(DriverId::AzureOpenAI.default_base_url(), None);
+        assert_eq!(DriverId::Bedrock.default_base_url(), None);
     }
 }
 

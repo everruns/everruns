@@ -1,6 +1,6 @@
 ---
 title: Capabilities
-description: Capabilities are the modular units that give an agent its tools, system prompt fragments, and session state. Conceptual overview with links to the full reference.
+description: Capabilities give an agent tools, system prompt fragments, and session state. Overview with links to the reference.
 ---
 
 A **capability** is a self-contained unit that extends an agent. Each capability can contribute three kinds of thing:

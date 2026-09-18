@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -356,7 +356,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -374,7 +374,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capability"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "async-trait",
  "schemars",
@@ -384,7 +384,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -433,7 +433,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -459,7 +459,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -475,7 +475,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -488,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -497,14 +497,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-model-profiles"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "everruns-provider"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "anyhow",
  "async-trait",

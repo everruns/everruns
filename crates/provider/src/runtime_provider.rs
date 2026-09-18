@@ -279,6 +279,12 @@ pub struct RuntimeProvider {
     id: ProviderKey,
     driver: Arc<dyn ChatDriver>,
     endpoint: ProviderEndpoint,
+    // Which driver kind this assembly speaks, for lookups that are about the
+    // vendor rather than this configured instance (model profiles, catalog
+    // enrichment). Optional because the runtime identity and the driver kind
+    // are independent: a provider may be keyed `"my-openai"`. Unset falls back
+    // to the key, which is the conventional case.
+    driver_id: Option<crate::provider::DriverId>,
 }
 
 /// Public application-facing name for a runtime provider.
@@ -294,6 +300,7 @@ impl RuntimeProvider {
             id: id.into(),
             driver,
             endpoint: ProviderEndpoint::default(),
+            driver_id: None,
         }
     }
 
@@ -319,8 +326,23 @@ impl RuntimeProvider {
         self
     }
 
+    /// Declare the driver kind this provider speaks, when it differs from the
+    /// runtime key. Used for model-profile lookups, never for routing.
+    pub fn with_driver_id(mut self, driver_id: crate::provider::DriverId) -> Self {
+        self.driver_id = Some(driver_id);
+        self
+    }
+
     pub fn id(&self) -> &ProviderKey {
         &self.id
+    }
+
+    /// The driver kind this provider speaks, falling back to the runtime key
+    /// when nothing declared one.
+    pub fn driver_id(&self) -> crate::provider::DriverId {
+        self.driver_id
+            .clone()
+            .unwrap_or_else(|| crate::provider::DriverId::external(self.id.as_str()))
     }
 
     pub fn driver(&self) -> &Arc<dyn ChatDriver> {
@@ -337,14 +359,26 @@ impl RuntimeProvider {
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponseStream> {
         let id = self.id.to_string();
-        let stream = self
-            .driver
-            .chat_completion_stream(&self.endpoint, messages, config)
-            .await
-            .map_err(|error| error.with_provider(&id))?;
-        Ok(Box::pin(stream.map(move |result| {
-            result.map_err(|error| error.with_provider(&id))
-        })))
+        let limits = config.limits;
+        // Establishing the stream is itself a round trip that can hang, so it
+        // runs inside the budget, and what it spends is charged against what
+        // the stream then gets.
+        let (stream, spent) = crate::turn_collector::connect_within(
+            &limits,
+            self.driver
+                .chat_completion_stream(&self.endpoint, messages, config),
+        )
+        .await
+        .map_err(|error| error.with_provider(&id))?;
+        let stream: crate::driver_registry::LlmResponseStream =
+            Box::pin(stream.map(move |result| result.map_err(|error| error.with_provider(&id))));
+        // The call's limits bind whoever consumes the stream, not just the
+        // collected path: a caller rendering events itself is exactly the one
+        // with no other way to bound a provider that stops sending.
+        Ok(crate::turn_collector::limit_stream(
+            stream,
+            limits.after(spent),
+        ))
     }
 
     pub async fn chat_completion(
@@ -380,6 +414,24 @@ impl RuntimeProvider {
             .list_models(&self.endpoint)
             .await
             .map_err(|error| error.with_provider(self.id.as_str()))
+    }
+
+    /// The provider's catalog, ready for display: discovered ids sorted
+    /// newest-first and merged with the model-profile registry.
+    ///
+    /// `Ok(None)` means this provider offers no catalog — callers keep their
+    /// curated suggestions rather than treating it as a failure. See
+    /// [`list_models`](Self::list_models) for the driver's raw answer.
+    pub async fn models(
+        &self,
+    ) -> Result<Option<Vec<crate::model_discovery::DiscoveredProviderModel>>> {
+        let Some(models) = self.list_models().await? else {
+            return Ok(None);
+        };
+        Ok(Some(crate::model_discovery::normalize_and_enrich(
+            &self.driver_id(),
+            models,
+        )))
     }
 
     pub fn into_boxed_driver(self) -> BoxedChatDriver {
@@ -453,6 +505,7 @@ impl ChatDriver for ProviderBoundDriver {
             id: self.0.id.clone(),
             endpoint: self.0.endpoint.clone(),
             driver,
+            driver_id: self.0.driver_id.clone(),
         })))
     }
     async fn chat_completion_stream(
@@ -582,6 +635,73 @@ mod tests {
         ) -> Result<crate::LlmResponseStream> {
             unreachable!("configuration-only fixture must not execute")
         }
+    }
+
+    struct Catalog;
+    #[async_trait]
+    impl ChatDriver for Catalog {
+        async fn chat_completion_stream(
+            &self,
+            _endpoint: &ProviderEndpoint,
+            _messages: Vec<crate::LlmMessage>,
+            _config: &crate::LlmCallConfig,
+        ) -> Result<crate::LlmResponseStream> {
+            unreachable!("catalog-only fixture must not execute")
+        }
+
+        async fn list_models(
+            &self,
+            _endpoint: &ProviderEndpoint,
+        ) -> Result<Option<Vec<crate::driver_registry::DiscoveredModel>>> {
+            Ok(Some(vec![crate::driver_registry::DiscoveredModel {
+                model_id: "gpt-5.6-terra".to_string(),
+                display_name: None,
+                created_at: None,
+                owned_by: None,
+                capabilities: vec!["chat".to_string()],
+                discovered_profile: None,
+            }]))
+        }
+    }
+
+    #[test]
+    fn the_driver_kind_falls_back_to_the_runtime_key() {
+        assert_eq!(
+            RuntimeProvider::new("openai", Noop).driver_id(),
+            crate::provider::DriverId::OpenAI
+        );
+    }
+
+    #[test]
+    fn a_declared_driver_kind_survives_a_caller_chosen_key() {
+        let provider = RuntimeProvider::new("my-gateway", Noop)
+            .with_driver_id(crate::provider::DriverId::OpenAI);
+        assert_eq!(provider.id().as_str(), "my-gateway");
+        assert_eq!(provider.driver_id(), crate::provider::DriverId::OpenAI);
+    }
+
+    #[tokio::test]
+    async fn models_enriches_bare_ids_through_the_declared_driver_kind() {
+        let catalog = RuntimeProvider::new("my-gateway", Catalog)
+            .with_driver_id(crate::provider::DriverId::OpenAI)
+            .models()
+            .await
+            .expect("catalog request")
+            .expect("driver offers a catalog");
+        assert_eq!(catalog.len(), 1);
+        // The driver returned a bare id; the profile registry named it.
+        assert!(catalog[0].display_name.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_driver_without_a_catalog_reports_no_catalog() {
+        assert!(
+            RuntimeProvider::new("openai", Noop)
+                .models()
+                .await
+                .expect("catalog request")
+                .is_none()
+        );
     }
 
     #[test]
@@ -856,23 +976,7 @@ mod tests {
 
         let config = crate::LlmCallConfig {
             model: "model".into(),
-            temperature: None,
-            max_tokens: None,
-            tools: Vec::new(),
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            metadata: std::collections::HashMap::new(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            driver_options: Default::default(),
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-            reasoning_state: None,
+            ..Default::default()
         };
         let start = Provider::new(
             "customer-gateway",

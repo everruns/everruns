@@ -1,14 +1,15 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration tests for Deno plugin registration and capability.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
-use everruns_integrations_deno as _;
+use everruns_integrations_deno::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 use everruns_platform::connector::ConnectorPlugin;
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
-    registry.register_inventory_plugins(|plugin| {
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         (!plugin.experimental_only || grade.experimental_features_enabled())
             && plugin
                 .feature_flag
@@ -18,14 +19,14 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 #[test]
-fn test_deno_plugin_is_submitted() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+fn test_deno_plugin_is_published() {
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     assert!(
         plugins.iter().any(|plugin| {
             let capability = (plugin.factory)();
             capability.id() == "deno"
         }),
-        "Deno IntegrationPlugin should be submitted via inventory"
+        "Deno IntegrationPlugin should be published in CAPABILITY_PLUGINS"
     );
 }
 
@@ -36,13 +37,13 @@ fn test_deno_registered_in_prod_registry() {
 }
 
 #[test]
-fn test_deno_connection_provider_is_submitted() {
-    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
+fn test_deno_connection_provider_is_published() {
+    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
     assert!(
         plugins.iter().any(|plugin| {
             let provider = (plugin.factory)();
             provider.provider_id() == "deno"
         }),
-        "Deno ConnectorPlugin should be submitted via inventory"
+        "Deno ConnectorPlugin should be published in CONNECTOR_PLUGINS"
     );
 }

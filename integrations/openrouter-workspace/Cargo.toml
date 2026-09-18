@@ -22,7 +22,7 @@ everruns-core.workspace = true
 # schema is derived from `ScoutConfig` instead of hand-written JSON.
 everruns-capability = { workspace = true, features = ["definition"] }
 everruns-provider.workspace = true
-everruns-openrouter = { version = "0.28.0", path = "../../crates/drivers/openrouter" }
+everruns-openrouter = { version = "0.29.0", path = "../../crates/drivers/openrouter" }
 async-trait.workspace = true
 reqwest.workspace = true
 serde.workspace = true
@@ -30,3 +30,6 @@ serde_json.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
+
+[lints]
+workspace = true

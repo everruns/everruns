@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live smoke test for OpenRouter chat + session tracking.
 //!
 //! Exercises a real streamed chat completion through `OpenRouterChatDriver`,

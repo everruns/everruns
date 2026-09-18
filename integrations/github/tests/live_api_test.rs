@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![cfg(feature = "github-live-tests")]
 
 use reqwest::StatusCode;

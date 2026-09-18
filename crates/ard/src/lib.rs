@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Agentic Resource Discovery (ARD) — client integration.
 //!
 //! Adds a `resource_discovery` capability that lets a running agent discover
@@ -42,21 +43,18 @@ use tools::{AttachResourceTool, DiscoverResourcesTool, ListAttachedResourcesTool
 /// Capability id wired onto agents (e.g. the "Capability Scout" seed agent).
 pub const RESOURCE_DISCOVERY_CAPABILITY_ID: &str = "resource_discovery";
 
-inventory::submit! {
-    IntegrationPlugin {
-        experimental_only: true,
-        feature_flag: None,
-        factory: || Box::new(ResourceDiscoveryCapability),
-    }
-}
+/// Capability plugins this crate contributes to a hosted catalog.
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    experimental_only: true,
+    feature_flag: None,
+    factory: || Box::new(ResourceDiscoveryCapability),
+}];
 
-inventory::submit! {
-    ConnectorPlugin {
-        experimental_only: true,
-        factory: || Box::new(ArdConnector),
-    }
-}
-
+/// Connector plugins this crate contributes to a hosted catalog.
+pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
+    experimental_only: true,
+    factory: || Box::new(ArdConnector),
+}];
 pub struct ResourceDiscoveryCapability;
 
 #[async_trait::async_trait]

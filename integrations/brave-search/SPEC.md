@@ -21,7 +21,7 @@ user connections, with session-secret fallback. User connections are preferred
 because they can be refreshed and reused across authorized sessions. Missing
 credentials produce an explicit failure rather than an unauthenticated request.
 
-The hosted feature separates connector UI and inventory discovery from the
+The hosted feature separates connector UI and catalog registration from the
 Framework dependency graph. The [crate manifest](Cargo.toml) owns feature
 selection; [registration](src/lib.rs) owns deployment discovery. The
 [connector](src/connection.rs) owns hosted credential entry and validation.

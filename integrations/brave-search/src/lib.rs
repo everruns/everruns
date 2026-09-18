@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Brave Search web search for Everruns agents.
 //!
 //! This integration contributes a `brave_web_search` tool and its connection
@@ -42,23 +43,20 @@ use tools::BraveWebSearchTool;
 // Plugin Registration
 // ============================================================================
 
+/// Capability plugins this crate contributes to a hosted catalog.
 #[cfg(feature = "hosted")]
-inventory::submit! {
-    IntegrationPlugin {
-        experimental_only: true,
-        feature_flag: None,
-        factory: || Box::new(BraveSearchCapability),
-    }
-}
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    experimental_only: true,
+    feature_flag: None,
+    factory: || Box::new(BraveSearchCapability),
+}];
 
+/// Connector plugins this crate contributes to a hosted catalog.
 #[cfg(feature = "hosted")]
-inventory::submit! {
-    ConnectorPlugin {
-        experimental_only: true,
-        factory: || Box::new(BraveSearchConnector),
-    }
-}
-
+pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
+    experimental_only: true,
+    factory: || Box::new(BraveSearchConnector),
+}];
 // ============================================================================
 // Constants
 // ============================================================================

@@ -262,10 +262,12 @@ where
     // so a multi-field driver reads its credentials exactly as it does on the
     // server.
     let config = crate::driver_registry::DriverConfig::from_provider_config(&config);
-    Ok(crate::runtime_provider::Provider::from_driver(
-        id,
-        factory(&config).into(),
-    ))
+    Ok(
+        crate::runtime_provider::Provider::from_driver(id, factory(&config).into())
+            // The runtime key is caller-chosen; record the driver kind so model
+            // profiles and catalog enrichment resolve against the vendor.
+            .with_driver_id(driver.id.clone()),
+    )
 }
 
 #[cfg(test)]
@@ -423,6 +425,9 @@ mod tests {
         })
         .expect("declared variables are set");
         assert_eq!(provider.id().as_str(), "my-openai");
+        // The key is the caller's; the driver kind comes from the descriptor,
+        // so model profiles resolve against the vendor either way.
+        assert_eq!(provider.driver_id(), DriverId::external("vendor"));
     }
 
     #[test]

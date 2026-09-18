@@ -220,7 +220,7 @@ No long-lived WebSocket connections from our side, we connect/disconnect for eac
 - Session tools: metadata, context-required checks
 
 ### Integration Tests (`tests/`)
-- `plugin_registration.rs`: inventory submission, dev/prod registry, capability metadata
+- `plugin_registration.rs`: published plugin consts, dev/prod registry, capability metadata
 - `tool_integration.rs`: full tool execution flow via wiremock, parameter validation, auth, error handling, resource cleanup
 
 ### Live API Tests
@@ -245,7 +245,7 @@ CI keeps Browserless live coverage off `pull_request`: `.github/workflows/ci.yml
 | `src/state.rs` | API token resolution, browser session state, parameter helpers |
 | `src/session_tools.rs` | `browserless_open_browser` / `browserless_close_browser` tools |
 | `src/tools.rs` | 5 session-aware tool implementations + interaction code generator |
-| `tests/plugin_registration.rs` | Integration tests for inventory registration |
+| `tests/plugin_registration.rs` | Integration tests for the published plugin consts |
 | `tests/tool_integration.rs` | Integration tests: tool execution + wiremock |
 
 ## Capability Registration

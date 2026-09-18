@@ -18,6 +18,7 @@ pub mod durable_tool_results;
 pub mod encryption;
 pub mod harness_store;
 pub mod leased_resource_store;
+pub mod mcp_tool_cache;
 pub mod memory;
 mod message_history_timing;
 pub mod message_store;
@@ -54,6 +55,7 @@ pub use harness_store::{DbHarnessStore, create_db_harness_store};
 pub use leased_resource_store::{
     DbLeasedResourceStore, row_to_domain as leased_resource_row_to_domain,
 };
+pub use mcp_tool_cache::*;
 pub use memory::InMemoryDatabase;
 pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;

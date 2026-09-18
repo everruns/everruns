@@ -1,6 +1,6 @@
 ---
-title: Agentic Resource Discovery (ARD) for Runtime Capability Attachment
-description: Let agents discover and attach external MCP servers and A2A agents at runtime via the Agentic Resource Discovery protocol. Configure registries, trust gating, and SSRF-safe attachment.
+title: Agentic Resource Discovery (ARD)
+description: Discover and attach external MCP servers and A2A agents at runtime via the ARD protocol, with registry configuration and trust gating.
 sidebar:
   label: ARD Discovery
 ---

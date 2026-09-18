@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Terminal presentation shared by the Framework example agents.
 //!
 //! Agent behavior — tools, instructions, provider, capabilities — lives in each

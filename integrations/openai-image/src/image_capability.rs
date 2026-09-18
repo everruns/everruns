@@ -37,14 +37,12 @@ const DEFAULT_META_BASE_URL: &str = "https://api.meta.ai/v1";
 const DEFAULT_OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 const MAX_EDIT_SOURCE_BYTES: usize = 50 * 1024 * 1024;
 
-inventory::submit! {
-    IntegrationPlugin {
-        experimental_only: false,
-        feature_flag: None,
-        factory: || Box::new(GptImageGenCapability),
-    }
-}
-
+/// Capability plugins this crate contributes to a hosted catalog.
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    experimental_only: false,
+    feature_flag: None,
+    factory: || Box::new(GptImageGenCapability),
+}];
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     r#"When image tools are listed, call them directly for generation/editing requests; do not claim they are unavailable or stop at writing prompts unless a tool call fails. Avoid unrelated bookkeeping before straightforward image calls.
 

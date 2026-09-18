@@ -1,6 +1,6 @@
 ---
 title: Sub Agents
-description: Spawn subagents for parallel task execution in isolated context windows. Orchestrate multi-agent workflows with the generic session task tools.
+description: Spawn subagents that run tasks in isolated context windows, through the generic session task tools.
 ---
 
 | | |

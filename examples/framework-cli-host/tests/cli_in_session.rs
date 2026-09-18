@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Proves the tree is reachable from inside a real session's shell.
 //!
 //! The simulator can produce any text it likes, so a canned final answer
@@ -97,7 +98,7 @@ async fn a_mutating_command_changes_application_state() {
 
     let result = run_with_shell(
         fleet.clone(),
-        &["everruns fleet scale --name api --replicas 4"],
+        &["everruns fleet scale api --replicas 4"],
         true,
     )
     .await;

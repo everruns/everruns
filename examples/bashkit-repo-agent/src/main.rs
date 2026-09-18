@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Run from the repository checkout; see README.md for credentials and scenarios.
 use std::ffi::OsString;
 use std::fs;
@@ -17,18 +18,14 @@ const DEFAULT_TASK: &str =
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = Options::parse(std::env::args_os().skip(1))?;
-    let temporary = options
-        .workspace
-        .is_none()
-        .then(tempfile::tempdir)
-        .transpose()?;
-    let workspace = options.workspace.unwrap_or_else(|| {
-        temporary
-            .as_ref()
-            .expect("temporary workspace exists")
-            .path()
-            .join("fetchkit")
-    });
+    let (_temporary, workspace) = match options.workspace {
+        Some(path) => (None, path),
+        None => {
+            let dir = tempfile::tempdir()?;
+            let path = dir.path().join("fetchkit");
+            (Some(dir), path)
+        }
+    };
     fs::create_dir_all(&workspace)?;
     fixture::materialize(&workspace)?;
 

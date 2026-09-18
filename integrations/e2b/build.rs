@@ -1,3 +1,5 @@
+// Build script: a panic here is how codegen failure reaches the build.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 // Uses protox (pure Rust protobuf compiler) to avoid requiring external protoc binary.
 // Compiles proto to a FileDescriptorSet, then feeds it to connectrpc-build.
 fn main() {

@@ -1,6 +1,6 @@
 ---
 title: Base Harness
-description: An empty harness with no capabilities for full control over session configuration.
+description: A harness with no capabilities, leaving all session configuration to the agent or session.
 ---
 
 The **Base** harness is a blank-slate starting point with no bundled capabilities.

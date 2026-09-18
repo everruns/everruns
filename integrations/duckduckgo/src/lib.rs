@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! DuckDuckGo Instant Answer integration for Everruns.
 //!
 //! Instant answers via DuckDuckGo Instant Answer API.
@@ -32,14 +33,12 @@ use tools::DuckDuckGoSearchTool;
 // Integration Plugin Registration
 // ============================================================================
 
-inventory::submit! {
-    IntegrationPlugin {
-        experimental_only: true,
-        feature_flag: None,
-        factory: || Box::new(DuckDuckGoCapability),
-    }
-}
-
+/// Capability plugins this crate contributes to a hosted catalog.
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    experimental_only: true,
+    feature_flag: None,
+    factory: || Box::new(DuckDuckGoCapability),
+}];
 // ============================================================================
 // Constants
 // ============================================================================

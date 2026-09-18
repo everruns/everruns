@@ -54,7 +54,9 @@ The Framework owns value-first configuration for:
 - direct, agentless model calls over the same provider values an agent uses,
   for work that is one prompt and one answer;
 - direct, agentless classification over the same `ClassifierService` the platform's
-  guardrails use, for work whose answer is a number rather than prose.
+  guardrails use, for work whose answer is a number rather than prose;
+- provider model catalogs and curated model metadata, so an application can
+  offer a model choice instead of hard-coding ids.
 
 The application execution boundary is the concrete `everruns::Engine`.
 `InMemoryEngine` remains a source-compatible alias, not a second
@@ -242,12 +244,13 @@ questions in, calibrated answers out, and the threshold that decides an outcome
 stays in the caller's code. There is nothing to stream, because a classification is
 one round trip.
 
-The concrete service is supplied, never assumed: `Classifier::new` takes any
-`ClassifierService`, exactly as `Model::new` takes any `Provider`, so the facade
-depends on no vendor. `Classifier::simulated` keeps tests and examples offline, the
-role `Model::simulated` plays for completions. `everruns` re-exports the TypeSafe
-service behind its `jev` feature, the way it re-exports `OpenAI`, so one import
-reaches both halves without the vendor entering the default build.
+The concrete service is supplied, never assumed: `Classifier::new` takes a model
+id and any `ClassifierService`, exactly as `Model::new` takes an id and any
+`Provider`, so the facade depends on no vendor and the model is a caller's
+decision rather than an inherited default. `Classifier::simulated` keeps tests and examples offline, the
+role `Model::simulated` plays for completions. `everruns` re-exports the `TypeSafeAI`
+provider behind its `typesafe` feature, the way it re-exports `OpenAI`, so one
+import reaches both halves without the vendor entering the default build.
 
 The model is named, not fixed. `Model::new` takes a model id because a provider
 is transport and serves many; a classifier service has a default of its own, so
@@ -272,6 +275,33 @@ the layer would recreate the parse-and-trust problem one level down.
   whether the Framework is embedded or the platform runs it.
 - Question ids are caller-side labels and never reach the model, so each
   question must carry its whole meaning in its instructions.
+## Model catalog boundary
+
+Selecting a model requires an exact, provider-visible id, and the Framework
+deliberately keeps that id credential-free and unvalidated. That left
+applications with no promoted way to find out which ids a provider actually
+serves: discovery, profile lookup, and driver-kind identity were public but
+lived in `everruns-provider`, so a model picker forced a second crate
+dependency and provider-owned types.
+
+`everruns::models` closes that with the same shape as the direct model call
+layer: `list` asks a provider for its catalog, `ModelInfo` carries the id plus
+the display and capability metadata a picker renders, and a selection converts
+back into the `Model` value an `Agent` or a `Completion` already takes. Catalog
+answers are three-valued at the driver boundary, and stay three-valued here: a
+provider with no catalog is a typed variant, not an error, so callers keep
+curated suggestions instead of reporting a failure.
+
+Capability and limit answers come from the curated profile registry, which is
+static data. They are display hints, not guarantees, and an unknown id simply
+has no profile. The registry is also readable without any provider call, since
+"what is this model" is an offline question.
+
+A provider's runtime key is application-chosen and independent of the driver
+kind it speaks. `Provider` now carries that kind explicitly, defaulting to the
+key, so profile lookups and catalog enrichment resolve against the vendor even
+when the provider is keyed `"my-gateway"`. Credential-resolved providers record
+it from the driver descriptor they were built from.
 
 ## Boundary constraints
 

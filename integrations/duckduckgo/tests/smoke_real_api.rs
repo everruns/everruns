@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Real API smoke tests for DuckDuckGo.
 //!
 //! Gated behind `integration` feature — only compiled when run with:

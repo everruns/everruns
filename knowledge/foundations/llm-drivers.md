@@ -100,6 +100,17 @@ Drivers MUST use the following error types from `AgentLoopError`:
    - Drivers MUST detect provider-specific error responses and convert to this type
    - Example: `AgentLoopError::request_too_large("OpenAI API error (429): Request too large...")`
 
+3. **`Llm` with transport detail preserved** - An HTTP driver MUST build its
+   terminal failure with `AgentLoopError::llm_http` (or `llm_http_kind` when
+   the driver's protocol extension classifies more precisely). These classify
+   *and* record the HTTP status, the provider's own error code, and any
+   requested retry delay on `LlmError`, at the boundary where the response is
+   still structured. Anything downstream that re-expresses the failure — an
+   HTTP API in front of Everruns, a retry budget of its own — then reads those
+   fields instead of scraping the display string, which is not a contract.
+   `AgentLoopError::http_status()` also answers for the semantic variants
+   (`ModelNotAvailable` is 404, `RequestTooLarge` is 413).
+
 ### Error Detection Requirements
 
 Each driver MUST implement provider-specific error detection to classify context-length and token-limit errors as `RequestTooLarge`. See the individual driver crates for the detection logic:
@@ -162,7 +173,7 @@ Prompt caching is modeled as request intent on `LlmCallConfig.prompt_cache`. Dri
 
 Current provider mappings:
 
-- **OpenAI Responses API**: derives a deterministic cache routing key from stable cache-family inputs. On GPT-5.6 and Astra, auto mode uses implicit caching; opt-in explicit strategy caches the developer-instruction prefix and leaves the conversation suffix unwritten. Explicit mode uses full transcript replay to avoid duplicating developer instructions through stateful continuation. Without developer instructions, explicit mode creates no breakpoint. Older models and non-native gateways retain their existing behavior. The [wire implementation](../../crates/provider/src/openresponses_protocol.rs) owns exact options and breakpoint placement; [OpenAI's cache contract](https://developers.openai.com/api/docs/guides/prompt-caching) owns API semantics.
+- **OpenAI Responses API**: derives a deterministic cache routing key from stable cache-family inputs. On GPT-5.6 and Astra, auto mode uses implicit caching; opt-in explicit strategy caches the developer-instruction prefix and leaves the conversation suffix unwritten. Explicit mode uses full transcript replay to avoid duplicating developer instructions through stateful continuation. Without developer instructions, explicit mode creates no breakpoint. Older models and non-native gateways retain their existing behavior. The [wire implementation](../../crates/provider/src/openresponses_protocol/mod.rs) owns exact options and breakpoint placement; [OpenAI's cache contract](https://developers.openai.com/api/docs/guides/prompt-caching) owns API semantics.
 - **Anthropic**: adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental, the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Volatile trailing content (a live `<facts>` block) is skipped so the cached prefix does not diverge every turn
 - **Gemini**: uses `cachedContent` when the config includes an existing cached-content resource name; otherwise the request remains in implicit/default Gemini behavior
 
@@ -293,7 +304,7 @@ replayable and nothing reaches the reasoning channel.
 
 Provider-specific wire format details live in the driver implementations:
 - `crates/drivers/anthropic/src/driver.rs` -- thinking form selection (adaptive vs budget-based), beta headers, per-block signature capture, message ordering
-- `crates/provider/src/openresponses_protocol.rs` -- reasoning config, `include`, encrypted content, reasoning item ids
+- `crates/provider/src/openresponses_protocol/mod.rs` -- reasoning config, `include`, encrypted content, reasoning item ids
 - `crates/drivers/gemini/src/driver.rs` -- thinking budget, thought parts, thought signatures
 
 #### Reasoning Guard Logic
@@ -341,6 +352,32 @@ disjoint (drivers normalize inclusive providers at the boundary; see
 - `finish_reason`: Why generation stopped
 - `response_id`: Provider generation id (Anthropic message id, OpenAI response id)
 - `cache_diagnostics`: Provider prompt-cache diagnostics, verbatim, when requested
+- `reasoning_tokens`: Reasoning tokens billed *inside* `completion_tokens`, not
+  additive to them, when the provider reports the breakdown
+- `request_body`: The driver's serialized request body, only when the call set
+  `LlmCallConfig::capture_request`. See TM-LLM-039: it carries the whole prompt,
+  so it is off by default and never enabled on a caller's behalf
+
+### Turn Collection and Per-Call Limits
+
+Folding a provider stream into one finished turn is one shared loop,
+`turn_collector::collect_turn` ([source](../../crates/provider/src/turn_collector.rs)),
+not a per-driver or per-embedder reimplementation. The `ChatDriver`
+non-streaming default runs through it, so an agent turn and a direct call fold
+identically.
+
+The contract that matters:
+
+- reasoning is folded from `ReasoningItem` events only; `ReasoningDelta` is live
+  progress that repeats the same text, so folding both would double it;
+- a stream that ends without its terminal `Done` is reported on
+  `CollectedTurn::complete` rather than silently passing for a whole turn — its
+  metadata is a default, not the provider's answer. Callers that need usage and
+  a finish reason to be real set `TurnLimits::require_terminal_event`;
+- `TurnLimits` on `LlmCallConfig::limits` bound the turn (whole-turn timeout,
+  first-event timeout, accumulated-byte cap). Unbounded by default so no driver
+  changes behavior; `limit_stream` applies the same bounds for callers that
+  consume events themselves. See TM-DOS-039.
 
 ### Realtime Voice Driver
 
@@ -435,7 +472,7 @@ re-executes a completed tool.
 | ChatDriver trait | `crates/provider/src/driver_registry.rs` |
 | AgentLoopError | `crates/provider/src/error.rs` |
 | OpenAI driver | `crates/drivers/openai/src/driver.rs` |
-| Open Responses protocol | `crates/provider/src/openresponses_protocol.rs` |
+| Open Responses protocol | `crates/provider/src/openresponses_protocol/mod.rs` |
 | Chat Completions protocol | `crates/provider/src/openai_protocol.rs` |
 | Anthropic driver | `crates/drivers/anthropic/src/driver.rs` |
 | Gemini driver | `crates/drivers/gemini/src/driver.rs` |
@@ -494,6 +531,33 @@ standalone, crates.io-publishable provider crate that wraps the shared
 `DriverId::Mai`. Model ids resolve
 to the Microsoft-vendor profiles in `crates/model-profiles/src/profiles.rs` (the
 `MICROSOFT_MAI` surface).
+
+### Catalog Fallback for Unrecognized Endpoints
+
+A vendor driver returns `Ok(None)` for an endpoint it does not recognize, and
+that gate stays where it is. It is a **credential boundary**, not merely a
+capability check: the base URL is org-configured and the listing URL is
+*derived* from it, so anything the driver sends there resolves the provider's
+key against a host that may only look like the vendor
+(`api.openai.com.evil.example`, `resource.openai.azure.com@evil.example`,
+`evil.example/api.openai.com`). Attaching a generic OpenAI-compatible fallback
+to a vendor driver would hand the key to exactly those hosts, so it is not
+done. `public_discovery_gates_both_protocols_before_accessing_credentials`
+pins this with those cases.
+
+A caller that *does* want a catalog from a host it trusts — a proxy, a
+gateway, its own server — calls
+`model_discovery::list_openai_compatible_models_best_effort` itself. That is
+the deliberate step the trust decision deserves. It is best-effort: the caller
+asked *whether* a catalog exists, so an endpoint that serves none answers "no"
+rather than erroring, and it reuses `validate_safe_url` and the shared
+DNS-pinned client (TM-API-013).
+
+Enrichment keeps the capability metadata: `DiscoveredProviderModel::profile`
+carries the curated registry profile merged with whatever the provider's API
+reported, so a model the registry has never heard of still arrives with the
+limits its provider advertises. Curation wins where both speak, because it
+holds what an API never returns (prices, knowledge cutoff).
 
 ### Model Discovery
 
@@ -707,7 +771,7 @@ When a request to the OpenAI Responses API sets `previous_response_id`, the prov
 
 Invariant: **a request with `previous_response_id` only carries delta items in `input`**: typically tool results (`function_call_output`) for the prior assistant turn plus any fresh user messages. Prior assistant messages, reasoning items, and the assistant's own function calls are dropped because they live in server-side state. `instructions` (system message) is sent separately and is exempt. Empty `input` is allowed.
 
-`OpenResponsesProtocolChatDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/provider/src/openresponses_protocol.rs`).
+`OpenResponsesProtocolChatDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/provider/src/openresponses_protocol/mod.rs`).
 
 ### Provider-declared statefulness
 

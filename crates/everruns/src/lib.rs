@@ -54,11 +54,14 @@ mod context;
 mod default_workspace;
 mod engine;
 mod events;
+mod harness;
 mod history;
 mod hooks;
 /// Stability: stable — no breaking change without a major bump; see [`stability`].
 pub mod llm;
 mod mcp;
+/// Stability: alpha — may change without a major bump; see [`stability`].
+pub mod models;
 mod plugin;
 mod session;
 /// Stability tiers and the marking convention.
@@ -100,12 +103,16 @@ pub use everruns_integrations_bashkit::BashkitShell;
 pub use everruns_integrations_duckduckgo::DuckDuckGo;
 #[cfg(feature = "filesystem")]
 pub use everruns_integrations_filesystem::FileSystem;
-/// The TypeSafe-backed classifier, for [`Classifier::new`], and the capability
-/// that hands the same tool to an agent.
-#[cfg(feature = "jev")]
-pub use everruns_integrations_typesafe::{Jev, TypeSafeClassifier};
+/// The TypeSafe classifier provider, for [`Classifier::new`], and the
+/// capability that hands the same tool to an agent.
+#[cfg(feature = "typesafe")]
+pub use everruns_integrations_typesafe::{Jev, TypeSafeAI};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations_web_fetch::WebFetch;
+pub use harness::{
+    Harness, HarnessBuildError, HarnessBuilder, HarnessEnvironmentSessionBuilder,
+    HarnessSessionBuilder,
+};
 pub use history::{
     HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
     ResumeError, SessionMessage,
@@ -116,6 +123,7 @@ pub use hooks::{
 };
 pub use llm::{Completion, CompletionError};
 pub use mcp::McpServer;
+pub use models::{CatalogError, ModelInfo};
 pub use plugin::PluginError;
 pub use session::{
     CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session,
@@ -175,10 +183,13 @@ pub mod __macro_support {
 
 // --- Real LLM provider configuration (feature-gated) --------------------
 // The default facade build stays offline; provider modules compile only when
-// their feature is enabled. `openai` adds `providers::openai::OpenAI`.
+// their feature is enabled. `openai` adds `providers::openai::OpenAI`,
+// `openrouter` adds `providers::openrouter::OpenRouter`.
 pub mod providers;
 #[cfg(feature = "openai")]
 pub use providers::openai::{OpenAI, OpenAIError};
+#[cfg(feature = "openrouter")]
+pub use providers::openrouter::{OpenRouter, OpenRouterError};
 
 // --- Runtime construction and execution ---------------------------------
 // Note: the value-first `AgentBuilder` above intentionally replaces the
@@ -204,6 +215,11 @@ pub use everruns_provider::driver_registry::{
 // Reasoning is part of the public surface: `ReasoningConfig` above carries a
 // `ReasoningEffort`, and the artifact types appear on assistant messages.
 pub use everruns_provider::model::ReasoningEffort;
+// Model identity and capability metadata: what a picker renders next to an id,
+// and what an application checks before selecting one.
+pub use everruns_provider::model::{
+    CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
+};
 pub use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 pub use everruns_provider::{ExecutionPhase, PhaseSource};
 // Required by the public `ChatDriver` SPI and runtime error contract:
@@ -224,7 +240,7 @@ pub use everruns_provider::credential_provider::{
 };
 pub use everruns_provider::credential_schema::{CredentialFormSchema, FieldType, FormField};
 pub use everruns_provider::driver_registry::{
-    BoxedChatDriver, DriverConfig, DriverDescriptor, DriverRegistry,
+    BoxedChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverRegistry,
 };
 pub use everruns_provider::provider::DriverId;
 pub use everruns_provider::tool_types::{ToolCall, ToolDefinition};
@@ -263,6 +279,7 @@ pub mod prelude {
     pub use crate::WebFetch;
     #[cfg(feature = "capabilities")]
     pub use crate::capability;
+    pub use crate::models;
     #[cfg(feature = "macros")]
     pub use crate::tool;
     pub use crate::work::{
@@ -272,22 +289,23 @@ pub mod prelude {
         Agent, AgentBuilder, AgentStartContext, Answers, BuildError, CancelError,
         CancellationToken, CapabilityRef, CapabilitySpec, Classification, Classifier,
         ClassifierError, Completion, CompletionContext, CompletionError, Engine, Environment,
-        EventStream, EventStreamError, FunctionTool, HistoryCursor, HistoryCursorParseError,
-        HistoryError, HistoryPage, HistoryPages, HistoryQuery, HookFailure, HookPoint,
-        InMemoryEngine, InitialFile, IntoCapability, IntoHookResult, IntoTool, IntoToolResult,
-        LlmSimConfig, McpServer, Model, PluginError, ResumeError, RunError, RunOptions,
-        SendDisposition, SentMessage, Session, SessionContext, SessionEnvironmentError,
-        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo,
-        ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace,
-        WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff, WorkspaceError, WorkspaceHead,
-        WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
-        WorkspacePolicyError,
+        EventStream, EventStreamError, FunctionTool, Harness, HarnessBuildError, HarnessBuilder,
+        HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages,
+        HistoryQuery, HookFailure, HookPoint, InMemoryEngine, InitialFile, IntoCapability,
+        IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model, PluginError,
+        ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session, SessionContext,
+        SessionEnvironmentError, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
+        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle,
+        TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff,
+        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
+        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{
         AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
         ToolSearch,
     };
+    pub use crate::{CatalogError, ModelInfo, ModelProfile};
     pub use crate::{DriverId, EnvCredentialError, EnvCredentialProvider};
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};

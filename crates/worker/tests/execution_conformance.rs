@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Cross-driver conformance for the shared engine execution.
 //!
 //! Every scenario advances the immediate driver continuously and restores the

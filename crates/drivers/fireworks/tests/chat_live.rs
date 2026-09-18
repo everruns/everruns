@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live smoke tests for Fireworks AI chat + model discovery.
 //!
 //! Exercises a real streamed chat completion through `FireworksChatDriver` plus

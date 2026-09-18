@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! gRPC protocol for Everruns worker ↔ control-plane communication.
 //!
 //! `everruns-internal-protocol` is part of the [Everruns](https://everruns.com)
@@ -9,6 +10,8 @@
 // Decision: gRPC with tonic (industry standard, already in stack)
 // Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
 // Decision: Proto is transport layer, Rust schemas remain source of truth
+
+mod capability_wire;
 
 use chrono::{DateTime, TimeZone, Utc};
 use everruns_provider::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
@@ -520,11 +523,7 @@ pub fn schema_agent_to_proto(value: &everruns_platform::Agent) -> proto::Agent {
         display_name: value.display_name.clone(),
         parallel_tool_calls: value.parallel_tool_calls,
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
-        capabilities: value
-            .capabilities
-            .iter()
-            .map(|config| serde_json::to_string(config).expect("capability config serializes"))
-            .collect(),
+        capabilities: capability_wire::encode_configs(&value.capabilities),
     }
 }
 
@@ -553,11 +552,7 @@ pub fn schema_harness_to_proto(value: &everruns_platform::Harness) -> proto::Har
             .map(|id| uuid_to_proto_uuid(id.uuid())),
         is_built_in: value.is_built_in,
         display_name: value.display_name.clone(),
-        capabilities: value
-            .capabilities
-            .iter()
-            .map(|config| serde_json::to_string(config).expect("capability config serializes"))
-            .collect(),
+        capabilities: capability_wire::encode_configs(&value.capabilities),
     }
 }
 

@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live compatibility tests against Meta Model API.
 //!
 //! These tests intentionally use the lower-cost Contributor tier. They are

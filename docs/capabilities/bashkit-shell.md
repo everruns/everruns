@@ -1,6 +1,6 @@
 ---
 title: Bashkit Shell
-description: Sandboxed Bash command execution in an isolated environment. Agents can run shell commands safely with process isolation, resource limits, streaming output, and workspace-only filesystem access.
+description: Run Bash commands in a sandboxed interpreter with process isolation, resource limits, streaming output, and workspace-only filesystem access.
 ---
 
 | | |

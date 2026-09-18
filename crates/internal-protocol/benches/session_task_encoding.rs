@@ -1,3 +1,5 @@
+// Bench code, not production: a panic here is a failing benchmark.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 // EVE-642 evidence bench: measure the session-task RPC payload encode/decode
 // cost for the OLD JSON-in-protobuf path vs the NEW native-protobuf path.
 //

@@ -42,21 +42,18 @@ use tools::{
 // Plugin Registration
 // ============================================================================
 
-inventory::submit! {
-    IntegrationPlugin {
-        experimental_only: false,
-        feature_flag: None,
-        factory: || Box::new(BrowserlessCapability),
-    }
-}
+/// Capability plugins this crate contributes to a hosted catalog.
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    experimental_only: false,
+    feature_flag: None,
+    factory: || Box::new(BrowserlessCapability),
+}];
 
-inventory::submit! {
-    ConnectorPlugin {
-        experimental_only: true,
-        factory: || Box::new(BrowserlessConnector),
-    }
-}
-
+/// Connector plugins this crate contributes to a hosted catalog.
+pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
+    experimental_only: true,
+    factory: || Box::new(BrowserlessConnector),
+}];
 // ============================================================================
 // Constants
 // ============================================================================

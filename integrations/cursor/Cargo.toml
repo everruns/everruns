@@ -22,7 +22,6 @@ everruns-provider.workspace = true
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
 everruns-platform.workspace = true
-inventory.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -36,3 +35,6 @@ cursor-live-tests = []
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
+
+[lints]
+workspace = true

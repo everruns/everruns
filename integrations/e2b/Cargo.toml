@@ -17,7 +17,6 @@ build = "build.rs"
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
-inventory.workspace = true
 reqwest = { workspace = true, features = ["multipart"] }
 serde.workspace = true
 serde_json.workspace = true
@@ -51,3 +50,6 @@ tokio.workspace = true
 
 [features]
 e2b-live-tests = []
+
+[lints]
+workspace = true

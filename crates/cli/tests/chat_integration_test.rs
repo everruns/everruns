@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration tests for CLI chat command.
 //!
 //! Tests the chat subcommand's argument handling and basic invocation.

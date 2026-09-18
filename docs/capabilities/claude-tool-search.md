@@ -1,6 +1,6 @@
 ---
 title: Claude Tool Search
-description: Deferred tool loading for agents with many tools on supported Claude models, reducing prompt token usage. Tools are loaded on demand via Anthropic's hosted tool search.
+description: Deferred tool loading on supported Claude models. Tools are loaded on demand through Anthropic's hosted tool search.
 sidebar:
   order: 91
 ---

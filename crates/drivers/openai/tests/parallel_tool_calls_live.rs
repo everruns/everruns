@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live tests for the request-level `parallel_tool_calls` preference against the
 //! real OpenAI API (Responses).
 //!

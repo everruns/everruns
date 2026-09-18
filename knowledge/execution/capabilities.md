@@ -1153,9 +1153,9 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 3. Re-export the constant and implementation from the owning crate's public root.
 4. Add it to the owning crate's explicit registration function and each
    application preset that should expose it. Portable and product bundles must
-   not use link-time inventory or implicit registration. External integration
-   inventory remains appropriate only when linking that integration is itself
-   the opt-in. A runtime preset may include a capability only when its required
+   not use link-time inventory or implicit registration. External integrations
+   are named in `crates/integrations-catalog`, not discovered at link time.
+   A runtime preset may include a capability only when its required
     host services are present; hosted-only capabilities stay in product
     composition.
 5. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
@@ -1352,7 +1352,7 @@ Experimental capabilities are available in development environments only (`Deplo
 #### DockerContainer
 
 - **ID**: `docker_container` (Dev only, integration plugin)
-- **Crate**: `integrations/docker/` (auto-registered via `inventory`, force-linked, see [architecture.md](../foundations/architecture.md#integration-plugin-force-linking))
+- **Crate**: `integrations/docker/` (named in the integration catalog, see [architecture.md](../foundations/architecture.md#integration-catalog))
 - **Purpose**: Run commands and manage files in a session-scoped Docker container
 - **Tools**: `docker_exec`, `docker_read_file`, `docker_write_file`, `docker_logs`, `docker_stop`
 - **Container Lifecycle**: Lazily started on first use, persists for session, named `everruns-{session_id}`

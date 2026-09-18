@@ -91,7 +91,7 @@ impl Database {
     /// Atomically persist a refreshed OAuth grant, including rotated refresh token.
     pub async fn update_user_connection_oauth_tokens(
         &self,
-        input: UpdateUserConnectionOAuthTokens,
+        input: UpdateOAuthConnectionTokens,
     ) -> Result<Option<UserConnectionRow>> {
         let row = sqlx::query_as::<_, UserConnectionRow>(
             r#"

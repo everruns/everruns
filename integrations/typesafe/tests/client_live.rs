@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Real API smoke tests for TypeSafe.
 //!
 //! Gated behind the `integration` feature — only compiled when run with:
@@ -8,7 +9,7 @@
 
 #![cfg(feature = "integration")]
 
-use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
+use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeAIClient};
 
 macro_rules! require_api_key {
     () => {
@@ -43,7 +44,7 @@ fn humor_questions(evaluation: Evaluation) -> Evaluation {
 /// gets a calibrated answer back, not a second opinion in prose.
 #[tokio::test]
 async fn rates_a_joke_and_separates_it_from_a_flat_statement() {
-    let client = TypeSafeClient::new(require_api_key!());
+    let client = TypeSafeAIClient::new(require_api_key!());
 
     let joke = client
         .evaluate(humor_questions(Evaluation::new(
@@ -79,7 +80,7 @@ async fn rates_a_joke_and_separates_it_from_a_flat_statement() {
 /// Every primitive comes back in the documented shape from one request.
 #[tokio::test]
 async fn answers_all_three_primitives_in_a_single_request() {
-    let client = TypeSafeClient::new(require_api_key!());
+    let client = TypeSafeAIClient::new(require_api_key!());
 
     let judgment = client
         .evaluate(
@@ -119,7 +120,7 @@ async fn answers_all_three_primitives_in_a_single_request() {
 /// A bad key fails loudly, is not retried, and never echoes the credential.
 #[tokio::test]
 async fn an_invalid_key_is_rejected_without_echoing_it() {
-    let client = TypeSafeClient::new("ts-not-a-real-key-sentinel");
+    let client = TypeSafeAIClient::new("ts-not-a-real-key-sentinel");
     let error = client
         .evaluate(Evaluation::new("x").ask("q", Question::noul("Is this English?")))
         .await

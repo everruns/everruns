@@ -1,6 +1,6 @@
 ---
 title: Agent Versions
-description: Save immutable agent snapshots, compare changes, roll back safely, and bind apps to a default, latest, or pinned agent version.
+description: Save immutable agent snapshots, compare changes, roll back, and bind apps to a default, latest, or pinned version.
 ---
 
 # Agent Versions

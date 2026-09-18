@@ -8,18 +8,21 @@
 //!
 //! Reach for it where you would otherwise prompt a chat model and parse JSON
 //! out of its answer: verification, rating, routing, moderation, reranking.
+//! TypeSafe describes the approach in
+//! [How to build with TypeSafe](https://docs.typesafe.ai/concepts/how-to-build-with-system-one),
+//! and the question types in [Primitives](https://docs.typesafe.ai/primitives).
 //!
 //! This module is the vendor edge and depends on nothing else in this crate:
 //! the capability, the connector, and the judgment service above it all speak
-//! to the API through [`TypeSafeClient`].
+//! to the API through [`TypeSafeAIClient`].
 //!
 //! # Example
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), everruns_integrations_typesafe::Error> {
-//! use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
+//! use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeAIClient};
 //!
-//! let client = TypeSafeClient::from_env()?; // TYPESAFE_API_KEY
+//! let client = TypeSafeAIClient::from_env()?; // TYPESAFE_API_KEY
 //!
 //! // Independent questions over the same state go in one request and are
 //! // answered in parallel. Batching is the cheap path.
@@ -76,5 +79,7 @@ pub mod question;
 
 pub use answer::{Answer, ChoiceAnswer, Judgment, NoulAnswer, ScoreAnswer, Usage};
 pub use error::{Error, Result};
-pub use http::{API_KEY_ENV, DEFAULT_BASE_URL, RetryPolicy, TypeSafeClient, TypeSafeClientBuilder};
+pub use http::{
+    API_KEY_ENV, DEFAULT_BASE_URL, RetryPolicy, TypeSafeAIClient, TypeSafeAIClientBuilder,
+};
 pub use question::{DEFAULT_MODEL, Evaluation, NoulCriteria, Question};

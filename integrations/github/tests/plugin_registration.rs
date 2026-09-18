@@ -1,24 +1,24 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 
-// Force linker to include the integration crate's inventory submissions.
-use everruns_integrations_github as _;
+use everruns_integrations_github::CAPABILITY_PLUGINS;
 
 #[test]
-fn plugin_is_submitted() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+fn plugin_is_published() {
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     assert!(
         plugins.iter().any(|plugin| {
             let cap = (plugin.factory)();
             cap.id() == "github_scout"
         }),
-        "GitHub IntegrationPlugin should be submitted via inventory"
+        "GitHub IntegrationPlugin should be published in CAPABILITY_PLUGINS"
     );
 }
 
 #[test]
 fn registry_includes_github_capability_and_blueprint() {
     let mut registry = CapabilityRegistry::new();
-    registry.register_inventory_plugins(|_| true);
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |_| true);
 
     let cap = registry
         .get("github_scout")

@@ -155,7 +155,8 @@ impl fmt::Debug for OpenAI {
 impl From<OpenAI> for Provider {
     fn from(config: OpenAI) -> Self {
         let (api_key, base_url) = config.into_parts();
-        let mut provider = everruns_openai::provider("openai", api_key);
+        let mut provider =
+            everruns_openai::provider("openai", api_key).with_driver_id(crate::DriverId::OpenAI);
         if let Some(base_url) = base_url {
             provider = provider.base_url(base_url);
         }

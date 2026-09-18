@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! EVE-840 dependency-direction guard.
 //!
 //! The allowed direction is `everruns-engine -> core/provider/capability`.

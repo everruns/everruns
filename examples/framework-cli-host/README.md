@@ -25,7 +25,7 @@ Commands:
   list   List services and their replica counts.
   scale  Set a service's replica count.
 
-$ everruns fleet scale --name api --replicas 4
+$ everruns fleet scale api --replicas 4
 {"name":"api","replicas":4,"scaled":true}
 ```
 

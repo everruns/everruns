@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Sandboxed Bashkit shell capability for Everruns agents.
 //!
 //! The capability bridges Bashkit to the host's session filesystem, enforces
@@ -427,7 +428,7 @@ impl Tool for BashTool {
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
         let builder = configure_http(builder, self.enable_http, context);
-        let builder = install_cli_tree(builder, &context.extensions);
+        let builder = install_cli_tree(builder, context);
         let mut bash = builder.build();
 
         // Stream output via tool.output.delta events for live UI/CLI rendering.
@@ -651,7 +652,7 @@ impl BackgroundExecutableTool for BashTool {
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
         let builder = configure_http(builder, self.enable_http, &context);
-        let builder = install_cli_tree(builder, &context.extensions);
+        let builder = install_cli_tree(builder, &context);
         let mut bash = builder.build();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
@@ -783,24 +784,42 @@ impl BackgroundExecutableTool for BashTool {
     }
 }
 
-/// Register the `everruns` command tree when the host supplies a source.
+/// Register the `everruns` command tree, by whichever route this host can serve.
 ///
-/// Gated on the source being present rather than on a config flag: a session
-/// whose host offers no commands gets no builtin, so the surface can never
-/// promise a tree it cannot serve. Framework applications opt in by inserting
-/// a `CliCommandSourceHandle` on the tool context.
+/// Two routes, because two hosts differ in what they can see:
+///
+///   * A host that links its commands in inserts a `CliCommandSourceHandle` and
+///     gets the local tree: parsing, help, and dispatch without leaving the
+///     process. This is the Framework application's route.
+///   * A hosted worker cannot rebuild that tree (`CliRoute` is `&'static`, and
+///     the commands live behind the control plane), so it forwards instead: a
+///     registered tool that declares a `CliSpelling` receives the rendered
+///     command line. This is the server's route.
+///
+/// Both are gated on something the session already has, never on a config flag:
+/// no source and no spelled tool means no builtin, so the shell can never
+/// promise a surface it cannot serve, nor one the harness withheld.
 fn install_cli_tree(
     builder: BashBuilder,
-    extensions: &everruns_core::tool_context::ToolContextExtensions,
+    context: &everruns_core::tool_context::ToolContext,
 ) -> BashBuilder {
-    let Some(handle) = extensions.get::<crate::cli::CliCommandSourceHandle>() else {
-        return builder;
-    };
-    // Registered under the source's own root token, not a fixed name: the
-    // commands belong to the host, so the word that introduces them does too.
-    let builtin = crate::cli::EverrunsBuiltin::new(handle.0.clone());
-    let root = builtin.root().to_string();
-    builder.builtin(root, Box::new(builtin))
+    if let Some(handle) = context
+        .extensions
+        .get::<crate::cli::CliCommandSourceHandle>()
+    {
+        // Registered under the source's own root token, not a fixed name: the
+        // commands belong to the host, so the word that introduces them does too.
+        let builtin = crate::cli::EverrunsBuiltin::new(handle.0.clone());
+        let root = builtin.root().to_string();
+        return builder.builtin(root, Box::new(builtin));
+    }
+
+    if let Some(builtin) = crate::cli::forwarding_builtin_for(context) {
+        let root = builtin.root().to_string();
+        return builder.builtin(root, Box::new(builtin));
+    }
+
+    builder
 }
 
 // Observational-only. Emits `tracing` events for each bashkit builtin
@@ -1849,6 +1868,226 @@ mod tests {
         let mut context = ToolContext::new(session_id);
         context.file_store = Some(store);
         (context, session_id)
+    }
+
+    // ========================================================================
+    // The forwarded `everruns` builtin
+    // ========================================================================
+
+    /// Stands in for the `platform` capability's `execute`: a tool that accepts
+    /// a script and declares a CLI spelling. It records what the shell sent.
+    #[derive(Default)]
+    struct SpelledTool {
+        received: Arc<std::sync::Mutex<Vec<String>>>,
+        fail_with: Option<String>,
+    }
+
+    #[async_trait]
+    impl everruns_core::tools::Tool for SpelledTool {
+        fn name(&self) -> &str {
+            "execute"
+        }
+        fn description(&self) -> &str {
+            "Run a script against the command catalog."
+        }
+        fn parameters_schema(&self) -> Value {
+            json!({"type": "object", "properties": {"commands": {"type": "string"}}})
+        }
+        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+            ToolExecutionResult::ToolError("requires context".to_string())
+        }
+        async fn execute_with_context(
+            &self,
+            arguments: Value,
+            _context: &ToolContext,
+        ) -> ToolExecutionResult {
+            let line = arguments["commands"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            self.received.lock().unwrap().push(line.clone());
+            match &self.fail_with {
+                Some(message) => ToolExecutionResult::ToolError(message.clone()),
+                None => ToolExecutionResult::Success(Value::String(format!("ran: {line}"))),
+            }
+        }
+        fn cli_spelling(&self) -> Option<everruns_core::tools::CliSpelling> {
+            Some(everruns_core::tools::CliSpelling::new(
+                "everruns", "commands",
+            ))
+        }
+    }
+
+    fn context_with_spelled_tool(
+        fail_with: Option<String>,
+    ) -> (ToolContext, Arc<std::sync::Mutex<Vec<String>>>) {
+        let (mut context, _) = create_context_with_mock_store();
+        let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut registry = everruns_core::tools::ToolRegistry::new();
+        registry.register(SpelledTool {
+            received: received.clone(),
+            fail_with,
+        });
+        context.tool_registry = Some(Arc::new(registry));
+        (context, received)
+    }
+
+    /// The point: `everruns` is a command in the same shell as `cat` and `jq`,
+    /// so its output composes with the rest of the namespace.
+    #[tokio::test]
+    async fn everruns_is_a_builtin_when_the_session_has_the_tool() {
+        let (context, received) = context_with_spelled_tool(None);
+        let tool = BashTool::default();
+
+        let result = tool
+            .execute_with_context(
+                json!({"commands": "everruns agents list --limit 2"}),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(output) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        assert_eq!(output["exit_code"], 0);
+        assert_eq!(output["stdout"], "ran: everruns agents list --limit 2\n");
+        assert_eq!(
+            received.lock().unwrap().as_slice(),
+            ["everruns agents list --limit 2"]
+        );
+    }
+
+    /// A harness that withholds the capability withholds the command: the
+    /// builtin is installed from the session's own tool registry, so the shell
+    /// re-spells a surface rather than widening one.
+    #[tokio::test]
+    async fn everruns_is_absent_when_the_session_lacks_the_tool() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool::default();
+
+        let result = tool
+            .execute_with_context(json!({"commands": "everruns agents list"}), &context)
+            .await;
+
+        let ToolExecutionResult::Success(output) = result else {
+            panic!("expected the shell to run and report a missing command, got {result:?}");
+        };
+        assert_ne!(output["exit_code"], 0);
+        assert!(
+            !output["stderr"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("ran:"),
+            "the command must not resolve: {output:?}"
+        );
+    }
+
+    /// Output is stdout, so it pipes. This is what the catalog's own bash
+    /// cannot do: there, the script and the shell are the same interpreter.
+    #[tokio::test]
+    async fn forwarded_output_composes_with_the_rest_of_the_shell() {
+        let (context, _) = context_with_spelled_tool(None);
+        let tool = BashTool::default();
+
+        let result = tool
+            .execute_with_context(
+                json!({"commands": "everruns agents list > /workspace/out.txt; wc -l < /workspace/out.txt"}),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(output) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        assert_eq!(output["exit_code"], 0);
+        assert_eq!(output["stdout"].as_str().unwrap_or_default().trim(), "1");
+    }
+
+    /// An argument the model built from tool output can carry shell syntax. It
+    /// is re-quoted for the far side, so it arrives as one literal value.
+    #[tokio::test]
+    async fn a_value_carrying_shell_syntax_arrives_as_data() {
+        let (context, received) = context_with_spelled_tool(None);
+        let tool = BashTool::default();
+
+        let result = tool
+            .execute_with_context(
+                json!({"commands": "everruns agents create --name \"a; rm -rf /\""}),
+                &context,
+            )
+            .await;
+
+        assert!(matches!(result, ToolExecutionResult::Success(_)));
+        assert_eq!(
+            received.lock().unwrap().as_slice(),
+            [r#"everruns agents create --name 'a; rm -rf /'"#]
+        );
+    }
+
+    /// Every invocation is a control-plane round trip, so a shell loop
+    /// amplifies one tool call into hundreds. The cap stops that and points at
+    /// the right shape: one invocation carrying the whole loop.
+    #[tokio::test]
+    async fn a_shell_loop_cannot_amplify_into_unbounded_round_trips() {
+        let (context, received) = context_with_spelled_tool(None);
+        let tool = BashTool::default();
+
+        let result = tool
+            .execute_with_context(
+                json!({"commands": "for i in $(seq 1 200); do everruns agents list; done"}),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(output) = result else {
+            panic!("expected the shell to run, got {result:?}");
+        };
+        let calls = received.lock().unwrap().len();
+        assert!(
+            calls <= 50,
+            "forwarded {calls} times, expected the cap to hold"
+        );
+        assert!(
+            output["stderr"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("accepts a whole script"),
+            "the cap must say what to do instead: {output:?}"
+        );
+    }
+
+    /// A failed command exits non-zero, so `&&` and `set -e` behave, and the
+    /// message is the tool's own — it already decided what may reach the model.
+    #[tokio::test]
+    async fn a_failed_command_exits_non_zero_with_the_tools_message() {
+        let (context, _) = context_with_spelled_tool(Some("unknown verb: lst".to_string()));
+        let tool = BashTool::default();
+
+        let result = tool
+            .execute_with_context(
+                json!({"commands": "everruns agents lst && echo unreachable"}),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(output) = result else {
+            panic!("expected the shell to report the failure, got {result:?}");
+        };
+        assert_ne!(output["exit_code"], 0);
+        assert!(
+            output["stderr"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("unknown verb: lst"),
+            "{output:?}"
+        );
+        assert!(
+            !output["stdout"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("unreachable"),
+            "a non-zero exit must short-circuit `&&`: {output:?}"
+        );
     }
 
     #[tokio::test]

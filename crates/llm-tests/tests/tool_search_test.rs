@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // Integration tests for tool_search (deferred tool loading).
 //
 // Tests the full pipeline for provider-backed and generic client-side tool_search

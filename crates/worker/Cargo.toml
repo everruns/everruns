@@ -30,14 +30,11 @@ everruns-provider.workspace = true
 # Production-safe deterministic `llmsim` provider (seeded LlmSim models and
 # LLMSIM_DEMO scenarios). Testing/demo helpers stay out of the worker tree.
 everruns-llmsim.workspace = true
+clap = { workspace = true, features = ["string"] }
+everruns-cli-contract.workspace = true
+everruns-integrations-bashkit.workspace = true
 everruns-platform = { path = "../platform", features = ["embedded-platform-docs", "environment-capabilities", "portable-builtins", "a2a", "container-sandbox"] }
-everruns-integrations-docker = { path = "../../integrations/docker" }
-everruns-integrations-brave-search = { path = "../../integrations/brave-search" }
-everruns-integrations-openai-image = { path = "../../integrations/openai-image" }
-everruns-integrations-parallel = { path = "../../integrations/parallel" }
-everruns-integrations-duckduckgo = { path = "../../integrations/duckduckgo" }
-everruns-integrations-github = { path = "../../integrations/github" }
-everruns-integrations-cursor = { path = "../../integrations/cursor" }
+everruns-integrations-catalog.workspace = true
 everruns-integrations-daytona = { path = "../../integrations/daytona" }
 everruns-integrations-deno = { path = "../../integrations/deno" }
 everruns-integrations-browserless = { path = "../../integrations/browserless" }
@@ -54,7 +51,6 @@ everruns-gemini = { path = "../drivers/gemini" }
 everruns-bedrock = { path = "../drivers/bedrock" }
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-mcp.workspace = true
-everruns-ard.workspace = true
 everruns-host = { workspace = true, features = ["bashkit", "mcp", "utility-openai", "observability"] }
 # Note: Workers don't need direct DB access - all DB operations go through gRPC
 # The durable module is used for control-plane direct DB mode (avoids circular gRPC dependency)
@@ -76,3 +72,6 @@ prost-types.workspace = true
 # with a simulated clock. See knowledge/runtime-resources/agent-reliability-tests.md scenario 3.
 turmoil.workspace = true
 tokio = { workspace = true }
+
+[lints]
+workspace = true

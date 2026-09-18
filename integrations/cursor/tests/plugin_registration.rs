@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration test: verify Cursor plugin and connection provider registration.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
@@ -7,13 +8,12 @@ use everruns_platform::connector::ConnectorPlugin;
 use everruns_provider::tool_types::ToolCall;
 use serde_json::json;
 
-// Force linker to include the integration crate's inventory submissions.
-use everruns_integrations_cursor as _;
+use everruns_integrations_cursor::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
-    registry.register_inventory_plugins(|plugin| {
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         (!plugin.experimental_only || grade.experimental_features_enabled())
             && plugin
                 .feature_flag
@@ -23,14 +23,14 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 #[test]
-fn cursor_plugin_is_submitted() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+fn cursor_plugin_is_published() {
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     assert!(
         plugins.iter().any(|p| {
             let cap = (p.factory)();
             cap.id() == "cursor"
         }),
-        "Cursor IntegrationPlugin should be submitted via inventory"
+        "Cursor IntegrationPlugin should be published in CAPABILITY_PLUGINS"
     );
 }
 
@@ -54,8 +54,8 @@ fn cursor_capability_metadata() {
 }
 
 #[test]
-fn cursor_connection_provider_is_submitted() {
-    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
+fn cursor_connection_provider_is_published() {
+    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
     let plugin = plugins
         .iter()
         .find(|p| {

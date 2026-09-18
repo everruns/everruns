@@ -32,12 +32,15 @@ use serde_json::{Value, json};
 use std::sync::OnceLock;
 use std::time::Duration;
 
-inventory::submit! {
-    ConnectorPlugin {
-        experimental_only: true,
-        factory: || Box::new(FakeAwsConnector),
-    }
-}
+/// Connector plugins this crate contributes.
+///
+/// Registered explicitly by tests that need the fake provider. It used to reach
+/// a registry through `inventory::submit!`, which meant it appeared in any
+/// binary that happened to link test-support and in none that did not.
+pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
+    experimental_only: true,
+    factory: || Box::new(FakeAwsConnector),
+}];
 
 /// API-key style connection provider for the fake AWS tools.
 ///

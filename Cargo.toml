@@ -32,8 +32,10 @@ members = [
     "crates/turbopuffer",
     "crates/internal-protocol",
     "crates/cli",
+    "crates/cli-contract",
     "crates/durable",
     "crates/ard",
+    "crates/integrations-catalog",
     "integrations/docker",
     "integrations/filesystem",
     "integrations/bashkit",
@@ -82,7 +84,7 @@ exclude = [
 # `[workspace.dependencies]` pins below spell it out literally and move with it
 # (`scripts/sync-publish-pin-versions.py --write`). Rationale and the failure
 # modes this removes: knowledge/project/release-process.md.
-version = "0.28.0"
+version = "0.29.0"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -90,6 +92,24 @@ license = "MIT"
 authors = ["Everruns Contributors"]
 homepage = "https://everruns.com"
 repository = "https://github.com/everruns/everruns"
+
+[workspace.lints.clippy]
+# A crate opts in with `[lints] workspace = true`. Cargo does not inherit these
+# by default, so a crate still carrying unwrap/expect debt is simply not opted
+# in — the floor stays silent there instead of drowning real warnings.
+# scripts/lib/check-lint-floor.sh ratchets that membership: a crate may join the
+# floor, and a new crate must, but none may leave.
+#
+# Test code is exempt per opted-in target root, via
+# `#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]`.
+# A panic in a test is a failing test; a panic in production is an outage.
+# A site that genuinely cannot fail, and whose only non-panicking fallback
+# would silently weaken a bound or a persisted config, keeps the panic behind
+# `#[expect(clippy::expect_used, reason = "…")]` with the invariant stated. The
+# attribute self-cleans: it warns once the lint stops firing there. This is the
+# only sanctioned way past the floor — reach for a real fix first.
+unwrap_used = "deny"
+expect_used = "deny"
 
 [workspace.dependencies]
 # Async runtime
@@ -213,28 +233,34 @@ futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = "0.2.0"
-everruns-capability = { path = "crates/capability", version = "0.28.0", default-features = false }
-everruns-builtins = { path = "crates/builtins", version = "0.28.0" }
-everruns-core = { path = "crates/core", version = "0.28.0" }
-everruns-engine = { path = "crates/engine", version = "0.28.0" }
-everruns-host = { path = "crates/host", version = "0.28.0" }
-everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.28.0", default-features = false }
+everruns-capability = { path = "crates/capability", version = "0.29.0", default-features = false }
+everruns-builtins = { path = "crates/builtins", version = "0.29.0" }
+everruns-core = { path = "crates/core", version = "0.29.0" }
+everruns-engine = { path = "crates/engine", version = "0.29.0" }
+everruns-host = { path = "crates/host", version = "0.29.0" }
+everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.29.0", default-features = false }
 everruns-test-support = { path = "crates/test-support", version = "0.28.0", default-features = false }
-everruns-platform = { path = "crates/platform", version = "0.28.0" }
-everruns-provider = { path = "crates/provider", version = "0.28.0", default-features = false }
-everruns-model-profiles = { path = "crates/model-profiles", version = "0.28.0" }
-everruns-mcp = { path = "crates/mcp", version = "0.28.0" }
-everruns-ard = { path = "crates/ard", version = "0.28.0" }
-everruns-openai = { path = "crates/drivers/openai", version = "0.28.0" }
+everruns-platform = { path = "crates/platform", version = "0.29.0" }
+everruns-provider = { path = "crates/provider", version = "0.29.0", default-features = false }
+everruns-model-profiles = { path = "crates/model-profiles", version = "0.29.0" }
+everruns-mcp = { path = "crates/mcp", version = "0.29.0" }
+everruns-ard = { path = "crates/ard", version = "0.29.0" }
+everruns-openai = { path = "crates/drivers/openai", version = "0.29.0" }
+everruns-openrouter = { path = "crates/drivers/openrouter", version = "0.29.0" }
 everruns = { path = "crates/everruns", version = "0.28.0" }
-everruns-macros = { path = "crates/macros", version = "0.28.0" }
-everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.28.0" }
-everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.28.0" }
-everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.28.0" }
-everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.28.0" }
-everruns-integrations-lua = { path = "integrations/lua", version = "0.28.0" }
-everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.28.0" }
-everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.28.0" }
+everruns-macros = { path = "crates/macros", version = "0.29.0" }
+everruns-integrations-catalog = { path = "crates/integrations-catalog", version = "0.29.0" }
+everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.29.0" }
+everruns-cli-contract = { path = "crates/cli-contract", version = "0.29.0" }
+everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.29.0" }
+everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.29.0" }
+everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.29.0" }
+everruns-integrations-lua = { path = "integrations/lua", version = "0.29.0" }
+everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.29.0" }
+# `hosted` is opt-in (everruns-integrations-catalog turns it on). It registers the
+# connector into the hosted plugin system and so depends on everruns-platform,
+# which an embedder wanting only the client and framework surface must not carry.
+everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.29.0", default-features = false }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }
