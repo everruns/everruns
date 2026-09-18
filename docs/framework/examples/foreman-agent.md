@@ -23,11 +23,13 @@ do.
 
 ## The two loops
 
-The worker keeps its own reason/act loop inside a session. `session.send`
-returns a receipt immediately, so the supervisory loop reads `session.events()`
-beside the live turn: output and tool calls are debounced to a floor, and
-worker lifecycle boundaries — a turn ending, a verification reporting — take a
-reading straight away. Nothing stops for the factory to think.
+The worker keeps its own loop — an Everruns session, or an external CLI in a
+child process. `session.send` returns a receipt immediately, and a child
+process is simply left running; either way the supervisory loop reads the
+evidence beside the live work. Activity is debounced to a floor, and only a
+worker finishing bypasses it. Nothing stops for the factory to think, and a
+test holds that claim: it counts readings taken while a worker's turn is
+unresolved and fails if supervision waits its turn.
 
 ## What it assesses
 
@@ -65,42 +67,58 @@ action the policy can take is in one readable file.
 
 ## Run it
 
-Clone the repository and run from its root:
+Foreman's own two entry points, and they mean the same things here:
 
 ```bash
-cargo run -p everruns-foreman-agent
+cargo run -p everruns-foreman-agent --bin foreman -- demo
+foreman run --repo ./my-project --job "Add rate limiting, and test it."
 ```
 
-Supervision is the cheap half, so the two halves go live separately:
+`demo` walks the whole runtime over a disposable fixture with nothing to pay
+for; `run` supervises real work in a repository you name. Supervision is the
+cheap half, which is the premise, so the two halves go live separately:
 
 | Command | Worker | Foreman | Needs |
 | --- | --- | --- | --- |
-| `cargo run -p everruns-foreman-agent` | scripted | deterministic | nothing |
-| `… -- --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
-| `… -- --live` | OpenRouter `meta/muse-spark-1.3-contributor` | `jev-latest` | both keys |
+| `foreman demo` | scripted | deterministic | nothing |
+| `foreman demo --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
+| `foreman run …` | your choice, below | `jev-latest` | `TYPESAFE_API_KEY` + the worker's |
 
-`--live-foreman` puts a real classifier over a deterministic worker, so the
-numbers are a live reading of a run that goes the same way every time. That is
-the mode the recording above uses.
+`demo` writes its fixture into a temporary directory unless `--repo` says
+otherwise, and `run` never writes a fixture at all — `--repo` is your project,
+and the only thing that touches it is the worker. It will be modified.
 
-```bash
-cargo run -p everruns-foreman-agent -- --live --job "Add rate limiting, and test it."
-cargo run -p everruns-foreman-agent -- /tmp/shipkit   # keep the workspace
-```
+## Who does the work
 
-The default workspace is temporary and removed on exit. Never pass a repository
-you care about: the example materializes its fixture into the target and the
-worker may change anything inside it.
+`--worker` picks the crew. All three are watched identically, because what the
+supervisor reads is a bounded observation and the strongest evidence in one —
+the repository's own diff — is gathered by the host either way.
+
+| `--worker` | What runs | Independent verification |
+| --- | --- | --- |
+| `session` (default) | An Everruns session on the [Bashkit Shell](/capabilities/bashkit-shell/), `meta/muse-spark-1.3-contributor` through OpenRouter | A second session under the default read-only workspace policy |
+| `codex` | `codex exec --cd … --sandbox workspace-write --color never --json …`, the line Foreman itself runs | The same CLI with `--sandbox read-only` |
+| `yolop` | `yolop -C … -p …`, its one-shot print interface | Mission only — yolop publishes no read-only mode |
+
+Anything else is a template: `--worker-command "mycli --cd {repo} --task
+{mission}"`, where both placeholders are substituted as whole arguments so no
+shell sees either.
+
+A session is observed through its own canonical event stream, which arrives
+already typed. A CLI offers none of that, so an external worker is observed
+through stdout and stderr, and a JSONL line that names its own `type` counts as
+a step.
 
 ## The floor
 
 The bundled fixture is a small Python project that prices every parcel at one
 flat rate; the job is to replace that with weight tiers and cover the
-boundaries. The coding worker mounts it read-write through the [Bashkit
-Shell](/capabilities/bashkit-shell/). The verifier mounts the same directory
-under the default read-only policy, so "independent check" is a property of the
-mount rather than a request in a prompt. The supervisor runs `git` itself
-rather than asking the worker what it did.
+boundaries. On the session crew the coding worker mounts it read-write and the
+verifier mounts the same directory under the default read-only policy, so
+"independent check" is a property of the mount rather than a request in a
+prompt. The supervisor runs `git` itself rather than asking the worker what it
+did, which is also why an external CLI is supervised just as well as a
+session.
 
 ## What the Framework changes
 

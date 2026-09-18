@@ -26,7 +26,7 @@ extract_transcript() {
 }
 
 if [[ "${1:-}" == "--check" ]]; then
-  grep -Fq 'cargo run -q -p everruns-foreman-agent -- --live-foreman' "$tape"
+  grep -Fq 'cargo run -q -p everruns-foreman-agent --bin foreman -- demo --live-foreman' "$tape"
   grep -Fq 'Wait+Line@180s />$/' "$tape"
   grep -Fq 'Type@35ms' "$tape"
   sample="$(printf '\033[1meverruns · foreman\033[0m\r\n  \xe2\x9c\x93 the existing zone-surcharge test still stands\r\n> ' | extract_transcript /dev/stdin)"

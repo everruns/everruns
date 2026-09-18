@@ -1,21 +1,22 @@
 //! The runtime: two loops that do not block each other.
 //!
-//! The worker's loop is the Framework's — reason, act, observe — running inside
-//! a session. The supervisory loop runs beside it on the session's canonical
-//! event stream, so evidence reaches the classifier while the worker is still
-//! working. Nothing has to stop for the factory to think.
+//! The worker's loop is its own — an Everruns session, or an external CLI in a
+//! child process. The supervisory loop runs beside it on whatever that worker
+//! emits, so evidence reaches the classifier while the work is still happening.
+//! Nothing has to stop for the factory to think.
 //!
-//! Between assessments the loop debounces: routine output respects a floor, and
-//! lifecycle boundaries — a tool finishing, a turn ending — bypass it, because
-//! those are the moments where an early intervention is still worth something.
+//! Between readings the loop debounces: activity marks the run dirty and waits
+//! for the floor, and only a worker finishing bypasses it. Foreman's forcing
+//! events are worker lifecycle boundaries, which happen a handful of times per
+//! run — forcing on something that happens constantly, like a tool call, spends
+//! the whole supervisory budget before the worker does.
 
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use everruns::{Agent, Engine, Session, SessionEventKind, TurnHandle, TurnStopReason};
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 
 use crate::agent;
 use crate::foreman::{Assessment, Foreman};
@@ -23,6 +24,7 @@ use crate::observation::{
     self, Evidence, VerificationResult, WorkerKind, WorkerRecord, WorkerStatus,
 };
 use crate::policy::{self, Action, Config, Floor, Intervention};
+use crate::worker::{Crew, Feed, Stop};
 
 /// Where a run ended up.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,11 +79,11 @@ pub struct Outcome {
 pub trait Watcher: Send + Sync {
     /// A worker was started on a mission.
     fn worker_started(&self, worker: &WorkerRecord) {}
-    /// A worker emitted assistant text.
+    /// A worker emitted output.
     fn worker_text(&self, worker_id: &str, delta: &str) {}
     /// A worker started a tool call, with the script it passed.
     fn worker_tool(&self, worker_id: &str, tool: &str, script: &str) {}
-    /// A worker's turn ended.
+    /// A worker finished.
     fn worker_finished(&self, worker: &WorkerRecord) {}
     /// The supervisor took a reading.
     fn assessed(&self, iteration: usize, assessment: &Assessment) {}
@@ -95,28 +97,29 @@ pub trait Watcher: Send + Sync {
 pub struct Silent;
 impl Watcher for Silent {}
 
-enum Signal {
-    /// Something happened on the floor that may be worth assessing.
-    Activity {
-        /// Lifecycle boundaries bypass the debounce floor; output does not.
-        important: bool,
-    },
-    /// A worker's turn ended.
+/// What a running worker tells the supervisory loop.
+pub enum Signal {
+    /// Something happened. Worth a reading once the debounce floor allows one.
+    Activity,
+    /// A worker finished. The one boundary that bypasses the floor, because the
+    /// floor is exactly where an intervention stops being useful.
     Finished {
+        /// Which worker.
         worker_id: String,
+        /// Coding or verification.
         kind: WorkerKind,
+        /// Whether it ended successfully.
         success: bool,
+        /// What it said, unbounded here and bounded on the way into evidence.
         summary: String,
     },
 }
 
-/// A coding worker supervised by a classifier.
+/// A crew supervised by a classifier.
 pub struct Factory {
     config: Config,
     foreman: Foreman,
-    worker_agent: Agent,
-    verifier_agent: Agent,
-    engine: Engine,
+    crew: Crew,
     workspace: PathBuf,
     job: String,
     run_id: String,
@@ -128,17 +131,14 @@ impl Factory {
     pub fn new(
         job: impl Into<String>,
         workspace: impl Into<PathBuf>,
-        worker_agent: Agent,
-        verifier_agent: Agent,
+        crew: Crew,
         foreman: Foreman,
         config: Config,
     ) -> Self {
         Self {
             config,
             foreman,
-            worker_agent,
-            verifier_agent,
-            engine: Engine::new(),
+            crew,
             workspace: workspace.into(),
             job: job.into(),
             run_id: run_id(),
@@ -157,6 +157,11 @@ impl Factory {
         self.foreman.model()
     }
 
+    /// Who is doing the work, for display.
+    pub fn crew_label(&self) -> String {
+        self.crew.label()
+    }
+
     /// The run's id.
     pub fn run_id(&self) -> &str {
         &self.run_id
@@ -168,8 +173,8 @@ impl Factory {
         let mut state = State::new();
         let (signals, mut inbox) = mpsc::unbounded_channel();
 
-        // The first worker is started unconditionally: there is nothing to
-        // assess about a floor where no work has begun.
+        // The first worker starts unconditionally: there is nothing to assess
+        // about a floor where no work has begun.
         self.start_worker(&mut state, WorkerKind::Coding, &signals)
             .await;
 
@@ -211,13 +216,9 @@ impl Factory {
 
         while state.status == Status::Running {
             let since = last_assessment.map(|at| at.elapsed());
-            let periodic_remaining = remaining(self.config.periodic_assessment, since);
-            let floor_remaining = remaining(self.config.min_assessment_interval, since);
-            let wait = if dirty {
-                periodic_remaining.min(floor_remaining)
-            } else {
-                periodic_remaining
-            };
+            let periodic = remaining(self.config.periodic_assessment, since);
+            let floor = remaining(self.config.min_assessment_interval, since);
+            let wait = if dirty { periodic.min(floor) } else { periodic };
 
             match tokio::time::timeout(wait.max(Duration::from_millis(1)), inbox.recv()).await {
                 Ok(Some(signal)) => {
@@ -233,12 +234,12 @@ impl Factory {
                 _ => dirty = true,
             }
 
-            // Re-read the clock: `since` was measured before the wait above, and
-            // deciding eligibility on a stale reading costs a whole extra trip
-            // around the loop before the floor is seen to have passed.
-            let interval_elapsed = last_assessment
+            // Re-read the clock: `since` was measured before the wait, and
+            // deciding on a stale reading costs a whole extra trip around the
+            // loop before the floor is seen to have passed.
+            let floor_passed = last_assessment
                 .is_none_or(|at| at.elapsed() >= self.config.min_assessment_interval);
-            if !(force || (dirty && interval_elapsed)) {
+            if !(force || (dirty && floor_passed)) {
                 continue;
             }
 
@@ -250,40 +251,40 @@ impl Factory {
         }
     }
 
-    /// Fold one signal into the run's state, reporting whether it should
-    /// bypass the debounce floor.
+    /// Fold one signal into the run's state, reporting whether it should bypass
+    /// the debounce floor.
     fn absorb(&self, state: &mut State, signal: Signal) -> bool {
-        match signal {
-            Signal::Activity { important } => important,
-            Signal::Finished {
-                worker_id,
-                kind,
-                success,
-                summary,
-            } => {
-                if kind == WorkerKind::Verifier {
-                    state.verification_completed = true;
-                    state.verification.push(VerificationResult {
-                        worker_id: worker_id.clone(),
-                        passed: success,
-                        summary: observation::tail(&summary, self.config.output_limit),
-                    });
-                }
-                if !success {
-                    // Name what went wrong: "did not succeed" is not evidence
-                    // a supervisor, or a person reading the run, can act on.
-                    let detail = find(&mut lock(&state.workers), &worker_id)
-                        .and_then(|worker| worker.stop_reason.clone())
-                        .unwrap_or_else(|| "turn did not succeed".to_owned());
-                    state.failures.push(format!("{worker_id}: {detail}"));
-                }
-                if let Some(worker) = find(&mut lock(&state.workers), &worker_id) {
-                    self.watcher.worker_finished(worker);
-                }
-                state.handles.remove(&worker_id);
-                true
-            }
+        let Signal::Finished {
+            worker_id,
+            kind,
+            success,
+            summary,
+        } = signal
+        else {
+            return false;
+        };
+
+        if kind == WorkerKind::Verifier {
+            state.verification_completed = true;
+            state.verification.push(VerificationResult {
+                worker_id: worker_id.clone(),
+                passed: success,
+                summary: observation::tail(&summary, self.config.output_limit),
+            });
         }
+        if !success {
+            // Name what went wrong: "did not succeed" is not evidence a
+            // supervisor, or a person reading the run, can act on.
+            let detail = find(&mut lock(&state.workers), &worker_id)
+                .and_then(|worker| worker.stop_reason.clone())
+                .unwrap_or_else(|| "turn did not succeed".to_owned());
+            state.failures.push(format!("{worker_id}: {detail}"));
+        }
+        if let Some(worker) = find(&mut lock(&state.workers), &worker_id) {
+            self.watcher.worker_finished(worker);
+        }
+        state.handles.remove(&worker_id);
+        true
     }
 
     /// One supervisory iteration: observe, assess, decide.
@@ -329,8 +330,8 @@ impl Factory {
         policy::decide(&state.floor(), &assessment, &self.config)
     }
 
-    /// Carry out a decision. This is the only place the supervisor touches a
-    /// session, and the vocabulary is closed.
+    /// Carry out a decision. The only place the supervisor touches a worker,
+    /// and the vocabulary is closed.
     async fn apply(
         &self,
         state: &mut State,
@@ -369,7 +370,7 @@ impl Factory {
         }
     }
 
-    /// Start a session on the workspace and let it run while we watch it.
+    /// Put a worker on the floor and start watching it.
     async fn start_worker(
         &self,
         state: &mut State,
@@ -381,57 +382,64 @@ impl Factory {
         let record = WorkerRecord::new(&id, kind, state.retries + 1, self.config.output_limit);
         self.watcher.worker_started(&record);
         lock(&state.workers).push(record);
+        note(&state.events, format!("{id} started ({})", kind.label()));
 
-        let (agent, mission) = match kind {
-            WorkerKind::Coding => (self.worker_agent.clone(), agent::coding_mission(&self.job)),
-            WorkerKind::Verifier => (
-                self.verifier_agent.clone(),
-                agent::verification_mission(&self.job),
-            ),
+        let mission = match kind {
+            WorkerKind::Coding => agent::coding_mission(&self.job),
+            WorkerKind::Verifier => agent::verification_mission(&self.job),
+        };
+        let feed = Feed {
+            id: id.clone(),
+            kind,
+            workers: Arc::clone(&state.workers),
+            events: Arc::clone(&state.events),
+            watcher: Arc::clone(&self.watcher),
+            signals: signals.clone(),
         };
 
-        let session = self.engine.create(agent);
-        // Subscribe before sending: an event emitted between the two would
-        // otherwise be evidence the supervisor never sees.
-        let stream = session.events();
-        let pending = match session.send(mission.as_str()).await {
-            Ok(pending) => pending,
-            Err(error) => {
-                let message = format!("{id}: could not start worker: {error}");
-                state.failures.push(message);
-                finish_record(&mut lock(&state.workers), &id, WorkerStatus::Failed, None);
-                let _ = signals.send(Signal::Finished {
-                    worker_id: id,
-                    kind,
-                    success: false,
-                    summary: String::new(),
-                });
-                return;
+        let stop = match &self.crew {
+            Crew::Sessions(sessions) => {
+                let agent = match kind {
+                    WorkerKind::Coding => sessions.worker.clone(),
+                    WorkerKind::Verifier => sessions.verifier.clone(),
+                };
+                let session = sessions.engine.create(agent);
+                // Subscribe before sending: an event emitted between the two
+                // would otherwise be evidence the supervisor never sees.
+                let stream = session.events();
+                match session.send(mission.as_str()).await {
+                    Ok(pending) => {
+                        let stop = Stop::Turn(pending.turn());
+                        tokio::spawn(crate::worker::pump_session(feed, session, stream, pending));
+                        stop
+                    }
+                    Err(error) => {
+                        state
+                            .failures
+                            .push(format!("{id}: could not start: {error}"));
+                        finish_unstarted(&state.workers, &id, signals, kind);
+                        return;
+                    }
+                }
+            }
+            Crew::External(external) => {
+                let argv = external.command(kind, &self.workspace, &mission);
+                let notify = Arc::new(Notify::new());
+                tokio::spawn(crate::worker::pump_process(
+                    feed,
+                    argv,
+                    self.workspace.clone(),
+                    Arc::clone(&notify),
+                ));
+                Stop::Process(notify)
             }
         };
-
-        state.handles.insert(id.clone(), pending.turn());
-        note(&state.events, format!("{id} started ({kind:?})"));
-        tokio::spawn(pump(
-            Pump {
-                session,
-                id,
-                kind,
-                workers: Arc::clone(&state.workers),
-                events: Arc::clone(&state.events),
-                watcher: Arc::clone(&self.watcher),
-                signals: signals.clone(),
-            },
-            stream,
-            pending,
-        ));
+        state.handles.insert(id, stop);
     }
 
     async fn stop(&self, state: &mut State, worker_id: &str, reason: &str) {
-        if let Some(handle) = state.handles.get(worker_id) {
-            // Cooperative: the turn stops at its next boundary and resolves as
-            // cancelled, so the worker's own session stays consistent.
-            let _ = handle.cancel().await;
+        if let Some(stop) = state.handles.get(worker_id) {
+            stop.request().await;
         }
         if let Some(worker) = find(&mut lock(&state.workers), worker_id) {
             worker.stop_reason = Some(reason.to_owned());
@@ -463,7 +471,7 @@ struct State {
     last_intervention: Option<Intervention>,
     workers: Arc<Mutex<Vec<WorkerRecord>>>,
     events: Arc<Mutex<VecDeque<String>>>,
-    handles: HashMap<String, TurnHandle>,
+    handles: HashMap<String, Stop>,
 }
 
 impl State {
@@ -500,183 +508,31 @@ impl State {
     }
 }
 
-struct Pump {
-    session: Session,
-    id: String,
-    kind: WorkerKind,
-    workers: Arc<Mutex<Vec<WorkerRecord>>>,
-    events: Arc<Mutex<VecDeque<String>>>,
-    watcher: Arc<dyn Watcher>,
-    signals: mpsc::UnboundedSender<Signal>,
-}
-
-/// Drain one worker's canonical events into the evidence the supervisor reads.
-///
-/// This is the whole coupling between the two loops: the worker never waits for
-/// it, and it never speaks back into the session.
-async fn pump(pump: Pump, mut stream: everruns::EventStream, pending: everruns::SentMessage) {
-    let turn_id = pending.turn_id.clone();
-    loop {
-        let event = match stream.recv().await {
-            Ok(Some(event)) => event,
-            // A lagging observer misses events; it does not stop observing.
-            Err(_) => continue,
-            Ok(None) => break,
-        };
-        if event.turn_id.as_deref().is_some_and(|id| id != turn_id) {
-            continue;
-        }
-        let terminal = event.kind.is_terminal();
-        let important = match &event.kind {
-            SessionEventKind::TextDelta { delta } => {
-                with(&pump.workers, &pump.id, |worker| worker.output.push(delta));
-                pump.watcher.worker_text(&pump.id, delta);
-                false
-            }
-            SessionEventKind::ReasonStarted => {
-                with(&pump.workers, &pump.id, |worker| worker.iterations += 1);
-                false
-            }
-            SessionEventKind::ToolStarted { tool_name, .. } => {
-                // The reviewed surface names the tool; the script it was
-                // called with lives in the canonical payload, and that is what
-                // says whether a worker is repeating itself.
-                let script = script_of(&event);
-                with(&pump.workers, &pump.id, |worker| {
-                    worker.tool_calls += 1;
-                    worker.last_tool = Some(format!("{tool_name}: {}", first_line(&script)));
-                    // What the worker ran belongs in the output tail beside what
-                    // came back: a diff shows the file a worker wrote, and this
-                    // shows the one it only meant to.
-                    worker.output.push(&format!("\n$ {script}\n"));
-                });
-                pump.watcher.worker_tool(&pump.id, tool_name, &script);
-                note(
-                    &pump.events,
-                    format!("{} tool {tool_name} {}", pump.id, first_line(&script)),
-                );
-                false
-            }
-            SessionEventKind::ToolOutputDelta { delta, .. } => {
-                with(&pump.workers, &pump.id, |worker| worker.output.push(delta));
-                false
-            }
-            // A finished tool call changes the repository, so it makes the run
-            // dirty — but it does not bypass the debounce floor. Foreman's
-            // forcing events are worker lifecycle boundaries, which happen a
-            // handful of times per run; a tool call happens constantly, and
-            // forcing on one spends the whole supervisory iteration budget on a
-            // chatty worker long before it finishes.
-            SessionEventKind::ToolCompleted {
-                tool_name, success, ..
-            } => {
-                note(
-                    &pump.events,
-                    format!(
-                        "{} tool {tool_name} {}",
-                        pump.id,
-                        if *success { "ok" } else { "failed" }
-                    ),
-                );
-                false
-            }
-            _ => false,
-        };
-        if terminal {
-            // Deliberately silent: the run's view of a finished worker is not
-            // complete until its turn has resolved and any verification result
-            // has been recorded. `Signal::Finished`, below, is that boundary.
-            break;
-        }
-        let _ = pump.signals.send(Signal::Activity { important });
-    }
-
-    let turn = pending.wait().await;
-    let (status, success, summary, stop_reason) = match turn {
-        Ok(turn) => {
-            let status = match turn.stop_reason {
-                TurnStopReason::Cancelled => WorkerStatus::Stopped,
-                _ if turn.success => WorkerStatus::Completed,
-                _ => WorkerStatus::Failed,
-            };
-            let reason = turn
-                .error
-                .clone()
-                .unwrap_or_else(|| format!("{:?}", turn.stop_reason));
-            (status, turn.success, turn.response, Some(reason))
-        }
-        Err(error) => (
-            WorkerStatus::Failed,
-            false,
-            String::new(),
-            Some(error.to_string()),
-        ),
-    };
-    with(&pump.workers, &pump.id, |worker| {
-        worker.output.push(&summary);
-    });
-    finish_record(&mut lock(&pump.workers), &pump.id, status, stop_reason);
-    note(
-        &pump.events,
-        format!("{} turn {}", pump.id, status_label(status)),
-    );
-    let _ = pump.signals.send(Signal::Finished {
-        worker_id: pump.id.clone(),
-        kind: pump.kind,
-        success,
-        summary,
-    });
-    // The session is dropped here, after its turn has resolved.
-    drop(pump.session);
-}
-
-/// The script a shell tool call was made with, when there is one.
-fn script_of(event: &everruns::SessionEvent) -> String {
-    let arguments = &event.canonical_json()["data"]["tool_call"]["arguments"];
-    arguments["commands"]
-        .as_str()
-        .map(str::to_owned)
-        .unwrap_or_else(|| arguments.to_string())
-}
-
-/// The first line worth showing, clipped.
-fn first_line(script: &str) -> String {
-    let line = script
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or_default();
-    if line.chars().count() <= 80 {
-        return line.to_owned();
-    }
-    format!("{}…", line.chars().take(79).collect::<String>())
-}
-
-fn status_label(status: WorkerStatus) -> &'static str {
-    match status {
-        WorkerStatus::Running => "running",
-        WorkerStatus::Completed => "completed",
-        WorkerStatus::Failed => "failed",
-        WorkerStatus::Stopped => "stopped",
-    }
-}
-
-fn finish_record(
-    workers: &mut [WorkerRecord],
+/// Settle a worker whose process or session never started.
+fn finish_unstarted(
+    workers: &Mutex<Vec<WorkerRecord>>,
     id: &str,
-    status: WorkerStatus,
-    stop_reason: Option<String>,
+    signals: &mpsc::UnboundedSender<Signal>,
+    kind: WorkerKind,
 ) {
-    if let Some(worker) = find(workers, id) {
-        worker.status = status;
+    with(workers, id, |worker| {
+        worker.status = WorkerStatus::Failed;
         worker.finished = Some(Instant::now());
-        if worker.stop_reason.is_none() {
-            worker.stop_reason = stop_reason;
-        }
-    }
+    });
+    let _ = signals.send(Signal::Finished {
+        worker_id: id.to_owned(),
+        kind,
+        success: false,
+        summary: String::new(),
+    });
 }
 
-fn with(workers: &Mutex<Vec<WorkerRecord>>, id: &str, edit: impl FnOnce(&mut WorkerRecord)) {
+/// Edit one worker's record, if it is still there.
+pub(crate) fn with(
+    workers: &Mutex<Vec<WorkerRecord>>,
+    id: &str,
+    edit: impl FnOnce(&mut WorkerRecord),
+) {
     if let Some(worker) = find(&mut lock(workers), id) {
         edit(worker);
     }
@@ -701,10 +557,11 @@ fn active_ids(workers: &[WorkerRecord]) -> Vec<String> {
         .collect()
 }
 
-fn note(events: &Mutex<VecDeque<String>>, line: String) {
+/// Append to the run's bounded event window.
+pub(crate) fn note(events: &Mutex<VecDeque<String>>, line: String) {
     let mut events = lock(events);
-    // The window is bounded here rather than at read time, so a long run does
-    // not accumulate a timeline nobody will ever look at.
+    // Bounded here rather than at read time, so a long run does not accumulate
+    // a timeline nobody will ever look at.
     if events.len() >= 200 {
         events.pop_front();
     }
@@ -713,10 +570,10 @@ fn note(events: &Mutex<VecDeque<String>>, line: String) {
 
 /// Lock, treating a poisoned mutex as ordinary data.
 ///
-/// The only writers are the pumps and the supervisor, and neither holds the
-/// lock across an await: a poisoned lock means a panic elsewhere, not evidence
-/// worth discarding.
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+/// The only writers are the worker pumps and the supervisor, and neither holds
+/// the lock across an await: a poisoned lock means a panic elsewhere, not
+/// evidence worth discarding.
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -742,16 +599,78 @@ fn run_id() -> String {
 mod tests {
     use super::*;
 
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use everruns::{LlmSimConfig, Model};
 
-    use crate::foreman::Assessment;
+    use crate::foreman::ForemanError;
+    use crate::worker::ExternalAgent;
 
-    /// A worker that keeps talking until somebody stops it.
-    fn endless_worker() -> Model {
+    /// A worker that takes long enough that "during" is unambiguous.
+    fn slow_worker() -> Model {
         Model::simulated_with_config(
-            LlmSimConfig::fixed("Still working on it.")
-                .with_response_delay(Duration::from_secs(30)),
+            LlmSimConfig::fixed("Finished.").with_response_delay(Duration::from_secs(2)),
         )
+    }
+
+    fn sessions(root: &std::path::Path, model: impl Fn() -> Model) -> Crew {
+        Crew::sessions(
+            crate::agent::worker(model(), root).unwrap(),
+            crate::agent::verifier(model(), root).unwrap(),
+        )
+    }
+
+    /// Quick clocks, one worker: the run ends as soon as that worker does.
+    fn brisk() -> Config {
+        Config {
+            min_assessment_interval: Duration::from_millis(100),
+            periodic_assessment: Duration::from_millis(200),
+            overall_timeout: Duration::from_secs(30),
+            max_workers: 1,
+            ..Config::default()
+        }
+    }
+
+    fn healthy() -> Assessment {
+        Assessment {
+            meaningful_progress: 0.9,
+            ..Assessment::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn readings_land_while_the_worker_is_still_working() {
+        // The whole architectural claim: supervision runs *during* the work,
+        // not after it. A reading that sees an active worker is a reading taken
+        // before that worker's turn resolved.
+        let workspace = tempfile::tempdir().unwrap();
+        let live = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&live);
+        let foreman = Foreman::answering("counting", move |observation| {
+            if !observation.active_workers.is_empty() {
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+            Ok(healthy())
+        });
+
+        let outcome = Factory::new(
+            "Take your time.",
+            workspace.path(),
+            sessions(workspace.path(), slow_worker),
+            foreman,
+            brisk(),
+        )
+        .run()
+        .await;
+
+        let live = live.load(Ordering::SeqCst);
+        assert!(
+            live >= 2,
+            "expected several readings during the turn, got {live}"
+        );
+        // And the worker really did keep working through them.
+        assert!(outcome.workers[0].elapsed() >= Duration::from_secs(2));
+        assert_eq!(outcome.workers[0].status, WorkerStatus::Completed);
     }
 
     #[tokio::test]
@@ -759,11 +678,13 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         // One reading, held for the whole run: the worker is stuck. The policy
         // still has to walk stop → retry → escalate rather than repeat itself.
-        let foreman = Foreman::scripted([Assessment {
-            worker_stuck: 0.95,
-            meaningful_progress: 0.05,
-            ..Assessment::default()
-        }]);
+        let foreman = Foreman::answering("stuck", |_| {
+            Ok(Assessment {
+                worker_stuck: 0.95,
+                meaningful_progress: 0.05,
+                ..Assessment::default()
+            })
+        });
         let config = Config {
             min_assessment_interval: Duration::from_millis(50),
             periodic_assessment: Duration::from_millis(150),
@@ -771,12 +692,17 @@ mod tests {
             max_retries: 1,
             ..Config::default()
         };
+        let endless = || {
+            Model::simulated_with_config(
+                LlmSimConfig::fixed("Still working on it.")
+                    .with_response_delay(Duration::from_secs(30)),
+            )
+        };
 
         let outcome = Factory::new(
             "Keep going forever.",
             workspace.path(),
-            crate::agent::worker(endless_worker(), workspace.path()).unwrap(),
-            crate::agent::verifier(endless_worker(), workspace.path()).unwrap(),
+            sessions(workspace.path(), endless),
             foreman,
             config,
         )
@@ -799,17 +725,11 @@ mod tests {
         let outcome = Factory::new(
             "Anything.",
             workspace.path(),
-            crate::agent::worker(endless_worker(), workspace.path()).unwrap(),
-            crate::agent::verifier(endless_worker(), workspace.path()).unwrap(),
-            // An empty script cannot answer, which is the failure mode a real
-            // classifier has when its service is down.
-            Foreman::scripted([]),
-            Config {
-                min_assessment_interval: Duration::from_millis(20),
-                periodic_assessment: Duration::from_millis(50),
-                overall_timeout: Duration::from_secs(10),
-                ..Config::default()
-            },
+            sessions(workspace.path(), slow_worker),
+            Foreman::answering("down", |_| {
+                Err(ForemanError::TimedOut(Duration::from_secs(10)))
+            }),
+            brisk(),
         )
         .run()
         .await;
@@ -818,17 +738,111 @@ mod tests {
         assert!(!outcome.failures.is_empty());
     }
 
-    #[test]
-    fn a_tool_call_is_summarized_by_its_first_real_line() {
-        assert_eq!(
-            first_line("\n\n  cat src/rates.py\nls tests\n"),
-            "cat src/rates.py"
+    /// A stand-in for Codex or yolop: a real child process that streams.
+    fn stand_in(script: &str) -> ExternalAgent {
+        let argv: Vec<String> = ["bash", "-c", script, "foreman-worker", "{mission}"]
+            .iter()
+            .map(|word| (*word).to_owned())
+            .collect();
+        ExternalAgent {
+            label: "stand-in".to_owned(),
+            coding: argv.clone(),
+            verifying: argv,
+        }
+    }
+
+    #[tokio::test]
+    async fn an_external_worker_is_watched_while_it_runs() {
+        // Neither Codex nor yolop is installed in CI, and neither needs to be:
+        // what this proves is the path they travel — a child process whose
+        // output reaches the supervisor before the process exits.
+        let workspace = tempfile::tempdir().unwrap();
+        let live = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&live);
+        let foreman = Foreman::answering("counting", move |observation| {
+            if !observation.active_workers.is_empty() {
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+            Ok(healthy())
+        });
+
+        let outcome = Factory::new(
+            "Do the thing.",
+            workspace.path(),
+            Crew::External(stand_in(
+                r#"printf '{"type":"read_file"}\n'; sleep 2; printf 'done\n'"#,
+            )),
+            foreman,
+            brisk(),
+        )
+        .run()
+        .await;
+
+        assert!(
+            live.load(Ordering::SeqCst) >= 2,
+            "an external worker must be observable while it runs"
         );
-        assert_eq!(first_line(""), "");
-        let long = "x".repeat(200);
-        let clipped = first_line(&long);
-        assert_eq!(clipped.chars().count(), 80);
-        assert!(clipped.ends_with('…'));
+        let worker = &outcome.workers[0];
+        assert_eq!(worker.status, WorkerStatus::Completed);
+        assert!(worker.output.as_str().contains("done"));
+        // A JSONL line names its own step, so it counts as one.
+        assert_eq!(worker.last_tool.as_deref(), Some("read_file"));
+        // The mission reached the process as one argument.
+        assert!(worker.output.as_str().contains("Do the thing.") || worker.tool_calls == 1);
+    }
+
+    #[tokio::test]
+    async fn a_missing_external_agent_fails_by_name_rather_than_hanging() {
+        let workspace = tempfile::tempdir().unwrap();
+        let mut agent = stand_in("true");
+        "no-such-coding-agent-on-this-machine".clone_into(&mut agent.coding[0]);
+        agent.verifying = agent.coding.clone();
+
+        let outcome = Factory::new(
+            "Do the thing.",
+            workspace.path(),
+            Crew::External(agent),
+            Foreman::answering("healthy", |_| Ok(healthy())),
+            brisk(),
+        )
+        .run()
+        .await;
+
+        assert_eq!(outcome.workers[0].status, WorkerStatus::Failed);
+        let failure = outcome.failures.join(" ");
+        assert!(
+            failure.contains("no-such-coding-agent-on-this-machine"),
+            "the failure should name the missing binary: {failure}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_external_worker_is_killed_when_the_policy_stops_it() {
+        let workspace = tempfile::tempdir().unwrap();
+        let outcome = Factory::new(
+            "Loop forever.",
+            workspace.path(),
+            // Nothing about this process ends on its own.
+            Crew::External(stand_in("while true; do sleep 1; done")),
+            Foreman::answering("stuck", |_| {
+                Ok(Assessment {
+                    worker_stuck: 0.95,
+                    ..Assessment::default()
+                })
+            }),
+            Config {
+                min_assessment_interval: Duration::from_millis(50),
+                periodic_assessment: Duration::from_millis(150),
+                overall_timeout: Duration::from_secs(20),
+                max_retries: 0,
+                ..Config::default()
+            },
+        )
+        .run()
+        .await;
+
+        assert_eq!(outcome.status, Status::Escalated);
+        assert_eq!(outcome.workers[0].status, WorkerStatus::Stopped);
     }
 
     #[test]
@@ -868,24 +882,6 @@ mod tests {
         let events = lock(&events);
         assert_eq!(events.len(), 200);
         assert_eq!(events.back().map(String::as_str), Some("event-499"));
-    }
-
-    #[test]
-    fn finishing_a_record_keeps_the_reason_the_supervisor_gave() {
-        let mut workers = vec![WorkerRecord::new("worker-1", WorkerKind::Coding, 1, 100)];
-        workers[0].stop_reason = Some("active worker appears stuck".into());
-        finish_record(
-            &mut workers,
-            "worker-1",
-            WorkerStatus::Stopped,
-            Some("Cancelled".into()),
-        );
-        assert_eq!(workers[0].status, WorkerStatus::Stopped);
-        assert!(workers[0].finished.is_some());
-        assert_eq!(
-            workers[0].stop_reason.as_deref(),
-            Some("active worker appears stuck")
-        );
     }
 
     #[test]

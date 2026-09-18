@@ -38,11 +38,15 @@ check ◄───── cancel / start / finish ───── intervene
 ```
 
 The worker never stops to be watched. `session.send` returns a receipt
-immediately; the supervisor reads `session.events()` beside the live turn.
-Output and tool calls make the run dirty and respect the debounce floor; only
-worker lifecycle boundaries — a turn ending, a verification reporting — bypass
-it. Forcing a reading on every tool call spends the whole iteration budget on a
-chatty worker before it finishes, which a live run showed plainly.
+immediately, and a child process is simply left running; either way the
+supervisor reads the evidence beside the live work. Activity marks the run
+dirty and waits for the debounce floor, and only a worker finishing bypasses
+it — forcing a reading on every tool call spends the whole iteration budget on
+a chatty worker before it finishes, which a live run showed plainly.
+
+`readings_land_while_the_worker_is_still_working` in `src/factory.rs` is the
+test that holds this: it counts readings taken while a worker's turn is
+unresolved, and fails if supervision waits its turn.
 
 ## What it assesses
 
@@ -104,49 +108,66 @@ already sandboxed.
 
 ## Run it
 
+Foreman's own two entry points, and they mean the same things here:
+
 ```bash
 git clone https://github.com/everruns/everruns.git
 cd everruns
-cargo run -p everruns-foreman-agent
+cargo run -p everruns-foreman-agent --bin foreman -- demo
 ```
 
-Three modes, because the two halves cost very differently:
+`demo` walks the whole runtime over a disposable fixture with nothing to pay
+for. `run` supervises real work in a repository you name:
+
+```bash
+foreman run --repo ./my-project --job "Add rate limiting, and test it."
+```
+
+Supervision is the cheap half, which is the premise, so the two halves go live
+separately:
 
 | Command | Worker | Foreman | Needs |
 | --- | --- | --- | --- |
-| `cargo run -p everruns-foreman-agent` | scripted | deterministic | nothing |
-| `… -- --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
-| `… -- --live` | `meta/muse-spark-1.3-contributor` | `jev-latest` | both keys |
+| `foreman demo` | scripted | deterministic | nothing |
+| `foreman demo --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
+| `foreman run …` | your choice, below | `jev-latest` | `TYPESAFE_API_KEY` + the worker's |
 
-Supervision is the cheap half, which is the whole premise: `--live-foreman`
-puts a real classifier over a deterministic worker, so the numbers on screen are
-a live reading of a run that goes the same way every time. That is the mode the
-demo above records. The worker's own model is Muse Spark's Contributor tier
-through OpenRouter, chosen for the same reason — a worker nobody can afford to
-run often is a poor subject for an experiment about watching one.
+`--live-foreman` puts a real classifier over a deterministic worker, so the
+numbers on screen are a live reading of a run that goes the same way every
+time. That is the mode the demo above records.
 
-A `--live` run takes a minute or two and costs cents: the worker implements the
-tiers, a read-only verifier quotes the file and line it relied on, and the
-policy finishes on numbers around
-`ready_to_finish 0.91 · requirements_satisfied 0.94 · tests_sufficient 0.91`.
+`demo` writes its fixture into a temporary directory unless `--repo` says
+otherwise, and `run` never writes a fixture at all — `--repo` is your project,
+and the only thing that touches it is the worker. It will be modified.
 
-Neither half is deterministic, so the path varies, and escalation is a real
-outcome rather than a failed run: a job that leaves the rate schedule unstated
-pushes `needs_human` past 0.80, and a run that spends its three workers while
-`ready_to_finish` sits at 0.82 asks for a person instead of guessing. Both are
-the supervisor working. The process exits nonzero only when the factory decided
-nothing at all — when it ran out of clock, or finished without touching the
-repository. `FOREMAN_MAX_WORKERS` and the other `FOREMAN_*` variables move the
-budgets if you want a longer leash.
+## Who does the work
+
+`--worker` picks the crew. All three are watched identically, because what the
+supervisor reads is a bounded observation and the strongest evidence in one —
+the repository's own diff — is gathered by the host either way.
+
+| `--worker` | What runs | Independent verification |
+| --- | --- | --- |
+| `session` (default) | An Everruns session on the Bashkit shell, `meta/muse-spark-1.3-contributor` through OpenRouter | A second session under the default read-only workspace policy |
+| `codex` | `codex exec --cd … --sandbox workspace-write --color never --json …`, the line Foreman itself runs | The same CLI with `--sandbox read-only` |
+| `yolop` | `yolop -C … -p …`, its one-shot print interface | Mission only — yolop publishes no read-only mode |
+
+Anything else is a template:
 
 ```bash
-cargo run -p everruns-foreman-agent -- --live --job "Add rate limiting, and test it."
-cargo run -p everruns-foreman-agent -- /tmp/shipkit   # keep the workspace
+foreman run --repo . --job "…" --worker-command "mycli --cd {repo} --task {mission}"
 ```
 
-The default workspace is temporary and removed on exit. Never pass a repository
-you care about: the example materializes its fixture into the target and the
-worker may change anything inside it.
+`{repo}` and `{mission}` are substituted as whole arguments, so no shell sees
+either: a mission carrying quotes, newlines, or a semicolon is still one argv
+entry.
+
+A session is observed through its own canonical event stream, which arrives
+already typed — tool calls separated from model steps from output. A CLI offers
+none of that, so an external worker is observed through stdout and stderr, and
+a JSONL line that names its own `type` (as Codex's `--json` does) counts as a
+step. Neither Codex nor yolop is installed in CI and neither needs to be: the
+tests drive the same path with a stand-in child process.
 
 ## The floor
 
@@ -194,10 +215,13 @@ bash examples/foreman-agent/demo/record.sh --check
 ```
 
 The suite is offline. It covers every policy branch, the observation bounds,
-the nine-question round trip against a simulated classifier, and two whole runs
-through the real runtime: one that finishes after verifying its own work, and
-one where a stuck worker is stopped, retried once, and escalated. CI does not
-grade a live model's code, so a live run remains the behavioral proof.
+the nine-question round trip against a simulated classifier, both worker
+backends' command lines, and six whole runs through the real runtime: readings
+landing mid-turn, a stuck worker stopped and retried once and escalated, a
+supervisor that cannot answer, an external worker watched while it streams, a
+missing external binary failing by name, and an external worker killed when the
+policy stops it. CI does not grade a live model's code, so a live run remains
+the behavioral proof.
 
 ## Demo and recording
 
@@ -227,6 +251,8 @@ The architecture is Foreman's; the runtime underneath it is not.
   iteration boundary) and is deliberately **not** in the policy's vocabulary.
   V1 keeps Foreman's seven actions so the comparison stays honest; a nudge is
   the obvious next experiment.
+- Foreman's own worker — the Codex CLI — is still one of the options here, so
+  the two runtimes can be pointed at the same job and compared.
 
 ## Limits
 
@@ -240,12 +266,15 @@ sandbox for the shell, not a safe harness for an untrusted repository.
 
 ## Source map
 
-`src/main.rs`: modes, wiring, and the host's own report; `src/factory.rs`: the
-two loops, the event pump, and the interventions; `src/foreman.rs`: the nine
+`src/cli.rs`: the command line; `src/main.rs`: wiring and the host's own
+report; `src/factory.rs`: the two loops, the state, and the interventions;
+`src/worker.rs`: both crews and the evidence pumps; `src/foreman.rs`: the nine
 questions and the classifier call; `src/policy.rs`: thresholds, limits, and the
 decision; `src/observation.rs`: the bounded snapshot; `src/agent.rs`: the two
-agents; `src/terminal.rs`: presentation only; `src/fixture.rs` and
-`src/resources/`: the repository and the prompts; `demo/`: the recording.
+agents; `src/demo_run.rs`: the scripted worker and the rehearsed reading;
+`src/terminal.rs`: layout only, over `everruns-example-demo::style`;
+`src/fixture.rs` and `src/resources/`: the repository and the prompts;
+`demo/`: the recording.
 
 ## See also
 

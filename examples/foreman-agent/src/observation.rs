@@ -24,6 +24,16 @@ pub enum WorkerKind {
     Verifier,
 }
 
+impl WorkerKind {
+    /// The kind as it is written in the timeline.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Coding => "coding",
+            Self::Verifier => "verifier",
+        }
+    }
+}
+
 /// Where a worker's turn ended up.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -36,6 +46,18 @@ pub enum WorkerStatus {
     Failed,
     /// Cancelled by the supervisor.
     Stopped,
+}
+
+impl WorkerStatus {
+    /// The status as it is written in the timeline.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Stopped => "stopped",
+        }
+    }
 }
 
 /// One worker, as the factory has watched it so far.
