@@ -246,6 +246,8 @@ impl EventService {
         metadata
             .entry("initiator_principal_id".to_string())
             .or_insert_with(|| serde_json::Value::String(session.owner_principal_id.to_string()));
+        // THREAT[TM-OBS-012]: service-tool events derive their actor from the
+        // session identity and never accept a caller-supplied acting principal.
         metadata.insert(
             "acting_principal_id".to_string(),
             serde_json::Value::String(acting.id.to_string()),

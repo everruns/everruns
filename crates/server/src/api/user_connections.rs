@@ -184,9 +184,9 @@ struct PendingOAuthState {
     mode: String,
     session_id: Option<String>,
     /// Set only for `mode = identity`. Resolved before the redirect so the
-    /// callback never creates an identity or re-runs the permission check on
-    /// attacker-influenced input — it only writes to the identity that was
-    /// already authorized (EVE-1030).
+    /// callback never creates an identity from attacker-influenced input. The
+    /// callback re-checks permission and org ownership before it writes to the
+    /// identity that was authorized (EVE-1030).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     agent_identity_id: Option<String>,
     popup: bool,
@@ -683,6 +683,8 @@ pub async fn authorize_connection(
                 "agent_id is required for identity OAuth flows".to_string(),
             ))?;
             let caller = Caller::from(&org);
+            // THREAT[TM-AUTHZ-018]: service grants require MCP management
+            // authority before any discovery, registration, or identity write.
             enforce_identity_grant_policy(&state, &caller)?;
 
             let agent = state
