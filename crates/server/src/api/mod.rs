@@ -11,6 +11,7 @@ pub mod agent_endpoints;
 pub mod agent_examples;
 pub mod agent_identities;
 pub mod agent_identity_connections;
+pub mod agent_mcp_attachments;
 pub mod agent_triggers;
 pub mod agents;
 pub mod app_a2a;

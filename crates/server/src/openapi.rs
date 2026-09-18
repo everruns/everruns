@@ -114,6 +114,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agents::list_agents,
         api::agents::get_agent,
         api::agents::get_agent_stats,
+        api::agent_mcp_attachments::list_agent_mcp_attachments,
+        api::agent_mcp_attachments::revoke_agent_mcp_connection,
         api::agents::update_agent,
         api::agents::delete_agent,
         api::agents::export_agent,
