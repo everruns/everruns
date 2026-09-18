@@ -15,7 +15,7 @@ code:
 use everruns::{Classifier, TypeSafeAI};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let classifier = Classifier::new(TypeSafeAI::from_env()?);
+let classifier = Classifier::new("jev-latest", TypeSafeAI::from_env()?);
 let spam = classifier
     .probability("Is this message spam?", "Claim your prize now!")
     .await?;
@@ -73,13 +73,24 @@ let queue: &str = answers.selected("queue")?;
 
 - **`noul`** — whether something holds, as the probability of yes. A value near
   0.5 means yes and no are near-equally likely, not "medium".
+  ([Noul](https://docs.typesafe.ai/primitives/noul))
 - **`choice`** — exactly one option from your set, with the distribution behind
   it. Needs at least two options.
+  ([Choice](https://docs.typesafe.ai/primitives/choice))
 - **`score`** — a position along levels you define, lowest first. Needs at least
-  two levels.
+  two levels. ([Score](https://docs.typesafe.ai/primitives/score))
+
+The three are System One's own, so TypeSafe's
+[Primitives](https://docs.typesafe.ai/primitives) documents what each answer
+means and how to choose between them, and
+[State](https://docs.typesafe.ai/concepts/state) covers what to put in the
+`about(...)` value. Everruns names them the same way rather than inventing
+synonyms.
 
 Questions in one call are answered **in parallel inside a single request**, so
-asking five costs one round trip, not five.
+asking five costs one round trip, not five. TypeSafe calls leaning on that
+[speculative fan-out](https://docs.typesafe.ai/patterns/fan-out): ask the
+questions you *might* need, and let your code decide which ones mattered.
 
 ## Ids are yours; instructions are the model's
 
@@ -175,28 +186,48 @@ takes any `ClassifierService`, exactly as `Model::new` takes any provider.
 
 ## Choosing a model
 
-A service has a default model, so naming one is an override rather than a
-required argument — the difference from [`Model::new`](/framework/direct-model-calls/),
-where a provider is pure transport and serves many models with no default.
+The model is named up front, the way [`Model::new`](/framework/direct-model-calls/)
+names one: the service is transport, and the model is the thing that answers.
+There is no default to inherit without noticing, because a threshold calibrated
+against one version is not evidence about the next.
+
+Ids are the provider's own, so they are spelled the way the vendor spells them.
+`jev-latest` is TypeSafe's alias for the current Jev, so it tracks whatever the
+current version is; an exact id like `jev-1.13.0` pins one, so a vendor update
+cannot move your thresholds under you. Bare `jev` is not an id the API knows —
+nothing here rewrites what you pass.
+
+Ask for the alias and read back what answered, which is the id to pin once a
+threshold is calibrated:
 
 ```rust
-# use everruns::Classifier;
-# fn run(classifier: Classifier) {
-let classifier = classifier.model("jev-latest");
-# let _ = classifier;
+# use everruns::Answers;
+# fn run(answers: Answers) {
+let version = answers.model(); // "jev-1.13.0" for a "jev-latest" request
+# let _ = version;
 # }
 ```
 
-Ids are the provider's own, so they are spelled the way the vendor spells them.
-`jev-latest` is TypeSafe's alias for the current Jev and is what `TypeSafeAI`
-asks for when you name nothing; an exact id like `jev-1.13.0` pins a version so
-a vendor update cannot move your thresholds under you. Bare `jev` is not an id the
-API knows — nothing here rewrites what you pass.
+A single call can name a different model with the same method on the request
+builder, and it wins for that call:
 
-A single call can override the model again with the same method on the builder.
-A deployment that must pin one does so by never exposing the knob in the config
-an agent writes — not by the type being unable to carry one, because there will
-be other classifiers and other models.
+```rust
+# use everruns::Classifier;
+# async fn run(classifier: Classifier) -> Result<(), Box<dyn std::error::Error>> {
+let answers = classifier
+    .about("...")
+    .noul("urgent", "Does this convey urgency?")
+    .model("jev-1.13.0")
+    .send()
+    .await?;
+# let _ = answers;
+# Ok(())
+# }
+```
+
+A deployment that must pin a model does so by never exposing the knob in the
+config an agent writes — not by the type being unable to carry one, because
+there will be other classifiers and other models.
 
 A deployment running the Everruns platform configures a separate
 `UTILITY_TYPESAFE_API_KEY` for its [guardrails](/capabilities/guardrails/) — a
