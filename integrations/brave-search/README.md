@@ -35,7 +35,7 @@ Set `BRAVE_SEARCH_API_KEY` before startup, or pass an application-owned key to
 metadata. `BraveSearch::with_client` accepts a client with a trusted custom
 endpoint for HTTP tests. Run the agent with `Engine::new().create(agent)`.
 
-The default `hosted` feature includes connector UI metadata and inventory
+The default `hosted` feature includes connector UI metadata and catalog
 registration for the Platform. Hosted tools retain lazy connection-token lookup
 and session-secret fallback. Both adapters share the `brave_web_search` schema,
 search operation, and result mapping. Framework credentials are read at

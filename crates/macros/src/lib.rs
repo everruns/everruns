@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Procedural macros for the [`everruns`](https://docs.rs/everruns) agentic
 //! framework.
 //!

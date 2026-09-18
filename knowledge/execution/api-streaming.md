@@ -62,7 +62,7 @@ reconnect immediately using `since_id`.
 
 ### `GET /v1/sessions/{session_id}/sse`
 
-The body schema is the **`Event`** ToSchema (see `crates/core/src/events.rs`).
+The body schema is the **`Event`** ToSchema (see `crates/core/src/events/mod.rs`).
 Each `data:` line is a serialized `Event`, whose `type` field matches
 the SSE `event:` discriminator and whose `data` field carries the
 event-type-specific payload defined by the `EventData` enum.
@@ -118,7 +118,7 @@ Closed `event:` vocabulary on this endpoint:
 | `voice.session.failed`          | `Event` (`data` = `VoiceSessionFailedData`)                                |
 
 The authoritative event-type → payload mapping is the `EventData`
-enum in [`crates/core/src/events.rs`](../../crates/core/src/events.rs)
+enum in [`crates/core/src/events/mod.rs`](../../crates/core/src/events/mod.rs)
 (`pub enum EventData` near line 2190). The generated OpenAPI spec
 also surfaces this catalog per-event via the SSE schema components,
 so LLM toolcallers can dispatch from machine-readable form rather

@@ -12,22 +12,22 @@ use crate::client::TypeSafeClient;
 
 use crate::{CAPABILITY_ID, TYPESAFE_API_KEY_SECRET, TYPESAFE_CONNECTION_PROVIDER, evaluate};
 
+/// This crate's capability contributions, named by `everruns-integrations-catalog`.
 #[cfg(feature = "hosted")]
-inventory::submit! {
-    everruns_core::capabilities::IntegrationPlugin {
+pub const CAPABILITY_PLUGINS: &[everruns_core::capabilities::IntegrationPlugin] =
+    &[everruns_core::capabilities::IntegrationPlugin {
         experimental_only: true,
         feature_flag: None,
         factory: || Box::new(JevCapability),
-    }
-}
+    }];
 
+/// This crate's connector contributions, named by `everruns-integrations-catalog`.
 #[cfg(feature = "hosted")]
-inventory::submit! {
-    everruns_platform::connector::ConnectorPlugin {
+pub const CONNECTOR_PLUGINS: &[everruns_platform::connector::ConnectorPlugin] =
+    &[everruns_platform::connector::ConnectorPlugin {
         experimental_only: true,
         factory: || Box::new(crate::TypeSafeConnector),
-    }
-}
+    }];
 
 const SYSTEM_PROMPT_ADDITION: &str = "`jev_evaluate` answers typed questions about content \
     with calibrated numbers: a probability for yes/no, a selected option with its distribution, or \

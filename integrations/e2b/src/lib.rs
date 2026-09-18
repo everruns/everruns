@@ -44,21 +44,18 @@ use tools::{
     E2BWriteFileTool,
 };
 
-inventory::submit! {
-    IntegrationPlugin {
-        experimental_only: false,
-        feature_flag: None,
-        factory: || Box::new(E2BCapability),
-    }
-}
+/// Capability plugins this crate contributes to a hosted catalog.
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    experimental_only: false,
+    feature_flag: None,
+    factory: || Box::new(E2BCapability),
+}];
 
-inventory::submit! {
-    ConnectorPlugin {
-        experimental_only: false,
-        factory: || Box::new(E2BConnector),
-    }
-}
-
+/// Connector plugins this crate contributes to a hosted catalog.
+pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
+    experimental_only: false,
+    factory: || Box::new(E2BConnector),
+}];
 pub const E2B_API_BASE: &str = "https://api.e2b.app";
 pub const E2B_SANDBOX_SECRET_PREFIX: &str = "e2b_sandbox:";
 pub const E2B_DEFAULT_TEMPLATE: &str = "base";

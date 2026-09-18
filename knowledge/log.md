@@ -65,6 +65,15 @@
   the caller's code. No streaming, because a classification is one round trip. The
   facade names no vendor: `Classifier::new` takes any service the way `Model::new`
   takes any provider, and `Classifier::simulated` keeps tests offline.
+* **A model id was promoted without the catalog behind it.** Applications could
+  select a model and call it through the facade, but not ask a provider which
+  models it serves: discovery, the profile registry, and driver-kind identity
+  sat in `everruns-provider`, so any model picker took a second crate and
+  provider-owned types. `everruns::models` promotes listing and metadata on the
+  same value-first terms as direct model calls, and a `Provider` now carries the
+  driver kind it speaks so profiles resolve for a provider keyed by an
+  application name. See
+  [Framework Application API Boundaries](framework/application-api.md).
 
 * **The agent-facing surface is named for the model, the credential surface for
   the vendor.** The capability is `jev` and its tool is `jev_evaluate`, matching
@@ -131,6 +140,22 @@
   something and get numbers back instead of forming a second impression in
   prose. Its user connection is deliberately separate from the deployment key
   that backs the classifier.
+* **Integration registration was a linker side effect.** Integration crates
+  submitted their capabilities and connectors through `inventory::submit!`, and
+  `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` each carried an
+  `extern crate` block so the linker kept those crates and their link-section
+  submissions. A registry's contents therefore depended on what a binary
+  happened to link: dropping a line removed an integration with no compile
+  error, the set was maintained in four places (two manifests, two `extern
+  crate` blocks), and `everruns-platform`'s own tests saw a different registry
+  than production because platform does not depend on the integration crates.
+  Each crate now publishes `CAPABILITY_PLUGINS` / `CONNECTOR_PLUGINS` consts and
+  the new `crates/integrations-catalog` names every one, with
+  `scripts/lib/check-integration-catalog.sh` failing a crate that publishes
+  plugins without a catalog entry. Embedders filter or extend `CATALOG`.
+  `SessionSandboxProviderPlugin` and the `CommandDescriptor` catalog still use
+  inventory and are unaffected — every catalog entry references its crate by
+  path, so the crate stays linked.
 
 * **Which identity an MCP server acts under was a side effect of its auth mode,
   not a stated property.** `api_key` happened to be org-wide, `oauth` happened to
@@ -158,6 +183,45 @@
   the model at the first tool call. The name was re-examined against the prior art
   and kept; no other product has this middle layer, because no other product
   treats capabilities as composable modules.
+* **Nothing made an agent stop before a consequential action, and the one gate
+  that could was opt-in and unusable by default.** `tool_approval` blocks per
+  call and needs a host that can service an interactive prompt, so a hosted
+  session had no confirmation layer at all and Platform Chat's confirmation
+  rules were prose with no way to actually pause. The new `soft_approval`
+  capability is the other shape of the problem: prompt guidance that asks the
+  model to batch safe work and stop only at destructive or outward-facing
+  actions, with the pause expressed as a `request_approval` tool call so it is
+  renderable and auditable rather than a turn that appears to have died. It is
+  on by default at `normal` for the `generic` and `platform-chat` harnesses,
+  shares the `ApprovalMode` vocabulary with the hard gate, and takes its level
+  from a host-supplied store when the host owns one, which is the seam a
+  terminal host needs to adopt it without losing its own setting. See
+  [Soft Approval](execution/soft-approval.md).
+
+* **A granted approval said what was approved but never who approved it.** The
+  grant was a tool call in the session event log, which is the right record of
+  the conversation and the wrong thing to answer to: it is scoped to one
+  session, and nothing in it names a person. Having the model write an
+  `approved_by` would have been worse, an identity claim by the thing being
+  governed. The tools now stamp only the turn and input message the consent was
+  spoken in, and the server resolves the approver from the authenticated
+  initiator it already writes onto that message, emitting
+  `agent.approval.requested` / `agent.approval.granted` to the org audit log. A
+  turn with no human initiator is recorded as unattributed rather than dropped,
+  because an approval nobody granted is the finding. See
+  [Soft Approval](execution/soft-approval.md).
+
+* **Two audit variants no consumer could observe were classified as a breaking
+  release.** `AgentAction` is public in the published `everruns-platform`, and at
+  `0.x` the minor is the breaking slot, so adding `ApprovalRequested` /
+  `ApprovalGranted` demanded `0.24.1 -> 0.25.0` plus patch re-pins for thirteen
+  published dependants that changed nothing. Single-versioning has since removed
+  that bookkeeping, so the cascade is no longer the reason to care. The enum is
+  `#[non_exhaustive]` for the reason that outlived it: an external `match` on it
+  cannot be broken by a future audit action, which is the break `LlmErrorKind`
+  inflicted twice. No `_` arm was needed, since every match on `AgentAction`
+  lives in the defining crate. See
+  [Release Process](project/release-process.md).
 
 ## 2026-09-16
 

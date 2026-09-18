@@ -1,5 +1,5 @@
 # Browserless Integration
-# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: External integration crate, named in crates/integrations-catalog
 # Decision: REST API for one-shot operations, CDP (WebSocket) for persistent browser sessions
 # Decision: /function endpoint for multi-step interactions (click, type, navigate)
 
@@ -24,7 +24,6 @@ everruns-provider.workspace = true
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
 everruns-platform.workspace = true
-inventory.workspace = true
 
 # HTTP client for Browserless REST API
 reqwest.workspace = true

@@ -4,8 +4,10 @@
 // — the server renders its form schemas and resolves connections; nothing
 // consumes a Connector during a turn — so it lives in `everruns-platform`,
 // not `everruns-core`.
-// Decision: Parallel to IntegrationPlugin, allows integration crates to register
-// connectors via inventory::submit! without the kernel knowing about them.
+// Decision: Parallel to IntegrationPlugin — integration crates publish connector
+// descriptors as const slices and a catalog crate names them, so the kernel
+// never learns about them and registry contents stay a compile-checked list
+// rather than a linker side effect.
 // Decision: Form schema is backend-driven — connectors define their own UI fields
 // and instructions, frontend renders generically.
 // Decision: Validation is async — connectors can call external APIs to verify credentials.
@@ -19,21 +21,19 @@ use std::sync::Arc;
 // Plugin Registration
 // ============================================================================
 
-/// Plugin registration point for connector crates.
+/// Descriptor an integration crate publishes for one of its connectors.
 ///
-/// Integration crates use `inventory::submit!` to register their connectors.
-/// The server discovers them at runtime to serve form schemas
-/// and handle credential submission.
+/// Integration crates expose these as plain `const` slices; a catalog crate
+/// names every one it composes, and the server registers them to serve form
+/// schemas and handle credential submission.
 ///
 /// # Example
 ///
 /// ```ignore
-/// inventory::submit! {
-///     ConnectorPlugin {
-///         experimental_only: true,
-///         factory: || Box::new(DaytonaConnector),
-///     }
-/// }
+/// pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
+///     experimental_only: true,
+///     factory: || Box::new(DaytonaConnector),
+/// }];
 /// ```
 pub struct ConnectorPlugin {
     /// If true, only registered when experimental features are enabled.
@@ -41,8 +41,6 @@ pub struct ConnectorPlugin {
     /// Factory function that creates the provider instance.
     pub factory: fn() -> Box<dyn Connector>,
 }
-
-inventory::collect!(ConnectorPlugin);
 
 // ============================================================================
 // Connector Trait

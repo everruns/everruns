@@ -1,5 +1,5 @@
 # Brave Search Integration
-# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: External integration crate, named in crates/integrations-catalog
 # Decision: Experimental-only (gated behind DeploymentGrade::Dev)
 # Decision: API key resolved via user connections (connection_resolver), fallback to session secrets
 
@@ -25,7 +25,6 @@ everruns-provider.workspace = true
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
 everruns-platform = { workspace = true, optional = true }
-inventory = { workspace = true, optional = true }
 
 # HTTP client for Brave Search API
 reqwest.workspace = true
@@ -42,7 +41,7 @@ tracing.workspace = true
 
 [features]
 default = ["hosted"]
-hosted = ["dep:everruns-platform", "dep:inventory"]
+hosted = ["dep:everruns-platform"]
 integration = [] # Gate real-API tests; CI passes --features integration
 
 [dev-dependencies]

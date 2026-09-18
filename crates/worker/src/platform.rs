@@ -20,7 +20,7 @@ pub fn default_host_composition() -> HostComposition {
 pub fn default_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition {
     HostComposition::builder()
         .capability_registry(
-            everruns_platform::capabilities::hosted_capability_registry_for_grade(grade),
+            everruns_integrations_catalog::oss_capability_registry_for_grade(grade),
         )
         .driver_registry(crate::create_driver_registry())
         // Honor EVERRUNS_SYSTEM_ALLOWLIST_ENABLED for tenant/agent runtime

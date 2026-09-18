@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 use clap::{CommandFactory, Parser};
 use everruns_coding_cli::{Cli, SessionMode};
 

@@ -2510,6 +2510,12 @@ mod tests {
             "the inspected content belongs in state, never in the instructions"
         );
         assert_eq!(request.metadata["purpose"], "guardrails");
+        // THREAT[TM-LLM-037]: the contract can name a model, but no guardrail
+        // config field reaches it, so the deployment stays on its own default.
+        assert!(
+            request.model.is_none(),
+            "a guardrail never names a model; the deployment's classifier picks it"
+        );
         let (_, question) = &request.questions[0];
         let ClassificationQuestion::Noul { instructions, .. } = question else {
             panic!("a judge check asks a noul");

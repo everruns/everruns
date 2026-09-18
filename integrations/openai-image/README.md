@@ -17,7 +17,7 @@ use everruns_integrations_openai_image::GptImageGenCapability;
 let _capability = GptImageGenCapability;
 ```
 
-The capability auto-registers via the inventory `IntegrationPlugin` system, so
+The capability publishes an `IntegrationPlugin` const named by the integration catalog, so
 linking this crate into a binary (e.g. `everruns-server`, `everruns-worker`) is
 enough to make it available.
 

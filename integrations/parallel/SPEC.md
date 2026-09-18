@@ -54,7 +54,7 @@ default on every grade including dev because spend is irreversible.
 
 ## Tests
 
-- `tests/plugin_registration.rs` verifies inventory registration for both capabilities and
+- `tests/plugin_registration.rs` verifies the published plugin consts for both capabilities and
   the connection provider, and that the paid `parallel` capability is flag-gated
   (registered only when `FEATURE_MACHINE_PAYMENTS` is set).
 - `tests/live_api_test.rs` runs live no-secret MCP smoke tests against the free endpoint with `--features integration`.

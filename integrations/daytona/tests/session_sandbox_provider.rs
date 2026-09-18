@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration tests for the Daytona session_sandbox provider.
 
 use async_trait::async_trait;

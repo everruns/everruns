@@ -82,13 +82,27 @@ impl ClassificationQuestion {
 }
 
 /// One evaluation: state plus the questions to ask about it.
+///
+/// `#[non_exhaustive]` because this is an option struct on an alpha surface
+/// that grows: `model` was added after the first release and broke every
+/// struct-literal construction to do it. Build one with [`Self::new`] and the
+/// builder methods, which is what every in-tree call site already does.
+/// See `knowledge/framework/api-stability.md`.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct ClassificationRequest {
-    /// The content being judged: text, or structured data.
+    /// The content being classified: text, or structured data.
     pub state: serde_json::Value,
     /// Questions keyed by caller-chosen ids, in insertion order. Ids are for
     /// the caller's code and are never sent to the model.
     pub questions: Vec<(String, ClassificationQuestion)>,
+    /// Which model to ask, when the caller wants one in particular.
+    ///
+    /// `None` leaves the choice to the service, which uses its own default.
+    /// A deployment that must pin a model does so by never setting this — the
+    /// knob is absent from the config an agent can write, rather than absent
+    /// from the type.
+    pub model: Option<String>,
     /// Free-form request metadata for host-side attribution.
     pub metadata: HashMap<String, String>,
 }
@@ -98,6 +112,7 @@ impl ClassificationRequest {
     pub fn new(state: impl Into<serde_json::Value>) -> Self {
         Self {
             state: state.into(),
+            model: None,
             questions: Vec::new(),
             metadata: HashMap::new(),
         }
@@ -106,6 +121,12 @@ impl ClassificationRequest {
     /// Add a question under `id`.
     pub fn ask(mut self, id: impl Into<String>, question: ClassificationQuestion) -> Self {
         self.questions.push((id.into(), question));
+        self
+    }
+
+    /// Ask a particular model rather than the service's default.
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
         self
     }
 

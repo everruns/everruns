@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // Extended thinking tests against real LLM endpoints.
 //
 // Thinking/reasoning is provider-specific (Anthropic, Meta, Gemini, and some OpenAI models).

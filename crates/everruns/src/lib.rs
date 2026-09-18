@@ -59,6 +59,8 @@ mod hooks;
 /// Stability: stable — no breaking change without a major bump; see [`stability`].
 pub mod llm;
 mod mcp;
+/// Stability: alpha — may change without a major bump; see [`stability`].
+pub mod models;
 mod plugin;
 mod session;
 /// Stability tiers and the marking convention.
@@ -100,6 +102,10 @@ pub use everruns_integrations_bashkit::BashkitShell;
 pub use everruns_integrations_duckduckgo::DuckDuckGo;
 #[cfg(feature = "filesystem")]
 pub use everruns_integrations_filesystem::FileSystem;
+/// The TypeSafe-backed classifier, for [`Classifier::new`], and the capability
+/// that hands the same tool to an agent.
+#[cfg(feature = "jev")]
+pub use everruns_integrations_typesafe::{Jev, TypeSafeClassifier};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations_web_fetch::WebFetch;
 pub use history::{
@@ -112,6 +118,7 @@ pub use hooks::{
 };
 pub use llm::{Completion, CompletionError};
 pub use mcp::McpServer;
+pub use models::{CatalogError, ModelInfo};
 pub use plugin::PluginError;
 pub use session::{
     CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session,
@@ -200,6 +207,11 @@ pub use everruns_provider::driver_registry::{
 // Reasoning is part of the public surface: `ReasoningConfig` above carries a
 // `ReasoningEffort`, and the artifact types appear on assistant messages.
 pub use everruns_provider::model::ReasoningEffort;
+// Model identity and capability metadata: what a picker renders next to an id,
+// and what an application checks before selecting one.
+pub use everruns_provider::model::{
+    CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
+};
 pub use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 pub use everruns_provider::{ExecutionPhase, PhaseSource};
 // Required by the public `ChatDriver` SPI and runtime error contract:
@@ -220,7 +232,7 @@ pub use everruns_provider::credential_provider::{
 };
 pub use everruns_provider::credential_schema::{CredentialFormSchema, FieldType, FormField};
 pub use everruns_provider::driver_registry::{
-    BoxedChatDriver, DriverConfig, DriverDescriptor, DriverRegistry,
+    BoxedChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverRegistry,
 };
 pub use everruns_provider::provider::DriverId;
 pub use everruns_provider::tool_types::{ToolCall, ToolDefinition};
@@ -259,6 +271,7 @@ pub mod prelude {
     pub use crate::WebFetch;
     #[cfg(feature = "capabilities")]
     pub use crate::capability;
+    pub use crate::models;
     #[cfg(feature = "macros")]
     pub use crate::tool;
     pub use crate::work::{
@@ -284,6 +297,7 @@ pub mod prelude {
         AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
         ToolSearch,
     };
+    pub use crate::{CatalogError, ModelInfo, ModelProfile};
     pub use crate::{DriverId, EnvCredentialError, EnvCredentialProvider};
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};

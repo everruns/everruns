@@ -26,6 +26,7 @@ import {
   Container,
   Infinity as InfinityIcon,
   MessageCircle,
+  ShieldQuestionMark,
   type LucideIcon,
 } from "lucide-react";
 
@@ -140,6 +141,7 @@ export const capabilityIconMap: Record<string, IconComponent> = {
   users: Users,
   "dollar-sign": DollarSign,
   package: Package,
+  "shield-question": ShieldQuestionMark,
   // Custom icons (ForwardRefExoticComponent<SVGProps> — no double cast needed)
   mcp: McpIcon,
   daytona: DaytonaIcon,

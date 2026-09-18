@@ -46,7 +46,7 @@ fi
 echo ""
 
 # 1. Rust formatting
-echo "1/22 Rust formatting"
+echo "1/25 Rust formatting"
 if [ "$RUST_CHANGED" != "1" ]; then
   skip "no Rust changes"
 elif cargo fmt --check 2>/dev/null; then
@@ -56,7 +56,7 @@ else
 fi
 
 # 2. Clippy
-echo "2/22 Rust linting"
+echo "2/25 Rust linting"
 if [ "$RUST_CHANGED" != "1" ]; then
   skip "no Rust changes"
 elif cargo clippy --all-targets --all-features -- -D warnings 2>/dev/null; then
@@ -66,7 +66,7 @@ else
 fi
 
 # 3. Cargo.lock freshness
-echo "3/22 Cargo.lock freshness"
+echo "3/25 Cargo.lock freshness"
 if [ "$CARGO_GRAPH_CHANGED" != "1" ]; then
   skip "Cargo dependency graph unchanged"
 elif cargo fetch --locked 2>/dev/null; then
@@ -76,7 +76,7 @@ else
 fi
 
 # 4. UI formatting (skip if node_modules missing)
-echo "4/22 UI formatting"
+echo "4/25 UI formatting"
 if [ "$UI_CHANGED" != "1" ]; then
   skip "no UI changes"
 elif [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
@@ -90,7 +90,7 @@ else
 fi
 
 # 5. UI linting (skip if node_modules missing)
-echo "5/22 UI linting"
+echo "5/25 UI linting"
 if [ "$UI_CHANGED" != "1" ]; then
   skip "no UI changes"
 elif [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
@@ -104,7 +104,7 @@ else
 fi
 
 # 6. Migration ordering check
-echo "6/22 Migration ordering"
+echo "6/25 Migration ordering"
 if MIGRATION_ORDERING_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-migration-ordering.sh" 2>&1
 )"; then
@@ -115,7 +115,7 @@ else
 fi
 
 # 7. Migration immutability check
-echo "7/22 Migration immutability"
+echo "7/25 Migration immutability"
 if MIGRATION_IMMUTABILITY_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-migration-immutability.sh" 2>&1
 )"; then
@@ -126,7 +126,7 @@ else
 fi
 
 # 8. Server integration test enumeration
-echo "8/22 Server test enumeration"
+echo "8/25 Server test enumeration"
 if SERVER_TEST_ENUM_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-test-enumeration.sh" 2>&1
 )"; then
@@ -137,7 +137,7 @@ else
 fi
 
 # 9. Public everruns example inventory and compile check
-echo "9/22 Public everruns examples"
+echo "9/25 Public everruns examples"
 if EVERRUNS_EXAMPLES_OUTPUT="$(
   EVERRUNS_EXAMPLES_SKIP_COMPILE=1 bash "$PROJECT_ROOT/scripts/lib/check-everruns-examples.sh" 2>&1
 )"; then
@@ -152,7 +152,7 @@ else
 fi
 
 # 10. Knowledge bundle conformance
-echo "10/22 Knowledge bundle conformance"
+echo "10/25 Knowledge bundle conformance"
 if KNOWLEDGE_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/test-knowledge-okf.sh" 2>&1
 )"; then
@@ -163,7 +163,7 @@ else
 fi
 
 # 11. Published crate documentation contract
-echo "11/22 Published crate documentation"
+echo "11/25 Published crate documentation"
 if PUBLISHED_DOCS_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/test-published-crate-docs.sh" 2>&1
 )"; then
@@ -174,7 +174,7 @@ else
 fi
 
 # 12. Capability contract architecture guard (EVE-873)
-echo "12/22 Capability contract guard"
+echo "12/25 Capability contract guard"
 if CAPABILITY_CONTRACT_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-capability-contract.sh" 2>&1
 )"; then
@@ -185,7 +185,7 @@ else
 fi
 
 # 13. Test-support isolation guard (EVE-875)
-echo "13/22 Test-support isolation guard"
+echo "13/25 Test-support isolation guard"
 if TEST_SUPPORT_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-test-support-isolation.sh" 2>&1
 )"; then
@@ -196,7 +196,7 @@ else
 fi
 
 # 14. Observability isolation guard (EVE-876)
-echo "14/22 Observability isolation guard"
+echo "14/25 Observability isolation guard"
 if OBSERVABILITY_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-observability-isolation.sh" 2>&1
 )"; then
@@ -209,7 +209,7 @@ fi
 # 15. Agent-record isolation guard (EVE-877, EVE-881, EVE-882, EVE-878,
 #     EVE-879: Agent, Harness, Session, eval/observer/feature-management
 #     records, and connector/OAuth/email infrastructure)
-echo "15/22 Agent-record isolation guard"
+echo "15/25 Agent-record isolation guard"
 if AGENT_RECORD_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-agent-record-isolation.sh" 2>&1
 )"; then
@@ -220,7 +220,7 @@ else
 fi
 
 # 16. Provider isolation guard (EVE-874)
-echo "16/22 Provider isolation guard"
+echo "16/25 Provider isolation guard"
 if PROVIDER_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-provider-isolation.sh" 2>&1
 )"; then
@@ -230,8 +230,19 @@ else
   fail "provider isolation guard failed"
 fi
 
-# 17. Core kernel dependency guard (EVE-903)
-echo "17/22 Core kernel dependency guard"
+# 17. Integration catalog guard
+echo "17/25 Integration catalog guard"
+if INTEGRATION_CATALOG_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/lib/check-integration-catalog.sh" 2>&1
+)"; then
+  pass "$INTEGRATION_CATALOG_OUTPUT"
+else
+  printf '%s\n' "$INTEGRATION_CATALOG_OUTPUT" | sed 's/^/   /'
+  fail "integration catalog guard failed"
+fi
+
+# 18. Core kernel dependency guard (EVE-903)
+echo "18/25 Core kernel dependency guard"
 if CORE_KERNEL_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-core-kernel-dependencies.sh" 2>&1
 )"; then
@@ -241,8 +252,8 @@ else
   fail "core kernel dependency guard failed"
 fi
 
-# 18. Core public API/semver and documentation guard (EVE-906)
-echo "18/22 Core public API guard"
+# 19. Core public API/semver and documentation guard (EVE-906)
+echo "19/25 Core public API guard"
 if [ "$CORE_API_CHANGED" != "1" ]; then
   skip "core API surface unchanged"
 elif CORE_PUBLIC_API_OUTPUT="$(
@@ -254,8 +265,8 @@ else
   fail "core public API guard failed"
 fi
 
-# 19. Effectful environment capability isolation guard (EVE-883)
-echo "19/22 Environment capability isolation guard"
+# 20. Effectful environment capability isolation guard (EVE-883)
+echo "20/25 Environment capability isolation guard"
 if ENVIRONMENT_CAPABILITY_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-environment-capability-isolation.sh" 2>&1
 )"; then
@@ -265,8 +276,8 @@ else
   fail "environment capability isolation guard failed"
 fi
 
-# 20. Hosted-capability isolation guard (EVE-885)
-echo "20/22 Hosted-capability isolation guard"
+# 21. Hosted-capability isolation guard (EVE-885)
+echo "21/25 Hosted-capability isolation guard"
 if HOSTED_CAPABILITY_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-hosted-capability-isolation.sh" 2>&1
 )"; then
@@ -276,8 +287,8 @@ else
   fail "hosted-capability isolation guard failed"
 fi
 
-# 21. Portable policy built-ins isolation guard (EVE-884)
-echo "21/22 Portable built-ins isolation guard"
+# 22. Portable policy built-ins isolation guard (EVE-884)
+echo "22/25 Portable built-ins isolation guard"
 if PORTABLE_BUILTINS_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-portable-builtins-isolation.sh" 2>&1
 )"; then
@@ -287,8 +298,30 @@ else
   fail "portable built-ins isolation guard failed"
 fi
 
-# 22. Commit author attribution check
-echo "22/22 Commit author attribution"
+# 23. Source file size ratchet
+echo "23/25 Source file size ratchet"
+if FILE_SIZE_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/lib/check-file-size.sh" 2>&1
+)"; then
+  pass "$FILE_SIZE_OUTPUT"
+else
+  printf '%s\n' "$FILE_SIZE_OUTPUT" | sed 's/^/   /'
+  fail "source file size guard failed"
+fi
+
+# 24. Clippy lint floor membership
+echo "24/25 Clippy lint floor"
+if LINT_FLOOR_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/lib/check-lint-floor.sh" 2>&1
+)"; then
+  pass "$LINT_FLOOR_OUTPUT"
+else
+  printf '%s\n' "$LINT_FLOOR_OUTPUT" | sed 's/^/   /'
+  fail "clippy lint floor guard failed"
+fi
+
+# 25. Commit author attribution check
+echo "25/25 Commit author attribution"
 if ! resolve_commit_git_identity; then
   fail "commit identity invalid — fix git config or set GIT_USER_NAME/GIT_USER_EMAIL to a real user"
 elif OFFENDING_COMMIT="$(find_agent_like_outgoing_commit)"; then

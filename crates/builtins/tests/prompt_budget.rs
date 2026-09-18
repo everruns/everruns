@@ -1,7 +1,7 @@
 //! Prompt-size ratchets for portable policy capabilities.
 
 use everruns_builtins::{
-    BudgetingCapability, MessageMetadataCapability, SelfBudgetCapability,
+    BudgetingCapability, MessageMetadataCapability, SelfBudgetCapability, SoftApprovalCapability,
     StatelessTodoListCapability,
 };
 use everruns_core::{Capability, SystemPromptContext};
@@ -46,4 +46,11 @@ async fn budgeting_prompt_within_budget() {
 #[tokio::test]
 async fn self_budget_prompt_within_budget() {
     assert_contribution_under(&SelfBudgetCapability, 475).await;
+}
+
+/// Paid on every turn of every session that enables it, including the two
+/// default harnesses, so the block stays one screen of guidance.
+#[tokio::test]
+async fn soft_approval_prompt_within_budget() {
+    assert_contribution_under(&SoftApprovalCapability::new(), 1750).await;
 }

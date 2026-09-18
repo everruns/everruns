@@ -4,13 +4,12 @@ use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_platform::connector::ConnectorPlugin;
 
-// Force linker to include the integration crate's inventory submissions.
-use everruns_ard as _;
+use everruns_ard::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
-    registry.register_inventory_plugins(|plugin| {
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         (!plugin.experimental_only || grade.experimental_features_enabled())
             && plugin
                 .feature_flag
@@ -20,19 +19,19 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 #[test]
-fn capability_plugin_is_submitted() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+fn capability_plugin_is_published() {
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     assert!(
         plugins
             .iter()
             .any(|p| (p.factory)().id() == "resource_discovery"),
-        "resource_discovery IntegrationPlugin should be submitted via inventory"
+        "resource_discovery IntegrationPlugin should be published in CAPABILITY_PLUGINS"
     );
 }
 
 #[test]
 fn capability_is_experimental_dev_only() {
-    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let plugin = plugins
         .iter()
         .find(|p| (p.factory)().id() == "resource_discovery")
@@ -66,11 +65,11 @@ fn capability_metadata_and_tools() {
 
 #[test]
 fn connector_is_submitted_with_form_schema() {
-    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
+    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
     let plugin = plugins
         .iter()
         .find(|p| (p.factory)().provider_id() == "ard")
-        .expect("ard ConnectorPlugin should be submitted via inventory");
+        .expect("ard ConnectorPlugin should be published in CONNECTOR_PLUGINS");
     assert!(plugin.experimental_only);
     let provider = (plugin.factory)();
     let schema = provider.form_schema().expect("should have form schema");

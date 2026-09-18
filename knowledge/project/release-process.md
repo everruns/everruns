@@ -120,7 +120,7 @@ since recent cycles bumped everything regardless. All 41 packages are republishe
 each release; crates.io rate-limits this to roughly one publish per minute after
 an initial burst, which the dependency-ordered **Crate Release** workflow absorbs.
 
-**What single-versioning does not fix.** Two failure modes are orthogonal to
+**What single-versioning does not fix.** Three failure modes are orthogonal to
 version choice and keep their guards:
 
 - A published crate depending on a **private or registry-restricted** workspace
@@ -132,6 +132,21 @@ version choice and keep their guards:
   set makes it costlier, not cheaper. Confirm a new package name is publishable
   with the current `CARGO_REGISTRY_TOKEN` **before** merging the change that adds
   it; until then keep it `publish = false`.
+- A crate **joining the publish set between releases**. Crate Release plans by
+  crates.io presence, so a crate flipped off `publish = false` mid-cycle looks
+  unpublished at the current platform version and is dispatched at once. It
+  cannot succeed: its pins name that version, but the siblings already published
+  at it came from the older commit, so cargo's verification build compiles the
+  newcomer against stale dependency source. That is how
+  `everruns-integrations-typesafe` 0.28.0 failed after
+  [#3666](https://github.com/everruns/everruns/pull/3666) published it while
+  0.28.0 was already cut and `everruns-core` 0.28.0 on crates.io predated the
+  `ClassificationRequest::model` field it uses. The plan now defers a
+  never-published crate to the next platform version, where every crate
+  publishes from one commit again; `scripts/test-publish-crates-order.sh`
+  exercises that against a stubbed index. Nothing is published wrongly either
+  way, since the verification build fails closed, but the release run goes red
+  until the version moves.
 
 **Keep additive changes additive: `#[non_exhaustive]` on churn-prone public
 types.** The cascade argument for this is gone, but the downstream one is not.
@@ -145,8 +160,11 @@ The types carrying it are the ones with a demonstrated break, not every public
 type: see [`LlmErrorKind`](../../crates/provider/src/error.rs), the two
 [`ContentPart`](../../crates/core/src/message.rs) enums,
 [`CapabilityStatus`](../../crates/core/src/capability_types.rs),
-[`ModelCost`/`CostTier`](../../crates/model-profiles/src/types.rs), and
-[`LlmCallConfig`/`ProviderConfig`/`LlmCompletionMetadata`/`LlmStreamEvent`/`LlmContentPart`](../../crates/provider/src/driver_registry.rs).
+[`ModelCost`/`CostTier`](../../crates/model-profiles/src/types.rs),
+[`LlmCallConfig`/`ProviderConfig`/`LlmCompletionMetadata`/`LlmStreamEvent`/`LlmContentPart`](../../crates/provider/src/driver_registry.rs), and
+[`AgentAction`](../../crates/platform/src/audit.rs), which grows a variant whenever an
+audited agent action is added, and whose two soft-approval variants were classified breaking
+under the previous scheme for a change no consumer could observe.
 Two consequences are deliberate:
 
 - A `#[non_exhaustive]` **struct** cannot be built with a struct expression (or

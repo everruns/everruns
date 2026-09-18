@@ -960,6 +960,16 @@ Following the agentskills.io specification:
 - **Source**: `crates/builtins/src/tool_approval.rs`
 - **Behavior**: Classifies each call by the risk the tool *declares* through `ToolHints`. `destructive`/`open_world` decide first, so a tool cannot escape the gate by also declaring itself `readonly`; only a tool that declares `readonly` and neither risky hint counts as read-only; an un-annotated tool fails safe as mutating. `normal` asks before destructive/outward calls; `protective` asks before anything that is not read-only; `off` never asks. "Always" answers are remembered per (session, tool). A host that cannot be reached answers `Unavailable`, which blocks the call: the gate is only registered by hosts that can service a prompt, so an unreachable approver is a transport failure, and a gate that fails open is not a gate. Ported from yolop, where the ACP server backs the approver with the client's `session/request_permission`.
 
+#### SoftApproval
+
+- **ID**: `soft_approval`
+- **Purpose**: Asks the agent to pause for spoken consent before critical actions, batching safe work without interruption
+- **Status**: Registered and enabled by default on the `generic` and `platform-chat` harnesses at level `normal`
+- **Tools**: `request_approval` (the pause), `record_approval` (audit), `set_approval_mode` (level)
+- **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
+- **Source**: `crates/builtins/src/soft_approval.rs`
+- **Behavior**: Contributes a `<soft_approval>` system-prompt block resolved per turn, so a config edit or `set_approval_mode` applies on the next turn; `off` contributes nothing. The pause is the `request_approval` call, not prose, which gives hosts a `PendingApprovalStore` to render and the event log a record of what was asked. Shares the `ApprovalMode` vocabulary with `tool_approval`, and its tools declare themselves read-only so the hard gate never gates the act of asking. The tools record the turn and message a consent was spoken in but never the approver: `ApprovalAuditListener` resolves that server-side from the authenticated `input.message` initiator and writes `agent.approval.requested` / `agent.approval.granted` to the org audit log. Full rationale in [Soft Approval](soft-approval.md).
+
 #### ProgressGuard
 
 - **ID**: `progress_guard`
@@ -1143,9 +1153,9 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 3. Re-export the constant and implementation from the owning crate's public root.
 4. Add it to the owning crate's explicit registration function and each
    application preset that should expose it. Portable and product bundles must
-   not use link-time inventory or implicit registration. External integration
-   inventory remains appropriate only when linking that integration is itself
-   the opt-in. A runtime preset may include a capability only when its required
+   not use link-time inventory or implicit registration. External integrations
+   are named in `crates/integrations-catalog`, not discovered at link time.
+   A runtime preset may include a capability only when its required
     host services are present; hosted-only capabilities stay in product
     composition.
 5. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
@@ -1342,7 +1352,7 @@ Experimental capabilities are available in development environments only (`Deplo
 #### DockerContainer
 
 - **ID**: `docker_container` (Dev only, integration plugin)
-- **Crate**: `integrations/docker/` (auto-registered via `inventory`, force-linked, see [architecture.md](../foundations/architecture.md#integration-plugin-force-linking))
+- **Crate**: `integrations/docker/` (named in the integration catalog, see [architecture.md](../foundations/architecture.md#integration-catalog))
 - **Purpose**: Run commands and manage files in a session-scoped Docker container
 - **Tools**: `docker_exec`, `docker_read_file`, `docker_write_file`, `docker_logs`, `docker_stop`
 - **Container Lifecycle**: Lazily started on first use, persists for session, named `everruns-{session_id}`

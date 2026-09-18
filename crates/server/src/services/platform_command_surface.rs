@@ -464,16 +464,21 @@ mod tests {
         assert!(rendered.contains("list_agents"), "{rendered}");
     }
 
-    /// A command outside the declared tranche must not gain a spelling by
-    /// accident. Tree membership is opt-in precisely so internal plumbing
-    /// cannot leak into an agent-facing surface.
+    /// A command that declares no route still gets a spelling, derived from its
+    /// REST path and flat name.
+    ///
+    /// Membership used to be opt-in, and this asserted the opposite. It changed
+    /// deliberately: with no `discover` tool, findability is walking `--help`,
+    /// so a command reachable only by knowing its flat name already is not
+    /// reachable at all. The invariant that matters now is that the spelling
+    /// exists and the wire name still identifies the command.
     #[test]
-    fn discovery_omits_a_spelling_for_undeclared_commands() {
+    fn discovery_derives_a_spelling_for_undeclared_commands() {
         let text = discover_for_test(&json!({"query": "health_check"})).expect("discover");
         let value: Value = serde_json::from_str(&text).expect("json");
         let rendered = serde_json::to_string(&value).expect("re-encode");
         assert!(rendered.contains("health_check"), "{rendered}");
-        assert!(!rendered.contains("\"cli\""), "{rendered}");
+        assert!(rendered.contains("everruns system health"), "{rendered}");
     }
 
     #[test]

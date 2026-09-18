@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Session-scoped filesystem capability for Everruns agents.
 //!
 //! This crate adapts Everruns' neutral filesystem and tool contracts into the
@@ -1381,6 +1382,13 @@ impl ReadManyFilesTool {
         paths: &[String],
         context: &ToolContext,
     ) -> ToolExecutionResult {
+        // Hoisted out of the loop: the caller validated `arguments` as an object,
+        // but that invariant is not local to this function, so check it once here
+        // rather than panicking on it once per path.
+        let Some(base_arguments) = arguments.as_object() else {
+            return ToolExecutionResult::tool_error("Parameter `arguments` must be an object");
+        };
+
         let mut results = Vec::with_capacity(paths.len());
         let mut output_limit_reached = false;
 
@@ -1390,12 +1398,10 @@ impl ReadManyFilesTool {
                 continue;
             }
 
-            let mut single_arguments = arguments.clone();
-            let object = single_arguments
-                .as_object_mut()
-                .expect("validated read_many_files arguments are an object");
+            let mut object = base_arguments.clone();
             object.remove("paths");
             object.insert("path".to_string(), json!(path));
+            let single_arguments = Value::Object(object);
 
             let item = match ReadFileTool
                 .execute_with_context(single_arguments, context)
@@ -1951,9 +1957,9 @@ impl Tool for ListDirectoryTool {
                     "offset": offset,
                     "limit": limit
                 });
-                let bytes_returned = serde_json::to_string(&entries)
-                    .expect("list_directory entries always serialize")
-                    .len();
+                // Only used for the truncation report; a serialization failure here
+                // should not take down the call.
+                let bytes_returned = serde_json::to_string(&entries).map_or(0, |json| json.len());
                 let next_offset = offset.saturating_add(entries.len());
                 let truncation = if next_offset < total_count {
                     TruncationInfo::with_resume(

@@ -57,6 +57,7 @@ pub mod prompt_canary_guardrail;
 pub mod self_budget;
 pub mod skills;
 pub mod skills_scoped;
+pub mod soft_approval;
 pub mod stateless_todo_list;
 pub mod system_commands;
 pub mod tool_approval;
@@ -166,6 +167,10 @@ pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, Skills, SkillsCapability};
 pub use skills_scoped::{
     ScopedSkillsCapability, SkillDirResolver, SkillScope, SkillsConfig, VfsSkillDirResolver,
+};
+pub use soft_approval::{
+    ApprovalModeStore, PendingApproval, PendingApprovalStore, SOFT_APPROVAL_CAPABILITY_ID,
+    SessionApprovalModes, SoftApprovalCapability, render_approval_block,
 };
 pub use stateless_todo_list::{
     STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoList, StatelessTodoListCapability,
@@ -307,6 +312,7 @@ fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
         Arc::new(ToolCallRepairCapability),
         Arc::new(PromptCanaryGuardrailCapability),
         Arc::new(GuardrailsCapability),
+        Arc::new(SoftApprovalCapability::new()),
     ]
 }
 
@@ -314,7 +320,7 @@ fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 28] = [
+    const RUNTIME_IDS: [&str; 29] = [
         "human_intent",
         "infinity_context",
         "skills",
@@ -343,6 +349,7 @@ mod bundle_tests {
         "tool_call_repair",
         "prompt_canary_guardrail",
         "guardrails",
+        "soft_approval",
     ];
 
     fn portable_ids() -> Vec<&'static str> {

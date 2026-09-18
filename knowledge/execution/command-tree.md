@@ -39,9 +39,15 @@ not of help. A tree bounds every help response structurally.
 
 ## Required behavior
 
-1. **Membership is opt-in.** A command joins the tree only by declaring
-   `Command::cli()`, which defaults to `None`. Internal plumbing cannot become
-   an agent-facing command by being written.
+1. **Every routed command has exactly one spelling.** A declared
+   `Command::cli()` wins; a command that declares none derives one from the
+   REST path and the flat name's first token. Findability without a `discover`
+   tool is walking `--help`, which only works if the whole catalog is reachable
+   that way, so opting out would mean opting out of being found. Two guards
+   hold the invariant: a collision means the tree silently serves one of two
+   commands, and no spelling means unreachable. Test fixtures under `/test/`
+   are the one exclusion, because a derived surface would otherwise hand every
+   operator one.
 2. **The shape is declared, not inferred.** A route carries a `path` slice plus
    a `verb`, because flat names hide a hierarchy (`list_session_participants`
    is `sessions participants list`) and string surgery is wrong for exactly the

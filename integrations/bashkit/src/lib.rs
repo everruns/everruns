@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Sandboxed Bashkit shell capability for Everruns agents.
 //!
 //! The capability bridges Bashkit to the host's session filesystem, enforces
