@@ -24,7 +24,7 @@
 //!     ],
 //! }))
 //! .expect("a well-formed user message");
-//! assert!(message.is_parts(), "the image survives the conversion");
+//! assert!(message.content.is_parts(), "the image survives the conversion");
 //! ```
 
 use serde_json::{Map, Value, json};

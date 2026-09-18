@@ -252,8 +252,13 @@ impl std::fmt::Display for LlmError {
 /// Anthropic-style `error.type`. A body that is not JSON, or carries neither,
 /// yields `None` — this never guesses a code out of prose.
 pub(crate) fn provider_error_code_in(body: &str) -> Option<String> {
+    // THREAT[TM-DOS-038]: the body is provider-controlled and arrives from a
+    // failed request, where nothing upstream has bounded it. A body larger
+    // than any real error payload is not parsed at all, and the code taken
+    // out of one that is parsed is length-capped, so neither the parse nor
+    // the retained string is sized by the provider.
     let body = body.trim();
-    if !body.starts_with('{') {
+    if !body.starts_with('{') || body.len() > MAX_ERROR_BODY_PARSE_BYTES {
         return None;
     }
     let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
@@ -263,5 +268,18 @@ pub(crate) fn provider_error_code_in(body: &str) -> Option<String> {
         .and_then(|value| value.as_str())
         .or_else(|| error.get("type").and_then(|value| value.as_str()))?;
     let code = code.trim();
-    (!code.is_empty()).then(|| code.to_owned())
+    if code.is_empty() || code.len() > MAX_ERROR_CODE_BYTES {
+        return None;
+    }
+    Some(code.to_owned())
 }
+
+/// Largest error body parsed to recover a provider error code.
+///
+/// Real provider error payloads are a few hundred bytes; 64 KiB is far above
+/// any of them and far below a body worth spending a JSON parse on.
+const MAX_ERROR_BODY_PARSE_BYTES: usize = 64 * 1024;
+
+/// Largest provider error code retained. Real codes are short identifiers
+/// (`insufficient_quota`, `overloaded_error`); anything longer is not one.
+const MAX_ERROR_CODE_BYTES: usize = 128;

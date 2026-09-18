@@ -41,7 +41,7 @@
 2079 crates/platform/src/capabilities/agent_handoff.rs
 3832 crates/platform/src/capabilities/subagents.rs
 2037 crates/platform/src/session_sandbox.rs
-2588 crates/provider/src/driver_registry.rs
+2572 crates/provider/src/driver_registry.rs
 2073 crates/provider/src/openai_protocol.rs
 1535 crates/provider/src/openresponses_types.rs
 2933 crates/server/src/api/ag_ui.rs

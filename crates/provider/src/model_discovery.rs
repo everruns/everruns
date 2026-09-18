@@ -13,11 +13,42 @@
 
 #[cfg(feature = "http")]
 use crate::driver_helpers::shared_request_http_client;
-use crate::driver_registry::{DiscoveredModel, DriverId, DriverRegistry, ProviderConfig};
+use chrono::{DateTime, Utc};
+
+use crate::driver_registry::{DriverId, DriverRegistry, ProviderConfig};
 #[cfg(feature = "http")]
 use crate::error::AgentLoopError;
 use crate::error::Result;
 use crate::model_profiles::get_model_profile;
+
+/// Model information discovered from a provider's list_models API
+///
+/// Represents a model available from a provider. Used for dynamic model discovery
+/// to sync available models from provider APIs into the database.
+///
+/// The `discovered_profile` field carries structured capability/limit metadata
+/// parsed from the provider's API response (e.g., Anthropic's capabilities object).
+/// During model sync, this profile is merged with hardcoded profiles: hardcoded
+/// values take precedence (they include cost data not available from APIs),
+/// but discovered data fills gaps for models without hardcoded profiles.
+#[derive(Debug, Clone)]
+pub struct DiscoveredModel {
+    /// Model identifier (e.g., "gpt-5.2", "claude-opus-4-5-20251101")
+    pub model_id: String,
+    /// Human-readable display name (if provided by API)
+    pub display_name: Option<String>,
+    /// When the model was created/released
+    pub created_at: Option<DateTime<Utc>>,
+    /// Owner or organization (e.g., "openai", "system")
+    pub owned_by: Option<String>,
+    /// Service capabilities advertised for this concrete model (for example,
+    /// `chat` or `embeddings`). These are distinct from provider-level
+    /// services: an OpenAI provider supports both, but each model does not.
+    pub capabilities: Vec<String>,
+    /// Structured profile built from provider API metadata (capabilities, limits).
+    /// Populated by drivers that return rich model metadata (e.g., Anthropic /v1/models).
+    pub discovered_profile: Option<crate::model::ModelProfile>,
+}
 
 /// One model offered by a provider, ready for display: the bare id plus
 /// human-readable metadata merged from the provider's API response and the

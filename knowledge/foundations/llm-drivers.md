@@ -100,6 +100,17 @@ Drivers MUST use the following error types from `AgentLoopError`:
    - Drivers MUST detect provider-specific error responses and convert to this type
    - Example: `AgentLoopError::request_too_large("OpenAI API error (429): Request too large...")`
 
+3. **`Llm` with transport detail preserved** - An HTTP driver MUST build its
+   terminal failure with `AgentLoopError::llm_http` (or `llm_http_kind` when
+   the driver's protocol extension classifies more precisely). These classify
+   *and* record the HTTP status, the provider's own error code, and any
+   requested retry delay on `LlmError`, at the boundary where the response is
+   still structured. Anything downstream that re-expresses the failure — an
+   HTTP API in front of Everruns, a retry budget of its own — then reads those
+   fields instead of scraping the display string, which is not a contract.
+   `AgentLoopError::http_status()` also answers for the semantic variants
+   (`ModelNotAvailable` is 404, `RequestTooLarge` is 413).
+
 ### Error Detection Requirements
 
 Each driver MUST implement provider-specific error detection to classify context-length and token-limit errors as `RequestTooLarge`. See the individual driver crates for the detection logic:
@@ -341,6 +352,32 @@ disjoint (drivers normalize inclusive providers at the boundary; see
 - `finish_reason`: Why generation stopped
 - `response_id`: Provider generation id (Anthropic message id, OpenAI response id)
 - `cache_diagnostics`: Provider prompt-cache diagnostics, verbatim, when requested
+- `reasoning_tokens`: Reasoning tokens billed *inside* `completion_tokens`, not
+  additive to them, when the provider reports the breakdown
+- `request_body`: The driver's serialized request body, only when the call set
+  `LlmCallConfig::capture_request`. See TM-LLM-039: it carries the whole prompt,
+  so it is off by default and never enabled on a caller's behalf
+
+### Turn Collection and Per-Call Limits
+
+Folding a provider stream into one finished turn is one shared loop,
+`turn_collector::collect_turn` ([source](../../crates/provider/src/turn_collector.rs)),
+not a per-driver or per-embedder reimplementation. The `ChatDriver`
+non-streaming default runs through it, so an agent turn and a direct call fold
+identically.
+
+The contract that matters:
+
+- reasoning is folded from `ReasoningItem` events only; `ReasoningDelta` is live
+  progress that repeats the same text, so folding both would double it;
+- a stream that ends without its terminal `Done` is reported on
+  `CollectedTurn::complete` rather than silently passing for a whole turn — its
+  metadata is a default, not the provider's answer. Callers that need usage and
+  a finish reason to be real set `TurnLimits::require_terminal_event`;
+- `TurnLimits` on `LlmCallConfig::limits` bound the turn (whole-turn timeout,
+  first-event timeout, accumulated-byte cap). Unbounded by default so no driver
+  changes behavior; `limit_stream` applies the same bounds for callers that
+  consume events themselves. See TM-DOS-039.
 
 ### Realtime Voice Driver
 
@@ -494,6 +531,24 @@ standalone, crates.io-publishable provider crate that wraps the shared
 `DriverId::Mai`. Model ids resolve
 to the Microsoft-vendor profiles in `crates/model-profiles/src/profiles.rs` (the
 `MICROSOFT_MAI` surface).
+
+### Catalog Fallback for Unrecognized Endpoints
+
+A driver returns `Ok(None)` for an endpoint it does not recognize, which
+covers every proxy, gateway and self-hosted server. Most of those do serve
+`GET <base>/models`, so the OpenAI drivers fall back to
+`model_discovery::list_openai_compatible_models_best_effort` rather than
+reporting no catalog for an endpoint that has one. The fallback is
+best-effort by design: the caller asked *whether* a catalog exists, and for an
+endpoint nobody promised one for, "no" is the answer rather than an error. It
+reuses the same `validate_safe_url` and shared-client path as the primary
+listing, so the SSRF posture is unchanged (TM-API-013).
+
+Enrichment keeps the capability metadata: `DiscoveredProviderModel::profile`
+carries the curated registry profile merged with whatever the provider's API
+reported, so a model the registry has never heard of still arrives with the
+limits its provider advertises. Curation wins where both speak, because it
+holds what an API never returns (prices, knowledge cutoff).
 
 ### Model Discovery
 

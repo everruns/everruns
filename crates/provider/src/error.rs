@@ -1383,6 +1383,27 @@ mod tests {
     }
 
     #[test]
+    fn a_provider_sized_error_body_is_not_parsed_and_a_long_code_is_not_kept() {
+        // TM-DOS-038: the body is provider-controlled and nothing upstream
+        // bounds it, so neither the parse nor the retained string may be
+        // sized by the provider.
+        let padding = "x".repeat(70 * 1024);
+        let huge = format!(r#"{{"error":{{"code":"rate_limit","pad":"{padding}"}}}}"#);
+        let error = AgentLoopError::llm_http(429, &huge, "provider refused");
+        assert_eq!(error.provider_error_code(), None);
+        // The status still classifies it, so nothing is lost but the code.
+        assert!(error.is_rate_limited());
+
+        let long_code = "c".repeat(200);
+        let body = format!(r#"{{"error":{{"code":"{long_code}"}}}}"#);
+        assert_eq!(
+            AgentLoopError::llm_http(400, &body, "boom").provider_error_code(),
+            None,
+            "a code longer than any real one is not a code"
+        );
+    }
+
+    #[test]
     fn a_non_json_body_yields_no_provider_code() {
         let error = AgentLoopError::llm_http(503, "upstream is down", "boom");
         assert_eq!(error.http_status(), Some(503));

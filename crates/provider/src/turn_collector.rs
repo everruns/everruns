@@ -405,19 +405,86 @@ fn check_cap(accumulated: u64, limits: &TurnLimits) -> Result<()> {
 /// may well complete on a retry.
 fn timed_out(limits: &TurnLimits, before_first_event: bool, started: Instant) -> AgentLoopError {
     let elapsed = started.elapsed();
-    let message = if before_first_event && limits.first_event.is_some_and(|first| elapsed >= first)
-    {
-        format!(
-            "provider sent no response within {:?}",
-            limits.first_event.unwrap_or(elapsed)
-        )
+    if before_first_event && limits.first_event.is_some_and(|first| elapsed >= first) {
+        first_event_timeout(limits.first_event.unwrap_or(elapsed))
     } else {
-        format!(
-            "provider turn did not finish within {:?}",
-            limits.total.unwrap_or(elapsed)
-        )
+        turn_timeout(limits.total.unwrap_or(elapsed))
+    }
+}
+
+/// The failure for a turn that ran out of its whole-turn budget.
+///
+/// Public so the request phase — establishing the stream, before any event
+/// exists to collect — can fail the same way the fold does. A caller that hit
+/// its own limit should not be able to tell which half of the call was slow
+/// from the error's shape.
+pub fn turn_timeout(after: Duration) -> AgentLoopError {
+    AgentLoopError::llm_kind(
+        LlmErrorKind::Unavailable,
+        format!("provider turn did not finish within {after:?}"),
+    )
+}
+
+/// The failure for a provider that never started answering.
+pub fn first_event_timeout(after: Duration) -> AgentLoopError {
+    AgentLoopError::llm_kind(
+        LlmErrorKind::Unavailable,
+        format!("provider sent no response within {after:?}"),
+    )
+}
+
+/// Run the request phase under the call's time limits.
+///
+/// [`collect_turn`] can only start its clock once a stream exists, but
+/// establishing that stream is itself a provider round trip that can hang —
+/// and a provider that never sends its response headers is exactly the case
+/// the limits are for. Drivers and provider wrappers put the connect phase
+/// through this so the budget covers the whole call, not just its tail.
+///
+/// The tighter of the two time limits applies: whichever of the whole-turn and
+/// first-event budgets would elapse first. Returns the elapsed time alongside
+/// the value so the caller can charge it against the remaining budget.
+pub async fn connect_within<T, F>(
+    limits: &TurnLimits,
+    future: F,
+) -> Result<(T, std::time::Duration)>
+where
+    F: std::future::Future<Output = Result<T>>,
+{
+    let budget = match (limits.total, limits.first_event) {
+        (Some(total), Some(first)) => Some(total.min(first)),
+        (total, first) => total.or(first),
     };
-    AgentLoopError::llm_kind(LlmErrorKind::Unavailable, message)
+    let started = Instant::now();
+    let value = match budget {
+        Some(budget) => match tokio::time::timeout(budget, future).await {
+            Ok(value) => value?,
+            Err(_) => {
+                return Err(if limits.first_event == Some(budget) {
+                    first_event_timeout(budget)
+                } else {
+                    turn_timeout(budget)
+                });
+            }
+        },
+        None => future.await?,
+    };
+    Ok((value, started.elapsed()))
+}
+
+impl TurnLimits {
+    /// The same limits with `spent` already charged against the time budgets.
+    ///
+    /// Used after [`connect_within`] so the fold inherits what is left rather
+    /// than restarting the clock and letting a call take twice its budget.
+    #[must_use]
+    pub fn after(mut self, spent: std::time::Duration) -> Self {
+        // A budget already spent becomes zero, not a wrap-around to a huge
+        // one: an overrun must fail on the next poll, not disable the limit.
+        self.total = self.total.map(|total| total.saturating_sub(spent));
+        self.first_event = self.first_event.map(|first| first.saturating_sub(spent));
+        self
+    }
 }
 
 #[cfg(test)]

@@ -19,7 +19,6 @@ use crate::credential_schema::CredentialFormSchema;
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -179,34 +178,9 @@ pub enum LlmStreamEvent {
     Error(LlmStreamError),
 }
 
-/// Model information discovered from a provider's list_models API
-///
-/// Represents a model available from a provider. Used for dynamic model discovery
-/// to sync available models from provider APIs into the database.
-///
-/// The `discovered_profile` field carries structured capability/limit metadata
-/// parsed from the provider's API response (e.g., Anthropic's capabilities object).
-/// During model sync, this profile is merged with hardcoded profiles: hardcoded
-/// values take precedence (they include cost data not available from APIs),
-/// but discovered data fills gaps for models without hardcoded profiles.
-#[derive(Debug, Clone)]
-pub struct DiscoveredModel {
-    /// Model identifier (e.g., "gpt-5.2", "claude-opus-4-5-20251101")
-    pub model_id: String,
-    /// Human-readable display name (if provided by API)
-    pub display_name: Option<String>,
-    /// When the model was created/released
-    pub created_at: Option<DateTime<Utc>>,
-    /// Owner or organization (e.g., "openai", "system")
-    pub owned_by: Option<String>,
-    /// Service capabilities advertised for this concrete model (for example,
-    /// `chat` or `embeddings`). These are distinct from provider-level
-    /// services: an OpenAI provider supports both, but each model does not.
-    pub capabilities: Vec<String>,
-    /// Structured profile built from provider API metadata (capabilities, limits).
-    /// Populated by drivers that return rich model metadata (e.g., Anthropic /v1/models).
-    pub discovered_profile: Option<crate::model::ModelProfile>,
-}
+// `DiscoveredModel` is the discovery module's own type; it lives there and is
+// re-exported here so every existing path keeps working.
+pub use crate::model_discovery::DiscoveredModel;
 
 /// Metadata about LLM completion
 ///
@@ -339,13 +313,21 @@ pub trait ChatDriver: Send + Sync {
         // One folding loop for the whole runtime: the same rules (and the
         // same `config.limits`) apply whether a caller collects the stream
         // itself or takes the non-streaming path.
+        //
+        // The connect phase is inside the budget too. It is a provider round
+        // trip that can hang before any event exists to collect, so bounding
+        // only the fold would leave the whole point of the limit unbounded.
         let limits = config.limits;
-        let stream = self
-            .chat_completion_stream(endpoint, messages, config)
-            .await?;
-        Ok(crate::turn_collector::collect_turn(stream, &limits, |_| {})
-            .await?
-            .into_response())
+        let (stream, spent) = crate::turn_collector::connect_within(
+            &limits,
+            self.chat_completion_stream(endpoint, messages, config),
+        )
+        .await?;
+        Ok(
+            crate::turn_collector::collect_turn(stream, &limits.after(spent), |_| {})
+                .await?
+                .into_response(),
+        )
     }
 
     /// Whether this driver can complete without SSE on the wire.
@@ -708,9 +690,11 @@ pub struct LlmCallConfig {
     /// show or store what was actually asked cannot reconstruct it and ends up
     /// fabricating an approximation. This hands over the real thing.
     ///
-    /// The body carries the whole prompt, so turning it on is a deliberate
-    /// choice about where that prompt may be written. Credentials are never
-    /// part of it: authentication travels in headers, which are not captured.
+    /// THREAT[TM-LLM-039]: the body carries the whole prompt, so turning this
+    /// on is a deliberate choice about where that prompt may be written — off
+    /// by default, and never enabled by the runtime on a caller's behalf.
+    /// Credentials are not part of it: authentication travels in headers,
+    /// which are not serialized into the body.
     pub capture_request: bool,
     /// Bounds on how long this call may run and how much it may return.
     ///
