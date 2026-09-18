@@ -152,9 +152,18 @@ where
         async move {
             let mut out: Vec<(usize, R)> = Vec::with_capacity(group.len());
             for idx in group {
-                // `ok()`: this semaphore is local and never closed, and
-                // losing the cap beats panicking mid-batch if it ever were.
-                let permit = semaphore.acquire().await.ok();
+                // Unreachable: the semaphore is created above and never
+                // closed. Kept as a panic because both alternatives are worse
+                // than a loud failure — running unbounded drops the TM-DOS-015
+                // cap, and skipping the call silently loses a tool result.
+                #[expect(
+                    clippy::expect_used,
+                    reason = "TM-DOS-015: fail closed rather than lose the concurrency bound"
+                )]
+                let permit = semaphore
+                    .acquire()
+                    .await
+                    .expect("tool scheduler semaphore is never closed");
                 let result = run(idx).await;
                 drop(permit);
                 out.push((idx, result));

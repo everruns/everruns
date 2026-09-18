@@ -102,6 +102,11 @@ repository = "https://github.com/everruns/everruns"
 # Test code is exempt per opted-in target root, via
 # `#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]`.
 # A panic in a test is a failing test; a panic in production is an outage.
+# A site that genuinely cannot fail, and whose only non-panicking fallback
+# would silently weaken a bound or a persisted config, keeps the panic behind
+# `#[expect(clippy::expect_used, reason = "…")]` with the invariant stated. The
+# attribute self-cleans: it warns once the lint stops firing there. This is the
+# only sanctioned way past the floor — reach for a real fix first.
 unwrap_used = "deny"
 expect_used = "deny"
 

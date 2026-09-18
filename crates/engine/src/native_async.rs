@@ -217,9 +217,17 @@ impl NativeAsyncCoordinator {
                 Some(lock) => Some(lock.lock_owned().await),
                 None => None,
             };
-            // `ok()`: the coordinator owns these permits and never closes
-            // them; losing the cap beats panicking inside a spawned job.
-            let _permit = permits.acquire().await.ok();
+            // Unreachable: the coordinator owns these permits and never
+            // closes them. Kept as a panic so a closed semaphore cannot
+            // silently lift the native-tool concurrency cap.
+            #[expect(
+                clippy::expect_used,
+                reason = "fail closed rather than lose the concurrency bound"
+            )]
+            let _permit = permits
+                .acquire()
+                .await
+                .expect("coordinator never closes permits");
             let id = call.id().to_owned();
             (id, executor.execute(call).await)
         });

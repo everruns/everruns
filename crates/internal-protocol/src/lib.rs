@@ -521,15 +521,20 @@ pub fn schema_agent_to_proto(value: &everruns_platform::Agent) -> proto::Agent {
         display_name: value.display_name.clone(),
         parallel_tool_calls: value.parallel_tool_calls,
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
-        // All-or-nothing: the reverse conversion rebuilds configs from
-        // `capability_ids` when this list is empty, so a partial list would
-        // silently drop a capability instead.
+        // Unreachable: `CapabilityRef` is a String plus a `serde_json::Value`,
+        // neither of which can fail to serialize. Kept as a panic because an
+        // empty list makes the reverse conversion rebuild configs from
+        // `capability_ids` with `config: {}`, silently replacing a per-agent
+        // capability config with the default.
+        #[expect(
+            clippy::expect_used,
+            reason = "fail closed rather than downgrade a capability config on the wire"
+        )]
         capabilities: value
             .capabilities
             .iter()
-            .map(serde_json::to_string)
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap_or_default(),
+            .map(|config| serde_json::to_string(config).expect("capability config serializes"))
+            .collect(),
     }
 }
 
@@ -558,15 +563,20 @@ pub fn schema_harness_to_proto(value: &everruns_platform::Harness) -> proto::Har
             .map(|id| uuid_to_proto_uuid(id.uuid())),
         is_built_in: value.is_built_in,
         display_name: value.display_name.clone(),
-        // All-or-nothing: the reverse conversion rebuilds configs from
-        // `capability_ids` when this list is empty, so a partial list would
-        // silently drop a capability instead.
+        // Unreachable: `CapabilityRef` is a String plus a `serde_json::Value`,
+        // neither of which can fail to serialize. Kept as a panic because an
+        // empty list makes the reverse conversion rebuild configs from
+        // `capability_ids` with `config: {}`, silently replacing a per-agent
+        // capability config with the default.
+        #[expect(
+            clippy::expect_used,
+            reason = "fail closed rather than downgrade a capability config on the wire"
+        )]
         capabilities: value
             .capabilities
             .iter()
-            .map(serde_json::to_string)
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap_or_default(),
+            .map(|config| serde_json::to_string(config).expect("capability config serializes"))
+            .collect(),
     }
 }
 
