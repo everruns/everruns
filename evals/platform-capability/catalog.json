@@ -1869,12 +1869,17 @@
           "type": "string"
         },
         "CreateAgentEndpointRequest": {
+          "description": "Request to create an ingress endpoint owned by an Agent.",
           "properties": {
-            "channel_config": {},
+            "channel_config": {
+              "description": "Transport-specific endpoint configuration."
+            },
             "channel_type": {
-              "$ref": "#/$defs/ChannelType"
+              "$ref": "#/$defs/ChannelType",
+              "description": "Transport used by the endpoint."
             },
             "enabled": {
+              "description": "Whether the endpoint can accept ingress traffic.",
               "type": "boolean"
             }
           },
@@ -15437,9 +15442,13 @@
     "input_schema": {
       "$defs": {
         "UpdateAgentEndpointRequest": {
+          "description": "Request to update an ingress endpoint owned by an Agent.",
           "properties": {
-            "channel_config": {},
+            "channel_config": {
+              "description": "Replacement transport-specific endpoint configuration."
+            },
             "enabled": {
+              "description": "Whether the endpoint can accept ingress traffic.",
               "type": [
                 "boolean",
                 "null"

@@ -660,7 +660,8 @@
         "field": "channel_config",
         "long": "channel-config",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "Transport-specific endpoint configuration."
       },
       {
         "field": "channel_type",
@@ -683,7 +684,8 @@
         "field": "enabled",
         "long": "enabled",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Whether the endpoint can accept ingress traffic."
       }
     ]
   },
@@ -852,13 +854,15 @@
         "field": "channel_config",
         "long": "channel-config",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "Replacement transport-specific endpoint configuration."
       },
       {
         "field": "enabled",
         "long": "enabled",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Whether the endpoint can accept ingress traffic."
       },
       {
         "field": "endpoint_id",
