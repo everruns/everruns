@@ -6,6 +6,7 @@
 // Decision: Remaining top-level services are cross-cutting infra helpers only
 // Decision: Split into submodules for maintainability (EVE-101).
 
+mod worker;
 mod worker_service_impl;
 
 #[cfg(test)]
