@@ -261,6 +261,45 @@ pub enum SseConnectionRejection {
     OrgLimitReached,
 }
 
+impl SseConnectionRejection {
+    /// Whether this rejection is a capacity signal an operator should see.
+    ///
+    /// A per-session rejection is one client opening more streams for one
+    /// conversation than it is allowed — a reconnect storm or a tab left
+    /// duplicating itself. It is client-driven, self-limiting, and already
+    /// answered with a 429, so it is backpressure rather than a fault: the same
+    /// reading `slack_delivery` applies to a Slack rate limit. Reporting it at
+    /// `warn` filled the error tracker with 86 occurrences affecting no users
+    /// (EVERRUNS-1M).
+    ///
+    /// The org and global limits are different in kind. One means a tenant has
+    /// exhausted its budget, the other that the node is saturated; both are
+    /// facts about capacity that nothing else in the request path reports.
+    pub fn is_capacity_signal(&self) -> bool {
+        match self {
+            Self::SessionLimitReached => false,
+            Self::OrgLimitReached | Self::GlobalLimitReached => true,
+        }
+    }
+
+    /// Record a rejection at the severity its kind deserves, and return the
+    /// message to send the client.
+    ///
+    /// One call rather than a log statement beside a `to_string()` so a surface
+    /// cannot render the 429 while forgetting to record it. Every SSE surface
+    /// funnels through here, so the four of them cannot drift apart again:
+    /// before this existed two logged at `warn` and two logged nothing at all.
+    #[must_use]
+    pub fn report(&self, surface: &str, org_id: i64, subject: &dyn std::fmt::Display) -> String {
+        if self.is_capacity_signal() {
+            tracing::warn!(surface, org_id, subject = %subject, reason = %self, "SSE connection rejected");
+        } else {
+            tracing::debug!(surface, org_id, subject = %subject, reason = %self, "SSE connection rejected");
+        }
+        self.to_string()
+    }
+}
+
 impl std::fmt::Display for SseConnectionRejection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -869,6 +908,46 @@ mod tests {
         unsafe {
             std::env::remove_var("EXPECTED_INSTANCES");
         }
+    }
+
+    /// EVERRUNS-1M: a per-session rejection is client-driven backpressure that
+    /// the 429 already answers, so it must not reach the error tracker. The org
+    /// and global limits say something about capacity that nothing else in the
+    /// request path reports, so they must.
+    #[test]
+    fn only_capacity_limits_are_operator_visible() {
+        assert!(
+            !SseConnectionRejection::SessionLimitReached.is_capacity_signal(),
+            "a reconnect storm on one session is not an operator signal"
+        );
+        assert!(
+            SseConnectionRejection::OrgLimitReached.is_capacity_signal(),
+            "a tenant exhausting its budget is an operator signal"
+        );
+        assert!(
+            SseConnectionRejection::GlobalLimitReached.is_capacity_signal(),
+            "a saturated node is an operator signal"
+        );
+    }
+
+    /// The per-session limit is the one a client actually trips, so pin that
+    /// the rejection it produces is the non-signalling one.
+    #[test]
+    fn exhausting_one_sessions_streams_is_not_an_operator_signal() {
+        let tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits {
+            global_max: 100,
+            per_org_max: 100,
+            per_session_max: 1,
+        }));
+        let session = uuid::Uuid::new_v4();
+        let _held = tracker.try_acquire(1, session).expect("first stream");
+
+        let rejection = tracker
+            .try_acquire(1, session)
+            .expect_err("the second stream is over the per-session limit");
+
+        assert_eq!(rejection, SseConnectionRejection::SessionLimitReached);
+        assert!(!rejection.is_capacity_signal());
     }
 
     #[test]
