@@ -17,8 +17,11 @@ overrides:
 
 patchedDependencies:
   starlight-llms-txt@0.11.0:
-    hash: 65ef2e3862fa28a7ba284edab7e11d73f583c2e8bb5d8017df765f1a29a37da2
+    hash: 53834c0eab77784a3fa910dd0cc64377a2c67d64439f2c4968935c8222831d87
     path: patches/starlight-llms-txt@0.11.0.patch
+  starlight-openapi@0.26.2:
+    hash: e97b9cc0d542e964eac8827d3f46c61ded058010c1351416bf42bca353ea8677
+    path: patches/starlight-openapi@0.26.2.patch
 
 importers:
 
@@ -56,10 +59,10 @@ importers:
         version: 0.25.3(@astrojs/starlight@0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3))(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))
       starlight-llms-txt:
         specifier: ^0.11.0
-        version: 0.11.0(patch_hash=65ef2e3862fa28a7ba284edab7e11d73f583c2e8bb5d8017df765f1a29a37da2)(@astrojs/markdown-satteri@0.4.1)(@astrojs/starlight@0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3))(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))
+        version: 0.11.0(patch_hash=53834c0eab77784a3fa910dd0cc64377a2c67d64439f2c4968935c8222831d87)(@astrojs/markdown-satteri@0.4.1)(@astrojs/starlight@0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3))(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))
       starlight-openapi:
         specifier: ^0.26.2
-        version: 0.26.2(@astrojs/markdown-satteri@0.4.1)(@astrojs/starlight@0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3))(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(openapi-types@12.1.3)
+        version: 0.26.2(patch_hash=e97b9cc0d542e964eac8827d3f46c61ded058010c1351416bf42bca353ea8677)(@astrojs/markdown-satteri@0.4.1)(@astrojs/starlight@0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3))(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(openapi-types@12.1.3)
       starlight-sidebar-topics:
         specifier: ^0.8.0
         version: 0.8.0(@astrojs/starlight@0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3))
@@ -5511,7 +5514,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  starlight-llms-txt@0.11.0(patch_hash=65ef2e3862fa28a7ba284edab7e11d73f583c2e8bb5d8017df765f1a29a37da2)(@astrojs/markdown-satteri@0.4.1)(@astrojs/starlight@0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3))(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4)):
+  starlight-llms-txt@0.11.0(patch_hash=53834c0eab77784a3fa910dd0cc64377a2c67d64439f2c4968935c8222831d87)(@astrojs/markdown-satteri@0.4.1)(@astrojs/starlight@0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3))(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4)):
     dependencies:
       '@astrojs/mdx': 6.0.2(@astrojs/markdown-satteri@0.4.1)(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))
       '@astrojs/starlight': 0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3)
@@ -5531,7 +5534,7 @@ snapshots:
       - '@astrojs/markdown-satteri'
       - supports-color
 
-  starlight-openapi@0.26.2(@astrojs/markdown-satteri@0.4.1)(@astrojs/starlight@0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3))(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(openapi-types@12.1.3):
+  starlight-openapi@0.26.2(patch_hash=e97b9cc0d542e964eac8827d3f46c61ded058010c1351416bf42bca353ea8677)(@astrojs/markdown-satteri@0.4.1)(@astrojs/starlight@0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3))(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(openapi-types@12.1.3):
     dependencies:
       '@astrojs/markdown-satteri': 0.4.1
       '@astrojs/starlight': 0.41.7(astro@7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(yaml@2.8.4))(typescript@6.0.3)

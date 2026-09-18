@@ -218,3 +218,84 @@ index 47fce20aadc36d3d23992007e023e35c6204e02b..bf431108ca1608a9fe724ff0023f97e6
  	/**
  	 * String used to separate pages in the generated text.
  	 * @default "\n\n"
+diff --git a/entryToSimpleMarkdown.ts b/entryToSimpleMarkdown.ts
+index 5c0fa90..e070c31 100644
+--- a/entryToSimpleMarkdown.ts
++++ b/entryToSimpleMarkdown.ts
+@@ -58,0 +59,9 @@ const htmlToMarkdownPipeline = unified()
++	.use(function selectPageContent() {
++		return (tree, file) => {
++			const selector = file.data.starlightLlmsTxt.contentSelector;
++			if (!selector) return;
++			const content = select(selector, tree as Parameters<typeof select>[1]);
++			if (!content) throw new Error(`Page content not found for selector: ${selector}`);
++			tree.children = [content];
++		};
++	})
+@@ -242,0 +252,19 @@ const htmlToMarkdownPipeline = unified()
++/** Converts rendered HTML to the same Markdown format as content collection entries. */
++export async function htmlToSimpleMarkdown(
++	html: string,
++	context: APIContext,
++	contentSelector?: string,
++): Promise<string> {
++	const file = await htmlToMarkdownPipeline.process({
++		value: html,
++		data: {
++			starlightLlmsTxt: {
++				contentSelector,
++				minify: false,
++				site: context.site?.href,
++			},
++		},
++	});
++	return String(file).trim();
++}
++
+diff --git a/env.d.ts b/env.d.ts
+index 1fb6820..cc9956b 100644
+--- a/env.d.ts
++++ b/env.d.ts
+@@ -9,0 +10 @@ declare module 'vfile' {
++			contentSelector?: string;
+diff --git a/generator.ts b/generator.ts
+index f237a20..e547d14 100644
+--- a/generator.ts
++++ b/generator.ts
+@@ -2 +2 @@ import type { APIContext } from 'astro';
+-import { getCollection } from 'astro:content';
++import { getCollection, type CollectionEntry } from 'astro:content';
+@@ -23,0 +24,15 @@ function pageUrl(id: string, context: APIContext): string | undefined {
++/** Generates the Markdown representation of one documentation page. */
++export async function generatePageMarkdown(
++	doc: CollectionEntry<'docs'>,
++	context: APIContext,
++	minify = false,
++): Promise<string> {
++	const segments = [`# ${doc.data.hero?.title || doc.data.title}`];
++	const description = doc.data.hero?.tagline || doc.data.description;
++	if (description) segments.push(`> ${description}`);
++	const url = pageUrl(doc.id, context);
++	if (url) segments.push(`Source: <${url}>`);
++	segments.push(await entryToSimpleMarkdown(doc, context, minify));
++	return segments.join('\n\n');
++}
++
+@@ -69,7 +84 @@ export async function generateLlmsTxt(
+-		const docSegments = [`# ${doc.data.hero?.title || doc.data.title}`];
+-		const description = doc.data.hero?.tagline || doc.data.description;
+-		if (description) docSegments.push(`> ${description}`);
+-		const url = pageUrl(doc.id, context);
+-		if (url) docSegments.push(`Source: <${url}>`);
+-		docSegments.push(await entryToSimpleMarkdown(doc, context, minify));
+-		segments.push(docSegments.join('\n\n'));
++		segments.push(await generatePageMarkdown(doc, context, minify));
+diff --git a/package.json b/package.json
+index 98be247..95a431c 100644
+--- a/package.json
++++ b/package.json
+@@ -9 +9,3 @@
+-    ".": "./index.ts"
++    ".": "./index.ts",
++    "./entry-to-simple-markdown": "./entryToSimpleMarkdown.ts",
++    "./generator": "./generator.ts"

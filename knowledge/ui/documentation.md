@@ -363,14 +363,16 @@ without the site next to it.
    the better machine-readable form — so the schema must actually be served, at
    `/api/openapi.json` (`apps/docs/scripts/copy-openapi.mjs`)
 6. `robots.txt` must allow the AI crawlers that respect it
-7. `apps/docs/scripts/verify-llms.mjs` enforces all of the above at postbuild,
-   including that each `Source:` URL resolves to a built page
-8. Requirements 1-4 need behavior the upstream plugin does not have; the delta
+7. Every built documentation page at `<page>/` must also be available as
+   `<page>/index.md`; the site root is available as `/index.md`. Per-page
+   Markdown must carry the same canonical `Source:` line and absolute links as
+   the whole-corpus outputs
+8. `apps/docs/scripts/verify-llms.mjs` enforces all of the above at postbuild,
+   including one-to-one Markdown coverage for built HTML pages and that each
+   `Source:` URL resolves to a built page
+9. Requirements 1-4 and 7 need behavior the upstream plugin does not have; the delta
    lives in `apps/docs/patches/starlight-llms-txt@0.11.0.patch` and must be
    re-cut when the plugin is upgraded
-
-Everruns does not yet serve a per-page Markdown representation (`<page>.md`).
-Readers take one documentation set or the whole text instead.
 
 ### Diagram Rendering
 

@@ -29,10 +29,47 @@ const read = (name) => {
   }
   return readFileSync(file, "utf8");
 };
+const findFiles = (directory, name) =>
+  readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const file = path.join(directory, entry.name);
+    return entry.isDirectory() ? findFiles(file, name) : entry.name === name ? [file] : [];
+  });
 
 const index = read("llms.txt");
 const full = read("llms-full.txt");
 const small = read("llms-small.txt");
+
+const htmlPages = findFiles(distRoot, "index.html").filter(
+  (file) => !readFileSync(file, "utf8").includes('<meta http-equiv="refresh"')
+);
+const markdownPages = findFiles(distRoot, "index.md");
+check(
+  htmlPages.length >= MIN_PAGES,
+  `build carries ${htmlPages.length} HTML page(s), expected at least ${MIN_PAGES}`
+);
+check(
+  markdownPages.length === htmlPages.length,
+  `build carries ${markdownPages.length} Markdown page(s) for ${htmlPages.length} HTML page(s)`
+);
+for (const htmlPage of htmlPages) {
+  const routeDirectory = path.relative(distRoot, path.dirname(htmlPage));
+  const route = routeDirectory === "" ? "" : `${routeDirectory.split(path.sep).join("/")}/`;
+  const markdownPage = path.join(path.dirname(htmlPage), "index.md");
+  const pageUrl = `${site}/${route}`;
+  if (!existsSync(markdownPage)) {
+    errors.push(`built page has no Markdown representation: ${pageUrl}`);
+    continue;
+  }
+
+  const markdown = readFileSync(markdownPage, "utf8");
+  check(markdown.includes(`Source: <${pageUrl}>`), `Markdown page has wrong Source URL: ${pageUrl}`);
+  const relativeLinks = [...markdown.matchAll(/\]\((\/[^/)][^)]*)\)/g)].map((match) => match[1]);
+  check(
+    relativeLinks.length === 0,
+    `Markdown page contains ${relativeLinks.length} root-relative link(s): ${pageUrl}`
+  );
+  check(!markdown.includes("sl-anchor-link"), `Markdown page contains Starlight markup: ${pageUrl}`);
+}
 
 // llms.txt must be an index, not just a pointer to two dumps: the three ways to
 // run Everruns, one link per documentation set, and the machine-readable
@@ -136,6 +173,7 @@ const sets = existsSync(setDir) ? readdirSync(setDir).filter((f) => f.endsWith("
 const kb = (text) => `${Math.round(text.length / 1024)} KB`;
 console.log(
   `Verified agent-readable docs output: llms.txt index, ${sets.length} documentation set(s), ` +
+    `${htmlPages.length} per-page Markdown file(s), ` +
     `llms-full.txt (${kb(full)}), llms-small.txt (${kb(small)}), ` +
     `api/openapi.json (${Math.round(statSync(schemaPath).size / 1024)} KB).`
 );

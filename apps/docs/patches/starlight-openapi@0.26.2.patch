@@ -1,0 +1,6 @@
+diff --git a/package.json b/package.json
+index 7e95fe8..8143bbe 100644
+--- a/package.json
++++ b/package.json
+@@ -10,0 +11 @@
++    "./route": "./libs/route.ts",
