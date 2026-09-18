@@ -8,7 +8,10 @@
 //! GitHub-hosted CI runners do not have outbound IPv6 connectivity and the
 //! system resolver can still surface AAAA records.
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, OnceLock},
+};
 
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
@@ -303,7 +306,9 @@ pub struct DenoClient {
     sandbox_base_domain: String,
     rpc_timeout: Duration,
     stream_idle_timeout: Duration,
-    tls_connector: Connector,
+    // Built on first use: construction is fallible and the constructors
+    // below are infallible by contract.
+    tls_connector: OnceLock<Connector>,
 }
 
 impl DenoClient {
@@ -322,8 +327,6 @@ impl DenoClient {
         console_api_base: String,
         sandbox_base_domain: String,
     ) -> Self {
-        let tls_connector = build_http11_tls_connector()
-            .expect("Failed to build TLS connector for Deno sandbox WebSocket");
         Self {
             http: reqwest::Client::new(),
             token,
@@ -332,8 +335,16 @@ impl DenoClient {
             sandbox_base_domain,
             rpc_timeout: DENO_RPC_TIMEOUT,
             stream_idle_timeout: DENO_STREAM_IDLE_TIMEOUT,
-            tls_connector,
+            tls_connector: OnceLock::new(),
         }
+    }
+
+    fn tls_connector(&self) -> Result<Connector, String> {
+        if let Some(connector) = self.tls_connector.get() {
+            return Ok(connector.clone());
+        }
+        let connector = build_http11_tls_connector()?;
+        Ok(self.tls_connector.get_or_init(|| connector).clone())
     }
 
     pub fn org(&self) -> Option<&str> {
@@ -568,7 +579,7 @@ impl DenoClient {
                     .map_err(|e| format!("Invalid x-deno-sandbox-config header: {e}"))?,
             );
         }
-        let (ws, response) = connect_async_all_addrs(request, self.tls_connector.clone()).await?;
+        let (ws, response) = connect_async_all_addrs(request, self.tls_connector()?).await?;
         let sandbox_id = response
             .headers()
             .get("x-deno-sandbox-id")

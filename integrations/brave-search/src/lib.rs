@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Brave Search web search for Everruns agents.
 //!
 //! This integration contributes a `brave_web_search` tool and its connection

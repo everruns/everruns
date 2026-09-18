@@ -34,13 +34,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use everruns_provider::driver_registry::{
     BoxedChatDriver, ChatDriver, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
-    LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
 };
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::tool_types::ToolCall;
 use llmsim::generator::{LoremGenerator, ResponseGenerator};
 use llmsim::latency::LatencyProfile;
-use llmsim::openai::{ChatCompletionRequest, Message, Role, Usage};
+use llmsim::openai::{ChatCompletionRequest, Message as SimMessage, Role, Usage};
 use llmsim::script::auto_tool_call_id;
 use llmsim::stream::TokenStreamBuilder;
 
@@ -73,10 +73,10 @@ pub struct LlmSimConfig {
     pub effort_capture: Option<Arc<std::sync::Mutex<Vec<Option<String>>>>>,
     /// Optional capture sink for the provider-visible messages of each call.
     /// When set, every `chat_completion_stream` call appends the exact
-    /// `LlmMessage` slice it received, in call order. Tests use this to assert
+    /// `Message` slice it received, in call order. Tests use this to assert
     /// which messages actually reach the provider after context assembly and
     /// message filtering (e.g. Infinity Context history trimming).
-    pub message_capture: Option<Arc<std::sync::Mutex<Vec<Vec<LlmMessage>>>>>,
+    pub message_capture: Option<Arc<std::sync::Mutex<Vec<Vec<Message>>>>>,
 }
 
 impl Default for LlmSimConfig {
@@ -195,11 +195,11 @@ impl LlmSimConfig {
     }
 
     /// Set a shared capture sink for the provider-visible messages of each call.
-    /// Every `chat_completion_stream` call appends the exact `LlmMessage` slice
+    /// Every `chat_completion_stream` call appends the exact `Message` slice
     /// it received, in call order.
     pub fn with_message_capture(
         mut self,
-        capture: Arc<std::sync::Mutex<Vec<Vec<LlmMessage>>>>,
+        capture: Arc<std::sync::Mutex<Vec<Vec<Message>>>>,
     ) -> Self {
         self.message_capture = Some(capture);
         self
@@ -475,7 +475,7 @@ impl LlmSimDriver {
     }
 
     /// Generate response text based on configuration
-    fn generate_response(&self, messages: &[LlmMessage]) -> String {
+    fn generate_response(&self, messages: &[Message]) -> String {
         match &self.config.response {
             ResponseConfig::Fixed(text) => text.clone(),
 
@@ -484,7 +484,7 @@ impl LlmSimDriver {
                 let last_user = messages
                     .iter()
                     .rev()
-                    .find(|m| m.role == LlmMessageRole::User)
+                    .find(|m| m.role == MessageRole::User)
                     .map(|m| m.content_as_text())
                     .unwrap_or_default();
                 format!("Echo: {}", last_user)
@@ -516,7 +516,7 @@ impl LlmSimDriver {
     }
 
     /// Get tool calls based on configuration
-    fn get_tool_calls(&self, messages: &[LlmMessage]) -> Option<Vec<ToolCall>> {
+    fn get_tool_calls(&self, messages: &[Message]) -> Option<Vec<ToolCall>> {
         match &self.config.tool_calls {
             None => None,
 
@@ -551,7 +551,7 @@ impl LlmSimDriver {
                 // Newest-first honours the most recent matching intent while
                 // skipping interleaved non-matching notifications.
                 for message in messages.iter().rev() {
-                    if message.role != LlmMessageRole::User {
+                    if message.role != MessageRole::User {
                         continue;
                     }
                     let text = message.content_as_text();
@@ -568,7 +568,7 @@ impl LlmSimDriver {
         }
     }
 
-    fn generate_turn(&self, messages: &[LlmMessage]) -> Result<GeneratedTurn> {
+    fn generate_turn(&self, messages: &[Message]) -> Result<GeneratedTurn> {
         if let ResponseConfig::Scripted {
             turns,
             on_exhausted,
@@ -633,18 +633,18 @@ impl LlmSimDriver {
         }
     }
 
-    /// Convert LlmMessage to llmsim ChatCompletionRequest
-    fn to_chat_request(&self, messages: &[LlmMessage]) -> ChatCompletionRequest {
-        let sim_messages: Vec<Message> = messages
+    /// Convert Message to llmsim ChatCompletionRequest
+    fn to_chat_request(&self, messages: &[Message]) -> ChatCompletionRequest {
+        let sim_messages: Vec<SimMessage> = messages
             .iter()
             .map(|m| {
                 let role = match m.role {
-                    LlmMessageRole::System => Role::System,
-                    LlmMessageRole::User => Role::User,
-                    LlmMessageRole::Assistant => Role::Assistant,
-                    LlmMessageRole::Tool => Role::Tool,
+                    MessageRole::System => Role::System,
+                    MessageRole::User => Role::User,
+                    MessageRole::Assistant => Role::Assistant,
+                    MessageRole::Tool => Role::Tool,
                 };
-                Message {
+                SimMessage {
                     role,
                     content: Some(m.content_as_text()),
                     name: None,
@@ -699,7 +699,7 @@ impl ChatDriver for LlmSimDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         // Record the per-call reasoning effort for tests (EVE-595). Captured
@@ -1110,7 +1110,7 @@ mod tests {
     impl LlmSimDriver {
         async fn chat_completion(
             &self,
-            messages: Vec<LlmMessage>,
+            messages: Vec<Message>,
             config: &LlmCallConfig,
         ) -> Result<everruns_provider::driver_registry::LlmResponse> {
             ChatDriver::chat_completion(
@@ -1124,7 +1124,7 @@ mod tests {
 
         async fn chat_completion_stream(
             &self,
-            messages: Vec<LlmMessage>,
+            messages: Vec<Message>,
             config: &LlmCallConfig,
         ) -> Result<LlmResponseStream> {
             ChatDriver::chat_completion_stream(
@@ -1174,12 +1174,12 @@ mod tests {
         LlmCallConfig::new("test-model")
     }
 
-    fn user_message(content: &str) -> LlmMessage {
-        LlmMessage::text(LlmMessageRole::User, content)
+    fn user_message(content: &str) -> Message {
+        Message::text(MessageRole::User, content)
     }
 
-    fn system_message(content: &str) -> LlmMessage {
-        LlmMessage::text(LlmMessageRole::System, content)
+    fn system_message(content: &str) -> Message {
+        Message::text(MessageRole::System, content)
     }
 
     #[tokio::test]

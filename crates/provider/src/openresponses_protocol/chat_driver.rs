@@ -28,8 +28,8 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream,
-    LlmStreamEvent, disjoint_prompt_tokens,
+    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message,
+    disjoint_prompt_tokens,
 };
 use crate::error::{AgentLoopError, Result};
 use crate::openresponses_types::StreamingEvent;
@@ -46,7 +46,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         crate::openai_compat::validate_config(config)?;
@@ -604,6 +604,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                         let cached = *cache_read_tokens.lock().unwrap();
                                         let written = response_obj.pointer("/usage/input_tokens_details/cache_write_tokens")
                                             .and_then(Value::as_u64).map(|n| n.min(u32::MAX as u64) as u32);
+                                        let reasoning_used = response_obj.pointer("/usage/output_tokens_details/reasoning_tokens")
+                                            .and_then(Value::as_u64).map(|n| n.min(u32::MAX as u64) as u32);
 
                                         Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                                             // `input` is OpenAI's cache-inclusive prompt count;
@@ -613,6 +615,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             completion_tokens: Some(output),
                                             cache_read_tokens: cached,
                                             cache_creation_tokens: written,
+                                            reasoning_tokens: reasoning_used,
                                             provider_cost_usd,
                                             model: Some(model),
                                             finish_reason: Some(reason),
@@ -623,6 +626,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                                 .and_then(Value::as_str)
                                                 .map(str::to_owned),
                                             phase,
+                                            request_body: None,
                                             cache_diagnostics: None,
                                         })))
                                     }

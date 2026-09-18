@@ -27,9 +27,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 pub use crate::compact::{CompactContent, CompactInputItem, CompactRequest};
-use crate::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent,
-};
+use crate::driver_registry::{ChatDriver, LlmCallConfig, LlmStreamEvent, Message, MessageRole};
 use crate::error::LlmErrorKind;
 use crate::llm_retry::LlmRetryConfig;
 use crate::openresponses_types::StreamingEvent;
@@ -307,7 +305,7 @@ async fn auth_headers_reach_wire_with_explicit_precedence_and_successful_respons
         let stream = driver
             .chat_completion_stream(
                 provider.endpoint(),
-                vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+                vec![Message::text(MessageRole::User, "hi")],
                 &config,
             )
             .await
@@ -384,7 +382,7 @@ async fn refreshed_tokens_and_signed_payload_reach_each_retry_attempt() {
     let stream = driver
         .chat_completion_stream(
             provider.endpoint(),
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &auth_test_config(),
         )
         .await
@@ -431,7 +429,7 @@ async fn auth_failure_aborts_before_sending_or_reusing_an_expired_token() {
         let result = driver
             .chat_completion_stream(
                 provider.endpoint(),
-                vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+                vec![Message::text(MessageRole::User, "hi")],
                 &auth_test_config(),
             )
             .await;
@@ -560,7 +558,7 @@ fn cache_key_tracks_stable_prefix_and_family_but_not_turn_input() {
     assert!(expected.starts_with("everruns:"));
     assert!(expected[9..].bytes().all(|byte| byte.is_ascii_hexdigit()));
     let (_, changed_input) = OpenResponsesProtocolChatDriver::build_input(
-        &[LlmMessage::text(LlmMessageRole::User, "different turn")],
+        &[Message::text(MessageRole::User, "different turn")],
         false,
     );
     assert_eq!(
@@ -687,8 +685,8 @@ async fn equivalent_search_requests_keep_cache_key_and_complete_tool_payload() {
             .chat_completion_stream(
                 provider.endpoint(),
                 vec![
-                    LlmMessage::text(LlmMessageRole::System, "stable system prompt"),
-                    LlmMessage::text(LlmMessageRole::User, input),
+                    Message::text(MessageRole::System, "stable system prompt"),
+                    Message::text(MessageRole::User, input),
                 ],
                 &config,
             )

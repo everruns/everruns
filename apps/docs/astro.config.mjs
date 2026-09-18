@@ -7,6 +7,7 @@ import starlightLlmsTxt from "starlight-llms-txt";
 import starlightLinksValidator from "starlight-links-validator";
 import apiSidebarFix from "./plugins/api-sidebar-fix.ts";
 import remarkStripRustHiddenLines from "./plugins/remark-strip-rust-hidden-lines.ts";
+import perPageMarkdown from "./integrations/per-page-markdown.mjs";
 import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -305,6 +306,7 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "GitHub Scout", slug: "capabilities/github-scout" },
+                        { label: "Slack", slug: "capabilities/slack" },
                       ],
                     },
                     {
@@ -482,23 +484,145 @@ export default defineConfig({
           },
         ),
         apiSidebarFix(),
-        // Generate /llms.txt, /llms-full.txt and /llms-small.txt so AI tools
-        // can ingest the docs as clean Markdown. Pairs with the
-        // "Use in AI Tools" guide and the AI-crawler allowlist in robots.txt.
+        // Generate /llms.txt, /llms-full.txt, /llms-small.txt and the
+        // per-topic /_llms-txt/<slug>.txt sets so AI tools can ingest the docs
+        // as clean Markdown. Pairs with the "Read the docs as text" section of
+        // the "Use in AI Tools" guide and the AI-crawler allowlist in
+        // robots.txt. Requirements live in knowledge/ui/documentation.md.
         starlightLlmsTxt({
           projectName: "Everruns",
           description:
-            "Everruns is a durable agentic harness engine for AI agents. " +
-            "These docs cover deploying, configuring, and building agent " +
-            "applications with the API.",
-          // Keep the generated llms-full.txt focused on prose docs:
+            "Everruns is a durable agentic harness engine built on Rust. " +
+            "These docs cover deploying and operating the Platform, and " +
+            "building agents with the Framework, SDKs, and REST API.",
+          // Answers the first question a reader of llms.txt has: which of the
+          // three ways to run Everruns am I looking at? Mirrors the "Choose how
+          // you run Everruns" table in the repository README — keep the two in
+          // sync. llmstxt.org allows no headings here, so this is prose only.
+          details: [
+            "Everruns is used in three ways, in increasing order of what it operates for you:",
+            "",
+            "- **Framework** — embed Everruns in a Rust application with the `everruns` crate. You own the process, deployment, integrations, and data path. Start at <https://docs.everruns.com/framework/quickstart/>.",
+            "- **Self-hosted platform** — run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution. Start at <https://docs.everruns.com/getting-started/docker-compose/>.",
+            "- **Hosted Everruns** — use the shared runtime and production operations without operating the platform yourself: <https://app.everruns.com>.",
+            "",
+            "The documentation sets below are organised the same way, so a reader with a narrow question can take one set instead of the complete text. Every page in them carries a `Source:` line with its canonical URL; cite that rather than the text file.",
+            "",
+            "The sets contain prose documentation only. The REST API is not among them: take its shapes from the OpenAPI schema linked under Optional.",
+          ].join("\n"),
+          // Per-topic subsets, served at /_llms-txt/<slug>.txt. The plugin
+          // derives no page index from the sidebar, so without these llms.txt
+          // offers nothing but the two whole-site dumps — and the complete text
+          // is ~250k tokens, more than most readers want for one question.
+          // Mirrors the sidebar topics above; keep the two in sync.
+          customSets: [
+            {
+              label: "Framework",
+              description:
+                "build and run agents inside a Rust application with the everruns crate",
+              paths: ["index", "framework/**"],
+            },
+            {
+              label: "Getting Started",
+              description:
+                "platform concepts, deployment, and the feature surface of a running Everruns",
+              paths: ["index", "getting-started/**", "features/**", "advanced/**"],
+            },
+            {
+              label: "Built-ins",
+              description: "the harness and capability catalog, with tools and parameters",
+              paths: ["built-ins/**", "capabilities/**"],
+            },
+            {
+              label: "Guides",
+              description: "tutorials and task-oriented how-to guides",
+              paths: ["tutorials/**", "how-to/**"],
+            },
+            {
+              label: "Integrations",
+              description:
+                "model providers, sandboxes, browsers, messaging, and observability vendors",
+              paths: [
+                "integrations/**",
+                "providers/**",
+                "observability/**",
+                "ecosystem/**",
+              ],
+            },
+            {
+              label: "Explanation",
+              description: "architecture and design rationale",
+              paths: ["explanation/**"],
+            },
+            {
+              label: "Reference",
+              description: "the event protocol; REST endpoints live in the OpenAPI schema",
+              paths: ["event-reference"],
+            },
+            {
+              label: "Operations",
+              description: "environment variables, admin container, and SRE runbooks",
+              paths: ["sre/**"],
+            },
+          ],
+          // Secondary material a reader can skip, and the machine-readable
+          // surfaces that are deliberately absent from the text sets.
+          optionalLinks: [
+            {
+              label: "OpenAPI schema",
+              url: "https://docs.everruns.com/api/openapi.json",
+              description:
+                "the REST API as OpenAPI 3.0 — authoritative request and response shapes",
+            },
+            {
+              label: "REST API reference",
+              url: "https://docs.everruns.com/api/",
+              description: "the same endpoints as browsable pages",
+            },
+            {
+              label: "Source repository",
+              url: "https://github.com/everruns/everruns",
+              description: "Rust workspace, examples, and contributor conventions",
+            },
+            {
+              label: "everruns crate",
+              url: "https://crates.io/crates/everruns",
+              description: "the application-facing crate on crates.io",
+            },
+          ],
+          // Starlight renders a sibling anchor link after every heading, whose
+          // screen-reader text converts to `[Section titled "..."](#...)` — was
+          // 1,325 lines and 8% of llms-full.txt before this filter. Removing
+          // the <a> leaves the heading itself untouched.
+          customSelectors: { all: ["a.sl-anchor-link"] },
+          // Pages are otherwise separated by a blank line, which is
+          // indistinguishable from a paragraph break; `# ` headings are no help
+          // because shell comments inside code fences start the same way.
+          pageSeparator: "\n\n---\n\n",
+          // Keep every generated text output focused on prose docs:
           // - The auto-generated OpenAPI reference is large and already
-          //   available as a machine-readable schema at /api/openapi.json.
+          //   available as a machine-readable schema at /api/openapi.json,
+          //   copied there from docs/api/openapi.json by scripts/copy-openapi.mjs.
           // - The notebook-backed tutorial renders as a blob of Jupyter HTML
           //   via <NotebookDoc> (whose route lookup also can't resolve under
           //   the /llms-*.txt routes); the .ipynb source is linked in its
           //   `github` frontmatter for anyone who wants the runnable version.
           exclude: ["api/**", "tutorials/run-an-agent"],
+          // The abridged set drops vendor- and operator-specific long tails
+          // that a reader asking how to build or run an agent does not need.
+          // They stay in llms-full.txt and in the sets above, so nothing is
+          // unreachable. Without this, "abridged" would mean nothing but
+          // collapsed whitespace: 91% the size of the complete text.
+          excludeSmall: [
+            "sre/**",
+            "providers/**",
+            "observability/**",
+            "ecosystem/**",
+            "integrations/**",
+            "event-reference",
+            "capabilities/fake-*",
+            "capabilities/platform-management",
+          ],
         }),
         // Validate internal links and hash anchors at build time so broken
         // links fail CI instead of shipping. Runs last to see final routes.
@@ -517,6 +641,7 @@ export default defineConfig({
       },
       lastUpdated: true,
     }),
+    perPageMarkdown(),
     sitemapEnhance(),
   ],
 });

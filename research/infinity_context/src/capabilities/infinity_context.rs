@@ -9,7 +9,7 @@
 use super::naive_trim::calculate_message_limit;
 use super::{Capability, CapabilityStatus, ContextStrategyConfig, MessageFilterProvider, MessageQuery};
 use async_trait::async_trait;
-use everruns_core::message::{ContentPart, Message, MessageRole};
+use everruns_core::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::tool_context::ToolContext;
 use serde::Deserialize;
@@ -226,12 +226,12 @@ impl Tool for QueryHistoryTool {
 
 struct SearchResult<'a> {
     index: usize,
-    message: &'a Message,
+    message: &'a RuntimeMessage,
     score: f64,
 }
 
 fn search_messages<'a>(
-    messages: &'a [Message],
+    messages: &'a [RuntimeMessage],
     query: &str,
     limit: usize,
 ) -> Vec<SearchResult<'a>> {
@@ -256,9 +256,9 @@ fn search_messages<'a>(
 
             // Message type boost
             match msg.role {
-                MessageRole::User | MessageRole::Agent => score += 0.2,
-                MessageRole::System => score += 0.1,
-                MessageRole::ToolResult => {}
+                RuntimeMessageRole::User | RuntimeMessageRole::Agent => score += 0.2,
+                RuntimeMessageRole::System => score += 0.1,
+                RuntimeMessageRole::ToolResult => {}
             }
 
             results.push(SearchResult {
@@ -278,7 +278,7 @@ fn search_messages<'a>(
     results
 }
 
-fn extract_text_content(message: &Message) -> String {
+fn extract_text_content(message: &RuntimeMessage) -> String {
     message
         .content
         .iter()
@@ -299,7 +299,7 @@ fn truncate_content(content: &str, max_len: usize) -> String {
     }
 }
 
-fn format_message(msg: &Message, idx: usize, total: usize) -> Value {
+fn format_message(msg: &RuntimeMessage, idx: usize, total: usize) -> Value {
     json!({
         "index": idx,
         "position": format!("{}/{}", idx + 1, total),
@@ -309,7 +309,7 @@ fn format_message(msg: &Message, idx: usize, total: usize) -> Value {
 }
 
 fn format_range_result(
-    messages: &[&Message],
+    messages: &[&RuntimeMessage],
     start_idx: usize,
     total: usize,
 ) -> ToolExecutionResult {
@@ -358,7 +358,7 @@ fn format_search_result(results: &[SearchResult], total: usize) -> ToolExecution
     }))
 }
 
-fn format_recent_result(messages: &[&Message], total: usize) -> ToolExecutionResult {
+fn format_recent_result(messages: &[&RuntimeMessage], total: usize) -> ToolExecutionResult {
     let formatted: Vec<Value> = messages
         .iter()
         .enumerate()
@@ -380,10 +380,10 @@ mod tests {
     #[test]
     fn test_search_messages() {
         let messages = vec![
-            Message::user("Let's discuss the API design"),
-            Message::assistant("Sure, what about authentication?"),
-            Message::user("We should use JWT tokens"),
-            Message::assistant("JWT sounds good for the API"),
+            RuntimeMessage::user("Let's discuss the API design"),
+            RuntimeMessage::assistant("Sure, what about authentication?"),
+            RuntimeMessage::user("We should use JWT tokens"),
+            RuntimeMessage::assistant("JWT sounds good for the API"),
         ];
 
         let results = search_messages(&messages, "API", 10);
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn test_extract_text_content() {
-        let msg = Message::user("Hello world");
+        let msg = RuntimeMessage::user("Hello world");
         assert_eq!(extract_text_content(&msg), "Hello world");
     }
 }

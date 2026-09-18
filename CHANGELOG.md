@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-09-18
+
+### Highlights
+
+- **Platform Chat v2 on a unified command line** - One command line serves both people and agents, with Platform Chat rebuilt on top of it ([#3680](https://github.com/everruns/everruns/pull/3680)).
+- **Soft approval** - A soft-approval capability lands and is on by default for Generic and Platform Chat, so an agent can proceed with a lightweight, reversible approval step ([#3655](https://github.com/everruns/everruns/pull/3655)).
+- **Typed judgments and a guardrail engine** - Typed judgments become a capability, backing a guardrail engine for classifying and gating agent behavior ([#3644](https://github.com/everruns/everruns/pull/3644)).
+- **Scoped MCP catalogs and acts-as** - MCP gains scoped catalog presets and acts-as credential semantics, with endpoint auth stored separately ([#3638](https://github.com/everruns/everruns/pull/3638), [#3635](https://github.com/everruns/everruns/pull/3635)).
+
+### What's Changed
+
+- refactor(lint-floor): clear unwrap/expect debt in 16 crates ([#3681](https://github.com/everruns/everruns/pull/3681)) by [@chaliy](https://github.com/chaliy)
+- docs: drop marketing filler from page metadata ([#3685](https://github.com/everruns/everruns/pull/3685)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): make the log scan report an empty sweep instead of passing it ([#3683](https://github.com/everruns/everruns/pull/3683)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): complete service-owned MCP grant authorization by [@chaliy](https://github.com/chaliy)
+- ci: guard workflows against secret writes and scan logs for leaks ([#3682](https://github.com/everruns/everruns/pull/3682)) by [@chaliy](https://github.com/chaliy)
+- feat(cli-tree): one command line for people and agents, and Platform Chat v2 on it ([#3680](https://github.com/everruns/everruns/pull/3680)) by [@chaliy](https://github.com/chaliy)
+- refactor(classifier): take the model up front, and document the primitives ([#3679](https://github.com/everruns/everruns/pull/3679)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): stop printing live-test API keys in workflow logs ([#3678](https://github.com/everruns/everruns/pull/3678)) by [@chaliy](https://github.com/chaliy)
+- test(typesafe): close integration test gaps, keep the embeddable build platform-free ([#3677](https://github.com/everruns/everruns/pull/3677)) by [@chaliy](https://github.com/chaliy)
+- refactor(classifier): name the provider TypeSafeAI, report the model that answered ([#3674](https://github.com/everruns/everruns/pull/3674)) by [@chaliy](https://github.com/chaliy)
+- refactor(integrations): name the integration catalog, add size and lint-floor ratchets, split the oversized files ([#3672](https://github.com/everruns/everruns/pull/3672)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): promote provider model catalogs to the facade ([#3668](https://github.com/everruns/everruns/pull/3668)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): refresh UI and docs dependencies by [@chaliy](https://github.com/chaliy)
+- fix(release): defer a new crate to the next platform version ([#3670](https://github.com/everruns/everruns/pull/3670)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): soft approval, default on Generic and Platform Chat ([#3655](https://github.com/everruns/everruns/pull/3655)) by [@chaliy](https://github.com/chaliy)
+- feat(classifier): select the model, and publish the TypeSafe crate ([#3666](https://github.com/everruns/everruns/pull/3666)) by [@chaliy](https://github.com/chaliy)
+- fix(release): fail closed on a stale crate release tag ([#3669](https://github.com/everruns/everruns/pull/3669)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): record the CI build-time investigation as a concept ([#3667](https://github.com/everruns/everruns/pull/3667)) by [@chaliy](https://github.com/chaliy)
+- fix(chat): stop minting duplicate Platform Chat threads ([#3665](https://github.com/everruns/everruns/pull/3665)) by [@chaliy](https://github.com/chaliy)
+- docs(framework): mark LLM APIs stable, classifier alpha ([#3664](https://github.com/everruns/everruns/pull/3664)) by [@chaliy](https://github.com/chaliy)
+- docs(framework): open every page on a real provider ([#3663](https://github.com/everruns/everruns/pull/3663)) by [@chaliy](https://github.com/chaliy)
+- fix(release): verify publish tags against the Cargo-resolved version ([#3662](https://github.com/everruns/everruns/pull/3662)) by [@chaliy](https://github.com/chaliy)
+- refactor(release): single version for the whole platform ([#3661](https://github.com/everruns/everruns/pull/3661)) by [@chaliy](https://github.com/chaliy)
+- refactor(classifier): one TypeSafe crate, Classifier terminology, and the agent path ([#3659](https://github.com/everruns/everruns/pull/3659)) by [@chaliy](https://github.com/chaliy)
+- docs(framework): stop leading with the simulator, and list the providers ([#3657](https://github.com/everruns/everruns/pull/3657)) by [@chaliy](https://github.com/chaliy)
+- perf(ci): cut integration test wall-clock by removing duplicate build waves ([#3654](https://github.com/everruns/everruns/pull/3654)) by [@chaliy](https://github.com/chaliy)
+- chore(guardrails): run guardians on gpt-5.6-luna ([#3653](https://github.com/everruns/everruns/pull/3653)) by [@chaliy](https://github.com/chaliy)
+- fix(release): publish resolvable host package ([#3656](https://github.com/everruns/everruns/pull/3656)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(release): repair the crate publication cone ([#3652](https://github.com/everruns/everruns/pull/3652)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(apps): preserve published OAuth2 introspection spelling ([#3650](https://github.com/everruns/everruns/pull/3650)) by [@warp-factories](https://github.com/apps/warp-factories)
+- feat(apps): store endpoint auth separately ([#3635](https://github.com/everruns/everruns/pull/3635)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(mcp): resolve credentials fail-closed on actsAs ([#3649](https://github.com/everruns/everruns/pull/3649)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): add semantic status colors ([#3639](https://github.com/everruns/everruns/pull/3639)) by [@warp-factories](https://github.com/apps/warp-factories)
+- refactor(framework): rename workspace providers to backends ([#3645](https://github.com/everruns/everruns/pull/3645)) by [@warp-factories](https://github.com/apps/warp-factories)
+- fix(release): keep new typesafe crates private until registry token allows publish ([#3648](https://github.com/everruns/everruns/pull/3648)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): support scoped catalog presets and actsAs ([#3638](https://github.com/everruns/everruns/pull/3638)) by [@warp-factories](https://github.com/apps/warp-factories)
+- chore(ui): capture demo screenshots at 2x ([#3647](https://github.com/everruns/everruns/pull/3647)) by [@chaliy](https://github.com/chaliy)
+- fix(docs): strip rustdoc hidden lines in Rust code blocks ([#3646](https://github.com/everruns/everruns/pull/3646)) by [@chaliy](https://github.com/chaliy)
+- feat(jev): typed judgments as a capability and a guardrail engine ([#3644](https://github.com/everruns/everruns/pull/3644)) by [@chaliy](https://github.com/chaliy)
+- docs(harnesses): define the harness, and propose one for the Framework ([#3641](https://github.com/everruns/everruns/pull/3641)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): direct model calls, and driver-declared credential env vars ([#3642](https://github.com/everruns/everruns/pull/3642)) by [@chaliy](https://github.com/chaliy)
+- docs(ui): add reproducible demo screenshots ([#3643](https://github.com/everruns/everruns/pull/3643)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): render link-styled actions as anchors ([#3640](https://github.com/everruns/everruns/pull/3640)) by [@warp-factories](https://github.com/apps/warp-factories)
+- chore(knowledge): propose agent MCP attachments with acts-as semantics ([#3636](https://github.com/everruns/everruns/pull/3636)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.29.0.
+
 ## [0.28.0] - 2026-09-16
 
 ### Highlights

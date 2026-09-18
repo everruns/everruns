@@ -349,13 +349,8 @@ pub async fn stream_sse(
         .sse_tracker
         .try_acquire(org.org_id, session_id)
         .map_err(|rejection| {
-            tracing::warn!(
-                org_id = org.org_id,
-                %session_id,
-                reason = %rejection,
-                "SSE connection rejected"
-            );
-            ErrorResponse::new(rejection.to_string()).into_response(StatusCode::TOO_MANY_REQUESTS)
+            let message = rejection.report("session_events", org.org_id, &session_id);
+            ErrorResponse::new(message).into_response(StatusCode::TOO_MANY_REQUESTS)
         })?;
 
     tracing::info!(session_id = %session_id, since_id = ?query.since_id, types = ?query.types, exclude = ?query.exclude, "Starting event stream");

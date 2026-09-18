@@ -7,8 +7,8 @@
 // but with direct access to the storage backend, domains, and infra helpers.
 
 use crate::kernel_imports::{
-    Caller, ContentPart, EgressRequest, EgressRequestKind, EgressService, EventData, Message,
-    MessageRole, ToolResultContentPart, UtilityLlmService,
+    Caller, ContentPart, EgressRequest, EgressRequestKind, EgressService, EventData,
+    RuntimeMessage, RuntimeMessageRole, ToolResultContentPart, UtilityLlmService,
     everruns_provider::driver_registry::DriverRegistry, everruns_provider::provider::DriverId,
     everruns_provider::tool_types::ToolDefinition, resolve_runtime_capabilities,
 };
@@ -30,8 +30,8 @@ use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
+use everruns_platform::Harness;
 use everruns_platform::{Agent, AgentStatus};
-use everruns_platform::{Harness, HarnessStatus, merge_harness};
 use everruns_platform::{Session, SessionParticipant, SessionStatus};
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
@@ -58,7 +58,7 @@ use crate::storage::{EncryptionService, StorageBackend};
 use everruns_durable::WorkflowEventStore;
 
 // Helper to create store errors
-fn store_error(msg: impl Into<String>) -> AgentLoopError {
+pub(crate) fn store_error(msg: impl Into<String>) -> AgentLoopError {
     AgentLoopError::store(msg)
 }
 
@@ -465,7 +465,7 @@ impl DirectWorkerAdapters {
         session: &Session,
         agent: Option<&Agent>,
         harness: Option<&Harness>,
-    ) -> Result<Vec<Message>> {
+    ) -> Result<Vec<RuntimeMessage>> {
         // Status-agnostic projections: message-filter resolution historically
         // saw the stored records regardless of lifecycle status (EVE-877,
         // EVE-881). The harness arrives pre-merged, so its plain definition is
@@ -762,12 +762,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // Message Operations
     // =========================================================================
 
-    async fn get_message(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
+    async fn get_message(
+        &self,
+        session_id: Uuid,
+        message_id: Uuid,
+    ) -> Result<Option<RuntimeMessage>> {
         let messages = self.load_messages(session_id).await?;
         Ok(messages.into_iter().find(|m| m.id == message_id))
     }
 
-    async fn load_messages(&self, session_id: Uuid) -> Result<Vec<Message>> {
+    async fn load_messages(&self, session_id: Uuid) -> Result<Vec<RuntimeMessage>> {
         let events = self
             .event_service
             .list_message_events(session_id)
@@ -777,7 +781,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to load messages")
             })?;
 
-        let messages: Vec<Message> = events.into_iter().filter_map(event_to_message).collect();
+        let messages: Vec<RuntimeMessage> =
+            events.into_iter().filter_map(event_to_message).collect();
         Ok(messages)
     }
 
@@ -1685,6 +1690,19 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.sqldb_store.clone()
     }
 
+    fn slack_action_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_provider::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
+        Some(crate::slack_actions::in_process_invoker(
+            &self.db,
+            self.encryption.as_ref(),
+            org_id,
+            session_id,
+        ))
+    }
+
     fn sandbox_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>> {
@@ -2121,95 +2139,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
 }
 
 impl DirectWorkerAdapters {
-    /// Get a harness by ID (direct DB access)
+    /// Get a harness by ID (direct DB access).
     async fn get_harness_impl(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
-        let mut visited = std::collections::HashSet::new();
-        let mut chain = Vec::new();
-        let mut cursor = Some(HarnessId::from_uuid(harness_id));
-
-        while let Some(current_harness_id) = cursor {
-            if !visited.insert(current_harness_id) {
-                return Err(store_error("Harness inheritance cycle detected"));
-            }
-
-            let row = self
-                .db
-                .get_harness(org_id, current_harness_id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to get harness: {}", e);
-                    store_error("Failed to get harness")
-                })?;
-            let Some(row) = row else {
-                if chain.is_empty() {
-                    return Ok(None);
-                }
-                return Err(store_error("Parent harness not found"));
-            };
-
-            let capabilities = self
-                .db
-                .get_harness_capabilities(current_harness_id.uuid())
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .map(|cap| AgentCapabilityConfig::with_config(cap.capability_id, cap.config))
-                .collect();
-            let capabilities =
-                crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
-                    &self.db,
-                    org_id,
-                    capabilities,
-                )
-                .await
-                .unwrap_or_default();
-
-            cursor = row.parent_harness_id;
-            chain.push(Harness {
-                id: row.id,
-                name: row.name,
-                display_name: row.display_name,
-                icon: None,
-                description: row.description,
-                intro_markdown: None,
-                short_description: None,
-                starters: Vec::new(),
-                system_prompt: row.system_prompt,
-                parent_harness_id: row.parent_harness_id,
-                default_model_id: row.default_model_id,
-                tags: row.tags,
-                capabilities,
-                mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
-                initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
-                network_access: row
-                    .network_access
-                    .and_then(|v| serde_json::from_value(v).ok()),
-                // No per-harness config column (EVE-598).
-                parallel_tool_calls: None,
-                embedder_metadata: serde_json::from_value(row.embedder_metadata)
-                    .unwrap_or_default(),
-                is_built_in: row.is_built_in,
-                status: match row.status.as_str() {
-                    "active" => HarnessStatus::Active,
-                    "archived" => HarnessStatus::Archived,
-                    "deleted" => HarnessStatus::Deleted,
-                    _ => HarnessStatus::Active,
-                },
-                created_at: row.created_at,
-                updated_at: row.updated_at,
-                archived_at: row.archived_at,
-                deleted_at: row.deleted_at,
-            });
-        }
-
-        let Some(mut effective) = chain.pop() else {
-            return Ok(None);
-        };
-        while let Some(layer) = chain.pop() {
-            effective = merge_harness(&effective, &layer);
-        }
-
-        Ok(Some(effective))
+        crate::harness_chain::resolve_effective_harness(&self.db, org_id, harness_id).await
     }
 
     /// Build an Agent from a DB row and pre-loaded capability rows.
@@ -2375,7 +2307,7 @@ fn string_to_provider_type(s: &str) -> DriverId {
 }
 
 /// Convert an event to a message
-fn event_to_message(event: Event) -> Option<Message> {
+fn event_to_message(event: Event) -> Option<RuntimeMessage> {
     match &event.data {
         EventData::InputMessage(data) => Some(data.message.clone()),
         EventData::OutputMessageCompleted(data) => Some(data.message.clone()),
@@ -2389,9 +2321,9 @@ fn event_to_message(event: Event) -> Option<Message> {
                 result: result_json,
                 error: data.error.clone(),
             })];
-            Some(Message {
+            Some(RuntimeMessage {
                 id: MessageId::from_uuid(event.id.uuid()),
-                role: MessageRole::ToolResult,
+                role: RuntimeMessageRole::ToolResult,
                 content,
                 phase: None,
                 phase_source: None,
@@ -2444,9 +2376,9 @@ impl crate::storage::session_task_store::SessionTaskWaker for DirectSessionTaskW
 
         let message_id = everruns_provider::typed_id::MessageId::new();
         let now = chrono::Utc::now();
-        let core_message = everruns_core::Message {
+        let core_message = everruns_core::RuntimeMessage {
             id: message_id,
-            role: everruns_core::MessageRole::User,
+            role: everruns_core::RuntimeMessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
             phase_source: None,

@@ -12,6 +12,13 @@
 //! [`Model::completion`] when the call needs a system message, more turns, or
 //! per-call controls.
 //!
+//! A completion can also offer tools ([`Completion::tool`]) without becoming an
+//! agent: the schemas go to the model and the calls come back to the caller,
+//! which is what an application owning its own loop needs. And because nothing
+//! bounds a provider that stops mid-answer from outside, the per-call limits
+//! live here too — [`Completion::timeout`],
+//! [`Completion::first_token_timeout`], [`Completion::max_response_bytes`].
+//!
 //! ```
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,17 +32,26 @@
 //!
 //! Applications that own a wire protocol call [`Provider`] directly; see
 //! [Custom providers](https://docs.everruns.com/framework/custom-providers/).
-//! Conversation state, tool execution, workspaces, and durability stay with
+//! Conversation state, tool *execution*, workspaces, and durability stay with
 //! [`Agent`](crate::Agent) — a completion here keeps no history of its own.
 
 use std::fmt;
 
-use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponse, LlmResponseStream,
-};
+use std::time::Duration;
+
+use everruns_provider::driver_registry::{LlmCallConfig, LlmResponse, LlmResponseStream};
 use everruns_provider::error::AgentLoopError;
 use everruns_provider::model::ReasoningEffort;
 use everruns_provider::runtime_provider::Provider;
+use everruns_provider::tool_types::ToolDefinition;
+use serde_json::Value;
+
+/// The provider-facing message and role a direct model call carries.
+///
+/// Re-exported here rather than at the crate root: the root's `MessageRole`
+/// belongs to stored session messages, which is the path most applications are
+/// on. `use everruns::llm::{Message, MessageRole}` keeps both plain-named.
+pub use everruns_provider::driver_registry::{Message, MessageContent, MessageRole};
 
 use crate::Model;
 
@@ -116,7 +132,7 @@ impl From<AgentLoopError> for CompletionError {
 pub struct Completion {
     provider: Option<Provider>,
     config: LlmCallConfig,
-    messages: Vec<LlmMessage>,
+    messages: Vec<Message>,
 }
 
 impl Completion {
@@ -139,21 +155,21 @@ impl Completion {
 
     /// Append a system message.
     pub fn system(self, content: impl Into<String>) -> Self {
-        self.message(LlmMessageRole::System, content)
+        self.message(MessageRole::System, content)
     }
 
     /// Append a user message.
     pub fn user(self, content: impl Into<String>) -> Self {
-        self.message(LlmMessageRole::User, content)
+        self.message(MessageRole::User, content)
     }
 
     /// Append an assistant message, replaying a prior answer as context.
     pub fn assistant(self, content: impl Into<String>) -> Self {
-        self.message(LlmMessageRole::Assistant, content)
+        self.message(MessageRole::Assistant, content)
     }
 
-    fn message(mut self, role: LlmMessageRole, content: impl Into<String>) -> Self {
-        self.messages.push(LlmMessage::text(role, content));
+    fn message(mut self, role: MessageRole, content: impl Into<String>) -> Self {
+        self.messages.push(Message::text(role, content));
         self
     }
 
@@ -175,6 +191,106 @@ impl Completion {
         self
     }
 
+    /// Offer the model a tool it may call.
+    ///
+    /// The schema only: nothing here executes. A direct completion has no
+    /// loop, so a tool call comes back to the caller on
+    /// [`LlmResponse::tool_calls`], to run and answer however it likes — which
+    /// is the point for an application that owns its own loop. An agent that
+    /// should call tools *and* run them is [`Agent`](crate::Agent), which
+    /// takes executable [`Tool`](crate::Tool)s instead.
+    ///
+    /// ```
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use everruns::Model;
+    /// use serde_json::json;
+    ///
+    /// let response = Model::simulated("checking")
+    ///     .completion()
+    ///     .user("what is the weather in Kyiv?")
+    ///     .tool(
+    ///         "get_weather",
+    ///         "Current weather for a city",
+    ///         json!({"type": "object", "properties": {"city": {"type": "string"}}}),
+    ///     )
+    ///     .send()
+    ///     .await?;
+    /// for call in response.tool_calls.unwrap_or_default() {
+    ///     println!("{} {}", call.name, call.arguments);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn tool(
+        mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        json_schema: Value,
+    ) -> Self {
+        self.config
+            .tools
+            .push(ToolDefinition::function(name, description, json_schema));
+        self
+    }
+
+    /// Offer the model several tools at once.
+    ///
+    /// For callers that already hold definitions — read from their own
+    /// configuration, or converted from OpenAI-shaped JSON with
+    /// [`openai_wire`](everruns_provider::openai_wire).
+    pub fn tools(mut self, tools: impl IntoIterator<Item = ToolDefinition>) -> Self {
+        self.config.tools.extend(tools);
+        self
+    }
+
+    /// Let the model issue several tool calls in one turn, or forbid it.
+    ///
+    /// Unset by default, leaving the provider's own behavior.
+    pub fn parallel_tool_calls(mut self, allowed: bool) -> Self {
+        self.config.parallel_tool_calls = Some(allowed);
+        self
+    }
+
+    /// Give up on the call if it has not finished within `timeout`.
+    ///
+    /// Covers the whole turn, streaming included. Without one a provider that
+    /// stops sending mid-answer holds the caller indefinitely.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.config.limits.total = Some(timeout);
+        self
+    }
+
+    /// Give up if the provider has not started answering within `timeout`.
+    pub fn first_token_timeout(mut self, timeout: Duration) -> Self {
+        self.config.limits.first_event = Some(timeout);
+        self
+    }
+
+    /// Record the exact request body the driver sends, on
+    /// [`LlmCompletionMetadata::request_body`].
+    ///
+    /// Off by default. What a driver puts on the wire is its own — which
+    /// fields, how tools and reasoning are shaped — so a caller storing or
+    /// showing what was asked otherwise has to approximate it. The body
+    /// carries the whole prompt, which is why turning it on is deliberate;
+    /// credentials travel in headers and are never captured.
+    ///
+    /// [`LlmCompletionMetadata::request_body`]: crate::LlmCompletionMetadata::request_body
+    pub fn capture_request(mut self, capture: bool) -> Self {
+        self.config.capture_request = capture;
+        self
+    }
+
+    /// Refuse an answer that grows past `bytes`.
+    ///
+    /// Counted across answer text and readable reasoning, and checked as they
+    /// accumulate, so a runaway generation is cut off rather than buffered.
+    pub fn max_response_bytes(mut self, bytes: u64) -> Self {
+        self.config.limits.max_response_bytes = Some(bytes);
+        self
+    }
+
     /// Send the call and wait for the whole answer.
     ///
     /// Non-streaming: drivers with a native non-streaming endpoint use it,
@@ -187,6 +303,9 @@ impl Completion {
     }
 
     /// Send the call and return the answer text, discarding everything else.
+    ///
+    /// Including any tool calls: a completion carrying tools wants
+    /// [`send`](Self::send) instead.
     pub async fn text(self) -> Result<String, CompletionError> {
         Ok(self.send().await?.text)
     }
@@ -202,7 +321,7 @@ impl Completion {
 
     /// Validate the described call, keeping both configuration mistakes off the
     /// wire.
-    fn into_request(self) -> Result<(Provider, Vec<LlmMessage>, LlmCallConfig), CompletionError> {
+    fn into_request(self) -> Result<(Provider, Vec<Message>, LlmCallConfig), CompletionError> {
         let provider = self.provider.ok_or(CompletionError::MissingProvider)?;
         if self.messages.is_empty() {
             return Err(CompletionError::NoMessages);
@@ -217,6 +336,7 @@ impl fmt::Debug for Completion {
             .field("provider", &self.provider)
             .field("model", &self.config.model)
             .field("messages", &self.messages.len())
+            .field("tools", &self.config.tools.len())
             .finish()
     }
 }
@@ -287,10 +407,10 @@ mod tests {
         assert_eq!(
             roles,
             vec![
-                LlmMessageRole::System,
-                LlmMessageRole::User,
-                LlmMessageRole::Assistant,
-                LlmMessageRole::User,
+                MessageRole::System,
+                MessageRole::User,
+                MessageRole::Assistant,
+                MessageRole::User,
             ]
         );
         assert_eq!(
@@ -314,6 +434,89 @@ mod tests {
             }
         }
         assert_eq!(text, "streamed");
+    }
+
+    #[test]
+    fn tools_are_declared_as_schemas_the_caller_will_answer_for() {
+        let completion = Model::simulated("ok")
+            .completion()
+            .user("weather?")
+            .tool(
+                "get_weather",
+                "Current weather for a city",
+                serde_json::json!({"type": "object", "properties": {"city": {"type": "string"}}}),
+            )
+            .tools([ToolDefinition::function(
+                "get_time",
+                "Current time",
+                serde_json::json!({"type": "object"}),
+            )]);
+
+        let names: Vec<_> = completion
+            .config
+            .tools
+            .iter()
+            .map(|tool| tool.name())
+            .collect();
+        assert_eq!(names, vec!["get_weather", "get_time"]);
+        // Schema only: a direct completion runs nothing, so the definitions
+        // are client-side and the calls come back to the caller.
+        assert!(
+            completion
+                .config
+                .tools
+                .iter()
+                .all(|tool| matches!(tool, ToolDefinition::ClientSide(_)))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_completion_with_tools_still_answers_in_text_when_the_model_does() {
+        let response = Model::simulated("no tool needed")
+            .completion()
+            .user("hi")
+            .tool(
+                "noop",
+                "does nothing",
+                serde_json::json!({"type": "object"}),
+            )
+            .send()
+            .await
+            .expect("simulated completion succeeds");
+        assert_eq!(response.text, "no tool needed");
+        assert!(response.tool_calls.is_none());
+    }
+
+    #[test]
+    fn per_call_bounds_reach_the_call_configuration() {
+        let completion = Model::simulated("ok")
+            .completion()
+            .user("go")
+            .timeout(Duration::from_secs(30))
+            .first_token_timeout(Duration::from_secs(5))
+            .max_response_bytes(1024)
+            .parallel_tool_calls(false);
+        assert_eq!(
+            completion.config.limits.total,
+            Some(Duration::from_secs(30))
+        );
+        assert_eq!(
+            completion.config.limits.first_event,
+            Some(Duration::from_secs(5))
+        );
+        assert_eq!(completion.config.limits.max_response_bytes, Some(1024));
+        assert_eq!(completion.config.parallel_tool_calls, Some(false));
+        assert!(
+            !completion.config.capture_request,
+            "the prompt is not recorded unless asked for"
+        );
+        assert!(
+            Model::simulated("ok")
+                .completion()
+                .capture_request(true)
+                .config
+                .capture_request
+        );
     }
 
     #[tokio::test]

@@ -8,6 +8,9 @@ src/generated/
 public/notebooks/
 scripts/__pycache__/
 
+# OpenAPI schema copied from docs/api/ by prepare-content
+public/api/
+
 # Generated OG social card images (rebuilt by prebuild script)
 public/og/
 public/og-image.png

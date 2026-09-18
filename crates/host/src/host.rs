@@ -12,7 +12,7 @@ use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     SessionModelChangedData, TurnCompletedData, TurnFailedData, TurnStartedData,
 };
-use everruns_core::message::{ContentPart, Message, MessageRole};
+use everruns_core::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::runtime_context::AssembledTurnContext;
 use everruns_core::session::SessionExecutionState;
@@ -124,7 +124,7 @@ pub struct ResolvedTurnInputs {
     /// Canonical resolved execution value for the session.
     pub snapshot: ResolvedExecutionSnapshot,
     /// Conversation messages available to the turn.
-    pub messages: Vec<Message>,
+    pub messages: Vec<RuntimeMessage>,
     /// MCP tool definitions discovered for the session's scoped servers.
     pub mcp_tool_definitions: Vec<ToolDefinition>,
 }
@@ -233,8 +233,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     /// Org-scoped like `image_artifact_store`: the store backs both the agent's
     /// own runtime tools and the org-scoped command surface, so the two cannot
     /// agree on what a session is without it.
-    fn storage_store(&self, org_id: i64) -> Option<Arc<dyn SessionStorageStore>> {
-        let _ = org_id;
+    fn storage_store(&self, _org_id: i64) -> Option<Arc<dyn SessionStorageStore>> {
         None
     }
 
@@ -1027,7 +1026,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         let user_error =
             UserFacingError::new(everruns_provider::user_facing_error::codes::BLOCKED_BY_HOOK);
         let shown = user_message.unwrap_or(reason);
-        let mut error_message = Message::assistant(shown);
+        let mut error_message = RuntimeMessage::assistant(shown);
         let mut metadata = std::collections::HashMap::new();
         user_error.apply_to_message_metadata(&mut metadata);
         error_message.metadata = Some(metadata);
@@ -1134,7 +1133,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                     }
                 },
             );
-        let mut error_message = Message::assistant(blocker.message());
+        let mut error_message = RuntimeMessage::assistant(blocker.message());
         let mut metadata = std::collections::HashMap::new();
         user_error.apply_to_message_metadata(&mut metadata);
         error_message.metadata = Some(metadata);
@@ -1618,11 +1617,11 @@ async fn emit_model_change_if_switched<A: RuntimeHostAdapter>(
 /// turn without an override runs on an inherited default, and history visible
 /// here is capability-filtered: treating a missing override as "the default"
 /// would report a switch whenever an older message was filtered out.
-fn model_switch(messages: &[Message]) -> Option<(ModelId, ModelId)> {
+fn model_switch(messages: &[RuntimeMessage]) -> Option<(ModelId, ModelId)> {
     let mut user_model_ids = messages
         .iter()
         .rev()
-        .filter(|message| message.role == MessageRole::User)
+        .filter(|message| message.role == RuntimeMessageRole::User)
         .map(|message| {
             message
                 .controls

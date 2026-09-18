@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::kernel_imports::{
-    Caller, ContentPart, ExternalActor, MessageRole, everruns_provider::typed_id::MessageId,
+    Caller, ContentPart, ExternalActor, RuntimeMessageRole, everruns_provider::typed_id::MessageId,
 };
 use ag_ui_core::event::{
     BaseEvent as AgUiBaseEvent, Event as AgUiEvent,
@@ -579,7 +579,7 @@ pub(crate) async fn run_app_agent_stream(
     let sse_guard = state
         .sse_tracker
         .try_acquire(app.org_id, session.session.id.uuid())
-        .map_err(|rejection| too_many_requests(&rejection.to_string()))?;
+        .map_err(|r| too_many_requests(&r.report("ag_ui", app.org_id, &session.session.id)))?;
 
     // Seed prior history only on first use of the thread so a new AG-UI client can
     // carry conversation context into the durable session without triggering old runs.
@@ -1018,7 +1018,7 @@ async fn seed_history(
 fn to_stored_history_message(message: &AgUiMessage) -> Option<StoredInputMessage> {
     let (role, content, name) = match message {
         AgUiMessage::User { content, name, .. } => {
-            (MessageRole::User, content.clone(), name.clone())
+            (RuntimeMessageRole::User, content.clone(), name.clone())
         }
         AgUiMessage::Assistant {
             content,
@@ -1026,7 +1026,7 @@ fn to_stored_history_message(message: &AgUiMessage) -> Option<StoredInputMessage
             tool_calls,
             ..
         } => (
-            MessageRole::Agent,
+            RuntimeMessageRole::Agent,
             content
                 .clone()
                 .or_else(|| {
@@ -1043,7 +1043,7 @@ fn to_stored_history_message(message: &AgUiMessage) -> Option<StoredInputMessage
             tool_call_id,
             ..
         } => (
-            MessageRole::Agent,
+            RuntimeMessageRole::Agent,
             match error {
                 Some(error) => format!("[Tool {} error: {}]\n{}", &**tool_call_id, error, content),
                 None => format!("[Tool {} result]\n{}", &**tool_call_id, content),
@@ -1052,7 +1052,7 @@ fn to_stored_history_message(message: &AgUiMessage) -> Option<StoredInputMessage
         ),
         AgUiMessage::System { content, name, .. }
         | AgUiMessage::Developer { content, name, .. } => {
-            (MessageRole::System, content.clone(), name.clone())
+            (RuntimeMessageRole::System, content.clone(), name.clone())
         }
     };
 
@@ -1147,7 +1147,7 @@ fn public_content_part_to_string(part: &ContentPart) -> Option<String> {
 }
 
 fn is_terminal_public_output_message(
-    message: &everruns_core::Message,
+    message: &everruns_core::RuntimeMessage,
     assistant_emitted_delta: bool,
 ) -> bool {
     if matches!(message.phase, Some(ExecutionPhase::Commentary)) {
@@ -1695,8 +1695,8 @@ fn too_many_requests(message: &str) -> Response {
 mod tests {
     use super::*;
     use crate::kernel_imports::{
-        Event, EventContext, Message, MessageId, OutputMessageCompletedData,
-        OutputMessageDeltaData, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
+        Event, EventContext, MessageId, OutputMessageCompletedData, OutputMessageDeltaData,
+        RuntimeMessage, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
     };
     use ag_ui_core::event::EventType as AgUiEventType;
     use chrono::Duration as ChronoDuration;
@@ -1838,7 +1838,7 @@ mod tests {
             SessionId::from_uuid(state.session_id),
             EventContext::turn(turn_id, input_message_id),
             OutputMessageCompletedData::new(
-                Message::assistant("Hello from AG-UI").with_id(output_message_id),
+                RuntimeMessage::assistant("Hello from AG-UI").with_id(output_message_id),
             ),
         );
 
@@ -1891,7 +1891,7 @@ mod tests {
             session_id,
             context,
             OutputMessageCompletedData::new(
-                Message::assistant("Hello from AG-UI").with_id(streamed_message_id),
+                RuntimeMessage::assistant("Hello from AG-UI").with_id(streamed_message_id),
             ),
         );
         translate_event(&mut state, &completed_event);
@@ -1947,7 +1947,7 @@ mod tests {
             session_id,
             context.clone(),
             OutputMessageCompletedData::new(
-                Message::assistant_with_tools(
+                RuntimeMessage::assistant_with_tools(
                     "",
                     vec![ToolCall {
                         id: "call_lookup".to_string(),
@@ -1977,7 +1977,7 @@ mod tests {
             session_id,
             context,
             OutputMessageCompletedData::new(
-                Message::assistant("The Base harness is the default execution wrapper.")
+                RuntimeMessage::assistant("The Base harness is the default execution wrapper.")
                     .with_id(final_message_id)
                     .with_phase(ExecutionPhase::FinalAnswer),
             ),
@@ -2289,7 +2289,7 @@ mod tests {
             session_id,
             context.clone(),
             OutputMessageCompletedData::new(
-                Message::assistant_with_tools(
+                RuntimeMessage::assistant_with_tools(
                     "",
                     vec![ToolCall {
                         id: "call_list_skills".to_string(),
@@ -2346,7 +2346,7 @@ mod tests {
             session_id,
             context,
             OutputMessageCompletedData::new(
-                Message::assistant("The Base harness is the default execution wrapper.")
+                RuntimeMessage::assistant("The Base harness is the default execution wrapper.")
                     .with_phase(ExecutionPhase::FinalAnswer),
             ),
         );
@@ -2460,7 +2460,7 @@ mod tests {
         let output_completed = Event::new(
             session_id,
             context,
-            OutputMessageCompletedData::new(Message::assistant("Hello after tool")),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant("Hello after tool")),
         );
         translate_event(&mut state, &output_completed);
 

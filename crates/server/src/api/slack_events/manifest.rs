@@ -57,12 +57,15 @@ pub(crate) async fn handle_slack_manifest(
         Vec::new()
     };
 
-    let request_url = slack_webhook_url(&state.api_base_url, &slack_channel.public_id.to_string());
+    let channel_public_id = slack_channel.public_id.to_string();
+    let request_url = slack_webhook_url(&state.api_base_url, &channel_public_id);
+    let interactivity_url = slack_interactivity_url(&state.api_base_url, &channel_public_id);
     let manifest_yaml = build_manifest_yaml(
         &app.name,
         &display_name,
         app.description.as_deref(),
         &request_url,
+        &interactivity_url,
         agent_surface_enabled,
         &starters,
     );
@@ -87,6 +90,19 @@ pub(crate) async fn handle_slack_manifest(
 pub(crate) fn slack_webhook_url(api_base_url: &str, channel_public_id: &str) -> String {
     format!(
         "{}/v1/e/{}/slack/events",
+        api_base_url.trim_end_matches('/'),
+        channel_public_id
+    )
+}
+
+/// Where Slack posts a click on an approval card (EVE-1025).
+///
+/// Determined the same way and at the same time as the webhook URL, so
+/// `settings.interactivity` is generatable alongside `event_subscriptions` and
+/// an operator never has to add it by hand.
+pub(crate) fn slack_interactivity_url(api_base_url: &str, channel_public_id: &str) -> String {
+    format!(
+        "{}/v1/e/{}/slack/interactivity",
         api_base_url.trim_end_matches('/'),
         channel_public_id
     )
@@ -228,11 +244,13 @@ pub(crate) fn truncate_chars(s: &str, max: usize) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_manifest_yaml(
     app_name: &str,
     display_name: &str,
     app_description: Option<&str>,
     request_url: &str,
+    interactivity_url: &str,
     agent_surface_enabled: bool,
     starters: &[ConversationStarter],
 ) -> String {
@@ -242,6 +260,7 @@ pub(crate) fn build_manifest_yaml(
     let long_desc = build_long_description(app_name, app_description);
     let long_desc = yaml_escape(&long_desc);
     let request_url = yaml_escape(request_url);
+    let interactivity_url = yaml_escape(interactivity_url);
 
     // The agent surface is additive: it adds a scope, a feature block and four
     // events on top of the channel bot, which keeps working exactly as before.
@@ -288,6 +307,9 @@ pub(crate) fn build_manifest_yaml(
          \x20     - files:read\n\
          {agent_scope}\
          settings:\n\
+         \x20 interactivity:\n\
+         \x20   is_enabled: true\n\
+         \x20   request_url: \"{interactivity_url}\"\n\
          \x20 event_subscriptions:\n\
          \x20   request_url: \"{request_url}\"\n\
          \x20   bot_events:\n\

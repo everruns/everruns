@@ -69,7 +69,18 @@ async fn subagents_prompt_within_budget() {
 
 #[tokio::test]
 async fn session_sandbox_prompt_within_budget() {
-    assert_contribution_under(&SessionSandboxCapability, 300).await;
+    // Bumped 300 -> 850 (EVE-1042): the environment half of this prompt is no
+    // longer hand-written, it is derived from the sandbox's own facts by
+    // `everruns_host::environment_preamble`. That costs ~500 bytes here and
+    // removes roughly a hundred lines of near-identical prose from each
+    // `coding-*` harness, so the assembled prompt for a coding session gets
+    // smaller while this capability's standalone contribution gets larger.
+    //
+    // The bytes are orientation, not boilerplate: containment, network policy
+    // and what survives a restart are the facts a model gets wrong expensively
+    // when it has to guess. This is the largest budget in the file because it
+    // is the capability that hands a model a whole machine.
+    assert_contribution_under(&SessionSandboxCapability, 850).await;
 }
 
 // Note: the `sample_data` fixture capability's budget test lives in

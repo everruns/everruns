@@ -1,6 +1,6 @@
 ---
 title: TypeSafe
-description: Give agents typed classification — calibrated probabilities, single-choice routing, and graded scores — from TypeSafe's System One model, instead of asking a chat model for an opinion. Requires a TypeSafe API key.
+description: "Typed classification from TypeSafe's System One model: calibrated probabilities, single-choice routing, and graded scores. Requires a TypeSafe API key."
 ---
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M12 3v18M7 21h10M3 8l4-3 4 3M3 8a4 4 0 0 0 8 0M13 8l4-3 4 3M13 8a4 4 0 0 0 8 0M12 5l5-2M12 5 7 3"/></svg>
@@ -91,9 +91,12 @@ And gets back numbers, not a review:
 
 | Type | Ask it when | You get |
 |------|-------------|---------|
-| `noul` | A condition either holds or it doesn't | The probability of yes, from 0 to 1 |
-| `choice` | Exactly one option out of a set applies | The selected option, every option's probability, and a confidence |
-| `score` | Something falls somewhere on a scale | A weighted position across your levels, each level's probability, and a confidence |
+| [`noul`](https://docs.typesafe.ai/primitives/noul) | A condition either holds or it doesn't | The probability of yes, from 0 to 1 |
+| [`choice`](https://docs.typesafe.ai/primitives/choice) | Exactly one option out of a set applies | The selected option, every option's probability, and a confidence |
+| [`score`](https://docs.typesafe.ai/primitives/score) | Something falls somewhere on a scale | A weighted position across your levels, each level's probability, and a confidence |
+
+These are System One's own primitives, kept under the same names here; TypeSafe
+documents them in full under [Primitives](https://docs.typesafe.ai/primitives).
 
 Two things worth knowing when you write the questions:
 
@@ -102,6 +105,12 @@ Two things worth knowing when you write the questions:
 - `choice` options and `score` levels must each describe a concrete situation and
   stand on their own. The question id is never shown to the model, so the
   instructions have to carry the whole meaning.
+
+The `confidence` on a `choice` or `score` is a second axis, not a restatement of
+the probability: the answer tells you *what*, confidence tells you *whether to
+act*. See [Confidence](https://docs.typesafe.ai/confidence), and
+[confidence-gated routing](https://docs.typesafe.ai/patterns/confidence-routing)
+for the pattern it enables.
 
 ## Good Fits
 
@@ -135,3 +144,23 @@ personal connection.
   and 32 KiB of content.
 - The content being judged is sent as **data**, and every question states so — a
   document that tries to instruct the model is being rated, not obeyed.
+
+## Learn more
+
+The model and its concepts are TypeSafe's, and their documentation is the
+reference for both:
+
+- [System One](https://docs.typesafe.ai/concepts/system-one) — the class of
+  model, and how it differs from an LLM
+- [Primitives](https://docs.typesafe.ai/primitives) —
+  [Noul](https://docs.typesafe.ai/primitives/noul),
+  [Choice](https://docs.typesafe.ai/primitives/choice),
+  [Score](https://docs.typesafe.ai/primitives/score), and
+  [structured criteria](https://docs.typesafe.ai/primitives/advanced)
+- [State](https://docs.typesafe.ai/concepts/state) — what to send as the thing
+  being judged
+- [Confidence](https://docs.typesafe.ai/confidence) — certainty as a second
+  axis, distinct from the probability
+- [Patterns](https://docs.typesafe.ai/patterns) — including
+  [speculative fan-out](https://docs.typesafe.ai/patterns/fan-out) and
+  [confidence-gated routing](https://docs.typesafe.ai/patterns/confidence-routing)

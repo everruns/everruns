@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::ExecutionContext;
 use crate::error::{AgentLoopError, Result};
-use crate::message::Message;
+use crate::message::RuntimeMessage;
 use crate::message_retriever::MessageRetriever;
 
 // ============================================================================
@@ -29,7 +29,7 @@ pub struct InputAtomInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputAtomResult {
     /// The user message that triggered this turn
-    pub message: Message,
+    pub message: RuntimeMessage,
 }
 
 // ============================================================================

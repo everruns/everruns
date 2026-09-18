@@ -15,7 +15,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_helpers::{
@@ -24,8 +24,8 @@ use everruns_provider::driver_helpers::{
 };
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
-    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent, disjoint_prompt_tokens, fold_system_messages,
+    LlmCompletionMetadata, LlmContentPart, LlmResponseStream, LlmStreamEvent, Message,
+    MessageContent, MessageRole, disjoint_prompt_tokens, fold_system_messages,
 };
 use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_provider::is_provider_quota_message;
@@ -82,25 +82,25 @@ impl GeminiChatDriver {
         everruns_provider::driver_helpers::shared_streaming_http_client()
     }
 
-    fn convert_role(role: &LlmMessageRole) -> &'static str {
+    fn convert_role(role: &MessageRole) -> &'static str {
         match role {
-            LlmMessageRole::System => "user", // System is handled separately
-            LlmMessageRole::User => "user",
-            LlmMessageRole::Assistant => "model",
-            LlmMessageRole::Tool => "user", // Tool results sent as function responses
+            MessageRole::System => "user", // System is handled separately
+            MessageRole::User => "user",
+            MessageRole::Assistant => "model",
+            MessageRole::Tool => "user", // Tool results sent as function responses
         }
     }
 
-    fn convert_content(content: &LlmMessageContent) -> Vec<GeminiPart> {
+    fn convert_content(content: &MessageContent) -> Vec<GeminiPart> {
         match content {
-            LlmMessageContent::Text(text) => {
+            MessageContent::Text(text) => {
                 if text.is_empty() {
                     vec![]
                 } else {
                     vec![GeminiPart::text(text.clone())]
                 }
             }
-            LlmMessageContent::Parts(parts) => parts
+            MessageContent::Parts(parts) => parts
                 .iter()
                 .filter_map(|part| match part {
                     LlmContentPart::Text { text } => {
@@ -163,7 +163,7 @@ impl GeminiChatDriver {
         }
     }
 
-    fn convert_messages(messages: &[LlmMessage]) -> (Option<GeminiContent>, Vec<GeminiContent>) {
+    fn convert_messages(messages: &[Message]) -> (Option<GeminiContent>, Vec<GeminiContent>) {
         // Accumulate all system messages into Gemini's separate
         // `system_instruction`. Overwriting on each System message would drop the
         // agent system prompt whenever a later notice/summary System message is
@@ -179,11 +179,11 @@ impl GeminiChatDriver {
 
         for msg in messages {
             match msg.role {
-                LlmMessageRole::System => {
+                MessageRole::System => {
                     // Folded above into `system_instruction`; never emit
                     // System-role content into the Gemini `contents` array.
                 }
-                LlmMessageRole::Tool => {
+                MessageRole::Tool => {
                     // Tool results in Gemini use functionResponse parts
                     if let Some(tool_call_id) = &msg.tool_call_id {
                         // THREAT[TM-TOOL-005]: Gemini rejects functionResponse parts unless the matching
@@ -214,7 +214,7 @@ impl GeminiChatDriver {
                         });
                     }
                 }
-                LlmMessageRole::Assistant => {
+                MessageRole::Assistant => {
                     // Thought parts lead the turn, matching the order Gemini
                     // emitted them. Signatures bound to a specific call are
                     // replayed on that call instead (below), never here.
@@ -429,7 +429,8 @@ impl GeminiChatDriver {
                         }
 
                         let wait = self.retry_config.calculate_backoff(attempts);
-                        *last_error.lock().unwrap() = Some(error_text);
+                        *last_error.lock().unwrap_or_else(PoisonError::into_inner) =
+                            Some(error_text);
                         return RetryDecision::Retry {
                             wait,
                             rate_limit_info: None,
@@ -448,19 +449,26 @@ impl GeminiChatDriver {
                     // body are still available (see LlmErrorKind).
                     let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
 
-                    if attempts > 0 {
-                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                            kind,
-                            format!(
-                                "{} (after {} retries, last error: {})",
-                                error_msg,
-                                attempts,
-                                last_error.lock().unwrap().take().unwrap_or_default()
-                            ),
-                        ));
-                    }
-
-                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
+                    let message = if attempts > 0 {
+                        format!(
+                            "{} (after {} retries, last error: {})",
+                            error_msg,
+                            attempts,
+                            last_error
+                                .lock()
+                                .unwrap_or_else(PoisonError::into_inner)
+                                .take()
+                                .unwrap_or_default()
+                        )
+                    } else {
+                        error_msg
+                    };
+                    RetryDecision::Terminal(AgentLoopError::llm_http_kind(
+                        kind,
+                        status.as_u16(),
+                        &error_text,
+                        message,
+                    ))
                 }
             },
             |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
@@ -474,7 +482,7 @@ impl ChatDriver for GeminiChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         let (system_instruction, contents) = Self::convert_messages(&messages);
@@ -1112,8 +1120,8 @@ mod tests {
     // Model-not-found detection tests
     // ========================================================================
 
-    fn call_message(id: &str, name: &str, arguments: Value) -> LlmMessage {
-        let mut message = LlmMessage::text(LlmMessageRole::Assistant, "");
+    fn call_message(id: &str, name: &str, arguments: Value) -> Message {
+        let mut message = Message::text(MessageRole::Assistant, "");
         message.tool_calls = Some(vec![ToolCall {
             id: id.into(),
             name: name.into(),
@@ -1122,8 +1130,8 @@ mod tests {
         message
     }
 
-    fn result_message(id: Option<&str>, text: &str) -> LlmMessage {
-        let mut message = LlmMessage::text(LlmMessageRole::Tool, text);
+    fn result_message(id: Option<&str>, text: &str) -> Message {
+        let mut message = Message::text(MessageRole::Tool, text);
         message.tool_call_id = id.map(str::to_string);
         message
     }
@@ -1131,12 +1139,12 @@ mod tests {
     #[test]
     fn transcript_preserves_system_order_and_resolves_tool_names_per_turn() {
         let messages = vec![
-            LlmMessage::text(LlmMessageRole::System, "A"),
+            Message::text(MessageRole::System, "A"),
             result_message(Some("call_0"), "future orphan"),
-            LlmMessage::text(LlmMessageRole::User, "hi"),
+            Message::text(MessageRole::User, "hi"),
             call_message("call_0", "get_weather", json!({"city":"Paris"})),
             result_message(Some("call_0"), r#"{"temp":20}"#),
-            LlmMessage::text(LlmMessageRole::System, "B"),
+            Message::text(MessageRole::System, "B"),
             call_message("call_0", "get_time", json!({"zone":"UTC"})),
             result_message(Some("call_0"), "12:00"),
             result_message(Some("missing"), "orphan"),
@@ -1158,7 +1166,7 @@ mod tests {
             ])
         );
         let (system, contents) = GeminiChatDriver::convert_messages(&[
-            LlmMessage::text(LlmMessageRole::User, ""),
+            Message::text(MessageRole::User, ""),
             result_message(Some("missing"), "orphan"),
         ]);
         assert!(system.is_none());
@@ -1190,7 +1198,7 @@ mod tests {
 
     #[test]
     fn content_conversion_preserves_text_and_media_order_while_omitting_empty_parts() {
-        let parts = LlmMessageContent::Parts(vec![
+        let parts = MessageContent::Parts(vec![
             LlmContentPart::text(""),
             LlmContentPart::text("before"),
             LlmContentPart::image("data:image/png;base64,aGVsbG8="),
@@ -1210,14 +1218,14 @@ mod tests {
             ])
         );
         assert_eq!(
-            serde_json::to_value(GeminiChatDriver::convert_content(&LlmMessageContent::Text(
+            serde_json::to_value(GeminiChatDriver::convert_content(&MessageContent::Text(
                 "hello".into()
             )))
             .unwrap(),
             json!([{"text":"hello"}])
         );
         assert_eq!(
-            serde_json::to_value(GeminiChatDriver::convert_content(&LlmMessageContent::Text(
+            serde_json::to_value(GeminiChatDriver::convert_content(&MessageContent::Text(
                 String::new()
             )))
             .unwrap(),
@@ -1411,7 +1419,7 @@ mod tests {
             });
             config.parallel_tool_calls = parallel;
             let response = service
-                .chat_completion(vec![LlmMessage::text(LlmMessageRole::User, "hi")], &config)
+                .chat_completion(vec![Message::text(MessageRole::User, "hi")], &config)
                 .await
                 .unwrap();
             assert_eq!(response.text, "ok");
@@ -1429,7 +1437,7 @@ mod tests {
 
     #[test]
     fn file_pdf_serializes_to_inline_data() {
-        let content = LlmMessageContent::Parts(vec![LlmContentPart::File {
+        let content = MessageContent::Parts(vec![LlmContentPart::File {
             url: "data:application/pdf;base64,JVBERi0=".into(),
             filename: Some("report.pdf".into()),
         }]);

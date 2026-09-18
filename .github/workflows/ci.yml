@@ -82,6 +82,11 @@ jobs:
       - name: Check release workflow security
         run: bash scripts/test-release-workflow-security.sh
 
+      # Runs here rather than only in the shell-test job so it covers every CI
+      # run, including PRs that touch no scripts/.
+      - name: Check workflow secret handling
+        run: bash scripts/test-workflow-secret-handling.sh
+
       - name: Resolve CI event gate
         id: ci_event
         env:
@@ -180,6 +185,8 @@ jobs:
               # change to one has to run those tests. Without this a rewrite of
               # a report script reached main with its own test never running.
               - 'scripts/report_*.py'
+              # scripts/test-actions-log-secret-scan.sh drives the log scanner.
+              - 'scripts/scan_*.py'
               - 'scripts/lib/**'
               - 'scripts/select_publish_run.py'
               - 'scripts/sync-publish-pin-versions.py'
@@ -190,6 +197,10 @@ jobs:
               # drops a timeout-minutes must run the guard even when it touches
               # nothing under scripts/.
               - '.github/workflows/ci.yml'
+              # scripts/test-workflow-secret-handling.sh reads every workflow, so
+              # a PR that edits one must run the guard. The `changes` job runs it
+              # unconditionally too; this keeps the shell job's own claim honest.
+              - '.github/workflows/*.yml'
               # scripts/test-cloud-env-tooling.sh reads the cloud bootstrap, so
               # a PR that unpins a tool there must run the guard even when it
               # touches no scripts/test-*.sh.
@@ -900,6 +911,13 @@ jobs:
           cargo test -p everruns-integrations-e2b
           cargo test -p everruns-integrations-github
           cargo test -p everruns-integrations-sprites
+          cargo test -p everruns-integrations-typesafe
+          # The lib-only half (client, classifier, framework capability) must keep
+          # compiling without `hosted`; that is the shape an embedder carries, and
+          # nothing else in CI builds it. The typesafe-integration.yml workflow is
+          # path-filtered on integrations/typesafe/**, so a break introduced from
+          # everruns-core/-capability/-provider would otherwise reach main unseen.
+          cargo check -p everruns-integrations-typesafe --no-default-features
 
               ;;
           esac
@@ -1279,6 +1297,7 @@ jobs:
             --test prometheus_metrics_test \
             --test llm_model_default_test \
             --test mcp_oauth_user_switch_test \
+            --test service_mcp_oauth_lifecycle_test \
             --test org_creation_test \
             --test org_isolation_test \
             --test org_lifecycle_test \

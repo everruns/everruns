@@ -13,18 +13,253 @@ use crate::kernel_imports::{
     resolve_runtime_capabilities,
 };
 use anyhow::{Result, anyhow};
+use chrono::{DateTime, Utc};
 use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_servers};
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::mcp_server::sanitize_mcp_server_name;
-use everruns_mcp::McpCapability;
+use everruns_mcp::{CacheHints, CacheScope, McpCapability};
 use everruns_platform::{Agent, Harness, Session};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Duration;
+use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
 use crate::domains::mcp_servers::McpServerResolved;
-use crate::domains::mcp_servers::service::{McpServerService, fetch_mcp_tools};
-use crate::storage::StorageBackend;
+use crate::domains::mcp_servers::service::{
+    McpServerService, fetch_mcp_tools, fetch_mcp_tools_with_cache_hints,
+};
+use crate::storage::{McpServiceToolCacheRow, StorageBackend, UpsertMcpServiceToolCache};
+
+const SCOPED_TOOL_CACHE_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+const USER_TOOL_CACHE_MAX_ENTRIES: usize = 1_024;
+const USER_TOOL_CACHE_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Debug, Clone, Copy)]
+pub struct ScopedMcpCacheContext {
+    pub agent_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum CacheIdentity {
+    Service {
+        org_id: i64,
+        preset_id: Uuid,
+        agent_id: Uuid,
+    },
+    User {
+        org_id: i64,
+        preset_id: Uuid,
+        user_id: Uuid,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ScopedToolCacheKey {
+    identity: CacheIdentity,
+    scope: CacheScopeKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum CacheScopeKey {
+    Public,
+    Private(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ScopedRefreshKey {
+    identity: CacheIdentity,
+    credential_hash: String,
+}
+
+#[derive(Debug, Clone)]
+struct CachedScopedTools {
+    tools: Vec<everruns_core::McpToolDefinition>,
+    ttl: Duration,
+    cached_at: DateTime<Utc>,
+}
+
+impl CachedScopedTools {
+    fn age(&self) -> Option<chrono::Duration> {
+        const FUTURE_SKEW_SECS: i64 = 300;
+        let age = Utc::now().signed_duration_since(self.cached_at);
+        if age < chrono::Duration::seconds(-FUTURE_SKEW_SECS) {
+            return None;
+        }
+        Some(age.max(chrono::Duration::zero()))
+    }
+
+    fn is_fresh(&self) -> bool {
+        self.age().is_some_and(|age| {
+            age < chrono::Duration::from_std(self.ttl)
+                .unwrap_or_else(|_| chrono::Duration::hours(24))
+                && age
+                    < chrono::Duration::from_std(SCOPED_TOOL_CACHE_MAX_AGE)
+                        .unwrap_or_else(|_| chrono::Duration::hours(24))
+        })
+    }
+
+    fn is_within_max_age(&self) -> bool {
+        self.age().is_some_and(|age| {
+            age < chrono::Duration::from_std(SCOPED_TOOL_CACHE_MAX_AGE)
+                .unwrap_or_else(|_| chrono::Duration::hours(24))
+        })
+    }
+}
+
+async fn delete_cache_entry(db: &StorageBackend, key: &ScopedToolCacheKey) -> Result<()> {
+    match &key.identity {
+        CacheIdentity::Service {
+            org_id,
+            preset_id,
+            agent_id,
+        } => {
+            let (scope, hash) = match &key.scope {
+                CacheScopeKey::Public => ("public", ""),
+                CacheScopeKey::Private(hash) => ("private", hash.as_str()),
+            };
+            db.delete_mcp_service_tool_cache(*org_id, *preset_id, *agent_id, scope, hash)
+                .await?;
+        }
+        CacheIdentity::User { .. } => {
+            USER_TOOL_CACHE
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .remove(key);
+        }
+    }
+    Ok(())
+}
+
+async fn reap_obsolete_private_service_entries(
+    db: &StorageBackend,
+    identity: CacheIdentity,
+    current_hash: &str,
+) -> Result<()> {
+    if let CacheIdentity::Service {
+        org_id,
+        preset_id,
+        agent_id,
+    } = identity
+    {
+        db.delete_obsolete_mcp_service_private_tool_caches(
+            org_id,
+            preset_id,
+            agent_id,
+            current_hash,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+struct UserToolCacheEntry {
+    value: CachedScopedTools,
+    bytes: usize,
+}
+
+struct UserToolCache {
+    entries: HashMap<ScopedToolCacheKey, UserToolCacheEntry>,
+    total_bytes: usize,
+    max_entries: usize,
+    max_bytes: usize,
+}
+
+impl UserToolCache {
+    fn new(max_entries: usize, max_bytes: usize) -> Self {
+        Self {
+            entries: HashMap::new(),
+            total_bytes: 0,
+            max_entries,
+            max_bytes,
+        }
+    }
+
+    fn entry_bytes(key: &ScopedToolCacheKey, value: &CachedScopedTools) -> usize {
+        let scope_bytes = match &key.scope {
+            CacheScopeKey::Public => 0,
+            CacheScopeKey::Private(hash) => hash.len(),
+        };
+        serde_json::to_vec(&value.tools)
+            .map(|tools| tools.len().saturating_add(scope_bytes))
+            .unwrap_or(usize::MAX)
+    }
+
+    fn remove(&mut self, key: &ScopedToolCacheKey) {
+        if let Some(entry) = self.entries.remove(key) {
+            self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
+        }
+    }
+
+    fn retain(&mut self, mut keep: impl FnMut(&ScopedToolCacheKey, &CachedScopedTools) -> bool) {
+        let mut removed_bytes = 0usize;
+        self.entries.retain(|key, entry| {
+            let retained = keep(key, &entry.value);
+            if !retained {
+                removed_bytes = removed_bytes.saturating_add(entry.bytes);
+            }
+            retained
+        });
+        self.total_bytes = self.total_bytes.saturating_sub(removed_bytes);
+    }
+
+    fn get(&mut self, key: &ScopedToolCacheKey) -> Option<CachedScopedTools> {
+        let value = self.entries.get(key).map(|entry| entry.value.clone());
+        self.retain(|candidate, entry| candidate == key || entry.is_within_max_age());
+        value
+    }
+
+    fn remove_identity(&mut self, identity: CacheIdentity) {
+        self.retain(|key, _| key.identity != identity);
+    }
+
+    fn insert(&mut self, key: ScopedToolCacheKey, value: CachedScopedTools) {
+        self.retain(|_, entry| entry.is_within_max_age());
+        self.remove(&key);
+        let bytes = Self::entry_bytes(&key, &value);
+        if bytes > self.max_bytes {
+            return;
+        }
+        self.total_bytes = self.total_bytes.saturating_add(bytes);
+        self.entries
+            .insert(key, UserToolCacheEntry { value, bytes });
+        while self.entries.len() > self.max_entries || self.total_bytes > self.max_bytes {
+            let Some(oldest) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.value.cached_at)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            self.remove(&oldest);
+        }
+    }
+}
+
+static USER_TOOL_CACHE: LazyLock<Mutex<UserToolCache>> = LazyLock::new(|| {
+    Mutex::new(UserToolCache::new(
+        USER_TOOL_CACHE_MAX_ENTRIES,
+        USER_TOOL_CACHE_MAX_BYTES,
+    ))
+});
+static SCOPED_REFRESH_LOCKS: LazyLock<ScopedRefreshLocks> =
+    LazyLock::new(ScopedRefreshLocks::default);
+
+#[derive(Default)]
+struct ScopedRefreshLocks {
+    locks: Mutex<HashMap<ScopedRefreshKey, Arc<AsyncMutex<()>>>>,
+}
+
+impl ScopedRefreshLocks {
+    fn lock_for(&self, key: ScopedRefreshKey) -> Arc<AsyncMutex<()>> {
+        let mut locks = self.locks.lock().unwrap_or_else(|error| error.into_inner());
+        locks.retain(|existing, lock| *existing == key || Arc::strong_count(lock) > 1);
+        locks.entry(key).or_default().clone()
+    }
+}
 
 pub fn merge_effective_scoped_mcp_servers(
     harness: &Harness,
@@ -246,6 +481,262 @@ pub async fn materialize_scoped_mcp_servers(
     Ok(materialized)
 }
 
+enum CacheLookup {
+    Fresh(Vec<everruns_core::McpToolDefinition>),
+    Stale(Vec<everruns_core::McpToolDefinition>),
+    Expired,
+    Miss,
+}
+
+fn credential_hash(token: &str) -> String {
+    hex::encode(Sha256::digest(token.as_bytes()))
+}
+
+fn cache_identity(
+    org_id: i64,
+    preset_id: Uuid,
+    acts_as: McpServerActsAs,
+    context: ScopedMcpCacheContext,
+) -> Option<CacheIdentity> {
+    match acts_as {
+        McpServerActsAs::Service => context.agent_id.map(|agent_id| CacheIdentity::Service {
+            org_id,
+            preset_id,
+            agent_id,
+        }),
+        McpServerActsAs::User => context.user_id.map(|user_id| CacheIdentity::User {
+            org_id,
+            preset_id,
+            user_id,
+        }),
+        McpServerActsAs::None => None,
+    }
+}
+
+fn cached_tools_from_service_row(row: McpServiceToolCacheRow) -> CachedScopedTools {
+    CachedScopedTools {
+        tools: serde_json::from_value(row.cached_tools).unwrap_or_default(),
+        ttl: Duration::from_millis(row.ttl_ms.max(0) as u64),
+        cached_at: row.tools_cached_at,
+    }
+}
+
+async fn load_cache_entry(
+    db: &StorageBackend,
+    key: &ScopedToolCacheKey,
+) -> Result<Option<CachedScopedTools>> {
+    match &key.identity {
+        CacheIdentity::Service {
+            org_id,
+            preset_id,
+            agent_id,
+        } => {
+            let (scope, hash) = match &key.scope {
+                CacheScopeKey::Public => ("public", ""),
+                CacheScopeKey::Private(hash) => ("private", hash.as_str()),
+            };
+            Ok(db
+                .get_mcp_service_tool_cache(*org_id, *preset_id, *agent_id, scope, hash)
+                .await?
+                .map(cached_tools_from_service_row))
+        }
+        CacheIdentity::User { .. } => Ok(USER_TOOL_CACHE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(key)),
+    }
+}
+
+async fn lookup_cached_tools(
+    db: &StorageBackend,
+    identity: CacheIdentity,
+    hash: &str,
+) -> Result<CacheLookup> {
+    let mut fresh = None;
+    let mut stale = None;
+    let mut expired = Vec::new();
+    for scope in [
+        CacheScopeKey::Public,
+        CacheScopeKey::Private(hash.to_string()),
+    ] {
+        let key = ScopedToolCacheKey { identity, scope };
+        let Some(entry) = load_cache_entry(db, &key).await? else {
+            continue;
+        };
+        if entry.is_fresh() {
+            fresh.get_or_insert(entry.tools);
+        } else if entry.is_within_max_age() {
+            stale.get_or_insert(entry.tools);
+        } else {
+            expired.push(key);
+        }
+    }
+    for key in &expired {
+        delete_cache_entry(db, key).await?;
+    }
+    if let Some(tools) = fresh {
+        Ok(CacheLookup::Fresh(tools))
+    } else if let Some(tools) = stale {
+        Ok(CacheLookup::Stale(tools))
+    } else if !expired.is_empty() {
+        Ok(CacheLookup::Expired)
+    } else {
+        Ok(CacheLookup::Miss)
+    }
+}
+
+async fn invalidate_identity_cache(db: &StorageBackend, identity: CacheIdentity) -> Result<()> {
+    match identity {
+        CacheIdentity::Service {
+            org_id,
+            preset_id,
+            agent_id,
+        } => {
+            db.delete_mcp_service_tool_caches(org_id, preset_id, agent_id)
+                .await?;
+        }
+        CacheIdentity::User { .. } => {
+            USER_TOOL_CACHE
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .remove_identity(identity);
+        }
+    }
+    Ok(())
+}
+
+async fn store_cached_tools(
+    db: &StorageBackend,
+    identity: CacheIdentity,
+    hash: &str,
+    hints: CacheHints,
+    tools: &[everruns_core::McpToolDefinition],
+) -> Result<()> {
+    let (scope, credential_hash) = match hints.scope {
+        CacheScope::Public => (CacheScopeKey::Public, String::new()),
+        CacheScope::Private => (CacheScopeKey::Private(hash.to_string()), hash.to_string()),
+    };
+    let entry = CachedScopedTools {
+        tools: tools.to_vec(),
+        ttl: hints.ttl,
+        cached_at: Utc::now(),
+    };
+    match identity {
+        CacheIdentity::Service {
+            org_id,
+            preset_id,
+            agent_id,
+        } => {
+            db.upsert_mcp_service_tool_cache(UpsertMcpServiceToolCache {
+                org_id,
+                mcp_server_id: preset_id,
+                agent_id,
+                cache_scope: match scope {
+                    CacheScopeKey::Public => "public",
+                    CacheScopeKey::Private(_) => "private",
+                }
+                .to_string(),
+                credential_hash,
+                cached_tools: serde_json::to_value(tools)?,
+                ttl_ms: hints.ttl.as_millis().min(i64::MAX as u128) as i64,
+            })
+            .await?;
+        }
+        CacheIdentity::User { .. } => {
+            USER_TOOL_CACHE
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .insert(ScopedToolCacheKey { identity, scope }, entry);
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn discover_catalog_tools(
+    db: &StorageBackend,
+    org_id: i64,
+    preset_id: Uuid,
+    server_name: &str,
+    server: &ScopedMcpServer,
+    session_id: SessionId,
+    context: ScopedMcpCacheContext,
+    connection_resolver: &Arc<dyn UserConnectionResolver>,
+    egress_service: &dyn EgressService,
+) -> Result<Option<Vec<everruns_core::McpToolDefinition>>> {
+    let Some(identity) = cache_identity(org_id, preset_id, server.acts_as, context) else {
+        return Ok(None);
+    };
+    let provider = everruns_core::mcp_oauth_provider_id_for_uuid(preset_id);
+    let token = connection_resolver
+        .get_mcp_connection_token(session_id, &provider, server.acts_as)
+        .await
+        .map_err(|error| anyhow!("Failed to resolve scoped MCP discovery token: {error}"))?;
+    let Some(token) = token else {
+        invalidate_identity_cache(db, identity).await?;
+        return Ok(None);
+    };
+    let hash = credential_hash(&token);
+    reap_obsolete_private_service_entries(db, identity, &hash).await?;
+    match lookup_cached_tools(db, identity, &hash).await? {
+        CacheLookup::Fresh(tools) => return Ok(Some(tools)),
+        CacheLookup::Expired => return Ok(None),
+        CacheLookup::Stale(_) | CacheLookup::Miss => {}
+    }
+
+    let refresh_key = ScopedRefreshKey {
+        identity,
+        credential_hash: hash.clone(),
+    };
+    let lock = SCOPED_REFRESH_LOCKS.lock_for(refresh_key);
+    let _guard = lock.lock_owned().await;
+    match lookup_cached_tools(db, identity, &hash).await? {
+        CacheLookup::Fresh(tools) => return Ok(Some(tools)),
+        CacheLookup::Expired => {
+            invalidate_identity_cache(db, identity).await?;
+            return Ok(None);
+        }
+        CacheLookup::Stale(stale) => {
+            match fetch_mcp_tools_with_cache_hints(
+                egress_service,
+                &server.url,
+                Some(&token),
+                &server.headers,
+            )
+            .await
+            {
+                Ok(result) => {
+                    if let Some(hints) = result.cache_hints {
+                        store_cached_tools(db, identity, &hash, hints, &result.tools).await?;
+                    }
+                    return Ok(Some(result.tools));
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        server_name,
+                        %error,
+                        "Failed to refresh scoped MCP tool cache; serving cached tools within maximum age"
+                    );
+                    return Ok(Some(stale));
+                }
+            }
+        }
+        CacheLookup::Miss => {}
+    }
+
+    let result = fetch_mcp_tools_with_cache_hints(
+        egress_service,
+        &server.url,
+        Some(&token),
+        &server.headers,
+    )
+    .await?;
+    if let Some(hints) = result.cache_hints {
+        store_cached_tools(db, identity, &hash, hints, &result.tools).await?;
+    }
+    Ok(Some(result.tools))
+}
+
 pub async fn build_materialized_scoped_mcp_tool_definitions(
     db: &StorageBackend,
     org_id: i64,
@@ -255,13 +746,92 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
     egress_service: &dyn EgressService,
 ) -> Result<Vec<ToolDefinition>> {
     let materialized = materialize_scoped_mcp_servers(db, org_id, servers).await?;
-    build_scoped_mcp_tool_definitions(
-        &materialized,
-        session_id,
-        connection_resolver,
-        egress_service,
-    )
-    .await
+    let cache_context = match session_id {
+        Some(session_id) => {
+            db.get_session(org_id, session_id)
+                .await?
+                .map(|session| ScopedMcpCacheContext {
+                    agent_id: session.agent_id.map(|id| id.uuid()),
+                    user_id: session.resolved_owner_user_id,
+                })
+        }
+        None => None,
+    };
+    let mut definitions = Vec::new();
+    for (name, server) in &materialized {
+        let source = servers
+            .get(name)
+            .expect("materialized server keeps its name");
+        let runtime_identity_attachment =
+            !server.acts_as.is_none() && source.preset.is_some() && session_id.is_some();
+        if !runtime_identity_attachment {
+            definitions.extend(
+                build_scoped_mcp_tool_definitions(
+                    &ScopedMcpServers::from([(name.clone(), server.clone())]),
+                    session_id,
+                    connection_resolver,
+                    egress_service,
+                )
+                .await?,
+            );
+            continue;
+        }
+        let (Some(cache_context), Some(connection_resolver)) = (cache_context, connection_resolver)
+        else {
+            tracing::warn!(
+                server_name = %name,
+                acts_as = %server.acts_as,
+                "Skipping catalog MCP discovery because runtime identity context is unavailable"
+            );
+            continue;
+        };
+
+        let preset_name = source
+            .preset
+            .as_ref()
+            .expect("cacheable catalog attachment has a preset")
+            .catalog_name();
+        let preset_id = db
+            .get_mcp_server_by_name(org_id, preset_name)
+            .await?
+            .filter(|row| row.status == "active")
+            .ok_or_else(|| {
+                anyhow!("Catalog MCP server preset '{preset_name}' is missing or not active")
+            })?
+            .id
+            .uuid();
+        let tools = discover_catalog_tools(
+            db,
+            org_id,
+            preset_id,
+            name,
+            server,
+            session_id.expect("runtime identity attachment has a session"),
+            cache_context,
+            connection_resolver,
+            egress_service,
+        )
+        .await;
+        let tools = match tools {
+            Ok(Some(tools)) => tools,
+            Ok(None) => continue,
+            Err(error) => {
+                tracing::warn!(
+                    server_name = %name,
+                    %error,
+                    "Failed to discover cached catalog MCP tools, skipping server"
+                );
+                continue;
+            }
+        };
+        let capability_id = session_id
+            .map(|id| scoped_mcp_server_uuid(id.uuid(), name))
+            .unwrap_or_else(Uuid::nil);
+        definitions.extend(
+            McpCapability::new(capability_id, name.clone(), None, tools).tool_definitions(),
+        );
+    }
+    Ok(definitions)
 }
 pub async fn build_scoped_mcp_tool_definitions(
     servers: &ScopedMcpServers,
@@ -526,924 +1096,8 @@ fn scoped_mcp_server_uuid(session_id: Uuid, server_name: &str) -> Uuid {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::kernel_imports::{HarnessId, ScopedMcpServer, SessionId};
-    use crate::storage::models::{CreateMcpServerRow, UpdateMcpServer};
-    use chrono::Utc;
-    use everruns_platform::{Agent, AgentStatus, generate_agent_public_id};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    struct MutableConnectionResolver {
-        token: tokio::sync::RwLock<Option<String>>,
-    }
-
-    #[async_trait::async_trait]
-    impl UserConnectionResolver for MutableConnectionResolver {
-        async fn get_connection_token(
-            &self,
-            _session_id: SessionId,
-            _provider: &str,
-        ) -> everruns_provider::error::Result<Option<String>> {
-            Ok(self.token.read().await.clone())
-        }
-    }
-
-    #[derive(Default)]
-    struct CountingConnectionResolver {
-        calls: AtomicUsize,
-    }
-
-    #[async_trait::async_trait]
-    impl UserConnectionResolver for CountingConnectionResolver {
-        async fn get_connection_token(
-            &self,
-            _session_id: SessionId,
-            _provider: &str,
-        ) -> everruns_provider::error::Result<Option<String>> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            Ok(Some("legacy-token".to_string()))
-        }
-    }
-
-    #[derive(Default)]
-    struct CatalogPreviewEgress {
-        calls: AtomicUsize,
-    }
-
-    #[async_trait::async_trait]
-    impl EgressService for CatalogPreviewEgress {
-        async fn send(
-            &self,
-            request: everruns_core::EgressRequest,
-        ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
-            assert!(
-                request
-                    .headers
-                    .keys()
-                    .all(|name| !name.eq_ignore_ascii_case("Authorization"))
-            );
-            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
-            match body["method"].as_str().unwrap_or_default() {
-                "initialize" => Ok(everruns_core::EgressResponse {
-                    status: 200,
-                    headers: std::collections::BTreeMap::from([(
-                        "Mcp-Session-Id".to_string(),
-                        "preview-session".to_string(),
-                    )]),
-                    body: serde_json::to_vec(&serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "id": 0,
-                        "result": {
-                            "protocolVersion": "2025-06-18",
-                            "capabilities": {}
-                        }
-                    }))
-                    .unwrap(),
-                }),
-                "notifications/initialized" => Ok(everruns_core::EgressResponse {
-                    status: 202,
-                    headers: Default::default(),
-                    body: Vec::new(),
-                }),
-                "tools/list" => {
-                    self.calls.fetch_add(1, Ordering::SeqCst);
-                    Ok(everruns_core::EgressResponse {
-                        status: 200,
-                        headers: Default::default(),
-                        body: serde_json::to_vec(&serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "id": 1,
-                            "result": {
-                                "tools": [{
-                                    "name": "echo",
-                                    "description": "Echo a message",
-                                    "inputSchema": {"type": "object"}
-                                }]
-                            }
-                        }))
-                        .unwrap(),
-                    })
-                }
-                method => panic!("unexpected MCP preview method: {method}"),
-            }
-        }
-
-        async fn send_stream(
-            &self,
-            _request: everruns_core::EgressRequest,
-        ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
-            panic!("MCP discovery should not use streaming egress")
-        }
-    }
-
-    fn scoped_server(url: &str) -> ScopedMcpServer {
-        ScopedMcpServer {
-            url: url.to_string(),
-            ..Default::default()
-        }
-    }
-    fn oauth_scoped_server(url: &str, provider: &str) -> ScopedMcpServer {
-        ScopedMcpServer {
-            url: url.to_string(),
-            auth_mode: McpServerAuthMode::OAuth,
-            oauth_provider_id: Some(provider.to_string()),
-            ..Default::default()
-        }
-    }
-    fn catalog_server(preset: &str, acts_as: McpServerActsAs) -> ScopedMcpServer {
-        ScopedMcpServer {
-            preset: Some(format!("catalog:{preset}").parse().unwrap()),
-            acts_as,
-            ..Default::default()
-        }
-    }
-    async fn seed_catalog_server(
-        db: &StorageBackend,
-        name: &str,
-        oauth: bool,
-    ) -> everruns_provider::typed_id::McpServerId {
-        let settings = crate::domains::mcp_servers::service::McpServerSettings {
-            auth_mode: if oauth {
-                McpServerAuthMode::OAuth
-            } else {
-                McpServerAuthMode::None
-            },
-            protocol_mode: McpProtocolMode::V2025June,
-            oauth: oauth
-                .then_some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
-        };
-        db.create_mcp_server(
-            everruns_core::DEFAULT_ORG_ID,
-            CreateMcpServerRow {
-                name: name.to_string(),
-                description: None,
-                url: "http://8.8.8.8/mcp".to_string(),
-                transport_type: "http".to_string(),
-                api_key_encrypted: None,
-                headers: Some(serde_json::json!({"X-Catalog":"value"})),
-                settings: Some(serde_json::to_value(settings).unwrap()),
-            },
-        )
-        .await
-        .unwrap()
-        .id
-    }
-
-    #[test]
-    fn detects_authorization_header_case_insensitively() {
-        let mut headers = HashMap::new();
-        assert!(!has_authorization_header(&headers));
-
-        headers.insert("authorization".to_string(), "Bearer token".to_string());
-        assert!(has_authorization_header(&headers));
-    }
-
-    #[tokio::test]
-    async fn newly_connected_token_is_visible_on_next_turn_in_same_session() {
-        let session_id = SessionId::new();
-        let server = oauth_scoped_server("https://mcp.resend.com/mcp", "mcp_oauth_resend");
-        let resolver = Arc::new(MutableConnectionResolver {
-            token: tokio::sync::RwLock::new(None),
-        });
-        let resolver_trait: Arc<dyn UserConnectionResolver> = resolver.clone();
-
-        assert!(
-            resolve_scoped_mcp_discovery_token(
-                "resend",
-                &server,
-                Some(session_id),
-                Some(&resolver_trait),
-            )
-            .await
-            .unwrap()
-            .is_none()
-        );
-
-        *resolver.token.write().await = Some("fresh-oauth-token".to_string());
-
-        assert_eq!(
-            resolve_scoped_mcp_discovery_token(
-                "resend",
-                &server,
-                Some(session_id),
-                Some(&resolver_trait),
-            )
-            .await
-            .unwrap()
-            .as_deref(),
-            Some("fresh-oauth-token")
-        );
-    }
-
-    fn test_harness() -> Harness {
-        Harness {
-            id: HarnessId::new(),
-            name: "test-harness".to_string(),
-            display_name: None,
-            icon: None,
-            description: None,
-            intro_markdown: None,
-            short_description: None,
-            starters: Vec::new(),
-            system_prompt: Some("harness".to_string()),
-            parent_harness_id: None,
-            default_model_id: None,
-            tags: vec![],
-            capabilities: vec![],
-            initial_files: vec![],
-            network_access: None,
-            parallel_tool_calls: None,
-            mcp_servers: Default::default(),
-            embedder_metadata: Default::default(),
-            is_built_in: false,
-            status: everruns_platform::HarnessStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-        }
-    }
-
-    fn test_agent() -> Agent {
-        let public_id = generate_agent_public_id();
-        Agent {
-            public_id,
-            internal_id: public_id.uuid(),
-            name: "test-agent".to_string(),
-            display_name: None,
-            description: None,
-            intro_markdown: None,
-            short_description: None,
-            starters: Vec::new(),
-            system_prompt: "agent".to_string(),
-            default_model_id: None,
-            harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
-            tags: vec![],
-            capabilities: vec![],
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            tools: vec![],
-            mcp_servers: Default::default(),
-            status: AgentStatus::Active,
-            exposures_suspended: false,
-            exposed: false,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
-        }
-    }
-
-    fn test_session(
-        harness_id: HarnessId,
-        agent_id: everruns_provider::typed_id::AgentId,
-    ) -> Session {
-        let session_id = SessionId::new();
-        Session {
-            source: Default::default(),
-            activity: Default::default(),
-            run_summary: None,
-            id: session_id,
-            // Default 1:1 session<->workspace: workspace.id mirrors the session id.
-            workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
-            organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
-            harness_id,
-            agent_id: Some(agent_id),
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
-            title: None,
-            goal: None,
-            locale: None,
-            preview: None,
-            output_preview: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: vec![],
-            tools: vec![],
-            mcp_servers: Default::default(),
-            system_prompt: None,
-            initial_files: vec![],
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            status: everruns_platform::SessionStatus::Started,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            started_at: None,
-            finished_at: None,
-            usage: None,
-            is_pinned: None,
-            archived_at: None,
-            active_schedule_count: None,
-            event_count: None,
-            task_count: None,
-            file_count: None,
-            features: vec![],
-            parent_session_id: None,
-            forked_from_session_id: None,
-            forked_from_sequence: None,
-            blueprint_id: None,
-            blueprint_config: None,
-        }
-    }
-
-    #[test]
-    fn merge_effective_scoped_mcp_servers_strips_explicit_oauth_fields() {
-        let mut harness = test_harness();
-        harness.mcp_servers.insert(
-            "docs".to_string(),
-            oauth_scoped_server("https://harness.example.com/mcp", "github"),
-        );
-
-        let agent = test_agent();
-        let session = test_session(harness.id, agent.public_id);
-
-        let merged = merge_effective_scoped_mcp_servers(&harness, Some(&agent), &session);
-        let docs = merged.get("docs").expect("server exists");
-
-        assert_eq!(docs.auth_mode, McpServerAuthMode::None);
-        assert!(docs.oauth_provider_id.is_none());
-        assert!(
-            !docs.tool_discovery,
-            "tool discovery must be disabled on stripped explicit OAuth servers — without a token, an authenticated tools/list would 401",
-        );
-    }
-
-    #[test]
-    fn merge_effective_scoped_mcp_servers_strips_explicit_only_when_oauth() {
-        // Non-OAuth explicit entries (e.g. `auth_mode = None`) must pass through
-        // unchanged. The sanitizer is narrow on purpose — see the doc comment on
-        // strip_untrusted_oauth_from_scoped_mcp_servers.
-        let mut harness = test_harness();
-        harness.mcp_servers.insert(
-            "docs".to_string(),
-            scoped_server("https://harness.example.com/mcp"),
-        );
-        let agent = test_agent();
-        let session = test_session(harness.id, agent.public_id);
-
-        let merged = merge_effective_scoped_mcp_servers(&harness, Some(&agent), &session);
-        let docs = merged.get("docs").expect("server exists");
-
-        assert_eq!(docs.auth_mode, McpServerAuthMode::None);
-        assert!(docs.oauth_provider_id.is_none());
-        assert!(docs.tool_discovery);
-    }
-
-    #[test]
-    fn merge_with_capabilities_preserves_capability_oauth_strips_explicit() {
-        use everruns_capability::CapabilityRef as AgentCapabilityConfig;
-        use everruns_core::capabilities::{Capability, CapabilityRegistry, RiskLevel};
-
-        struct OAuthMcpCapability;
-
-        impl Capability for OAuthMcpCapability {
-            fn id(&self) -> &str {
-                "oauth_mcp_test"
-            }
-
-            fn name(&self) -> &str {
-                "OAuth MCP Test"
-            }
-
-            fn description(&self) -> &str {
-                "Capability that contributes a scoped MCP server with OAuth"
-            }
-
-            fn risk_level(&self) -> RiskLevel {
-                RiskLevel::Low
-            }
-
-            fn mcp_servers(&self) -> ScopedMcpServers {
-                let mut servers = ScopedMcpServers::default();
-                servers.insert(
-                    "trusted_docs".to_string(),
-                    oauth_scoped_server("https://capability.example.com/mcp", "github"),
-                );
-                servers
-            }
-        }
-
-        let mut registry = CapabilityRegistry::new();
-        registry.register(OAuthMcpCapability);
-
-        let mut harness = test_harness();
-        harness
-            .capabilities
-            .push(AgentCapabilityConfig::new("oauth_mcp_test"));
-        // Explicit OAuth entry on a different name — must be sanitized.
-        harness.mcp_servers.insert(
-            "user_docs".to_string(),
-            oauth_scoped_server("https://harness.example.com/mcp", "github"),
-        );
-
-        let agent = test_agent();
-        let session = test_session(harness.id, agent.public_id);
-
-        let merged = merge_effective_scoped_mcp_servers_with_capabilities(
-            &harness,
-            Some(&agent),
-            &session,
-            &registry,
-        );
-
-        let trusted = merged.get("trusted_docs").expect("contributed server");
-        assert_eq!(
-            trusted.auth_mode,
-            McpServerAuthMode::OAuth,
-            "capability-contributed OAuth must be preserved"
-        );
-        assert_eq!(trusted.oauth_provider_id.as_deref(), Some("github"));
-        assert!(trusted.tool_discovery);
-
-        let user = merged.get("user_docs").expect("explicit server");
-        assert_eq!(
-            user.auth_mode,
-            McpServerAuthMode::None,
-            "explicit OAuth must be stripped"
-        );
-        assert!(user.oauth_provider_id.is_none());
-        assert!(!user.tool_discovery);
-    }
-
-    #[test]
-    fn merge_effective_scoped_mcp_servers_prefers_more_specific_layers() {
-        let mut harness = test_harness();
-        harness.mcp_servers.insert(
-            "docs".to_string(),
-            scoped_server("https://harness.example.com/mcp"),
-        );
-
-        let mut agent = test_agent();
-        agent.mcp_servers.insert(
-            "docs".to_string(),
-            scoped_server("https://agent.example.com/mcp"),
-        );
-        agent.mcp_servers.insert(
-            "search".to_string(),
-            scoped_server("https://agent-search.example.com/mcp"),
-        );
-
-        let mut session = test_session(harness.id, agent.public_id);
-        session.mcp_servers.insert(
-            "docs".to_string(),
-            scoped_server("https://session.example.com/mcp"),
-        );
-
-        let merged = merge_effective_scoped_mcp_servers(&harness, Some(&agent), &session);
-
-        assert_eq!(merged.len(), 2);
-        assert_eq!(
-            merged.get("docs").map(|server| server.url.as_str()),
-            Some("https://session.example.com/mcp")
-        );
-        assert_eq!(
-            merged.get("search").map(|server| server.url.as_str()),
-            Some("https://agent-search.example.com/mcp")
-        );
-    }
-
-    #[test]
-    fn validate_scoped_mcp_servers_rejects_stdio_transport() {
-        let mut servers = ScopedMcpServers::default();
-        servers.insert(
-            "fs".to_string(),
-            ScopedMcpServer {
-                transport_type: everruns_core::McpServerTransportType::Stdio,
-                command: Some("mcp-server-filesystem".to_string()),
-                ..Default::default()
-            },
-        );
-
-        let error = validate_scoped_mcp_servers(&servers).unwrap_err();
-        assert!(
-            error.to_string().contains("stdio"),
-            "expected stdio rejection, got: {error}"
-        );
-    }
-
-    #[test]
-    fn validate_scoped_mcp_servers_rejects_inline_identity_and_preset_fields() {
-        for acts_as in [McpServerActsAs::Service, McpServerActsAs::User] {
-            let servers = ScopedMcpServers::from([(
-                "docs".into(),
-                ScopedMcpServer {
-                    url: "https://docs.example.com/mcp".into(),
-                    acts_as,
-                    ..Default::default()
-                },
-            )]);
-            let error = validate_scoped_mcp_servers(&servers).unwrap_err();
-            assert!(error.to_string().contains("requires a catalog preset"));
-        }
-
-        for (field, server) in [
-            (
-                "url",
-                ScopedMcpServer {
-                    url: "https://docs.example.com/mcp".into(),
-                    ..catalog_server("linear", McpServerActsAs::None)
-                },
-            ),
-            (
-                "headers",
-                ScopedMcpServer {
-                    headers: HashMap::from([("X-Test".into(), "value".into())]),
-                    ..catalog_server("linear", McpServerActsAs::None)
-                },
-            ),
-        ] {
-            let servers = ScopedMcpServers::from([("docs".into(), server)]);
-            let error = validate_scoped_mcp_servers(&servers).unwrap_err();
-            assert!(error.to_string().contains(field), "{error}");
-        }
-    }
-
-    #[tokio::test]
-    async fn catalog_validation_requires_live_existing_oauth_presets() {
-        let db = StorageBackend::in_memory();
-        let org_id = everruns_core::DEFAULT_ORG_ID;
-        let missing = ScopedMcpServers::from([(
-            "docs".into(),
-            catalog_server("missing", McpServerActsAs::None),
-        )]);
-        let error = validate_scoped_mcp_servers_for_org(&db, org_id, &missing)
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("missing"), "{error}");
-
-        let plain_id = seed_catalog_server(&db, "plain", false).await;
-        let needs_oauth = ScopedMcpServers::from([(
-            "docs".into(),
-            catalog_server("plain", McpServerActsAs::Service),
-        )]);
-        let error = validate_scoped_mcp_servers_for_org(&db, org_id, &needs_oauth)
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("OAuth"), "{error}");
-        db.update_mcp_server(
-            org_id,
-            plain_id.uuid(),
-            UpdateMcpServer {
-                status: Some("disabled".into()),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-        let disabled = ScopedMcpServers::from([(
-            "docs".into(),
-            catalog_server("plain", McpServerActsAs::None),
-        )]);
-        let error = validate_scoped_mcp_servers_for_org(&db, org_id, &disabled)
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("disabled"), "{error}");
-
-        db.update_mcp_server(
-            org_id,
-            plain_id.uuid(),
-            UpdateMcpServer {
-                status: Some("archived".into()),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-        let archived = ScopedMcpServers::from([(
-            "docs".into(),
-            catalog_server("plain", McpServerActsAs::None),
-        )]);
-        let error = validate_scoped_mcp_servers_for_org(&db, org_id, &archived)
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("plain"), "{error}");
-
-        let deleted_id = seed_catalog_server(&db, "deleted", false).await;
-        db.update_mcp_server(
-            org_id,
-            deleted_id.uuid(),
-            UpdateMcpServer {
-                status: Some("deleted".into()),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-        let deleted = ScopedMcpServers::from([(
-            "docs".into(),
-            catalog_server("deleted", McpServerActsAs::None),
-        )]);
-        let error = validate_scoped_mcp_servers_for_org(&db, org_id, &deleted)
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("deleted"), "{error}");
-    }
-
-    #[tokio::test]
-    async fn two_logical_names_can_resolve_the_same_catalog_preset() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let preset_id = seed_catalog_server(&db, "linear", true).await;
-        let service = McpServerService::new(db, None);
-        let harness = test_harness();
-        let agent = test_agent();
-        let mut session = test_session(harness.id, agent.public_id);
-        session.mcp_servers = ScopedMcpServers::from([
-            (
-                "issues".into(),
-                catalog_server("linear", McpServerActsAs::Service),
-            ),
-            (
-                "projects".into(),
-                catalog_server("linear", McpServerActsAs::User),
-            ),
-        ]);
-
-        let mut descriptor_ids = Vec::new();
-        for (prefix, acts_as) in [
-            ("issues", McpServerActsAs::Service),
-            ("projects", McpServerActsAs::User),
-        ] {
-            let resolved = resolve_scoped_mcp_server(
-                &service,
-                everruns_core::DEFAULT_ORG_ID,
-                &harness,
-                Some(&agent),
-                &session,
-                prefix,
-            )
-            .await
-            .unwrap()
-            .unwrap();
-            assert_eq!(resolved.name, prefix);
-            assert_eq!(resolved.url, "http://8.8.8.8/mcp");
-            assert_eq!(resolved.protocol_mode, McpProtocolMode::V2025June);
-            assert_eq!(resolved.acts_as, acts_as);
-            assert_eq!(resolved.headers.get("X-Catalog"), Some(&"value".into()));
-            // Both attachments declare an acting identity, so both point at the
-            // connection store keyed by the shared preset (EVE-1029). The
-            // descriptor still carries no credential of its own.
-            assert_eq!(resolved.auth_mode, McpServerAuthMode::OAuth);
-            assert_eq!(
-                resolved.oauth_provider_id.as_deref(),
-                Some(everruns_core::mcp_oauth_provider_id_for_uuid(preset_id.uuid()).as_str())
-            );
-            assert!(resolved.api_key.is_none());
-            descriptor_ids.push(resolved.id);
-        }
-
-        // Same preset, same provider key, but distinct session-scoped
-        // descriptor ids — that is what makes two logical names independent.
-        assert_ne!(descriptor_ids[0], descriptor_ids[1]);
-    }
-
-    #[tokio::test]
-    async fn user_attachment_discards_preset_api_key_and_authorization_header() {
-        // A preset carrying service auth, of the shape a config written before
-        // validation existed could still have.
-        let db = Arc::new(StorageBackend::in_memory());
-        let settings = crate::domains::mcp_servers::service::McpServerSettings {
-            auth_mode: McpServerAuthMode::OAuth,
-            protocol_mode: McpProtocolMode::V2025June,
-            oauth: Some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
-        };
-        db.create_mcp_server(
-            everruns_core::DEFAULT_ORG_ID,
-            CreateMcpServerRow {
-                name: "linear".to_string(),
-                description: None,
-                url: "http://8.8.8.8/mcp".to_string(),
-                transport_type: "http".to_string(),
-                api_key_encrypted: None,
-                headers: Some(serde_json::json!({
-                    "X-Catalog": "value",
-                    "Authorization": "Bearer org-service-token",
-                })),
-                settings: Some(serde_json::to_value(settings).unwrap()),
-            },
-        )
-        .await
-        .unwrap();
-        let service = McpServerService::new(db, None);
-        let harness = test_harness();
-        let agent = test_agent();
-        let mut session = test_session(harness.id, agent.public_id);
-        session.mcp_servers = ScopedMcpServers::from([(
-            "projects".into(),
-            catalog_server("linear", McpServerActsAs::User),
-        )]);
-
-        let resolved = resolve_scoped_mcp_server(
-            &service,
-            everruns_core::DEFAULT_ORG_ID,
-            &harness,
-            Some(&agent),
-            &session,
-            "projects",
-        )
-        .await
-        .unwrap()
-        .unwrap();
-
-        // THREAT[TM-TOOL-041]: a `user` attachment can never carry service auth.
-        assert!(
-            !has_authorization_header(&resolved.headers),
-            "org-held Authorization must not survive onto a user attachment"
-        );
-        assert!(resolved.api_key.is_none());
-        // Non-credential headers are untouched, so this is a scrub, not a wipe.
-        assert_eq!(resolved.headers.get("X-Catalog"), Some(&"value".into()));
-    }
-
-    #[tokio::test]
-    async fn none_attachment_keeps_preset_transport_and_literal_headers() {
-        let db = Arc::new(StorageBackend::in_memory());
-        seed_catalog_server(&db, "linear", false).await;
-        let service = McpServerService::new(db, None);
-        let harness = test_harness();
-        let agent = test_agent();
-        let mut session = test_session(harness.id, agent.public_id);
-        session.mcp_servers = ScopedMcpServers::from([(
-            "docs".into(),
-            catalog_server("linear", McpServerActsAs::None),
-        )]);
-
-        let resolved = resolve_scoped_mcp_server(
-            &service,
-            everruns_core::DEFAULT_ORG_ID,
-            &harness,
-            Some(&agent),
-            &session,
-            "docs",
-        )
-        .await
-        .unwrap()
-        .unwrap();
-
-        // `none` reads no connection store, so it must not be wired to one.
-        assert_eq!(resolved.acts_as, McpServerActsAs::None);
-        assert_eq!(resolved.auth_mode, McpServerAuthMode::None);
-        assert!(resolved.oauth_provider_id.is_none());
-        assert!(resolved.api_key.is_none());
-        assert_eq!(resolved.headers.get("X-Catalog"), Some(&"value".into()));
-    }
-    #[tokio::test]
-    async fn catalog_preview_discovery_never_uses_legacy_connection_tokens() {
-        let db = StorageBackend::in_memory();
-        seed_catalog_server(&db, "linear", true).await;
-        let resolver = Arc::new(CountingConnectionResolver::default());
-        let resolver_trait: Arc<dyn UserConnectionResolver> = resolver.clone();
-        let egress = CatalogPreviewEgress::default();
-
-        for acts_as in [
-            McpServerActsAs::None,
-            McpServerActsAs::Service,
-            McpServerActsAs::User,
-        ] {
-            let servers =
-                ScopedMcpServers::from([("docs".to_string(), catalog_server("linear", acts_as))]);
-            let materialized =
-                materialize_scoped_mcp_servers(&db, everruns_core::DEFAULT_ORG_ID, &servers)
-                    .await
-                    .unwrap();
-            let docs = materialized.get("docs").unwrap();
-            assert_eq!(docs.auth_mode, McpServerAuthMode::None);
-            assert!(docs.oauth_provider_id.is_none());
-            assert_eq!(docs.acts_as, acts_as);
-            let discovered = fetch_mcp_tools(&egress, &docs.url, None, &docs.headers)
-                .await
-                .unwrap();
-            assert_eq!(discovered.len(), 1);
-
-            let tools = build_materialized_scoped_mcp_tool_definitions(
-                &db,
-                everruns_core::DEFAULT_ORG_ID,
-                &servers,
-                Some(SessionId::new()),
-                Some(&resolver_trait),
-                &egress,
-            )
-            .await
-            .unwrap();
-            assert_eq!(tools.len(), 1, "catalog preview must expose one MCP tool");
-            assert!(tools[0].name().contains("echo"));
-        }
-
-        assert_eq!(resolver.calls.load(Ordering::SeqCst), 0);
-        assert_eq!(egress.calls.load(Ordering::SeqCst), 6);
-    }
-
-    #[test]
-    fn capability_mcp_validation_rejects_catalog_presets_and_execution_identity() {
-        let preset = ScopedMcpServers::from([(
-            "docs".to_string(),
-            catalog_server("linear", McpServerActsAs::None),
-        )]);
-        let error = validate_capability_mcp_servers(&preset).unwrap_err();
-        assert!(error.to_string().contains("cannot use a catalog preset"));
-
-        let identity = ScopedMcpServers::from([(
-            "docs".to_string(),
-            ScopedMcpServer {
-                url: "https://docs.example.com/mcp".to_string(),
-                acts_as: McpServerActsAs::Service,
-                ..Default::default()
-            },
-        )]);
-        let error = validate_capability_mcp_servers(&identity).unwrap_err();
-        assert!(error.to_string().contains("cannot set actsAs"));
-    }
-
-    #[test]
-    fn validate_scoped_mcp_servers_rejects_duplicate_sanitized_names() {
-        let mut servers = ScopedMcpServers::default();
-        servers.insert(
-            "Docs API".to_string(),
-            scoped_server("https://one.example.com/mcp"),
-        );
-        servers.insert(
-            "docs-api".to_string(),
-            scoped_server("https://two.example.com/mcp"),
-        );
-
-        let error = validate_scoped_mcp_servers(&servers).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("must be unique after sanitization")
-        );
-    }
-
-    #[test]
-    fn validate_scoped_mcp_servers_rejects_reserved_delimiter_after_sanitization() {
-        for name in ["admin__foo", "admin..foo", "admin_", "admin-", "_"] {
-            let servers = ScopedMcpServers::from([(
-                name.into(),
-                scoped_server("https://one.example.com/mcp"),
-            )]);
-            let error = validate_scoped_mcp_servers(&servers).unwrap_err();
-            assert!(
-                error
-                    .to_string()
-                    .contains("reserved for MCP tool prefix delimiters"),
-                "{name}: {error}"
-            );
-        }
-        let servers = ScopedMcpServers::from([(
-            "admin_api".into(),
-            scoped_server("https://one.example.com/mcp"),
-        )]);
-        validate_scoped_mcp_servers(&servers).unwrap();
-    }
-
-    #[test]
-    fn validate_merged_scoped_mcp_servers_rejects_cross_layer_duplicates() {
-        let mut harness_servers = ScopedMcpServers::default();
-        harness_servers.insert(
-            "Docs API".to_string(),
-            scoped_server("https://one.example.com/mcp"),
-        );
-
-        let mut session_servers = ScopedMcpServers::default();
-        session_servers.insert(
-            "docs-api".to_string(),
-            scoped_server("https://two.example.com/mcp"),
-        );
-
-        let error =
-            validate_merged_scoped_mcp_servers([&harness_servers, &session_servers]).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("must be unique after sanitization")
-        );
-    }
-
-    #[test]
-    fn scoped_mcp_server_uuid_is_stable_and_namespaced_by_session() {
-        let session_a = SessionId::new().uuid();
-        let session_b = SessionId::new().uuid();
-
-        assert_eq!(
-            scoped_mcp_server_uuid(session_a, "docs"),
-            scoped_mcp_server_uuid(session_a, "docs")
-        );
-        assert_ne!(
-            scoped_mcp_server_uuid(session_a, "docs"),
-            scoped_mcp_server_uuid(session_b, "docs")
-        );
-    }
-}
+#[path = "scoped_mcp/cache_tests.rs"]
+mod cache_tests;
+#[cfg(test)]
+#[path = "scoped_mcp/tests.rs"]
+mod tests;

@@ -1,0 +1,160 @@
+name: Actions Log Secret Scan
+
+# Detection for credentials that reach a job log. The static guard
+# (scripts/test-workflow-secret-handling.sh) stops the pattern that leaked live
+# TypeSafe keys in run 35305647248 from being written again; it cannot see a
+# credential a vendor error body returns or a failing test echoes. This reads
+# the logs themselves.
+#
+# Scheduled rather than `workflow_run`-triggered: that trigger needs an explicit
+# list of workflow names, which silently goes stale when one is renamed or
+# added. An hourly sweep covers every workflow including ones that do not exist
+# yet, at the cost of up to an hour of detection latency. This repository is
+# public, so its logs are readable by anyone the whole time either way -- the
+# window this closes is the one between a leak and *us* knowing.
+#
+# Deliberately no `pull_request` trigger: `actions: read` on a fork PR's token
+# is not something to rely on, and running PR-controlled code with it is the
+# pattern TM-CI-001..005 keeps off PR events. The fixtures run on every PR
+# through the `Shell Tests (Repo Scripts)` job, which needs no token.
+
+on:
+  schedule:
+    # Offset from the hour so it does not queue behind the :00 crowd.
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Scan this run instead of the last hour (a run id)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  # Grantable on the built-in token with no org or app administration, the same
+  # way security-alerts.yml grants itself security-events.
+  actions: read
+
+concurrency:
+  group: actions-log-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Scan Recent Run Logs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check scanner fixtures
+        run: bash scripts/test-actions-log-secret-scan.sh
+
+      - name: Collect recent run logs
+        id: collect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.run_id }}
+          WINDOW_MINUTES: '75'
+        run: |
+          set -euo pipefail
+          work="${RUNNER_TEMP}/actions-logs"
+          mkdir -p "$work"
+          echo "work=$work" >> "$GITHUB_OUTPUT"
+
+          if [ -n "${RUN_ID:-}" ]; then
+            runs="$RUN_ID"
+          else
+            # Overlaps the hourly cadence so a run completing on the boundary is
+            # not missed by either sweep.
+            since="$(date -u -d "${WINDOW_MINUTES} minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
+            listing="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100&status=completed")"
+
+            # An empty listing means the query or the token is wrong, not that
+            # the repository was quiet -- this endpoint always has history. A
+            # detection job that reports success having scanned nothing is worse
+            # than no job at all, so this is an error rather than a clean sweep.
+            available="$(jq -r '.workflow_runs | length' <<<"$listing")"
+            if [ "$available" -eq 0 ]; then
+              echo "::error::Run listing returned no runs at all. The query or token is wrong; this is not an all-clear."
+              exit 1
+            fi
+
+            # The window is applied with --arg rather than interpolated into the
+            # jq program, so a quoting slip cannot silently match nothing.
+            runs="$(jq -r --arg since "$since" \
+              '.workflow_runs[] | select(.updated_at > $since) | .id' <<<"$listing")"
+            matched="$(printf '%s' "$runs" | grep -c . || true)"
+            echo "Window opens ${since}: ${matched} of ${available} listed run(s) fall inside it."
+          fi
+
+          collected=0
+          skipped=0
+          for id in $runs; do
+            # Skip this workflow's own runs: its log is a report about findings,
+            # not a source of them.
+            if [ "$id" = "${GITHUB_RUN_ID}" ]; then
+              continue
+            fi
+            # Logs expire and are deleted after a leak is handled, so a 404 here
+            # is routine rather than a failure.
+            if gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/logs" \
+                 > "${work}/${id}.zip" 2>/dev/null \
+               && unzip -oq "${work}/${id}.zip" -d "${work}/${id}" 2>/dev/null; then
+              collected=$((collected + 1))
+            else
+              skipped=$((skipped + 1))
+            fi
+            rm -f "${work}/${id}.zip"
+          done
+          echo "collected=$collected" >> "$GITHUB_OUTPUT"
+          echo "Collected logs for ${collected} run(s); ${skipped} had none to read."
+
+          # Same reasoning as the empty listing above: runs were in the window,
+          # so reaching the scan step with nothing to read is a failure to
+          # observe, not an absence of findings.
+          if [ -n "${runs}" ] && [ "$collected" -eq 0 ]; then
+            echo "::error::Runs matched the window but no logs could be read; treat this as a failed sweep, not a clean one."
+            exit 1
+          fi
+
+      - name: Scan for unmasked credentials
+        env:
+          WORK: ${{ steps.collect.outputs.work }}
+          COLLECTED: ${{ steps.collect.outputs.collected }}
+        run: |
+          set -euo pipefail
+          if [ "${COLLECTED}" -eq 0 ]; then
+            echo "No run logs in the window; nothing to scan." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # The scanner prints variable names and line numbers, never values --
+          # this job's own log is public too.
+          set +e
+          find "$WORK" -name '*.txt' -print0 \
+            | xargs -0 -r python3 scripts/scan_actions_log_secrets.py > findings.txt 2>&1
+          status=$?
+          set -e
+
+          cat findings.txt
+          {
+            echo "## Actions log secret scan"
+            echo
+            echo "Scanned ${COLLECTED} run(s)."
+            echo
+            echo '```'
+            cat findings.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Unmasked credentials found in Actions logs. Rotate the named secrets, then delete the affected run logs."
+          fi
+          exit "$status"
+
+      - name: Remove collected logs
+        if: always()
+        env:
+          WORK: ${{ steps.collect.outputs.work }}
+        run: rm -rf "${WORK:-/nonexistent}"

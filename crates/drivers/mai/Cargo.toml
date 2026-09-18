@@ -41,7 +41,7 @@ tracing.workspace = true
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
-everruns-provider = { version = "0.28.0", path = "../../provider" }
+everruns-provider = { version = "0.29.0", path = "../../provider" }
 
 [dev-dependencies]
 # tokio powers `#[tokio::test]`; wiremock captures driver/token requests;
@@ -49,3 +49,6 @@ everruns-provider = { version = "0.28.0", path = "../../provider" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 futures.workspace = true
 wiremock = "0.6"
+
+[lints]
+workspace = true

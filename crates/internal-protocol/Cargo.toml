@@ -61,3 +61,6 @@ protox = "0.9"
 [[bench]]
 name = "session_task_encoding"
 harness = false
+
+[lints]
+workspace = true

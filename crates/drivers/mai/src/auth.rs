@@ -109,7 +109,10 @@ impl MaiAuth {
     pub fn into_provider(self) -> Arc<dyn ProviderAuth> {
         match self {
             MaiAuth::ApiKey(key) => Arc::new(ApiKeyAuth { key }),
-            MaiAuth::EntraOAuth(config) => Arc::new(EntraOAuthProvider::new(config)),
+            MaiAuth::EntraOAuth(config) => match EntraOAuthProvider::new(config) {
+                Ok(provider) => Arc::new(provider),
+                Err(error) => failing_provider(error),
+            },
         }
     }
 }
@@ -340,15 +343,20 @@ pub struct EntraOAuthProvider {
 
 impl EntraOAuthProvider {
     /// Create a new provider with a fresh HTTP client.
-    pub fn new(config: EntraOAuthConfig) -> Self {
-        Self {
+    pub fn new(config: EntraOAuthConfig) -> Result<Self> {
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| {
+                AgentLoopError::llm(format!(
+                    "MAI OAuth HTTP client configuration is invalid: {e}"
+                ))
+            })?;
+        Ok(Self {
             config,
-            http: reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .expect("MAI OAuth HTTP client configuration is valid"),
+            http,
             cache: Mutex::new(None),
-        }
+        })
     }
 
     /// Return a valid bearer token, minting a new one if the cache is empty or
@@ -697,7 +705,7 @@ mod tests {
         config.authority = server.uri();
         config.client_id = "client+marker".into();
         config.client_secret = "secret&marker".into();
-        let provider = EntraOAuthProvider::new(config);
+        let provider = EntraOAuthProvider::new(config).expect("build provider");
         let results =
             futures::future::join_all((0..5).map(|_| provider.headers(auth_request()))).await;
         for result in results {
@@ -745,7 +753,7 @@ mod tests {
                 .await;
             let mut config = oauth("tenant");
             config.authority = server.uri();
-            let provider = EntraOAuthProvider::new(config);
+            let provider = EntraOAuthProvider::new(config).expect("build provider");
             *provider.cache.lock().await = Some(CachedToken {
                 token: "expired-token".into(),
                 expires_at: Utc::now() - Duration::seconds(1),

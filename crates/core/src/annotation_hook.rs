@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::message::{Message, TextAnnotation};
+use crate::message::{RuntimeMessage, TextAnnotation};
 
 /// Async, end-of-message hook that attaches citation annotations to the
 /// finalized assistant text.
@@ -43,7 +43,7 @@ pub struct AnnotationContext<'a> {
     /// The assembled conversation context sent to the model this turn. Feeds
     /// like `citation_retrieval` scan it for the tool-result citations they
     /// align to claim spans.
-    pub messages: &'a [Message],
+    pub messages: &'a [RuntimeMessage],
     /// Utility LLM service for model-backed alignment/verification. `None` when
     /// the deployment has no utility model configured.
     pub utility_llm_service: Option<&'a Arc<dyn crate::UtilityLlmService>>,
@@ -94,7 +94,7 @@ pub async fn collect_annotations(
     providers: &[AnnotationProvider],
     system_prompt: &str,
     message_text: &str,
-    messages: &[Message],
+    messages: &[RuntimeMessage],
     utility_llm_service: Option<&Arc<dyn crate::UtilityLlmService>>,
 ) -> CollectedAnnotations {
     let mut text = message_text.to_string();
@@ -380,7 +380,7 @@ mod tests {
             &providers,
             "system",
             "αβγ",
-            &[Message::user("question")],
+            &[RuntimeMessage::user("question")],
             Some(&service),
         )
         .await;

@@ -623,16 +623,15 @@ mod tests {
     }
 
     fn client_tool(name: &str, description: &str) -> ToolDefinition {
-        ToolDefinition::ClientSide(crate::tool_types::ClientSideTool {
-            name: name.into(),
-            display_name: Some("Client action".into()),
-            description: description.into(),
-            parameters: serde_json::json!({"type":"object","properties":{"selector":{"type":"string"}},"required":["selector"]}),
-            category: Some("Browser".into()),
-            deferrable: Default::default(),
-            hints: Default::default(),
-            full_parameters: None,
-        })
+        ToolDefinition::ClientSide(
+            crate::tool_types::ClientSideTool::new(
+                name,
+                description,
+                serde_json::json!({"type":"object","properties":{"selector":{"type":"string"}},"required":["selector"]}),
+            )
+            .with_display_name("Client action")
+            .with_category("Browser"),
+        )
     }
 
     fn echo_definition() -> ToolDefinition {

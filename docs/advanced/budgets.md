@@ -1,6 +1,6 @@
 ---
 title: Budgets
-description: Control session spending with budget limits, set caps in dollars, tokens, or custom credits, with soft pause thresholds and automatic enforcement
+description: Cap session spending in dollars, tokens, or custom credits, with soft pause thresholds and automatic enforcement.
 sidebar:
   order: 5
 ---

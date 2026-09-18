@@ -24,7 +24,7 @@ use everruns_platform::SessionMutator;
 use everruns_platform::{
     DurableToolResultStoreExt, KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt,
     PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
-    SessionSqlDbStoreExt,
+    SessionSqlDbStoreExt, SlackActionInvokerExt,
 };
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::Result;
@@ -349,9 +349,16 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn tool_context_extensions(&self, org_id: i64, session_id: SessionId) -> ToolContextExtensions {
         let mut extensions = ToolContextExtensions::default();
-        extensions.insert(Arc::new(PlatformStoreExt(
-            self.adapters.platform_store(org_id, session_id),
+        let platform_store = self.adapters.platform_store(org_id, session_id);
+        // The `everruns` command in the session's own shell. Inserted for every
+        // session: the shell only installs the builtin when a source is present,
+        // and a harness without a shell never asks. A shell-surface harness has
+        // no `execute` tool to forward to, so this is how it reaches the catalog
+        // at all.
+        extensions.insert(Arc::new(crate::catalog_cli::CatalogCommandSource::handle(
+            platform_store.clone(),
         )));
+        extensions.insert(Arc::new(PlatformStoreExt(platform_store)));
         if let Some(store) = self.adapters.knowledge_store() {
             extensions.insert(Arc::new(KnowledgeStoreExt(store)));
         }
@@ -361,6 +368,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         extensions.insert(Arc::new(SessionSqlDbStoreExt(
             self.adapters.sqldb_store(org_id),
         )));
+        // EVE-1024. Installed per session because the invoker is bound to this
+        // org and session; a deployment without a control-plane route provides
+        // none and the Slack capability's tools fail closed.
+        if let Some(invoker) = self.adapters.slack_action_invoker(org_id, session_id) {
+            extensions.insert(Arc::new(SlackActionInvokerExt(invoker)));
+        }
         if let Some(store) = self.adapters.sandbox_checkpoint_store() {
             extensions.insert(Arc::new(SandboxCheckpointStoreExt(store)));
             // Checkpoint reconciliation needs both; installing one without the
@@ -798,13 +811,13 @@ mod mcp_credential_tests {
             &self,
             _session_id: Uuid,
             _message_id: Uuid,
-        ) -> CoreResult<Option<everruns_core::Message>> {
+        ) -> CoreResult<Option<everruns_core::RuntimeMessage>> {
             unimplemented!()
         }
         async fn load_messages(
             &self,
             _session_id: Uuid,
-        ) -> CoreResult<Vec<everruns_core::Message>> {
+        ) -> CoreResult<Vec<everruns_core::RuntimeMessage>> {
             unimplemented!()
         }
         async fn emit_event(

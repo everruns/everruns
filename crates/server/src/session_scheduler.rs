@@ -31,7 +31,7 @@ use everruns_core::session_task::{
 };
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolRegistry;
-use everruns_core::{ContentPart, Message, MessageRole, TextContentPart};
+use everruns_core::{ContentPart, RuntimeMessage, RuntimeMessageRole, TextContentPart};
 use everruns_provider::typed_id::{MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use std::collections::HashMap;
@@ -231,9 +231,9 @@ async fn poll_and_trigger(
             serde_json::Value::String(schedule_id.to_string()),
         );
 
-        let core_message = Message {
+        let core_message = RuntimeMessage {
             id: message_id_typed,
-            role: MessageRole::User,
+            role: RuntimeMessageRole::User,
             content: vec![ContentPart::Text(TextContentPart::new(description))],
             phase: None,
             phase_source: None,

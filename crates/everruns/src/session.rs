@@ -19,12 +19,12 @@ use everruns_provider::error::AgentLoopError;
 use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
 
-use crate::Agent;
 use crate::engine::SessionExecution;
 use crate::events::{EventStream, FacadeEventBus, RunOptions};
 use crate::hooks::{
     AgentStartContext, CompletionContext, HookFailure, HookRunState, TurnStartContext,
 };
+use crate::{Agent, Harness};
 
 /// A live, multi-turn conversation with an [`Agent`](crate::Agent).
 ///
@@ -57,14 +57,15 @@ use crate::hooks::{
 /// ```
 #[derive(Clone)]
 pub struct Session {
-    inner: Arc<SessionInner>,
+    pub(crate) inner: Arc<SessionInner>,
 }
 
 pub(crate) struct SessionInner {
-    execution: Arc<dyn SessionExecution>,
+    pub(crate) execution: Arc<dyn SessionExecution>,
     session_id: SessionId,
     event_bus: Arc<FacadeEventBus>,
     hook_state: Arc<HookRunState>,
+    pub(crate) harness: OnceLock<Harness>,
     environment: OnceLock<everruns_host::Environment>,
     environment_gate: tokio::sync::Mutex<()>,
     commands: OnceCell<mpsc::Sender<Command>>,
@@ -84,6 +85,10 @@ impl Session {
         self.inner.clone()
     }
 
+    pub(crate) fn has_started(&self) -> bool {
+        self.inner.commands.initialized()
+    }
+
     pub(crate) fn new(
         execution: Arc<dyn SessionExecution>,
         environment: Option<everruns_host::Environment>,
@@ -97,11 +102,15 @@ impl Session {
                 session_id,
                 event_bus: Arc::new(FacadeEventBus::new()),
                 hook_state,
+                harness: OnceLock::new(),
                 environment: OnceLock::new(),
                 environment_gate: tokio::sync::Mutex::new(()),
                 commands: OnceCell::new(),
             }),
         };
+        if let Some(harness) = session.inner.execution.harness_snapshot() {
+            let _ = session.inner.harness.set(harness);
+        }
         if let Some(environment) = environment {
             let _ = session.inner.environment.set(environment);
         }
@@ -122,26 +131,6 @@ impl Session {
     /// remains available when a string is needed for display or serialization.
     pub fn session_id(&self) -> SessionId {
         self.inner.session_id
-    }
-
-    /// Permanently bind this new session to an explicit Environment.
-    ///
-    /// [`EnvironmentSessionBuilder::start`] persists the opaque head binding
-    /// before any runtime can execute. The same head is observable through
-    /// [`workspace_head`](Self::workspace_head) for the session lifetime.
-    pub fn environment(self, environment: everruns_host::Environment) -> EnvironmentSessionBuilder {
-        EnvironmentSessionBuilder {
-            session: self,
-            environment,
-        }
-    }
-
-    /// Permanently bind this new session to a workspace head.
-    ///
-    /// This is the common workspace-only form of [`environment`](Self::environment):
-    /// `engine.create(agent).workspace(head).start().await?`.
-    pub fn workspace(self, head: everruns_host::WorkspaceHead) -> EnvironmentSessionBuilder {
-        self.environment(everruns_host::Environment::new(head))
     }
 
     /// Select and persist this Agent's default head without starting a turn.
@@ -406,6 +395,7 @@ struct SessionActor {
     session_id: SessionId,
     event_bus: Arc<FacadeEventBus>,
     hook_state: Arc<HookRunState>,
+    harness: Option<Harness>,
     environment: Option<everruns_host::Environment>,
     runtime: Option<InProcessRuntime>,
     agent_started: bool,
@@ -420,6 +410,7 @@ impl SessionActor {
             session_id: inner.session_id,
             event_bus: inner.event_bus.clone(),
             hook_state: inner.hook_state.clone(),
+            harness: inner.harness.get().cloned(),
             environment: inner.environment.get().cloned(),
             runtime: None,
             agent_started: false,
@@ -660,6 +651,7 @@ impl SessionActor {
                             .clone(),
                         self.session_id,
                         self.environment.clone(),
+                        self.harness.as_ref(),
                         self.event_bus.clone(),
                         self.hook_state.clone(),
                     )
@@ -682,8 +674,8 @@ impl SessionActor {
 
 /// A not-yet-running Session with its Environment selected.
 pub struct EnvironmentSessionBuilder {
-    session: Session,
-    environment: everruns_host::Environment,
+    pub(crate) session: Session,
+    pub(crate) environment: everruns_host::Environment,
 }
 
 impl EnvironmentSessionBuilder {
@@ -722,6 +714,8 @@ pub enum SessionEnvironmentError {
     AlreadyStarted,
     /// The Session is already bound to a different Environment.
     AlreadyBound,
+    /// The Session is already bound to a different Harness.
+    HarnessAlreadyBound,
     /// Canonical workspace-backend conflict error name.
     ///
     /// Environment binding continues to emit
@@ -753,6 +747,9 @@ impl std::fmt::Display for SessionEnvironmentError {
         match self {
             Self::AlreadyStarted => formatter.write_str("session execution already started"),
             Self::AlreadyBound => formatter.write_str("session is already bound to another head"),
+            Self::HarnessAlreadyBound => {
+                formatter.write_str("session is already bound to another harness")
+            }
             Self::BackendConflict => {
                 formatter.write_str("another workspace backend uses the same backend id")
             }
@@ -1012,7 +1009,7 @@ mod tests {
 
     use everruns_core::events::EventData;
     use everruns_core::turn::TurnStopReason;
-    use everruns_core::{ContentPart, InputMessage, MessageRole};
+    use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole};
     use everruns_host::{
         EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventReadLimit,
         EventReadRequest, TurnResult,
@@ -1142,7 +1139,7 @@ mod tests {
         let session = InMemoryEngine::new().create(agent.clone());
         // A rich, multi-part InputMessage goes through unchanged.
         let message = InputMessage {
-            role: MessageRole::User,
+            role: RuntimeMessageRole::User,
             content: vec![
                 ContentPart::text("describe"),
                 ContentPart::text("this attachment"),

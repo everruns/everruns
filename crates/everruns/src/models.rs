@@ -166,12 +166,15 @@ impl ModelInfo {
 /// rarely, so cache it rather than asking per keystroke.
 pub async fn list(provider: impl Into<Provider>) -> Result<Vec<ModelInfo>, CatalogError> {
     let provider = provider.into();
-    let driver = provider.driver_id();
     let models = provider.models().await?.ok_or(CatalogError::NoCatalog)?;
     Ok(models
         .into_iter()
         .map(|model| ModelInfo {
-            profile: get_model_profile(&driver, &model.model_id),
+            // The catalog already merged the curated registry with what the
+            // provider reported, so a model the registry has never heard of
+            // still arrives with the limits its provider advertises. Looking
+            // the id up again here would throw that half away.
+            profile: model.profile,
             id: model.model_id,
             display_name: model.display_name,
             description: model.description,

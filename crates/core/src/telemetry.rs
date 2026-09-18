@@ -15,7 +15,7 @@
 // scripts/lib/check-observability-isolation.sh.
 
 use crate::events::ToolDefinitionSummary;
-use crate::message::{ContentPart, Message, MessageRole};
+use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::tool_types::ToolCall;
 use everruns_provider::reasoning::ReasoningText;
 use serde_json::{Value, json};
@@ -250,10 +250,10 @@ pub mod content {
 
     /// Parts of every system-role message, in order, or `None` when the
     /// prompt carried no instructions.
-    pub fn system_instructions(messages: &[Message]) -> Option<Value> {
+    pub fn system_instructions(messages: &[RuntimeMessage]) -> Option<Value> {
         let parts: Vec<Value> = messages
             .iter()
-            .filter(|m| m.role == MessageRole::System)
+            .filter(|m| m.role == RuntimeMessageRole::System)
             .flat_map(|m| m.content.iter().filter_map(part_json))
             .collect();
         if parts.is_empty() {
@@ -264,11 +264,11 @@ pub mod content {
     }
 
     /// The chat history sent to the model, excluding system instructions.
-    pub fn input_messages(messages: &[Message]) -> Value {
+    pub fn input_messages(messages: &[RuntimeMessage]) -> Value {
         Value::Array(
             messages
                 .iter()
-                .filter(|m| m.role != MessageRole::System)
+                .filter(|m| m.role != RuntimeMessageRole::System)
                 .map(message_json)
                 .collect(),
         )
@@ -326,18 +326,18 @@ pub mod content {
     }
 
     /// A single message in the spec's `{role, parts}` shape.
-    pub fn message_json(message: &Message) -> Value {
+    pub fn message_json(message: &RuntimeMessage) -> Value {
         let parts: Vec<Value> = message.content.iter().filter_map(part_json).collect();
         json!({ "role": role_name(&message.role), "parts": parts })
     }
 
     /// The spec role for an Everruns message role.
-    pub fn role_name(role: &MessageRole) -> &'static str {
+    pub fn role_name(role: &RuntimeMessageRole) -> &'static str {
         match role {
-            MessageRole::System => gen_ai::role::SYSTEM,
-            MessageRole::User => gen_ai::role::USER,
-            MessageRole::Agent => gen_ai::role::ASSISTANT,
-            MessageRole::ToolResult => gen_ai::role::TOOL,
+            RuntimeMessageRole::System => gen_ai::role::SYSTEM,
+            RuntimeMessageRole::User => gen_ai::role::USER,
+            RuntimeMessageRole::Agent => gen_ai::role::ASSISTANT,
+            RuntimeMessageRole::ToolResult => gen_ai::role::TOOL,
         }
     }
 
@@ -590,10 +590,10 @@ mod tests {
     #[test]
     fn system_messages_go_to_instructions_not_history() {
         let messages = vec![
-            Message::system("Be terse."),
-            Message::user("Hi"),
-            Message::assistant("Hello"),
-            Message::system("Use tools carefully."),
+            RuntimeMessage::system("Be terse."),
+            RuntimeMessage::user("Hi"),
+            RuntimeMessage::assistant("Hello"),
+            RuntimeMessage::system("Use tools carefully."),
         ];
         let instructions = content::system_instructions(&messages).unwrap();
         assert_eq!(
@@ -611,7 +611,7 @@ mod tests {
                 { "role": "assistant", "parts": [{ "type": "text", "content": "Hello" }] },
             ])
         );
-        assert!(content::system_instructions(&[Message::user("x")]).is_none());
+        assert!(content::system_instructions(&[RuntimeMessage::user("x")]).is_none());
     }
 
     #[test]
@@ -622,8 +622,8 @@ mod tests {
             arguments: json!({ "city": "Paris" }),
         };
         let messages = vec![
-            Message::assistant_with_tools("Checking", vec![call.clone()]),
-            Message::tool_result("call_1", Some(json!({ "temp": 21 })), None),
+            RuntimeMessage::assistant_with_tools("Checking", vec![call.clone()]),
+            RuntimeMessage::tool_result("call_1", Some(json!({ "temp": 21 })), None),
         ];
         let history = content::input_messages(&messages);
         assert_eq!(
@@ -678,7 +678,8 @@ mod tests {
             ),
             (None, None, Value::Null),
         ] {
-            let history = content::input_messages(&[Message::tool_result("call_2", result, error)]);
+            let history =
+                content::input_messages(&[RuntimeMessage::tool_result("call_2", result, error)]);
             assert_eq!(
                 history,
                 json!([{"role": "tool", "parts": [{
@@ -708,7 +709,7 @@ mod tests {
                 .with_item_id("PRIVATE-ITEM")
                 .with_tokens(41)
         };
-        let mut message = Message::assistant("");
+        let mut message = RuntimeMessage::assistant("");
         message.content = vec![
             ContentPart::Reasoning(artifact().with_text(ReasoningText::Plain {
                 text: "visible".into(),
@@ -732,7 +733,7 @@ mod tests {
     fn image_bytes_never_reach_telemetry() {
         use crate::message::ImageContentPart;
         let image_id = crate::typed_id::ImageId::new();
-        let mut message = Message::user("");
+        let mut message = RuntimeMessage::user("");
         message.content = vec![
             ContentPart::Image(ImageContentPart {
                 url: Some("https://example.com/a.png".into()),

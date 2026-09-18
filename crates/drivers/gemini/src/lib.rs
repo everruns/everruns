@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Google Gemini LLM provider driver for Everruns.
 //!
 //! `everruns-gemini` is part of the [Everruns](https://everruns.com) ecosystem.

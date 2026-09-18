@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // Wire-level tests for the Microsoft MAI driver.
 //
 // These exercise the full path: `MaiChatDriver` builds an OpenAI-compatible
@@ -15,7 +16,7 @@ use everruns_mai::{EntraOAuthConfig, MaiAuth, provider, register_driver};
 use everruns_provider::DriverRegistry;
 use everruns_provider::ProviderEndpoint;
 use everruns_provider::driver_registry::{
-    ChatDriver, DriverId, LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent, ProviderConfig,
+    ChatDriver, DriverId, LlmCallConfig, LlmStreamEvent, Message, MessageRole, ProviderConfig,
 };
 use futures::StreamExt;
 use wiremock::matchers::{body_string_contains, header, method, path};
@@ -68,7 +69,7 @@ async fn api_key_auth_sends_api_key_header_and_streams() {
         server.uri(),
         MaiAuth::ApiKey("foundry-secret".into()),
     );
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "ping")];
+    let messages = vec![Message::text(MessageRole::User, "ping")];
     let stream = provider
         .chat_completion_stream(messages, &config("mai-code-1-flash"))
         .await
@@ -114,7 +115,7 @@ async fn entra_oauth_mints_token_and_sends_bearer() {
     });
 
     let provider = provider("mai-test", server.uri(), auth);
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "ping")];
+    let messages = vec![Message::text(MessageRole::User, "ping")];
     let stream = provider
         .chat_completion_stream(messages, &config("mai-code-1-flash"))
         .await
@@ -150,7 +151,7 @@ async fn registry_built_driver_rejects_unsafe_oauth_json_authority() {
         )
         .expect("registry should construct the lazy MAI driver");
 
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "ping")];
+    let messages = vec![Message::text(MessageRole::User, "ping")];
     let result = driver
         .chat_completion_stream(
             &ProviderEndpoint::default(),

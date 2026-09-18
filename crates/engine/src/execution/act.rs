@@ -2787,22 +2787,17 @@ mod tests {
                     "human_intent": "Clicking approve"
                 }),
             }],
-            tool_definitions: vec![ToolDefinition::ClientSide(ClientSideTool {
-                name: "browser_click".to_string(),
-                display_name: None,
-                description: "Click button".to_string(),
-                parameters: json!({
+            tool_definitions: vec![ToolDefinition::ClientSide(ClientSideTool::new(
+                "browser_click",
+                "Click button",
+                json!({
                     "type": "object",
                     "properties": {
                         "selector": {"type": "string"}
                     },
                     "required": ["selector"]
                 }),
-                category: None,
-                deferrable: Default::default(),
-                hints: crate::tool_types::ToolHints::default(),
-                full_parameters: None,
-            })],
+            ))],
             locale: None,
             blueprint_id: None,
             network_access: None,

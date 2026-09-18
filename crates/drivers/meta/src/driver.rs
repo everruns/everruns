@@ -13,7 +13,7 @@ use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_helpers::fetch_models;
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
-    LlmMessage, LlmResponse, LlmResponseStream,
+    LlmResponse, LlmResponseStream, Message,
 };
 use everruns_provider::error::Result;
 use everruns_provider::openai_protocol::{models_url_for_api_url, url_host_eq};
@@ -55,7 +55,7 @@ impl ChatDriver for MetaChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         self.inner
@@ -78,7 +78,7 @@ impl ChatDriver for MetaChatDriver {
     async fn chat_completion_non_streaming(
         &self,
         endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         self.inner
@@ -216,7 +216,7 @@ impl Default for MetaChatDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::{LlmMessageRole, ProviderConfig, ServiceKind};
+    use everruns_provider::driver_registry::{MessageRole, ProviderConfig, ServiceKind};
     use serde_json::{Value, json};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -265,13 +265,13 @@ mod tests {
                     .await;
                 let mut config = config();
                 config.previous_response_id = continuation.then(|| "prior-response".into());
-                let mut prior = LlmMessage::text(LlmMessageRole::Assistant, "prior answer");
+                let mut prior = Message::text(MessageRole::Assistant, "prior answer");
                 prior.phase = Some(everruns_provider::execution_phase::ExecutionPhase::Commentary);
                 let messages = vec![
-                    LlmMessage::text(LlmMessageRole::System, "rules"),
-                    LlmMessage::text(LlmMessageRole::User, "old question"),
+                    Message::text(MessageRole::System, "rules"),
+                    Message::text(MessageRole::User, "old question"),
                     prior,
-                    LlmMessage::text(LlmMessageRole::User, "new question"),
+                    Message::text(MessageRole::User, "new question"),
                 ];
                 let url = format!(
                     "{}/v1{}",

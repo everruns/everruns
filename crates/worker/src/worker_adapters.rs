@@ -16,8 +16,8 @@ use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
 use everruns_core::{
-    AgentDefinition, EgressService, ExecutionSession, HarnessDefinition, Message, MessageHistory,
-    MessageQuery, UtilityLlmService,
+    AgentDefinition, EgressService, ExecutionSession, HarnessDefinition, MessageHistory,
+    MessageQuery, RuntimeMessage, UtilityLlmService,
 };
 use everruns_core::{
     connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
@@ -92,10 +92,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // =========================================================================
 
     /// Get a specific message by ID
-    async fn get_message(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>>;
+    async fn get_message(
+        &self,
+        session_id: Uuid,
+        message_id: Uuid,
+    ) -> Result<Option<RuntimeMessage>>;
 
     /// Load all messages for a session
-    async fn load_messages(&self, session_id: Uuid) -> Result<Vec<Message>>;
+    async fn load_messages(&self, session_id: Uuid) -> Result<Vec<RuntimeMessage>>;
 
     async fn load_message_history(&self, query: MessageQuery) -> Result<MessageHistory> {
         Ok(MessageHistory {
@@ -279,6 +283,21 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
+        None
+    }
+
+    /// Performs Slack actions as one session's own endpoint bot (EVE-1024).
+    ///
+    /// Bound to the org and session it is asked for, so the capability holding
+    /// the handle cannot vary either. Defaults to none: an adapter without a
+    /// route to the control plane has no way to resolve the session's Slack
+    /// endpoint, and the capability fails closed with a clear reason rather
+    /// than acting as some other endpoint's bot.
+    fn slack_action_invoker(
+        &self,
+        _org_id: i64,
+        _session_id: everruns_provider::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
         None
     }
 
@@ -563,7 +582,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 pub struct TurnContext {
     pub agent: Option<Agent>,
     pub session: ExecutionSession,
-    pub messages: Vec<Message>,
+    pub messages: Vec<RuntimeMessage>,
     pub model: Option<ModelSpec>,
     /// MCP tool definitions pre-resolved from agent's MCP capabilities
     pub mcp_tool_definitions: Vec<ToolDefinition>,
@@ -743,17 +762,24 @@ impl<A: WorkerAdapters> FileResolver for OrgAdapter<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::MessageRetriever for SessionAdapter<A> {
-    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+    async fn get(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<RuntimeMessage>> {
         self.adapters
             .get_message(session_id.uuid(), message_id.uuid())
             .await
     }
 
-    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
         self.adapters.load_messages(session_id.uuid()).await
     }
 
-    async fn load_filtered(&self, query: everruns_core::MessageQuery) -> Result<Vec<Message>> {
+    async fn load_filtered(
+        &self,
+        query: everruns_core::MessageQuery,
+    ) -> Result<Vec<RuntimeMessage>> {
         Ok(self.adapters.load_message_history(query).await?.messages)
     }
 

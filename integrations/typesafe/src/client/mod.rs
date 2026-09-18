@@ -8,6 +8,9 @@
 //!
 //! Reach for it where you would otherwise prompt a chat model and parse JSON
 //! out of its answer: verification, rating, routing, moderation, reranking.
+//! TypeSafe describes the approach in
+//! [How to build with TypeSafe](https://docs.typesafe.ai/concepts/how-to-build-with-system-one),
+//! and the question types in [Primitives](https://docs.typesafe.ai/primitives).
 //!
 //! This module is the vendor edge and depends on nothing else in this crate:
 //! the capability, the connector, and the judgment service above it all speak

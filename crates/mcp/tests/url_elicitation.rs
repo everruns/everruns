@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! URL mode elicitation integration tests (knowledge/integrations/mcp-servers.md
 //! "URL mode elicitation").
 //!

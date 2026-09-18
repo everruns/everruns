@@ -53,7 +53,7 @@ impl everruns_worker::AgentRunner for CompletingTestRunner {
                 session_id,
                 everruns_core::events::EventContext::empty(),
                 everruns_core::events::OutputMessageCompletedData::new(
-                    everruns_core::Message::assistant("Child completed through gRPC"),
+                    everruns_core::RuntimeMessage::assistant("Child completed through gRPC"),
                 ),
             ))
             .await?;
@@ -533,11 +533,18 @@ pub(crate) async fn create_grpc_test_session(
     everruns_provider::typed_id::HarnessId,
 ) {
     let harnesses = execute_test_command(service, "list_harnesses", serde_json::json!({})).await;
+    // By name, not by position. This list is newest-first, so taking the first
+    // row silently re-points every test here whenever a built-in is added, and
+    // a feature-gated one lands the session on a harness the org may not create
+    // sessions with. `generic` is the built-in these tests actually want.
     let harness_id = harnesses
         .as_array()
-        .and_then(|list| list.first())
+        .and_then(|list| {
+            list.iter()
+                .find(|harness| harness["name"].as_str() == Some("generic"))
+        })
         .and_then(|harness| harness["id"].as_str())
-        .expect("seeded harness")
+        .expect("seeded generic harness")
         .to_string();
 
     let session = execute_test_command(

@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! The published provider table matches what the drivers actually register.
 //!
 //! `docs/framework/supported-providers.md` tells readers which drivers exist

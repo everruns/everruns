@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! A downstream-style pure-kernel fixture: project values, assemble from
 //! already-resolved inputs, and execute without implementing platform stores.
 
@@ -10,8 +11,8 @@ use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::{
-    AssembledTurnContext, CapabilityRegistry, ExecutionSession, HarnessDefinition, Message,
-    ResolvedExecutionSnapshot, ResolvedModelExecution, ResolvedTurnContextInput,
+    AssembledTurnContext, CapabilityRegistry, ExecutionSession, HarnessDefinition,
+    ResolvedExecutionSnapshot, ResolvedModelExecution, ResolvedTurnContextInput, RuntimeMessage,
     TurnContextRequest, TurnContextResolver, assemble_resolved_turn_context,
 };
 use everruns_engine::{ReasonAtom, ReasonInput};
@@ -31,7 +32,7 @@ impl ChatDriver for FixedDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+        _messages: Vec<everruns_provider::driver_registry::Message>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         Ok(Box::pin(stream::iter([
@@ -42,11 +43,15 @@ impl ChatDriver for FixedDriver {
 }
 
 #[derive(Clone)]
-struct FixedHistory(Vec<Message>);
+struct FixedHistory(Vec<RuntimeMessage>);
 
 #[async_trait]
 impl MessageRetriever for FixedHistory {
-    async fn get(&self, _session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+    async fn get(
+        &self,
+        _session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<RuntimeMessage>> {
         Ok(self
             .0
             .iter()
@@ -54,7 +59,7 @@ impl MessageRetriever for FixedHistory {
             .cloned())
     }
 
-    async fn load(&self, _session_id: SessionId) -> Result<Vec<Message>> {
+    async fn load(&self, _session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
         Ok(self.0.clone())
     }
 }
@@ -91,7 +96,7 @@ async fn kernel_executes_from_resolved_values_without_stores() {
     let harness = HarnessDefinition::new("pure-kernel", "Answer directly.");
     let session = ExecutionSession::new(session_id, workspace_id, harness_id);
     let snapshot = ResolvedExecutionSnapshot::project(&harness, None, &session).unwrap();
-    let user = Message::user("Does the resolved path work?");
+    let user = RuntimeMessage::user("Does the resolved path work?");
     let messages = vec![user.clone()];
     let capability_registry = CapabilityRegistry::new();
     let model_id = ModelId::from_seed(905);

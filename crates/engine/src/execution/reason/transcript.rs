@@ -1,12 +1,12 @@
 use crate::durability::{DurableToolCallStatus, DurableToolResultStore};
 use crate::event_emitter::EventEmitter;
 use crate::events::{EventContext, EventRequest, TranscriptRepairAction, TranscriptRepairedData};
-use crate::message::{Message, MessageRole};
+use crate::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::typed_id::SessionId;
 
 /// Native tool results can commit while the assistant is still streaming.
 /// Replay places those results after their owning call without changing events.
-pub(super) fn order_native_results(messages: Vec<Message>) -> Vec<Message> {
+pub(super) fn order_native_results(messages: Vec<RuntimeMessage>) -> Vec<RuntimeMessage> {
     let owners: std::collections::HashMap<_, _> = messages
         .iter()
         .enumerate()
@@ -18,7 +18,7 @@ pub(super) fn order_native_results(messages: Vec<Message>) -> Vec<Message> {
                 .map(move |call| (call.id.clone(), index))
         })
         .collect();
-    let mut early: std::collections::BTreeMap<usize, Vec<Message>> =
+    let mut early: std::collections::BTreeMap<usize, Vec<RuntimeMessage>> =
         std::collections::BTreeMap::new();
     let mut kept = Vec::new();
     for (index, message) in messages.into_iter().enumerate() {
@@ -46,25 +46,25 @@ pub(super) fn order_native_results(messages: Vec<Message>) -> Vec<Message> {
 /// request. Durable status determines whether replay is safe or the result is
 /// uncertain.
 pub(super) async fn repair_dangling_tool_calls(
-    messages: &[Message],
+    messages: &[RuntimeMessage],
     durable_store: Option<&dyn DurableToolResultStore>,
     event_emitter: &dyn EventEmitter,
     session_id: SessionId,
     event_context: &EventContext,
     turn_id: &str,
-) -> Vec<Message> {
+) -> Vec<RuntimeMessage> {
     let mut result = Vec::new();
 
     for (index, message) in messages.iter().enumerate() {
         result.push(message.clone());
 
-        if message.role != MessageRole::Agent || !message.has_tool_calls() {
+        if message.role != RuntimeMessageRole::Agent || !message.has_tool_calls() {
             continue;
         }
 
         for tool_call in message.tool_calls() {
             let has_result = messages[(index + 1)..].iter().any(|candidate| {
-                candidate.role == MessageRole::ToolResult
+                candidate.role == RuntimeMessageRole::ToolResult
                     && candidate.tool_call_id() == Some(&tool_call.id)
             });
             if has_result {
@@ -78,13 +78,13 @@ pub(super) async fn repair_dangling_tool_calls(
                             crate::tool_types::ToolResult,
                         >(result_json.clone())
                         {
-                            Ok(tool_result) => Message::tool_result(
+                            Ok(tool_result) => RuntimeMessage::tool_result(
                                 &tool_call.id,
                                 tool_result.result,
                                 tool_result.error,
                             ),
                             Err(_) => {
-                                Message::tool_result(&tool_call.id, Some(result_json), None)
+                                RuntimeMessage::tool_result(&tool_call.id, Some(result_json), None)
                             }
                         };
                         (repair, TranscriptRepairAction::Replay)
@@ -104,12 +104,12 @@ pub(super) async fn repair_dangling_tool_calls(
                                     .to_string()
                             });
                         (
-                            Message::tool_result(&tool_call.id, None, Some(error)),
+                            RuntimeMessage::tool_result(&tool_call.id, None, Some(error)),
                             TranscriptRepairAction::Replay,
                         )
                     }
                     Ok(Some(DurableToolCallStatus::Running)) => (
-                        Message::tool_result(
+                        RuntimeMessage::tool_result(
                             &tool_call.id,
                             None,
                             Some(
@@ -120,7 +120,7 @@ pub(super) async fn repair_dangling_tool_calls(
                         TranscriptRepairAction::Synthesize,
                     ),
                     Ok(None) => (
-                        Message::tool_result(
+                        RuntimeMessage::tool_result(
                             &tool_call.id,
                             None,
                             Some(
@@ -137,7 +137,7 @@ pub(super) async fn repair_dangling_tool_calls(
                             "transcript repair: durable store error; status unknown"
                         );
                         (
-                            Message::tool_result(
+                            RuntimeMessage::tool_result(
                                 &tool_call.id,
                                 None,
                                 Some(
@@ -151,7 +151,7 @@ pub(super) async fn repair_dangling_tool_calls(
                 }
             } else {
                 (
-                    Message::tool_result(
+                    RuntimeMessage::tool_result(
                         &tool_call.id,
                         None,
                         Some(
@@ -198,16 +198,17 @@ mod native_tests {
             arguments: "{}".into(),
             asynchronous: true,
         };
-        let mut call = Message::assistant("Independent reasoning");
+        let mut call = RuntimeMessage::assistant("Independent reasoning");
         call.content.push(crate::message::ContentPart::ToolCall(
             crate::message::ToolCallContentPart::from_native(native).unwrap(),
         ));
-        let output = Message::tool_result("original", Some(serde_json::json!({"answer":42})), None);
+        let output =
+            RuntimeMessage::tool_result("original", Some(serde_json::json!({"answer":42})), None);
         let ordered = order_native_results(vec![
-            Message::user("lookup"),
+            RuntimeMessage::user("lookup"),
             output.clone(),
             call.clone(),
-            Message::assistant("Done"),
+            RuntimeMessage::assistant("Done"),
         ]);
         assert_eq!(ordered[1].id, call.id);
         assert_eq!(ordered[1].content, call.content);

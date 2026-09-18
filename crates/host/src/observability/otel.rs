@@ -1525,7 +1525,7 @@ mod tests {
         EventContext, LlmGenerationMetadata, LlmGenerationOutput, LlmRequestOptions,
         ToolDefinitionSummary,
     };
-    use everruns_core::message::Message;
+    use everruns_core::message::RuntimeMessage;
     use everruns_provider::tool_types::ToolCall;
     use everruns_provider::typed_id::{AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId};
     use opentelemetry::trace::{SpanId, TracerProvider as _};
@@ -1644,8 +1644,8 @@ mod tests {
         };
         LlmGenerationData {
             messages: vec![
-                Message::system("You are a weather assistant."),
-                Message::user("What is the weather in Paris?"),
+                RuntimeMessage::system("You are a weather assistant."),
+                RuntimeMessage::user("What is the weather in Paris?"),
             ],
             tools: vec![ToolDefinitionSummary {
                 name: "get_weather".to_string(),

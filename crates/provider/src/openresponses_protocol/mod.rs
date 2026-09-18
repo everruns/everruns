@@ -29,8 +29,7 @@ pub use crate::compact::{
     CompactResponse, CompactUsage, messages_to_compact_input,
 };
 use crate::driver_registry::{
-    LlmCallConfig, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
-    fold_system_messages,
+    LlmCallConfig, LlmContentPart, Message, MessageContent, MessageRole, fold_system_messages,
 };
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
@@ -377,19 +376,22 @@ impl OpenResponsesProtocolChatDriver {
                             LlmErrorKind::from_provider_status(status.as_u16(), &error_text)
                         });
 
-                    if attempts > 0 {
-                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                            kind,
-                            format!(
-                                "{} (after {} retries, last error: {})",
-                                error_msg,
-                                attempts,
-                                last_error.lock().unwrap().take().unwrap_or_default()
-                            ),
-                        ));
-                    }
-
-                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
+                    let message = if attempts > 0 {
+                        format!(
+                            "{} (after {} retries, last error: {})",
+                            error_msg,
+                            attempts,
+                            last_error.lock().unwrap().take().unwrap_or_default()
+                        )
+                    } else {
+                        error_msg
+                    };
+                    RetryDecision::Terminal(AgentLoopError::llm_http_kind(
+                        kind,
+                        status.as_u16(),
+                        &error_text,
+                        message,
+                    ))
                 }
             },
             |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
@@ -413,26 +415,26 @@ impl OpenResponsesProtocolChatDriver {
         crate::driver_helpers::shared_streaming_http_client()
     }
 
-    fn convert_role(role: &LlmMessageRole) -> &'static str {
+    fn convert_role(role: &MessageRole) -> &'static str {
         match role {
-            LlmMessageRole::System => "developer", // Responses API uses "developer" for system
-            LlmMessageRole::User => "user",
-            LlmMessageRole::Assistant => "assistant",
-            LlmMessageRole::Tool => "tool",
+            MessageRole::System => "developer", // Responses API uses "developer" for system
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+            MessageRole::Tool => "tool",
         }
     }
 
-    fn convert_message(msg: &LlmMessage, supports_phases: bool) -> ResponsesInputItem {
+    fn convert_message(msg: &Message, supports_phases: bool) -> ResponsesInputItem {
         // Handle tool result messages differently
         // Note: OpenAI Responses API function_call_output only supports text output.
         // Images in tool results are dropped with a warning.
-        if msg.role == LlmMessageRole::Tool
+        if msg.role == MessageRole::Tool
             && let Some(tool_call_id) = &msg.tool_call_id
         {
             let mut has_images = false;
             let output = match &msg.content {
-                LlmMessageContent::Text(text) => text.clone(),
-                LlmMessageContent::Parts(parts) => {
+                MessageContent::Text(text) => text.clone(),
+                MessageContent::Parts(parts) => {
                     has_images = parts.iter().any(|p| {
                         matches!(
                             p,
@@ -463,8 +465,8 @@ impl OpenResponsesProtocolChatDriver {
         }
 
         let content = match &msg.content {
-            LlmMessageContent::Text(text) => ResponsesContent::Text(text.clone()),
-            LlmMessageContent::Parts(parts) => {
+            MessageContent::Text(text) => ResponsesContent::Text(text.clone()),
+            MessageContent::Parts(parts) => {
                 let responses_parts: Vec<ResponsesContentPart> = parts
                     .iter()
                     .map(|part| match part {
@@ -499,7 +501,7 @@ impl OpenResponsesProtocolChatDriver {
 
         // Only include phase on assistant messages when the model supports it.
         // Map ExecutionPhase enum to the provider's wire format string.
-        let phase = if supports_phases && msg.role == LlmMessageRole::Assistant {
+        let phase = if supports_phases && msg.role == MessageRole::Assistant {
             msg.phase.map(|p| p.as_provider_str().to_string())
         } else {
             None
@@ -905,7 +907,7 @@ impl OpenResponsesProtocolChatDriver {
     /// stateful Responses invariant is: a request must not mix `previous_response_id`
     /// with prior transcript input the provider already holds server-side.
     fn build_input(
-        messages: &[LlmMessage],
+        messages: &[Message],
         supports_phases: bool,
     ) -> (Option<String>, Vec<ResponsesInputItem>) {
         // Accumulate all system messages into `instructions`. Multiple system
@@ -920,10 +922,10 @@ impl OpenResponsesProtocolChatDriver {
             if supports_phases && let Some(effort) = msg.configuration_update {
                 input_items.push(configuration_update_item(effort));
             }
-            if msg.role == LlmMessageRole::System {
+            if msg.role == MessageRole::System {
                 // Folded above into `instructions`; never emit the System message
                 // as a separate input item.
-            } else if msg.role == LlmMessageRole::Assistant {
+            } else if msg.role == MessageRole::Assistant {
                 // Reasoning items precede the message content they belong to,
                 // as the API requires for o-series and GPT-5 models.
                 //
@@ -974,8 +976,8 @@ impl OpenResponsesProtocolChatDriver {
                 if msg.tool_calls.as_ref().is_some_and(|tc| !tc.is_empty()) {
                     // First emit the message content if non-empty
                     let has_content = match &msg.content {
-                        LlmMessageContent::Text(text) => !text.is_empty(),
-                        LlmMessageContent::Parts(parts) => !parts.is_empty(),
+                        MessageContent::Text(text) => !text.is_empty(),
+                        MessageContent::Parts(parts) => !parts.is_empty(),
                     };
                     if has_content {
                         input_items.push(Self::convert_message(msg, supports_phases));

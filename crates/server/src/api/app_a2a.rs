@@ -954,7 +954,7 @@ async fn cancel_a2a_session_turn(
     session_id: everruns_provider::typed_id::SessionId,
 ) -> anyhow::Result<()> {
     use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
-    use everruns_core::message::Message;
+    use everruns_core::message::RuntimeMessage;
     use everruns_provider::typed_id::{MessageId, TurnId};
 
     // Best-effort cancel of the active workflow run. Errors are logged but
@@ -997,7 +997,7 @@ async fn cancel_a2a_session_turn(
     let user_message_event = EventRequest::new(
         session_id,
         EventContext::turn(turn_id, input_message_id),
-        InputMessageData::new(Message::user("A2A client requested cancellation.")),
+        InputMessageData::new(RuntimeMessage::user("A2A client requested cancellation.")),
     );
     if let Err(err) = event_service.emit(user_message_event).await {
         tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: emit user message failed");
@@ -1118,7 +1118,7 @@ async fn handle_message_stream(
     let sse_guard = match state.sse_tracker.try_acquire(auth.org_id, session_id_uuid) {
         Ok(guard) => guard,
         Err(rejection) => {
-            return ErrorResponse::new(rejection.to_string())
+            return ErrorResponse::new(rejection.report("a2a", auth.org_id, &session_id_uuid))
                 .into_response(StatusCode::TOO_MANY_REQUESTS)
                 .into_response();
         }

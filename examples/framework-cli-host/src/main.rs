@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Runs the fleet host: one turn where the model administers this application
 //! through `everruns ...` in its own shell.
 //!

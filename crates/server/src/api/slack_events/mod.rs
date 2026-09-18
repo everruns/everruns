@@ -18,6 +18,7 @@ use crate::storage::StorageBackend;
 mod api;
 mod content;
 mod events;
+mod interactivity;
 mod manifest;
 mod thread;
 mod wire;
@@ -25,6 +26,7 @@ mod wire;
 pub(crate) use api::*;
 pub(crate) use content::*;
 pub(crate) use events::*;
+pub(crate) use interactivity::*;
 pub(crate) use manifest::*;
 pub(crate) use thread::*;
 pub(crate) use wire::*;
@@ -107,6 +109,17 @@ pub fn routes(state: SlackState) -> Router {
         .route(
             "/v1/e/{channel_id}/slack/manifest",
             get(handle_slack_manifest_endpoint),
+        )
+        // EVE-1025. Both spellings, matching the events endpoint: an app
+        // created against the legacy URL keeps working without re-saving its
+        // manifest.
+        .route(
+            "/v1/apps/{app_id}/slack/interactivity",
+            post(handle_slack_interactivity_legacy),
+        )
+        .route(
+            "/v1/e/{channel_id}/slack/interactivity",
+            post(handle_slack_interactivity_endpoint),
         )
         .with_state(state)
 }

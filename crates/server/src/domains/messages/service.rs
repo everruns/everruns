@@ -163,9 +163,9 @@ impl MessageService {
             let now = Utc::now();
 
             // Build the core message
-            let core_message = everruns_core::Message {
+            let core_message = everruns_core::RuntimeMessage {
                 id: message_id.into(),
-                role: everruns_core::MessageRole::User,
+                role: everruns_core::RuntimeMessageRole::User,
                 content: content.clone(),
                 phase: None,
                 phase_source: None,
@@ -407,13 +407,13 @@ impl MessageService {
                                     serde_json::to_value(&text_parts).unwrap_or_default()
                                 });
                         let msg = if images.is_empty() {
-                            everruns_core::Message::tool_result(
+                            everruns_core::RuntimeMessage::tool_result(
                                 &data.tool_call_id,
                                 result,
                                 data.error.clone(),
                             )
                         } else {
-                            everruns_core::Message::tool_result_with_images(
+                            everruns_core::RuntimeMessage::tool_result_with_images(
                                 &data.tool_call_id,
                                 result,
                                 images,

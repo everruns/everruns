@@ -706,6 +706,13 @@ impl WorkerService for WorkerServiceImpl {
         self.handle_check_outbound_tool_rate_limit(request).await
     }
 
+    async fn invoke_slack_action(
+        &self,
+        request: Request<InvokeSlackActionRequest>,
+    ) -> Result<Response<InvokeSlackActionResponse>, Status> {
+        crate::slack_actions::serve_rpc(&self.db, self.encryption.as_ref(), request).await
+    }
+
     async fn execute_machine_payment(
         &self,
         request: Request<ExecuteMachinePaymentRequest>,

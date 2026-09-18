@@ -32,7 +32,7 @@ use everruns_core::events::{
 };
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::lifecycle_hooks::UserPromptDecision;
-use everruns_core::message::{ContentPart, Message};
+use everruns_core::message::{ContentPart, RuntimeMessage};
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
 #[cfg(feature = "mcp")]
 use everruns_core::resolve_runtime_capabilities;
@@ -163,7 +163,7 @@ impl AcceptedTurnInput {
         &self.input
     }
 
-    fn into_message(self) -> Message {
+    fn into_message(self) -> RuntimeMessage {
         message_from_input_with_id(self.message_id, self.input)
     }
 }
@@ -1571,7 +1571,7 @@ impl InProcessRuntime {
     }
 
     /// Load the current message history for a session.
-    pub async fn messages(&self, session_id: SessionId) -> Result<Vec<Message>> {
+    pub async fn messages(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
         self.event_history.load(session_id).await
     }
 
@@ -2079,12 +2079,12 @@ async fn seed_runtime_initial_files(
     Ok(())
 }
 
-fn message_from_input(input: InputMessage) -> Message {
+fn message_from_input(input: InputMessage) -> RuntimeMessage {
     message_from_input_with_id(MessageId::new(), input)
 }
 
-fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> Message {
-    Message {
+fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> RuntimeMessage {
+    RuntimeMessage {
         id: message_id,
         role: input.role,
         content: input.content,

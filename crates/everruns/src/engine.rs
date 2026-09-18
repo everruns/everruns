@@ -14,7 +14,7 @@ use everruns_host::{
 use tokio::sync::OnceCell;
 
 use crate::agent::BackendInitError;
-use crate::{Agent, ResumeError, Session, SessionEnvironmentError, SessionId};
+use crate::{Agent, Harness, ResumeError, Session, SessionEnvironmentError, SessionId};
 
 /// The runtime resources owned by an [`Engine`].
 pub(crate) struct EngineBackends {
@@ -27,6 +27,8 @@ pub(crate) struct EngineBackends {
 pub(crate) trait SessionExecution: Send + Sync + fmt::Debug {
     fn session_id(&self) -> SessionId;
     fn agent_snapshot(&self) -> Agent;
+    fn harness_snapshot(&self) -> Option<Harness>;
+    fn bind_harness(&self, harness: Harness) -> Result<(), SessionEnvironmentError>;
     async fn backends(&self) -> Result<Arc<EngineBackends>, BackendInitError>;
     async fn ensure_cataloged(&self) -> Result<(), crate::HistoryError>;
     async fn bind_environment(
@@ -58,6 +60,7 @@ struct EngineInner {
 
 struct EngineSessionEntry {
     agent: Agent,
+    harness: Option<Harness>,
     state: Option<Weak<crate::session::SessionInner>>,
 }
 
@@ -145,7 +148,11 @@ impl Engine {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .entry(session_id)
-            .or_insert(EngineSessionEntry { agent, state: None });
+            .or_insert(EngineSessionEntry {
+                agent,
+                harness: None,
+                state: None,
+            });
         Ok(())
     }
 
@@ -156,6 +163,40 @@ impl Engine {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .get(&session_id)
             .map(|entry| entry.agent.clone())
+    }
+
+    fn harness(&self, session_id: SessionId) -> Option<Harness> {
+        self.inner
+            .sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&session_id)
+            .and_then(|entry| entry.harness.clone())
+    }
+
+    fn bind_harness(
+        &self,
+        session_id: SessionId,
+        harness: Harness,
+    ) -> Result<(), SessionEnvironmentError> {
+        let mut sessions = self
+            .inner
+            .sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let entry = sessions
+            .get_mut(&session_id)
+            .expect("engine binding references a cataloged session");
+        match &entry.harness {
+            Some(bound) if !bound.is_same_binding(&harness) => {
+                Err(SessionEnvironmentError::HarnessAlreadyBound)
+            }
+            Some(_) => Ok(()),
+            None => {
+                entry.harness = Some(harness);
+                Ok(())
+            }
+        }
     }
 
     async fn backends_for(&self, agent: &Agent) -> Result<Arc<EngineBackends>, BackendInitError> {
@@ -221,7 +262,14 @@ impl Engine {
             .sessions
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(session_id, EngineSessionEntry { agent, state: None });
+            .insert(
+                session_id,
+                EngineSessionEntry {
+                    agent,
+                    harness: None,
+                    state: None,
+                },
+            );
     }
 
     fn state(&self, session_id: SessionId) -> Option<Arc<crate::session::SessionInner>> {
@@ -358,6 +406,14 @@ impl SessionExecution for EngineSessionExecution {
         self.engine
             .agent(self.session_id)
             .expect("engine binding references a cataloged session")
+    }
+
+    fn harness_snapshot(&self) -> Option<Harness> {
+        self.engine.harness(self.session_id)
+    }
+
+    fn bind_harness(&self, harness: Harness) -> Result<(), SessionEnvironmentError> {
+        self.engine.bind_harness(self.session_id, harness)
     }
 
     async fn backends(&self) -> Result<Arc<EngineBackends>, BackendInitError> {

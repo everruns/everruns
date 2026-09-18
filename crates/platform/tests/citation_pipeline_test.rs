@@ -15,7 +15,7 @@ use everruns_core::annotation_hook::{
 };
 use everruns_core::capabilities::Capability;
 use everruns_core::message::{
-    ContentPart, Message, MessageRole, ToolCallContentPart, ToolResultContentPart,
+    ContentPart, RuntimeMessage, RuntimeMessageRole, ToolCallContentPart, ToolResultContentPart,
     VerificationStatus,
 };
 use everruns_platform::capabilities::{
@@ -25,17 +25,17 @@ use serde_json::json;
 
 /// A turn context in which the model called `search_index` and got two passages
 /// back — one about photosynthesis, one about mitochondria.
-fn context_with_search_results() -> Vec<Message> {
-    let mut call = Message::assistant("");
-    call.role = MessageRole::Agent;
+fn context_with_search_results() -> Vec<RuntimeMessage> {
+    let mut call = RuntimeMessage::assistant("");
+    call.role = RuntimeMessageRole::Agent;
     call.content = vec![ContentPart::ToolCall(ToolCallContentPart::new(
         "call_1",
         "search_index",
         json!({ "query": "photosynthesis" }),
     ))];
 
-    let mut result = Message::assistant("");
-    result.role = MessageRole::ToolResult;
+    let mut result = RuntimeMessage::assistant("");
+    result.role = RuntimeMessageRole::ToolResult;
     result.content = vec![ContentPart::ToolResult(ToolResultContentPart::new(
         "call_1",
         Some(json!({

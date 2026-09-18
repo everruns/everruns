@@ -604,6 +604,7 @@ Capabilities declare UI features they contribute to via `features()`. Features a
 | `session_schedule` | `schedules` |
 | `session_sandbox` | `managed_sandbox` |
 | `session_sql_database` | `sql_database` |
+| `slack` | `slack_actions` |
 
 | `openui` | `openui` |
 | `a2ui` | `a2ui` |

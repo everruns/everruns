@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! [TypeSafe](https://typesafe.ai) typed classification for Everruns agents.
 //!
 //! One crate covers the whole surface: the vendor [`client`], the agent-facing
@@ -18,6 +19,23 @@
 //!
 //! assert_eq!(JevCapability.id(), "jev");
 //! ```
+//!
+//! # The vendor's own documentation
+//!
+//! Worth reading alongside this crate, because the concepts are theirs:
+//!
+//! - [System One](https://docs.typesafe.ai/concepts/system-one) — the class of
+//!   model, and why it returns typed decisions rather than text.
+//! - [Primitives](https://docs.typesafe.ai/primitives) — the three question
+//!   types: [Noul](https://docs.typesafe.ai/primitives/noul),
+//!   [Choice](https://docs.typesafe.ai/primitives/choice), and
+//!   [Score](https://docs.typesafe.ai/primitives/score).
+//! - [State](https://docs.typesafe.ai/concepts/state) — what to put in the
+//!   value a question is asked about.
+//! - [Confidence](https://docs.typesafe.ai/confidence) — how certainty is
+//!   reported, and why it is not the probability.
+//! - [Patterns](https://docs.typesafe.ai/patterns) — fan-out,
+//!   confidence-gated routing, composite scoring, intent routing.
 //!
 //! For an embedded agent, hand the credential in directly:
 //!

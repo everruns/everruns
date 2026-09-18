@@ -280,6 +280,12 @@ service WorkerService {
     // Gate outbound tool calls through the control-plane org rate limiter.
     rpc CheckOutboundToolRateLimit(CheckOutboundToolRateLimitRequest) returns (CheckOutboundToolRateLimitResponse);
 
+    // === Slack endpoint actions (EVE-1024) ===
+    // The native `slack` capability names an action and the control plane
+    // performs it as the session's own endpoint bot. The action crosses the
+    // wire; the endpoint's bot_token never does.
+    rpc InvokeSlackAction(InvokeSlackActionRequest) returns (InvokeSlackActionResponse);
+
     // === Machine payment operations ===
     // Execute a paid capability request through the control-plane payment authority.
     rpc ExecuteMachinePayment(ExecuteMachinePaymentRequest) returns (ExecuteMachinePaymentResponse);
@@ -1767,6 +1773,98 @@ message CheckOutboundToolRateLimitRequest {
 
 message CheckOutboundToolRateLimitResponse {
     bool allowed = 1;
+}
+
+// === Slack endpoint action messages (EVE-1024) ===
+
+message SlackAddReaction {
+    string channel = 1;
+    string timestamp = 2;
+    string name = 3;
+}
+
+message SlackUpdateMessage {
+    string channel = 1;
+    string timestamp = 2;
+    string text = 3;
+}
+
+message SlackLookupUser {
+    string user_id = 1;
+}
+
+message SlackUploadFile {
+    string channel = 1;
+    optional string thread_ts = 2;
+    string filename = 3;
+    bytes content = 4;
+    optional string initial_comment = 5;
+}
+
+message InvokeSlackActionRequest {
+    int64 org_id = 1;
+    string session_id = 2;
+    oneof action {
+        SlackAddReaction add_reaction = 3;
+        SlackUpdateMessage update_message = 4;
+        SlackLookupUser lookup_user = 5;
+        SlackUploadFile upload_file = 6;
+    }
+}
+
+message SlackReactionAdded {
+    bool already_reacted = 1;
+}
+
+message SlackMessageUpdated {
+    string channel = 1;
+    string timestamp = 2;
+}
+
+message SlackUser {
+    string user_id = 1;
+    optional string display_name = 2;
+    optional string real_name = 3;
+    bool is_bot = 4;
+    optional string tz = 5;
+}
+
+message SlackFileUploaded {
+    string file_id = 1;
+    optional string permalink = 2;
+}
+
+// Why the action failed, kept as a closed enum rather than a message string:
+// the capability maps each variant onto a different tool-result shape, and a
+// worker must not have to pattern-match prose to tell "not a Slack session"
+// (a configuration story) from a transient fault (an internal error).
+enum SlackActionErrorKind {
+    SLACK_ACTION_ERROR_KIND_UNSPECIFIED = 0;
+    SLACK_ACTION_ERROR_KIND_NO_SLACK_SESSION = 1;
+    SLACK_ACTION_ERROR_KIND_ENDPOINT_UNAVAILABLE = 2;
+    SLACK_ACTION_ERROR_KIND_NOT_CONFIGURED = 3;
+    SLACK_ACTION_ERROR_KIND_REJECTED = 4;
+    SLACK_ACTION_ERROR_KIND_RATE_LIMITED = 5;
+    SLACK_ACTION_ERROR_KIND_INVALID_ARGUMENT = 6;
+    SLACK_ACTION_ERROR_KIND_TRANSIENT = 7;
+}
+
+message SlackActionError {
+    SlackActionErrorKind kind = 1;
+    // Detail for the variants that carry one (rejected, invalid argument,
+    // transient). Empty otherwise; the kind alone renders those.
+    optional string message = 2;
+    optional uint64 retry_after_secs = 3;
+}
+
+message InvokeSlackActionResponse {
+    oneof result {
+        SlackReactionAdded reaction_added = 1;
+        SlackMessageUpdated message_updated = 2;
+        SlackUser user = 3;
+        SlackFileUploaded file_uploaded = 4;
+        SlackActionError error = 5;
+    }
 }
 
 // === Machine payment messages ===

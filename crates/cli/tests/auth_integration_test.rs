@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration tests for CLI authentication module.
 //!
 //! Tests credential storage, profile management, and resolution logic.

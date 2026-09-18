@@ -169,9 +169,8 @@ pub async fn stream_notifications_sse(
         .sse_tracker
         .try_acquire(org.org_id, user_id)
         .map_err(|rejection| {
-            tracing::warn!(org_id = org.org_id, user_id = %user_id, reason = %rejection, "Notification SSE rejected");
-            ErrorResponse::new(rejection.to_string())
-                .into_response(StatusCode::TOO_MANY_REQUESTS)
+            let message = rejection.report("notifications", org.org_id, &user_id);
+            ErrorResponse::new(message).into_response(StatusCode::TOO_MANY_REQUESTS)
         })?;
 
     let service = state.notification_service.clone();

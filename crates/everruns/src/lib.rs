@@ -54,6 +54,7 @@ mod context;
 mod default_workspace;
 mod engine;
 mod events;
+mod harness;
 mod history;
 mod hooks;
 /// Stability: stable — no breaking change without a major bump; see [`stability`].
@@ -108,6 +109,10 @@ pub use everruns_integrations_filesystem::FileSystem;
 pub use everruns_integrations_typesafe::{Jev, TypeSafeAI};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations_web_fetch::WebFetch;
+pub use harness::{
+    Harness, HarnessBuildError, HarnessBuilder, HarnessEnvironmentSessionBuilder,
+    HarnessSessionBuilder,
+};
 pub use history::{
     HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
     ResumeError, SessionMessage,
@@ -178,10 +183,13 @@ pub mod __macro_support {
 
 // --- Real LLM provider configuration (feature-gated) --------------------
 // The default facade build stays offline; provider modules compile only when
-// their feature is enabled. `openai` adds `providers::openai::OpenAI`.
+// their feature is enabled. `openai` adds `providers::openai::OpenAI`,
+// `openrouter` adds `providers::openrouter::OpenRouter`.
 pub mod providers;
 #[cfg(feature = "openai")]
 pub use providers::openai::{OpenAI, OpenAIError};
+#[cfg(feature = "openrouter")]
+pub use providers::openrouter::{OpenRouter, OpenRouterError};
 
 // --- Runtime construction and execution ---------------------------------
 // Note: the value-first `AgentBuilder` above intentionally replaces the
@@ -196,13 +204,18 @@ pub use everruns_host::{
 
 // --- Portable message, model, and platform types ------------------------
 pub use everruns_core::turn::TurnStopReason;
+// `MessageRole` is the role on stored and inspected session messages
+// (`SessionMessage`, `ContextMessage`) — the common path. The wire message and
+// role that travel on a direct model call live in [`llm`], so both keep the
+// plain name on their own surface.
 pub use everruns_core::{
-    ContentPart, Controls, ImageContentPart, InitialFile, InputMessage, MessageRole,
-    ReasoningConfig, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+    ContentPart, Controls, ImageContentPart, InitialFile, InputMessage, ReasoningConfig,
+    RuntimeMessageRole as MessageRole, WorkspacePolicy, WorkspacePolicyBuilder,
+    WorkspacePolicyError,
 };
 pub use everruns_provider::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart,
-    LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
+    LlmResponse, LlmResponseStream, LlmStreamEvent,
 };
 // Reasoning is part of the public surface: `ReasoningConfig` above carries a
 // `ReasoningEffort`, and the artifact types appear on assistant messages.
@@ -281,16 +294,16 @@ pub mod prelude {
         Agent, AgentBuilder, AgentStartContext, Answers, BuildError, CancelError,
         CancellationToken, CapabilityRef, CapabilitySpec, Classification, Classifier,
         ClassifierError, Completion, CompletionContext, CompletionError, Engine, Environment,
-        EventStream, EventStreamError, FunctionTool, HistoryCursor, HistoryCursorParseError,
-        HistoryError, HistoryPage, HistoryPages, HistoryQuery, HookFailure, HookPoint,
-        InMemoryEngine, InitialFile, IntoCapability, IntoHookResult, IntoTool, IntoToolResult,
-        LlmSimConfig, McpServer, Model, PluginError, ResumeError, RunError, RunOptions,
-        SendDisposition, SentMessage, Session, SessionContext, SessionEnvironmentError,
-        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo,
-        ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace,
-        WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff, WorkspaceError, WorkspaceHead,
-        WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
-        WorkspacePolicyError,
+        EventStream, EventStreamError, FunctionTool, Harness, HarnessBuildError, HarnessBuilder,
+        HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages,
+        HistoryQuery, HookFailure, HookPoint, InMemoryEngine, InitialFile, IntoCapability,
+        IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model, PluginError,
+        ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session, SessionContext,
+        SessionEnvironmentError, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
+        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle,
+        TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff,
+        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
+        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{
@@ -305,5 +318,5 @@ pub mod prelude {
     #[deprecated(note = "use WorkspaceBackend and WorkspaceBackendId")]
     pub use crate::{WorkspaceProvider, WorkspaceProviderId};
     pub use everruns_core::turn::TurnStopReason;
-    pub use everruns_core::{ContentPart, InputMessage, MessageRole};
+    pub use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole as MessageRole};
 }

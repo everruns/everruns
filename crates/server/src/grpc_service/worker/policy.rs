@@ -93,17 +93,11 @@ impl WorkerServiceImpl {
         &self,
         request: Request<CheckOutboundToolRateLimitRequest>,
     ) -> Result<Response<CheckOutboundToolRateLimitResponse>, Status> {
-        let req = request.into_inner();
-        let allowed = match &self.org_rate_limiter {
-            Some(limiter) => limiter.check_outbound_tool_call(&req.org_key).await.is_ok(),
-            None => {
-                tracing::error!(
-                    org_key = %req.org_key,
-                    "gRPC outbound tool rate limiter is not configured; denying tool call"
-                );
-                false
-            }
-        };
+        let allowed = crate::auth::rate_limit::allow_outbound_tool_call(
+            self.org_rate_limiter.as_ref(),
+            &request.into_inner().org_key,
+        )
+        .await;
 
         Ok(Response::new(CheckOutboundToolRateLimitResponse {
             allowed,

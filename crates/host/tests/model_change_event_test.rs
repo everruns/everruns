@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use everruns_core::events::EventData;
-use everruns_core::message::{ContentPart, Controls, MessageRole};
+use everruns_core::message::{ContentPart, Controls, RuntimeMessageRole};
 use everruns_core::message_retriever::InputMessage;
 use everruns_core::{AgentDefinition, CapabilityRegistry, ExecutionSession};
 use everruns_host::HostComposition;
@@ -36,7 +36,7 @@ fn session(session_id: SessionId, harness_id: HarnessId, agent_id: AgentId) -> E
 
 fn message(text: &str, model_id: Option<ModelId>) -> InputMessage {
     InputMessage {
-        role: MessageRole::User,
+        role: RuntimeMessageRole::User,
         content: vec![ContentPart::text(text)],
         controls: model_id.map(|model_id| Controls {
             model_id: Some(model_id),

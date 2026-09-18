@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use everruns_provider::driver_registry::{
-    ChatDriver, DriverRegistry, LlmCallConfig, LlmCompletionMetadata, LlmMessage,
+    ChatDriver, DriverRegistry, LlmCallConfig, LlmCompletionMetadata, Message,
     LlmResponseStream, LlmStreamEvent,
 };
 use everruns_provider::runtime_provider::{Provider, ProviderEndpoint};
@@ -21,7 +21,7 @@ impl ChatDriver for AcmeChatDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         _config: &LlmCallConfig,
     ) -> everruns_provider::Result<LlmResponseStream> {
         let last = messages
@@ -52,7 +52,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::driver_registry::{DriverId, LlmMessageRole, ProviderConfig};
+    use everruns_provider::driver_registry::{DriverId, MessageRole, ProviderConfig};
 
     fn call_config() -> LlmCallConfig {
         LlmCallConfig::new("acme-1")
@@ -72,7 +72,7 @@ mod tests {
         let response = driver
             .chat_completion(
                 &ProviderEndpoint::default(),
-                vec![LlmMessage::text(LlmMessageRole::User, "ping")],
+                vec![Message::text(MessageRole::User, "ping")],
                 &call_config(),
             )
             .await

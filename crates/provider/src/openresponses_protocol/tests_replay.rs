@@ -24,7 +24,7 @@
 use serde_json::json;
 
 use crate::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole, LlmStreamEvent,
+    ChatDriver, LlmCallConfig, LlmStreamEvent, Message, MessageContent, MessageRole,
 };
 use crate::llm_retry::LlmRetryConfig;
 use crate::openresponses_types::{self as types, StreamingEvent};
@@ -64,11 +64,11 @@ async fn stateless_gateway_request_replays_full_transcript_on_the_wire() {
     let driver = OpenResponsesProtocolChatDriver::new();
 
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::System, "You are helpful"),
-        LlmMessage::text(LlmMessageRole::User, "upgrade dependencies"),
-        LlmMessage {
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("Let me look.".to_string()),
+        Message::text(MessageRole::System, "You are helpful"),
+        Message::text(MessageRole::User, "upgrade dependencies"),
+        Message {
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("Let me look.".to_string()),
             tool_calls: Some(vec![ToolCall {
                 id: "call_1".to_string(),
                 name: "read_file".to_string(),
@@ -80,9 +80,9 @@ async fn stateless_gateway_request_replays_full_transcript_on_the_wire() {
             configuration_update: None,
             native_tool_calls: Vec::new(),
         },
-        LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("[package]…".to_string()),
+        Message {
+            role: MessageRole::Tool,
+            content: MessageContent::Text("[package]…".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_1".to_string()),
             phase: None,
@@ -93,26 +93,11 @@ async fn stateless_gateway_request_replays_full_transcript_on_the_wire() {
     ];
 
     let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
         model: "some/model".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
-        reasoning_effort: None,
-        metadata: std::collections::HashMap::new(),
         // Continuation handle from a prior turn — must be ignored on a
         // stateless gateway.
         previous_response_id: Some("gen-turn-1".to_string()),
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
+        ..Default::default()
     };
 
     // Fire the request. The stream body is irrelevant for this assertion.
@@ -203,10 +188,10 @@ async fn rejected_stateful_continuation_replays_repaired_transcript_once() {
         .with_stateful_responses(true)
         .with_retry_config(LlmRetryConfig::no_retry());
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::User, "inspect the project"),
-        LlmMessage {
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text(String::new()),
+        Message::text(MessageRole::User, "inspect the project"),
+        Message {
+            role: MessageRole::Assistant,
+            content: MessageContent::Text(String::new()),
             tool_calls: Some(vec![ToolCall {
                 id: "call_1".to_string(),
                 name: "read_file".to_string(),
@@ -218,9 +203,9 @@ async fn rejected_stateful_continuation_replays_repaired_transcript_once() {
             configuration_update: None,
             native_tool_calls: Vec::new(),
         },
-        LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("[package]".to_string()),
+        Message {
+            role: MessageRole::Tool,
+            content: MessageContent::Text("[package]".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_1".to_string()),
             phase: None,
@@ -230,24 +215,10 @@ async fn rejected_stateful_continuation_replays_repaired_transcript_once() {
         },
     ];
     let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
         model: "gpt-5.4".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
         reasoning_effort: Some(crate::model::ReasoningEffort::High),
-        metadata: std::collections::HashMap::new(),
         previous_response_id: Some("resp_tool_turn".to_string()),
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
+        ..Default::default()
     };
 
     let mut stream = driver
@@ -329,10 +300,12 @@ async fn openrouter_provider_does_not_send_hosted_tool_search() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        capture_request: false,
+        limits: Default::default(),
         reasoning_state: None,
     };
 
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+    let messages = vec![Message::text(MessageRole::User, "hello")];
     let _ = driver
         .chat_completion_stream(endpoint.endpoint(), messages, &config)
         .await;
@@ -408,10 +381,12 @@ async fn openai_provider_omits_openrouter_routing_controls() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        capture_request: false,
+        limits: Default::default(),
         reasoning_state: None,
     };
 
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+    let messages = vec![Message::text(MessageRole::User, "hello")];
     let _ = driver
         .chat_completion_stream(endpoint.endpoint(), messages, &config)
         .await;
@@ -464,30 +439,14 @@ async fn openresponses_stream_skips_done_sentinel() {
     .auth(crate::runtime_provider::BearerAuth::new("test-key"));
     let driver = OpenResponsesProtocolChatDriver::new();
     let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
         model: "openai/gpt-5.6-luna".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
-        reasoning_effort: None,
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
+        ..Default::default()
     };
 
     let stream = driver
         .chat_completion_stream(
             endpoint.endpoint(),
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config,
         )
         .await
@@ -577,13 +536,15 @@ async fn tool_call_contract_covers_request_wire_and_stream_parser() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        capture_request: false,
+        limits: Default::default(),
         reasoning_state: None,
     };
 
     let stream = driver
         .chat_completion_stream(
             endpoint.endpoint(),
-            vec![LlmMessage::text(LlmMessageRole::User, "What time is it?")],
+            vec![Message::text(MessageRole::User, "What time is it?")],
             &config,
         )
         .await
@@ -673,12 +634,12 @@ fn test_reasoning_input_item_serialization() {
 #[test]
 fn test_build_input_reasoning_items_always_carry_a_summary() {
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::User, "Think"),
-        LlmMessage {
+        Message::text(MessageRole::User, "Think"),
+        Message {
             configuration_update: None,
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("No summary on this one.".to_string()),
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("No summary on this one.".to_string()),
             tool_calls: None,
             tool_call_id: None,
             phase: None,
@@ -688,11 +649,11 @@ fn test_build_input_reasoning_items_always_carry_a_summary() {
                     .with_encrypted("enc_bare"),
             ],
         },
-        LlmMessage {
+        Message {
             configuration_update: None,
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("This one was summarized.".to_string()),
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("This one was summarized.".to_string()),
             tool_calls: None,
             tool_call_id: None,
             phase: None,
@@ -740,12 +701,12 @@ fn test_build_input_reasoning_items_always_carry_a_summary() {
 #[test]
 fn test_build_input_replays_reasoning_before_its_message() {
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::User, "Think about this deeply"),
-        LlmMessage {
+        Message::text(MessageRole::User, "Think about this deeply"),
+        Message {
             configuration_update: None,
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("I have thought about this.".to_string()),
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("I have thought about this.".to_string()),
             tool_calls: None,
             tool_call_id: None,
             phase: None,
@@ -755,7 +716,7 @@ fn test_build_input_replays_reasoning_before_its_message() {
                     .with_encrypted("encrypted_reasoning_token_123"),
             ],
         },
-        LlmMessage::text(LlmMessageRole::User, "What else?"),
+        Message::text(MessageRole::User, "What else?"),
     ];
 
     let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
@@ -790,12 +751,12 @@ fn test_build_input_replays_reasoning_with_tool_calls() {
     use crate::tool_types::ToolCall;
 
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::User, "What time is it? Think carefully."),
-        LlmMessage {
+        Message::text(MessageRole::User, "What time is it? Think carefully."),
+        Message {
             configuration_update: None,
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("Let me check.".to_string()),
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("Let me check.".to_string()),
             tool_calls: Some(vec![ToolCall {
                 id: "call_123".to_string(),
                 name: "get_time".to_string(),
@@ -809,9 +770,9 @@ fn test_build_input_replays_reasoning_with_tool_calls() {
                     .with_encrypted("encrypted_token_xyz"),
             ],
         },
-        LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("10:30 AM".to_string()),
+        Message {
+            role: MessageRole::Tool,
+            content: MessageContent::Text("10:30 AM".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_123".to_string()),
             phase: None,
@@ -850,10 +811,10 @@ fn test_build_input_replays_reasoning_with_tool_calls() {
 fn test_build_input_without_thinking_signature() {
     // Assistant message with thinking but NO thinking_signature should not emit reasoning item
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::User, "Hello"),
-        LlmMessage {
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("Hi there!".to_string()),
+        Message::text(MessageRole::User, "Hello"),
+        Message {
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("Hi there!".to_string()),
             tool_calls: None,
             tool_call_id: None,
             phase: None,
@@ -1268,24 +1229,9 @@ fn test_request_reasoning_none_is_omitted() {
     // When reasoning effort is "none", the reasoning field should be omitted
     // to avoid API errors on models that don't support reasoning params
     let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
         model: "gpt-5.2".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
         reasoning_effort: Some(crate::model::ReasoningEffort::None),
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
+        ..Default::default()
     };
 
     // Simulate the driver's filter logic
@@ -1307,24 +1253,9 @@ fn test_request_reasoning_none_is_omitted() {
 fn test_request_reasoning_high_is_included() {
     // When reasoning effort is "high", the reasoning field should be present
     let config = LlmCallConfig {
-        speed: None,
-        verbosity: None,
         model: "gpt-5.2".to_string(),
-        temperature: None,
-        max_tokens: None,
-        tools: vec![],
         reasoning_effort: Some(crate::model::ReasoningEffort::High),
-        metadata: std::collections::HashMap::new(),
-        previous_response_id: None,
-        provider_opaque_context: None,
-        tool_search: None,
-        prompt_cache: None,
-        driver_options: Default::default(),
-        parallel_tool_calls: None,
-        volatile_suffix_len: 0,
-        extra_headers: Vec::new(),
-        cache_diagnostics: None,
-        reasoning_state: None,
+        ..Default::default()
     };
 
     let reasoning = config
@@ -1364,10 +1295,10 @@ fn test_request_reasoning_none_case_insensitive() {
 fn test_build_input_assistant_without_thinking_or_tools() {
     // Plain assistant message (no thinking, no tool calls) should just be a message
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::User, "Hello"),
-        LlmMessage {
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("Hi there!".to_string()),
+        Message::text(MessageRole::User, "Hello"),
+        Message {
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("Hi there!".to_string()),
             tool_calls: None,
             tool_call_id: None,
             phase: None,
@@ -1394,12 +1325,12 @@ fn test_build_input_assistant_without_thinking_or_tools() {
 #[test]
 fn test_build_input_reasoning_items_keep_provider_ids() {
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::User, "First question"),
-        LlmMessage {
+        Message::text(MessageRole::User, "First question"),
+        Message {
             configuration_update: None,
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("First answer.".to_string()),
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("First answer.".to_string()),
             tool_calls: None,
             tool_call_id: None,
             phase: None,
@@ -1409,12 +1340,12 @@ fn test_build_input_reasoning_items_keep_provider_ids() {
                     .with_encrypted("encrypted_1"),
             ],
         },
-        LlmMessage::text(LlmMessageRole::User, "Second question"),
-        LlmMessage {
+        Message::text(MessageRole::User, "Second question"),
+        Message {
             configuration_update: None,
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("Second answer.".to_string()),
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("Second answer.".to_string()),
             tool_calls: None,
             tool_call_id: None,
             phase: None,
@@ -1447,11 +1378,11 @@ fn test_build_input_with_phases_enabled() {
     use crate::execution_phase::ExecutionPhase;
 
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::System, "You are helpful"),
-        LlmMessage::text(LlmMessageRole::User, "Hello"),
-        LlmMessage {
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("Working on it...".to_string()),
+        Message::text(MessageRole::System, "You are helpful"),
+        Message::text(MessageRole::User, "Hello"),
+        Message {
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("Working on it...".to_string()),
             tool_calls: Some(vec![crate::tool_types::ToolCall {
                 id: "call_1".to_string(),
                 name: "search".to_string(),
@@ -1463,9 +1394,9 @@ fn test_build_input_with_phases_enabled() {
             configuration_update: None,
             native_tool_calls: Vec::new(),
         },
-        LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("result".to_string()),
+        Message {
+            role: MessageRole::Tool,
+            content: MessageContent::Text("result".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_1".to_string()),
             phase: None,

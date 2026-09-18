@@ -112,6 +112,7 @@ Full documentation lives at **[docs.everruns.com](https://docs.everruns.com)**.
 - [How-to guides](https://docs.everruns.com/how-to/) — give agents tools, stream events, publish to Slack, and enforce budgets
 - [API reference](https://docs.everruns.com/api/) — OpenAPI 3.0
 - [SDKs](https://docs.everruns.com/features/sdk/) — Rust, Python, and TypeScript clients
+- [Docs as text](https://docs.everruns.com/llms.txt) — `llms.txt` index, per-topic Markdown sets, and the OpenAPI schema for agents
 
 ## Security
 

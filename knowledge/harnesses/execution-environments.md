@@ -83,6 +83,12 @@ system prompt with provider tool names spelled into the text
 session runs currently means changing its behavior, its prompt, and its tool
 names at once.
 
+**The prompt half is resolved (EVE-1042).** The three harnesses now share one
+behavioral prompt that names no tools and describes no environment, and the
+environment half is derived from the facts the target already carries — see
+[Deriving the environment preamble](#deriving-the-environment-preamble) below.
+Changing where a session runs no longer changes its prompt.
+
 ### Five tool namespaces for the same six operations
 
 `read_file`/`write_file`/`edit_file` (session VFS), `bash` (Bashkit),
@@ -944,3 +950,34 @@ P1 and P2 are independent of the Daytona durability work in
 3. Does the Environment row own a workspace head, or reference one the Session
    already bound? The domain model takes the second reading, which is what lets
    a second session on another environment bind the same files.
+
+## Deriving the environment preamble
+
+A written prompt can disagree with the environment. A derived one cannot.
+
+`everruns_host::environment_preamble` renders the sentences a model needs from
+the facts an [`Environment`] already carries — `ComputeKind`,
+`ComputeCapabilities`, `Containment` (level and network policy), and
+`Durability` — and `Environment::preamble()` is the accessor. Each hosted
+sandbox capability states its own facts once and renders them the same way, so
+the description and the sandbox cannot diverge.
+
+Two omissions are deliberate.
+
+**No tool names.** Which tool performs an action is the tool schemas' job, and it
+was the part that rotted fastest: a prompt naming `daytona_exec` is wrong the
+moment the same harness is bound to a container. The preamble describes the
+world; the tool list describes the verbs.
+
+**No behavior.** How to approach a task, when to commit, how to phrase an answer
+— none of that follows from the environment. That stays in `system_prompt`,
+which is what the field is left for. The open question of whether the hosted
+harness keeps `system_prompt` at all was settled conservatively: it keeps it, for
+behavioral content only. Removing the field would have been the irreversible
+choice, and nothing in the goal required it.
+
+Absences are stated as plainly as presences. A target that cannot run native
+binaries is the load-bearing case, and the reason `ComputeCapabilities` records
+it rather than letting the tool merely fail: a model that assumes it can run
+binaries reads every failure as a broken environment rather than a limited one,
+and keeps retrying.

@@ -1,9 +1,12 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 pub mod activities;
 pub mod adapters;
 pub mod app_builder;
+mod catalog_cli;
 pub mod durable_runner;
 pub mod grpc_adapters;
 pub mod grpc_durable_store;
+pub mod grpc_slack_actions;
 pub mod grpc_sqldb_adapter;
 pub mod grpc_worker_adapters;
 pub mod leased_resource_cleanup;

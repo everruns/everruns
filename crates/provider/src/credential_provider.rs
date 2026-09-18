@@ -460,7 +460,7 @@ mod tests {
         async fn chat_completion_stream(
             &self,
             _endpoint: &crate::runtime_provider::ProviderEndpoint,
-            _messages: Vec<crate::driver_registry::LlmMessage>,
+            _messages: Vec<crate::driver_registry::Message>,
             _config: &crate::driver_registry::LlmCallConfig,
         ) -> crate::error::Result<crate::driver_registry::LlmResponseStream> {
             unreachable!("credential wiring never sends a request")

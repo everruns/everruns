@@ -24,6 +24,7 @@ pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sql_database;
 pub mod session_tasks;
+pub mod slack;
 pub mod subagents;
 pub mod user_hooks;
 pub mod util;
@@ -94,6 +95,10 @@ pub use session_sql_database::{
     SqlSchemaTool,
 };
 pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
+pub use slack::{
+    SLACK_CAPABILITY_ID, SlackAddReactionTool, SlackCapability, SlackLookupUserTool,
+    SlackUpdateMessageTool, SlackUploadFileTool,
+};
 pub use subagents::{
     SUBAGENTS_CAPABILITY_ID, SpawnLifetime, SpawnSubagentAsAgentTool, SubagentCapability,
 };
@@ -159,6 +164,12 @@ pub fn register_hosted_capabilities(
         #[cfg(feature = "a2a")]
         registry.register(A2aAgentDelegationCapability);
     }
+    // First channel adapter to implement `Capability::tools()` (EVE-1024). It
+    // is inert outside a Slack-originated session: the invoker seam resolves
+    // the session's Slack endpoint and fails closed when there is none, so
+    // registering it unconditionally costs an agent nothing until a Slack
+    // endpoint creates its session.
+    registry.register(SlackCapability);
     registry.register(UserHooksCapability);
     registry.register(DataKnowledgeCapability);
     registry.register(KnowledgeBaseCapability);

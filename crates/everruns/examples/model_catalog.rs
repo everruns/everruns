@@ -10,9 +10,10 @@
 //! ```
 
 use async_trait::async_trait;
+use everruns::llm::Message;
 use everruns::{
-    AgentLoopError, ChatDriver, DiscoveredModel, DriverId, LlmCallConfig, LlmMessage,
-    LlmResponseStream, LlmStreamEvent, Provider, ProviderEndpoint, models,
+    AgentLoopError, ChatDriver, DiscoveredModel, DriverId, LlmCallConfig, LlmResponseStream,
+    LlmStreamEvent, Provider, ProviderEndpoint, models,
 };
 
 #[tokio::main]
@@ -98,7 +99,7 @@ impl ChatDriver for StubCatalog {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        _messages: Vec<LlmMessage>,
+        _messages: Vec<Message>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream, AgentLoopError> {
         Ok(Box::pin(futures::stream::iter([

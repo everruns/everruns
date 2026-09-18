@@ -119,10 +119,112 @@ lookup, same generic 404 for anything not published.
 The capability is the foundation; both other items need it to reach Slack as the
 bot.
 
-1. Native `slack` capability with the channel's bot token.
+1. Native `slack` capability with the channel's bot token. **Landed (EVE-1024).**
 2. Interactivity endpoint, manifest `settings.interactivity.request_url`, and
-   the approval hint — the approval path end to end.
-3. Task progress rendering in the delivery adapter.
+   the approval hint — the approval path end to end. **Landed (EVE-1025).**
+3. Task progress rendering in the delivery adapter. **Landed (EVE-1026).**
+
+## What landed for step 1
+
+One decision the abstract above did not anticipate: **the action crosses the
+process boundary, not the token.**
+
+The agent loop runs in the worker; `bot_token` lives in the endpoint row the
+control plane owns. Handing the worker the token would put a long-lived
+workspace credential in the process that also evaluates model-chosen tool
+arguments, and would need a second Slack HTTP path beside the one
+`slack_delivery` maintains. So `SlackActionInvoker` is a seam: the capability
+names an action, the control plane resolves the endpoint and performs the call,
+and only the outcome comes back. The token never leaves the control plane in
+either deployment — in-process it is read directly, remote it is used behind the
+`InvokeSlackAction` RPC.
+
+An invoker is **bound to one org and one session at construction**, the way
+`platform_store(org_id, session_id)` is. A capability holds only the handle it
+was given, so there is no argument it could vary to reach another session's
+endpoint. Org scoping is then structural rather than a check: the session read
+is `get_session(org_id, session_id)` and the app read is
+`get_by_internal_id(.., org_id, ..)`.
+
+Resolution prefers `sessions.endpoint_id` (EVE-1004) over the
+`slack:endpoint:{id}` routing tag, because the FK is immutable and the tag is
+not; the tag remains the fallback for pre-backfill sessions. Either way the
+endpoint must be `ChannelType::Slack` and `status == live`, so a session that
+came through another channel never falls through to a sibling Slack endpoint —
+the wrong-bot bug that resolving by endpoint exists to prevent.
+
+Errors cross as a closed enum, not a message string. The capability renders "this
+session did not come from Slack" as a tool error the model should act on and a
+transient fault as an internal error, and telling those apart must not depend on
+parsing prose. An unrecognised kind — a control plane newer than the worker —
+reads as transient, so a worker never tells a model something false about its
+session.
+
+`post_to_channel` is not shipped. It widens blast radius from "the thread that
+asked" to "anywhere the bot is", and the reply path already answers in the
+thread; it returns when there is a per-channel allowlist to gate it.
+
+### Degradation
+
+An adapter with no route to the control plane provides no invoker, and the tools
+fail closed with the same reason a non-Slack session gets. That is the designed
+answer rather than a gap: a capability that cannot resolve an endpoint must not
+act as any other endpoint's bot.
+
+## What landed for step 2
+
+The abstract above assumed approvals would reuse the *synthetic tool call*
+variant of pause-and-consent that `setup_connection` and `url_elicitation` use.
+They do not need to, because `soft_approval` does not work that way.
+
+`request_approval` is a real tool the model calls, and the model **ends its turn
+on it**. The pause is answered by the user's next message, not by a client
+posting a decision into a waiting turn. There is no turn to hold open, so there
+is no synthetic call to emit and no `waiting_for_*` state to enter.
+
+That makes the Slack half smaller than the shape above implies, and better:
+
+- The delivery adapter turns a waiting `request_approval` into Block Kit buttons
+  when the session declares the `slack_approval` hint.
+- A click posts an ordinary user message on that session. The turn resumes
+  through the path that already exists.
+
+Answering as a message is also what keeps attribution honest for free.
+`ApprovalAuditListener` resolves the approver from the `input.message` event the
+API wrote — never from anything the model said — so a Slack click lands in the
+audit log under the Slack identity that clicked it, and approvals need no
+identity path of their own.
+
+### Authorization
+
+The binding rides in the button's `value`: session, requester, turn, and the
+action as it was worded on the card. Slack echoes it back unchanged and covers
+it with the same signature as the rest of the request, so a viewer cannot edit
+another person's button and a forged POST does not verify. The requester is
+stamped at render time, so the click-time check is an equality test rather than
+a lookup that could race the session.
+
+Three refusals, all fail-closed:
+
+- a clicker who is not the requester (the default policy; the refusal is
+  ephemeral and visible, and nothing is recorded),
+- a card whose binding names a session in another org, or a session belonging to
+  a *different Slack endpoint on the same app* — one agent can carry two, and a
+  click on one must not answer a pause raised through the other,
+- a card with no requester to bind to, which nobody may answer rather than
+  everybody.
+
+### Double clicks and stale cards
+
+Answering rewrites the card in place and drops its buttons, so a second click
+has nothing to hit. That is bookkeeping avoided rather than bookkeeping added.
+
+### Degradation, again
+
+A session without the hint gets no card: the ask is posted as prose and answered
+in prose, which is exactly today's behaviour. So is a card whose binding will not
+fit in Slack's 2000-byte action value — a card whose click could not be
+authorized is not drawn at all.
 
 ## Files
 
@@ -132,3 +234,36 @@ bot.
 - `crates/server/src/slack_delivery.rs` — delivery adapter and progress rendering
 - [Client Hints](../runtime-resources/client-hints.md) — the pause-and-consent mechanism this reuses
 - [Slack Integration Modernization](slack-modernization.md) — where these three limits were recorded
+
+## What landed for step 3
+
+The summary is **derived, never narrated**. `task.created` and `task.updated`
+already carry real task state, so the delivery adapter folds them into a
+per-turn accumulator and renders it. The model is never asked to report its own
+progress: it forgets, it invents, and it costs tokens on every turn to put a
+machine-checkable fact behind a probabilistic step.
+
+**One message, updated in place, on a shared rhythm.** Events fold in and set a
+dirty flag; the delivery loop's existing 500 ms flush tick decides when to push.
+That is the same cadence the streaming work established (EVE-974) rather than a
+second one, which is also the answer to the ordering question the abstract
+raised: a task summary and an open reply stream are two writers on one thread,
+and one rhythm keeps them predictable. Update volume is bounded by time, not by
+fan-out, so twenty workers settling at once cost one `chat.update`.
+
+An update that does not change the rendered text does not mark the summary
+dirty, so a task reporting only a `state_detail` change costs no Slack call at
+all. That is why the accumulator takes the three rendered fields rather than the
+whole `SessionTask`, whose spec, artifacts and heartbeats churn constantly.
+
+**Nothing rendered when nothing is delegated.** An agent that simply answers
+never populates the accumulator, so no status message is ever created.
+
+**A turn can end with tasks still running** — a background task outlives the
+turn that spawned it. The final push says so explicitly rather than leaving a
+message that reads as live forever.
+
+Naming is the useful part of a small fan-out and noise in a large one, so tasks
+are named up to five and reported as counts beyond that, with the exceptions
+(failed, canceled, awaiting input) ordered first because that is what a reader
+is scanning for.

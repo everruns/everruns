@@ -57,10 +57,13 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _session_id: Uuid,
         _message_id: Uuid,
-    ) -> CoreResult<Option<everruns_core::Message>> {
+    ) -> CoreResult<Option<everruns_core::RuntimeMessage>> {
         unimplemented!()
     }
-    async fn load_messages(&self, _session_id: Uuid) -> CoreResult<Vec<everruns_core::Message>> {
+    async fn load_messages(
+        &self,
+        _session_id: Uuid,
+    ) -> CoreResult<Vec<everruns_core::RuntimeMessage>> {
         unimplemented!()
     }
     async fn emit_event(

@@ -44,6 +44,7 @@ mod composition;
 pub mod compute;
 #[cfg(feature = "direct-egress")]
 mod egress;
+pub mod environment_preamble;
 pub mod events;
 pub mod execution_snapshot;
 mod extensions;

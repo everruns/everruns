@@ -88,9 +88,8 @@ jobs:
         if: steps.doppler_install.outcome == 'failure'
         uses: dopplerhq/cli-action@v4
 
-      - name: Fetch Brave Search API key from Doppler
-        run: |
-          echo "BRAVE_SEARCH_API_KEY=$(doppler secrets get BRAVE_SEARCH_API_KEY --plain)" >> "$GITHUB_ENV"
-
+      # `doppler run` injects BRAVE_SEARCH_API_KEY into this one command only.
+      # Writing it to $GITHUB_ENV instead would print it in the env block of
+      # every later step, unmasked.
       - name: Run integration tests
-        run: cargo test -p everruns-integrations-brave-search --features integration
+        run: doppler run -- cargo test -p everruns-integrations-brave-search --features integration

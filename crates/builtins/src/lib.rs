@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Portable built-in capabilities for the [Everruns](https://everruns.com) ecosystem.
 //!
 //! `everruns-builtins` is the optional, backend-neutral implementation bundle
@@ -90,7 +91,7 @@ pub(crate) use everruns_core::{
 };
 #[allow(unused_imports)]
 pub(crate) use everruns_provider::driver_registry::{
-    LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponse, LlmResponseStream,
+    LlmCompletionMetadata, LlmResponse, LlmResponseStream, Message, MessageRole,
 };
 #[allow(unused_imports)]
 pub(crate) use everruns_provider::error::{AgentLoopError, Result};

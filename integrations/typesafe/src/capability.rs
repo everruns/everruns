@@ -186,7 +186,108 @@ impl Tool for JevEvaluateTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::connection_services::UserConnectionResolver;
+    use everruns_core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
+    use everruns_provider::error::{AgentLoopError, Result};
+    use everruns_provider::typed_id::SessionId;
     use serde_json::json;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    /// In-memory secrets, or a store that fails every read.
+    struct FakeStorage {
+        secrets: Mutex<HashMap<String, String>>,
+        fails: bool,
+    }
+
+    impl FakeStorage {
+        fn empty() -> Self {
+            Self {
+                secrets: Mutex::new(HashMap::new()),
+                fails: false,
+            }
+        }
+
+        fn failing() -> Self {
+            Self {
+                secrets: Mutex::new(HashMap::new()),
+                fails: true,
+            }
+        }
+
+        async fn with_secret(session_id: SessionId, name: &str, value: &str) -> Arc<Self> {
+            let store = Arc::new(Self::empty());
+            store
+                .secrets
+                .lock()
+                .await
+                .insert(format!("{session_id}:{name}"), value.to_string());
+            store
+        }
+    }
+
+    #[async_trait]
+    impl SessionStorageStore for FakeStorage {
+        async fn set_value(&self, _session_id: SessionId, _key: &str, _value: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn get_value(&self, _session_id: SessionId, _key: &str) -> Result<Option<String>> {
+            Ok(None)
+        }
+        async fn delete_value(&self, _session_id: SessionId, _key: &str) -> Result<bool> {
+            Ok(false)
+        }
+        async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<KeyInfo>> {
+            Ok(vec![])
+        }
+        async fn set_secret(
+            &self,
+            _session_id: SessionId,
+            _name: &str,
+            _value: &str,
+        ) -> Result<()> {
+            Ok(())
+        }
+        async fn get_secret(&self, session_id: SessionId, name: &str) -> Result<Option<String>> {
+            if self.fails {
+                return Err(AgentLoopError::store("secret store unavailable"));
+            }
+            Ok(self
+                .secrets
+                .lock()
+                .await
+                .get(&format!("{session_id}:{name}"))
+                .cloned())
+        }
+        async fn delete_secret(&self, _session_id: SessionId, _name: &str) -> Result<bool> {
+            Ok(false)
+        }
+        async fn list_secrets(&self, _session_id: SessionId) -> Result<Vec<SecretInfo>> {
+            Ok(vec![])
+        }
+    }
+
+    /// A connection that yields a token, yields nothing, or errors.
+    struct FakeResolver(std::result::Result<Option<&'static str>, &'static str>);
+
+    #[async_trait]
+    impl UserConnectionResolver for FakeResolver {
+        async fn get_connection_token(
+            &self,
+            _session_id: SessionId,
+            provider: &str,
+        ) -> Result<Option<String>> {
+            assert_eq!(
+                provider, TYPESAFE_CONNECTION_PROVIDER,
+                "the tool must ask for its own provider"
+            );
+            match self.0 {
+                Ok(token) => Ok(token.map(str::to_string)),
+                Err(message) => Err(AgentLoopError::store(message)),
+            }
+        }
+    }
 
     #[test]
     fn capability_exposes_one_read_only_tool() {
@@ -234,5 +335,102 @@ mod tests {
             format!("{result:?}").contains("TYPESAFE_API_KEY"),
             "{result:?}"
         );
+    }
+
+    // --- credential resolution ---
+    //
+    // The user's connection wins over the session secret: a connection is the
+    // surface an operator manages in Settings, and a stale secret left behind
+    // must not silently outrank it. Every way the connection can come back
+    // empty — no connection, a blank token, a resolver that errors — falls
+    // through to the secret rather than failing the call.
+
+    #[tokio::test]
+    async fn a_user_connection_outranks_a_session_secret() {
+        let session_id = SessionId::new();
+        let store =
+            FakeStorage::with_secret(session_id, TYPESAFE_API_KEY_SECRET, "from-secret").await;
+        let context = ToolContext::with_storage_store(session_id, store)
+            .with_connection_resolver(Arc::new(FakeResolver(Ok(Some("from-connection")))));
+
+        assert_eq!(get_api_key(&context).await.unwrap(), "from-connection");
+    }
+
+    #[tokio::test]
+    async fn a_blank_connection_token_falls_through_to_the_secret() {
+        let session_id = SessionId::new();
+        let store =
+            FakeStorage::with_secret(session_id, TYPESAFE_API_KEY_SECRET, "from-secret").await;
+        let context = ToolContext::with_storage_store(session_id, store)
+            .with_connection_resolver(Arc::new(FakeResolver(Ok(Some("")))));
+
+        assert_eq!(get_api_key(&context).await.unwrap(), "from-secret");
+    }
+
+    #[tokio::test]
+    async fn no_connection_falls_through_to_the_secret() {
+        let session_id = SessionId::new();
+        let store =
+            FakeStorage::with_secret(session_id, TYPESAFE_API_KEY_SECRET, "from-secret").await;
+        let context = ToolContext::with_storage_store(session_id, store)
+            .with_connection_resolver(Arc::new(FakeResolver(Ok(None))));
+
+        assert_eq!(get_api_key(&context).await.unwrap(), "from-secret");
+    }
+
+    /// A resolver outage is not the tool's failure to report: the secret is
+    /// still a valid credential, so the call proceeds on it.
+    #[tokio::test]
+    async fn a_failing_resolver_falls_through_to_the_secret() {
+        let session_id = SessionId::new();
+        let store =
+            FakeStorage::with_secret(session_id, TYPESAFE_API_KEY_SECRET, "from-secret").await;
+        let context = ToolContext::with_storage_store(session_id, store)
+            .with_connection_resolver(Arc::new(FakeResolver(Err("resolver down"))));
+
+        assert_eq!(get_api_key(&context).await.unwrap(), "from-secret");
+    }
+
+    #[tokio::test]
+    async fn the_secret_alone_is_enough() {
+        let session_id = SessionId::new();
+        let store =
+            FakeStorage::with_secret(session_id, TYPESAFE_API_KEY_SECRET, "from-secret").await;
+        let context = ToolContext::with_storage_store(session_id, store);
+
+        assert_eq!(get_api_key(&context).await.unwrap(), "from-secret");
+    }
+
+    /// A secret store that errors is reported rather than papered over as
+    /// "not configured": the credential may well exist, and telling the user
+    /// to set one they already set would send them the wrong way.
+    #[tokio::test]
+    async fn a_failing_secret_store_is_an_internal_error_not_a_missing_key() {
+        let session_id = SessionId::new();
+        let context = ToolContext::with_storage_store(session_id, Arc::new(FakeStorage::failing()));
+
+        let error = get_api_key(&context).await.unwrap_err();
+        assert!(
+            matches!(error, ToolExecutionResult::InternalError(_)),
+            "{error:?}"
+        );
+        assert!(
+            format!("{error:?}").contains("Failed to read API key"),
+            "{error:?}"
+        );
+    }
+
+    /// Both configuration paths are named, because which one applies depends on
+    /// whether the deployment offers connections at all.
+    #[tokio::test]
+    async fn exhausting_both_paths_names_both_of_them() {
+        let session_id = SessionId::new();
+        let context = ToolContext::with_storage_store(session_id, Arc::new(FakeStorage::empty()))
+            .with_connection_resolver(Arc::new(FakeResolver(Ok(None))));
+
+        let error = get_api_key(&context).await.unwrap_err();
+        let rendered = format!("{error:?}");
+        assert!(rendered.contains("Settings > Connections"), "{rendered}");
+        assert!(rendered.contains(TYPESAFE_API_KEY_SECRET), "{rendered}");
     }
 }

@@ -275,11 +275,11 @@ where
         }
 
         // Try to find a re-attachable executor for this kind.
-        let should_reattach = executor_for(&task.kind)
-            .is_some_and(|exec| exec.can_reattach_task(&task))
-            && (task.attempt as i64) < input.max_attempts;
+        let reattach_executor = executor_for(&task.kind)
+            .filter(|exec| exec.can_reattach_task(&task))
+            .filter(|_| (task.attempt as i64) < input.max_attempts);
 
-        if should_reattach {
+        if let Some(executor) = reattach_executor {
             let new_attempt = task.attempt + 1;
             let supersede_update = SessionTaskUpdate {
                 // Do not set state — keep running so the fence works correctly.
@@ -331,7 +331,6 @@ where
             // reattach needs the session file store to persist fresh artifacts.
             let ctx = make_reattach_ctx(session_id);
 
-            let executor = executor_for(&task.kind).expect("checked above");
             match executor.start(&updated_task, &ctx).await {
                 Ok(()) => {
                     info!(

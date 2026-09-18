@@ -4,7 +4,7 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::compact::{CompactRequest, messages_to_compact_input};
-use crate::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
+use crate::driver_registry::{Message, MessageContent, MessageRole};
 use crate::error::{AgentLoopError, Result};
 use crate::event_emitter::EventEmitter;
 use crate::events::{
@@ -20,7 +20,7 @@ pub(super) const PROACTIVE_RETRY_GROWTH_DIVISOR: u64 = 20;
 
 pub(super) fn proactive_source_fingerprint(
     provider_opaque_context: Option<&crate::ProviderOpaqueContext>,
-    messages: &[LlmMessage],
+    messages: &[Message],
 ) -> [u8; 32] {
     let mut input = match provider_opaque_context {
         Some(crate::ProviderOpaqueContext::OpenResponsesCompact { output, .. }) => {
@@ -64,7 +64,7 @@ pub(super) async fn try_apply_native_compaction(
     model: &str,
     system_prompt: Option<&str>,
     stateful_response_continuation: bool,
-    llm_messages: &mut Vec<LlmMessage>,
+    llm_messages: &mut Vec<Message>,
     llm_config: &mut crate::driver_registry::LlmCallConfig,
 ) -> Result<Option<AppliedNativeCompaction>> {
     if !chat_driver.supports_compact() {
@@ -242,7 +242,7 @@ pub(super) async fn try_apply_native_compaction(
     // not partially mutate the retry request.
     llm_config.previous_response_id = None;
     llm_config.provider_opaque_context = Some(opaque_context);
-    llm_messages.retain(|message| message.role == LlmMessageRole::System);
+    llm_messages.retain(|message| message.role == MessageRole::System);
     if let Some(state) = llm_config.reasoning_state.as_mut() {
         // Explicit compaction resets configuration updates. Reassert the
         // effective effort even when it equals the original baseline.
@@ -313,7 +313,7 @@ pub(super) fn proactive_skip_reason(
 
 pub(super) async fn apply_proactive_compaction(
     context: ProactiveCompactionContext<'_>,
-    messages: &mut Vec<LlmMessage>,
+    messages: &mut Vec<Message>,
     config: &mut crate::driver_registry::LlmCallConfig,
 ) -> Result<Option<LlmCompactionInfo>> {
     use crate::compaction_policy::CompactionStrategy;
@@ -709,7 +709,7 @@ pub(super) struct ReactiveCompactionResult {
 /// the original provider error must remain authoritative.
 pub(super) async fn apply_reactive_compaction(
     context: ReactiveCompactionContext<'_>,
-    messages: &mut Vec<LlmMessage>,
+    messages: &mut Vec<Message>,
     config: &mut crate::driver_registry::LlmCallConfig,
 ) -> Result<Option<ReactiveCompactionResult>> {
     use crate::compaction_policy::CompactionStrategy;
@@ -916,20 +916,20 @@ pub(super) async fn apply_reactive_compaction(
 
         if !to_summarize.is_empty() {
             let summary_messages = vec![
-                LlmMessage {
+                Message {
                     native_tool_calls: Vec::new(),
-                    role: LlmMessageRole::System,
-                    content: LlmMessageContent::Text(context.policy.summarization_prompt()),
+                    role: MessageRole::System,
+                    content: MessageContent::Text(context.policy.summarization_prompt()),
                     tool_calls: None,
                     tool_call_id: None,
                     phase: None,
                     reasoning: Vec::new(),
                     configuration_update: None,
                 },
-                LlmMessage {
+                Message {
                     native_tool_calls: Vec::new(),
-                    role: LlmMessageRole::User,
-                    content: LlmMessageContent::Text(
+                    role: MessageRole::User,
+                    content: MessageContent::Text(
                         context
                             .policy
                             .format_messages_for_summarization(to_summarize),

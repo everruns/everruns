@@ -221,3 +221,128 @@ impl Judgment {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The accessors' happy paths are covered by `tests/client.rs` against a
+    // mock endpoint. These cover the defensive branches instead: the shapes a
+    // vendor response can take that no well-formed answer produces, where a
+    // wrong fallback reads as a real verdict rather than as a missing one.
+
+    fn score(score: f64, probabilities: &[(&str, f64)], legend: &[(&str, &str)]) -> ScoreAnswer {
+        ScoreAnswer {
+            score,
+            legend: legend
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            probabilities: probabilities
+                .iter()
+                .map(|(k, v)| (k.to_string(), *v))
+                .collect(),
+            confidence: 0.5,
+        }
+    }
+
+    /// A single-level (or level-less) question has no range to normalize over.
+    /// Dividing by `levels - 1` there would be a divide-by-zero reading as NaN
+    /// or infinity, and a threshold compared against either silently passes.
+    #[test]
+    fn a_degenerate_level_count_normalizes_to_zero_not_nan() {
+        assert_eq!(score(0.0, &[], &[]).normalized(), 0.0);
+        assert_eq!(
+            score(0.0, &[("0", 1.0)], &[("0", "Only")]).normalized(),
+            0.0
+        );
+    }
+
+    /// A score outside the declared range would otherwise normalize past 1.0
+    /// and clear every threshold, or below 0.0 and clear none.
+    #[test]
+    fn normalization_clamps_a_score_outside_the_declared_levels() {
+        let levels = [("0", 0.0), ("1", 0.0), ("2", 1.0)];
+        assert_eq!(score(9.0, &levels, &[]).normalized(), 1.0);
+        assert_eq!(score(-3.0, &levels, &[]).normalized(), 0.0);
+    }
+
+    /// `nearest_level` indexes levels, so a negative score floors at 0 rather
+    /// than wrapping to a huge `usize` on the cast.
+    #[test]
+    fn a_negative_score_lands_on_the_lowest_level() {
+        let answer = score(-0.4, &[("0", 1.0)], &[("0", "Calm")]);
+        assert_eq!(answer.nearest_level(), 0);
+        assert_eq!(answer.nearest_label(), Some("Calm"));
+    }
+
+    /// Either map alone establishes the range, so a response that carries only
+    /// a legend still normalizes over the right number of levels.
+    #[test]
+    fn level_count_takes_the_wider_of_legend_and_distribution() {
+        let answer = score(1.0, &[("0", 1.0)], &[("0", "A"), ("1", "B"), ("2", "C")]);
+        assert_eq!(answer.level_count(), 3);
+        assert_eq!(answer.normalized(), 0.5);
+    }
+
+    /// An unknown level is absent, not impossible-but-present: 0.0 is the
+    /// honest reading, and it must not join a tail-mass sum.
+    #[test]
+    fn unknown_and_unparseable_levels_contribute_nothing() {
+        let answer = score(1.0, &[("0", 0.2), ("1", 0.3), ("oops", 0.9)], &[]);
+        assert_eq!(answer.probability_of(7), 0.0);
+        assert!((answer.probability_at_or_above(0) - 0.5).abs() < 1e-9);
+        assert!((answer.probability_at_or_above(1) - 0.3).abs() < 1e-9);
+        assert_eq!(answer.probability_at_or_above(2), 0.0);
+    }
+
+    #[test]
+    fn a_missing_label_is_none_rather_than_an_empty_string() {
+        assert_eq!(score(2.0, &[], &[("0", "Calm")]).nearest_label(), None);
+    }
+
+    #[test]
+    fn an_unknown_choice_option_has_no_probability() {
+        let answer = ChoiceAnswer {
+            choice: "billing".to_string(),
+            probabilities: [("billing".to_string(), 1.0)].into_iter().collect(),
+            confidence: 0.9,
+        };
+        assert_eq!(answer.probability_of("billing"), 1.0);
+        assert_eq!(answer.probability_of("technical"), 0.0);
+    }
+
+    /// A noul's probability already carries its confidence, so reporting a
+    /// separate number would invite thresholding on a value that is not there.
+    #[test]
+    fn a_noul_reports_no_separate_confidence() {
+        assert_eq!(Answer::Noul(NoulAnswer { noul: 0.5 }).confidence(), None);
+        assert_eq!(Answer::Noul(NoulAnswer { noul: 0.5 }).kind(), "noul");
+        assert_eq!(NoulAnswer { noul: 0.25 }.probability(), 0.25);
+    }
+
+    /// Reading an answer as the wrong primitive names both types, because the
+    /// caller's next move is to fix the question or the accessor.
+    #[test]
+    fn a_type_mismatch_names_what_was_asked_for_and_what_arrived() {
+        let judgment = Judgment {
+            model: "jev-1.13.0".to_string(),
+            answers: [("q".to_string(), Answer::Noul(NoulAnswer { noul: 0.4 }))]
+                .into_iter()
+                .collect(),
+            usage: Usage::default(),
+        };
+        assert_eq!(judgment.probability("q").unwrap(), 0.4);
+
+        let error = judgment.score("q").unwrap_err();
+        assert!(matches!(
+            error,
+            Error::AnswerType {
+                expected: "score",
+                actual: "noul",
+                ..
+            }
+        ));
+        assert!(matches!(judgment.noul("absent"), Err(Error::UnknownAnswer(id)) if id == "absent"));
+    }
+}

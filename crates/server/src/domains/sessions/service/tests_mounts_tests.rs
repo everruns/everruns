@@ -1,9 +1,10 @@
 //! Tests: mounts_tests.
 
 use super::*;
-use crate::domains::common::Command;
+use crate::domains::common::{Command, Ctx};
 use crate::domains::memory::CreateMemory;
 use crate::domains::memory::types::{CreateMemorySourceRequest, GitMemorySourceRequest};
+use crate::domains::session_files::GrepInput;
 use crate::domains::{agents::types::CreateAgentRequest, harnesses::types::CreateHarnessRequest};
 use crate::kernel_imports::{Caller, DEFAULT_ORG_ID, OrgRole};
 use crate::storage::{CreateHarnessRow, CreateMemoryFileRow, StorageBackend};
@@ -1168,4 +1169,286 @@ async fn session_end_hook_fires_on_delete_without_blocking() {
         deleted,
         "delete should succeed with a session_end hook present"
     );
+}
+
+/// Helper: a harness by name, created only if the test org's seed did not
+/// already provision one (the built-in chat harnesses are seeded).
+async fn create_named_harness(ctx: &Ctx, name: &str) -> HarnessId {
+    if let Some(existing) = ctx
+        .db
+        .list_harnesses(DEFAULT_ORG_ID, None, false)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|harness| harness.name == name)
+    {
+        return existing.id;
+    }
+    crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        name: name.to_string(),
+        display_name: Some(name.to_string()),
+        description: None,
+        intro_markdown: None,
+        short_description: None,
+        starters: Vec::new(),
+        system_prompt: Some("Harness prompt".to_string()),
+        parent_harness_id: None,
+        default_model_id: None,
+        tags: vec![],
+        capabilities: vec![],
+        initial_files: vec![],
+        mcp_servers: Default::default(),
+        network_access: None,
+        embedder_metadata: Default::default(),
+    })
+    .execute(ctx)
+    .await
+    .unwrap()
+    .id
+}
+
+async fn memory_test_caller(db: &Arc<StorageBackend>, email: &str) -> Caller {
+    let user = db
+        .create_user(crate::storage::CreateUserRow {
+            external_id: None,
+            email: email.to_string(),
+            name: "Memory Owner".to_string(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+        })
+        .await
+        .unwrap();
+    Caller {
+        user_id: Some(user.id),
+        ..external_caller(DEFAULT_ORG_ID)
+    }
+}
+
+/// The point of the whole exercise: two sessions of the chat surface are
+/// two threads of one operator memory, not two private forks of it.
+#[tokio::test]
+async fn shared_harness_memory_is_visible_across_sessions() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let session_service = SessionService::new(db.clone());
+    let caller = memory_test_caller(&db, "shared-memory@example.com").await;
+    let ctx = test_ctx(caller.clone(), db.clone()).await;
+    let harness_id = create_named_harness(
+        &ctx,
+        crate::harnesses::platform_chat_v2::PLATFORM_CHAT_V2_HARNESS_NAME,
+    )
+    .await;
+
+    let first = session_service
+        .create(
+            &caller,
+            harness_id.uuid(),
+            None,
+            None,
+            SessionSource::Api,
+            build_create_request(harness_id, None, None),
+        )
+        .await
+        .unwrap();
+    let second = session_service
+        .create(
+            &caller,
+            harness_id.uuid(),
+            None,
+            None,
+            SessionSource::Api,
+            build_create_request(harness_id, None, None),
+        )
+        .await
+        .unwrap();
+
+    let files = WorkspaceFileService::new(db.clone());
+    files
+        .create_file(
+            first.id.uuid(),
+            CreateFileInput {
+                path: "/memory/shared/notes.md".to_string(),
+                content: Some("the staging org uses model X".to_string()),
+                encoding: Some("text".to_string()),
+                is_readonly: Some(false),
+            },
+        )
+        .await
+        .unwrap();
+
+    let read = files
+        .read_file(second.id.uuid(), "/memory/shared/notes.md")
+        .await
+        .unwrap()
+        .expect("the other session reads the note");
+    assert_eq!(
+        read.content.as_deref(),
+        Some("the staging org uses model X")
+    );
+
+    // Durable in the Memory, not copied into either session's files: a
+    // session_files row here would mean the write died with the session.
+    assert!(
+        db.get_session_file(first.id.uuid(), "/memory/shared/notes.md")
+            .await
+            .unwrap()
+            .is_none(),
+        "memory writes must not land in session files"
+    );
+
+    // And it is reachable by listing and grep from the second session.
+    let listing = files
+        .list_directory(second.id.uuid(), "/memory/shared")
+        .await
+        .unwrap();
+    assert_eq!(listing.len(), 1);
+    assert_eq!(listing[0].path, "/memory/shared/notes.md");
+
+    let hits = files
+        .grep(
+            second.id.uuid(),
+            GrepInput {
+                pattern: "staging org".to_string(),
+                path_pattern: None,
+                excluded_path_prefix: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].path, "/memory/shared/notes.md");
+}
+
+/// A harness that declares no shared memory gets none, so one surface's
+/// notes cannot leak into another's namespace.
+#[tokio::test]
+async fn shared_memory_is_limited_to_harnesses_that_declare_it() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let session_service = SessionService::new(db.clone());
+    let caller = memory_test_caller(&db, "no-shared-memory@example.com").await;
+    let ctx = test_ctx(caller.clone(), db.clone()).await;
+    let harness_id = create_named_harness(&ctx, "platform-chat").await;
+
+    let session = session_service
+        .create(
+            &caller,
+            harness_id.uuid(),
+            None,
+            None,
+            SessionSource::Api,
+            build_create_request(harness_id, None, None),
+        )
+        .await
+        .unwrap();
+
+    let files = WorkspaceFileService::new(db.clone());
+    assert!(
+        files
+            .stat(session.id.uuid(), "/memory/shared")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        db.list_memories(DEFAULT_ORG_ID, None, false)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// Agent memory has the same contract and had the same bug: it is what
+/// follows an agent across its sessions.
+#[tokio::test]
+async fn agent_memory_is_visible_across_sessions_of_one_agent() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let session_service = SessionService::new(db.clone());
+    let caller = memory_test_caller(&db, "agent-memory@example.com").await;
+    let ctx = test_ctx(caller.clone(), db.clone()).await;
+    let harness_id = create_named_harness(&ctx, "agent-memory-harness").await;
+
+    let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        id: None,
+        name: "memory-agent".to_string(),
+        display_name: Some("Memory Agent".to_string()),
+        description: None,
+        intro_markdown: None,
+        short_description: None,
+        starters: Vec::new(),
+        system_prompt: "Agent prompt".to_string(),
+        default_model_id: None,
+        harness_id: None,
+        harness_name: None,
+        tags: vec![],
+        capabilities: vec![],
+        initial_files: vec![],
+        tools: vec![],
+        mcp_servers: Default::default(),
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+    })
+    .execute(&ctx)
+    .await
+    .unwrap();
+
+    let mut sessions = Vec::new();
+    for _ in 0..2 {
+        sessions.push(
+            session_service
+                .create(
+                    &caller,
+                    harness_id.uuid(),
+                    Some(agent.internal_id),
+                    Some(agent.public_id),
+                    SessionSource::Api,
+                    build_create_request(harness_id, Some(agent.public_id), None),
+                )
+                .await
+                .unwrap(),
+        );
+    }
+
+    let files = WorkspaceFileService::new(db.clone());
+    files
+        .create_file(
+            sessions[0].id.uuid(),
+            CreateFileInput {
+                path: "/memory/agent/profile.md".to_string(),
+                content: Some("prefers terse answers".to_string()),
+                encoding: Some("text".to_string()),
+                is_readonly: Some(false),
+            },
+        )
+        .await
+        .unwrap();
+
+    let read = files
+        .read_file(sessions[1].id.uuid(), "/memory/agent/profile.md")
+        .await
+        .unwrap()
+        .expect("the agent's next session reads its own memory");
+    assert_eq!(read.content.as_deref(), Some("prefers terse answers"));
+}
+
+/// The privacy boundary: a workspace with no session row of its own — an
+/// attached shared workspace — routes to no Memory at all, so one user's
+/// private notes can never be served through another's shared workspace.
+#[tokio::test]
+async fn a_workspace_without_a_session_gets_no_memory_mounts() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let files = WorkspaceFileService::new(db.clone());
+    let unrelated = Uuid::new_v4();
+
+    assert!(
+        files
+            .stat(unrelated, "/memory/user")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(files.list_all(unrelated).await.unwrap().is_empty());
 }

@@ -118,6 +118,7 @@ pub struct BuiltinTool {
 /// The server pauses execution and waits for the client to submit results.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[non_exhaustive]
 pub struct ClientSideTool {
     /// Tool name (used by LLM and for correlation)
     pub name: String,
@@ -144,7 +145,85 @@ pub struct ClientSideTool {
     pub full_parameters: Option<serde_json::Value>,
 }
 
+impl ClientSideTool {
+    /// A tool the caller executes: a name, a description, and a JSON schema.
+    ///
+    /// Every other field keeps its default, so declaring a tool needs the
+    /// three things that describe it and nothing about how the runtime would
+    /// have scheduled one it owned.
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+    ) -> Self {
+        ClientSideTool {
+            name: name.into(),
+            display_name: None,
+            description: description.into(),
+            parameters,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
+            full_parameters: None,
+        }
+    }
+
+    /// Set the human-readable display name used when rendering this tool.
+    #[must_use]
+    pub fn with_display_name(mut self, display_name: impl Into<String>) -> Self {
+        self.display_name = Some(display_name.into());
+        self
+    }
+
+    /// Group this tool under a `tool_search` category.
+    #[must_use]
+    pub fn with_category(mut self, category: impl Into<String>) -> Self {
+        self.category = Some(category.into());
+        self
+    }
+
+    /// Set whether this tool's schema may be deferred via `tool_search`.
+    #[must_use]
+    pub fn with_deferrable(mut self, deferrable: DeferrablePolicy) -> Self {
+        self.deferrable = deferrable;
+        self
+    }
+
+    /// Set the semantic hints describing this tool's behavior.
+    #[must_use]
+    pub fn with_hints(mut self, hints: ToolHints) -> Self {
+        self.hints = hints;
+        self
+    }
+}
+
 impl ToolDefinition {
+    /// A client-side function tool: a name, a description, and a JSON schema.
+    ///
+    /// The shortest path from "the model may call this" to a
+    /// [`ToolDefinition`], for callers that run the tool themselves and so
+    /// need none of [`ClientSideTool`]'s registry, deferral or hint fields.
+    /// Those keep their defaults and can be set afterwards.
+    ///
+    /// ```
+    /// use everruns_provider::ToolDefinition;
+    /// use serde_json::json;
+    ///
+    /// let tool = ToolDefinition::function(
+    ///     "search",
+    ///     "look things up",
+    ///     json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+    /// );
+    /// assert_eq!(tool.name(), "search");
+    /// ```
+    pub fn function(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+    ) -> Self {
+        ToolDefinition::ClientSide(ClientSideTool::new(name, description, parameters))
+    }
+
     /// Get the tool name regardless of variant
     pub fn name(&self) -> &str {
         match self {
@@ -607,7 +686,7 @@ impl ToolHints {
 }
 
 /// Tool call from LLM response
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ToolCall {
     /// Unique ID for this tool call
