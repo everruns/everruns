@@ -900,6 +900,13 @@ jobs:
           cargo test -p everruns-integrations-e2b
           cargo test -p everruns-integrations-github
           cargo test -p everruns-integrations-sprites
+          cargo test -p everruns-integrations-typesafe
+          # The lib-only half (client, classifier, framework capability) must keep
+          # compiling without `hosted`; that is the shape an embedder carries, and
+          # nothing else in CI builds it. The typesafe-integration.yml workflow is
+          # path-filtered on integrations/typesafe/**, so a break introduced from
+          # everruns-core/-capability/-provider would otherwise reach main unseen.
+          cargo check -p everruns-integrations-typesafe --no-default-features
 
               ;;
           esac
