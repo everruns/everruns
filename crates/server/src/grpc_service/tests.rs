@@ -5,7 +5,7 @@ use tonic::service::Interceptor;
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const EXAMPLE_TOKEN: &str = "YExample0";
 
-async fn test_worker_service() -> WorkerServiceImpl {
+pub(crate) async fn test_worker_service() -> WorkerServiceImpl {
     test_worker_service_with_runner(None).await
 }
 

@@ -4,20 +4,41 @@
 //! `super::super::worker_service_impl` is a delegation layer only: a trait impl
 //! cannot span modules, so the work lives here and the trait forwards to it.
 
+use super::support::*;
 use crate::grpc_service::*;
 
 impl WorkerServiceImpl {
+    /// The file-store key for a worker file RPC: the workspace the session is
+    /// attached to, not the session uuid. The two coincide for the default 1:1
+    /// session, so keying by the uuid works until a session is attached to a
+    /// shared workspace — see
+    /// [`crate::domains::session_files::queries::workspace_key_unscoped`]. Every
+    /// handler in this module resolves through here so the worker and the
+    /// `session_files` commands address the same bytes.
+    async fn session_workspace_key(
+        &self,
+        session_id: Option<&proto::Uuid>,
+    ) -> Result<uuid::Uuid, Status> {
+        let session_id = parse_uuid(session_id)?;
+        crate::domains::session_files::queries::workspace_key_unscoped(
+            &self.db,
+            everruns_provider::typed_id::SessionId::from_uuid(session_id),
+        )
+        .await
+        .map_err(|error| internal_status("Failed to resolve session workspace", error))?
+        .ok_or_else(|| Status::not_found("Session not found"))
+    }
     pub(crate) async fn handle_session_read_file(
         &self,
         request: Request<SessionReadFileRequest>,
     ) -> Result<Response<SessionReadFileResponse>, Status> {
         let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let workspace_key = self.session_workspace_key(req.session_id.as_ref()).await?;
 
         // Read file via WorkspaceFileService
         let file = self
             .session_file_service
-            .read_file(session_id, &req.path)
+            .read_file(workspace_key, &req.path)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to read file: {}", e);
@@ -50,12 +71,12 @@ impl WorkerServiceImpl {
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
         let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let workspace_key = self.session_workspace_key(req.session_id.as_ref()).await?;
 
         // Check if file already exists
         let existing = self
             .session_file_service
-            .read_file(session_id, &req.path)
+            .read_file(workspace_key, &req.path)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to check file: {}", e);
@@ -70,7 +91,7 @@ impl WorkerServiceImpl {
                 is_readonly: None,
             };
             self.session_file_service
-                .update_file(session_id, &req.path, update)
+                .update_file(workspace_key, &req.path, update)
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to update file: {}", e);
@@ -86,7 +107,7 @@ impl WorkerServiceImpl {
                 is_readonly: None,
             };
             self.session_file_service
-                .create_file(session_id, create)
+                .create_file(workspace_key, create)
                 .await
                 .map_err(|e| {
                     let msg = e.to_string();
@@ -125,12 +146,12 @@ impl WorkerServiceImpl {
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
         let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let workspace_key = self.session_workspace_key(req.session_id.as_ref()).await?;
 
         let file = self
             .session_file_service
             .update_file_if_content_matches(
-                session_id,
+                workspace_key,
                 &req.path,
                 &req.expected_content,
                 &req.expected_encoding,
@@ -167,12 +188,12 @@ impl WorkerServiceImpl {
         request: Request<SessionDeleteFileRequest>,
     ) -> Result<Response<SessionDeleteFileResponse>, Status> {
         let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let workspace_key = self.session_workspace_key(req.session_id.as_ref()).await?;
 
         // Delete via WorkspaceFileService
         let deleted = self
             .session_file_service
-            .delete(session_id, &req.path, req.recursive)
+            .delete(workspace_key, &req.path, req.recursive)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to delete file: {}", e);
@@ -187,12 +208,12 @@ impl WorkerServiceImpl {
         request: Request<SessionListDirectoryRequest>,
     ) -> Result<Response<SessionListDirectoryResponse>, Status> {
         let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let workspace_key = self.session_workspace_key(req.session_id.as_ref()).await?;
 
         // List directory via WorkspaceFileService
         let files = self
             .session_file_service
-            .list_directory(session_id, &req.path)
+            .list_directory(workspace_key, &req.path)
             .await
             .map_err(|e| {
                 let msg = e.to_string();
@@ -232,12 +253,12 @@ impl WorkerServiceImpl {
         request: Request<SessionStatFileRequest>,
     ) -> Result<Response<SessionStatFileResponse>, Status> {
         let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let workspace_key = self.session_workspace_key(req.session_id.as_ref()).await?;
 
         // Get file stat via WorkspaceFileService
         let stat = self
             .session_file_service
-            .stat(session_id, &req.path)
+            .stat(workspace_key, &req.path)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to stat file: {}", e);
@@ -264,7 +285,7 @@ impl WorkerServiceImpl {
         request: Request<SessionGrepFilesRequest>,
     ) -> Result<Response<SessionGrepFilesResponse>, Status> {
         let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let workspace_key = self.session_workspace_key(req.session_id.as_ref()).await?;
 
         let options = everruns_core::GrepOptions {
             path_pattern: req.path_pattern,
@@ -276,7 +297,7 @@ impl WorkerServiceImpl {
         };
         let grep_result = everruns_core::session_files::SessionFileSystem::grep_files_with_options(
             &self.session_file_service,
-            everruns_provider::typed_id::SessionId::from_uuid(session_id),
+            everruns_provider::typed_id::SessionId::from_uuid(workspace_key),
             &req.pattern,
             &options,
         )
@@ -342,7 +363,7 @@ impl WorkerServiceImpl {
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
         let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let workspace_key = self.session_workspace_key(req.session_id.as_ref()).await?;
 
         // Create directory via WorkspaceFileService
         let create = CreateDirectoryInput {
@@ -351,7 +372,7 @@ impl WorkerServiceImpl {
 
         let file_info = self
             .session_file_service
-            .create_directory(session_id, create)
+            .create_directory(workspace_key, create)
             .await
             .map_err(|e| {
                 // Check if it's a "file exists" error
@@ -378,5 +399,102 @@ impl WorkerServiceImpl {
         Ok(Response::new(SessionCreateDirectoryResponse {
             directory: Some(proto_file_info),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::grpc_service::tests::test_worker_service;
+    use tonic::Request;
+
+    /// A session may be attached to an existing workspace at creation
+    /// (`domains::sessions::commands`, gated on `WORKSPACE_MANAGE`), which grants that
+    /// session's agent read/write access to the workspace's files. Since migration 056
+    /// re-keyed `workspace_files` by `workspace_id`, everything that reaches
+    /// `WorkspaceFileService` must pass the session's workspace, not its id — the
+    /// parameter is still spelled `session_id` there, which is what makes passing the
+    /// wrong one look right. The HTTP/command path resolves it
+    /// (`domains::session_files::queries::verify_session`); the worker path must too,
+    /// or the agent silently addresses an empty workspace of its own.
+    #[tokio::test]
+    async fn session_file_rpcs_address_the_sessions_workspace_not_its_id() {
+        use crate::storage::models::{CreateSessionFileRow, CreateSessionRow};
+
+        let service = test_worker_service().await;
+
+        let new_session = |workspace_id: Option<uuid::Uuid>, title: &str| CreateSessionRow {
+            source: everruns_platform::SessionSource::Api,
+            workspace_id,
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            app_id: None,
+            endpoint_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some(title.to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        };
+
+        // The workspace owner, then a second session attached to that same workspace.
+        let owner = service
+            .db
+            .create_session(new_session(None, "workspace owner"))
+            .await
+            .unwrap();
+        let attached = service
+            .db
+            .create_session(new_session(Some(owner.workspace_id), "attached session"))
+            .await
+            .unwrap();
+        assert_eq!(attached.workspace_id, owner.workspace_id);
+        assert_ne!(attached.id.uuid(), attached.workspace_id);
+
+        service
+            .db
+            .create_session_file(CreateSessionFileRow {
+                session_id: everruns_provider::typed_id::SessionId::from_uuid(owner.workspace_id),
+                path: "/shared.txt".to_string(),
+                content: Some(b"shared workspace content".to_vec()),
+                is_directory: false,
+                is_readonly: false,
+            })
+            .await
+            .unwrap();
+
+        let response = service
+            .session_read_file(Request::new(SessionReadFileRequest {
+                session_id: Some(proto::Uuid {
+                    value: attached.id.uuid().to_string(),
+                }),
+                path: "/shared.txt".to_string(),
+            }))
+            .await
+            .expect("read file over the worker RPC")
+            .into_inner();
+
+        let file = response
+            .file
+            .expect("the attached session reads the workspace it was granted");
+        assert_eq!(file.content.as_deref(), Some("shared workspace content"));
     }
 }
