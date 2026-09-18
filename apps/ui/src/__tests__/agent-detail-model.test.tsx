@@ -241,6 +241,7 @@ describe("AgentDetailPage - tab navigation", () => {
       "Overview",
       "Preview",
       "Credentials",
+      "MCP",
       "Integrations",
       "Versions",
       "Stats",

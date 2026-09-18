@@ -14,6 +14,7 @@ describe("agent tab definitions", () => {
       "Overview",
       "Preview",
       "Credentials",
+      "MCP",
       "Integrations",
       "Versions",
       "Stats",
@@ -25,6 +26,7 @@ describe("agent tab definitions", () => {
       "Overview",
       "Preview",
       "Credentials",
+      "MCP",
       "Integrations",
       "Stats",
     ]);
