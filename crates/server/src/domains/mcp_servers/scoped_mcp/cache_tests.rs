@@ -6,6 +6,178 @@ struct IdentityCacheResolver {
     tokens: tokio::sync::RwLock<HashMap<Uuid, Option<String>>>,
 }
 
+#[tokio::test]
+async fn credential_rotation_reaps_private_service_rows_but_preserves_public_rows() {
+    let db = StorageBackend::in_memory();
+    let preset_id = Uuid::new_v4();
+    let agent_id = Uuid::new_v4();
+    let session_id = SessionId::new();
+    let resolver = Arc::new(IdentityCacheResolver::new([(
+        session_id,
+        Some("credential-one"),
+    )]));
+    let resolver_trait: Arc<dyn UserConnectionResolver> = resolver.clone();
+    let egress = IdentityCacheEgress::cacheable("private");
+    let context = ScopedMcpCacheContext {
+        agent_id: Some(agent_id),
+        user_id: Some(Uuid::new_v4()),
+    };
+
+    discover_for_test(
+        &db,
+        preset_id,
+        McpServerActsAs::Service,
+        session_id,
+        context,
+        &resolver_trait,
+        &egress,
+    )
+    .await;
+    db.upsert_mcp_service_tool_cache(UpsertMcpServiceToolCache {
+        org_id: everruns_core::DEFAULT_ORG_ID,
+        mcp_server_id: preset_id,
+        agent_id,
+        cache_scope: "public".to_string(),
+        credential_hash: String::new(),
+        cached_tools: serde_json::json!([]),
+        ttl_ms: 60_000,
+    })
+    .await
+    .unwrap();
+    resolver.set(session_id, Some("credential-two")).await;
+    discover_for_test(
+        &db,
+        preset_id,
+        McpServerActsAs::Service,
+        session_id,
+        context,
+        &resolver_trait,
+        &egress,
+    )
+    .await;
+
+    assert!(
+        db.get_mcp_service_tool_cache(
+            everruns_core::DEFAULT_ORG_ID,
+            preset_id,
+            agent_id,
+            "private",
+            &credential_hash("credential-one"),
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+    assert!(
+        db.get_mcp_service_tool_cache(
+            everruns_core::DEFAULT_ORG_ID,
+            preset_id,
+            agent_id,
+            "public",
+            "",
+        )
+        .await
+        .unwrap()
+        .is_some()
+    );
+    assert_eq!(egress.calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn user_cache_evicts_by_entry_count_and_payload_bytes() {
+    fn key(user_id: Uuid) -> ScopedToolCacheKey {
+        ScopedToolCacheKey {
+            identity: CacheIdentity::User {
+                org_id: everruns_core::DEFAULT_ORG_ID,
+                preset_id: Uuid::from_u128(1),
+                user_id,
+            },
+            scope: CacheScopeKey::Public,
+        }
+    }
+    fn entry(name: &str, cached_at: DateTime<Utc>) -> CachedScopedTools {
+        CachedScopedTools {
+            tools: vec![everruns_core::McpToolDefinition {
+                name: name.to_string(),
+                description: None,
+                input_schema: serde_json::json!({"type": "object"}),
+                annotations: None,
+            }],
+            ttl: Duration::from_secs(60),
+            cached_at,
+        }
+    }
+
+    let now = Utc::now();
+    let mut count_bounded = UserToolCache::new(2, usize::MAX);
+    for index in 0..3 {
+        count_bounded.insert(
+            key(Uuid::from_u128(index + 1)),
+            entry(
+                &format!("tool-{index}"),
+                now + chrono::Duration::milliseconds(index as i64),
+            ),
+        );
+    }
+    assert_eq!(count_bounded.entries.len(), 2);
+    assert!(!count_bounded.entries.contains_key(&key(Uuid::from_u128(1))));
+
+    let first_key = key(Uuid::from_u128(10));
+    let first = entry("first-payload", now);
+    let second_key = key(Uuid::from_u128(11));
+    let second = entry("second-payload", now + chrono::Duration::milliseconds(1));
+    let byte_limit = UserToolCache::entry_bytes(&first_key, &first)
+        .max(UserToolCache::entry_bytes(&second_key, &second));
+    let mut byte_bounded = UserToolCache::new(10, byte_limit);
+    byte_bounded.insert(first_key.clone(), first);
+    byte_bounded.insert(second_key, second);
+    assert!(byte_bounded.total_bytes <= byte_limit);
+    assert_eq!(byte_bounded.entries.len(), 1);
+    assert!(!byte_bounded.entries.contains_key(&first_key));
+}
+
+#[test]
+fn user_cache_reaps_expired_entries_on_access_and_insert() {
+    let preset_id = Uuid::new_v4();
+    let identity = CacheIdentity::User {
+        org_id: everruns_core::DEFAULT_ORG_ID,
+        preset_id,
+        user_id: Uuid::new_v4(),
+    };
+    let expired_key = ScopedToolCacheKey {
+        identity,
+        scope: CacheScopeKey::Public,
+    };
+    let current_key = ScopedToolCacheKey {
+        identity: CacheIdentity::User {
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            preset_id,
+            user_id: Uuid::new_v4(),
+        },
+        scope: CacheScopeKey::Public,
+    };
+    let mut cache = UserToolCache::new(10, usize::MAX);
+    cache.insert(
+        expired_key.clone(),
+        CachedScopedTools {
+            tools: Vec::new(),
+            ttl: Duration::from_secs(60),
+            cached_at: Utc::now() - chrono::Duration::hours(25),
+        },
+    );
+    cache.insert(
+        current_key.clone(),
+        CachedScopedTools {
+            tools: Vec::new(),
+            ttl: Duration::from_secs(60),
+            cached_at: Utc::now(),
+        },
+    );
+
+    assert!(!cache.entries.contains_key(&expired_key));
+    assert!(cache.get(&current_key).is_some());
+}
+
 impl IdentityCacheResolver {
     fn new(entries: impl IntoIterator<Item = (SessionId, Option<&'static str>)>) -> Self {
         Self {
@@ -405,20 +577,30 @@ async fn private_service_cache_keeps_the_credential_hash() {
     .await;
 
     assert_eq!(egress.calls.load(Ordering::SeqCst), 2);
-    for token in ["credential-one", "credential-two"] {
-        assert!(
-            db.get_mcp_service_tool_cache(
-                everruns_core::DEFAULT_ORG_ID,
-                preset_id,
-                agent_id,
-                "private",
-                &credential_hash(token),
-            )
-            .await
-            .unwrap()
-            .is_some()
-        );
-    }
+    assert!(
+        db.get_mcp_service_tool_cache(
+            everruns_core::DEFAULT_ORG_ID,
+            preset_id,
+            agent_id,
+            "private",
+            &credential_hash("credential-one"),
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+    assert!(
+        db.get_mcp_service_tool_cache(
+            everruns_core::DEFAULT_ORG_ID,
+            preset_id,
+            agent_id,
+            "private",
+            &credential_hash("credential-two"),
+        )
+        .await
+        .unwrap()
+        .is_some()
+    );
 }
 
 #[tokio::test]

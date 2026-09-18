@@ -472,6 +472,14 @@ impl StorageBackend {
         dispatch!(self, update_mcp_server_tools, org_id, id, input)
     }
 
+    pub async fn clear_mcp_server_tools(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<McpServerRow>> {
+        dispatch!(self, clear_mcp_server_tools, org_id, id)
+    }
+
     pub async fn get_mcp_service_tool_cache(
         &self,
         org_id: i64,
@@ -510,6 +518,42 @@ impl StorageBackend {
             org_id,
             mcp_server_id,
             agent_id
+        )
+    }
+
+    pub async fn delete_mcp_service_tool_cache(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+        cache_scope: &str,
+        credential_hash: &str,
+    ) -> Result<u64> {
+        dispatch!(
+            self,
+            delete_mcp_service_tool_cache,
+            org_id,
+            mcp_server_id,
+            agent_id,
+            cache_scope,
+            credential_hash
+        )
+    }
+
+    pub async fn delete_obsolete_mcp_service_private_tool_caches(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+        current_credential_hash: &str,
+    ) -> Result<u64> {
+        dispatch!(
+            self,
+            delete_obsolete_mcp_service_private_tool_caches,
+            org_id,
+            mcp_server_id,
+            agent_id,
+            current_credential_hash
         )
     }
 

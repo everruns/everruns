@@ -640,6 +640,9 @@ impl CapabilityService {
 mod tests {
     use super::*;
     use crate::storage::memory::InMemoryDatabase;
+    use crate::storage::models::{CreateMcpServerRow, UpdateMcpServerTools};
+    use everruns_capability::CapabilityRef;
+    use everruns_core::McpServerAuthMode;
     use everruns_provider::typed_id::SkillId;
 
     fn make_service() -> CapabilityService {
@@ -727,6 +730,96 @@ mod tests {
         svc.invalidate_skills_cache(1).await;
         assert!(!is_cached(&svc, 1).await);
         assert!(is_cached(&svc, 2).await);
+    }
+
+    #[tokio::test]
+    async fn oauth_shared_cache_never_reaches_capability_list_detail_or_preview() {
+        let svc = make_service();
+        let row = svc
+            .db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "oauth-capability".to_string(),
+                    description: None,
+                    url: "https://example.com/mcp".to_string(),
+                    transport_type: "streamable_http".to_string(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: Some(
+                        serde_json::to_value(
+                            crate::domains::mcp_servers::service::McpServerSettings {
+                                auth_mode: McpServerAuthMode::OAuth,
+                                ..Default::default()
+                            },
+                        )
+                        .unwrap(),
+                    ),
+                },
+            )
+            .await
+            .unwrap();
+        let id = row.id.uuid();
+        let capability_id = mcp_capability_id(id);
+        let poison = serde_json::json!([{
+            "name": "user_a_private_tool",
+            "description": "Only visible to user A",
+            "inputSchema": {"type": "object"}
+        }]);
+
+        svc.db
+            .update_mcp_server_tools(
+                1,
+                id,
+                UpdateMcpServerTools {
+                    cached_tools: poison.clone(),
+                },
+            )
+            .await
+            .unwrap();
+        let listed = svc.list_all(1).await.unwrap();
+        let listed_mcp = listed
+            .iter()
+            .find(|capability| capability.id.as_str() == capability_id)
+            .unwrap();
+        assert!(listed_mcp.tool_definitions.is_empty());
+
+        svc.db
+            .update_mcp_server_tools(
+                1,
+                id,
+                UpdateMcpServerTools {
+                    cached_tools: poison.clone(),
+                },
+            )
+            .await
+            .unwrap();
+        let detailed = svc
+            .get(1, &CapabilityId::new(capability_id.clone()))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(detailed.tool_definitions.is_empty());
+
+        svc.db
+            .update_mcp_server_tools(
+                1,
+                id,
+                UpdateMcpServerTools {
+                    cached_tools: poison,
+                },
+            )
+            .await
+            .unwrap();
+        let (_, preview_tools) = svc
+            .preview(1, "base", &[CapabilityRef::new(capability_id)])
+            .await
+            .unwrap();
+        assert!(preview_tools.is_empty());
+
+        let persisted = svc.db.get_mcp_server(1, id).await.unwrap().unwrap();
+        assert_eq!(persisted.cached_tools, serde_json::json!([]));
+        assert!(persisted.tools_cached_at.is_none());
     }
 
     // Regression tests for fix(capabilities): restore high-risk levels for

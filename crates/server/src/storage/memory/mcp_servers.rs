@@ -314,6 +314,25 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
+    pub async fn clear_mcp_server_tools(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<McpServerRow>> {
+        let id = McpServerId::from_uuid(id);
+        let mut servers = self.mcp_servers.write();
+        if let Some(server) = servers.get_mut(&id) {
+            if server.org_id != org_id {
+                return Ok(None);
+            }
+            server.cached_tools = serde_json::json!([]);
+            server.tools_cached_at = None;
+            server.updated_at = Self::now();
+            return Ok(Some(server.clone()));
+        }
+        Ok(None)
+    }
+
     pub async fn get_mcp_service_tool_cache(
         &self,
         org_id: i64,
@@ -371,6 +390,46 @@ impl InMemoryDatabase {
         let mut caches = self.mcp_service_tool_caches.write();
         let before = caches.len();
         caches.retain(|key, _| !(key.0 == org_id && key.1 == mcp_server_id && key.2 == agent_id));
+        Ok((before - caches.len()) as u64)
+    }
+
+    pub async fn delete_mcp_service_tool_cache(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+        cache_scope: &str,
+        credential_hash: &str,
+    ) -> Result<u64> {
+        Ok(self
+            .mcp_service_tool_caches
+            .write()
+            .remove(&(
+                org_id,
+                mcp_server_id,
+                agent_id,
+                cache_scope.to_string(),
+                credential_hash.to_string(),
+            ))
+            .is_some() as u64)
+    }
+
+    pub async fn delete_obsolete_mcp_service_private_tool_caches(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+        current_credential_hash: &str,
+    ) -> Result<u64> {
+        let mut caches = self.mcp_service_tool_caches.write();
+        let before = caches.len();
+        caches.retain(|key, _| {
+            !(key.0 == org_id
+                && key.1 == mcp_server_id
+                && key.2 == agent_id
+                && key.3 == "private"
+                && key.4 != current_credential_hash)
+        });
         Ok((before - caches.len()) as u64)
     }
 

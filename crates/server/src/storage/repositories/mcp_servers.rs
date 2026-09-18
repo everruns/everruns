@@ -298,6 +298,27 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn clear_mcp_server_tools(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<McpServerRow>> {
+        Ok(sqlx::query_as::<_, McpServerRow>(
+            r#"
+            UPDATE mcp_servers
+            SET cached_tools = '[]'::jsonb, tools_cached_at = NULL
+            WHERE org_id = $1 AND id = $2
+            RETURNING id, org_id, name, description, url, transport_type, status,
+                      api_key_encrypted, api_key_set, headers, settings, cached_tools,
+                      tools_cached_at, created_at, updated_at, archived_at, deleted_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     pub async fn get_mcp_service_tool_cache(
         &self,
         org_id: i64,
@@ -373,6 +394,60 @@ impl Database {
         .bind(org_id)
         .bind(mcp_server_id)
         .bind(agent_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected())
+    }
+
+    pub async fn delete_mcp_service_tool_cache(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+        cache_scope: &str,
+        credential_hash: &str,
+    ) -> Result<u64> {
+        Ok(sqlx::query(
+            r#"
+            DELETE FROM mcp_service_tool_caches
+            WHERE org_id = $1
+              AND mcp_server_id = $2
+              AND agent_id = $3
+              AND cache_scope = $4
+              AND credential_hash = $5
+            "#,
+        )
+        .bind(org_id)
+        .bind(mcp_server_id)
+        .bind(agent_id)
+        .bind(cache_scope)
+        .bind(credential_hash)
+        .execute(&self.pool)
+        .await?
+        .rows_affected())
+    }
+
+    pub async fn delete_obsolete_mcp_service_private_tool_caches(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+        current_credential_hash: &str,
+    ) -> Result<u64> {
+        Ok(sqlx::query(
+            r#"
+            DELETE FROM mcp_service_tool_caches
+            WHERE org_id = $1
+              AND mcp_server_id = $2
+              AND agent_id = $3
+              AND cache_scope = 'private'
+              AND credential_hash <> $4
+            "#,
+        )
+        .bind(org_id)
+        .bind(mcp_server_id)
+        .bind(agent_id)
+        .bind(current_credential_hash)
         .execute(&self.pool)
         .await?
         .rows_affected())

@@ -720,6 +720,14 @@ async fn oauth_tools_are_never_served_from_the_shared_org_row() {
     .unwrap();
 
     assert!(svc.get_tools(&test_caller(1), id, false).await.is_err());
+    let listed = svc.list_active_with_tools(&test_caller(1)).await.unwrap();
+    assert!(listed[0].cached_tools.is_empty());
+    assert!(
+        svc.get_cached_tools(&test_caller(1), id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let batch = svc
         .get_batch_with_tools(&test_caller(1), &[id])
         .await
@@ -731,6 +739,9 @@ async fn oauth_tools_are_never_served_from_the_shared_org_row() {
             .1
             .is_empty()
     );
+    let persisted = db.get_mcp_server(1, id).await.unwrap().unwrap();
+    assert_eq!(persisted.cached_tools, serde_json::json!([]));
+    assert!(persisted.tools_cached_at.is_none());
 }
 #[tokio::test]
 async fn create_and_rename_reject_ambiguous_names_without_changing_stored_identity() {

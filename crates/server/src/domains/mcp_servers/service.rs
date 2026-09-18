@@ -412,10 +412,12 @@ impl McpServerService {
     /// List active MCP servers with their cached tools
     pub async fn list_active_with_tools(&self, caller: &Caller) -> Result<Vec<McpServerWithTools>> {
         let rows = self.db.list_active_mcp_servers(caller.org_id).await?;
-        Ok(rows
-            .iter()
-            .map(Self::row_to_mcp_server_with_tools)
-            .collect())
+        let mut servers = Vec::with_capacity(rows.len());
+        for row in &rows {
+            self.clear_legacy_oauth_tools(caller.org_id, row).await?;
+            servers.push(Self::row_to_mcp_server_with_tools(row));
+        }
+        Ok(servers)
     }
 
     /// Refresh cached tools for an MCP server by calling tools/list
@@ -448,18 +450,9 @@ impl McpServerService {
             serde_json::from_value(row.headers.clone()).unwrap_or_default();
 
         if settings.auth_mode == McpServerAuthMode::OAuth {
-            let tools: Vec<McpToolDefinition> =
-                serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
-            // OAuth servers can't self-refresh here (no user connection token to
-            // mint), so we fall back to the last good cache — but still bound it
-            // by the max-stale window so revoked/poisoned tool metadata can't be
-            // served indefinitely. Past the window the caller must reconnect.
-            if !tools.is_empty() && Self::cache_within_max_stale(&row) {
-                return Ok(tools);
-            }
+            self.clear_legacy_oauth_tools(caller.org_id, &row).await?;
             anyhow::bail!(
-                "OAuth MCP servers require a user connection before tools can be refreshed \
-                 (or the cached tools have exceeded the maximum stale window)"
+                "OAuth MCP servers require an identity-scoped attachment and connection grant"
             );
         }
 
@@ -537,7 +530,21 @@ impl McpServerService {
     }
 
     fn cached_tools(row: &McpServerRow) -> Vec<McpToolDefinition> {
+        if Self::settings_from_row(row).auth_mode == McpServerAuthMode::OAuth {
+            return Vec::new();
+        }
         serde_json::from_value(row.cached_tools.clone()).unwrap_or_default()
+    }
+
+    async fn clear_legacy_oauth_tools(&self, org_id: i64, row: &McpServerRow) -> Result<()> {
+        if Self::settings_from_row(row).auth_mode == McpServerAuthMode::OAuth
+            && (row.cached_tools != serde_json::json!([]) || row.tools_cached_at.is_some())
+        {
+            self.db
+                .clear_mcp_server_tools(org_id, row.id.uuid())
+                .await?;
+        }
+        Ok(())
     }
 
     /// Get cached tools for an MCP server, refreshing if stale.
@@ -690,7 +697,8 @@ impl McpServerService {
     ) -> Result<Vec<McpToolDefinition>> {
         match self.db.get_mcp_server(caller.org_id, id).await {
             Ok(Some(row)) => {
-                Ok(serde_json::from_value(row.cached_tools.clone()).unwrap_or_default())
+                self.clear_legacy_oauth_tools(caller.org_id, &row).await?;
+                Ok(Self::cached_tools(&row))
             }
             _ => Ok(Vec::new()),
         }
@@ -812,8 +820,7 @@ impl McpServerService {
 
     fn row_to_mcp_server_with_tools(row: &McpServerRow) -> McpServerWithTools {
         let server = Self::row_to_mcp_server(row);
-        let cached_tools: Vec<McpToolDefinition> =
-            serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
+        let cached_tools = Self::cached_tools(row);
 
         McpServerWithTools {
             server,

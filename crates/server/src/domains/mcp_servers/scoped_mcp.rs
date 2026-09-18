@@ -33,6 +33,8 @@ use crate::domains::mcp_servers::service::{
 use crate::storage::{McpServiceToolCacheRow, StorageBackend, UpsertMcpServiceToolCache};
 
 const SCOPED_TOOL_CACHE_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+const USER_TOOL_CACHE_MAX_ENTRIES: usize = 1_024;
+const USER_TOOL_CACHE_MAX_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ScopedMcpCacheContext {
@@ -107,8 +109,142 @@ impl CachedScopedTools {
     }
 }
 
-static USER_TOOL_CACHE: LazyLock<Mutex<HashMap<ScopedToolCacheKey, CachedScopedTools>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+async fn delete_cache_entry(db: &StorageBackend, key: &ScopedToolCacheKey) -> Result<()> {
+    match &key.identity {
+        CacheIdentity::Service {
+            org_id,
+            preset_id,
+            agent_id,
+        } => {
+            let (scope, hash) = match &key.scope {
+                CacheScopeKey::Public => ("public", ""),
+                CacheScopeKey::Private(hash) => ("private", hash.as_str()),
+            };
+            db.delete_mcp_service_tool_cache(*org_id, *preset_id, *agent_id, scope, hash)
+                .await?;
+        }
+        CacheIdentity::User { .. } => {
+            USER_TOOL_CACHE
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .remove(key);
+        }
+    }
+    Ok(())
+}
+
+async fn reap_obsolete_private_service_entries(
+    db: &StorageBackend,
+    identity: CacheIdentity,
+    current_hash: &str,
+) -> Result<()> {
+    if let CacheIdentity::Service {
+        org_id,
+        preset_id,
+        agent_id,
+    } = identity
+    {
+        db.delete_obsolete_mcp_service_private_tool_caches(
+            org_id,
+            preset_id,
+            agent_id,
+            current_hash,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+struct UserToolCacheEntry {
+    value: CachedScopedTools,
+    bytes: usize,
+}
+
+struct UserToolCache {
+    entries: HashMap<ScopedToolCacheKey, UserToolCacheEntry>,
+    total_bytes: usize,
+    max_entries: usize,
+    max_bytes: usize,
+}
+
+impl UserToolCache {
+    fn new(max_entries: usize, max_bytes: usize) -> Self {
+        Self {
+            entries: HashMap::new(),
+            total_bytes: 0,
+            max_entries,
+            max_bytes,
+        }
+    }
+
+    fn entry_bytes(key: &ScopedToolCacheKey, value: &CachedScopedTools) -> usize {
+        let scope_bytes = match &key.scope {
+            CacheScopeKey::Public => 0,
+            CacheScopeKey::Private(hash) => hash.len(),
+        };
+        serde_json::to_vec(&value.tools)
+            .map(|tools| tools.len().saturating_add(scope_bytes))
+            .unwrap_or(usize::MAX)
+    }
+
+    fn remove(&mut self, key: &ScopedToolCacheKey) {
+        if let Some(entry) = self.entries.remove(key) {
+            self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
+        }
+    }
+
+    fn retain(&mut self, mut keep: impl FnMut(&ScopedToolCacheKey, &CachedScopedTools) -> bool) {
+        let mut removed_bytes = 0usize;
+        self.entries.retain(|key, entry| {
+            let retained = keep(key, &entry.value);
+            if !retained {
+                removed_bytes = removed_bytes.saturating_add(entry.bytes);
+            }
+            retained
+        });
+        self.total_bytes = self.total_bytes.saturating_sub(removed_bytes);
+    }
+
+    fn get(&mut self, key: &ScopedToolCacheKey) -> Option<CachedScopedTools> {
+        let value = self.entries.get(key).map(|entry| entry.value.clone());
+        self.retain(|candidate, entry| candidate == key || entry.is_within_max_age());
+        value
+    }
+
+    fn remove_identity(&mut self, identity: CacheIdentity) {
+        self.retain(|key, _| key.identity != identity);
+    }
+
+    fn insert(&mut self, key: ScopedToolCacheKey, value: CachedScopedTools) {
+        self.retain(|_, entry| entry.is_within_max_age());
+        self.remove(&key);
+        let bytes = Self::entry_bytes(&key, &value);
+        if bytes > self.max_bytes {
+            return;
+        }
+        self.total_bytes = self.total_bytes.saturating_add(bytes);
+        self.entries
+            .insert(key, UserToolCacheEntry { value, bytes });
+        while self.entries.len() > self.max_entries || self.total_bytes > self.max_bytes {
+            let Some(oldest) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.value.cached_at)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            self.remove(&oldest);
+        }
+    }
+}
+
+static USER_TOOL_CACHE: LazyLock<Mutex<UserToolCache>> = LazyLock::new(|| {
+    Mutex::new(UserToolCache::new(
+        USER_TOOL_CACHE_MAX_ENTRIES,
+        USER_TOOL_CACHE_MAX_BYTES,
+    ))
+});
 static SCOPED_REFRESH_LOCKS: LazyLock<ScopedRefreshLocks> =
     LazyLock::new(ScopedRefreshLocks::default);
 
@@ -407,8 +543,7 @@ async fn load_cache_entry(
         CacheIdentity::User { .. } => Ok(USER_TOOL_CACHE
             .lock()
             .unwrap_or_else(|error| error.into_inner())
-            .get(key)
-            .cloned()),
+            .get(key)),
     }
 }
 
@@ -417,8 +552,9 @@ async fn lookup_cached_tools(
     identity: CacheIdentity,
     hash: &str,
 ) -> Result<CacheLookup> {
+    let mut fresh = None;
     let mut stale = None;
-    let mut expired = false;
+    let mut expired = Vec::new();
     for scope in [
         CacheScopeKey::Public,
         CacheScopeKey::Private(hash.to_string()),
@@ -428,17 +564,21 @@ async fn lookup_cached_tools(
             continue;
         };
         if entry.is_fresh() {
-            return Ok(CacheLookup::Fresh(entry.tools));
-        }
-        if entry.is_within_max_age() {
+            fresh.get_or_insert(entry.tools);
+        } else if entry.is_within_max_age() {
             stale.get_or_insert(entry.tools);
         } else {
-            expired = true;
+            expired.push(key);
         }
     }
-    if let Some(tools) = stale {
+    for key in &expired {
+        delete_cache_entry(db, key).await?;
+    }
+    if let Some(tools) = fresh {
+        Ok(CacheLookup::Fresh(tools))
+    } else if let Some(tools) = stale {
         Ok(CacheLookup::Stale(tools))
-    } else if expired {
+    } else if !expired.is_empty() {
         Ok(CacheLookup::Expired)
     } else {
         Ok(CacheLookup::Miss)
@@ -459,7 +599,7 @@ async fn invalidate_identity_cache(db: &StorageBackend, identity: CacheIdentity)
             USER_TOOL_CACHE
                 .lock()
                 .unwrap_or_else(|error| error.into_inner())
-                .retain(|key, _| key.identity != identity);
+                .remove_identity(identity);
         }
     }
     Ok(())
@@ -503,11 +643,10 @@ async fn store_cached_tools(
             .await?;
         }
         CacheIdentity::User { .. } => {
-            let mut cache = USER_TOOL_CACHE
+            USER_TOOL_CACHE
                 .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            cache.retain(|_, entry| entry.is_within_max_age());
-            cache.insert(ScopedToolCacheKey { identity, scope }, entry);
+                .unwrap_or_else(|error| error.into_inner())
+                .insert(ScopedToolCacheKey { identity, scope }, entry);
         }
     }
     Ok(())
@@ -538,12 +677,10 @@ async fn discover_catalog_tools(
         return Ok(None);
     };
     let hash = credential_hash(&token);
+    reap_obsolete_private_service_entries(db, identity, &hash).await?;
     match lookup_cached_tools(db, identity, &hash).await? {
         CacheLookup::Fresh(tools) => return Ok(Some(tools)),
-        CacheLookup::Expired => {
-            invalidate_identity_cache(db, identity).await?;
-            return Ok(None);
-        }
+        CacheLookup::Expired => return Ok(None),
         CacheLookup::Stale(_) | CacheLookup::Miss => {}
     }
 
