@@ -520,6 +520,7 @@ pub(crate) fn handle_streaming_event(
                 retry_metadata: retry_metadata.map(|arc| (*arc).clone()),
                 response_id: Some(response.id),
                 phase,
+                request_body: None,
                 cache_diagnostics: None,
             }))
         }

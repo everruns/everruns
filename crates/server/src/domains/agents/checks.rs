@@ -623,19 +623,9 @@ pub fn run_declarative_rules(rules: &[DeclarativeRule], resolved_prompt: &str) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_provider::tool_types::ClientSideTool;
 
     fn client_tool(name: &str) -> ToolDefinition {
-        ToolDefinition::ClientSide(ClientSideTool {
-            name: name.to_string(),
-            display_name: None,
-            description: "test tool".to_string(),
-            parameters: serde_json::json!({}),
-            category: None,
-            deferrable: Default::default(),
-            hints: Default::default(),
-            full_parameters: None,
-        })
+        ToolDefinition::function(name, "test tool", serde_json::json!({}))
     }
 
     fn capability(r#ref: &str) -> AgentCapabilityConfig {

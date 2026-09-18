@@ -52,6 +52,7 @@ fn explicit_cache_wire_options_are_model_gated() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        capture_request: false,
         limits: Default::default(),
     };
     config.prompt_cache = Some(crate::driver_registry::PromptCacheConfig {

@@ -626,6 +626,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                                 .and_then(Value::as_str)
                                                 .map(str::to_owned),
                                             phase,
+                                            request_body: None,
                                             cache_diagnostics: None,
                                         })))
                                     }

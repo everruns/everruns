@@ -262,6 +262,21 @@ impl Completion {
         self
     }
 
+    /// Record the exact request body the driver sends, on
+    /// [`LlmCompletionMetadata::request_body`].
+    ///
+    /// Off by default. What a driver puts on the wire is its own — which
+    /// fields, how tools and reasoning are shaped — so a caller storing or
+    /// showing what was asked otherwise has to approximate it. The body
+    /// carries the whole prompt, which is why turning it on is deliberate;
+    /// credentials travel in headers and are never captured.
+    ///
+    /// [`LlmCompletionMetadata::request_body`]: crate::LlmCompletionMetadata::request_body
+    pub fn capture_request(mut self, capture: bool) -> Self {
+        self.config.capture_request = capture;
+        self
+    }
+
     /// Refuse an answer that grows past `bytes`.
     ///
     /// Counted across answer text and readable reasoning, and checked as they
@@ -486,6 +501,17 @@ mod tests {
         );
         assert_eq!(completion.config.limits.max_response_bytes, Some(1024));
         assert_eq!(completion.config.parallel_tool_calls, Some(false));
+        assert!(
+            !completion.config.capture_request,
+            "the prompt is not recorded unless asked for"
+        );
+        assert!(
+            Model::simulated("ok")
+                .completion()
+                .capture_request(true)
+                .config
+                .capture_request
+        );
     }
 
     #[tokio::test]

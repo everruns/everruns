@@ -984,6 +984,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            capture_request: false,
             limits: Default::default(),
             reasoning_state: None,
         };

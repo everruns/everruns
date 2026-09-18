@@ -260,6 +260,12 @@ pub struct LlmCompletionMetadata {
     /// When present, this value should be preserved on the assistant message and sent
     /// back as-is in subsequent requests. Only set by providers with native phase support.
     pub phase: Option<String>,
+    /// The request body the driver sent, when
+    /// [`LlmCallConfig::capture_request`] asked for it.
+    ///
+    /// Verbatim, as serialized for the wire. `None` when the capture was not
+    /// requested, or on a driver that does not support it.
+    pub request_body: Option<serde_json::Value>,
     /// Provider-reported prompt-cache diagnostics, verbatim.
     ///
     /// Present only when the request opted in via
@@ -905,6 +911,18 @@ pub struct LlmCallConfig {
     pub extra_headers: Vec<(String, String)>,
     /// Prompt-cache diagnostics requested for this call.
     pub cache_diagnostics: Option<CacheDiagnosticsConfig>,
+    /// Record the exact request body the driver sends, on
+    /// [`LlmCompletionMetadata::request_body`].
+    ///
+    /// Off by default. A driver's serialization is its own — which fields it
+    /// sends, how it shapes tools and reasoning — so a consumer that has to
+    /// show or store what was actually asked cannot reconstruct it and ends up
+    /// fabricating an approximation. This hands over the real thing.
+    ///
+    /// The body carries the whole prompt, so turning it on is a deliberate
+    /// choice about where that prompt may be written. Credentials are never
+    /// part of it: authentication travels in headers, which are not captured.
+    pub capture_request: bool,
     /// Bounds on how long this call may run and how much it may return.
     ///
     /// Enforced wherever a stream is folded into a turn: the non-streaming
@@ -1081,6 +1099,12 @@ impl LlmCallConfigBuilder {
     /// Add one extra HTTP header to send with this call.
     pub fn extra_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.config.extra_headers.push((name.into(), value.into()));
+        self
+    }
+
+    /// Record the exact request body this call sends.
+    pub fn capture_request(mut self, capture: bool) -> Self {
+        self.config.capture_request = capture;
         self
     }
 
@@ -2078,6 +2102,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            capture_request: false,
             limits: Default::default(),
             reasoning_state: None,
         }

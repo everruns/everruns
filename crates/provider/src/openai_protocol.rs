@@ -105,6 +105,22 @@ pub fn models_url_for_api_url(api_url: &str) -> String {
     url.to_string()
 }
 
+/// The request body, as JSON, when the call asked for it to be captured.
+///
+/// Serializing the same value that goes on the wire keeps the capture honest:
+/// it cannot drift from what was actually sent. A serialization failure yields
+/// `None` rather than failing the call — a diagnostic must never be the reason
+/// a request does not happen.
+fn capture_request_body(
+    config: &LlmCallConfig,
+    request: &impl serde::Serialize,
+) -> Option<serde_json::Value> {
+    config
+        .capture_request
+        .then(|| serde_json::to_value(request).ok())
+        .flatten()
+}
+
 /// Build the error returned when the `/models` endpoint responds with a
 /// non-success status.
 ///
@@ -542,6 +558,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             verbosity: config.verbosity.clone(),
             metadata,
         };
+        let captured_request = capture_request_body(config, &request);
         let api_url = endpoint.url("chat/completions").ok_or_else(|| {
             AgentLoopError::Configuration(
                 "OpenAI Chat Completions provider has no base URL".to_string(),
@@ -644,6 +661,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 },
                 response_id: body.id,
                 phase: None,
+                request_body: captured_request,
                 cache_diagnostics: None,
             },
         })
@@ -722,6 +740,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             })
             .await?;
 
+        let captured_request = Arc::new(capture_request_body(config, &request));
         let model = config.model.clone();
         let completion_tokens = Arc::new(Mutex::new(CompletionTokenCount::default()));
         let prompt_tokens = Arc::new(Mutex::new(0u32));
@@ -764,6 +783,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                     let accumulated_reasoning = Arc::clone(&accumulated_reasoning);
                     let response_id = Arc::clone(&response_id);
                     let retry_metadata_for_done = shared_retry_metadata.clone();
+                    let captured_request = Arc::clone(&captured_request);
 
                     async move {
                         let event = match result {
@@ -847,6 +867,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                         .map(|arc| (*arc).clone()),
                                     response_id: resp_id,
                                     phase: None,
+                                    request_body: (*captured_request).clone(),
                                     cache_diagnostics: None,
                                 },
                             ))));
@@ -1658,6 +1679,40 @@ mod tests {
             json!([{"type":"function","function":{"name":"lookup","description":"Lookup","parameters":{"type":"object","allOf":[{"type":"object"}]}}}])
         );
     }
+    #[test]
+    fn the_request_capture_is_opt_in_and_is_what_goes_on_the_wire() {
+        let request = OpenAiRequest {
+            model: "gpt-5-mini".into(),
+            messages: vec![],
+            temperature: Some(0.5),
+            max_tokens: Some(64),
+            stream: true,
+            stream_options: None,
+            tools: None,
+            parallel_tool_calls: None,
+            reasoning_effort: None,
+            service_tier: None,
+            verbosity: None,
+            metadata: None,
+        };
+
+        let mut config = call_config();
+        assert_eq!(
+            capture_request_body(&config, &request),
+            None,
+            "the prompt is not recorded unless the caller asked"
+        );
+
+        config.capture_request = true;
+        let captured = capture_request_body(&config, &request).expect("the body is captured");
+        // The same value the wire gets, so the capture cannot drift from it.
+        assert_eq!(captured, serde_json::to_value(&request).unwrap());
+        assert_eq!(captured["model"], json!("gpt-5-mini"));
+        assert_eq!(captured["temperature"], json!(0.5));
+        // Authentication travels in headers; nothing credential-shaped is here.
+        assert!(captured.get("api_key").is_none());
+    }
+
     fn call_config() -> LlmCallConfig {
         LlmCallConfig {
             reasoning_state: None,
@@ -1678,6 +1733,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            capture_request: false,
             limits: Default::default(),
         }
     }
