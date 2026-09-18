@@ -1124,9 +1124,7 @@ async fn endpoint_creation_requires_the_app_to_have_an_agent() {
 }
 
 /// The update path writes to `agent_endpoints` rather than the read-only view.
-/// It must preserve endpoint identity and keep the derived `status` column in
-/// step with the `App.status × enabled` pair it is derived from, so the column
-/// does not drift before the publish phase makes it authoritative.
+/// It must preserve endpoint identity and the authoritative endpoint status.
 #[tokio::test]
 async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
     let pool = pool().await;
@@ -1168,7 +1166,7 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
         .expect("read status");
     assert_eq!(status, "disabled");
 
-    // Re-enabling under a published App must return it to 'live'.
+    // Re-enabling does not infer lifecycle from the frozen App row.
     db.update_app_channel(
         fixture.endpoint_id,
         everruns_server::storage::UpdateAppChannel {
@@ -1178,6 +1176,24 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
     )
     .await
     .expect("re-enable endpoint")
+    .expect("endpoint exists");
+
+    let status: String = sqlx::query_scalar("SELECT status FROM agent_endpoints WHERE id = $1")
+        .bind(fixture.endpoint_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read status");
+    assert_eq!(status, "disabled");
+
+    db.update_app_channel(
+        fixture.endpoint_id,
+        everruns_server::storage::UpdateAppChannel {
+            status: Some("live".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("set endpoint live")
     .expect("endpoint exists");
 
     let status: String = sqlx::query_scalar("SELECT status FROM agent_endpoints WHERE id = $1")
