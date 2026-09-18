@@ -254,7 +254,10 @@ everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "
 everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.28.0" }
 everruns-integrations-lua = { path = "integrations/lua", version = "0.28.0" }
 everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.28.0" }
-everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.28.0" }
+# `hosted` is opt-in (everruns-integrations-catalog turns it on). It registers the
+# connector into the hosted plugin system and so depends on everruns-platform,
+# which an embedder wanting only the client and framework surface must not carry.
+everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.28.0", default-features = false }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }

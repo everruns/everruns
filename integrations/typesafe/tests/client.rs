@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use everruns_integrations_typesafe::{
-    Error, Evaluation, Question, RetryPolicy, TypeSafeClient, client::DEFAULT_BASE_URL,
+    Error, Evaluation, Question, RetryPolicy, TypeSafeAIClient, client::DEFAULT_BASE_URL,
 };
 use serde_json::json;
 use wiremock::{
@@ -15,8 +15,8 @@ use wiremock::{
 
 const CREDENTIAL: &str = "sentinel-typesafe-credential";
 
-fn client(server: &MockServer) -> TypeSafeClient {
-    TypeSafeClient::builder(CREDENTIAL)
+fn client(server: &MockServer) -> TypeSafeAIClient {
+    TypeSafeAIClient::builder(CREDENTIAL)
         .base_url(server.uri())
         .retry(RetryPolicy {
             max_attempts: 3,
@@ -288,7 +288,7 @@ async fn retries_can_be_disabled() {
         .mount(&server)
         .await;
 
-    let error = TypeSafeClient::builder(CREDENTIAL)
+    let error = TypeSafeAIClient::builder(CREDENTIAL)
         .base_url(server.uri())
         .retry(RetryPolicy::none())
         .build()

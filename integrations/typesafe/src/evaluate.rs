@@ -4,7 +4,7 @@ use everruns_capability::definition::schemars::{self, JsonSchema};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::client::{Answer, Evaluation, Question, TypeSafeClient};
+use crate::client::{Answer, Evaluation, Question, TypeSafeAIClient};
 
 pub(crate) const TOOL_NAME: &str = "jev_evaluate";
 pub(crate) const TOOL_DESCRIPTION: &str = "Ask TypeSafe's System One model typed questions about \
@@ -62,7 +62,7 @@ pub struct InputQuestion {
 
 impl JsonSchema for EvaluateInput {
     fn schema_name() -> std::borrow::Cow<'static, str> {
-        "TypeSafeEvaluateInput".into()
+        "JevEvaluateInput".into()
     }
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         let Value::Object(map) = schema() else {
@@ -224,7 +224,7 @@ pub(crate) fn build_evaluation(input: EvaluateInput) -> Result<Evaluation, Strin
 
 /// Run one evaluation and render the answers as decision-ready JSON.
 pub(crate) async fn evaluate(
-    client: &TypeSafeClient,
+    client: &TypeSafeAIClient,
     input: EvaluateInput,
 ) -> Result<Value, String> {
     let evaluation = build_evaluation(input)?;

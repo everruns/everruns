@@ -88,15 +88,16 @@ jobs:
         if: steps.doppler_install.outcome == 'failure'
         uses: dopplerhq/cli-action@v4
 
-      - name: Fetch TypeSafe API key from Doppler
-        run: |
-          # The SDK smoke tests read TYPESAFE_API_KEY; the deployment judgment
-          # service reads UTILITY_TYPESAFE_API_KEY. One Doppler secret backs
-          # both until a separate UTILITY_TYPESAFE_API_KEY exists there.
-          KEY="$(doppler secrets get TYPESAFE_API_KEY --plain)"
-          echo "TYPESAFE_API_KEY=$KEY" >> "$GITHUB_ENV"
-          echo "UTILITY_TYPESAFE_API_KEY=$KEY" >> "$GITHUB_ENV"
-
+      # `doppler run` injects the secrets into this one command only. Writing
+      # them to $GITHUB_ENV instead would print them in the env block of every
+      # later step, and a value fetched at runtime is not registered with the
+      # log masker the way a GitHub secret is.
+      # The SDK smoke tests read TYPESAFE_API_KEY; the deployment judgment
+      # service reads UTILITY_TYPESAFE_API_KEY. One Doppler secret backs both
+      # until a separate UTILITY_TYPESAFE_API_KEY exists there.
       - name: Run integration tests
-        run: cargo test -p everruns-integrations-typesafe --features integration,live-tests
+        run: >-
+          doppler run --
+          bash -lc 'UTILITY_TYPESAFE_API_KEY="${UTILITY_TYPESAFE_API_KEY:-$TYPESAFE_API_KEY}"
+          cargo test -p everruns-integrations-typesafe --features integration,live-tests'
 

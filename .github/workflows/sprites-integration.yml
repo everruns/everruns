@@ -89,9 +89,8 @@ jobs:
         with:
           shared-key: "debug"
 
-      - name: Export SPRITES_API_TOKEN from Doppler
-        run: |
-          echo "SPRITES_API_TOKEN=$(doppler secrets get SPRITES_API_TOKEN --plain)" >> "$GITHUB_ENV"
-
+      # SPRITES_API_TOKEN reaches the tests through `doppler run` below. An
+      # extra $GITHUB_ENV export would add nothing but an unmasked copy in
+      # every later step's env block.
       - name: Run Sprites live integration tests
         run: doppler run -- cargo test -p everruns-integrations-sprites --features sprites-live-tests --test live_api_test -- --test-threads=1

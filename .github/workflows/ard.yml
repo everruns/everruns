@@ -104,10 +104,8 @@ jobs:
         uses: dopplerhq/cli-action@v4
 
       # Optional bearer token for the registry. The reference registry is
-      # anonymous-read; the token is only used if configured in Doppler.
-      - name: Fetch optional ARD registry token from Doppler
-        run: |
-          echo "ARD_REGISTRY_TOKEN=$(doppler secrets get ARD_REGISTRY_TOKEN --plain 2>/dev/null || true)" >> "$GITHUB_ENV"
-
+      # anonymous-read; `doppler run` injects ARD_REGISTRY_TOKEN only when it is
+      # configured, so an absent token stays absent rather than empty. Writing it
+      # to $GITHUB_ENV instead would print it unmasked in every later step.
       - name: Run live registry tests
-        run: cargo test -p everruns-ard --features ard-live-tests --test live_api_test
+        run: doppler run -- cargo test -p everruns-ard --features ard-live-tests --test live_api_test
