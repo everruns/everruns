@@ -2,7 +2,7 @@
 //!
 //! This is a provider-wire concept: phases are parsed off the provider stream
 //! and, for providers with native support, sent back on the request. It lives in
-//! the provider abstraction so both the driver types (`LlmMessage`,
+//! the provider abstraction so both the driver types (`Message`,
 //! `LlmStreamEvent`) and core's `Message` can share it.
 
 use serde::{Deserialize, Serialize};

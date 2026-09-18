@@ -23,8 +23,8 @@ fn agent_for(driver: impl ChatDriver) -> Result<Agent, BuildError> {
 ```
 
 A driver implements the streaming chat-completion contract. It receives the
-resolved endpoint, model-facing messages, and call configuration, and returns
-an `LlmResponseStream`. Exact trait methods and event shapes live in the
+resolved endpoint, model-facing messages (`everruns::llm::Message`), and call
+configuration, and returns an `LlmResponseStream`. Exact trait methods and event shapes live in the
 [`everruns::ChatDriver` API reference](https://docs.rs/everruns/latest/everruns/trait.ChatDriver.html).
 
 Keep credential lookup and refresh in trusted host/provider configuration.

@@ -15,16 +15,16 @@ use aws_sdk_bedrockruntime::config::{
 use aws_sdk_bedrockruntime::types::{
     ContentBlock, ContentBlockDelta, ContentBlockStart, ConversationRole, ConverseStreamOutput,
     DocumentBlock, DocumentFormat, DocumentSource, ImageBlock, ImageFormat, ImageSource,
-    InferenceConfiguration, Message, SystemContentBlock, Tool, ToolConfiguration, ToolInputSchema,
-    ToolResultBlock, ToolResultContentBlock, ToolSpecification, ToolUseBlock,
+    InferenceConfiguration, Message as BedrockMessage, SystemContentBlock, Tool, ToolConfiguration,
+    ToolInputSchema, ToolResultBlock, ToolResultContentBlock, ToolSpecification, ToolUseBlock,
 };
 use aws_smithy_types::Document;
 use base64::prelude::*;
 use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
 use everruns_provider::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
-    DriverRegistry, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
-    LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    DriverRegistry, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmResponseStream,
+    LlmStreamEvent, Message, MessageContent, MessageRole,
 };
 use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_provider::tool_types::{ToolCall, ToolDefinition};
@@ -196,7 +196,7 @@ impl ChatDriver for FailDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::ProviderEndpoint,
-        _messages: Vec<LlmMessage>,
+        _messages: Vec<Message>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         Err(AgentLoopError::llm(self.0.clone()))
@@ -208,7 +208,7 @@ impl ChatDriver for BedrockChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         let client = endpoint
@@ -401,20 +401,20 @@ struct PartialToolCall {
     input_json: String,
 }
 
-fn build_messages(messages: &[LlmMessage]) -> Result<(Vec<SystemContentBlock>, Vec<Message>)> {
+fn build_messages(messages: &[Message]) -> Result<(Vec<SystemContentBlock>, Vec<BedrockMessage>)> {
     let mut system_blocks: Vec<SystemContentBlock> = Vec::new();
-    let mut bedrock_messages: Vec<Message> = Vec::new();
+    let mut bedrock_messages: Vec<BedrockMessage> = Vec::new();
 
     let mut i = 0;
     while i < messages.len() {
         let msg = &messages[i];
         match msg.role {
-            LlmMessageRole::System => {
+            MessageRole::System => {
                 match &msg.content {
-                    LlmMessageContent::Text(text) if !text.is_empty() => {
+                    MessageContent::Text(text) if !text.is_empty() => {
                         system_blocks.push(SystemContentBlock::Text(text.clone()));
                     }
-                    LlmMessageContent::Parts(parts) => {
+                    MessageContent::Parts(parts) => {
                         for part in parts {
                             if let LlmContentPart::Text { text } = part
                                 && !text.is_empty()
@@ -427,10 +427,10 @@ fn build_messages(messages: &[LlmMessage]) -> Result<(Vec<SystemContentBlock>, V
                 }
                 i += 1;
             }
-            LlmMessageRole::Tool => {
+            MessageRole::Tool => {
                 // Collect consecutive Tool messages into one User message.
                 let mut tool_blocks: Vec<ContentBlock> = Vec::new();
-                while i < messages.len() && messages[i].role == LlmMessageRole::Tool {
+                while i < messages.len() && messages[i].role == MessageRole::Tool {
                     let tm = &messages[i];
                     if let Some(block) = build_tool_result_block(tm) {
                         tool_blocks.push(block);
@@ -438,7 +438,7 @@ fn build_messages(messages: &[LlmMessage]) -> Result<(Vec<SystemContentBlock>, V
                     i += 1;
                 }
                 if !tool_blocks.is_empty() {
-                    let m = Message::builder()
+                    let m = BedrockMessage::builder()
                         .role(ConversationRole::User)
                         .set_content(Some(tool_blocks))
                         .build()
@@ -448,10 +448,10 @@ fn build_messages(messages: &[LlmMessage]) -> Result<(Vec<SystemContentBlock>, V
                     bedrock_messages.push(m);
                 }
             }
-            LlmMessageRole::User => {
+            MessageRole::User => {
                 let blocks = build_user_content(msg)?;
                 if !blocks.is_empty() {
-                    let m = Message::builder()
+                    let m = BedrockMessage::builder()
                         .role(ConversationRole::User)
                         .set_content(Some(blocks))
                         .build()
@@ -462,10 +462,10 @@ fn build_messages(messages: &[LlmMessage]) -> Result<(Vec<SystemContentBlock>, V
                 }
                 i += 1;
             }
-            LlmMessageRole::Assistant => {
+            MessageRole::Assistant => {
                 let blocks = build_assistant_content(msg);
                 if !blocks.is_empty() {
-                    let m = Message::builder()
+                    let m = BedrockMessage::builder()
                         .role(ConversationRole::Assistant)
                         .set_content(Some(blocks))
                         .build()
@@ -483,15 +483,15 @@ fn build_messages(messages: &[LlmMessage]) -> Result<(Vec<SystemContentBlock>, V
     Ok((system_blocks, bedrock_messages))
 }
 
-fn build_user_content(msg: &LlmMessage) -> Result<Vec<ContentBlock>> {
+fn build_user_content(msg: &Message) -> Result<Vec<ContentBlock>> {
     let mut blocks = Vec::new();
     match &msg.content {
-        LlmMessageContent::Text(text) => {
+        MessageContent::Text(text) => {
             if !text.is_empty() {
                 blocks.push(ContentBlock::Text(text.clone()));
             }
         }
-        LlmMessageContent::Parts(parts) => {
+        MessageContent::Parts(parts) => {
             for part in parts {
                 match part {
                     LlmContentPart::Text { text } => {
@@ -522,14 +522,14 @@ fn build_user_content(msg: &LlmMessage) -> Result<Vec<ContentBlock>> {
     Ok(blocks)
 }
 
-fn build_assistant_content(msg: &LlmMessage) -> Vec<ContentBlock> {
+fn build_assistant_content(msg: &Message) -> Vec<ContentBlock> {
     let mut blocks = Vec::new();
 
     match &msg.content {
-        LlmMessageContent::Text(text) if !text.is_empty() => {
+        MessageContent::Text(text) if !text.is_empty() => {
             blocks.push(ContentBlock::Text(text.clone()));
         }
-        LlmMessageContent::Parts(parts) => {
+        MessageContent::Parts(parts) => {
             for part in parts {
                 if let LlmContentPart::Text { text } = part
                     && !text.is_empty()
@@ -559,7 +559,7 @@ fn build_assistant_content(msg: &LlmMessage) -> Vec<ContentBlock> {
     blocks
 }
 
-fn build_tool_result_block(msg: &LlmMessage) -> Option<ContentBlock> {
+fn build_tool_result_block(msg: &Message) -> Option<ContentBlock> {
     let tool_call_id = msg.tool_call_id.as_deref().unwrap_or("");
     if tool_call_id.is_empty() {
         warn!("Tool message is missing tool_call_id; skipping tool result block");
@@ -583,8 +583,8 @@ fn build_tool_result_block(msg: &LlmMessage) -> Option<ContentBlock> {
 
 /// Merge consecutive messages with the same role.
 /// Bedrock requires strictly alternating User/Assistant messages.
-fn merge_consecutive_same_role(messages: Vec<Message>) -> Vec<Message> {
-    let mut result: Vec<Message> = Vec::new();
+fn merge_consecutive_same_role(messages: Vec<BedrockMessage>) -> Vec<BedrockMessage> {
+    let mut result: Vec<BedrockMessage> = Vec::new();
     for msg in messages {
         if let Some(last) = result.last()
             && last.role == msg.role
@@ -593,7 +593,7 @@ fn merge_consecutive_same_role(messages: Vec<Message>) -> Vec<Message> {
             let prev = result.swap_remove(last_idx);
             let mut combined_content = prev.content.clone();
             combined_content.extend(msg.content.clone());
-            match Message::builder()
+            match BedrockMessage::builder()
                 .role(prev.role.clone())
                 .set_content(Some(combined_content))
                 .build()
@@ -827,37 +827,37 @@ mod tests {
 
     #[test]
     fn messages_preserve_full_system_conversation_and_tool_result_order() {
-        let mut multipart = LlmMessage::text(LlmMessageRole::System, "");
-        multipart.content = LlmMessageContent::Parts(vec![
+        let mut multipart = Message::text(MessageRole::System, "");
+        multipart.content = MessageContent::Parts(vec![
             LlmContentPart::Text { text: "B".into() },
             LlmContentPart::Text { text: "".into() },
             LlmContentPart::Text { text: "C".into() },
         ]);
-        let mut call = LlmMessage::text(LlmMessageRole::Assistant, "calling");
+        let mut call = Message::text(MessageRole::Assistant, "calling");
         call.tool_calls = Some(vec![ToolCall {
             id: "call-one".into(),
             name: "inspect".into(),
             arguments: serde_json::json!({"path":"a"}),
         }]);
-        let mut result = LlmMessage::text(LlmMessageRole::Tool, "result-one");
+        let mut result = Message::text(MessageRole::Tool, "result-one");
         result.tool_call_id = Some("call-one".into());
-        let mut next_result = LlmMessage::text(LlmMessageRole::Tool, "result-two");
+        let mut next_result = Message::text(MessageRole::Tool, "result-two");
         next_result.tool_call_id = Some("call-two".into());
-        let mut blank_id = LlmMessage::text(LlmMessageRole::Tool, "discard-empty-id");
+        let mut blank_id = Message::text(MessageRole::Tool, "discard-empty-id");
         blank_id.tool_call_id = Some(String::new());
         let input = vec![
-            LlmMessage::text(LlmMessageRole::System, "A"),
-            LlmMessage::text(LlmMessageRole::User, "hello"),
+            Message::text(MessageRole::System, "A"),
+            Message::text(MessageRole::User, "hello"),
             multipart,
-            LlmMessage::text(LlmMessageRole::User, "world"),
+            Message::text(MessageRole::User, "world"),
             call,
             result,
-            LlmMessage::text(LlmMessageRole::Tool, "discard-no-id"),
+            Message::text(MessageRole::Tool, "discard-no-id"),
             blank_id,
             next_result,
-            LlmMessage::text(LlmMessageRole::User, "follow-up"),
-            LlmMessage::text(LlmMessageRole::Assistant, "done"),
-            LlmMessage::text(LlmMessageRole::User, "last"),
+            Message::text(MessageRole::User, "follow-up"),
+            Message::text(MessageRole::Assistant, "done"),
+            Message::text(MessageRole::User, "last"),
         ];
         let (system, messages) = build_messages(&input).unwrap();
         assert_eq!(
@@ -869,7 +869,7 @@ mod tests {
             ]
         );
         let message = |role, content| {
-            Message::builder()
+            BedrockMessage::builder()
                 .role(role)
                 .set_content(Some(content))
                 .build()
@@ -966,7 +966,7 @@ mod tests {
         let service = everruns_provider::Provider::new("bedrock", BedrockChatDriver::new())
             .auth(BedrockAuth { client });
         let arguments = serde_json::json!({"values":[null,true,"hé🙂",42,-1,1.5,18446744073709551615_u64],"nested":{"id":9223372036854775809_u64}});
-        let mut message = LlmMessage::text(LlmMessageRole::Assistant, "");
+        let mut message = Message::text(MessageRole::Assistant, "");
         message.tool_calls = Some(vec![ToolCall {
             id: "exact-id".into(),
             name: "inspect".into(),
@@ -1009,8 +1009,8 @@ mod tests {
     #[test]
     fn file_pdf_builds_document_block() {
         use aws_sdk_bedrockruntime::types::{ContentBlock, DocumentFormat};
-        let msg = LlmMessage::parts(
-            LlmMessageRole::User,
+        let msg = Message::parts(
+            MessageRole::User,
             vec![LlmContentPart::File {
                 url: "data:application/pdf;base64,JVBERi0=".into(),
                 filename: Some("report.pdf".into()),

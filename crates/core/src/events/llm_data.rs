@@ -225,7 +225,7 @@ impl LlmCompactionInfo {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmGenerationData {
     /// Messages sent to the LLM (including system prompt)
-    pub messages: Vec<Message>,
+    pub messages: Vec<RuntimeMessage>,
 
     /// Tools available to the LLM for this generation
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -242,7 +242,7 @@ impl LlmGenerationData {
     /// Create a successful generation event
     #[allow(clippy::too_many_arguments)]
     pub fn success(
-        messages: Vec<Message>,
+        messages: Vec<RuntimeMessage>,
         tools: Vec<ToolDefinitionSummary>,
         text: Option<String>,
         tool_calls: Vec<ToolCall>,
@@ -283,7 +283,7 @@ impl LlmGenerationData {
     /// Create a successful generation event with full metadata
     #[allow(clippy::too_many_arguments)]
     pub fn success_with_metadata(
-        messages: Vec<Message>,
+        messages: Vec<RuntimeMessage>,
         tools: Vec<ToolDefinitionSummary>,
         text: Option<String>,
         tool_calls: Vec<ToolCall>,
@@ -319,7 +319,7 @@ impl LlmGenerationData {
     /// Create a successful generation event with retry information
     #[allow(clippy::too_many_arguments)]
     pub fn success_with_retry(
-        messages: Vec<Message>,
+        messages: Vec<RuntimeMessage>,
         tools: Vec<ToolDefinitionSummary>,
         text: Option<String>,
         tool_calls: Vec<ToolCall>,
@@ -355,7 +355,7 @@ impl LlmGenerationData {
 
     /// Create a failed generation event
     pub fn failure(
-        messages: Vec<Message>,
+        messages: Vec<RuntimeMessage>,
         tools: Vec<ToolDefinitionSummary>,
         model: String,
         provider: Option<String>,

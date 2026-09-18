@@ -18,7 +18,7 @@ use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventContext, EventData, EventRequest, InputMessageData};
-use everruns_core::message::Message;
+use everruns_core::message::RuntimeMessage;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::ExecutionSession;
 use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
@@ -562,7 +562,7 @@ impl InMemoryAgenticLoop {
         // consumed by every atom; there is no writable message-store facade.
         let input = input.into();
         let tags = input.tags.clone();
-        let message = Message {
+        let message = RuntimeMessage {
             id: MessageId::new(),
             role: input.role,
             content: input.content,
@@ -727,7 +727,7 @@ impl InMemoryAgenticLoop {
     }
 
     /// Get all messages in the session
-    pub async fn messages(&self) -> Result<Vec<Message>> {
+    pub async fn messages(&self) -> Result<Vec<RuntimeMessage>> {
         self.message_retriever.load(self.session_id).await
     }
 
@@ -909,7 +909,7 @@ impl InMemoryAgenticLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::MessageRole;
+    use everruns_core::RuntimeMessageRole;
 
     #[tokio::test]
     async fn test_simple_turn() {
@@ -1027,12 +1027,12 @@ mod tests {
                 .map(|m| (m.role.clone(), m.text()))
                 .collect::<Vec<_>>(),
             [
-                (MessageRole::User, Some("one")),
-                (MessageRole::Agent, Some("First")),
-                (MessageRole::User, Some("two")),
-                (MessageRole::Agent, Some("Second")),
-                (MessageRole::User, Some("three")),
-                (MessageRole::Agent, Some("Third")),
+                (RuntimeMessageRole::User, Some("one")),
+                (RuntimeMessageRole::Agent, Some("First")),
+                (RuntimeMessageRole::User, Some("two")),
+                (RuntimeMessageRole::Agent, Some("Second")),
+                (RuntimeMessageRole::User, Some("three")),
+                (RuntimeMessageRole::Agent, Some("Third")),
             ]
         );
         assert_eq!(runner.message_count().await.unwrap(), 6);

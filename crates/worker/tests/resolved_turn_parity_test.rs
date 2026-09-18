@@ -156,13 +156,13 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _session_id: Uuid,
                 _message_id: Uuid,
-            ) -> CoreResult<Option<everruns_core::Message>> {
+            ) -> CoreResult<Option<everruns_core::RuntimeMessage>> {
                 unimplemented!()
             }
             async fn load_messages(
                 &self,
                 _session_id: Uuid,
-            ) -> CoreResult<Vec<everruns_core::Message>> {
+            ) -> CoreResult<Vec<everruns_core::RuntimeMessage>> {
                 Ok(vec![])
             }
             async fn emit_event(

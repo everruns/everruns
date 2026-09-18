@@ -10,9 +10,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::kernel_imports::{
-    Caller, UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::LlmMessage,
-    everruns_provider::driver_registry::LlmMessageRole,
-    everruns_provider::tool_types::ToolDefinition,
+    Caller, UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::Message,
+    everruns_provider::driver_registry::MessageRole, everruns_provider::tool_types::ToolDefinition,
 };
 use serde::Deserialize;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -266,11 +265,11 @@ pub async fn run_llm_checks(
         let user_content = checker_input(checker, authored_prompt, resolved_prompt, &tool_listing);
         async move {
             let request = UtilityLlmRequest::new(vec![
-                LlmMessage::text(
-                    LlmMessageRole::System,
+                Message::text(
+                    MessageRole::System,
                     format!("{}\n\n{}", checker.instructions, OUTPUT_CONTRACT),
                 ),
-                LlmMessage::text(LlmMessageRole::User, user_content),
+                Message::text(MessageRole::User, user_content),
             ])
             .with_max_tokens(CHECKER_MAX_TOKENS)
             .with_metadata("purpose", "agent_checks_analysis")
@@ -480,8 +479,8 @@ pub async fn run_custom_nl_rules(
                 escaped_prompt,
             );
             let request = UtilityLlmRequest::new(vec![
-                LlmMessage::text(LlmMessageRole::System, NL_RULE_SYSTEM.to_string()),
-                LlmMessage::text(LlmMessageRole::User, user),
+                Message::text(MessageRole::System, NL_RULE_SYSTEM.to_string()),
+                Message::text(MessageRole::User, user),
             ])
             .with_max_tokens(NL_RULE_MAX_TOKENS)
             .with_metadata("purpose", "agent_checks_custom_rule")

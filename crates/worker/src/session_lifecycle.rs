@@ -11,7 +11,7 @@ use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     TurnCompletedData, TurnFailedData, TurnStartedData,
 };
-use everruns_core::{DependencyBlocker, Message, TokenUsage};
+use everruns_core::{DependencyBlocker, RuntimeMessage, TokenUsage};
 use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use everruns_provider::user_facing_error::{UserFacingError, codes as user_facing_error_codes};
 use tracing::warn;
@@ -285,7 +285,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
                     }
                 },
             );
-        let mut error_message = Message::assistant(message);
+        let mut error_message = RuntimeMessage::assistant(message);
         let mut metadata = std::collections::HashMap::new();
         user_error.apply_to_message_metadata(&mut metadata);
         error_message.metadata = Some(metadata);
@@ -306,7 +306,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
     /// DLQ error: emit user-facing error + session.idled, set session to "idle".
     pub async fn dlq_error(&self, turn_id: TurnId, input_message_id: MessageId) {
         let user_error = UserFacingError::new(user_facing_error_codes::PROCESSING_ERROR);
-        let mut error_message = Message::assistant(user_error.fallback_message());
+        let mut error_message = RuntimeMessage::assistant(user_error.fallback_message());
         let mut metadata = std::collections::HashMap::new();
         user_error.apply_to_message_metadata(&mut metadata);
         error_message.metadata = Some(metadata);
@@ -348,7 +348,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
 
     /// Cancelled: emit cancellation message + session.idled, set session to "idle".
     pub async fn cancelled(&self, turn_id: TurnId, input_message_id: MessageId) {
-        let cancel_message = Message::assistant("Work was cancelled by user.");
+        let cancel_message = RuntimeMessage::assistant("Work was cancelled by user.");
         let message_event = EventRequest::new(
             self.session_id,
             EventContext::turn(turn_id, input_message_id),

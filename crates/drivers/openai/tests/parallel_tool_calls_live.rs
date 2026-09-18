@@ -11,7 +11,7 @@
 //!   `doppler run -- cargo test -p everruns-openai --test parallel_tool_calls_live -- --ignored --nocapture`
 
 use everruns_openai::provider;
-use everruns_provider::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
+use everruns_provider::driver_registry::{LlmCallConfig, Message, MessageRole};
 use everruns_provider::model::ReasoningEffort;
 use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
@@ -56,12 +56,12 @@ fn config_with(parallel: Option<bool>) -> LlmCallConfig {
 async fn tool_call_count(parallel: Option<bool>) -> usize {
     let provider = provider("openai", api_key());
     let messages = vec![
-        LlmMessage::text(
-            LlmMessageRole::System,
+        Message::text(
+            MessageRole::System,
             "Use the tools to answer. Always call the tools rather than guessing.",
         ),
-        LlmMessage::text(
-            LlmMessageRole::User,
+        Message::text(
+            MessageRole::User,
             "Get both the current weather and the current local time in Paris.",
         ),
     ];

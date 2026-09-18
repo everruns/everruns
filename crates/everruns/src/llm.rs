@@ -39,14 +39,19 @@ use std::fmt;
 
 use std::time::Duration;
 
-use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponse, LlmResponseStream,
-};
+use everruns_provider::driver_registry::{LlmCallConfig, LlmResponse, LlmResponseStream};
 use everruns_provider::error::AgentLoopError;
 use everruns_provider::model::ReasoningEffort;
 use everruns_provider::runtime_provider::Provider;
 use everruns_provider::tool_types::ToolDefinition;
 use serde_json::Value;
+
+/// The provider-facing message and role a direct model call carries.
+///
+/// Re-exported here rather than at the crate root: the root's `MessageRole`
+/// belongs to stored session messages, which is the path most applications are
+/// on. `use everruns::llm::{Message, MessageRole}` keeps both plain-named.
+pub use everruns_provider::driver_registry::{Message, MessageContent, MessageRole};
 
 use crate::Model;
 
@@ -127,7 +132,7 @@ impl From<AgentLoopError> for CompletionError {
 pub struct Completion {
     provider: Option<Provider>,
     config: LlmCallConfig,
-    messages: Vec<LlmMessage>,
+    messages: Vec<Message>,
 }
 
 impl Completion {
@@ -150,21 +155,21 @@ impl Completion {
 
     /// Append a system message.
     pub fn system(self, content: impl Into<String>) -> Self {
-        self.message(LlmMessageRole::System, content)
+        self.message(MessageRole::System, content)
     }
 
     /// Append a user message.
     pub fn user(self, content: impl Into<String>) -> Self {
-        self.message(LlmMessageRole::User, content)
+        self.message(MessageRole::User, content)
     }
 
     /// Append an assistant message, replaying a prior answer as context.
     pub fn assistant(self, content: impl Into<String>) -> Self {
-        self.message(LlmMessageRole::Assistant, content)
+        self.message(MessageRole::Assistant, content)
     }
 
-    fn message(mut self, role: LlmMessageRole, content: impl Into<String>) -> Self {
-        self.messages.push(LlmMessage::text(role, content));
+    fn message(mut self, role: MessageRole, content: impl Into<String>) -> Self {
+        self.messages.push(Message::text(role, content));
         self
     }
 
@@ -316,7 +321,7 @@ impl Completion {
 
     /// Validate the described call, keeping both configuration mistakes off the
     /// wire.
-    fn into_request(self) -> Result<(Provider, Vec<LlmMessage>, LlmCallConfig), CompletionError> {
+    fn into_request(self) -> Result<(Provider, Vec<Message>, LlmCallConfig), CompletionError> {
         let provider = self.provider.ok_or(CompletionError::MissingProvider)?;
         if self.messages.is_empty() {
             return Err(CompletionError::NoMessages);
@@ -402,10 +407,10 @@ mod tests {
         assert_eq!(
             roles,
             vec![
-                LlmMessageRole::System,
-                LlmMessageRole::User,
-                LlmMessageRole::Assistant,
-                LlmMessageRole::User,
+                MessageRole::System,
+                MessageRole::User,
+                MessageRole::Assistant,
+                MessageRole::User,
             ]
         );
         assert_eq!(

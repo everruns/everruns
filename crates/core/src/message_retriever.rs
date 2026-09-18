@@ -7,13 +7,13 @@
 use async_trait::async_trait;
 
 use crate::error::Result;
-use crate::message::{ContentPart, Controls, Message, MessageRole};
+use crate::message::{ContentPart, Controls, RuntimeMessage, RuntimeMessageRole};
 use crate::message_filter::MessageQuery;
 use crate::typed_id::{MessageId, SessionId};
 
 #[derive(Debug, Clone)]
 pub struct MessageHistory {
-    pub messages: Vec<Message>,
+    pub messages: Vec<RuntimeMessage>,
     /// Highest persisted message-event sequence visible when the load ran.
     pub source_sequence: Option<i64>,
 }
@@ -32,7 +32,7 @@ pub struct MessageHistory {
 #[derive(Debug, Clone)]
 pub struct InputMessage {
     /// Message role (user, assistant, tool_result, system)
-    pub role: MessageRole,
+    pub role: RuntimeMessageRole,
     /// Message content as array of content parts
     pub content: Vec<ContentPart>,
     /// Runtime controls (model, reasoning, etc.)
@@ -47,7 +47,7 @@ impl InputMessage {
     /// Create a new user input message with text content
     pub fn user(content: impl Into<String>) -> Self {
         Self {
-            role: MessageRole::User,
+            role: RuntimeMessageRole::User,
             content: vec![ContentPart::text(content)],
             controls: None,
             metadata: None,
@@ -55,8 +55,8 @@ impl InputMessage {
         }
     }
 
-    /// Create from a Message (useful for storing existing messages)
-    pub fn from_message(msg: &Message) -> Self {
+    /// Create from a RuntimeMessage (useful for storing existing messages)
+    pub fn from_message(msg: &RuntimeMessage) -> Self {
         Self {
             role: msg.role.clone(),
             content: msg.content.clone(),
@@ -96,10 +96,14 @@ impl From<String> for InputMessage {
 #[async_trait]
 pub trait MessageRetriever: Send + Sync {
     /// Get a specific message by ID
-    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>>;
+    async fn get(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<RuntimeMessage>>;
 
     /// Load all messages for a session
-    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>>;
+    async fn load(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>>;
 
     /// Load messages with filters and injections applied.
     ///
@@ -109,7 +113,7 @@ pub trait MessageRetriever: Send + Sync {
     /// Default implementation calls `load()` and ignores the query filters,
     /// maintaining backward compatibility for implementations that don't
     /// support filtering.
-    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<RuntimeMessage>> {
         // Default: load all messages for the session, ignoring filters
         // Implementations should override this to support filtering
         self.load(query.session_id).await
@@ -128,7 +132,7 @@ pub trait MessageRetriever: Send + Sync {
         session_id: SessionId,
         offset: usize,
         limit: usize,
-    ) -> Result<Vec<Message>> {
+    ) -> Result<Vec<RuntimeMessage>> {
         let all = self.load(session_id).await?;
         Ok(all.into_iter().skip(offset).take(limit).collect())
     }
@@ -141,15 +145,19 @@ pub trait MessageRetriever: Send + Sync {
 
 #[async_trait]
 impl<T: MessageRetriever + ?Sized> MessageRetriever for std::sync::Arc<T> {
-    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+    async fn get(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<RuntimeMessage>> {
         (**self).get(session_id, message_id).await
     }
 
-    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
         (**self).load(session_id).await
     }
 
-    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<RuntimeMessage>> {
         (**self).load_filtered(query).await
     }
 
@@ -162,7 +170,7 @@ impl<T: MessageRetriever + ?Sized> MessageRetriever for std::sync::Arc<T> {
         session_id: SessionId,
         offset: usize,
         limit: usize,
-    ) -> Result<Vec<Message>> {
+    ) -> Result<Vec<RuntimeMessage>> {
         (**self).load_page(session_id, offset, limit).await
     }
 

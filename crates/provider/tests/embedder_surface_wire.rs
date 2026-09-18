@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use everruns_provider::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
+use everruns_provider::driver_registry::{LlmCallConfig, Message, MessageRole};
 use everruns_provider::error::LlmErrorKind;
 use everruns_provider::tool_types::ToolDefinition;
 use everruns_provider::turn_collector::{TurnLimits, collect_turn};
@@ -24,8 +24,8 @@ fn provider(server: &MockServer) -> Provider {
         .auth(BearerAuth::new("sk-test-key"))
 }
 
-fn user(text: &str) -> Vec<LlmMessage> {
-    vec![LlmMessage::text(LlmMessageRole::User, text)]
+fn user(text: &str) -> Vec<Message> {
+    vec![Message::text(MessageRole::User, text)]
 }
 
 /// An SSE body from its `data:` payloads, terminated the way the API does.

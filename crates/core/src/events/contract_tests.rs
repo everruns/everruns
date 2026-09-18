@@ -53,7 +53,7 @@ fn test_harness_id() -> HarnessId {
 
 #[test]
 fn snapshot_input_message() {
-    let data = InputMessageData::new(Message::user("Hello, world!"));
+    let data = InputMessageData::new(RuntimeMessage::user("Hello, world!"));
     with_settings!({
         sort_maps => true,
     }, {
@@ -100,7 +100,7 @@ fn snapshot_output_message_delta() {
 
 #[test]
 fn snapshot_output_message_completed() {
-    let data = OutputMessageCompletedData::new(Message::assistant("Hello!"));
+    let data = OutputMessageCompletedData::new(RuntimeMessage::assistant("Hello!"));
     with_settings!({
         sort_maps => true,
     }, {
@@ -287,7 +287,7 @@ fn snapshot_tool_completed() {
 #[test]
 fn snapshot_llm_generation() {
     let data = LlmGenerationData::success(
-        vec![Message::user("Hello")],
+        vec![RuntimeMessage::user("Hello")],
         vec![ToolDefinitionSummary {
             name: "tool1".to_string(),
             display_name: None,
@@ -650,7 +650,7 @@ fn representative_event_payloads_preserve_wire_identity() {
     let test_cases: Vec<(&str, EventData)> = vec![
         (
             "input.message",
-            InputMessageData::new(Message::user("test")).into(),
+            InputMessageData::new(RuntimeMessage::user("test")).into(),
         ),
         (
             "output.message.started",
@@ -677,7 +677,7 @@ fn representative_event_payloads_preserve_wire_identity() {
         ),
         (
             "output.message.completed",
-            OutputMessageCompletedData::new(Message::assistant("hi")).into(),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant("hi")).into(),
         ),
         (
             "turn.started",
@@ -842,7 +842,7 @@ fn representative_event_payloads_preserve_wire_identity() {
         (
             "llm.generation",
             LlmGenerationData::success(
-                vec![Message::user("prompt")],
+                vec![RuntimeMessage::user("prompt")],
                 vec![],
                 Some("answer".into()),
                 vec![],
@@ -925,7 +925,7 @@ fn representative_event_payloads_preserve_wire_identity() {
 #[test]
 fn event_structure_has_required_fields() {
     let ts = "2026-01-02T03:04:05Z".parse::<DateTime<Utc>>().unwrap();
-    let message = Message::user("test").with_id(test_message_id());
+    let message = RuntimeMessage::user("test").with_id(test_message_id());
     let message_json = serde_json::to_value(&message).unwrap();
     let event_id = EventId::from_uuid(Uuid::from_u128(7));
     let context = EventContext::turn(test_turn_id(), test_message_id());

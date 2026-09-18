@@ -24,7 +24,7 @@ use async_trait::async_trait;
 use everruns::local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};
-use everruns_core::{CapabilityRegistry, MessageRole};
+use everruns_core::{CapabilityRegistry, RuntimeMessageRole};
 use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
     RuntimeSessionStore, SessionBuilder,
@@ -109,8 +109,8 @@ impl LocalSessionRunner for RuntimeRunner {
             .iter()
             .map(|m| PlatformMessage {
                 role: match &m.role {
-                    MessageRole::Agent => "agent".to_string(),
-                    MessageRole::User => "user".to_string(),
+                    RuntimeMessageRole::Agent => "agent".to_string(),
+                    RuntimeMessageRole::User => "user".to_string(),
                     other => format!("{other:?}").to_lowercase(),
                 },
                 content: m.text().unwrap_or_default().to_string(),
@@ -277,7 +277,7 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
     let child_reply = child_messages
         .iter()
         .rev()
-        .find(|m| m.role == MessageRole::Agent)
+        .find(|m| m.role == RuntimeMessageRole::Agent)
         .and_then(|m| m.text())
         .expect("child agent reply");
     assert!(

@@ -14,7 +14,7 @@ use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
 use everruns_provider::driver_helpers::fetch_models;
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
-    LlmMessage, LlmResponse, LlmResponseStream,
+    LlmResponse, LlmResponseStream, Message,
 };
 use everruns_provider::error::Result;
 use everruns_provider::openai_protocol::{is_azure_openai_api_url, models_url_for_api_url};
@@ -87,7 +87,7 @@ impl ChatDriver for MaiChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         self.inner
@@ -108,7 +108,7 @@ impl ChatDriver for MaiChatDriver {
     async fn chat_completion_non_streaming(
         &self,
         endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         self.inner
@@ -360,7 +360,7 @@ impl Default for MaiChatDriver {
 mod tests {
     use super::*;
     use everruns_provider::driver_registry::{
-        LlmMessageRole, ProviderConfig, ProviderMetadata, ServiceKind,
+        MessageRole, ProviderConfig, ProviderMetadata, ServiceKind,
     };
     use serde_json::{Value, json};
     use wiremock::matchers::{header, method, path, query_param};
@@ -401,8 +401,8 @@ mod tests {
                 Mock::given(method("POST")).and(path("/project/openai/v1/chat/completions")).and(query_param("api-version","preview")).and(query_param("route","a b")).and(header("api-key","synthetic-key")).respond_with(ResponseTemplate::new(200).insert_header("content-type","text/event-stream").set_body_string("data: {\"id\":\"mai-response\",\"choices\":[{\"delta\":{\"content\":\"answer\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2}}\n\ndata: [DONE]\n\n")).expect(1).mount(&server).await;
                 let url = format!("{}{suffix}?api-version=preview&route=a%20b", server.uri());
                 let messages = vec![
-                    LlmMessage::text(LlmMessageRole::System, "rules"),
-                    LlmMessage::text(LlmMessageRole::User, "question"),
+                    Message::text(MessageRole::System, "rules"),
+                    Message::text(MessageRole::User, "question"),
                 ];
                 let response = if registered {
                     registry

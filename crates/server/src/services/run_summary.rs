@@ -28,8 +28,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::kernel_imports::{
-    UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::LlmMessage,
-    everruns_provider::driver_registry::LlmMessageRole,
+    UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::Message,
+    everruns_provider::driver_registry::MessageRole,
 };
 use everruns_provider::typed_id::SessionId;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -245,8 +245,8 @@ impl RunSummaryService {
         };
 
         let request = UtilityLlmRequest::new(vec![
-            LlmMessage::text(LlmMessageRole::System, SYSTEM_PROMPT),
-            LlmMessage::text(LlmMessageRole::User, digest),
+            Message::text(MessageRole::System, SYSTEM_PROMPT),
+            Message::text(MessageRole::User, digest),
         ])
         .with_max_tokens(MAX_SUMMARY_TOKENS)
         .with_metadata("purpose", "session_run_summary");

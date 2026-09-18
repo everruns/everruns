@@ -6,7 +6,7 @@ use std::time::SystemTime;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use everruns_core::Message;
+use everruns_core::RuntimeMessage;
 use everruns_host::{
     EventCursor, EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventLogError,
     MAX_EVENT_HISTORY_PAGE_SIZE,
@@ -232,8 +232,8 @@ impl SessionMessage {
     }
 }
 
-impl From<Message> for SessionMessage {
-    fn from(message: Message) -> Self {
+impl From<RuntimeMessage> for SessionMessage {
+    fn from(message: RuntimeMessage) -> Self {
         Self {
             id: message.id.to_string(),
             role: message.role,

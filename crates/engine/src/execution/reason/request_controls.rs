@@ -1,4 +1,4 @@
-use crate::message::{Message, MessageRole};
+use crate::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::tool_context::ReasoningEffortHandle;
 use everruns_provider::DriverId;
 
@@ -9,7 +9,7 @@ pub(super) struct RequestControls {
 }
 
 pub(super) fn resolve_request_controls(
-    messages: &[Message],
+    messages: &[RuntimeMessage],
     live_reasoning_effort: Option<&ReasoningEffortHandle>,
     provider_type: &DriverId,
     model: &str,
@@ -18,7 +18,7 @@ pub(super) fn resolve_request_controls(
         messages
             .iter()
             .rev()
-            .find(|message| message.role == MessageRole::User)
+            .find(|message| message.role == RuntimeMessageRole::User)
             .and_then(|message| message.controls.as_ref())
     };
 
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn astra_none_reaches_provider_validation() {
-        let mut message = Message::user("hello");
+        let mut message = RuntimeMessage::user("hello");
         message.controls = Some(crate::message::Controls {
             reasoning: Some(crate::message::ReasoningConfig {
                 effort: Some(everruns_provider::ReasoningEffort::None),
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn none_reasoning_effort_is_not_sent() {
-        let mut message = Message::user("hello");
+        let mut message = RuntimeMessage::user("hello");
         message.controls = Some(crate::message::Controls {
             reasoning: Some(crate::message::ReasoningConfig {
                 effort: Some(everruns_provider::ReasoningEffort::None),

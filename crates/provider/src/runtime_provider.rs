@@ -355,7 +355,7 @@ impl RuntimeProvider {
 
     pub async fn chat_completion_stream(
         &self,
-        messages: Vec<crate::driver_registry::LlmMessage>,
+        messages: Vec<crate::driver_registry::Message>,
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponseStream> {
         let id = self.id.to_string();
@@ -383,7 +383,7 @@ impl RuntimeProvider {
 
     pub async fn chat_completion(
         &self,
-        messages: Vec<crate::driver_registry::LlmMessage>,
+        messages: Vec<crate::driver_registry::Message>,
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponse> {
         self.driver
@@ -398,7 +398,7 @@ impl RuntimeProvider {
 
     pub async fn chat_completion_non_streaming(
         &self,
-        messages: Vec<crate::driver_registry::LlmMessage>,
+        messages: Vec<crate::driver_registry::Message>,
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponse> {
         self.driver
@@ -511,7 +511,7 @@ impl ChatDriver for ProviderBoundDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        messages: Vec<crate::driver_registry::LlmMessage>,
+        messages: Vec<crate::driver_registry::Message>,
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponseStream> {
         self.0.chat_completion_stream(messages, config).await
@@ -531,7 +531,7 @@ impl ChatDriver for ProviderBoundDriver {
     async fn chat_completion_non_streaming(
         &self,
         _endpoint: &ProviderEndpoint,
-        messages: Vec<crate::driver_registry::LlmMessage>,
+        messages: Vec<crate::driver_registry::Message>,
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponse> {
         self.0.chat_completion_non_streaming(messages, config).await
@@ -630,7 +630,7 @@ mod tests {
         async fn chat_completion_stream(
             &self,
             _endpoint: &ProviderEndpoint,
-            _messages: Vec<crate::LlmMessage>,
+            _messages: Vec<crate::Message>,
             _config: &crate::LlmCallConfig,
         ) -> Result<crate::LlmResponseStream> {
             unreachable!("configuration-only fixture must not execute")
@@ -643,7 +643,7 @@ mod tests {
         async fn chat_completion_stream(
             &self,
             _endpoint: &ProviderEndpoint,
-            _messages: Vec<crate::LlmMessage>,
+            _messages: Vec<crate::Message>,
             _config: &crate::LlmCallConfig,
         ) -> Result<crate::LlmResponseStream> {
             unreachable!("catalog-only fixture must not execute")
@@ -962,7 +962,7 @@ mod tests {
             async fn chat_completion_stream(
                 &self,
                 _endpoint: &ProviderEndpoint,
-                _messages: Vec<crate::LlmMessage>,
+                _messages: Vec<crate::Message>,
                 _config: &crate::LlmCallConfig,
             ) -> Result<crate::LlmResponseStream> {
                 if self.fail_to_start {

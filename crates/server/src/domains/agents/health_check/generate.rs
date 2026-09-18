@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::kernel_imports::{
-    UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::LlmMessage,
-    everruns_provider::driver_registry::LlmMessageRole,
+    UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::Message,
+    everruns_provider::driver_registry::MessageRole,
 };
 use serde::Deserialize;
 
@@ -56,8 +56,8 @@ pub async fn generate_cases(
     );
 
     let request = UtilityLlmRequest::new(vec![
-        LlmMessage::text(LlmMessageRole::System, SYSTEM.to_string()),
-        LlmMessage::text(LlmMessageRole::User, user),
+        Message::text(MessageRole::System, SYSTEM.to_string()),
+        Message::text(MessageRole::User, user),
     ])
     .with_max_tokens(GENERATION_MAX_TOKENS)
     .with_metadata("purpose", "agent_health_check_generation");

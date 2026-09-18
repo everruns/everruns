@@ -7,7 +7,7 @@
 use async_trait::async_trait;
 use everruns_core::tool_execution::ToolExecutor;
 use everruns_provider::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmMessage, LlmResponseStream, LlmStreamEvent,
+    ChatDriver, LlmCallConfig, LlmResponseStream, LlmStreamEvent, Message,
 };
 use everruns_provider::error::Result;
 use everruns_provider::tool_types::{ToolCall, ToolDefinition, ToolResult};
@@ -176,7 +176,7 @@ impl ToolExecutor for FailingToolExecutor {
 pub struct MockProvider {
     responses: Arc<RwLock<Vec<MockLlmResponse>>>,
     call_index: Arc<RwLock<usize>>,
-    call_log: Arc<RwLock<Vec<Vec<LlmMessage>>>>,
+    call_log: Arc<RwLock<Vec<Vec<Message>>>>,
 }
 
 /// A mock LLM response
@@ -226,7 +226,7 @@ impl MockProvider {
     }
 
     /// Get the call log
-    pub async fn calls(&self) -> Vec<Vec<LlmMessage>> {
+    pub async fn calls(&self) -> Vec<Vec<Message>> {
         self.call_log.read().await.clone()
     }
 
@@ -243,7 +243,7 @@ impl ChatDriver for MockProvider {
     async fn chat_completion_stream(
         &self,
         _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         // Log the call
@@ -341,10 +341,7 @@ mod tests {
             let events = provider
                 .chat_completion_stream(
                     &everruns_provider::runtime_provider::ProviderEndpoint::default(),
-                    vec![LlmMessage::text(
-                        everruns_provider::LlmMessageRole::User,
-                        prompt,
-                    )],
+                    vec![Message::text(everruns_provider::MessageRole::User, prompt)],
                     &config,
                 )
                 .await
@@ -394,7 +391,7 @@ mod tests {
                 .iter()
                 .map(|messages| {
                     assert_eq!(messages.len(), 1);
-                    assert_eq!(messages[0].role, everruns_provider::LlmMessageRole::User);
+                    assert_eq!(messages[0].role, everruns_provider::MessageRole::User);
                     messages[0].content_as_text()
                 })
                 .collect::<Vec<_>>(),

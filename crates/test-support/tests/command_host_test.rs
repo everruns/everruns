@@ -181,7 +181,7 @@ async fn selected_but_unconfigured_host() -> StoreCommandHost {
         async fn chat_completion_stream(
             &self,
             _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-            _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+            _messages: Vec<everruns_provider::driver_registry::Message>,
             _config: &everruns_provider::driver_registry::LlmCallConfig,
         ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
         {

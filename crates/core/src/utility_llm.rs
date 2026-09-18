@@ -4,7 +4,8 @@
 //! model provider. It is configured once per deployment and deliberately keeps
 //! the model fixed so call sites cannot turn it into a user-selectable model.
 
-use crate::{AgentLoopError, LlmCallConfig, LlmMessage, LlmResponse, LlmResponseStream, Result};
+use crate::driver_registry::{Message, MessageRole};
+use crate::{AgentLoopError, LlmCallConfig, LlmResponse, LlmResponseStream, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -39,7 +40,7 @@ impl UtilityLlmReasoningEffort {
 
 #[derive(Debug, Clone)]
 pub struct UtilityLlmRequest {
-    pub messages: Vec<LlmMessage>,
+    pub messages: Vec<Message>,
     pub reasoning_effort: Option<UtilityLlmReasoningEffort>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
@@ -47,7 +48,7 @@ pub struct UtilityLlmRequest {
 }
 
 impl UtilityLlmRequest {
-    pub fn new(messages: Vec<LlmMessage>) -> Self {
+    pub fn new(messages: Vec<Message>) -> Self {
         Self {
             messages,
             reasoning_effort: None,
@@ -58,10 +59,7 @@ impl UtilityLlmRequest {
     }
 
     pub fn user_text(prompt: impl Into<String>) -> Self {
-        Self::new(vec![LlmMessage::text(
-            crate::LlmMessageRole::User,
-            prompt.into(),
-        )])
+        Self::new(vec![Message::text(MessageRole::User, prompt.into())])
     }
 
     pub fn with_reasoning_effort(mut self, effort: UtilityLlmReasoningEffort) -> Self {
@@ -85,7 +83,7 @@ impl UtilityLlmRequest {
     }
 
     /// Convert the host-neutral request into the provider-driver inputs.
-    pub fn into_driver_request(self) -> Result<(Vec<LlmMessage>, LlmCallConfig)> {
+    pub fn into_driver_request(self) -> Result<(Vec<Message>, LlmCallConfig)> {
         if self.messages.is_empty() {
             return Err(AgentLoopError::llm(
                 "utility LLM request must include at least one message",
@@ -143,7 +141,6 @@ impl UtilityLlmService for DisabledUtilityLlmService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::LlmMessageRole;
 
     #[tokio::test]
     async fn disabled_service_rejects_streaming_and_nonstreaming_requests() {
@@ -174,7 +171,7 @@ mod tests {
             .into_driver_request()
             .unwrap();
         assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].role, LlmMessageRole::User);
+        assert_eq!(messages[0].role, MessageRole::User);
         assert_eq!(messages[0].content_as_text(), "summarize α");
         assert_eq!(config.model, "gpt-5.6-luna");
         assert_eq!(config.reasoning_effort, None);
@@ -204,8 +201,8 @@ mod tests {
             (UtilityLlmReasoningEffort::High, "high"),
         ] {
             let (messages, config) = UtilityLlmRequest::new(vec![
-                LlmMessage::text(LlmMessageRole::System, "Classify"),
-                LlmMessage::text(LlmMessageRole::User, "Input α"),
+                Message::text(MessageRole::System, "Classify"),
+                Message::text(MessageRole::User, "Input α"),
             ])
             .with_reasoning_effort(effort)
             .with_temperature(0.25)
@@ -221,8 +218,8 @@ mod tests {
                     .map(|m| (m.role.clone(), m.content_as_text()))
                     .collect::<Vec<_>>(),
                 [
-                    (LlmMessageRole::System, "Classify".into()),
-                    (LlmMessageRole::User, "Input α".into())
+                    (MessageRole::System, "Classify".into()),
+                    (MessageRole::User, "Input α".into())
                 ]
             );
             assert_eq!(config.reasoning_effort.map(|e| e.as_str()), Some(expected));

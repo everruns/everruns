@@ -16,7 +16,7 @@ use crate::driver_registry::ChatDriver;
 use crate::error::Result;
 use crate::events::TokenUsage;
 use crate::harness_definition::HarnessDefinition;
-use crate::message::{Message, MessageRole};
+use crate::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::provider::DriverId;
 use crate::runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 use crate::session::ExecutionSession;
@@ -81,7 +81,7 @@ pub struct ResolvedTurnContextInput {
     /// Effective, secret-free execution snapshot.
     pub snapshot: ResolvedExecutionSnapshot,
     /// Already-filtered model-visible history.
-    pub messages: Vec<Message>,
+    pub messages: Vec<RuntimeMessage>,
     /// Highest canonical history sequence represented by `messages`.
     pub message_source_sequence: Option<i64>,
     /// Credential-safe model identity and opaque ready driver.
@@ -100,7 +100,7 @@ pub struct AssembledTurnContext {
     /// Capability configurations after dependency expansion.
     pub resolved_capability_configs: Vec<AgentCapabilityConfig>,
     /// Filtered conversation history visible to the model.
-    pub messages: Vec<Message>,
+    pub messages: Vec<RuntimeMessage>,
     /// Highest canonical history sequence represented by `messages`.
     pub message_source_sequence: Option<i64>,
     /// Fully assembled runtime agent for this turn.
@@ -310,11 +310,11 @@ async fn build_runtime_agent(
     Ok(runtime_agent)
 }
 
-fn extract_locale_override(messages: &[Message]) -> Option<String> {
+fn extract_locale_override(messages: &[RuntimeMessage]) -> Option<String> {
     messages
         .iter()
         .rev()
-        .find(|message| message.role == MessageRole::User)
+        .find(|message| message.role == RuntimeMessageRole::User)
         .and_then(|message| message.controls.as_ref())
         .and_then(|controls| controls.locale.as_deref())
         .map(str::trim)
@@ -335,7 +335,7 @@ mod tests {
         async fn chat_completion_stream(
             &self,
             _endpoint: &everruns_provider::ProviderEndpoint,
-            _messages: Vec<crate::LlmMessage>,
+            _messages: Vec<crate::driver_registry::Message>,
             _config: &crate::LlmCallConfig,
         ) -> crate::Result<crate::LlmResponseStream> {
             unreachable!("debug-surface test never invokes the driver")

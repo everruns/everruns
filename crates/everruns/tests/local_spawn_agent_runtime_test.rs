@@ -36,7 +36,7 @@ use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{
     SessionTaskRegistry, SessionTaskState, TASK_KIND_AGENT_HANDOFF, TASK_KIND_SUBAGENT,
 };
-use everruns_core::{CapabilityRegistry, MessageRole};
+use everruns_core::{CapabilityRegistry, RuntimeMessageRole};
 use everruns_host::{
     AgentBuilder, EventReadLimit, EventReadRequest, HarnessBuilder, HostBackends, InProcessRuntime,
     InProcessRuntimeBuilder, RuntimeSessionStore, SessionBuilder,
@@ -134,8 +134,8 @@ impl LocalSessionRunner for RuntimeRunner {
             .iter()
             .map(|m| PlatformMessage {
                 role: match &m.role {
-                    MessageRole::Agent => "agent".to_string(),
-                    MessageRole::User => "user".to_string(),
+                    RuntimeMessageRole::Agent => "agent".to_string(),
+                    RuntimeMessageRole::User => "user".to_string(),
                     other => format!("{other:?}").to_lowercase(),
                 },
                 content: m.text().unwrap_or_default().to_string(),
@@ -429,7 +429,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         .expect("child messages")
         .into_iter()
         .rev()
-        .find(|m| m.role == MessageRole::Agent)
+        .find(|m| m.role == RuntimeMessageRole::Agent)
         .and_then(|m| m.text().map(str::to_string))
         .expect("child produced an agent reply");
     assert!(

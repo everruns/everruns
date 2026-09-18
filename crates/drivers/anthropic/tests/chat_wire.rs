@@ -12,8 +12,8 @@
 
 use everruns_anthropic::AnthropicChatDriver;
 use everruns_provider::driver_registry::{
-    CacheDiagnosticsConfig, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent,
+    CacheDiagnosticsConfig, LlmCallConfig, LlmCompletionMetadata, LlmResponseStream,
+    LlmStreamEvent, Message, MessageRole,
 };
 use everruns_provider::model::ReasoningEffort;
 use everruns_provider::{Provider, StaticHeaderAuth};
@@ -171,7 +171,7 @@ async fn text_stream_golden_events() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("claude-sonnet-4-5"),
         )
         .await
@@ -244,7 +244,7 @@ async fn thinking_stream_golden_events() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "think")],
+            vec![Message::text(MessageRole::User, "think")],
             &config("claude-sonnet-4-5"),
         )
         .await
@@ -310,7 +310,7 @@ async fn fragmented_tool_use_golden_events() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
+            vec![Message::text(MessageRole::User, "weather?")],
             &config("claude-sonnet-4-5"),
         )
         .await
@@ -371,10 +371,7 @@ async fn cache_diagnostics_and_extra_headers_round_trip() {
     ];
 
     let mut stream = driver(&server)
-        .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
-            &call_config,
-        )
+        .chat_completion_stream(vec![Message::text(MessageRole::User, "hi")], &call_config)
         .await
         .expect("stream should start");
 
@@ -444,10 +441,7 @@ async fn cache_diagnostics_first_turn_sends_explicit_null() {
     });
 
     let stream = driver(&server)
-        .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
-            &call_config,
-        )
+        .chat_completion_stream(vec![Message::text(MessageRole::User, "hi")], &call_config)
         .await
         .expect("stream should start");
     let _ = drain_golden(stream).await;
@@ -472,7 +466,7 @@ async fn cache_diagnostics_absent_when_not_requested() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("claude-sonnet-4-5"),
         )
         .await
@@ -553,7 +547,7 @@ async fn interleaved_thinking_keeps_each_signature_with_its_own_block() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "think twice")],
+            vec![Message::text(MessageRole::User, "think twice")],
             &config("claude-sonnet-4-5"),
         )
         .await
@@ -615,7 +609,7 @@ async fn redacted_thinking_survives_as_an_opaque_artifact() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("claude-sonnet-4-5"),
         )
         .await
@@ -665,10 +659,7 @@ async fn every_reasoning_effort_sends_a_thinking_budget() {
         call_config.reasoning_effort = Some(effort);
 
         let stream = driver(&server)
-            .chat_completion_stream(
-                vec![LlmMessage::text(LlmMessageRole::User, "hi")],
-                &call_config,
-            )
+            .chat_completion_stream(vec![Message::text(MessageRole::User, "hi")], &call_config)
             .await
             .expect("stream should start");
         let _ = drain_golden(stream).await;

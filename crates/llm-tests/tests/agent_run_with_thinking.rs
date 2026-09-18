@@ -22,7 +22,7 @@ use llm_test_matrix::*;
 use rstest::rstest;
 
 use everruns_builtins::CurrentTimeCapability;
-use everruns_core::message::{ContentPart, Controls, MessageRole, ReasoningConfig};
+use everruns_core::message::{ContentPart, Controls, ReasoningConfig, RuntimeMessageRole};
 use everruns_core::message_retriever::InputMessage;
 use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 
@@ -79,7 +79,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
         // Trailing zeros of 2024! = floor(2024/5) + floor(2024/25) +
         // floor(2024/125) + floor(2024/625) = 404 + 80 + 16 + 3 = 503.
         let input = InputMessage {
-            role: MessageRole::User,
+            role: RuntimeMessageRole::User,
             content: vec![ContentPart::text(
                 "How many trailing zeros does 2024! (factorial) have? Work it out carefully, then state the final count as a plain number.",
             )],
@@ -112,7 +112,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
             .ok()
             .and_then(|msgs| {
                 msgs.into_iter()
-                    .find(|m| m.role == MessageRole::Agent)
+                    .find(|m| m.role == RuntimeMessageRole::Agent)
                     .map(|m| m.has_reasoning())
             })
             .unwrap_or(false);
@@ -150,7 +150,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
     let messages = runner.messages().await.unwrap();
     let assistant_msg = messages
         .iter()
-        .find(|m| m.role == MessageRole::Agent)
+        .find(|m| m.role == RuntimeMessageRole::Agent)
         .expect("Should have an agent message");
     let reasoning_captured = assistant_msg.has_reasoning();
 
@@ -271,7 +271,7 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
                 .await
                 .unwrap();
             let input = InputMessage {
-                role: MessageRole::User,
+                role: RuntimeMessageRole::User,
                 // The user turn also asks for a tool check: with the system
                 // instruction alone, Sonnet 5 still skipped the tool on ~2/7
                 // first attempts at low effort.

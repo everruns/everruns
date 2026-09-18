@@ -52,7 +52,7 @@ impl everruns_worker::AgentRunner for CompletingTestRunner {
                 session_id,
                 everruns_core::events::EventContext::empty(),
                 everruns_core::events::OutputMessageCompletedData::new(
-                    everruns_core::Message::assistant("Child completed through gRPC"),
+                    everruns_core::RuntimeMessage::assistant("Child completed through gRPC"),
                 ),
             ))
             .await?;

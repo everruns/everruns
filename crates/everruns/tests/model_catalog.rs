@@ -3,9 +3,10 @@
 //! an agent runs.
 
 use async_trait::async_trait;
+use everruns::llm::Message;
 use everruns::{
     Agent, AgentLoopError, ChatDriver, DiscoveredModel, DriverId, InMemoryEngine, LlmCallConfig,
-    LlmMessage, LlmResponseStream, LlmStreamEvent, Provider, ProviderEndpoint, models,
+    LlmResponseStream, LlmStreamEvent, Provider, ProviderEndpoint, models,
 };
 
 #[derive(Clone)]
@@ -16,7 +17,7 @@ impl ChatDriver for CatalogProtocol {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        _messages: Vec<LlmMessage>,
+        _messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream, AgentLoopError> {
         let model = config.model.clone();
@@ -112,7 +113,7 @@ async fn a_provider_without_a_catalog_says_so() {
         async fn chat_completion_stream(
             &self,
             _endpoint: &ProviderEndpoint,
-            _messages: Vec<LlmMessage>,
+            _messages: Vec<Message>,
             _config: &LlmCallConfig,
         ) -> Result<LlmResponseStream, AgentLoopError> {
             Ok(Box::pin(futures::stream::iter([Ok(LlmStreamEvent::Done(

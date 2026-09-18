@@ -10,7 +10,7 @@
 //! (`llm.input_messages.0.message.role`), which is why message builders here
 //! return `KeyValue` lists rather than JSON.
 
-use everruns_core::message::{ContentPart, Message};
+use everruns_core::message::{ContentPart, RuntimeMessage};
 use everruns_core::telemetry::content;
 use everruns_provider::tool_types::ToolCall;
 use opentelemetry::KeyValue;
@@ -126,7 +126,7 @@ pub fn provider_and_system(driver_id: &str) -> (&str, Option<&'static str>) {
 }
 
 /// Flattened attributes for one input message at `llm.input_messages.{index}`.
-pub fn input_message_attributes(index: usize, message: &Message) -> Vec<KeyValue> {
+pub fn input_message_attributes(index: usize, message: &RuntimeMessage) -> Vec<KeyValue> {
     let prefix = format!("{LLM_INPUT_MESSAGES}.{index}");
     let mut attrs = vec![KeyValue::new(
         format!("{prefix}.{MESSAGE_ROLE}"),
@@ -204,7 +204,7 @@ fn tool_call_attributes(
 
 /// The text a message carries, as OpenInference's single `message.content`:
 /// text parts joined, tool results rendered as their JSON or error.
-fn message_text(message: &Message) -> String {
+fn message_text(message: &RuntimeMessage) -> String {
     let mut chunks: Vec<String> = Vec::new();
     for part in &message.content {
         match part {
@@ -253,8 +253,10 @@ mod tests {
             name: "read_file".to_string(),
             arguments: json!({ "path": "a.txt" }),
         };
-        let attrs =
-            input_message_attributes(2, &Message::assistant_with_tools("Reading", vec![call]));
+        let attrs = input_message_attributes(
+            2,
+            &RuntimeMessage::assistant_with_tools("Reading", vec![call]),
+        );
         assert_eq!(
             attr(&attrs, "llm.input_messages.2.message.role").as_deref(),
             Some("assistant")
@@ -285,7 +287,7 @@ mod tests {
     fn tool_result_messages_carry_their_call_id() {
         let attrs = input_message_attributes(
             0,
-            &Message::tool_result("call_9", Some(json!({ "ok": true })), None),
+            &RuntimeMessage::tool_result("call_9", Some(json!({ "ok": true })), None),
         );
         assert_eq!(
             attr(&attrs, "llm.input_messages.0.message.role").as_deref(),

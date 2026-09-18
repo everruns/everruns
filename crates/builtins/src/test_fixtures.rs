@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use everruns_core::message::Message;
+use everruns_core::message::RuntimeMessage;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::message_retriever::{MessageHistory, MessageRetriever};
 use everruns_provider::error::Result;
@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 /// Private fixture for collocated built-in capability tests.
 #[derive(Clone, Default)]
 pub(crate) struct TestMessageRetriever {
-    messages: Arc<RwLock<HashMap<SessionId, Vec<Message>>>>,
+    messages: Arc<RwLock<HashMap<SessionId, Vec<RuntimeMessage>>>>,
 }
 
 impl TestMessageRetriever {
@@ -19,14 +19,18 @@ impl TestMessageRetriever {
         Self::default()
     }
 
-    pub(crate) async fn seed(&self, session_id: SessionId, messages: Vec<Message>) {
+    pub(crate) async fn seed(&self, session_id: SessionId, messages: Vec<RuntimeMessage>) {
         self.messages.write().await.insert(session_id, messages);
     }
 }
 
 #[async_trait]
 impl MessageRetriever for TestMessageRetriever {
-    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+    async fn get(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<RuntimeMessage>> {
         Ok(self
             .messages
             .read()
@@ -40,7 +44,7 @@ impl MessageRetriever for TestMessageRetriever {
             }))
     }
 
-    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
         Ok(self
             .messages
             .read()
@@ -50,7 +54,7 @@ impl MessageRetriever for TestMessageRetriever {
             .unwrap_or_default())
     }
 
-    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<RuntimeMessage>> {
         let mut messages = self.load(query.session_id).await?;
         if let Some(after) = query.after_sequence {
             messages = messages.into_iter().skip(after.max(0) as usize).collect();

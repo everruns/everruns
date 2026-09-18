@@ -15,11 +15,11 @@ use super::*;
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct InputMessageData {
     /// The user message
-    pub message: Message,
+    pub message: RuntimeMessage,
 }
 
 impl InputMessageData {
-    pub fn new(message: Message) -> Self {
+    pub fn new(message: RuntimeMessage) -> Self {
         Self { message }
     }
 }
@@ -65,7 +65,7 @@ pub struct OutputMessageStartedData {
     /// the provider stream reveals a native phase before this event is emitted;
     /// today `output.message.started` is emitted before the LLM call, so this is
     /// generally `None` at start. The authoritative classification remains the
-    /// completed `Message.phase`. See `knowledge/execution/events.md`.
+    /// completed `RuntimeMessage.phase`. See `knowledge/execution/events.md`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<ExecutionPhase>,
 }
@@ -101,7 +101,7 @@ pub struct OutputMessageDeltaData {
     /// (see `ExecutionPhase::refine_streamed_hint`). Providers without native
     /// mid-stream phase (Anthropic, Gemini, …) leave this `None` until
     /// completion. The authoritative classification remains the completed
-    /// `Message.phase`. See `knowledge/execution/events.md`.
+    /// `RuntimeMessage.phase`. See `knowledge/execution/events.md`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<ExecutionPhase>,
 }
@@ -111,7 +111,7 @@ pub struct OutputMessageDeltaData {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct OutputMessageCompletedData {
     /// The agent message
-    pub message: Message,
+    pub message: RuntimeMessage,
 
     /// Metadata about the model used
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -138,7 +138,7 @@ pub struct OutputMessageCompletedData {
 }
 
 impl OutputMessageCompletedData {
-    pub fn new(message: Message) -> Self {
+    pub fn new(message: RuntimeMessage) -> Self {
         Self {
             message,
             metadata: None,
@@ -184,7 +184,7 @@ pub struct OutputMessageReplacedData {
     pub turn_id: TurnId,
 
     /// Stable public ID for the assistant message whose streamed text is replaced.
-    /// This is the same identifier as the subsequent completed `Message.id`.
+    /// This is the same identifier as the subsequent completed `RuntimeMessage.id`.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_550e8400e29b41d4a716446655440000"))]
     pub message_id: MessageId,
 

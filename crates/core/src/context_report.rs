@@ -1,7 +1,7 @@
 use crate::capabilities::{CapabilityRegistry, SystemPromptContext};
 use crate::events::{LlmGenerationData, TokenUsage, ToolDefinitionSummary};
 use crate::mcp_server::parse_mcp_tool_name;
-use crate::message::{ContentPart, Message, MessageRole};
+use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::model_profiles::get_model_profile;
 use crate::runtime_context::AssembledTurnContext;
 use crate::tool_types::ToolDefinition;
@@ -74,7 +74,7 @@ pub fn build_session_context_report_from_generation(
     let tool_calls_by_id = tool_calls_by_id(&generation.messages);
 
     for message in &generation.messages {
-        if message.role == MessageRole::System {
+        if message.role == RuntimeMessageRole::System {
             add_system_prompt_breakdown(&mut builder, &message.content_to_llm_string());
         } else {
             add_message_breakdown(&mut builder, message, &tool_calls_by_id);
@@ -428,7 +428,7 @@ fn tool_contribution_source(
     }
 }
 
-fn tool_calls_by_id(messages: &[Message]) -> BTreeMap<String, String> {
+fn tool_calls_by_id(messages: &[RuntimeMessage]) -> BTreeMap<String, String> {
     let mut tool_calls = BTreeMap::new();
     for message in messages {
         for tool_call in message.tool_calls() {
@@ -440,7 +440,7 @@ fn tool_calls_by_id(messages: &[Message]) -> BTreeMap<String, String> {
 
 fn add_message_breakdown(
     builder: &mut ContextReportBuilder,
-    message: &Message,
+    message: &RuntimeMessage,
     tool_calls_by_id: &BTreeMap<String, String>,
 ) {
     let tokens = estimate_serialized_tokens(message);
@@ -455,10 +455,10 @@ fn add_message_breakdown(
 }
 
 fn message_contribution_source(
-    message: &Message,
+    message: &RuntimeMessage,
     tool_calls_by_id: &BTreeMap<String, String>,
 ) -> Option<(&'static str, String, String)> {
-    if message.role != MessageRole::ToolResult {
+    if message.role != RuntimeMessageRole::ToolResult {
         return None;
     }
     let tool_call_id = message.tool_call_id()?;
@@ -481,7 +481,7 @@ fn message_contribution_source(
     None
 }
 
-fn extract_json_string_field(message: &Message, field: &str) -> Option<String> {
+fn extract_json_string_field(message: &RuntimeMessage, field: &str) -> Option<String> {
     message.content.iter().find_map(|part| {
         let ContentPart::ToolResult(result) = part else {
             return None;
@@ -552,7 +552,7 @@ mod tests {
     #[test]
     fn generation_report_attributes_capability_prompt_blocks() {
         let data = LlmGenerationData::success(
-            vec![crate::Message::system(
+            vec![crate::RuntimeMessage::system(
                 "<system-prompt>\nBase\n</system-prompt>\n\n<capability id=\"agent_instructions\">Rules</capability>",
             )],
             vec![],
@@ -597,7 +597,7 @@ mod tests {
     #[test]
     fn generation_report_attributes_tool_definitions_by_source() {
         let data = LlmGenerationData::success(
-            vec![crate::Message::user("hello")],
+            vec![crate::RuntimeMessage::user("hello")],
             vec![
                 crate::events::ToolDefinitionSummary {
                     name: "mcp_docs__search".into(),
@@ -657,7 +657,7 @@ mod tests {
     fn generation_report_attributes_skill_activation_results() {
         let data = LlmGenerationData::success(
             vec![
-                crate::Message::assistant_with_tools(
+                crate::RuntimeMessage::assistant_with_tools(
                     "",
                     vec![crate::ToolCall {
                         id: "call_skill".into(),
@@ -665,7 +665,7 @@ mod tests {
                         arguments: json!({"name": "pdf-tool"}),
                     }],
                 ),
-                crate::Message::tool_result(
+                crate::RuntimeMessage::tool_result(
                     "call_skill",
                     Some(json!({
                         "skill": "pdf-tool",
@@ -705,7 +705,7 @@ mod tests {
     fn generation_report_attributes_subagent_results_by_name() {
         let data = LlmGenerationData::success(
             vec![
-                crate::Message::assistant_with_tools(
+                crate::RuntimeMessage::assistant_with_tools(
                     "",
                     vec![crate::ToolCall {
                         id: "call_subagent".into(),
@@ -717,7 +717,7 @@ mod tests {
                         }),
                     }],
                 ),
-                crate::Message::tool_result(
+                crate::RuntimeMessage::tool_result(
                     "call_subagent",
                     Some(json!({
                         "name": "Scout",

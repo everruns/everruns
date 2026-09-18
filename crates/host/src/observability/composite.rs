@@ -92,7 +92,7 @@ mod tests {
     use super::*;
     use everruns_core::NoopEventListener;
     use everruns_core::events::{EventContext, EventData, InputMessageData};
-    use everruns_core::message::Message;
+    use everruns_core::message::RuntimeMessage;
     use everruns_provider::typed_id::SessionId;
     use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -101,7 +101,7 @@ mod tests {
             SessionId::new(),
             EventContext::empty(),
             EventData::InputMessage(InputMessageData {
-                message: Message::user("Hello"),
+                message: RuntimeMessage::user("Hello"),
             }),
         )
     }

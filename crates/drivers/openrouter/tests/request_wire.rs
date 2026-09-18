@@ -15,7 +15,7 @@ use everruns_openrouter::options::{
     OpenRouterServerToolKind, OpenRouterSortPartition, OpenRouterWebSearchPlugin,
     insert_routing_option,
 };
-use everruns_provider::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
+use everruns_provider::driver_registry::{LlmCallConfig, Message, MessageRole};
 use everruns_provider::model::ReasoningEffort;
 use everruns_provider::{BearerAuth, Provider};
 use serde_json::json;
@@ -42,7 +42,7 @@ async fn capture_request_body(config: &LlmCallConfig) -> serde_json::Value {
     let api_url = format!("{}/v1/responses", server.uri());
     let driver = provider(api_url);
 
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+    let messages = vec![Message::text(MessageRole::User, "hello")];
     let _ = driver.chat_completion_stream(messages, config).await;
 
     let requests = server
@@ -99,7 +99,7 @@ async fn sends_routing_controls_and_session_id() {
         },
     );
 
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+    let messages = vec![Message::text(MessageRole::User, "hello")];
     let _ = driver.chat_completion_stream(messages, &config).await;
 
     let requests = server
@@ -153,7 +153,7 @@ async fn sends_openrouter_attribution_headers_from_metadata() {
         .metadata
         .insert("custom_key".to_string(), "custom_value".to_string());
 
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+    let messages = vec![Message::text(MessageRole::User, "hello")];
     let _ = driver.chat_completion_stream(messages, &config).await;
 
     let requests = server
@@ -206,7 +206,7 @@ async fn skips_blank_openrouter_attribution_metadata() {
         .metadata
         .insert("openrouter.x_title".to_string(), "\t".to_string());
 
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+    let messages = vec![Message::text(MessageRole::User, "hello")];
     let _ = driver.chat_completion_stream(messages, &config).await;
 
     let requests = server
@@ -330,7 +330,7 @@ async fn retries_after_openrouter_rate_limit_reset() {
 
     let api_url = format!("{}/v1/responses", server.uri());
     let driver = provider(api_url);
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+    let messages = vec![Message::text(MessageRole::User, "hello")];
     let mut stream = driver
         .chat_completion_stream(messages, &base_config("openai/gpt-4o-mini"))
         .await
@@ -379,10 +379,7 @@ async fn rejects_invalid_routing_before_dispatch() {
         },
     );
     let err = match driver
-        .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
-            &mismatch,
-        )
+        .chat_completion_stream(vec![Message::text(MessageRole::User, "hi")], &mismatch)
         .await
     {
         Ok(_) => panic!("invalid OpenRouter routing should fail before dispatch"),
@@ -402,7 +399,7 @@ async fn rejects_invalid_routing_before_dispatch() {
     );
     let err = match driver
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &empty_fallback,
         )
         .await
@@ -448,7 +445,7 @@ async fn includes_plugins_in_request() {
         },
     );
 
-    let messages = vec![LlmMessage::text(LlmMessageRole::User, "search the web")];
+    let messages = vec![Message::text(MessageRole::User, "search the web")];
     let _ = driver.chat_completion_stream(messages, &config).await;
 
     let requests = server

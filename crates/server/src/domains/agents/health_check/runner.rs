@@ -9,8 +9,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::kernel_imports::{
-    UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::LlmMessage,
-    everruns_provider::driver_registry::LlmMessageRole,
+    UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::Message,
+    everruns_provider::driver_registry::MessageRole,
 };
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
 use everruns_provider::typed_id::{AgentId, SessionId};
@@ -382,8 +382,8 @@ async fn judge_case(
         super::xml_escape(final_content),
     );
     let request = UtilityLlmRequest::new(vec![
-        LlmMessage::text(LlmMessageRole::System, JUDGE_SYSTEM.to_string()),
-        LlmMessage::text(LlmMessageRole::User, user),
+        Message::text(MessageRole::System, JUDGE_SYSTEM.to_string()),
+        Message::text(MessageRole::User, user),
     ])
     .with_max_tokens(JUDGE_MAX_TOKENS)
     .with_metadata("purpose", "agent_health_check_judge");
