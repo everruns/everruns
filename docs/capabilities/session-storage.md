@@ -1,6 +1,6 @@
 ---
-title: Session Storage for Agent State and Secrets
-description: Persist agent state with session-scoped key/value storage and encrypted secret storage for multi-turn workflows.
+title: Session Storage
+description: Session-scoped key/value storage and encrypted secret storage.
 sidebar:
   label: Storage
 ---

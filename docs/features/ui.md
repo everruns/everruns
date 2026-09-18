@@ -1,8 +1,6 @@
 ---
-title: Management UI for Agents and Sessions
-description: Manage Everruns agents, sessions, capabilities, settings, files, and real-time event streams through the optional web interface for platform operators.
-sidebar:
-  label: Management UI
+title: Management UI
+description: Manage agents, sessions, capabilities, settings, files, and event streams through the optional web interface.
 ---
 
 While Everruns is a headless agent platform designed for API-first integration, it provides an optional management UI for administrative tasks and session monitoring.

@@ -1,8 +1,6 @@
 ---
-title: Daytona Integration for Agent Code Sandboxes
-description: Integrate Daytona cloud sandbox environments for secure, isolated code execution. Configure API keys, workspace templates, and session-scoped sandbox lifecycle.
-sidebar:
-  label: Daytona
+title: Daytona
+description: "Configure Daytona cloud sandboxes: API keys, workspace templates, and session-scoped sandbox lifecycle."
 ---
 
 ![Daytona Integration](daytona.png)

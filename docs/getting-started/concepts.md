@@ -1,8 +1,6 @@
 ---
-title: Core Concepts and Execution Model
-description: Learn how Everruns harnesses, agents, sessions, turns, events, capabilities, tools, apps, files, and runtime state fit together in the execution model.
-sidebar:
-  label: Concepts
+title: Concepts
+description: How harnesses, agents, sessions, turns, events, capabilities, tools, apps, and files fit together in the execution model.
 ---
 
 This page is the **concept cheat-sheet**: short definitions of every entity, organised into three layers (high-level execution model, session internals, and settings). For the design rationale behind each entity, read [Core concepts](/explanation/concepts/) under Explanation.

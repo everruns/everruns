@@ -237,6 +237,12 @@ Every page must have a `<meta name="description">` tag.
 - **Fallback**: Starlight `description` config provides a site-level fallback
 - **Target length**: Aim for roughly 50-160 characters for hand-authored content page descriptions
 
+A description says what the page covers, in one factual sentence. It is not ad copy: no second
+sentence restating the first as a benefit ("Agents can run shell commands safely with..."), no
+unverifiable adjectives (secure, powerful, comprehensive, recommended), and no
+"Explore/Discover/Learn how" openers. Crawlers and the OG card both render it verbatim, so padding
+costs the reader twice.
+
 #### Page Titles
 
 Page titles (rendered as `<title>Title | Everruns</title>`) must not exceed 70 characters total.
@@ -244,6 +250,12 @@ Page titles (rendered as `<title>Title | Everruns</title>`) must not exceed 70 c
 - Starlight appends ` | Everruns` (12 chars), so page titles must be ≤57 chars
 - For API pages, route middleware strips the `METHOD /path - ` prefix from OpenAPI summaries to shorten titles
 - When writing OpenAPI `summary` doc comments in Rust, the description after the `METHOD /path - ` prefix should be ≤57 chars
+
+A title is the page's name, not a keyword string. Prefer the name a reader would say out loud
+("Daytona"), not the search phrase it might match ("Daytona Cloud Sandbox Capability for Agents").
+A `sidebar.label` that differs from the title only to hide a longer title from the sidebar is a
+sign the title is wrong; set `sidebar.label` only when the sidebar genuinely needs a shorter or
+disambiguated form.
 
 #### Images
 
@@ -307,7 +319,14 @@ SEO improvements for auto-generated pages are handled by Starlight route middlew
 1. Strips `METHOD /path - ` prefix from API operation titles for shorter `<title>` tags
 2. Generates per-page meta descriptions for API reference pages that lack frontmatter descriptions
 3. Updates `og:title` and `og:description` to match
-4. Sets per-page `og:image` pointing to the pre-generated social card PNG for the current page
+4. Sets per-page `og:image` pointing to the pre-generated social card PNG for the current page,
+   and a matching per-page `og:image:alt` (the global alt in `astro.config.mjs` describes the
+   fallback card only, so it does not fit a per-page card)
+5. Leaves `og:image` alone for routes with no generated card — `generate-og-image.mjs` skips
+   `docs/api/`, so the `api` overview and the schema and tag pages fall back to `public/og-image.png`
+
+Generated descriptions are held to the same house style as hand-authored ones above; the fallback
+appends nothing beyond the page title.
 
 ### Sitemap Requirements
 

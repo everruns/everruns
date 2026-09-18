@@ -1,6 +1,6 @@
 ---
 title: Braintrust
-description: LLM observability, evaluation, and trace visualization with Braintrust. Monitor agent performance, inspect tool call chains, and compare model outputs over time.
+description: Send Everruns traces to Braintrust for evaluation and trace visualization.
 ---
 
 <img src="/images/observability/braintrust-logo.png" alt="Braintrust" width="64" style="float: right; margin-left: 16px;" />

@@ -1,6 +1,6 @@
 ---
 title: Fireworks AI
-description: Run Everruns agents on Fireworks AI's fast, low-cost inference for open models, Llama, Qwen, DeepSeek, Kimi, GLM, gpt-oss, and more, with automatic model discovery.
+description: Run Everruns agents on open models hosted by Fireworks AI (Llama, Qwen, DeepSeek, Kimi, GLM, gpt-oss), with automatic model discovery.
 sidebar:
   label: Fireworks AI
 ---

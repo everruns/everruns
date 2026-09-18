@@ -1,6 +1,6 @@
 ---
 title: Platform
-description: Discover, inspect, and manage Everruns resources through the authoritative command catalog.
+description: Discover, inspect, and manage Everruns resources through the command catalog.
 ---
 
 | | |
