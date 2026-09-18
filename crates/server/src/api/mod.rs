@@ -9,6 +9,7 @@ pub mod agent_credentials;
 pub mod agent_discovery;
 pub mod agent_examples;
 pub mod agent_identities;
+pub mod agent_mcp_attachments;
 pub mod agent_identity_connections;
 pub mod agent_triggers;
 pub mod agents;

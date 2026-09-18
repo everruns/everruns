@@ -1591,6 +1591,7 @@ impl ServerAppBuilder {
         // =====================================================================
         let mut api_routes = Router::new()
             .merge(api::agent_examples::routes(agent_examples_state))
+            .merge(api::agent_mcp_attachments::routes(agents_state.clone()))
             .merge(api::agents::routes(agents_state))
             .merge(api::agent_credentials::routes(agent_credentials_state))
             .merge(api::agent_identities::routes(agent_identities_state))
