@@ -130,6 +130,9 @@ everruns-integrations-duckduckgo = { workspace = true, optional = true }
 # workspace inheritance; the workspace dependency carries the independently
 # versioned provider package's current release baseline.
 everruns-openai = { workspace = true, optional = true }
+# Client + framework surface only: the workspace dependency leaves the crate's
+# `hosted` feature off, so enabling `typesafe` on the facade does not drag in
+# everruns-platform. Guarded by scripts/lib/check-portable-builtins-isolation.sh.
 everruns-integrations-typesafe = { workspace = true, optional = true }
 async-trait.workspace = true
 uuid.workspace = true

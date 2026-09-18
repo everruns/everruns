@@ -52,32 +52,64 @@ impl Connector for TypeSafeAIConnector {
     }
 
     async fn validate(&self, credential: &str) -> Result<ConnectorValidation, String> {
-        // One noul over a two-word state: the smallest request the API accepts.
-        let client = TypeSafeAIClient::builder(credential)
-            .retry(RetryPolicy::none())
-            .build();
-        let probe = Evaluation::new("connection check")
-            .ask("ok", Question::noul("Is this text in English?"));
+        probe_key(
+            TypeSafeAIClient::builder(credential)
+                .retry(RetryPolicy::none())
+                .build(),
+        )
+        .await
+    }
+}
 
-        match client.evaluate(probe).await {
-            Ok(_) => Ok(ConnectorValidation {
-                provider_username: None,
-                provider_metadata: None,
-            }),
-            Err(Error::Api { status: 401, .. }) | Err(Error::Api { status: 403, .. }) => {
-                Err("Invalid API key. Check that the key is correct and active.".into())
-            }
-            Err(Error::Api { status: 429, .. }) => {
-                Err("API key is valid but rate-limited. Try again in a moment.".into())
-            }
-            Err(error) => Err(format!("Could not verify the key: {error}")),
+/// The validation round trip, over a caller-supplied client.
+///
+/// Split from [`Connector::validate`] so the endpoint is injectable: `validate`
+/// itself can only ever talk to the real API, and the status-to-message mapping
+/// below is what the user reads when a key does not work.
+async fn probe_key(client: TypeSafeAIClient) -> Result<ConnectorValidation, String> {
+    // One noul over a two-word state: the smallest request the API accepts.
+    let probe =
+        Evaluation::new("connection check").ask("ok", Question::noul("Is this text in English?"));
+
+    match client.evaluate(probe).await {
+        Ok(_) => Ok(ConnectorValidation {
+            provider_username: None,
+            provider_metadata: None,
+        }),
+        Err(Error::Api { status: 401, .. }) | Err(Error::Api { status: 403, .. }) => {
+            Err("Invalid API key. Check that the key is correct and active.".into())
         }
+        Err(Error::Api { status: 429, .. }) => {
+            Err("API key is valid but rate-limited. Try again in a moment.".into())
+        }
+        Err(error) => Err(format!("Could not verify the key: {error}")),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+    use wiremock::matchers::{body_json, header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const CREDENTIAL: &str = "sentinel-connector-credential";
+
+    fn client(server: &MockServer) -> TypeSafeAIClient {
+        TypeSafeAIClient::builder(CREDENTIAL)
+            .base_url(server.uri())
+            .retry(RetryPolicy::none())
+            .build()
+    }
+
+    async fn responding(status: u16, body: &str) -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(status).set_body_string(body.to_string()))
+            .mount(&server)
+            .await;
+        server
+    }
 
     #[test]
     fn connector_metadata_matches_the_capability() {
@@ -94,5 +126,76 @@ mod tests {
         assert_eq!(schema.fields[0].name, "api_key");
         assert!(schema.fields[0].required);
         assert!(schema.instructions_markdown.contains("typesafe.ai"));
+    }
+
+    // --- validation round trip ---
+
+    /// The probe spends the cheapest request the API accepts, and it must carry
+    /// the key being validated — not the one the process happens to hold.
+    #[tokio::test]
+    async fn a_working_key_is_accepted_after_one_minimal_request() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/systemone"))
+            .and(header("authorization", format!("Bearer {CREDENTIAL}")))
+            // The whole probe: one noul over a two-word state. If this body ever
+            // grows, connecting an account starts costing more than it should.
+            .and(body_json(json!({
+                "state": "connection check",
+                "model": "jev-latest",
+                "questions": {
+                    "ok": {"type": "noul", "instructions": "Is this text in English?"}
+                }
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "model": "jev-1.13.0",
+                "answers": {"ok": {"type": "noul", "noul": 0.99}},
+                "usage": {"input_tokens": 12, "output_tokens": 2}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let validation = probe_key(client(&server)).await.expect("key accepted");
+        assert!(validation.provider_username.is_none());
+        assert!(validation.provider_metadata.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_rejected_key_says_the_key_is_wrong() {
+        for status in [401, 403] {
+            let server = responding(status, r#"{"error":{"message":"bad key"}}"#).await;
+            let message = probe_key(client(&server)).await.unwrap_err();
+            assert!(message.contains("Invalid API key"), "{status}: {message}");
+        }
+    }
+
+    /// A rate limit means the key worked. Telling the user it is invalid would
+    /// send them to reissue a perfectly good key.
+    #[tokio::test]
+    async fn a_rate_limit_is_reported_as_valid_but_throttled() {
+        let server = responding(429, r#"{"error":{"message":"slow down"}}"#).await;
+        let message = probe_key(client(&server)).await.unwrap_err();
+        assert!(message.contains("rate-limited"), "{message}");
+        assert!(!message.contains("Invalid API key"), "{message}");
+    }
+
+    #[tokio::test]
+    async fn any_other_failure_is_inconclusive_rather_than_a_verdict() {
+        let server = responding(500, "upstream exploded").await;
+        let message = probe_key(client(&server)).await.unwrap_err();
+        assert!(message.starts_with("Could not verify the key"), "{message}");
+        assert!(!message.contains("Invalid API key"), "{message}");
+    }
+
+    /// The message goes to a form the user is staring at; echoing the key back
+    /// would put it in screenshots and support tickets.
+    #[tokio::test]
+    async fn no_failure_message_echoes_the_credential() {
+        for status in [401, 403, 429, 500] {
+            let server = responding(status, &format!("rejected {CREDENTIAL}")).await;
+            let message = probe_key(client(&server)).await.unwrap_err();
+            assert!(!message.contains(CREDENTIAL), "{status}: {message}");
+        }
     }
 }
