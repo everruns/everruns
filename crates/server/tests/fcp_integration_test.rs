@@ -11,6 +11,7 @@
 mod test_harness;
 
 use axum::http::{Method, StatusCode};
+use everruns_core::DEFAULT_ORG_ID;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -70,6 +71,7 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
             json!({
                 "name": unique_slug("fcp-test-agent"),
                 "display_name": unique_id("FCP Test Agent"),
+                "description": "A brief FCP test agent.",
                 "system_prompt": "You are a brief test agent.",
                 "default_model_id": model["id"]
             }),
@@ -216,10 +218,24 @@ async fn fcp_handshake_returns_markdown_for_published_app() {
 
     let response = get_handshake(&server, &app.public_id, vec![]).await;
     let body = response.text();
+    let agent = server
+        .db
+        .get_agent(
+            DEFAULT_ORG_ID,
+            app.agent_id.expect("endpoint-owned App has an Agent"),
+        )
+        .await
+        .expect("get endpoint Agent")
+        .expect("endpoint Agent exists");
+    let agent_name = agent.display_name.as_deref().unwrap_or(&agent.name);
+    let agent_description = agent
+        .description
+        .as_deref()
+        .expect("Agent has a description");
     assert_eq!(response.status(), StatusCode::OK, "body: {body}");
     assert_markdown(&response);
-    assert!(body.contains(&format!("# {}", app.name)), "body: {body}");
-    assert!(body.contains("A brief FCP test endpoint"));
+    assert!(body.contains(&format!("# {agent_name}")), "body: {body}");
+    assert!(body.contains(agent_description), "body: {body}");
     assert!(body.contains("POST"));
     assert!(body.contains("application/json"));
     assert!(body.contains("fcp_session"));
