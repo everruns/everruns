@@ -1992,9 +1992,7 @@ async fn test_mcp_execute_rejects_app_trigger_channels_and_supports_webhook_trig
         tool_text(&add_schedule_resp)
     );
     assert!(
-        tool_text(&add_schedule_resp).contains(
-            "bad_request: App schedule channels are deprecated. Create a schedule trigger on the app's agent instead."
-        ),
+        tool_text(&add_schedule_resp).contains("add_schedule_app_channel: command not found"),
         "unexpected schedule channel rejection: {}",
         tool_text(&add_schedule_resp)
     );
@@ -2014,9 +2012,7 @@ async fn test_mcp_execute_rejects_app_trigger_channels_and_supports_webhook_trig
         tool_text(&add_webhook_resp)
     );
     assert!(
-        tool_text(&add_webhook_resp).contains(
-            "bad_request: App webhook channels are deprecated. Create a webhook trigger on the app's agent instead."
-        ),
+        tool_text(&add_webhook_resp).contains("add_webhook_app_channel: command not found"),
         "unexpected webhook channel rejection: {}",
         tool_text(&add_webhook_resp)
     );
