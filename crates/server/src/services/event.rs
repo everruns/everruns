@@ -24,7 +24,7 @@ use crate::storage::{
     EventRow, StorageBackend,
     models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
 };
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use everruns_core::events::{EventData, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
 use everruns_core::{
     Event, EventListener, EventRequest, McpServerActsAs, ScopedMcpServers,
@@ -186,58 +186,69 @@ impl EventService {
     async fn prepare_request(&self, request: &mut EventRequest) -> Result<()> {
         self.attach_agent_version_metadata(request).await;
         self.attach_session_participant_metadata(request).await;
-        self.attach_service_mcp_provenance(request).await;
+        self.attach_service_mcp_provenance(request).await?;
         Self::validate_event_type_consistency(request)?;
         Ok(())
     }
 
-    async fn attach_service_mcp_provenance(&self, request: &mut EventRequest) {
+    async fn attach_service_mcp_provenance(&self, request: &mut EventRequest) -> Result<()> {
         let tool_name = match &request.data {
             EventData::ToolStarted(data) => &data.tool_call.name,
             EventData::ToolCompleted(data) => &data.tool_name,
-            _ => return,
+            _ => return Ok(()),
         };
         let Some((server_prefix, _)) = parse_mcp_tool_name(tool_name) else {
-            return;
+            return Ok(());
         };
-        let Ok(Some(session)) = self.db.get_session_unscoped(request.session_id).await else {
-            return;
-        };
+        let session = self
+            .db
+            .get_session_unscoped(request.session_id)
+            .await
+            .context("failed to load session for MCP event provenance")?
+            .context("session missing for MCP event provenance")?;
 
         let mut effective = ScopedMcpServers::new();
-        if let Some(harness_id) = session.harness_id
-            && let Ok(Some(harness)) = self.db.get_harness(session.org_id, harness_id).await
-            && let Ok(servers) = serde_json::from_value::<ScopedMcpServers>(harness.mcp_servers)
-        {
+        if let Some(harness_id) = session.harness_id {
+            let harness = self
+                .db
+                .get_harness(session.org_id, harness_id)
+                .await
+                .context("failed to load harness for MCP event provenance")?
+                .context("harness missing for MCP event provenance")?;
+            let servers = serde_json::from_value::<ScopedMcpServers>(harness.mcp_servers)
+                .context("invalid harness MCP server configuration")?;
             effective = merge_scoped_mcp_servers(&effective, &servers);
         }
-        if let Some(agent_id) = session.agent_id
-            && let Ok(Some(agent)) = self.db.get_agent(session.org_id, agent_id).await
-            && let Ok(servers) = serde_json::from_value::<ScopedMcpServers>(agent.mcp_servers)
-        {
+        if let Some(agent_id) = session.agent_id {
+            let agent = self
+                .db
+                .get_agent(session.org_id, agent_id)
+                .await
+                .context("failed to load agent for MCP event provenance")?
+                .context("agent missing for MCP event provenance")?;
+            let servers = serde_json::from_value::<ScopedMcpServers>(agent.mcp_servers)
+                .context("invalid agent MCP server configuration")?;
             effective = merge_scoped_mcp_servers(&effective, &servers);
         }
-        if let Ok(servers) = serde_json::from_value::<ScopedMcpServers>(session.mcp_servers.clone())
-        {
-            effective = merge_scoped_mcp_servers(&effective, &servers);
-        }
+        let servers = serde_json::from_value::<ScopedMcpServers>(session.mcp_servers.clone())
+            .context("invalid session MCP server configuration")?;
+        effective = merge_scoped_mcp_servers(&effective, &servers);
         let is_service = effective.iter().any(|(name, server)| {
             sanitize_mcp_server_name(name) == server_prefix
                 && server.acts_as == McpServerActsAs::Service
         });
         if !is_service {
-            return;
+            return Ok(());
         }
-        let Some(identity_id) = session.agent_identity_id else {
-            return;
-        };
-        let Ok(Some(acting)) = self
+        let identity_id = session
+            .agent_identity_id
+            .context("service MCP event session has no agent identity")?;
+        let acting = self
             .db
             .get_principal_by_subject(session.org_id, "agent_identity", identity_id.uuid())
             .await
-        else {
-            return;
-        };
+            .context("failed to load acting principal for service MCP event")?
+            .context("acting principal missing for service MCP event")?;
         let mut metadata = request
             .metadata
             .take()
@@ -253,6 +264,7 @@ impl EventService {
             serde_json::Value::String(acting.id.to_string()),
         );
         request.metadata = Some(serde_json::Value::Object(metadata));
+        Ok(())
     }
 
     async fn attach_agent_version_metadata(&self, request: &mut EventRequest) {
@@ -723,6 +735,32 @@ mod tests {
             budget_root_session_id: None,
         }
     }
+    fn service_session_input(identity_id: Option<AgentIdentityId>) -> CreateSessionRow {
+        let mut input = test_session_input(AgentId::new());
+        input.agent_id = None;
+        input.harness_id = None;
+        input.agent_identity_id = identity_id;
+        input.mcp_servers = serde_json::json!({
+            "linear": {
+                "use": "catalog:linear",
+                "actsAs": "service"
+            }
+        });
+        input
+    }
+
+    fn service_tool_event(session_id: SessionId) -> EventRequest {
+        EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            ToolCompletedData::success(
+                "call-1".to_string(),
+                "mcp_linear__create_issue".to_string(),
+                Vec::new(),
+                None,
+            ),
+        )
+    }
 
     #[tokio::test]
     async fn message_events_attach_active_participant_metadata() {
@@ -817,33 +855,16 @@ mod tests {
         })
         .await
         .unwrap();
-        let mut input = test_session_input(AgentId::new());
-        input.agent_id = None;
-        input.harness_id = None;
-        input.agent_identity_id = Some(identity_id);
-        input.mcp_servers = serde_json::json!({
-            "linear": {
-                "use": "catalog:linear",
-                "actsAs": "service"
-            }
-        });
-        let session = db.create_session(input).await.unwrap();
+        let session = db
+            .create_session(service_session_input(Some(identity_id)))
+            .await
+            .unwrap();
         let initiator = PrincipalId::new();
         let wrong_actor = PrincipalId::new();
 
         let event = event_service
             .emit(
-                EventRequest::new(
-                    session.id,
-                    EventContext::empty(),
-                    ToolCompletedData::success(
-                        "call-1".to_string(),
-                        "mcp_linear__create_issue".to_string(),
-                        Vec::new(),
-                        None,
-                    ),
-                )
-                .with_metadata(serde_json::json!({
+                service_tool_event(session.id).with_metadata(serde_json::json!({
                     "initiator_principal_id": initiator.to_string(),
                     "acting_principal_id": wrong_actor.to_string()
                 })),
@@ -875,5 +896,71 @@ mod tests {
         assert_ne!(acting_principal_id, wrong_actor);
         assert_eq!(acting.kind, "agent_identity");
         assert_eq!(acting.subject_id, Some(identity_id.uuid()));
+    }
+
+    #[tokio::test]
+    async fn service_mcp_event_rejects_session_lookup_failure() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let session = db
+            .create_session(service_session_input(Some(AgentIdentityId::new())))
+            .await
+            .unwrap();
+        db.force_storage_failure("get_session_unscoped");
+
+        let error = event_service
+            .emit(service_tool_event(session.id))
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("failed to load session for MCP event provenance")
+        );
+    }
+
+    #[tokio::test]
+    async fn service_mcp_event_rejects_principal_lookup_failure() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let identity_id = AgentIdentityId::new();
+        let session = db
+            .create_session(service_session_input(Some(identity_id)))
+            .await
+            .unwrap();
+        db.force_storage_failure("get_principal_by_subject");
+
+        let error = event_service
+            .emit(service_tool_event(session.id))
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("failed to load acting principal for service MCP event")
+        );
+    }
+
+    #[tokio::test]
+    async fn service_mcp_event_rejects_missing_identity_principal() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let session = db
+            .create_session(service_session_input(Some(AgentIdentityId::new())))
+            .await
+            .unwrap();
+
+        let error = event_service
+            .emit(service_tool_event(session.id))
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("acting principal missing for service MCP event")
+        );
     }
 }
