@@ -52,6 +52,7 @@ const attachment: AgentMcpAttachment = {
   name: "github",
   source: "agent",
   source_label: "This agent",
+  contributor: null,
   overridden_sources: [
     { source: "harness", source_label: "Harness: researcher" },
     { source: "capability", source_label: "Capability: web search" },
@@ -67,6 +68,7 @@ const attachment: AgentMcpAttachment = {
   state: "ready",
   action: "none",
   connected_as: "octocat",
+  can_revoke: true,
   editable: true,
 };
 
@@ -176,6 +178,20 @@ describe("AgentMcpPanel", () => {
     expect(screen.queryByRole("link", { name: "Connect" })).not.toBeInTheDocument();
   });
 
+  it("does not offer connected service revocation to a caller without permission", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      can_revoke: false,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Connected as octocat")).toBeInTheDocument();
+    expect(screen.getByText("Ask an admin")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Revoke" })).not.toBeInTheDocument();
+  });
+
   it("offers connection for the invoking user's missing grant", () => {
     showAttachments({
       ...attachment,
@@ -197,17 +213,49 @@ describe("AgentMcpPanel", () => {
     showAttachments({
       ...attachment,
       source: "capability",
-      source_label: "Capability: web search",
+      source_label: "Web Search",
+      contributor: {
+        id: "web_search",
+        name: "Web Search",
+        href: "/capabilities/web_search",
+      },
+      can_revoke: false,
       editable: false,
     });
 
     render(<AgentMcpPanel agent={agent} />);
 
-    expect(screen.getByRole("link", { name: "View capability" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "View Web Search" })).toHaveAttribute(
       "href",
-      "/capabilities",
+      "/capabilities/web_search",
     );
     expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Revoke" })).not.toBeInTheDocument();
+  });
+
+  it("suppresses connection controls for a capability attachment with a missing grant", () => {
+    showAttachments({
+      ...attachment,
+      source: "capability",
+      source_label: "Web Search",
+      contributor: {
+        id: "web_search",
+        name: "Web Search",
+        href: "/capabilities/web_search",
+      },
+      state: "connection_missing",
+      action: "none",
+      connected_as: null,
+      can_revoke: false,
+      editable: false,
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Connection required.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Connect" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Authorize" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Ask an admin")).not.toBeInTheDocument();
   });
 
   it("shows a repair path for missing presets without hiding the row", () => {
@@ -245,6 +293,7 @@ describe("AgentMcpPanel", () => {
   });
 
   it("adds a selected preset with the selected identity mode", async () => {
+    showAttachments({ ...attachment, name: "other" });
     render(<AgentMcpPanel agent={agent} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
@@ -339,6 +388,7 @@ describe("AgentMcpPanel", () => {
 
   it("keeps the add dialog open when the update fails", async () => {
     mockUpdateAgent.mockRejectedValueOnce(new Error("Attachment name already exists"));
+    showAttachments({ ...attachment, name: "other" });
     render(<AgentMcpPanel agent={agent} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
@@ -348,6 +398,38 @@ describe("AgentMcpPanel", () => {
 
     expect(await within(dialog).findByText("Attachment name already exists")).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("rejects a duplicate custom name without replacing the existing update payload", async () => {
+    render(<AgentMcpPanel agent={agent} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Custom" }));
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "existing" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("URL"), {
+      target: { value: "https://replacement.example/mcp" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add server" }));
+
+    expect(
+      await within(dialog).findByText("An MCP attachment named “existing” already exists."),
+    ).toBeInTheDocument();
+    expect(mockUpdateAgent).not.toHaveBeenCalled();
+  });
+
+  it("disables a preset that would replace an inherited effective attachment", () => {
+    render(<AgentMcpPanel agent={agent} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    const duplicatePreset = within(screen.getByRole("dialog")).getByRole("button", {
+      name: /github.*Already attached/i,
+    });
+
+    expect(duplicatePreset).toBeDisabled();
+    expect(mockUpdateAgent).not.toHaveBeenCalled();
   });
   it("confirms removal without revoking existing grants", async () => {
     render(<AgentMcpPanel agent={agent} />);

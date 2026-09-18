@@ -17932,6 +17932,7 @@
           "tools",
           "state",
           "action",
+          "can_revoke",
           "editable"
         ],
         "properties": {
@@ -17942,6 +17943,10 @@
           "acts_as": {
             "$ref": "#/components/schemas/McpServerActsAs",
             "description": "Identity whose connection is used when the attachment calls the MCP server."
+          },
+          "can_revoke": {
+            "type": "boolean",
+            "description": "Whether the current caller can revoke the active connection."
           },
           "connected_as": {
             "type": [
@@ -17956,6 +17961,17 @@
               "null"
             ],
             "description": "OAuth provider key used to create or revoke the attachment connection."
+          },
+          "contributor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentMcpAttachmentContributor",
+                "description": "Capability that contributed the attachment, when the winning source is a capability."
+              }
+            ]
           },
           "editable": {
             "type": "boolean",
@@ -18034,6 +18050,29 @@
           "authorize",
           "ask_admin"
         ]
+      },
+      "AgentMcpAttachmentContributor": {
+        "type": "object",
+        "description": "Capability that contributed an effective MCP attachment.",
+        "required": [
+          "id",
+          "name",
+          "href"
+        ],
+        "properties": {
+          "href": {
+            "type": "string",
+            "description": "UI path for the capability detail page."
+          },
+          "id": {
+            "type": "string",
+            "description": "Canonical capability ID."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable capability name."
+          }
+        }
       },
       "AgentMcpAttachmentSource": {
         "type": "string",

@@ -7,7 +7,10 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use everruns_core::{Caller, McpServerActsAs, ScopedMcpServer, ScopedMcpServers};
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_core::{
+    Caller, CapabilityRegistry, McpServerActsAs, ScopedMcpServer, ScopedMcpServers,
+};
 use everruns_provider::typed_id::AgentId;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -84,6 +87,8 @@ pub struct AgentMcpAttachment {
     pub source: AgentMcpAttachmentSource,
     /// Human-readable name of the winning capability, harness, or agent layer.
     pub source_label: String,
+    /// Capability that contributed the attachment, when the winning source is a capability.
+    pub contributor: Option<AgentMcpAttachmentContributor>,
     /// Lower-precedence configuration layers overridden by this attachment.
     pub overridden_sources: Vec<AgentMcpAttachmentSourceInfo>,
     /// Identity whose connection is used when the attachment calls the MCP server.
@@ -108,8 +113,20 @@ pub struct AgentMcpAttachment {
     pub action: AgentMcpAttachmentAction,
     /// Connected account name, or the preset name when the provider did not supply one.
     pub connected_as: Option<String>,
+    /// Whether the current caller can revoke the active connection.
+    pub can_revoke: bool,
     /// Whether the attachment is defined directly on the agent and can be removed there.
     pub editable: bool,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+/// Capability that contributed an effective MCP attachment.
+pub struct AgentMcpAttachmentContributor {
+    /// Canonical capability ID.
+    pub id: String,
+    /// Human-readable capability name.
+    pub name: String,
+    /// UI path for the capability detail page.
+    pub href: String,
 }
 
 #[derive(Debug, Clone)]
@@ -117,6 +134,7 @@ struct SourcedMcpAttachment {
     server: ScopedMcpServer,
     source: AgentMcpAttachmentSource,
     source_label: String,
+    contributor: Option<AgentMcpAttachmentContributor>,
     overridden_sources: Vec<AgentMcpAttachmentSourceInfo>,
 }
 
@@ -125,6 +143,7 @@ fn merge_sourced_mcp_layer(
     layer: &ScopedMcpServers,
     source: AgentMcpAttachmentSource,
     source_label: String,
+    contributor: Option<AgentMcpAttachmentContributor>,
 ) {
     for (name, server) in layer {
         let overridden_sources = effective
@@ -144,12 +163,139 @@ fn merge_sourced_mcp_layer(
                 server: server.clone(),
                 source,
                 source_label: source_label.clone(),
+                contributor: contributor.clone(),
                 overridden_sources,
             },
         );
     }
 }
+fn capability_contributor(
+    capability: &AgentCapabilityConfig,
+    registry: &CapabilityRegistry,
+) -> AgentMcpAttachmentContributor {
+    let id = capability.capability_id().to_string();
+    let name = registry
+        .get(&id)
+        .map(|capability| capability.localized_name(None))
+        .or_else(|| {
+            serde_json::from_value::<everruns_core::DeclarativeCapabilityDefinition>(
+                capability.config_value().clone(),
+            )
+            .ok()
+            .map(|definition| definition.display_name.unwrap_or(definition.name))
+        })
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| id.clone());
+    AgentMcpAttachmentContributor {
+        href: format!("/capabilities/{id}"),
+        id,
+        name,
+    }
+}
 
+fn merge_capability_mcp_layers(
+    effective: &mut BTreeMap<String, SourcedMcpAttachment>,
+    capabilities: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+) {
+    for capability in capabilities {
+        let servers = everruns_core::capabilities::collect_capability_mcp_servers(
+            std::slice::from_ref(capability),
+            registry,
+        );
+        if servers.is_empty() {
+            continue;
+        }
+        let contributor = capability_contributor(capability, registry);
+        merge_sourced_mcp_layer(
+            effective,
+            &servers,
+            AgentMcpAttachmentSource::Capability,
+            contributor.name.clone(),
+            Some(contributor),
+        );
+    }
+}
+
+async fn resolve_effective_capabilities(
+    state: &AppState,
+    org_id: i64,
+    harness_capabilities: &[AgentCapabilityConfig],
+    agent_capabilities: &[AgentCapabilityConfig],
+) -> Result<Vec<AgentCapabilityConfig>, (StatusCode, Json<ErrorResponse>)> {
+    let merged = everruns_core::merge_capabilities(harness_capabilities, agent_capabilities);
+    let hydrated = crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+        state.db.as_ref(),
+        org_id,
+        merged,
+    )
+    .await
+    .log_internal_error_json("hydrate agent MCP attachment capabilities")?;
+    everruns_core::capabilities::resolve_capability_configs(
+        &hydrated,
+        state.host_composition.capability_registry().as_ref(),
+    )
+    .map_err(|error| anyhow::anyhow!(error))
+    .log_internal_error_json("resolve agent MCP attachment capability dependencies")
+}
+
+fn merge_effective_mcp_attachments(
+    capabilities: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+    harness_servers: &ScopedMcpServers,
+    harness_label: String,
+    agent_servers: &ScopedMcpServers,
+) -> BTreeMap<String, SourcedMcpAttachment> {
+    let mut effective = BTreeMap::new();
+    merge_capability_mcp_layers(&mut effective, capabilities, registry);
+    merge_sourced_mcp_layer(
+        &mut effective,
+        harness_servers,
+        AgentMcpAttachmentSource::Harness,
+        harness_label,
+        None,
+    );
+    merge_sourced_mcp_layer(
+        &mut effective,
+        agent_servers,
+        AgentMcpAttachmentSource::Agent,
+        "Agent".to_string(),
+        None,
+    );
+    effective
+}
+
+fn project_connection_permissions(
+    source: AgentMcpAttachmentSource,
+    acts_as: McpServerActsAs,
+    preset_missing: bool,
+    has_connection: bool,
+    can_manage_service_connections: bool,
+) -> (AgentMcpAttachmentAction, bool) {
+    if matches!(source, AgentMcpAttachmentSource::Capability) {
+        return (AgentMcpAttachmentAction::None, false);
+    }
+    let needs_connection = !acts_as.is_none();
+    let can_revoke = has_connection
+        && match acts_as {
+            McpServerActsAs::User => true,
+            McpServerActsAs::Service => can_manage_service_connections,
+            McpServerActsAs::None => false,
+        };
+    let action = if preset_missing || !needs_connection || has_connection {
+        AgentMcpAttachmentAction::None
+    } else {
+        match acts_as {
+            McpServerActsAs::User => AgentMcpAttachmentAction::Connect,
+            McpServerActsAs::Service if can_manage_service_connections => {
+                AgentMcpAttachmentAction::Authorize
+            }
+            McpServerActsAs::Service => AgentMcpAttachmentAction::AskAdmin,
+            McpServerActsAs::None => AgentMcpAttachmentAction::None,
+        }
+    };
+    (action, can_revoke)
+}
 #[utoipa::path(
     get,
     path = "/v1/agents/{agent_id}/mcp-attachments",
@@ -187,33 +333,22 @@ pub async fn list_agent_mcp_attachments(
     .log_internal_error_json("load effective agent harness")?
     .ok_or_else(|| ErrorResponse::not_found("Harness"))?;
 
-    let effective_capabilities =
-        everruns_core::merge_capabilities(&harness.capabilities, &agent.capabilities);
-    let capability_servers = everruns_core::capabilities::collect_capability_mcp_servers(
+    let effective_capabilities = resolve_effective_capabilities(
+        &state,
+        org.org_id,
+        &harness.capabilities,
+        &agent.capabilities,
+    )
+    .await?;
+    let effective = merge_effective_mcp_attachments(
         &effective_capabilities,
         state.host_composition.capability_registry().as_ref(),
-    );
-    let mut effective = BTreeMap::new();
-    merge_sourced_mcp_layer(
-        &mut effective,
-        &capability_servers,
-        AgentMcpAttachmentSource::Capability,
-        "Capability".to_string(),
-    );
-    merge_sourced_mcp_layer(
-        &mut effective,
         &harness.mcp_servers,
-        AgentMcpAttachmentSource::Harness,
         harness
             .display_name
             .clone()
             .unwrap_or_else(|| harness.name.clone()),
-    );
-    merge_sourced_mcp_layer(
-        &mut effective,
         &agent.mcp_servers,
-        AgentMcpAttachmentSource::Agent,
-        "Agent".to_string(),
     );
 
     let caller = Caller::from(&org);
@@ -273,18 +408,13 @@ pub async fn list_agent_mcp_attachments(
         } else {
             AgentMcpAttachmentState::Ready
         };
-        let action = if preset_missing || !needs_connection || has_connection {
-            AgentMcpAttachmentAction::None
-        } else {
-            match sourced.server.acts_as {
-                McpServerActsAs::User => AgentMcpAttachmentAction::Connect,
-                McpServerActsAs::Service if can_authorize_service => {
-                    AgentMcpAttachmentAction::Authorize
-                }
-                McpServerActsAs::Service => AgentMcpAttachmentAction::AskAdmin,
-                McpServerActsAs::None => AgentMcpAttachmentAction::None,
-            }
-        };
+        let (action, can_revoke) = project_connection_permissions(
+            sourced.source,
+            sourced.server.acts_as,
+            preset_missing,
+            has_connection,
+            can_authorize_service,
+        );
         let tools = preset_row
             .as_ref()
             .and_then(|row| row.cached_tools.as_array())
@@ -309,6 +439,7 @@ pub async fn list_agent_mcp_attachments(
             name,
             source: sourced.source,
             source_label: sourced.source_label,
+            contributor: sourced.contributor,
             overridden_sources: sourced.overridden_sources,
             acts_as: sourced.server.acts_as,
             preset_name,
@@ -324,6 +455,7 @@ pub async fn list_agent_mcp_attachments(
             state: state_value,
             action,
             connected_as,
+            can_revoke,
             editable: matches!(sourced.source, AgentMcpAttachmentSource::Agent),
         });
     }
@@ -372,18 +504,27 @@ pub async fn revoke_agent_mcp_connection(
     .await
     .log_internal_error_json("load effective agent harness")?
     .ok_or_else(|| ErrorResponse::not_found("Harness"))?;
-    let effective_capabilities =
-        everruns_core::merge_capabilities(&harness.capabilities, &agent.capabilities);
-    let capability_servers = everruns_core::capabilities::collect_capability_mcp_servers(
+    let effective_capabilities = resolve_effective_capabilities(
+        &state,
+        org.org_id,
+        &harness.capabilities,
+        &agent.capabilities,
+    )
+    .await?;
+    let effective = merge_effective_mcp_attachments(
         &effective_capabilities,
         state.host_composition.capability_registry().as_ref(),
+        &harness.mcp_servers,
+        harness
+            .display_name
+            .clone()
+            .unwrap_or_else(|| harness.name.clone()),
+        &agent.mcp_servers,
     );
-    let mut servers =
-        everruns_core::merge_scoped_mcp_servers(&capability_servers, &harness.mcp_servers);
-    servers = everruns_core::merge_scoped_mcp_servers(&servers, &agent.mcp_servers);
-    let attachment = servers
+    let attachment = effective
         .get(&name)
         .ok_or_else(|| ErrorResponse::not_found("MCP attachment"))?;
+    let attachment = &attachment.server;
     let preset_name = attachment
         .preset
         .as_ref()
@@ -443,6 +584,50 @@ pub async fn revoke_agent_mcp_connection(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::Capability;
+
+    struct DependencyMcpCapability;
+
+    impl Capability for DependencyMcpCapability {
+        fn id(&self) -> &str {
+            "dependency_mcp"
+        }
+
+        fn name(&self) -> &str {
+            "Dependency MCP"
+        }
+
+        fn description(&self) -> &str {
+            "Contributes an MCP server for projection tests."
+        }
+
+        fn mcp_servers(&self) -> ScopedMcpServers {
+            serde_json::from_value(serde_json::json!({
+                "dependency-server": { "url": "https://dependency.example/mcp" }
+            }))
+            .unwrap()
+        }
+    }
+
+    struct ParentCapability;
+
+    impl Capability for ParentCapability {
+        fn id(&self) -> &str {
+            "parent"
+        }
+
+        fn name(&self) -> &str {
+            "Parent"
+        }
+
+        fn description(&self) -> &str {
+            "Depends on the MCP-contributing test capability."
+        }
+
+        fn dependencies(&self) -> Vec<&'static str> {
+            vec!["dependency_mcp"]
+        }
+    }
 
     #[test]
     fn sourced_mcp_layers_keep_winner_and_override_history() {
@@ -465,18 +650,21 @@ mod tests {
             &capability,
             AgentMcpAttachmentSource::Capability,
             "Capability".to_string(),
+            None,
         );
         merge_sourced_mcp_layer(
             &mut effective,
             &harness,
             AgentMcpAttachmentSource::Harness,
             "Generic".to_string(),
+            None,
         );
         merge_sourced_mcp_layer(
             &mut effective,
             &agent,
             AgentMcpAttachmentSource::Agent,
             "Agent".to_string(),
+            None,
         );
 
         let search = effective.get("search").unwrap();
@@ -492,6 +680,83 @@ mod tests {
                 AgentMcpAttachmentSource::Capability,
                 AgentMcpAttachmentSource::Harness
             ]
+        );
+    }
+
+    #[test]
+    fn connected_service_connection_requires_manage_permission_to_revoke() {
+        assert_eq!(
+            project_connection_permissions(
+                AgentMcpAttachmentSource::Agent,
+                McpServerActsAs::Service,
+                false,
+                true,
+                false,
+            ),
+            (AgentMcpAttachmentAction::None, false)
+        );
+        assert_eq!(
+            project_connection_permissions(
+                AgentMcpAttachmentSource::Agent,
+                McpServerActsAs::Service,
+                false,
+                false,
+                false,
+            ),
+            (AgentMcpAttachmentAction::AskAdmin, false)
+        );
+    }
+
+    #[test]
+    fn dependency_contributed_server_keeps_actual_contributor() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(DependencyMcpCapability);
+        registry.register(ParentCapability);
+        let selected = vec![AgentCapabilityConfig::new("parent")];
+        let resolved =
+            everruns_core::capabilities::resolve_capability_configs(&selected, &registry).unwrap();
+
+        let effective = merge_effective_mcp_attachments(
+            &resolved,
+            &registry,
+            &ScopedMcpServers::default(),
+            "Harness".to_string(),
+            &ScopedMcpServers::default(),
+        );
+
+        let attachment = effective.get("dependency-server").unwrap();
+        assert_eq!(attachment.server.url, "https://dependency.example/mcp");
+        assert_eq!(
+            attachment.contributor,
+            Some(AgentMcpAttachmentContributor {
+                id: "dependency_mcp".to_string(),
+                name: "Dependency MCP".to_string(),
+                href: "/capabilities/dependency_mcp".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn capability_connections_are_always_read_only() {
+        assert_eq!(
+            project_connection_permissions(
+                AgentMcpAttachmentSource::Capability,
+                McpServerActsAs::User,
+                false,
+                false,
+                true,
+            ),
+            (AgentMcpAttachmentAction::None, false)
+        );
+        assert_eq!(
+            project_connection_permissions(
+                AgentMcpAttachmentSource::Capability,
+                McpServerActsAs::Service,
+                false,
+                true,
+                true,
+            ),
+            (AgentMcpAttachmentAction::None, false)
         );
     }
 }

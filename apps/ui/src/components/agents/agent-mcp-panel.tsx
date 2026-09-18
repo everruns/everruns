@@ -80,6 +80,7 @@ function McpAttachmentRow({
   const [toolsOpen, setToolsOpen] = useState(false);
   const revoke = useRevokeAgentMcpConnection(agentId);
   const connectHref = connectionHref(agentId, attachment);
+  const isCapability = attachment.source === "capability";
 
   return (
     <Card>
@@ -106,9 +107,9 @@ function McpAttachmentRow({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {attachment.source === "capability" && (
-            <LinkButton href="/capabilities" variant="outline" size="sm">
-              View capability
+          {attachment.contributor && (
+            <LinkButton href={attachment.contributor.href} variant="outline" size="sm">
+              View {attachment.contributor.name}
             </LinkButton>
           )}
           {attachment.editable && (
@@ -146,7 +147,7 @@ function McpAttachmentRow({
         ) : attachment.state === "connection_missing" ? (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">Connection required.</span>
-            {attachment.action === "ask_admin" ? (
+            {isCapability ? null : attachment.action === "ask_admin" ? (
               <Badge variant="outline">Ask an admin</Badge>
             ) : connectHref ? (
               <LinkButton href={connectHref} size="sm">
@@ -158,15 +159,19 @@ function McpAttachmentRow({
         ) : attachment.connected_as ? (
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="success">Connected as {attachment.connected_as}</Badge>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={revoke.isPending}
-              onClick={() => revoke.mutate(attachment.name)}
-            >
-              <Unplug className="size-4" />
-              Revoke
-            </Button>
+            {attachment.can_revoke ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={revoke.isPending}
+                onClick={() => revoke.mutate(attachment.name)}
+              >
+                <Unplug className="size-4" />
+                Revoke
+              </Button>
+            ) : !isCapability && attachment.acts_as === "service" ? (
+              <Badge variant="outline">Ask an admin</Badge>
+            ) : null}
             {revoke.error && (
               <span className="text-sm text-destructive">{errorMessage(revoke.error)}</span>
             )}
@@ -229,6 +234,14 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
   const [customHeaders, setCustomHeaders] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const existingAttachmentNames = useMemo(
+    () =>
+      new Set([
+        ...Object.keys(agent.mcpServers ?? {}),
+        ...(attachments.data ?? []).map((attachment) => attachment.name),
+      ]),
+    [agent.mcpServers, attachments.data],
+  );
 
   const visiblePresets = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -270,6 +283,10 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
   const addPreset = async () => {
     if (!selectedPreset) return;
     setAddError(null);
+    if (existingAttachmentNames.has(selectedPreset)) {
+      setAddError(`An MCP attachment named “${selectedPreset}” already exists.`);
+      return;
+    }
     try {
       await saveAuthoredAttachments({
         ...(agent.mcpServers ?? {}),
@@ -289,6 +306,10 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
     const url = customUrl.trim();
     if (!name || !url) return;
     setAddError(null);
+    if (existingAttachmentNames.has(name)) {
+      setAddError(`An MCP attachment named “${name}” already exists.`);
+      return;
+    }
     try {
       const parsedUrl = new URL(url);
       if (!["http:", "https:"].includes(parsedUrl.protocol)) {
@@ -447,32 +468,39 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
                 {presetsLoading ? (
                   <p className="text-sm text-muted-foreground">Loading presets…</p>
                 ) : visiblePresets.length ? (
-                  visiblePresets.map((preset) => (
-                    <button
-                      type="button"
-                      key={preset.id}
-                      className={`w-full border p-3 text-left ${
-                        selectedPreset === preset.name
-                          ? "border-primary bg-muted"
-                          : "hover:bg-muted/50"
-                      }`}
-                      aria-pressed={selectedPreset === preset.name}
-                      onClick={() => {
-                        setSelectedPreset(preset.name);
-                        setActsAs(preset.auth_mode === "oauth" ? "service" : "none");
-                      }}
-                    >
-                      <span className="block text-sm font-medium">{preset.name}</span>
-                      {preset.description && (
-                        <span className="block text-xs text-muted-foreground">
-                          {preset.description}
+                  visiblePresets.map((preset) => {
+                    const alreadyAttached = existingAttachmentNames.has(preset.name);
+                    return (
+                      <button
+                        type="button"
+                        key={preset.id}
+                        disabled={alreadyAttached}
+                        className={`w-full border p-3 text-left disabled:cursor-not-allowed disabled:opacity-60 ${
+                          selectedPreset === preset.name
+                            ? "border-primary bg-muted"
+                            : "hover:bg-muted/50"
+                        }`}
+                        aria-pressed={selectedPreset === preset.name}
+                        onClick={() => {
+                          setSelectedPreset(preset.name);
+                          setActsAs(preset.auth_mode === "oauth" ? "service" : "none");
+                        }}
+                      >
+                        <span className="flex items-center justify-between gap-2 text-sm font-medium">
+                          {preset.name}
+                          {alreadyAttached && <Badge variant="secondary">Already attached</Badge>}
                         </span>
-                      )}
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        {presetHost(preset.url)} · {presetAuthLabel(preset.auth_mode)}
-                      </span>
-                    </button>
-                  ))
+                        {preset.description && (
+                          <span className="block text-xs text-muted-foreground">
+                            {preset.description}
+                          </span>
+                        )}
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {presetHost(preset.url)} · {presetAuthLabel(preset.auth_mode)}
+                        </span>
+                      </button>
+                    );
+                  })
                 ) : (
                   <p className="text-sm text-muted-foreground">No matching presets.</p>
                 )}

@@ -4763,10 +4763,13 @@ export interface components {
       action: components["schemas"]["AgentMcpAttachmentAction"];
       /** @description Identity whose connection is used when the attachment calls the MCP server. */
       acts_as: components["schemas"]["McpServerActsAs"];
+      /** @description Whether the current caller can revoke the active connection. */
+      can_revoke: boolean;
       /** @description Connected account name, or the preset name when the provider did not supply one. */
       connected_as?: string | null;
       /** @description OAuth provider key used to create or revoke the attachment connection. */
       connection_provider?: string | null;
+      contributor?: null | components["schemas"]["AgentMcpAttachmentContributor"];
       /** @description Whether the attachment is defined directly on the agent and can be removed there. */
       editable: boolean;
       /** @description Header names configured for the endpoint; secret header values are omitted. */
@@ -4797,6 +4800,15 @@ export interface components {
      * @enum {string}
      */
     AgentMcpAttachmentAction: "none" | "connect" | "authorize" | "ask_admin";
+    /** @description Capability that contributed an effective MCP attachment. */
+    AgentMcpAttachmentContributor: {
+      /** @description UI path for the capability detail page. */
+      href: string;
+      /** @description Canonical capability ID. */
+      id: string;
+      /** @description Human-readable capability name. */
+      name: string;
+    };
     /**
      * @description Configuration layer that supplied an effective MCP attachment.
      * @enum {string}
