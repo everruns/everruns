@@ -8,6 +8,10 @@
 //!
 //! Run with: `cargo test -p everruns-server --test mcp_oauth_user_switch_test`
 
+mod test_harness;
+#[path = "mcp_oauth_user_switch_test/tool_cache.rs"]
+mod tool_cache;
+
 use std::sync::Arc;
 use std::time::Duration;
 

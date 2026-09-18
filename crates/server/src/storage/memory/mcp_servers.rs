@@ -2,6 +2,7 @@
 //
 // Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (detail)
 
+use super::super::mcp_tool_cache::*;
 use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
@@ -311,6 +312,125 @@ impl InMemoryDatabase {
             return Ok(Some(server.clone()));
         }
         Ok(None)
+    }
+
+    pub async fn clear_mcp_server_tools(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<McpServerRow>> {
+        let id = McpServerId::from_uuid(id);
+        let mut servers = self.mcp_servers.write();
+        if let Some(server) = servers.get_mut(&id) {
+            if server.org_id != org_id {
+                return Ok(None);
+            }
+            server.cached_tools = serde_json::json!([]);
+            server.tools_cached_at = None;
+            server.updated_at = Self::now();
+            return Ok(Some(server.clone()));
+        }
+        Ok(None)
+    }
+
+    pub async fn get_mcp_service_tool_cache(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+        cache_scope: &str,
+        credential_hash: &str,
+    ) -> Result<Option<McpServiceToolCacheRow>> {
+        Ok(self
+            .mcp_service_tool_caches
+            .read()
+            .get(&(
+                org_id,
+                mcp_server_id,
+                agent_id,
+                cache_scope.to_string(),
+                credential_hash.to_string(),
+            ))
+            .cloned())
+    }
+
+    pub async fn upsert_mcp_service_tool_cache(
+        &self,
+        input: UpsertMcpServiceToolCache,
+    ) -> Result<McpServiceToolCacheRow> {
+        let row = McpServiceToolCacheRow {
+            org_id: input.org_id,
+            mcp_server_id: input.mcp_server_id,
+            agent_id: input.agent_id,
+            cache_scope: input.cache_scope,
+            credential_hash: input.credential_hash,
+            cached_tools: input.cached_tools,
+            ttl_ms: input.ttl_ms,
+            tools_cached_at: Self::now(),
+        };
+        self.mcp_service_tool_caches.write().insert(
+            (
+                row.org_id,
+                row.mcp_server_id,
+                row.agent_id,
+                row.cache_scope.clone(),
+                row.credential_hash.clone(),
+            ),
+            row.clone(),
+        );
+        Ok(row)
+    }
+
+    pub async fn delete_mcp_service_tool_caches(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+    ) -> Result<u64> {
+        let mut caches = self.mcp_service_tool_caches.write();
+        let before = caches.len();
+        caches.retain(|key, _| !(key.0 == org_id && key.1 == mcp_server_id && key.2 == agent_id));
+        Ok((before - caches.len()) as u64)
+    }
+
+    pub async fn delete_mcp_service_tool_cache(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+        cache_scope: &str,
+        credential_hash: &str,
+    ) -> Result<u64> {
+        Ok(self
+            .mcp_service_tool_caches
+            .write()
+            .remove(&(
+                org_id,
+                mcp_server_id,
+                agent_id,
+                cache_scope.to_string(),
+                credential_hash.to_string(),
+            ))
+            .is_some() as u64)
+    }
+
+    pub async fn delete_obsolete_mcp_service_private_tool_caches(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+        current_credential_hash: &str,
+    ) -> Result<u64> {
+        let mut caches = self.mcp_service_tool_caches.write();
+        let before = caches.len();
+        caches.retain(|key, _| {
+            !(key.0 == org_id
+                && key.1 == mcp_server_id
+                && key.2 == agent_id
+                && key.3 == "private"
+                && key.4 != current_credential_hash)
+        });
+        Ok((before - caches.len()) as u64)
     }
 
     /// Test-only: backdate a server's tool-cache timestamp so staleness paths
