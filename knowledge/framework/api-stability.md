@@ -24,7 +24,8 @@ convention so later changes stay deliberate.
   `DriverRegistry` in `crates/everruns/src/providers/`).
 * **Alpha** may break without a major bump. Applies to the classifier
   surface: `crates/everruns/src/classifier.rs` and its `everruns-core`
-  re-exports in `crates/everruns/src/lib.rs`.
+  re-exports in `crates/everruns/src/lib.rs`; and to the model-catalog
+  surface: `crates/everruns/src/models.rs` and its profile re-exports.
 * **Unmarked** public items are provisional: treat as alpha until marked.
 
 ## Marking convention

@@ -21,6 +21,15 @@
   the caller's code. No streaming, because a classification is one round trip. The
   facade names no vendor: `Classifier::new` takes any service the way `Model::new`
   takes any provider, and `Classifier::simulated` keeps tests offline.
+* **A model id was promoted without the catalog behind it.** Applications could
+  select a model and call it through the facade, but not ask a provider which
+  models it serves: discovery, the profile registry, and driver-kind identity
+  sat in `everruns-provider`, so any model picker took a second crate and
+  provider-owned types. `everruns::models` promotes listing and metadata on the
+  same value-first terms as direct model calls, and a `Provider` now carries the
+  driver kind it speaks so profiles resolve for a provider keyed by an
+  application name. See
+  [Framework Application API Boundaries](framework/application-api.md).
 
 * **The agent-facing surface is named for the model, the credential surface for
   the vendor.** The capability is `jev` and its tool is `jev_evaluate`, matching
