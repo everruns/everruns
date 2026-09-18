@@ -9,22 +9,7 @@ answers those in prose, so the call site ends up with a prompt asking for JSON,
 a parser, and a fallback for when the parse fails.
 
 A classifier answers them as numbers instead, and the decision stays in your
-code:
-
-```rust
-use everruns::{Classifier, TypeSafeAI};
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let classifier = Classifier::new("jev-latest", TypeSafeAI::from_env()?);
-let spam = classifier
-    .probability("Is this message spam?", "Claim your prize now!")
-    .await?;
-if spam > 0.9 {
-    println!("quarantined");
-}
-# Ok(())
-# }
-```
+code.
 
 This is the counterpart to [direct model calls](/framework/direct-model-calls/):
 the same shape, a different contract.
@@ -35,6 +20,44 @@ the same shape, a different contract.
 | you get back | text | calibrated numbers |
 | decides the outcome | the model's words | your threshold, in your code |
 | streams | yes | no — one round trip |
+
+## Quick start
+
+```bash
+cargo add everruns --features typesafe
+cargo add tokio --features macros,rt-multi-thread
+export TYPESAFE_API_KEY=...   # a key from typesafe.ai
+```
+
+```rust
+use everruns::{Classifier, TypeSafeAI};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let classifier = Classifier::new("jev-latest", TypeSafeAI::from_env()?);
+
+    let text = "CONGRATULATIONS! You've WON $1,000,000. Click here to claim your prize now!";
+    let spam = classifier.probability("Is this message spam?", text).await?;
+
+    println!("spam: {spam:.2}");
+    if spam > 0.9 {
+        println!("quarantined");
+    }
+    Ok(())
+}
+```
+
+```text
+spam: 0.98
+quarantined
+```
+
+One number, and your own `> 0.9` decides — the model reports how likely, not what
+to do. The same call answers `0.03` for "Standup moved to 10am." and `0.74` for a
+bare "Claim your prize now!"; the middling ones are what a threshold is for.
+
+`--features typesafe` adds `TypeSafeAI` and the `Jev` capability. Without it
+`everruns` names no vendor: `Classifier::new` takes any `ClassifierService`.
 
 ## Three primitives
 
@@ -172,18 +195,6 @@ Implementing `ClassifierService` is also how a different classifier — another
 vendor, or a fine-tuned local model — plugs into the same `Classifier`,
 guardrails included.
 
-## Credentials
-
-`TypeSafeAI::from_env()` reads your application's own
-`TYPESAFE_API_KEY`, and requires the `typesafe` feature:
-
-```toml
-everruns = { version = "0.28", features = ["typesafe"] }
-```
-
-`everruns` itself stays vendor-free without that feature: `Classifier::new`
-takes any `ClassifierService`, exactly as `Model::new` takes any provider.
-
 ## Choosing a model
 
 The model is named up front, the way [`Model::new`](/framework/direct-model-calls/)
@@ -252,7 +263,7 @@ let agent = Agent::builder()
          jev_evaluate and report the numbers rather than judging by eye.",
     )
     .model(Model::new("gpt-5.6-terra", OpenAI::from_env()?))
-    .capability(Jev::new(std::env::var("TYPESAFE_API_KEY")?))
+    .capability(Jev::from_env()?)
     .build()?;
 
 let session = Engine::new().create(agent);

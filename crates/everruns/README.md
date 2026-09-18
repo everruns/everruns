@@ -218,6 +218,7 @@ opt-in.
 | Feature | Adds |
 | --- | --- |
 | `openai` | OpenAI Responses API provider configuration |
+| `typesafe` | TypeSafe classifier provider and the `jev` capability |
 | `bashkit` | Sandboxed shell execution |
 | `web-fetch` | HTTP content fetching |
 | `duckduckgo` | DuckDuckGo search |
