@@ -181,7 +181,11 @@ async fn invoke_webhook(
         .await
         .map_err(internal_error)?
     {
-        if app_id.is_some() {
+        let legacy_alias_matches = match app_id.as_deref() {
+            Some(app_id) => trigger.execution_app_public_id.as_deref() == Some(app_id),
+            None => true,
+        };
+        if !legacy_alias_matches {
             return Err(not_found());
         }
         return invoke_trigger_webhook(
