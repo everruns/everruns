@@ -16,13 +16,13 @@ patchedDependencies:
   starlight-llms-txt@0.11.0: patches/starlight-llms-txt@0.11.0.patch
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
-# Security patches adopted before the maturity window (Dependabot GHSA fixes):
+# Security patches remain pinned to exact versions via the overrides above:
 # form-data 4.0.6 (GHSA-hmw2-7cc7-3qxx), esbuild 0.28.1 (GHSA-g7r4-m6w7-qqqr),
 # fast-uri 3.1.6 (supersedes the 3.1.5 pin for GHSA-v2hh-gcrm-f6hx; four further
 # advisories cover every 3.x through 3.1.5, reached via @astrojs/check >
 # @astrojs/language-server > volar-service-json: GHSA-5jgf-p345-68v8 and
 # GHSA-jqff-g426-hqxp host confusion, GHSA-f65p-4m7j-42xc and GHSA-fph4-wmhf-6fwf
-# SSRF — 3.1.6 is the only patched 3.x release, still inside the 7-day window),
+# SSRF — 3.1.6 is the only patched 3.x release),
 # nanoid 3.3.18 (custom generators loop indefinitely at size 0; reached via
 # postcss). GHSA-2v37-7h3g-55p8
 # was widened to `<3.3.18` on 2026-08-13 after 3.3.17 proved an incomplete fix, so
@@ -30,12 +30,6 @@ minimumReleaseAgeStrict: true
 # the advisory. 3.3.18 is the actual fix. Exact-pinned via overrides.
 # smol-toml 1.8.0 (GHSA-7w5x-hrqm-74c2 — DoS via malformed TOML in every release
 # through 1.7.0, reached via @astrojs/markdown-satteri > @astrojs/internal-helpers)
-# is past the maturity window and needs no exemption; sibling copies of that
-# dependency already resolve to 1.8.0, so the override only unifies the tree.
-minimumReleaseAgeExclude:
-  - form-data
-  - esbuild
-  - fast-uri
-  - nanoid
+# unifies the tree because sibling copies already resolve to 1.8.0.
 allowBuilds:
   esbuild: true
