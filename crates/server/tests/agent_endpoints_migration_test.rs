@@ -52,6 +52,10 @@ async fn pool() -> PgPool {
 
 #[tokio::test]
 async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("everruns_server=error")
+        .with_test_writer()
+        .try_init();
     let pool = pool().await;
     let fixture = seed(&pool, "endpoint-no-app-reads", "published").await;
     let ag_ui_token = "migration-ag-ui-token";
