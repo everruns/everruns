@@ -159,7 +159,7 @@ Three trials per case against `meta/muse-spark-1.3-contributor`, 2026-09-18:
 | Cases passed | 43/63 | **48/63** |
 | Mean tool calls per run | 5.02 | **4.47** |
 
-Only four cases moved, and one carries the difference:
+Five cases moved, and one carries the difference:
 
 | Case | v1 | v2 |
 |---|---|---|
@@ -187,8 +187,11 @@ right commands on both arms and then blow their tool-call budget.
 What it therefore cannot grade: authorization, validation beyond argument
 shape, and anything depending on a command's real output values. A case
 declaring `expect_scheduled_agent` grades persisted state, so the offline
-subject returns an infra error for it and the case scores N/A rather than
-reporting the fake's limits as the model's.
+subject returns an infra error for it: every scorer that would have graded it
+reports N/A rather than reporting the fake's limits as the model's. The runner
+still counts that run as a failure, so an offline total carries three such runs
+per arm at `EVERRUNS_EVAL_TRIALS=3`. It is the same on both arms, so it does not
+move the A/B, but it does mean an offline total is not a score out of 63.
 
 ### One trial is not a measurement
 

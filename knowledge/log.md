@@ -40,8 +40,9 @@
   fork the dataset, the scorers classify a `bash` call by what its script runs:
   `execute` when it invokes an operation the catalog marks as a mutation,
   `query` otherwise. Help probes are excluded, because `everruns agents create
-  --help` names a mutation and performs none - an earlier run without that
-  exclusion reported a two-point v2 deficit that was entirely the scorer's.
+  --help` names a mutation and performs none, and a classifier that cannot tell
+  those apart fails a read-only case for the behaviour the CLI cases reward:
+  reading the help before guessing a flag.
 
 ## 2026-09-17
 
