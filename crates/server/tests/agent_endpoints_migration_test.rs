@@ -157,11 +157,11 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
              organizations, agents, agent_endpoints, agent_triggers,
              harnesses, harness_capabilities, agent_capabilities, agent_versions,
              principals, users, sessions, workspaces, session_participants,
-             events, images, models
+             events, images, memories, models
          TO {role};
          GRANT INSERT ON
              sessions, workspaces, session_participants, events, images,
-             reporting_outbox, audit_logs
+             memories, reporting_outbox, audit_logs
          TO {role};
          GRANT UPDATE ON sessions, agent_endpoints TO {role};"
     );
