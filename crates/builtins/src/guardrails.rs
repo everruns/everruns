@@ -157,7 +157,7 @@ impl Capability for GuardrailsCapability {
                                 "type": "string",
                                 "enum": ["utility_llm", "jev"],
                                 "default": "utility_llm",
-                                "description": "Which system model answers a model-backed check (type=llm_judge or moderation). utility_llm prompts the utility model for a verdict, one request per check. jev asks TypeSafeAI's Jev model a typed question and gets a calibrated probability back; every jev check on a stage rides a single request, and `threshold` decides the verdict. jev requires UTILITY_TYPESAFE_API_KEY on the deployment; without it the check is skipped. Both fail open."
+                                "description": "Which system model answers a model-backed check (type=llm_judge or moderation). utility_llm prompts the utility model for a verdict, one request per check. jev asks TypeSafe's Jev model a typed question and gets a calibrated probability back; every jev check on a stage rides a single request, and `threshold` decides the verdict. jev requires UTILITY_TYPESAFE_API_KEY on the deployment; without it the check is skipped. Both fail open."
                             },
                             "categories": {
                                 "type": "array",

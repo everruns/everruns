@@ -5,11 +5,11 @@
 #[non_exhaustive]
 pub enum Error {
     /// No API key was configured.
-    #[error("TypeSafeAI API key is missing; set {0} or pass one to the client builder")]
+    #[error("TypeSafe API key is missing; set {0} or pass one to the client builder")]
     MissingApiKey(&'static str),
 
     /// The request never reached a verdict: DNS, TLS, connection, or timeout.
-    #[error("TypeSafeAI request failed: {0}")]
+    #[error("TypeSafe request failed: {0}")]
     Transport(String),
 
     /// TypeSafe answered with a non-success status.
@@ -17,7 +17,7 @@ pub enum Error {
     /// The message is taken from the response body's `message`/`error`/`detail`
     /// field when present and is length-capped; raw bodies are never surfaced,
     /// because upstream errors can echo request headers.
-    #[error("TypeSafeAI API error (HTTP {status}){}", .message.as_deref().map(|m| format!(": {m}")).unwrap_or_default())]
+    #[error("TypeSafe API error (HTTP {status}){}", .message.as_deref().map(|m| format!(": {m}")).unwrap_or_default())]
     Api {
         /// HTTP status code.
         status: u16,
@@ -26,11 +26,11 @@ pub enum Error {
     },
 
     /// The response was not the documented shape.
-    #[error("invalid response from TypeSafeAI: {0}")]
+    #[error("invalid response from TypeSafe: {0}")]
     Decode(String),
 
     /// A request was rejected before it was sent.
-    #[error("invalid TypeSafeAI request: {0}")]
+    #[error("invalid TypeSafe request: {0}")]
     InvalidRequest(String),
 
     /// An answer was read under an id that the response does not carry.

@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = if live {
         #[cfg(feature = "openai")]
         {
-            println!("OpenAI gpt-5.6-terra, classifying through TypeSafeAI.\n");
+            println!("OpenAI gpt-5.6-terra, classifying through TypeSafe.\n");
             Model::new("gpt-5.6-terra", everruns::OpenAI::from_env()?)
         }
         #[cfg(not(feature = "openai"))]

@@ -269,10 +269,10 @@ fn sanitize_transport(error: &reqwest::Error) -> String {
         return "request timed out".to_string();
     }
     if error.is_connect() {
-        return "could not connect to the TypeSafeAI API".to_string();
+        return "could not connect to the TypeSafe API".to_string();
     }
     if error.is_decode() {
-        return "could not read the TypeSafeAI response".to_string();
+        return "could not read the TypeSafe response".to_string();
     }
     "request failed".to_string()
 }

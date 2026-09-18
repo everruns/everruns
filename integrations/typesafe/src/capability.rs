@@ -48,7 +48,7 @@ impl Capability for JevCapability {
     }
 
     fn description(&self) -> &str {
-        "Ask TypeSafeAI's System One model typed questions about content and get calibrated \
+        "Ask TypeSafe's System One model typed questions about content and get calibrated \
          probabilities, selections, and graded scores back instead of prose. Use it to verify, \
          rate, route, or classify. EXPERIMENTAL: This capability may change."
     }
@@ -81,7 +81,7 @@ impl Capability for JevCapability {
         vec![CapabilityLocalization::text(
             "uk",
             "[Експериментально] Судження Jev",
-            "Ставте моделі TypeSafeAI System One типізовані запитання про вміст і отримуйте \
+            "Ставте моделі TypeSafe System One типізовані запитання про вміст і отримуйте \
              каліброві ймовірності, вибір варіанта та оцінки за рівнями замість тексту.",
         )]
     }
@@ -97,7 +97,7 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
         {
             Ok(Some(token)) if !token.is_empty() => return Ok(token),
             Ok(_) => {}
-            Err(e) => debug!("TypeSafeAI connection resolver failed: {e}"),
+            Err(e) => debug!("TypeSafe connection resolver failed: {e}"),
         }
     }
 
@@ -118,7 +118,7 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
     }
 
     Err(ToolExecutionResult::tool_error(
-        "TypeSafeAI API key not configured. Connect TypeSafeAI in Settings > Connections, \
+        "TypeSafe API key not configured. Connect TypeSafe in Settings > Connections, \
          or use `secret_store set TYPESAFE_API_KEY <your-key>`. \
          Get a key at https://typesafe.ai",
     ))

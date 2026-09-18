@@ -21,7 +21,7 @@ impl Connector for TypeSafeAIConnector {
     }
 
     fn display_name(&self) -> &str {
-        "TypeSafeAI"
+        "TypeSafe"
     }
 
     fn description(&self) -> &str {
@@ -83,7 +83,7 @@ mod tests {
     fn connector_metadata_matches_the_capability() {
         let connector = TypeSafeAIConnector;
         assert_eq!(connector.provider_id(), crate::TYPESAFE_CONNECTION_PROVIDER);
-        assert_eq!(connector.display_name(), "TypeSafeAI");
+        assert_eq!(connector.display_name(), "TypeSafe");
         assert_eq!(connector.connection_type(), ConnectorType::ApiKey);
     }
 
