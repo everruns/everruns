@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Turbopuffer vector-store backend for Knowledge Indexes.
 //!
 //! Implements [`everruns_platform::vector_store::VectorStore`] against Turbopuffer's

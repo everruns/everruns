@@ -83,7 +83,7 @@ Residual risks:
 
 - Unit/client tests: `cargo test -p everruns-integrations-cursor`
 - Tool integration tests: `tests/tool_integration.rs` uses wiremock plus mock connection resolution.
-- Registration tests: inventory plugin and connection provider checks.
+- Registration tests: published capability and connector plugin consts.
 - Live API tests: `tests/live_api_test.rs`, gated by `cursor-live-tests`, fail closed if `CURSOR_API_KEY` is missing.
 
 Live test command:

@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Sandboxed Lua execution and code-mode integration for Everruns agents.
 //!
 //! Scripts run in a fresh vendored Lua 5.4 VM with bounded memory,

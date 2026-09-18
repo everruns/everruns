@@ -42,3 +42,6 @@ everruns-provider = { path = "../../provider", version = "0.28.0" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 futures.workspace = true
 wiremock = "0.6"
+
+[lints]
+workspace = true

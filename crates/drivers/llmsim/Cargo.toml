@@ -35,3 +35,6 @@ llmsim = { version = "0.5.1", default-features = false }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
+
+[lints]
+workspace = true

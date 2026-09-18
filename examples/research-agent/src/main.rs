@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Run from the repository checkout; see README.md for credentials and scenarios.
 use everruns_example_demo as demo;
 

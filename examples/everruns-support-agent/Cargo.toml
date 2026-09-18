@@ -10,3 +10,6 @@ everruns = { path = "../../crates/everruns" }
 everruns-example-demo = { path = "../demo-support" }
 everruns-anthropic = { path = "../../crates/drivers/anthropic" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

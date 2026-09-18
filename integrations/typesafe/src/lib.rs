@@ -47,6 +47,8 @@ mod framework;
 
 pub use capability::JevCapability;
 #[cfg(feature = "hosted")]
+pub use capability::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
+#[cfg(feature = "hosted")]
 pub use connection::TypeSafeConnector;
 pub use evaluate::EvaluateInput;
 pub use framework::Jev;

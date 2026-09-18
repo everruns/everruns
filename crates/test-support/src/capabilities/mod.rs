@@ -20,7 +20,8 @@ pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
     AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,
     AwsListIamUsersTool, AwsListRdsDatabasesTool, AwsListS3BucketsTool, AwsListSecurityGroupsTool,
-    AwsStopEc2InstanceTool, FAKE_AWS_CAPABILITY_ID, FakeAwsCapability,
+    AwsStopEc2InstanceTool, CONNECTOR_PLUGINS as FAKE_AWS_CONNECTOR_PLUGINS,
+    FAKE_AWS_CAPABILITY_ID, FakeAwsCapability, FakeAwsConnector,
 };
 pub use fake_crm::{
     CrmAddInteractionTool, CrmCreateCustomerTool, CrmCreateTicketTool, CrmGetCustomerTool,

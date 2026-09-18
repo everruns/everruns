@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // GPT-5.2 vs GPT-5.4 comparison benchmark.
 //
 // Runs identical prompts against both models and compares latency, token usage,

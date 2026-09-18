@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Experimental Docker container tools for Everruns agents.
 //!
 //! This capability provides tools for running and interacting with a Docker container
@@ -44,14 +45,12 @@ use tracing::{debug, error, info, warn};
 // Integration Plugin Registration
 // ============================================================================
 
-inventory::submit! {
-    IntegrationPlugin {
-        experimental_only: true,
-        feature_flag: Some("docker_capability"),
-        factory: || Box::new(DockerContainerCapability),
-    }
-}
-
+/// Capability plugins this crate contributes to a hosted catalog.
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    experimental_only: true,
+    feature_flag: Some("docker_capability"),
+    factory: || Box::new(DockerContainerCapability),
+}];
 // ============================================================================
 // Constants
 // ============================================================================

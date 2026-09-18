@@ -32,21 +32,18 @@ use tools::{
     DenoReadFileTool, DenoWriteFileTool,
 };
 
-inventory::submit! {
-    IntegrationPlugin {
-        experimental_only: false,
-        feature_flag: None,
-        factory: || Box::new(DenoCapability),
-    }
-}
+/// Capability plugins this crate contributes to a hosted catalog.
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    experimental_only: false,
+    feature_flag: None,
+    factory: || Box::new(DenoCapability),
+}];
 
-inventory::submit! {
-    ConnectorPlugin {
-        experimental_only: true,
-        factory: || Box::new(DenoConnector),
-    }
-}
-
+/// Connector plugins this crate contributes to a hosted catalog.
+pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
+    experimental_only: true,
+    factory: || Box::new(DenoConnector),
+}];
 const DENO_CONSOLE_API_BASE: &str = "https://console.deno.com";
 const DENO_SANDBOX_BASE_DOMAIN: &str = "sandbox-api.deno.net";
 const DENO_SANDBOX_SECRET_PREFIX: &str = "deno_sandbox:";

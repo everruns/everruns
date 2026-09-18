@@ -1,18 +1,18 @@
-//! The capability and its connector register through inventory.
+//! The capability and its connector are published as plugin consts and named
+//! by `everruns-integrations-catalog`.
 
 #![cfg(feature = "hosted")]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
-use everruns_platform::connector::ConnectorPlugin;
 
-// Force the linker to include the integration crate's inventory submissions.
-use everruns_integrations_typesafe as _;
+use everruns_integrations_typesafe::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
-    registry.register_inventory_plugins(|plugin| {
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         (!plugin.experimental_only || grade.experimental_features_enabled())
             && plugin
                 .feature_flag
@@ -22,9 +22,10 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 fn jev_plugin() -> &'static IntegrationPlugin {
-    inventory::iter::<IntegrationPlugin>()
+    CAPABILITY_PLUGINS
+        .iter()
         .find(|plugin| (plugin.factory)().id() == "jev")
-        .expect("Jev IntegrationPlugin should be submitted via inventory")
+        .expect("Jev IntegrationPlugin should be published in CAPABILITY_PLUGINS")
 }
 
 #[test]
@@ -51,10 +52,11 @@ fn capability_metadata_is_stable() {
 }
 
 #[test]
-fn connector_is_submitted_with_an_api_key_form() {
-    let plugin = inventory::iter::<ConnectorPlugin>()
+fn connector_is_published_with_an_api_key_form() {
+    let plugin = CONNECTOR_PLUGINS
+        .iter()
         .find(|plugin| (plugin.factory)().provider_id() == "typesafe")
-        .expect("TypeSafe ConnectorPlugin should be submitted via inventory");
+        .expect("TypeSafe ConnectorPlugin should be published in CONNECTOR_PLUGINS");
     assert!(plugin.experimental_only);
     let connector = (plugin.factory)();
     let schema = connector.form_schema().expect("form schema");
