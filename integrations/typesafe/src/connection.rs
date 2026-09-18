@@ -9,19 +9,19 @@ use everruns_platform::connector::{
     Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 
-use crate::client::{Error, Evaluation, Question, RetryPolicy, TypeSafeClient};
+use crate::client::{Error, Evaluation, Question, RetryPolicy, TypeSafeAIClient};
 
 /// Connector catalog entry for TypeSafe.
-pub struct TypeSafeConnector;
+pub struct TypeSafeAIConnector;
 
 #[async_trait]
-impl Connector for TypeSafeConnector {
+impl Connector for TypeSafeAIConnector {
     fn provider_id(&self) -> &str {
         crate::TYPESAFE_CONNECTION_PROVIDER
     }
 
     fn display_name(&self) -> &str {
-        "TypeSafe"
+        "TypeSafeAI"
     }
 
     fn description(&self) -> &str {
@@ -53,7 +53,7 @@ impl Connector for TypeSafeConnector {
 
     async fn validate(&self, credential: &str) -> Result<ConnectorValidation, String> {
         // One noul over a two-word state: the smallest request the API accepts.
-        let client = TypeSafeClient::builder(credential)
+        let client = TypeSafeAIClient::builder(credential)
             .retry(RetryPolicy::none())
             .build();
         let probe = Evaluation::new("connection check")
@@ -81,15 +81,15 @@ mod tests {
 
     #[test]
     fn connector_metadata_matches_the_capability() {
-        let connector = TypeSafeConnector;
+        let connector = TypeSafeAIConnector;
         assert_eq!(connector.provider_id(), crate::TYPESAFE_CONNECTION_PROVIDER);
-        assert_eq!(connector.display_name(), "TypeSafe");
+        assert_eq!(connector.display_name(), "TypeSafeAI");
         assert_eq!(connector.connection_type(), ConnectorType::ApiKey);
     }
 
     #[test]
     fn form_asks_for_one_required_secret_field() {
-        let schema = TypeSafeConnector.form_schema().expect("form schema");
+        let schema = TypeSafeAIConnector.form_schema().expect("form schema");
         assert_eq!(schema.fields.len(), 1);
         assert_eq!(schema.fields[0].name, "api_key");
         assert!(schema.fields[0].required);

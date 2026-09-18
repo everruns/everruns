@@ -2,7 +2,7 @@
 //!
 //! One crate covers the whole surface: the vendor [`client`], the agent-facing
 //! `jev` capability, the connector an operator configures, and the
-//! [`TypeSafe`] the platform wires in to back guardrail checks. It
+//! [`TypeSafeAI`] the platform wires in to back guardrail checks. It
 //! brings typed classification — a calibrated number rather than prose — to the
 //! [Everruns](https://everruns.com) ecosystem.
 //!
@@ -49,18 +49,18 @@ pub use capability::JevCapability;
 #[cfg(feature = "hosted")]
 pub use capability::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 #[cfg(feature = "hosted")]
-pub use connection::TypeSafeConnector;
+pub use connection::TypeSafeAIConnector;
 pub use evaluate::EvaluateInput;
 pub use framework::Jev;
 
 /// The classifier provider the platform wires into its host composition, and
 /// the deployment credential that enables it.
 pub use classifier::{
-    CLASSIFIER_MODEL, SystemClassifierConfig, TypeSafe, UTILITY_TYPESAFE_API_KEY_ENV,
+    CLASSIFIER_MODEL, SystemClassifierConfig, TypeSafeAI, UTILITY_TYPESAFE_API_KEY_ENV,
 };
 /// The vendor client this capability runs on, re-exported at the crate root so
 /// callers reach it without naming the module.
-pub use client::{Error, Evaluation, Question, Result, RetryPolicy, TypeSafeClient};
+pub use client::{Error, Evaluation, Question, Result, RetryPolicy, TypeSafeAIClient};
 
 /// Capability id.
 ///

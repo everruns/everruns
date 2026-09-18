@@ -12,10 +12,10 @@ A classifier answers them as numbers instead, and the decision stays in your
 code:
 
 ```rust
-use everruns::{Classifier, TypeSafe};
+use everruns::{Classifier, TypeSafeAI};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let classifier = Classifier::new(TypeSafe::from_env()?);
+let classifier = Classifier::new(TypeSafeAI::from_env()?);
 let spam = classifier
     .probability("Is this message spam?", "Claim your prize now!")
     .await?;
@@ -163,7 +163,7 @@ guardrails included.
 
 ## Credentials
 
-`TypeSafe::from_env()` reads your application's own
+`TypeSafeAI::from_env()` reads your application's own
 `TYPESAFE_API_KEY`, and requires the `typesafe` feature:
 
 ```toml
@@ -188,9 +188,9 @@ let classifier = classifier.model("jev-latest");
 ```
 
 Ids are the provider's own, so they are spelled the way the vendor spells them.
-`jev-latest` is TypeSafe's alias for the current Jev and is what `TypeSafe` asks
-for when you name nothing; an exact id like `jev-1.13.0` pins a version so a
-vendor update cannot move your thresholds under you. Bare `jev` is not an id the
+`jev-latest` is TypeSafe's alias for the current Jev and is what `TypeSafeAI`
+asks for when you name nothing; an exact id like `jev-1.13.0` pins a version so
+a vendor update cannot move your thresholds under you. Bare `jev` is not an id the
 API knows — nothing here rewrites what you pass.
 
 A single call can override the model again with the same method on the builder.
@@ -262,7 +262,7 @@ from the state you pass it, and is not a way to classify without a provider. It
 exists so tests and examples can assert on the code around a classification
 without a network call or an API key.
 
-Real work always goes through a classifier service — `TypeSafe` above, or
+Real work always goes through a classifier service — `TypeSafeAI` above, or
 your own `ClassifierService`.
 
 ```rust

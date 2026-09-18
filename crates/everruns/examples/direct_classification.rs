@@ -34,8 +34,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let classifier = if live {
         #[cfg(feature = "typesafe")]
         {
-            println!("TypeSafe System One over HTTP.\n");
-            Classifier::new(everruns::TypeSafe::from_env()?)
+            println!("TypeSafeAI System One over HTTP.\n");
+            Classifier::new(everruns::TypeSafeAI::from_env()?)
         }
         #[cfg(not(feature = "typesafe"))]
         {

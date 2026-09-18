@@ -105,7 +105,7 @@ pub use everruns_integrations_filesystem::FileSystem;
 /// The TypeSafe classifier provider, for [`Classifier::new`], and the
 /// capability that hands the same tool to an agent.
 #[cfg(feature = "typesafe")]
-pub use everruns_integrations_typesafe::{Jev, TypeSafe};
+pub use everruns_integrations_typesafe::{Jev, TypeSafeAI};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations_web_fetch::WebFetch;
 pub use history::{

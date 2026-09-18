@@ -33,7 +33,7 @@ to be inspected rather than obeyed.
 
 Credentials resolve from the user's `typesafe` connection first, then the
 `TYPESAFE_API_KEY` session secret — the same contract as `brave_search`. The
-Framework adapter (`TypeSafe::new`) instead keeps an application-owned
+Framework adapter (`TypeSafeAI::new`) instead keeps an application-owned
 credential inside the client, where it never reaches capability config or
 metadata.
 

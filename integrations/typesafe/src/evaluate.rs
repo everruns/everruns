@@ -4,10 +4,10 @@ use everruns_capability::definition::schemars::{self, JsonSchema};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::client::{Answer, Evaluation, Question, TypeSafeClient};
+use crate::client::{Answer, Evaluation, Question, TypeSafeAIClient};
 
 pub(crate) const TOOL_NAME: &str = "jev_evaluate";
-pub(crate) const TOOL_DESCRIPTION: &str = "Ask TypeSafe's System One model typed questions about \
+pub(crate) const TOOL_DESCRIPTION: &str = "Ask TypeSafeAI's System One model typed questions about \
     some content and get calibrated numbers back: a probability for a yes/no question (noul), a \
     selected option with its full distribution (choice), or a position along ordered levels \
     (score). Use it to verify or rate something instead of judging it yourself — for example \
@@ -62,7 +62,7 @@ pub struct InputQuestion {
 
 impl JsonSchema for EvaluateInput {
     fn schema_name() -> std::borrow::Cow<'static, str> {
-        "TypeSafeEvaluateInput".into()
+        "JevEvaluateInput".into()
     }
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schema().try_into().expect("evaluate schema is an object")
@@ -220,7 +220,7 @@ pub(crate) fn build_evaluation(input: EvaluateInput) -> Result<Evaluation, Strin
 
 /// Run one evaluation and render the answers as decision-ready JSON.
 pub(crate) async fn evaluate(
-    client: &TypeSafeClient,
+    client: &TypeSafeAIClient,
     input: EvaluateInput,
 ) -> Result<Value, String> {
     let evaluation = build_evaluation(input)?;

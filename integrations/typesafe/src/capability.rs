@@ -8,7 +8,7 @@ use everruns_provider::tool_types::ToolHints;
 use serde_json::Value;
 use tracing::debug;
 
-use crate::client::TypeSafeClient;
+use crate::client::TypeSafeAIClient;
 
 use crate::{CAPABILITY_ID, TYPESAFE_API_KEY_SECRET, TYPESAFE_CONNECTION_PROVIDER, evaluate};
 
@@ -26,7 +26,7 @@ pub const CAPABILITY_PLUGINS: &[everruns_core::capabilities::IntegrationPlugin] 
 pub const CONNECTOR_PLUGINS: &[everruns_platform::connector::ConnectorPlugin] =
     &[everruns_platform::connector::ConnectorPlugin {
         experimental_only: true,
-        factory: || Box::new(crate::TypeSafeConnector),
+        factory: || Box::new(crate::TypeSafeAIConnector),
     }];
 
 const SYSTEM_PROMPT_ADDITION: &str = "`jev_evaluate` answers typed questions about content \
@@ -48,7 +48,7 @@ impl Capability for JevCapability {
     }
 
     fn description(&self) -> &str {
-        "Ask TypeSafe's System One model typed questions about content and get calibrated \
+        "Ask TypeSafeAI's System One model typed questions about content and get calibrated \
          probabilities, selections, and graded scores back instead of prose. Use it to verify, \
          rate, route, or classify. EXPERIMENTAL: This capability may change."
     }
@@ -81,7 +81,7 @@ impl Capability for JevCapability {
         vec![CapabilityLocalization::text(
             "uk",
             "[Експериментально] Судження Jev",
-            "Ставте моделі TypeSafe System One типізовані запитання про вміст і отримуйте \
+            "Ставте моделі TypeSafeAI System One типізовані запитання про вміст і отримуйте \
              каліброві ймовірності, вибір варіанта та оцінки за рівнями замість тексту.",
         )]
     }
@@ -97,7 +97,7 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
         {
             Ok(Some(token)) if !token.is_empty() => return Ok(token),
             Ok(_) => {}
-            Err(e) => debug!("TypeSafe connection resolver failed: {e}"),
+            Err(e) => debug!("TypeSafeAI connection resolver failed: {e}"),
         }
     }
 
@@ -118,7 +118,7 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
     }
 
     Err(ToolExecutionResult::tool_error(
-        "TypeSafe API key not configured. Connect TypeSafe in Settings > Connections, \
+        "TypeSafeAI API key not configured. Connect TypeSafeAI in Settings > Connections, \
          or use `secret_store set TYPESAFE_API_KEY <your-key>`. \
          Get a key at https://typesafe.ai",
     ))
@@ -172,7 +172,7 @@ impl Tool for JevEvaluateTool {
             Ok(key) => key,
             Err(error) => return error,
         };
-        match evaluate::evaluate(&TypeSafeClient::new(api_key), input).await {
+        match evaluate::evaluate(&TypeSafeAIClient::new(api_key), input).await {
             Ok(result) => ToolExecutionResult::success(result),
             Err(error) => ToolExecutionResult::tool_error(error),
         }

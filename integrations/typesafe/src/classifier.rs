@@ -12,7 +12,7 @@
 use std::collections::BTreeMap;
 
 use crate::client::{
-    Answer, Evaluation, Question, RetryPolicy, TypeSafeClient, question::DEFAULT_MODEL,
+    Answer, Evaluation, Question, RetryPolicy, TypeSafeAIClient, question::DEFAULT_MODEL,
 };
 use async_trait::async_trait;
 use everruns_core::{
@@ -51,29 +51,29 @@ pub const CLASSIFIER_MODEL: &str = DEFAULT_MODEL;
 /// the `jev` guardrail engine stay named for the model, because a model is what
 /// answers them.
 #[derive(Clone)]
-pub struct TypeSafe {
-    client: TypeSafeClient,
+pub struct TypeSafeAI {
+    client: TypeSafeAIClient,
     model: Option<String>,
 }
 
-impl std::fmt::Debug for TypeSafe {
+impl std::fmt::Debug for TypeSafeAI {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TypeSafe")
+        f.debug_struct("TypeSafeAI")
             .field("model", &self.model.as_deref().unwrap_or(CLASSIFIER_MODEL))
             .field("configured", &true)
             .finish()
     }
 }
 
-impl TypeSafe {
+impl TypeSafeAI {
     /// Construct the service from the application's own `TYPESAFE_API_KEY`.
     ///
     /// This is the embedder's path — an application holding its own key, the
-    /// same variable [`TypeSafeClient::from_env`] reads. The platform's
+    /// same variable [`TypeSafeAIClient::from_env`] reads. The platform's
     /// deployment credential is a different variable and a different account:
     /// see [`SystemClassifierConfig::from_env`].
     pub fn from_env() -> crate::client::Result<Self> {
-        Ok(Self::with_client(TypeSafeClient::from_env()?))
+        Ok(Self::with_client(TypeSafeAIClient::from_env()?))
     }
 
     /// Construct the fixed-model service with a deployment-owned key.
@@ -83,11 +83,11 @@ impl TypeSafe {
         // TM-LLM-021 gives the utility LLM key. The agent-facing `jev`
         // capability is a separate surface with its own user-scoped connection,
         // so an agent can neither read nor spend this key.
-        Self::with_client(TypeSafeClient::new(api_key.into()))
+        Self::with_client(TypeSafeAIClient::new(api_key.into()))
     }
 
     /// Supply a client, including a trusted custom endpoint for tests.
-    pub fn with_client(client: TypeSafeClient) -> Self {
+    pub fn with_client(client: TypeSafeAIClient) -> Self {
         Self {
             client,
             model: None,
@@ -109,7 +109,7 @@ impl TypeSafe {
     /// round trip there costs the user more than a fail-open costs the policy.
     pub fn without_retries(api_key: impl Into<String>) -> Self {
         Self::with_client(
-            TypeSafeClient::builder(api_key.into())
+            TypeSafeAIClient::builder(api_key.into())
                 .retry(RetryPolicy::none())
                 .build(),
         )
@@ -117,7 +117,7 @@ impl TypeSafe {
 }
 
 #[async_trait]
-impl ClassifierService for TypeSafe {
+impl ClassifierService for TypeSafeAI {
     fn is_configured(&self) -> bool {
         true
     }
@@ -157,7 +157,7 @@ impl ClassifierService for TypeSafe {
     }
 
     fn name(&self) -> &'static str {
-        "TypeSafe"
+        "TypeSafeAI"
     }
 }
 
@@ -231,7 +231,7 @@ pub enum SystemClassifierConfig {
     /// Classification calls are unavailable; dependent checks fail open.
     Disabled,
     /// Enable the Jev classifier with a system-owned TypeSafe API key.
-    TypeSafe {
+    TypeSafeAI {
         /// Deployment-owned credential.
         api_key: String,
     },
@@ -241,8 +241,8 @@ impl std::fmt::Debug for SystemClassifierConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Disabled => f.debug_struct("SystemClassifierConfig::Disabled").finish(),
-            Self::TypeSafe { .. } => f
-                .debug_struct("SystemClassifierConfig::TypeSafe")
+            Self::TypeSafeAI { .. } => f
+                .debug_struct("SystemClassifierConfig::TypeSafeAI")
                 .field("api_key", &"<redacted>")
                 .finish(),
         }
@@ -256,7 +256,7 @@ impl SystemClassifierConfig {
             .ok()
             .filter(|value| !value.trim().is_empty())
         {
-            Some(api_key) => Self::TypeSafe { api_key },
+            Some(api_key) => Self::TypeSafeAI { api_key },
             None => Self::Disabled,
         }
     }
@@ -267,7 +267,7 @@ impl SystemClassifierConfig {
             Self::Disabled => Arc::new(DisabledClassifierService),
             // Guardrails are the primary caller and sit on latency-critical
             // seams, so the deployment client does not retry.
-            Self::TypeSafe { api_key } => Arc::new(TypeSafe::without_retries(api_key)),
+            Self::TypeSafeAI { api_key } => Arc::new(TypeSafeAI::without_retries(api_key)),
         }
     }
 }
@@ -280,7 +280,7 @@ mod tests {
     fn system_config_debug_redacts_api_key() {
         let debug = format!(
             "{:?}",
-            SystemClassifierConfig::TypeSafe {
+            SystemClassifierConfig::TypeSafeAI {
                 api_key: "ts-secret-value".to_string(),
             }
         );
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn service_debug_never_renders_the_key() {
-        let service = TypeSafe::new("ts-secret-value");
+        let service = TypeSafeAI::new("ts-secret-value");
         assert!(!format!("{service:?}").contains("ts-secret-value"));
     }
 
@@ -373,7 +373,7 @@ mod tests {
 
     #[tokio::test]
     async fn empty_requests_are_rejected_before_any_round_trip() {
-        let service = TypeSafe::new("unused");
+        let service = TypeSafeAI::new("unused");
         let error = service
             .evaluate(ClassificationRequest::new("state"))
             .await
@@ -390,7 +390,7 @@ mod tests {
                 .is_configured()
         );
         assert!(
-            SystemClassifierConfig::TypeSafe {
+            SystemClassifierConfig::TypeSafeAI {
                 api_key: "k".to_string()
             }
             .into_service()

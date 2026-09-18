@@ -9,7 +9,7 @@ use crate::client::{Error, Evaluation, Judgment, Result};
 
 /// Default API root. Override for a proxy or a test double.
 pub const DEFAULT_BASE_URL: &str = "https://api.typesafe.ai";
-/// Environment variable read by [`TypeSafeClient::from_env`].
+/// Environment variable read by [`TypeSafeAIClient::from_env`].
 pub const API_KEY_ENV: &str = "TYPESAFE_API_KEY";
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -53,25 +53,25 @@ impl RetryPolicy {
 ///
 /// Cloning shares the underlying connection pool.
 #[derive(Clone)]
-pub struct TypeSafeClient {
+pub struct TypeSafeAIClient {
     http: reqwest::Client,
     api_key: String,
     endpoint: String,
     retry: RetryPolicy,
 }
 
-impl std::fmt::Debug for TypeSafeClient {
+impl std::fmt::Debug for TypeSafeAIClient {
     /// Never renders the API key: clients end up inside capability and agent
     /// debug output.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TypeSafeClient")
+        f.debug_struct("TypeSafeAIClient")
             .field("endpoint", &self.endpoint)
             .field("retry", &self.retry)
             .finish_non_exhaustive()
     }
 }
 
-impl TypeSafeClient {
+impl TypeSafeAIClient {
     /// A client with default endpoint, timeout, and retry policy.
     pub fn new(api_key: impl Into<String>) -> Self {
         Self::builder(api_key).build()
@@ -87,8 +87,8 @@ impl TypeSafeClient {
     }
 
     /// Configure endpoint, timeout, retries, or a pre-built HTTP client.
-    pub fn builder(api_key: impl Into<String>) -> TypeSafeClientBuilder {
-        TypeSafeClientBuilder {
+    pub fn builder(api_key: impl Into<String>) -> TypeSafeAIClientBuilder {
+        TypeSafeAIClientBuilder {
             api_key: api_key.into(),
             base_url: DEFAULT_BASE_URL.to_string(),
             timeout: DEFAULT_TIMEOUT,
@@ -101,9 +101,9 @@ impl TypeSafeClient {
     ///
     /// ```no_run
     /// # async fn run() -> Result<(), everruns_integrations_typesafe::Error> {
-    /// use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
+    /// use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeAIClient};
     ///
-    /// let client = TypeSafeClient::from_env()?;
+    /// let client = TypeSafeAIClient::from_env()?;
     /// let judgment = client
     ///     .evaluate(
     ///         Evaluation::new("Why did the chicken cross the road? To get to the other side.")
@@ -176,8 +176,8 @@ impl TypeSafeClient {
     }
 }
 
-/// Builder for [`TypeSafeClient`].
-pub struct TypeSafeClientBuilder {
+/// Builder for [`TypeSafeAIClient`].
+pub struct TypeSafeAIClientBuilder {
     api_key: String,
     base_url: String,
     timeout: Duration,
@@ -185,7 +185,7 @@ pub struct TypeSafeClientBuilder {
     http: Option<reqwest::Client>,
 }
 
-impl TypeSafeClientBuilder {
+impl TypeSafeAIClientBuilder {
     /// Point at a different API root, such as a mock server or a proxy.
     pub fn base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
@@ -211,14 +211,14 @@ impl TypeSafeClientBuilder {
     }
 
     /// Build the client.
-    pub fn build(self) -> TypeSafeClient {
+    pub fn build(self) -> TypeSafeAIClient {
         let http = self.http.unwrap_or_else(|| {
             reqwest::Client::builder()
                 .timeout(self.timeout)
                 .build()
                 .unwrap_or_default()
         });
-        TypeSafeClient {
+        TypeSafeAIClient {
             http,
             api_key: self.api_key,
             endpoint: format!("{}/v1/systemone", self.base_url.trim_end_matches('/')),
@@ -269,10 +269,10 @@ fn sanitize_transport(error: &reqwest::Error) -> String {
         return "request timed out".to_string();
     }
     if error.is_connect() {
-        return "could not connect to the TypeSafe API".to_string();
+        return "could not connect to the TypeSafeAI API".to_string();
     }
     if error.is_decode() {
-        return "could not read the TypeSafe response".to_string();
+        return "could not read the TypeSafeAI response".to_string();
     }
     "request failed".to_string()
 }
@@ -283,13 +283,13 @@ mod tests {
 
     #[test]
     fn debug_never_renders_the_api_key() {
-        let client = TypeSafeClient::new("sentinel-typesafe-credential");
+        let client = TypeSafeAIClient::new("sentinel-typesafe-credential");
         assert!(!format!("{client:?}").contains("sentinel-typesafe-credential"));
     }
 
     #[test]
     fn endpoint_tolerates_a_trailing_slash_on_the_base_url() {
-        let client = TypeSafeClient::builder("k")
+        let client = TypeSafeAIClient::builder("k")
             .base_url("http://host/")
             .build();
         assert_eq!(client.endpoint, "http://host/v1/systemone");

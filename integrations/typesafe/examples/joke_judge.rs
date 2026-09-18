@@ -7,7 +7,7 @@
 //! The shape to notice: every judgment about one joke goes in a single request,
 //! and the code — not the model — decides what the numbers mean.
 
-use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
+use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeAIClient};
 
 const JOKES: &[&str] = &[
     "I told my wife she was drawing her eyebrows too high. She looked surprised.",
@@ -17,7 +17,7 @@ const JOKES: &[&str] = &[
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = TypeSafeClient::from_env()?;
+    let client = TypeSafeAIClient::from_env()?;
 
     for joke in JOKES {
         let judgment = client

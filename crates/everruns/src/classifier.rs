@@ -127,7 +127,7 @@ impl Classifier {
     /// Reach a classifier through `service`.
     ///
     /// The concrete service comes from an integration — for TypeSafe's System
-    /// One, `everruns_integrations_typesafe::TypeSafe` — the
+    /// One, `everruns_integrations_typesafe::TypeSafeAI` — the
     /// same way a [`Model`](crate::Model) takes its provider from a driver.
     pub fn new(service: impl ClassifierService + 'static) -> Self {
         Self {

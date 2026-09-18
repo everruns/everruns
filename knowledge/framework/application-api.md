@@ -247,7 +247,7 @@ one round trip.
 The concrete service is supplied, never assumed: `Classifier::new` takes any
 `ClassifierService`, exactly as `Model::new` takes any `Provider`, so the facade
 depends on no vendor. `Classifier::simulated` keeps tests and examples offline, the
-role `Model::simulated` plays for completions. `everruns` re-exports the `TypeSafe`
+role `Model::simulated` plays for completions. `everruns` re-exports the `TypeSafeAI`
 provider behind its `typesafe` feature, the way it re-exports `OpenAI`, so one
 import reaches both halves without the vendor entering the default build.
 

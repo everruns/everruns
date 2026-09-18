@@ -111,9 +111,9 @@ And when the answer is a number rather than prose — *does this hold, how sever
 is it, which of these* — ask for a judgment instead of parsing one out of text:
 
 ```rust
-use everruns::{Classifier, TypeSafe};
+use everruns::{Classifier, TypeSafeAI};
 
-let judge = Classifier::new(TypeSafe::from_env()?);
+let judge = Classifier::new(TypeSafeAI::from_env()?);
 let spam = judge.probability("Is this message spam?", text).await?;
 ```
 
