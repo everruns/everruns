@@ -411,6 +411,28 @@ impl fmt::Debug for Classification {
 pub struct Answers(ClassificationOutcome);
 
 impl Answers {
+    /// The model that answered, as the service resolved it.
+    ///
+    /// An alias resolves to a version here: ask for `jev-latest` and this
+    /// reports the `jev-*` release that ran, which is the id to pin once a
+    /// threshold is calibrated against it.
+    ///
+    /// ```
+    /// # use everruns::Classifier;
+    /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let answers = Classifier::simulated(0.9)
+    ///     .about("Two hours on hold.")
+    ///     .noul("urgent", "Does this convey urgency?")
+    ///     .send()
+    ///     .await?;
+    /// println!("answered by {}", answers.model());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn model(&self) -> &str {
+        &self.0.model
+    }
+
     /// The probability of yes for a `noul` question.
     ///
     /// Near 0.5 means yes and no are near-equally likely — not "medium".
@@ -494,7 +516,12 @@ impl ClassifierService for SimulatedClassifierService {
         &self,
         request: ClassificationRequest,
     ) -> everruns_provider::error::Result<ClassificationOutcome> {
-        let mut outcome = ClassificationOutcome::default();
+        // Names itself rather than a vendor model: `Answers::model` must never
+        // let a stubbed answer pass for one a real classifier gave.
+        let mut outcome = ClassificationOutcome {
+            model: "simulated".to_string(),
+            ..ClassificationOutcome::default()
+        };
         for (id, question) in &request.questions {
             let answer = match question {
                 ClassificationQuestion::Noul { .. } => ClassificationAnswer::Noul {
@@ -676,5 +703,21 @@ mod model_selection_tests {
                 None,
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn the_answer_reports_the_model_that_gave_it() {
+        // The vendor resolves an alias to a version, so a caller reads back what
+        // answered rather than what it asked for — the id to pin once a
+        // threshold is calibrated. The stub names itself, so a simulated answer
+        // can never pass for a real classifier's.
+        let answers = Classifier::simulated(0.5)
+            .about("x")
+            .noul("q", "Does it hold?")
+            .send()
+            .await
+            .expect("simulated answers");
+
+        assert_eq!(answers.model(), "simulated");
     }
 }

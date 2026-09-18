@@ -103,11 +103,18 @@ The crate is published, so the `everruns` facade re-exports `TypeSafe` and
 `Jev` behind its `typesafe` feature: an embedding application reaches both
 halves through one import, exactly as it does for OpenAI.
 
-**Named by layer.** The vendor has three, and each is named where it belongs:
-TypeSafe is the company and the account that issues the key, System One is the
-API, and Jev is the model. So the provider type is `TypeSafe`, mirroring
-`OpenAI` — transport and credentials, named for the account — and the model is a
-string id (`jev-latest`, `jev-1.13.0`), the way `gpt-5.6-terra` is. Jev gets no
+**Named by layer.** The vendor's own concept model has three
+([docs.typesafe.ai](https://docs.typesafe.ai/concepts/system-one)): TypeSafe is
+the company and the account that issues the key; **System One is a class of
+model**, not a product — models built to return typed decisions and calibrated
+probabilities rather than text, the way "LLM" names a class; and Jev is
+TypeSafe's flagship model and the first System One model. `ClassifierService` is
+this repo's vendor-neutral name for that class, which is why its primitives are
+System One's three and why core can name no vendor.
+
+So the provider type is `TypeSafe`, mirroring `OpenAI` — transport and
+credentials, named for the account — and the model is a string id
+(`jev-latest`, `jev-1.13.0`), the way `gpt-5.6-terra` is. Jev gets no
 type because Jev is a model. What an agent sees stays model-named, since a model
 is what answers it: the `Jev` capability, the `jev_evaluate` tool, and the `jev`
 guardrail engine.
