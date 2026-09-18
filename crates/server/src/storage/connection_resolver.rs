@@ -27,7 +27,8 @@ use uuid::Uuid;
 use super::backend::StorageBackend;
 use super::encryption::EncryptionService;
 use super::models::{
-    McpOAuthSessionCredentialsRow, UpdateUserConnectionOAuthTokens,
+    AgentIdentityConnectionRow, McpOAuthSessionCredentialsRow,
+    UpdateAgentIdentityConnectionOAuthTokens, UpdateUserConnectionOAuthTokens,
     UpsertMcpOAuthSessionCredentials, UserConnectionRow,
 };
 use crate::auth::oauth::GitHubAppService;
@@ -408,6 +409,96 @@ impl DbConnectionResolver {
         }
         Ok(Some(fresh_access_token))
     }
+
+    async fn resolve_identity_oauth_token(
+        &self,
+        session_id: SessionId,
+        server_id: Uuid,
+        row: AgentIdentityConnectionRow,
+    ) -> Result<Option<String>> {
+        let Some(access_token_encrypted) = row.access_token_encrypted.as_deref() else {
+            return Ok(None);
+        };
+        if row.connection_type != "oauth"
+            || !row
+                .expires_at
+                .is_some_and(|expiry| expiry <= Utc::now() + OAUTH_REFRESH_SKEW)
+        {
+            return self
+                .decrypt(access_token_encrypted, "OAuth access token")
+                .map(Some);
+        }
+
+        let key = format!("identity-connection:{}", row.id);
+        let lock = self
+            .refresh_locks
+            .get_with(key, || Arc::new(Mutex::new(())));
+        let _guard = lock.lock().await;
+        let Some(row) = self
+            .db
+            .get_agent_identity_connection_row_for_session(session_id, &row.provider)
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to resolve identity grant: {e}")))?
+        else {
+            return Ok(None);
+        };
+        let Some(access_token_encrypted) = row.access_token_encrypted.as_deref() else {
+            return Ok(None);
+        };
+        if !row
+            .expires_at
+            .is_some_and(|expiry| expiry <= Utc::now() + OAUTH_REFRESH_SKEW)
+        {
+            return self
+                .decrypt(access_token_encrypted, "OAuth access token")
+                .map(Some);
+        }
+        let Some(refresh_token_encrypted) = row.refresh_token_encrypted.as_deref() else {
+            return Ok(None);
+        };
+        let refresh_token = self.decrypt(refresh_token_encrypted, "OAuth refresh token")?;
+        let Some(config) = self.oauth_client_config(session_id, server_id).await? else {
+            return Ok(None);
+        };
+        let Some(token) = self.exchange_refresh(config, refresh_token.clone()).await else {
+            return Ok(None);
+        };
+        let rotated_refresh = token.refresh_token.as_deref().unwrap_or(&refresh_token);
+        let fresh_access_token = token.access_token.clone();
+        let updated = self
+            .db
+            .update_agent_identity_connection_oauth_tokens(
+                UpdateAgentIdentityConnectionOAuthTokens {
+                    connection_id: row.id,
+                    access_token_encrypted: self
+                        .encryption
+                        .encrypt_string(&fresh_access_token)
+                        .map_err(|e| {
+                            AgentLoopError::store(format!(
+                                "Failed to encrypt OAuth access token: {e}"
+                            ))
+                        })?,
+                    refresh_token_encrypted: self
+                        .encryption
+                        .encrypt_string(rotated_refresh)
+                        .map_err(|e| {
+                            AgentLoopError::store(format!(
+                                "Failed to encrypt OAuth refresh token: {e}"
+                            ))
+                        })?,
+                    expires_at: Self::expiry_from_response(&token),
+                    scopes: token.scope,
+                },
+            )
+            .await
+            .map_err(|e| {
+                AgentLoopError::store(format!("Failed to persist refreshed OAuth grant: {e}"))
+            })?;
+        if updated.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(fresh_access_token))
+    }
 }
 
 #[async_trait]
@@ -518,20 +609,17 @@ impl UserConnectionResolver for DbConnectionResolver {
             // never a session-scoped grant — those are authorized by a human in
             // the session, which is user auth wearing a service label.
             everruns_core::McpServerActsAs::Service => {
-                let encrypted = self
+                let row = self
                     .db
-                    .get_agent_identity_connection_for_session(session_id, provider)
+                    .get_agent_identity_connection_row_for_session(session_id, provider)
                     .await
                     .map_err(|e| {
                         AgentLoopError::store(format!("Failed to resolve identity grant: {e}"))
                     })?;
-
-                match encrypted {
-                    Some(blob) => {
-                        let token = self.encryption.decrypt_to_string(&blob).map_err(|e| {
-                            AgentLoopError::store(format!("Failed to decrypt identity grant: {e}"))
-                        })?;
-                        Ok(Some(token))
+                match row {
+                    Some(row) => {
+                        self.resolve_identity_oauth_token(session_id, server_id, row)
+                            .await
                     }
                     None => Ok(None),
                 }

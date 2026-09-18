@@ -831,6 +831,12 @@ impl Command for DeleteAgent {
             .delete_agent(ctx.org_id(), row.id)
             .await
             .map_err(classify_anyhow)?;
+        if let Some(identity_id) = row.agent_identity_id {
+            ctx.db
+                .delete_all_agent_identity_connections(identity_id)
+                .await
+                .map_err(classify_anyhow)?;
+        }
 
         Ok(serde_json::json!({"deleted": true}))
     }
@@ -2268,7 +2274,7 @@ mod tests {
     };
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
-    use crate::storage::models::CreateHarnessRow;
+    use crate::storage::models::{CreateAgentIdentityConnectionRow, CreateHarnessRow};
     use async_trait::async_trait;
     use everruns_platform::FeatureFlags;
     use std::sync::Arc;
@@ -3119,6 +3125,60 @@ mod tests {
             .execute(&ctx)
             .await
             .expect("creation allowed once the deleted agent is excluded");
+    }
+
+    #[tokio::test]
+    async fn archiving_agent_revokes_all_identity_connections() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let agent = CreateAgent(basic_agent_request("grant-owner"))
+            .execute(&ctx)
+            .await
+            .unwrap();
+        let row = db
+            .get_agent_by_public_id(DEFAULT_ORG_ID, &agent.public_id.to_string())
+            .await
+            .unwrap()
+            .unwrap();
+        let (identity_id, _) =
+            crate::domains::agent_identities::lifecycle::ensure_identity_for_agent(
+                &db,
+                DEFAULT_ORG_ID,
+                &row,
+            )
+            .await
+            .unwrap();
+        for provider in ["mcp_oauth_one", "mcp_oauth_two"] {
+            db.upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
+                agent_identity_id: identity_id,
+                provider: provider.to_string(),
+                connection_type: "oauth".to_string(),
+                provider_user_id: None,
+                provider_username: None,
+                access_token_encrypted: Some(vec![1, 2, 3]),
+                refresh_token_encrypted: Some(vec![4, 5, 6]),
+                scopes: None,
+                expires_at: None,
+                installation_id: None,
+                provider_metadata: None,
+            })
+            .await
+            .unwrap();
+        }
+
+        DeleteAgent {
+            id: agent.public_id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        assert!(
+            db.list_agent_identity_connections(identity_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     // ========================================================================

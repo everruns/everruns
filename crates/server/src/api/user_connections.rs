@@ -39,7 +39,6 @@ use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
 
 use super::common::{impl_auth_state, sanitized_bad_gateway, sanitized_internal_error};
-use crate::domains::agent_identities::AGENT_IDENTITY_MANAGE;
 use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
 use crate::domains::mcp_servers::MCP_SERVER_MANAGE;
 use crate::storage::models::{
@@ -644,6 +643,12 @@ pub async fn authorize_connection(
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
         .ok_or((StatusCode::NOT_FOUND, "MCP server not found".to_string()))?;
+    if row.status != "active" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "MCP server is not active".to_string(),
+        ));
+    }
     let settings = McpServerService::settings_from_row(&row);
     if settings.auth_mode != McpServerAuthMode::OAuth {
         return Err((
@@ -671,7 +676,7 @@ pub async fn authorize_connection(
     // connecting your own account, so it is gated and resolved here, before the
     // redirect — the callback then only writes to an identity that was already
     // authorized rather than acting on whatever comes back (EVE-1030).
-    let agent_identity_id = match mode.as_str() {
+    let identity_agent = match mode.as_str() {
         "identity" => {
             let agent_public_id = query.agent_id.ok_or((
                 StatusCode::BAD_REQUEST,
@@ -686,15 +691,10 @@ pub async fn authorize_connection(
                 .await
                 .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
                 .ok_or((StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
-
-            // Eager creation: a service grant needs an owner now. Same guarded
-            // write as the lazy first-fire path, so the two converge on one
-            // identity under concurrency (EVE-758, EVE-1030).
-            let (identity_id, _principal) =
-                ensure_identity_for_agent(&state.db, org.org_id, &agent)
-                    .await
-                    .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
-            Some(identity_id.to_string())
+            if agent.status != "active" {
+                return Err((StatusCode::BAD_REQUEST, "Agent is not active".to_string()));
+            }
+            Some(agent)
         }
         _ => None,
     };
@@ -720,6 +720,17 @@ pub async fn authorize_connection(
         )
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
+
+    let agent_identity_id = match identity_agent {
+        Some(agent) => {
+            let (identity_id, _principal) =
+                ensure_identity_for_agent(&state.db, org.org_id, &agent)
+                    .await
+                    .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
+            Some(identity_id.to_string())
+        }
+        None => None,
+    };
 
     let pending = PendingOAuthState {
         state: oauth_state.clone(),
@@ -802,6 +813,12 @@ pub async fn connection_oauth_callback(
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
         .ok_or((StatusCode::NOT_FOUND, "MCP server not found".to_string()))?;
+    if row.status != "active" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "MCP server is not active".to_string(),
+        ));
+    }
     let settings = McpServerService::settings_from_row(&row);
     let oauth = settings.oauth.clone().ok_or((
         StatusCode::BAD_REQUEST,
@@ -1476,6 +1493,16 @@ async fn discover_oauth_server_metadata(
         Vec::new(),
     )
     .await?;
+    if let Some(discovered_issuer) = metadata.issuer.as_deref() {
+        let discovered_issuer = parse_and_validate_url(discovered_issuer)?;
+        if discovered_issuer.as_str().trim_end_matches('/') != issuer.as_str().trim_end_matches('/')
+        {
+            return Err((
+                StatusCode::BAD_GATEWAY,
+                "OAuth authorization server returned mismatched issuer metadata".to_string(),
+            ));
+        }
+    }
     validate_safe_url(&metadata.authorization_endpoint).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -1552,10 +1579,8 @@ fn finalize_oauth_redirect(
 
 /// Gate for authorizing a grant owned by an agent identity.
 ///
-/// Requires both manage permissions on purpose: the grant is an org-level MCP
-/// credential (`MCP_SERVER_MANAGE`) that is bound to an agent identity
-/// (`AGENT_IDENTITY_MANAGE`). Connecting your own account stays ungated, as it
-/// spends only your own access (EVE-1030).
+/// Requires the organization MCP-server management permission. Connecting your
+/// own account stays ungated because it spends only your own access (EVE-1030).
 fn enforce_identity_grant_policy(
     state: &AppState,
     caller: &Caller,
@@ -1569,15 +1594,6 @@ fn enforce_identity_grant_policy(
             "Permission denied: authorizing an agent service grant requires MCP server management"
                 .to_string(),
         )
-        })?;
-    AGENT_IDENTITY_MANAGE
-        .evaluate_with(resolver, caller)
-        .map_err(|_| {
-            (
-                StatusCode::FORBIDDEN,
-                "Permission denied: authorizing an agent service grant requires agent identity management"
-                    .to_string(),
-            )
         })?;
     Ok(())
 }

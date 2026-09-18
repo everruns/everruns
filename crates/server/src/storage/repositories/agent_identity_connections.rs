@@ -110,6 +110,46 @@ impl Database {
         Ok(rows)
     }
 
+    pub async fn update_agent_identity_connection_oauth_tokens(
+        &self,
+        input: UpdateAgentIdentityConnectionOAuthTokens,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        let row = sqlx::query_as::<_, AgentIdentityConnectionRow>(
+            r#"
+            UPDATE agent_identity_connections
+            SET access_token_encrypted = $2,
+                refresh_token_encrypted = $3,
+                expires_at = $4,
+                scopes = COALESCE($5, scopes),
+                updated_at = NOW()
+            WHERE id = $1 AND connection_type = 'oauth'
+            RETURNING id, agent_identity_id, provider, connection_type, provider_user_id,
+                      provider_username, access_token_encrypted, refresh_token_encrypted,
+                      scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
+            "#,
+        )
+        .bind(input.connection_id)
+        .bind(input.access_token_encrypted)
+        .bind(input.refresh_token_encrypted)
+        .bind(input.expires_at)
+        .bind(input.scopes)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn delete_all_agent_identity_connections(
+        &self,
+        identity_id: AgentIdentityId,
+    ) -> Result<u64> {
+        let result =
+            sqlx::query("DELETE FROM agent_identity_connections WHERE agent_identity_id = $1")
+                .bind(identity_id)
+                .execute(&self.pool)
+                .await?;
+        Ok(result.rows_affected())
+    }
+
     /// Delete an identity's connection for a specific provider
     pub async fn delete_agent_identity_connection(
         &self,

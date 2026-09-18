@@ -3684,11 +3684,37 @@ impl StorageBackend {
         dispatch!(self, get_agent_identity_connection, identity_id, provider)
     }
 
+    pub async fn get_agent_identity_connection_row_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        dispatch!(
+            self,
+            get_agent_identity_connection_row_for_session,
+            session_id,
+            provider
+        )
+    }
     pub async fn list_agent_identity_connections(
         &self,
         identity_id: AgentIdentityId,
     ) -> Result<Vec<AgentIdentityConnectionRow>> {
         dispatch!(self, list_agent_identity_connections, identity_id)
+    }
+
+    pub async fn update_agent_identity_connection_oauth_tokens(
+        &self,
+        input: UpdateAgentIdentityConnectionOAuthTokens,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        dispatch!(self, update_agent_identity_connection_oauth_tokens, input)
+    }
+
+    pub async fn delete_all_agent_identity_connections(
+        &self,
+        identity_id: AgentIdentityId,
+    ) -> Result<u64> {
+        dispatch!(self, delete_all_agent_identity_connections, identity_id)
     }
 
     pub async fn delete_agent_identity_connection(

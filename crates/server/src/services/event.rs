@@ -25,8 +25,11 @@ use crate::storage::{
     models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
 };
 use anyhow::{Result, bail};
-use everruns_core::events::{INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
-use everruns_core::{Event, EventListener, EventRequest};
+use everruns_core::events::{EventData, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
+use everruns_core::{
+    Event, EventListener, EventRequest, McpServerActsAs, ScopedMcpServers,
+    merge_scoped_mcp_servers, parse_mcp_tool_name, sanitize_mcp_server_name,
+};
 use everruns_platform::{FeatureFlags, SessionParticipantKind};
 use everruns_provider::typed_id::{AgentId, AgentVersionId, EventId, PrincipalId, SessionId};
 use moka::future::Cache;
@@ -168,9 +171,7 @@ impl EventService {
     /// # Errors
     /// Returns an error if event_type doesn't match the data type.
     pub async fn emit(&self, mut request: EventRequest) -> Result<Event> {
-        self.attach_agent_version_metadata(&mut request).await;
-        self.attach_session_participant_metadata(&mut request).await;
-        Self::validate_event_type_consistency(&request)?;
+        self.prepare_request(&mut request).await?;
 
         // Only skip PG for delta events when the delivery backend supports it
         // (NATS provides durable pub/sub with replay). InMemory mode persists
@@ -180,6 +181,75 @@ impl EventService {
         }
 
         self.emit_durable(request).await
+    }
+
+    async fn prepare_request(&self, request: &mut EventRequest) -> Result<()> {
+        self.attach_agent_version_metadata(request).await;
+        self.attach_session_participant_metadata(request).await;
+        self.attach_service_mcp_provenance(request).await;
+        Self::validate_event_type_consistency(request)?;
+        Ok(())
+    }
+
+    async fn attach_service_mcp_provenance(&self, request: &mut EventRequest) {
+        let tool_name = match &request.data {
+            EventData::ToolStarted(data) => &data.tool_call.name,
+            EventData::ToolCompleted(data) => &data.tool_name,
+            _ => return,
+        };
+        let Some((server_prefix, _)) = parse_mcp_tool_name(tool_name) else {
+            return;
+        };
+        let Ok(Some(session)) = self.db.get_session_unscoped(request.session_id).await else {
+            return;
+        };
+
+        let mut effective = ScopedMcpServers::new();
+        if let Some(harness_id) = session.harness_id
+            && let Ok(Some(harness)) = self.db.get_harness(session.org_id, harness_id).await
+            && let Ok(servers) = serde_json::from_value::<ScopedMcpServers>(harness.mcp_servers)
+        {
+            effective = merge_scoped_mcp_servers(&effective, &servers);
+        }
+        if let Some(agent_id) = session.agent_id
+            && let Ok(Some(agent)) = self.db.get_agent(session.org_id, agent_id).await
+            && let Ok(servers) = serde_json::from_value::<ScopedMcpServers>(agent.mcp_servers)
+        {
+            effective = merge_scoped_mcp_servers(&effective, &servers);
+        }
+        if let Ok(servers) = serde_json::from_value::<ScopedMcpServers>(session.mcp_servers.clone())
+        {
+            effective = merge_scoped_mcp_servers(&effective, &servers);
+        }
+        let is_service = effective.iter().any(|(name, server)| {
+            sanitize_mcp_server_name(name) == server_prefix
+                && server.acts_as == McpServerActsAs::Service
+        });
+        if !is_service {
+            return;
+        }
+        let Some(identity_id) = session.agent_identity_id else {
+            return;
+        };
+        let Ok(Some(acting)) = self
+            .db
+            .get_principal_by_subject(session.org_id, "agent_identity", identity_id.uuid())
+            .await
+        else {
+            return;
+        };
+        let mut metadata = request
+            .metadata
+            .take()
+            .and_then(|value| value.as_object().cloned())
+            .unwrap_or_default();
+        metadata
+            .entry("initiator_principal_id".to_string())
+            .or_insert_with(|| serde_json::Value::String(session.owner_principal_id.to_string()));
+        metadata
+            .entry("acting_principal_id".to_string())
+            .or_insert_with(|| serde_json::Value::String(acting.id.to_string()));
+        request.metadata = Some(serde_json::Value::Object(metadata));
     }
 
     async fn attach_agent_version_metadata(&self, request: &mut EventRequest) {
@@ -395,15 +465,16 @@ impl EventService {
     /// # Errors
     /// Returns an error if any event_type doesn't match the data type.
     pub async fn emit_batch(&self, requests: Vec<EventRequest>) -> Result<i32> {
-        // Validate all requests first to fail fast
-        for request in &requests {
-            Self::validate_event_type_consistency(request)?;
+        let mut prepared = Vec::with_capacity(requests.len());
+        for mut request in requests {
+            self.prepare_request(&mut request).await?;
+            prepared.push(request);
         }
 
         let skip_ephemeral = self.event_delivery.supports_ephemeral_skip();
         let mut count = 0i32;
 
-        for request in requests {
+        for request in prepared {
             if request.is_ephemeral() && skip_ephemeral {
                 self.emit_ephemeral(request).await?;
             } else {

@@ -71,6 +71,37 @@ impl InMemoryDatabase {
         Ok(connections)
     }
 
+    pub async fn update_agent_identity_connection_oauth_tokens(
+        &self,
+        input: UpdateAgentIdentityConnectionOAuthTokens,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        let mut connections = self.agent_identity_connections.write();
+        let Some(connection) = connections.get_mut(&input.connection_id) else {
+            return Ok(None);
+        };
+        if connection.connection_type != "oauth" {
+            return Ok(None);
+        }
+        connection.access_token_encrypted = Some(input.access_token_encrypted);
+        connection.refresh_token_encrypted = Some(input.refresh_token_encrypted);
+        connection.expires_at = input.expires_at;
+        if input.scopes.is_some() {
+            connection.scopes = input.scopes;
+        }
+        connection.updated_at = Self::now();
+        Ok(Some(connection.clone()))
+    }
+
+    pub async fn delete_all_agent_identity_connections(
+        &self,
+        identity_id: AgentIdentityId,
+    ) -> Result<u64> {
+        let mut connections = self.agent_identity_connections.write();
+        let before = connections.len();
+        connections.retain(|_, connection| connection.agent_identity_id != identity_id);
+        Ok((before - connections.len()) as u64)
+    }
+
     pub async fn delete_agent_identity_connection(
         &self,
         identity_id: AgentIdentityId,
