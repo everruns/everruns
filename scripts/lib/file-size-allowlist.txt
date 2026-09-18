@@ -33,7 +33,7 @@
 1765 crates/host/src/real_disk.rs
 2213 crates/host/src/runtime.rs
 2807 crates/host/tests/runtime_host_test.rs
-2791 crates/internal-protocol/src/lib.rs
+2786 crates/internal-protocol/src/lib.rs
 4849 crates/model-profiles/src/profiles.rs
 1802 crates/platform/src/app.rs
 2698 crates/platform/src/background_run.rs

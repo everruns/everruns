@@ -11,6 +11,8 @@
 // Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
 // Decision: Proto is transport layer, Rust schemas remain source of truth
 
+mod capability_wire;
+
 use chrono::{DateTime, TimeZone, Utc};
 use everruns_provider::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 use prost_types::{ListValue, Struct, Value, value::Kind};
@@ -521,20 +523,7 @@ pub fn schema_agent_to_proto(value: &everruns_platform::Agent) -> proto::Agent {
         display_name: value.display_name.clone(),
         parallel_tool_calls: value.parallel_tool_calls,
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
-        // Unreachable: `CapabilityRef` is a String plus a `serde_json::Value`,
-        // neither of which can fail to serialize. Kept as a panic because an
-        // empty list makes the reverse conversion rebuild configs from
-        // `capability_ids` with `config: {}`, silently replacing a per-agent
-        // capability config with the default.
-        #[expect(
-            clippy::expect_used,
-            reason = "fail closed rather than downgrade a capability config on the wire"
-        )]
-        capabilities: value
-            .capabilities
-            .iter()
-            .map(|config| serde_json::to_string(config).expect("capability config serializes"))
-            .collect(),
+        capabilities: capability_wire::encode_configs(&value.capabilities),
     }
 }
 
@@ -563,20 +552,7 @@ pub fn schema_harness_to_proto(value: &everruns_platform::Harness) -> proto::Har
             .map(|id| uuid_to_proto_uuid(id.uuid())),
         is_built_in: value.is_built_in,
         display_name: value.display_name.clone(),
-        // Unreachable: `CapabilityRef` is a String plus a `serde_json::Value`,
-        // neither of which can fail to serialize. Kept as a panic because an
-        // empty list makes the reverse conversion rebuild configs from
-        // `capability_ids` with `config: {}`, silently replacing a per-agent
-        // capability config with the default.
-        #[expect(
-            clippy::expect_used,
-            reason = "fail closed rather than downgrade a capability config on the wire"
-        )]
-        capabilities: value
-            .capabilities
-            .iter()
-            .map(|config| serde_json::to_string(config).expect("capability config serializes"))
-            .collect(),
+        capabilities: capability_wire::encode_configs(&value.capabilities),
     }
 }
 
