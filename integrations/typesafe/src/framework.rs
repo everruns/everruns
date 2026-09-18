@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use everruns_core::Capability;
 
-use crate::client::TypeSafeClient;
+use crate::client::TypeSafeAIClient;
 
 use crate::{JevCapability, evaluate, evaluate::EvaluateInput};
 
@@ -17,22 +17,22 @@ use crate::{JevCapability, evaluate, evaluate::EvaluateInput};
 /// The client retains the credential privately; it never enters capability
 /// config or metadata. Cloned agents reuse the HTTP connection pool.
 pub struct Jev {
-    client: TypeSafeClient,
+    client: TypeSafeAIClient,
 }
 
 impl Jev {
     /// Configure an application-owned API key.
     pub fn new(api_key: impl Into<String>) -> Self {
-        Self::with_client(TypeSafeClient::new(api_key.into()))
+        Self::with_client(TypeSafeAIClient::new(api_key.into()))
     }
 
     /// Read `TYPESAFE_API_KEY` once at application startup.
     pub fn from_env() -> crate::client::Result<Self> {
-        Ok(Self::with_client(TypeSafeClient::from_env()?))
+        Ok(Self::with_client(TypeSafeAIClient::from_env()?))
     }
 
     /// Supply a client, including a trusted custom endpoint for tests.
-    pub fn with_client(client: TypeSafeClient) -> Self {
+    pub fn with_client(client: TypeSafeAIClient) -> Self {
         Self { client }
     }
 }

@@ -7,14 +7,14 @@
 //! Confidence is the second axis. The answer says *what*; confidence says
 //! whether to act on it without a person in the loop.
 
-use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
+use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeAIClient};
 
 /// Below this, the distribution is too flat to auto-route.
 const AUTO_ROUTE_CONFIDENCE: f64 = 0.7;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = TypeSafeClient::from_env()?;
+    let client = TypeSafeAIClient::from_env()?;
 
     // State can be structured: give the model the record, not a paraphrase of it.
     let ticket = serde_json::json!({

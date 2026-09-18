@@ -31,6 +31,17 @@
   application name. See
   [Framework Application API Boundaries](framework/application-api.md).
 
+* **A vendor name can collide with the host language.** The provider type was
+  `TypeSafe`, which is the company — but in Rust `TypeSafe` reads as a marker
+  about type safety, and `TypeSafeClient` reads as "a type-safe client". The
+  vendor never has this problem; we do, because the name landed in a type
+  position. `TypeSafeAI` is the company's own full name, cases like the
+  neighbouring `OpenAI`, and can only be read as a company. Type names moved;
+  the `TYPESAFE_API_KEY` variables, the `typesafe` feature and crate, and the
+  stored `typesafe` connection provider did not — they are not type positions,
+  and the provider string is persisted. See
+  [Classifier Service](operations/classifier-service.md).
+
 * **The agent-facing surface is named for the model, the credential surface for
   the vendor.** The capability is `jev` and its tool is `jev_evaluate`, matching
   the guardrail engine value: an agent author is choosing the thing that
