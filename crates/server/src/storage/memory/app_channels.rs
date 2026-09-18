@@ -495,12 +495,9 @@ impl InMemoryDatabase {
         input.durable_schedule_id.apply(&mut ch.durable_schedule_id);
         if let Some(enabled) = input.enabled {
             ch.enabled = enabled;
-            // Same derivation as the PostgreSQL backend: disabling always
-            // lowers the endpoint, and re-enabling returns it to whatever the
-            // owning App's publish state implies — so re-enabling a channel on
-            // a published App makes it live again rather than stranding it in
-            // draft.
-            ch.status = derive_status(enabled, app_status.as_deref());
+            if !enabled {
+                ch.status = "disabled".to_string();
+            }
         }
         if let Some(status) = input.status.clone() {
             ch.status = status;

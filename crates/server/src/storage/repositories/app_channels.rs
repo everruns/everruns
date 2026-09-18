@@ -574,14 +574,9 @@ impl Database {
                 auth_encrypted = CASE WHEN $8 THEN $9 ELSE ae.auth_encrypted END,
                 durable_schedule_id = CASE WHEN $10 THEN $11 ELSE ae.durable_schedule_id END,
                 enabled = COALESCE($12, ae.enabled),
-                -- `status` is authoritative for ingress (EVE-1007). An explicit
-                -- value wins; otherwise an `enabled` change still moves it, so
-                -- the App API's enable/disable cannot leave a disabled endpoint
-                -- reachable while that API is still the everyday control.
                 status = COALESCE($13, CASE
-                    WHEN NOT COALESCE($12, ae.enabled) THEN 'disabled'
-                    WHEN (SELECT a.status FROM apps AS a WHERE a.id = ae.app_id) = 'published' THEN 'live'
-                    ELSE 'draft'
+                    WHEN $12 = false THEN 'disabled'
+                    ELSE ae.status
                 END),
                 updated_at = NOW()
             WHERE ae.id = $1
