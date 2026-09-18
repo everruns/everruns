@@ -1188,6 +1188,7 @@
         "tags": [
           "agents"
         ],
+        "description": "Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state and permitted actions are resolved for the current caller.",
         "operationId": "list_agent_mcp_attachments",
         "parameters": [
           {
@@ -1242,6 +1243,7 @@
         "tags": [
           "agents"
         ],
+        "description": "Revokes the current caller's user connection or the agent identity's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.",
         "operationId": "revoke_agent_mcp_connection",
         "parameters": [
           {
@@ -17918,6 +17920,7 @@
       },
       "AgentMcpAttachment": {
         "type": "object",
+        "description": "Effective MCP attachment projected for an agent and the current caller.",
         "required": [
           "name",
           "source",
@@ -17933,81 +17936,98 @@
         ],
         "properties": {
           "action": {
-            "$ref": "#/components/schemas/AgentMcpAttachmentAction"
+            "$ref": "#/components/schemas/AgentMcpAttachmentAction",
+            "description": "Connection action available to the current caller."
           },
           "acts_as": {
-            "$ref": "#/components/schemas/McpServerActsAs"
+            "$ref": "#/components/schemas/McpServerActsAs",
+            "description": "Identity whose connection is used when the attachment calls the MCP server."
           },
           "connected_as": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Connected account name, or the preset name when the provider did not supply one."
           },
           "connection_provider": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "OAuth provider key used to create or revoke the attachment connection."
           },
           "editable": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the attachment is defined directly on the agent and can be removed there."
           },
           "header_names": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Header names configured for the endpoint; secret header values are omitted."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Logical attachment name used in the agent's MCP configuration."
           },
           "overridden_sources": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AgentMcpAttachmentSourceInfo"
-            }
+            },
+            "description": "Lower-precedence configuration layers overridden by this attachment."
           },
           "preset_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "ID of the active catalog preset when the reference resolves."
           },
           "preset_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Catalog preset name referenced by the attachment, including a missing preset."
           },
           "source": {
-            "$ref": "#/components/schemas/AgentMcpAttachmentSource"
+            "$ref": "#/components/schemas/AgentMcpAttachmentSource",
+            "description": "Highest-precedence configuration layer that supplied this attachment."
           },
           "source_label": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name of the winning capability, harness, or agent layer."
           },
           "state": {
-            "$ref": "#/components/schemas/AgentMcpAttachmentState"
+            "$ref": "#/components/schemas/AgentMcpAttachmentState",
+            "description": "Current preset and connection availability."
           },
           "tools": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Cached names of tools exposed by the MCP server."
           },
           "tools_available": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether at least one cached tool name is available."
           },
           "url": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Effective MCP endpoint URL from the catalog preset or inline configuration."
           }
         }
       },
       "AgentMcpAttachmentAction": {
         "type": "string",
+        "description": "Action the current caller can take to make an MCP attachment usable.",
         "enum": [
           "none",
           "connect",
@@ -18017,6 +18037,7 @@
       },
       "AgentMcpAttachmentSource": {
         "type": "string",
+        "description": "Configuration layer that supplied an effective MCP attachment.",
         "enum": [
           "capability",
           "harness",
@@ -18025,21 +18046,25 @@
       },
       "AgentMcpAttachmentSourceInfo": {
         "type": "object",
+        "description": "Configuration layer that was overridden by the effective MCP attachment.",
         "required": [
           "source",
           "source_label"
         ],
         "properties": {
           "source": {
-            "$ref": "#/components/schemas/AgentMcpAttachmentSource"
+            "$ref": "#/components/schemas/AgentMcpAttachmentSource",
+            "description": "Overridden configuration layer."
           },
           "source_label": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name of the overridden capability, harness, or agent layer."
           }
         }
       },
       "AgentMcpAttachmentState": {
         "type": "string",
+        "description": "Availability state of an effective MCP attachment.",
         "enum": [
           "ready",
           "connection_missing",

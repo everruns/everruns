@@ -30,52 +30,85 @@ pub fn routes() -> Router<AppState> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+/// Configuration layer that supplied an effective MCP attachment.
 pub enum AgentMcpAttachmentSource {
+    /// The attachment came from an enabled capability.
     Capability,
+    /// The attachment came from the agent's effective harness.
     Harness,
+    /// The attachment came directly from the agent configuration.
     Agent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+/// Configuration layer that was overridden by the effective MCP attachment.
 pub struct AgentMcpAttachmentSourceInfo {
+    /// Overridden configuration layer.
     pub source: AgentMcpAttachmentSource,
+    /// Human-readable name of the overridden capability, harness, or agent layer.
     pub source_label: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+/// Availability state of an effective MCP attachment.
 pub enum AgentMcpAttachmentState {
+    /// The attachment is ready to use.
     Ready,
+    /// The attachment needs a user or service connection.
     ConnectionMissing,
+    /// The attachment references a catalog preset that is missing or archived.
     PresetMissing,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+/// Action the current caller can take to make an MCP attachment usable.
 pub enum AgentMcpAttachmentAction {
+    /// No connection action is available or required.
     None,
+    /// The current user can connect their own account.
     Connect,
+    /// The current caller can authorize a shared agent connection.
     Authorize,
+    /// An administrator must authorize the shared agent connection.
     AskAdmin,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+/// Effective MCP attachment projected for an agent and the current caller.
 pub struct AgentMcpAttachment {
+    /// Logical attachment name used in the agent's MCP configuration.
     pub name: String,
+    /// Highest-precedence configuration layer that supplied this attachment.
     pub source: AgentMcpAttachmentSource,
+    /// Human-readable name of the winning capability, harness, or agent layer.
     pub source_label: String,
+    /// Lower-precedence configuration layers overridden by this attachment.
     pub overridden_sources: Vec<AgentMcpAttachmentSourceInfo>,
+    /// Identity whose connection is used when the attachment calls the MCP server.
     pub acts_as: McpServerActsAs,
+    /// Catalog preset name referenced by the attachment, including a missing preset.
     pub preset_name: Option<String>,
+    /// ID of the active catalog preset when the reference resolves.
     pub preset_id: Option<String>,
+    /// OAuth provider key used to create or revoke the attachment connection.
     pub connection_provider: Option<String>,
+    /// Effective MCP endpoint URL from the catalog preset or inline configuration.
     pub url: Option<String>,
+    /// Header names configured for the endpoint; secret header values are omitted.
     pub header_names: Vec<String>,
+    /// Whether at least one cached tool name is available.
     pub tools_available: bool,
+    /// Cached names of tools exposed by the MCP server.
     pub tools: Vec<String>,
+    /// Current preset and connection availability.
     pub state: AgentMcpAttachmentState,
+    /// Connection action available to the current caller.
     pub action: AgentMcpAttachmentAction,
+    /// Connected account name, or the preset name when the provider did not supply one.
     pub connected_as: Option<String>,
+    /// Whether the attachment is defined directly on the agent and can be removed there.
     pub editable: bool,
 }
 
@@ -120,6 +153,7 @@ fn merge_sourced_mcp_layer(
 #[utoipa::path(
     get,
     path = "/v1/agents/{agent_id}/mcp-attachments",
+    description = "Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state and permitted actions are resolved for the current caller.",
     params(("agent_id" = String, Path, description = "Agent ID (prefixed) or name")),
     responses(
         (status = 200, description = "Effective MCP attachments for the agent", body = Vec<AgentMcpAttachment>),
@@ -300,6 +334,7 @@ pub async fn list_agent_mcp_attachments(
 #[utoipa::path(
     delete,
     path = "/v1/agents/{agent_id}/mcp-attachments/{name}/connection",
+    description = "Revokes the current caller's user connection or the agent identity's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name"),
         ("name" = String, Path, description = "Effective MCP attachment name"),
