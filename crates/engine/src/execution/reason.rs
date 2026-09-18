@@ -47,7 +47,7 @@ use crate::llm_retry::{
     LlmRetryConfig, RetryMetadata, is_transient_error_message, remaining_retry_time,
     reserve_retry_wait,
 };
-use crate::message::{ContentPart, Message as StoredMessage, MessageRole as StoredMessageRole};
+use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, evaluate_guardrails,
@@ -791,7 +791,7 @@ impl ReasonAtom {
 
                 if !is_transient {
                     // Create error message for the user to see
-                    let mut error_message = StoredMessage::assistant(&user_error_text);
+                    let mut error_message = RuntimeMessage::assistant(&user_error_text);
                     let mut metadata = std::collections::HashMap::new();
                     user_error.apply_to_message_metadata(&mut metadata);
                     UserFacingError::apply_disclosure_to_message_metadata(
@@ -979,7 +979,7 @@ impl ReasonAtom {
             if let crate::CompactionCheckpointPayload::Summary { text } = &checkpoint.payload {
                 messages.insert(
                     0,
-                    StoredMessage::system(format!(
+                    RuntimeMessage::system(format!(
                         "[CONVERSATION_SUMMARY]\n{text}\n[/CONVERSATION_SUMMARY]"
                     )),
                 );
@@ -1142,7 +1142,7 @@ impl ReasonAtom {
                 &facts_ctx,
             );
             if let Some(block) = crate::capabilities::render_facts_block(&dynamic_facts) {
-                context_messages.push(StoredMessage::user(block));
+                context_messages.push(RuntimeMessage::user(block));
                 volatile_suffix_len = 1;
             }
         }
@@ -1158,7 +1158,7 @@ impl ReasonAtom {
         if let Some(context) = runtime_agent.conversation_context.as_ref()
             && !context.is_empty()
         {
-            context_messages.insert(0, StoredMessage::user(context.clone()));
+            context_messages.insert(0, RuntimeMessage::user(context.clone()));
         }
 
         // 10. Resolve images from image_file references (if any)
@@ -1187,8 +1187,8 @@ impl ReasonAtom {
         }
 
         // Build messages for llm.generation event (includes system message)
-        let messages_for_event: Vec<StoredMessage> = if has_system_prompt {
-            std::iter::once(StoredMessage::system(&runtime_agent.system_prompt))
+        let messages_for_event: Vec<RuntimeMessage> = if has_system_prompt {
+            std::iter::once(RuntimeMessage::system(&runtime_agent.system_prompt))
                 .chain(context_messages.iter().cloned())
                 .collect()
         } else {
@@ -1214,7 +1214,7 @@ impl ReasonAtom {
             llm_msg.configuration_update = reasoning_replay
                 .as_ref()
                 .and_then(|replay| replay.transitions.get(&msg.id).copied());
-            if msg.role == StoredMessageRole::User
+            if msg.role == RuntimeMessageRole::User
                 && let Some(ref actor) = msg.external_actor
             {
                 llm_msg.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
@@ -1288,7 +1288,7 @@ impl ReasonAtom {
             .iter()
             .rev()
             .find(|message| {
-                message.role == StoredMessageRole::Agent && !is_error_placeholder_message(message)
+                message.role == RuntimeMessageRole::Agent && !is_error_placeholder_message(message)
             })
             .and_then(|message| message.metadata.as_ref())
             .is_some_and(|metadata| metadata.contains_key(reasoning_updates::STATE_KEY))
@@ -2540,9 +2540,9 @@ impl ReasonAtom {
         );
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
-            StoredMessage::assistant_with_tools(&text, tool_calls.clone())
+            RuntimeMessage::assistant_with_tools(&text, tool_calls.clone())
         } else {
-            StoredMessage::assistant(&text)
+            RuntimeMessage::assistant(&text)
         }
         .with_id(output_message_id);
         for part in &mut assistant_message.content {
@@ -2714,7 +2714,7 @@ impl ReasonAtom {
             resolved_capability_configs,
             partial.accumulated,
         );
-        let mut assistant_message = StoredMessage::assistant(&accumulated).with_id(message_id);
+        let mut assistant_message = RuntimeMessage::assistant(&accumulated).with_id(message_id);
         if let Some(state) = partial.reasoning_state {
             assistant_message.metadata = Some(HashMap::from([
                 ("model".into(), serde_json::json!("gpt-6-astra")),
@@ -2793,7 +2793,7 @@ impl ReasonAtom {
     /// A HashMap mapping image IDs to ResolvedImage data. If no ImageResolver
     /// is configured, or if resolution fails for some images, those images
     /// will simply be missing from the map (and converted to placeholder text).
-    async fn resolve_images(&self, messages: &[StoredMessage]) -> HashMap<Uuid, ResolvedImage> {
+    async fn resolve_images(&self, messages: &[RuntimeMessage]) -> HashMap<Uuid, ResolvedImage> {
         let mut resolved = HashMap::new();
 
         // Check if we have an image resolver
@@ -2849,7 +2849,7 @@ impl ReasonAtom {
         resolved
     }
 
-    async fn resolve_files(&self, messages: &[StoredMessage]) -> HashMap<Uuid, ResolvedFile> {
+    async fn resolve_files(&self, messages: &[RuntimeMessage]) -> HashMap<Uuid, ResolvedFile> {
         let Some(resolver) = &self.file_resolver else {
             return HashMap::new();
         };

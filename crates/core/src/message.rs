@@ -1,6 +1,6 @@
 // Message types
 //
-// Message is a DB-agnostic message type that represents
+// RuntimeMessage is a DB-agnostic message type that represents
 // a single message in the conversation history.
 //
 // Content is stored as Vec<ContentPart> for unified representation
@@ -19,12 +19,12 @@ use everruns_provider::reasoning::ReasoningContentPart;
 /// Message role in the conversation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-// Published as `RuntimeMessageRole`. The REST API exposes only `user` and
-// `agent` (`api::messages::MessageRole`); publishing this four-variant runtime
-// enum under the plain name made clients model roles the API never returns.
-#[cfg_attr(feature = "openapi", schema(as = RuntimeMessageRole))]
+// The Rust name is the published schema name. The REST API exposes only `user`
+// and `agent` (`api::messages::MessageRole`); publishing this four-variant
+// runtime enum as plain `MessageRole` made clients model roles the API never
+// returns.
 #[serde(rename_all = "snake_case")]
-pub enum MessageRole {
+pub enum RuntimeMessageRole {
     /// System message (instructions)
     System,
     /// User message
@@ -35,26 +35,26 @@ pub enum MessageRole {
     ToolResult,
 }
 
-impl std::fmt::Display for MessageRole {
+impl std::fmt::Display for RuntimeMessageRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MessageRole::System => write!(f, "system"),
-            MessageRole::User => write!(f, "user"),
-            MessageRole::Agent => write!(f, "agent"),
-            MessageRole::ToolResult => write!(f, "tool_result"),
+            RuntimeMessageRole::System => write!(f, "system"),
+            RuntimeMessageRole::User => write!(f, "user"),
+            RuntimeMessageRole::Agent => write!(f, "agent"),
+            RuntimeMessageRole::ToolResult => write!(f, "tool_result"),
         }
     }
 }
 
-impl From<&str> for MessageRole {
+impl From<&str> for RuntimeMessageRole {
     fn from(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "system" => MessageRole::System,
-            "user" => MessageRole::User,
+            "system" => RuntimeMessageRole::System,
+            "user" => RuntimeMessageRole::User,
             // Accept both "agent" and legacy "assistant"
-            "agent" | "assistant" => MessageRole::Agent,
-            "tool_result" => MessageRole::ToolResult,
-            _ => MessageRole::User,
+            "agent" | "assistant" => RuntimeMessageRole::Agent,
+            "tool_result" => RuntimeMessageRole::ToolResult,
+            _ => RuntimeMessageRole::User,
         }
     }
 }
@@ -179,18 +179,19 @@ impl Controls {
 /// A message in the conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-// Published as `RuntimeMessage`: this is the canonical runtime/event message,
-// distinct from the REST resource in `api::messages::Message` (which adds
-// `session_id` and `sequence`). Both previously claimed the name `Message` in
-// one OpenAPI document, so generated clients saw whichever won.
-#[cfg_attr(feature = "openapi", schema(as = RuntimeMessage))]
-pub struct Message {
+// The canonical runtime/event message, and the Rust name is the published
+// schema name. Distinct from the REST resource `api::messages::Message` (which
+// adds `session_id` and `sequence`) and from the request-shaped
+// `everruns_provider::driver_registry::Message` a driver sends upstream; both
+// of the first two once claimed plain `Message` in one OpenAPI document, so
+// generated clients saw whichever won.
+pub struct RuntimeMessage {
     /// Unique message ID (format: message_{32-hex})
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_01933b5a00007000800000000000001"))]
     pub id: MessageId,
 
     /// Message role
-    pub role: MessageRole,
+    pub role: RuntimeMessageRole,
 
     /// Message content as array of content parts (text, images, tool calls, tool results)
     pub content: Vec<ContentPart>,
@@ -805,7 +806,7 @@ impl InputContentPart {
     }
 }
 
-impl Message {
+impl RuntimeMessage {
     /// Reasoning artifacts carried by this message, in emission order.
     pub fn reasoning_parts(&self) -> impl Iterator<Item = &ReasoningContentPart> {
         self.content.iter().filter_map(ContentPart::as_reasoning)
@@ -818,7 +819,7 @@ impl Message {
 
     /// Readable reasoning across every artifact, joined for display.
     ///
-    /// Display only. Replay must walk [`Message::reasoning_parts`] so each
+    /// Display only. Replay must walk [`RuntimeMessage::reasoning_parts`] so each
     /// artifact keeps its own signature and position.
     pub fn reasoning_display_text(&self) -> Option<String> {
         let joined = self
@@ -853,7 +854,7 @@ impl Message {
     pub fn user(content: impl Into<String>) -> Self {
         Self {
             id: MessageId::new(),
-            role: MessageRole::User,
+            role: RuntimeMessageRole::User,
             content: vec![ContentPart::text(content)],
             phase: None,
             phase_source: None,
@@ -868,7 +869,7 @@ impl Message {
     pub fn assistant(content: impl Into<String>) -> Self {
         Self {
             id: MessageId::new(),
-            role: MessageRole::Agent,
+            role: RuntimeMessageRole::Agent,
             content: vec![ContentPart::text(content)],
             phase: None,
             phase_source: None,
@@ -904,7 +905,7 @@ impl Message {
         }
         Self {
             id: MessageId::new(),
-            role: MessageRole::Agent,
+            role: RuntimeMessageRole::Agent,
             content: parts,
             phase: None,
             phase_source: None,
@@ -919,7 +920,7 @@ impl Message {
     pub fn system(content: impl Into<String>) -> Self {
         Self {
             id: MessageId::new(),
-            role: MessageRole::System,
+            role: RuntimeMessageRole::System,
             content: vec![ContentPart::text(content)],
             phase: None,
             phase_source: None,
@@ -939,7 +940,7 @@ impl Message {
         let tool_call_id = tool_call_id.into();
         Self {
             id: MessageId::new(),
-            role: MessageRole::ToolResult,
+            role: RuntimeMessageRole::ToolResult,
             content: vec![ContentPart::ToolResult(ToolResultContentPart::new(
                 tool_call_id,
                 result,
@@ -957,7 +958,7 @@ impl Message {
     /// Create a tool result message with images.
     ///
     /// Images are included as `ContentPart::Image` alongside the `ToolResult` part.
-    /// When converted to `Message`, images become native image content blocks
+    /// When converted to the provider `Message`, images become native image content blocks
     /// that the LLM can see visually (not just stringified base64).
     pub fn tool_result_with_images(
         tool_call_id: impl Into<String>,
@@ -978,7 +979,7 @@ impl Message {
         }
         Self {
             id: MessageId::new(),
-            role: MessageRole::ToolResult,
+            role: RuntimeMessageRole::ToolResult,
             content,
             phase: None,
             phase_source: None,
@@ -1050,7 +1051,7 @@ impl Message {
             .map(|part| match part {
                 ContentPart::Text(t) => t.text.clone(),
                 // Reasoning is replayed as provider-native artifacts on
-                // `Message::reasoning`; it must never be flattened into
+                // the provider `Message::reasoning`; it must never be flattened into
                 // prompt text. Filtered out below.
                 ContentPart::Reasoning(_) => String::new(),
                 ContentPart::Image(_) => "[Image]".to_string(),
@@ -1092,14 +1093,14 @@ impl Message {
     /// Used by observability backends (e.g., Braintrust) that expect OpenAI format.
     pub fn to_openai_format(&self) -> serde_json::Value {
         let role = match self.role {
-            MessageRole::System => "system",
-            MessageRole::User => "user",
-            MessageRole::Agent => "assistant",
-            MessageRole::ToolResult => "tool",
+            RuntimeMessageRole::System => "system",
+            RuntimeMessageRole::User => "user",
+            RuntimeMessageRole::Agent => "assistant",
+            RuntimeMessageRole::ToolResult => "tool",
         };
 
         // Handle tool result messages (need tool_call_id at message level)
-        if self.role == MessageRole::ToolResult {
+        if self.role == RuntimeMessageRole::ToolResult {
             let tool_call_id = self.tool_call_id().unwrap_or("");
             let content = self
                 .content
@@ -1126,7 +1127,7 @@ impl Message {
         }
 
         // Handle assistant messages with tool calls
-        if self.role == MessageRole::Agent {
+        if self.role == RuntimeMessageRole::Agent {
             let tool_calls: Vec<serde_json::Value> = self
                 .content
                 .iter()
@@ -1218,22 +1219,22 @@ impl Message {
 /// (see `crate::command_host`). The main reason path uses the durable-store-aware
 /// the execution kernel's transcript-repair path instead (EVE-533),
 /// which can replay settled results rather than synthesizing cancellations.
-pub fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
+pub fn patch_dangling_tool_calls(messages: &[RuntimeMessage]) -> Vec<RuntimeMessage> {
     let mut result = Vec::new();
 
     for (i, msg) in messages.iter().enumerate() {
         result.push(msg.clone());
 
         // After an assistant message with tool calls, add cancelled results for any missing ones
-        if msg.role == MessageRole::Agent && msg.has_tool_calls() {
+        if msg.role == RuntimeMessageRole::Agent && msg.has_tool_calls() {
             for tc in msg.tool_calls() {
                 // Look for a matching tool result in ALL subsequent messages
-                let has_result = messages[(i + 1)..]
-                    .iter()
-                    .any(|m| m.role == MessageRole::ToolResult && m.tool_call_id() == Some(&tc.id));
+                let has_result = messages[(i + 1)..].iter().any(|m| {
+                    m.role == RuntimeMessageRole::ToolResult && m.tool_call_id() == Some(&tc.id)
+                });
 
                 if !has_result {
-                    result.push(Message::tool_result(
+                    result.push(RuntimeMessage::tool_result(
                         &tc.id,
                         None,
                         Some(
@@ -1270,7 +1271,7 @@ mod tests {
         ]
     }
 
-    fn assert_messages(actual: &[Message], expected: &[Message]) {
+    fn assert_messages(actual: &[RuntimeMessage], expected: &[RuntimeMessage]) {
         assert_eq!(
             serde_json::to_value(actual).unwrap(),
             serde_json::to_value(expected).unwrap()
@@ -1285,11 +1286,11 @@ mod tests {
             input: "raw\nquery: \"value\"".into(),
             asynchronous: true,
         };
-        let mut message = Message::assistant("");
+        let mut message = RuntimeMessage::assistant("");
         message.content.push(ContentPart::ToolCall(
             ToolCallContentPart::from_native(native.clone()).unwrap(),
         ));
-        let restored: Message =
+        let restored: RuntimeMessage =
             serde_json::from_slice(&serde_json::to_vec(&message).unwrap()).unwrap();
         assert_eq!(restored.tool_calls()[0].native.as_ref(), Some(&native));
         let llm = crate::llm_conversions::llm_message_from_message(&restored);
@@ -1301,10 +1302,13 @@ mod tests {
     fn settled_transcripts_are_preserved_without_synthetic_results() {
         for messages in [
             vec![],
-            vec![Message::user("Hello"), Message::assistant("Hi")],
             vec![
-                Message::assistant_with_tools("Searching", vec![calls()[0].clone()]),
-                Message::tool_result("call_search", Some(json!({"found": 2})), None),
+                RuntimeMessage::user("Hello"),
+                RuntimeMessage::assistant("Hi"),
+            ],
+            vec![
+                RuntimeMessage::assistant_with_tools("Searching", vec![calls()[0].clone()]),
+                RuntimeMessage::tool_result("call_search", Some(json!({"found": 2})), None),
             ],
         ] {
             assert_messages(&patch_dangling_tool_calls(&messages), &messages);
@@ -1314,16 +1318,16 @@ mod tests {
     #[test]
     fn dangling_calls_get_only_missing_cancellations_and_patching_is_idempotent() {
         let messages = vec![
-            Message::user("Search then fetch"),
-            Message::assistant_with_tools("Working", calls()),
-            Message::user("Never mind"),
-            Message::tool_result("call_search", Some(json!({"found": 2})), None),
+            RuntimeMessage::user("Search then fetch"),
+            RuntimeMessage::assistant_with_tools("Working", calls()),
+            RuntimeMessage::user("Never mind"),
+            RuntimeMessage::tool_result("call_search", Some(json!({"found": 2})), None),
         ];
         let patched = patch_dangling_tool_calls(&messages);
         assert_eq!(patched.len(), 5);
         assert_messages(&patched[..2], &messages[..2]);
         assert_messages(&patched[3..], &messages[2..]);
-        assert_eq!(patched[2].role, MessageRole::ToolResult);
+        assert_eq!(patched[2].role, RuntimeMessageRole::ToolResult);
         assert_eq!(
             serde_json::to_value(&patched[2].content).unwrap(),
             json!([{
@@ -1337,11 +1341,19 @@ mod tests {
     #[test]
     fn plain_message_constructors_preserve_role_and_text() {
         for (message, role, text) in [
-            (Message::user("question"), MessageRole::User, "question"),
-            (Message::assistant("answer"), MessageRole::Agent, "answer"),
             (
-                Message::system("instruction"),
-                MessageRole::System,
+                RuntimeMessage::user("question"),
+                RuntimeMessageRole::User,
+                "question",
+            ),
+            (
+                RuntimeMessage::assistant("answer"),
+                RuntimeMessageRole::Agent,
+                "answer",
+            ),
+            (
+                RuntimeMessage::system("instruction"),
+                RuntimeMessageRole::System,
                 "instruction",
             ),
         ] {
@@ -1359,8 +1371,8 @@ mod tests {
             (None, Some("timeout".to_owned())),
             (Some(json!(false)), Some("partial".to_owned())),
         ] {
-            let message = Message::tool_result("call_result", result.clone(), error.clone());
-            assert_eq!(message.role, MessageRole::ToolResult);
+            let message = RuntimeMessage::tool_result("call_result", result.clone(), error.clone());
+            assert_eq!(message.role, RuntimeMessageRole::ToolResult);
             assert_eq!(message.tool_call_id(), Some("call_result"));
             assert_eq!(
                 message.content,
@@ -1372,7 +1384,7 @@ mod tests {
     #[test]
     fn assistant_tool_messages_preserve_calls_and_distinguish_empty_from_whitespace_text() {
         for text in ["", "   ", "Working"] {
-            let message = Message::assistant_with_tools(text, calls());
+            let message = RuntimeMessage::assistant_with_tools(text, calls());
             let tool_parts: Vec<_> = calls()
                 .into_iter()
                 .map(|c| ContentPart::tool_call(c.id, c.name, c.arguments))
@@ -1382,7 +1394,7 @@ mod tests {
                 expected.push(ContentPart::text(text));
             }
             expected.extend(tool_parts);
-            assert_eq!(message.role, MessageRole::Agent);
+            assert_eq!(message.role, RuntimeMessageRole::Agent);
             assert_eq!(message.text(), (!text.is_empty()).then_some(text));
             assert_eq!(message.content, expected);
             assert!(message.has_tool_calls());
@@ -1397,15 +1409,15 @@ mod tests {
     fn openai_plain_messages_map_internal_roles_and_preserve_text() {
         for (message, expected) in [
             (
-                Message::user("question"),
+                RuntimeMessage::user("question"),
                 json!({"role": "user", "content": "question"}),
             ),
             (
-                Message::system("instruction"),
+                RuntimeMessage::system("instruction"),
                 json!({"role": "system", "content": "instruction"}),
             ),
             (
-                Message::assistant("answer"),
+                RuntimeMessage::assistant("answer"),
                 json!({"role": "assistant", "content": "answer"}),
             ),
         ] {
@@ -1416,7 +1428,7 @@ mod tests {
     #[test]
     fn openai_tool_calls_preserve_ids_arguments_and_optional_text() {
         for text in ["", "Working"] {
-            let message = Message::assistant_with_tools(text, calls());
+            let message = RuntimeMessage::assistant_with_tools(text, calls());
             let mut expected = json!({"role": "assistant", "tool_calls": [
                 {"id": "call_search", "type": "function", "function": {"name": "search", "arguments": "{\"q\":\"rust\"}"}},
                 {"id": "call_fetch", "type": "function", "function": {"name": "fetch", "arguments": "{\"url\":\"https://example.com\"}"}}
@@ -1444,7 +1456,8 @@ mod tests {
             ),
             (None, None, "{}"),
         ] {
-            let message = Message::tool_result("call_result", result, error.map(str::to_owned));
+            let message =
+                RuntimeMessage::tool_result("call_result", result, error.map(str::to_owned));
             assert_eq!(
                 message.to_openai_format(),
                 json!({"role":"tool", "tool_call_id":"call_result", "content":content})
@@ -1513,7 +1526,7 @@ mod tests {
 
     #[test]
     fn openai_message_content_preserves_multimodal_order_and_filters_unsupported_parts() {
-        let mut message = Message::user("before");
+        let mut message = RuntimeMessage::user("before");
         message
             .content
             .push(ContentPart::image_url("https://example.com/image"));
@@ -1538,7 +1551,7 @@ mod tests {
             message.to_openai_format(),
             json!({"role":"user", "content":""})
         );
-        let mut assistant = Message::assistant("first");
+        let mut assistant = RuntimeMessage::assistant("first");
         assistant.content.push(ContentPart::text("second"));
         assert_eq!(
             assistant.to_openai_format(),
@@ -1563,10 +1576,10 @@ mod tests {
                 }
                 let message = match (phase, source) {
                     (Some(phase), Some(source)) => {
-                        Message::assistant("answer").with_phase_from(phase, source)
+                        RuntimeMessage::assistant("answer").with_phase_from(phase, source)
                     }
-                    (Some(phase), None) => Message::assistant("answer").with_phase(phase),
-                    _ => Message::assistant("answer"),
+                    (Some(phase), None) => RuntimeMessage::assistant("answer").with_phase(phase),
+                    _ => RuntimeMessage::assistant("answer"),
                 };
                 let json = serde_json::to_value(&message).unwrap();
                 assert_eq!(
@@ -1582,7 +1595,7 @@ mod tests {
                     json.get("phase_source"),
                     source_wire.map(serde_json::Value::from).as_ref()
                 );
-                let decoded: Message = serde_json::from_value(json.clone()).unwrap();
+                let decoded: RuntimeMessage = serde_json::from_value(json.clone()).unwrap();
                 assert_eq!(decoded.phase, phase);
                 assert_eq!(decoded.phase_source, source);
                 assert_eq!(decoded.text(), Some("answer"));

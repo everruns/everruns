@@ -10,9 +10,10 @@
 //! ```
 
 use async_trait::async_trait;
+use everruns::llm::Message;
 use everruns::{
     AgentLoopError, ChatDriver, DiscoveredModel, DriverId, LlmCallConfig, LlmResponseStream,
-    LlmStreamEvent, Message, Provider, ProviderEndpoint, models,
+    LlmStreamEvent, Provider, ProviderEndpoint, models,
 };
 
 #[tokio::main]

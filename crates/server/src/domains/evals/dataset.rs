@@ -7,7 +7,7 @@
 
 use std::sync::LazyLock;
 
-use everruns_core::message::{ContentPart, Message, MessageRole};
+use everruns_core::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use everruns_platform::eval::{CaseResultStatus, EvalCaseResult, EvalRun};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -268,17 +268,17 @@ fn model_of_target(target: &everruns_platform::eval::EvalTarget) -> Option<Strin
 }
 
 /// SFT chat role string for a message role.
-fn sft_role(role: &MessageRole) -> &'static str {
+fn sft_role(role: &RuntimeMessageRole) -> &'static str {
     match role {
-        MessageRole::System => "system",
-        MessageRole::User => "user",
-        MessageRole::Agent => "assistant",
-        MessageRole::ToolResult => "tool",
+        RuntimeMessageRole::System => "system",
+        RuntimeMessageRole::User => "user",
+        RuntimeMessageRole::Agent => "assistant",
+        RuntimeMessageRole::ToolResult => "tool",
     }
 }
 
 /// Best-effort flat text for a message in the SFT shape.
-fn message_text(msg: &Message) -> String {
+fn message_text(msg: &RuntimeMessage) -> String {
     let mut parts: Vec<String> = Vec::new();
     if let Some(thinking) = msg.reasoning_display_text() {
         parts.push(format!("[thinking] {thinking}"));
@@ -321,7 +321,7 @@ pub fn build_record(
     format: DatasetFormat,
     run: &EvalRun,
     result: &EvalCaseResult,
-    messages: &[Message],
+    messages: &[RuntimeMessage],
     redaction: &RedactionOptions,
 ) -> Value {
     let mut record = match format {
@@ -371,7 +371,7 @@ pub fn build_record(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::message::{Message, MessageRole, TextContentPart};
+    use everruns_core::message::{RuntimeMessage, RuntimeMessageRole, TextContentPart};
     use everruns_platform::eval::EvalCaseResult;
     use everruns_provider::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
 
@@ -398,8 +398,8 @@ mod tests {
         }
     }
 
-    fn text_msg(role: MessageRole, text: &str) -> Message {
-        Message {
+    fn text_msg(role: RuntimeMessageRole, text: &str) -> RuntimeMessage {
+        RuntimeMessage {
             id: uuid::Uuid::now_v7().into(),
             role,
             content: vec![ContentPart::Text(TextContentPart::new(text))],
@@ -544,8 +544,8 @@ mod tests {
             json!([{"pass": true, "value": 1.0, "reason": "ok"}]),
         );
         let msgs = vec![
-            text_msg(MessageRole::User, "hello"),
-            text_msg(MessageRole::Agent, "hi there"),
+            text_msg(RuntimeMessageRole::User, "hello"),
+            text_msg(RuntimeMessageRole::Agent, "hi there"),
         ];
         let rec = build_record(
             DatasetFormat::Trajectory,
@@ -565,8 +565,8 @@ mod tests {
     fn sft_record_is_chat_shaped() {
         let r = result_with(CaseResultStatus::Passed, json!([{"value": 1.0}]));
         let msgs = vec![
-            text_msg(MessageRole::User, "q"),
-            text_msg(MessageRole::Agent, "a"),
+            text_msg(RuntimeMessageRole::User, "q"),
+            text_msg(RuntimeMessageRole::Agent, "a"),
         ];
         let rec = build_record(
             DatasetFormat::Sft,
@@ -585,7 +585,10 @@ mod tests {
     #[test]
     fn redact_content_blanks_text_but_keeps_structure() {
         let r = result_with(CaseResultStatus::Passed, json!([{"value": 1.0}]));
-        let msgs = vec![text_msg(MessageRole::User, "secret business content")];
+        let msgs = vec![text_msg(
+            RuntimeMessageRole::User,
+            "secret business content",
+        )];
         let rec = build_record(
             DatasetFormat::Trajectory,
             &run(),
@@ -605,7 +608,7 @@ mod tests {
     #[test]
     fn sft_redacts_content_when_requested() {
         let r = result_with(CaseResultStatus::Passed, json!([{"value": 1.0}]));
-        let msgs = vec![text_msg(MessageRole::User, "private text")];
+        let msgs = vec![text_msg(RuntimeMessageRole::User, "private text")];
         let rec = build_record(
             DatasetFormat::Sft,
             &run(),
@@ -664,7 +667,7 @@ mod tests {
     fn redact_content_blanks_image_payload() {
         use everruns_core::message::ImageContentPart;
         let r = result_with(CaseResultStatus::Passed, json!([{"value": 1.0}]));
-        let mut msg = text_msg(MessageRole::User, "x");
+        let mut msg = text_msg(RuntimeMessageRole::User, "x");
         msg.content = vec![ContentPart::Image(ImageContentPart::from_url(
             "https://example.com/SECRETIMAGEDATA.png",
         ))];

@@ -4,7 +4,7 @@
 //! the source of truth across worker restarts. Checkpoints retain the same state
 //! when they replace that transcript. Request retries reuse the prepared state.
 
-use crate::message::{Message, MessageRole};
+use crate::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::typed_id::MessageId;
 use everruns_provider::ReasoningEffort;
 use everruns_provider::reasoning_updates::{
@@ -20,8 +20,8 @@ pub(super) struct ReasoningReplay {
     pub reset_continuation: bool,
 }
 
-fn snapshot(message: &Message) -> Option<ReasoningState> {
-    if message.role != MessageRole::Agent {
+fn snapshot(message: &RuntimeMessage) -> Option<ReasoningState> {
+    if message.role != RuntimeMessageRole::Agent {
         return None;
     }
     let metadata = message.metadata.as_ref()?;
@@ -36,7 +36,7 @@ fn snapshot(message: &Message) -> Option<ReasoningState> {
 }
 
 pub(super) fn prepare(
-    messages: &[Message],
+    messages: &[RuntimeMessage],
     provider: &str,
     model: &str,
     requested: Option<ReasoningEffort>,
@@ -56,7 +56,7 @@ pub(super) fn prepare(
         .collect();
     let last_assistant = messages
         .iter()
-        .rposition(|message| message.role == MessageRole::Agent);
+        .rposition(|message| message.role == RuntimeMessageRole::Agent);
     let prior = last_assistant
         .and_then(|index| snapshot(messages[index]))
         .or_else(|| {
@@ -78,7 +78,8 @@ pub(super) fn prepare(
         .enumerate()
         .rev()
         .find(|(index, message)| {
-            message.role == MessageRole::User && last_assistant.is_none_or(|last| *index > last)
+            message.role == RuntimeMessageRole::User
+                && last_assistant.is_none_or(|last| *index > last)
         })
         .and_then(|(_, message)| message.controls.as_ref())
         .and_then(|controls| controls.reasoning.as_ref())
@@ -100,7 +101,7 @@ pub(super) fn prepare(
         .or(state.baseline);
     let mut input_start = 0;
     for (index, message) in messages.iter().enumerate() {
-        if message.role != MessageRole::Agent {
+        if message.role != RuntimeMessageRole::Agent {
             continue;
         }
         if let Some(saved) = snapshot(message).filter(|saved| saved.epoch == state.epoch) {
@@ -109,7 +110,7 @@ pub(super) fn prepare(
                 // directly precedes the assistant output it configured.
                 let anchor = messages[input_start..=index]
                     .iter()
-                    .find(|message| message.role != MessageRole::System)
+                    .find(|message| message.role != RuntimeMessageRole::System)
                     .unwrap_or(message);
                 transitions.insert(anchor.id, next);
             }
@@ -129,8 +130,8 @@ mod tests {
     use super::*;
     use ReasoningEffort::{High, Low, Max, Minimal};
 
-    fn user(effort: Option<ReasoningEffort>) -> Message {
-        let mut message = Message::user("continue");
+    fn user(effort: Option<ReasoningEffort>) -> RuntimeMessage {
+        let mut message = RuntimeMessage::user("continue");
         message.controls = Some(crate::message::Controls {
             reasoning: Some(crate::message::ReasoningConfig { effort }),
             ..Default::default()
@@ -138,8 +139,8 @@ mod tests {
         message
     }
 
-    fn completed(state: &ReasoningState) -> Message {
-        let mut message = Message::assistant("done");
+    fn completed(state: &ReasoningState) -> RuntimeMessage {
+        let mut message = RuntimeMessage::assistant("done");
         message.metadata = Some(HashMap::from([
             ("provider".into(), serde_json::json!("openai")),
             ("model".into(), serde_json::json!("gpt-6-astra")),
@@ -150,7 +151,7 @@ mod tests {
     }
 
     fn plan(
-        messages: &[Message],
+        messages: &[RuntimeMessage],
         requested: Option<ReasoningEffort>,
         live: Option<ReasoningEffort>,
     ) -> ReasoningReplay {

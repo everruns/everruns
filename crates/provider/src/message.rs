@@ -6,7 +6,9 @@
 
 use crate::tool_types::ToolCall;
 
-/// Message format for LLM calls (provider-agnostic)
+/// Message format for LLM calls (provider-agnostic): the request-shaped view a
+/// driver turns into provider wire format. Distinct from the lossless stored
+/// `everruns_core::message::RuntimeMessage`, which `llm_conversions` maps here.
 #[derive(Debug, Clone)]
 pub struct Message {
     /// Provider-native call identities, retained alongside portable fallbacks.

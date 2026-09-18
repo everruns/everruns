@@ -1,7 +1,7 @@
 //! Fixtures shared by the test modules.
 
 use super::*;
-use crate::message::Message;
+use crate::message::RuntimeMessage;
 use crate::message_filter::{MessageFilter, MessageFilterProvider, MessageQuery};
 use crate::tool_types::ToolCall;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -560,11 +560,11 @@ impl Capability for InnerMvpCap {
         impl crate::capabilities::ModelViewProvider for AppendingMvp {
             fn apply_model_view(
                 &self,
-                mut messages: Vec<Message>,
+                mut messages: Vec<RuntimeMessage>,
                 config: &serde_json::Value,
                 context: &ModelViewContext<'_>,
-            ) -> Vec<Message> {
-                messages.push(Message::user(format!(
+            ) -> Vec<RuntimeMessage> {
+                messages.push(RuntimeMessage::user(format!(
                     "{}:{}",
                     config["suffix"].as_str().unwrap(),
                     context.session_id

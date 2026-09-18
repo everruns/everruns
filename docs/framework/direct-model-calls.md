@@ -135,11 +135,12 @@ The first two are caught before any request leaves the process.
 `Completion` is a thin value-first layer over `Provider`, which is public.
 Applications that already hold a `Provider` — or implement their own
 [`ChatDriver`](/framework/custom-providers/) — can call it directly with
-`everruns`'s `Message`, `MessageRole`, `LlmCallConfig`, and `LlmResponse`
-re-exports:
+`everruns::llm`'s `Message` and `MessageRole`, plus the crate-root
+`LlmCallConfig` and `LlmResponse` re-exports:
 
 ```rust
-use everruns::{LlmCallConfig, Message, MessageRole, Provider};
+use everruns::llm::{Message, MessageRole};
+use everruns::{LlmCallConfig, Provider};
 
 # async fn run(provider: Provider) -> Result<(), Box<dyn std::error::Error>> {
 let response = provider

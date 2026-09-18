@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventRequest};
-use everruns_core::message::Message;
+use everruns_core::message::RuntimeMessage;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 use everruns_provider::error::Result;
@@ -20,7 +20,7 @@ use uuid::Uuid;
 /// Writable message fixture for isolated tests that do not exercise a host.
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryMessageRetriever {
-    messages: Arc<RwLock<HashMap<SessionId, Vec<Message>>>>,
+    messages: Arc<RwLock<HashMap<SessionId, Vec<RuntimeMessage>>>>,
 }
 
 impl InMemoryMessageRetriever {
@@ -45,13 +45,13 @@ impl InMemoryMessageRetriever {
     }
 
     /// Replace one session's deterministic message history.
-    pub async fn seed(&self, session_id: SessionId, messages: Vec<Message>) {
+    pub async fn seed(&self, session_id: SessionId, messages: Vec<RuntimeMessage>) {
         self.messages.write().await.insert(session_id, messages);
     }
 
     /// Construct and append a message from test input.
-    pub async fn add(&self, session_id: SessionId, input: InputMessage) -> Result<Message> {
-        let message = Message {
+    pub async fn add(&self, session_id: SessionId, input: InputMessage) -> Result<RuntimeMessage> {
+        let message = RuntimeMessage {
             id: MessageId::new(),
             role: input.role,
             content: input.content,
@@ -67,7 +67,7 @@ impl InMemoryMessageRetriever {
     }
 
     /// Append an already-constructed message.
-    pub async fn store(&self, session_id: SessionId, message: Message) -> Result<()> {
+    pub async fn store(&self, session_id: SessionId, message: RuntimeMessage) -> Result<()> {
         self.messages
             .write()
             .await
@@ -80,7 +80,11 @@ impl InMemoryMessageRetriever {
 
 #[async_trait]
 impl MessageRetriever for InMemoryMessageRetriever {
-    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+    async fn get(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<RuntimeMessage>> {
         Ok(self
             .messages
             .read()
@@ -89,7 +93,7 @@ impl MessageRetriever for InMemoryMessageRetriever {
             .and_then(|messages| messages.iter().find(|m| m.id == message_id).cloned()))
     }
 
-    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
         Ok(self
             .messages
             .read()
@@ -99,7 +103,7 @@ impl MessageRetriever for InMemoryMessageRetriever {
             .unwrap_or_default())
     }
 
-    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<RuntimeMessage>> {
         let mut messages = self.load(query.session_id).await?;
         if let Some(after) = query.after_sequence {
             messages = messages.into_iter().skip(after.max(0) as usize).collect();

@@ -608,7 +608,7 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
     // that also contains a credential the export must scrub. Build real event
     // payloads so `event_to_message` reconstruction matches production.
     use everruns_core::events::{InputMessageData, OutputMessageCompletedData};
-    use everruns_core::message::Message;
+    use everruns_core::message::RuntimeMessage;
     server
         .db
         .create_event(CreateEventRow {
@@ -616,7 +616,7 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
             event_type: "input.message".to_string(),
             ts: chrono::Utc::now(),
             context: json!({}),
-            data: serde_json::to_value(InputMessageData::new(Message::user("hello")))
+            data: serde_json::to_value(InputMessageData::new(RuntimeMessage::user("hello")))
                 .expect("serialize input event"),
             metadata: None,
             tags: None,
@@ -630,7 +630,7 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
             event_type: "output.message.completed".to_string(),
             ts: chrono::Utc::now(),
             context: json!({}),
-            data: serde_json::to_value(OutputMessageCompletedData::new(Message::assistant(
+            data: serde_json::to_value(OutputMessageCompletedData::new(RuntimeMessage::assistant(
                 format!("ok, token is {SEEDED_SECRET}"),
             )))
             .expect("serialize output event"),
@@ -948,7 +948,7 @@ async fn seed_run_with_tool_iterations(
     n: usize,
 ) -> (String, String, SessionId) {
     use everruns_core::events::{InputMessageData, OutputMessageCompletedData, ToolCompletedData};
-    use everruns_core::message::{ContentPart, Message};
+    use everruns_core::message::{ContentPart, RuntimeMessage};
     use everruns_provider::tool_types::ToolCall;
     use uuid::Uuid;
 
@@ -1035,7 +1035,7 @@ async fn seed_run_with_tool_iterations(
     // Seed the session's event log; `retriever.load` reconstructs the messages
     // from these, and cost-control compaction then masks the older tool results.
     let mut seeded: Vec<serde_json::Value> =
-        vec![serde_json::to_value(InputMessageData::new(Message::user("start"))).unwrap()];
+        vec![serde_json::to_value(InputMessageData::new(RuntimeMessage::user("start"))).unwrap()];
     let mut event_types: Vec<&str> = vec!["input.message"];
     for i in 0..n {
         let call = ToolCall {
@@ -1045,7 +1045,7 @@ async fn seed_run_with_tool_iterations(
         };
         seeded.push(
             serde_json::to_value(OutputMessageCompletedData::new(
-                Message::assistant_with_tools(format!("iter {i}"), vec![call]),
+                RuntimeMessage::assistant_with_tools(format!("iter {i}"), vec![call]),
             ))
             .unwrap(),
         );
@@ -1411,12 +1411,14 @@ async fn seed_session_with_raw_events(
 #[tokio::test]
 async fn test_session_export_atif_image_content_multimodal() {
     use everruns_core::events::InputMessageData;
-    use everruns_core::message::{ContentPart, ImageContentPart, ImageFileContentPart, Message};
+    use everruns_core::message::{
+        ContentPart, ImageContentPart, ImageFileContentPart, RuntimeMessage,
+    };
     use everruns_provider::typed_id::ImageId;
 
     let server = TestServer::in_memory().await;
     let image_id = ImageId::new();
-    let mut message = Message::user("look at this");
+    let mut message = RuntimeMessage::user("look at this");
     message
         .content
         .push(ContentPart::Image(ImageContentPart::from_url(
@@ -1473,10 +1475,10 @@ async fn test_session_export_atif_image_content_multimodal() {
 #[tokio::test]
 async fn test_session_export_atif_unmaterializable_image_sets_header() {
     use everruns_core::events::InputMessageData;
-    use everruns_core::message::{ContentPart, ImageContentPart, Message};
+    use everruns_core::message::{ContentPart, ImageContentPart, RuntimeMessage};
 
     let server = TestServer::in_memory().await;
-    let mut message = Message::user("look at this");
+    let mut message = RuntimeMessage::user("look at this");
     // An inline image with neither URL nor base64 cannot be materialized, so it
     // stays a marker and is counted as omitted.
     message.content.push(ContentPart::Image(ImageContentPart {
@@ -1517,7 +1519,7 @@ async fn test_session_export_atif_unmaterializable_image_sets_header() {
 #[tokio::test]
 async fn test_session_export_atif_over_cap_returns_413() {
     use everruns_core::events::InputMessageData;
-    use everruns_core::message::Message;
+    use everruns_core::message::RuntimeMessage;
 
     // Tiny injected cap; production uses `ATIF_EXPORT_MAX_BYTES` (50 MiB).
     let server = TestServer::in_memory_with_atif_export_cap(64).await;
@@ -1525,7 +1527,7 @@ async fn test_session_export_atif_over_cap_returns_413() {
         &server,
         vec![(
             "input.message",
-            serde_json::to_value(InputMessageData::new(Message::user("hello world")))
+            serde_json::to_value(InputMessageData::new(RuntimeMessage::user("hello world")))
                 .expect("serialize input event"),
         )],
     )
@@ -1563,7 +1565,7 @@ async fn test_session_export_atif_over_cap_returns_413() {
 #[tokio::test]
 async fn test_session_export_atif_subagent_trajectory_ref() {
     use everruns_core::events::{InputMessageData, OutputMessageCompletedData, ToolCompletedData};
-    use everruns_core::message::{ContentPart, Message};
+    use everruns_core::message::{ContentPart, RuntimeMessage};
     use everruns_provider::tool_types::ToolCall;
     use everruns_provider::typed_id::SessionId as CoreSessionId;
 
@@ -1586,13 +1588,13 @@ async fn test_session_export_atif_subagent_trajectory_ref() {
         vec![
             (
                 "input.message",
-                serde_json::to_value(InputMessageData::new(Message::user("delegate this")))
+                serde_json::to_value(InputMessageData::new(RuntimeMessage::user("delegate this")))
                     .expect("serialize input event"),
             ),
             (
                 "output.message.completed",
                 serde_json::to_value(OutputMessageCompletedData::new(
-                    Message::assistant_with_tools("spawning", vec![spawn_call]),
+                    RuntimeMessage::assistant_with_tools("spawning", vec![spawn_call]),
                 ))
                 .expect("serialize output event"),
             ),
@@ -1627,13 +1629,13 @@ async fn test_session_export_atif_subagent_trajectory_ref() {
 /// first, so the ATIF fold yields `n` ordered user steps.
 async fn seed_session_with_n_messages(server: &TestServer, n: usize) -> SessionId {
     use everruns_core::events::InputMessageData;
-    use everruns_core::message::Message;
+    use everruns_core::message::RuntimeMessage;
 
     let events: Vec<(&str, serde_json::Value)> = (0..n)
         .map(|i| {
             (
                 "input.message",
-                serde_json::to_value(InputMessageData::new(Message::user(format!(
+                serde_json::to_value(InputMessageData::new(RuntimeMessage::user(format!(
                     "segmented message {i}"
                 ))))
                 .expect("serialize input event"),

@@ -812,7 +812,7 @@ pub fn schema_session_to_proto(value: &everruns_platform::Session) -> proto::Ses
 /// Convert proto Message to schemas Message
 pub fn proto_message_to_schema(
     value: proto::Message,
-) -> Result<everruns_core::Message, ConversionError> {
+) -> Result<everruns_core::RuntimeMessage, ConversionError> {
     let id = value
         .id
         .as_ref()
@@ -855,7 +855,7 @@ pub fn proto_message_to_schema(
 
     let role = parse_message_role(&value.role);
 
-    Ok(everruns_core::Message {
+    Ok(everruns_core::RuntimeMessage {
         id: id.into(),
         role,
         content,
@@ -877,7 +877,7 @@ pub fn proto_message_to_schema(
 }
 
 /// Convert schemas Message to proto Message
-pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message {
+pub fn schema_message_to_proto(value: &everruns_core::RuntimeMessage) -> proto::Message {
     // EVE-652: serializing a message field previously fell back to an empty
     // value silently — for `content` that means dropping the entire message
     // payload (text/images/tool calls). Keep the empty fallback (infallible
@@ -1773,18 +1773,18 @@ pub fn proto_to_new_task_message(p: proto::NewTaskMessageProto) -> st::NewTaskMe
 // Helper functions
 // ============================================================================
 
-fn parse_message_role(s: &str) -> everruns_core::MessageRole {
+fn parse_message_role(s: &str) -> everruns_core::RuntimeMessageRole {
     match s.to_lowercase().as_str() {
-        "system" => everruns_core::MessageRole::System,
-        "user" => everruns_core::MessageRole::User,
-        "assistant" | "agent" => everruns_core::MessageRole::Agent,
-        "tool_result" => everruns_core::MessageRole::ToolResult,
+        "system" => everruns_core::RuntimeMessageRole::System,
+        "user" => everruns_core::RuntimeMessageRole::User,
+        "assistant" | "agent" => everruns_core::RuntimeMessageRole::Agent,
+        "tool_result" => everruns_core::RuntimeMessageRole::ToolResult,
         _ => {
             // EVE-652: an unrecognized role used to be silently coerced to `User`,
             // which can mislabel provenance (e.g. an assistant message rendered as
             // a user turn). Keep the safe default but surface the coercion.
             tracing::warn!(role = %s, "internal-protocol: unknown message role; defaulting to User");
-            everruns_core::MessageRole::User
+            everruns_core::RuntimeMessageRole::User
         }
     }
 }
@@ -2040,7 +2040,7 @@ mod tests {
     #[test]
     fn test_message_reasoning_roundtrip() {
         use chrono::Utc;
-        use everruns_core::{ContentPart, Message, MessageRole};
+        use everruns_core::{ContentPart, RuntimeMessage, RuntimeMessageRole};
         use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
         use uuid::Uuid;
 
@@ -2048,9 +2048,9 @@ mod tests {
         // produces. Both must survive the worker boundary with their own
         // signature: a merged pair carrying one signature is exactly what the
         // provider rejects.
-        let message = Message {
+        let message = RuntimeMessage {
             id: Uuid::now_v7().into(),
-            role: MessageRole::Agent,
+            role: RuntimeMessageRole::Agent,
             content: vec![
                 ContentPart::Reasoning(
                     ReasoningContentPart::opaque("anthropic")
@@ -2088,7 +2088,7 @@ mod tests {
                 text: "First I check the logs".to_string(),
             })
         );
-        assert_eq!(roundtripped.role, MessageRole::Agent);
+        assert_eq!(roundtripped.role, RuntimeMessageRole::Agent);
     }
 
     /// Phase and its source cross the boundary. Dropping either leaves the API
@@ -2097,7 +2097,7 @@ mod tests {
     #[test]
     fn test_message_phase_and_source_roundtrip() {
         use chrono::Utc;
-        use everruns_core::{ContentPart, Message, MessageRole};
+        use everruns_core::{ContentPart, RuntimeMessage, RuntimeMessageRole};
         use everruns_provider::{ExecutionPhase, PhaseSource};
         use uuid::Uuid;
 
@@ -2105,9 +2105,9 @@ mod tests {
             (ExecutionPhase::Commentary, PhaseSource::Derived),
             (ExecutionPhase::FinalAnswer, PhaseSource::Provider),
         ] {
-            let message = Message {
+            let message = RuntimeMessage {
                 id: Uuid::now_v7().into(),
-                role: MessageRole::Agent,
+                role: RuntimeMessageRole::Agent,
                 content: vec![ContentPart::text("answer")],
                 phase: Some(phase),
                 phase_source: Some(source),
@@ -2126,12 +2126,12 @@ mod tests {
     #[test]
     fn test_message_without_reasoning_roundtrip() {
         use chrono::Utc;
-        use everruns_core::{ContentPart, Message, MessageRole};
+        use everruns_core::{ContentPart, RuntimeMessage, RuntimeMessageRole};
         use uuid::Uuid;
 
-        let message = Message {
+        let message = RuntimeMessage {
             id: Uuid::now_v7().into(),
-            role: MessageRole::Agent,
+            role: RuntimeMessageRole::Agent,
             content: vec![ContentPart::text("A simple response without reasoning.")],
             phase: None,
             phase_source: None,
@@ -2150,7 +2150,7 @@ mod tests {
     #[test]
     fn test_external_actor_proto_roundtrip() {
         use chrono::Utc;
-        use everruns_core::{ContentPart, ExternalActor, Message, MessageRole};
+        use everruns_core::{ContentPart, ExternalActor, RuntimeMessage, RuntimeMessageRole};
         use uuid::Uuid;
 
         let actor = ExternalActor {
@@ -2164,9 +2164,9 @@ mod tests {
             ),
         };
 
-        let message = Message {
+        let message = RuntimeMessage {
             id: Uuid::now_v7().into(),
-            role: MessageRole::User,
+            role: RuntimeMessageRole::User,
             content: vec![ContentPart::text("Hello")],
             phase: None,
             phase_source: None,
@@ -2198,12 +2198,12 @@ mod tests {
     #[test]
     fn test_external_actor_none_proto_roundtrip() {
         use chrono::Utc;
-        use everruns_core::{ContentPart, Message, MessageRole};
+        use everruns_core::{ContentPart, RuntimeMessage, RuntimeMessageRole};
         use uuid::Uuid;
 
-        let message = Message {
+        let message = RuntimeMessage {
             id: Uuid::now_v7().into(),
-            role: MessageRole::User,
+            role: RuntimeMessageRole::User,
             content: vec![ContentPart::text("Hello")],
             phase: None,
             phase_source: None,
@@ -2522,21 +2522,30 @@ mod tests {
     // (now logged) rather than erroring or being dropped.
     #[test]
     fn test_parse_message_role_known_and_unknown() {
-        use everruns_core::MessageRole;
-        assert!(matches!(parse_message_role("system"), MessageRole::System));
-        assert!(matches!(parse_message_role("USER"), MessageRole::User));
+        use everruns_core::RuntimeMessageRole;
+        assert!(matches!(
+            parse_message_role("system"),
+            RuntimeMessageRole::System
+        ));
+        assert!(matches!(
+            parse_message_role("USER"),
+            RuntimeMessageRole::User
+        ));
         assert!(matches!(
             parse_message_role("assistant"),
-            MessageRole::Agent
+            RuntimeMessageRole::Agent
         ));
-        assert!(matches!(parse_message_role("agent"), MessageRole::Agent));
+        assert!(matches!(
+            parse_message_role("agent"),
+            RuntimeMessageRole::Agent
+        ));
         assert!(matches!(
             parse_message_role("tool_result"),
-            MessageRole::ToolResult
+            RuntimeMessageRole::ToolResult
         ));
         assert!(matches!(
             parse_message_role("something_unknown"),
-            MessageRole::User
+            RuntimeMessageRole::User
         ));
     }
 

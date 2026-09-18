@@ -5,21 +5,21 @@
 //! stateless request never exposes a result without its call.
 
 use crate::driver_registry::{Message, MessageContent, MessageRole};
-// `StoredMessage` is the lossless session-storage message; the unaliased
-// `Message` above is the provider-facing wire message. Both views need the
-// same tool-call integrity rules, hence the pair of near-identical helpers.
-use crate::message::{ContentPart, Message as StoredMessage};
+// `RuntimeMessage` is the lossless session-storage message; `Message` above is
+// the provider-facing wire message. Both views need the same tool-call
+// integrity rules, hence the pair of near-identical helpers.
+use crate::message::{ContentPart, RuntimeMessage};
 use std::collections::HashSet;
 
-/// Keep only complete tool-call/result exchanges in a prompt-facing `StoredMessage` view.
+/// Keep only complete tool-call/result exchanges in a prompt-facing `RuntimeMessage` view.
 ///
 /// Stateful Responses requests may legitimately carry a result whose call lives in
 /// `previous_response_id`; `allow_unmatched_results` preserves that delta shape.
 /// Calls without visible results are always removed rather than synthesized.
 pub fn retain_complete_message_tool_exchanges(
-    messages: &[StoredMessage],
+    messages: &[RuntimeMessage],
     allow_unmatched_results: bool,
-) -> Vec<StoredMessage> {
+) -> Vec<RuntimeMessage> {
     let result_ids: HashSet<String> = messages
         .iter()
         .flat_map(|message| message.content.iter())
@@ -29,7 +29,7 @@ pub fn retain_complete_message_tool_exchanges(
         })
         .collect();
 
-    let calls_filtered: Vec<StoredMessage> = messages
+    let calls_filtered: Vec<RuntimeMessage> = messages
         .iter()
         .filter_map(|message| {
             let mut message = message.clone();
@@ -127,7 +127,7 @@ pub fn retain_complete_llm_tool_exchanges_for_request(
         .collect()
 }
 
-fn message_has_visible_content(message: &StoredMessage) -> bool {
+fn message_has_visible_content(message: &RuntimeMessage) -> bool {
     message.content.iter().any(|part| match part {
         ContentPart::Text(text) => !text.text.is_empty(),
         ContentPart::Image(_) | ContentPart::ImageFile(_) | ContentPart::File(_) => true,
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn message_reduction_allows_stateful_result_deltas_only_when_requested() {
-        let result = StoredMessage::tool_result(
+        let result = RuntimeMessage::tool_result(
             "call_bash",
             Some(json!({"output":"done","exit_code":0})),
             None,
@@ -292,15 +292,15 @@ mod tests {
     #[test]
     fn message_reduction_preserves_matched_parts_and_does_not_mutate_source_history() {
         let calls = assistant_batch().tool_calls.unwrap();
-        let batch = StoredMessage::assistant_with_tools("Visible α", calls);
-        let matched = StoredMessage::tool_result(
+        let batch = RuntimeMessage::assistant_with_tools("Visible α", calls);
+        let matched = RuntimeMessage::tool_result(
             "call_skill",
             Some(json!({"skill":"ops","instructions":"Body"})),
             None,
         );
-        let orphan = StoredMessage::tool_result("orphan", Some(json!("orphan result")), None);
+        let orphan = RuntimeMessage::tool_result("orphan", Some(json!("orphan result")), None);
         let source = vec![
-            StoredMessage::user("Question"),
+            RuntimeMessage::user("Question"),
             batch.clone(),
             matched.clone(),
             orphan.clone(),
@@ -322,7 +322,7 @@ mod tests {
             );
         }
         assert_eq!(serde_json::to_value(&source).unwrap(), before);
-        let orphan_call = StoredMessage::assistant_with_tools(
+        let orphan_call = RuntimeMessage::assistant_with_tools(
             "",
             vec![ToolCall {
                 id: "missing".into(),

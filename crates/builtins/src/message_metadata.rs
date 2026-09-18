@@ -3,7 +3,7 @@
 //!
 //! Annotations are applied via [`ModelViewProvider`] at LLM message
 //! construction time; stored messages are never modified. Timestamps come from
-//! `Message::created_at`, which is immutable, so annotations are stable across
+//! `RuntimeMessage::created_at`, which is immutable, so annotations are stable across
 //! turns and do not invalidate provider prompt caches.
 
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize};
 
 use super::{Capability, CapabilityLocalization, ModelViewContext, ModelViewProvider};
-use crate::message::{ContentPart, Message, MessageRole};
+use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 
 pub const MESSAGE_METADATA_CAPABILITY_ID: &str = "message_metadata";
 
@@ -24,14 +24,14 @@ pub const MESSAGE_METADATA_CAPABILITY_ID: &str = "message_metadata";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageMetadataField {
-    /// Message timestamp (`Message::created_at`), rendered as
+    /// Message timestamp (`RuntimeMessage::created_at`), rendered as
     /// `[time <RFC3339 UTC>]`. For user messages this is when the message was
     /// received; for agent messages, when the reply was generated.
     Timestamp,
 }
 
 impl MessageMetadataField {
-    fn render(&self, msg: &Message) -> Option<String> {
+    fn render(&self, msg: &RuntimeMessage) -> Option<String> {
         match self {
             Self::Timestamp => Some(format!(
                 "[time {}]",
@@ -82,7 +82,7 @@ impl Capability for MessageMetadataCapability {
     }
 
     fn name(&self) -> &str {
-        "Message Metadata"
+        "RuntimeMessage Metadata"
     }
 
     fn description(&self) -> &str {
@@ -190,13 +190,16 @@ struct MessageMetadataModelViewProvider;
 impl ModelViewProvider for MessageMetadataModelViewProvider {
     fn apply_model_view(
         &self,
-        mut messages: Vec<Message>,
+        mut messages: Vec<RuntimeMessage>,
         config: &serde_json::Value,
         _context: &ModelViewContext<'_>,
-    ) -> Vec<Message> {
+    ) -> Vec<RuntimeMessage> {
         let config = MessageMetadataConfig::from_json(config);
         for msg in &mut messages {
-            if matches!(msg.role, MessageRole::User | MessageRole::Agent) {
+            if matches!(
+                msg.role,
+                RuntimeMessageRole::User | RuntimeMessageRole::Agent
+            ) {
                 annotate_message(msg, &config.fields);
             }
         }
@@ -245,7 +248,7 @@ fn strip_one_timestamp_annotation(text: &str) -> Option<&str> {
 
 /// Render the combined metadata annotation for a message, e.g.
 /// `[time 2026-06-11T09:15:42Z]`. Returns `None` when no field yields a value.
-pub fn render_annotation(msg: &Message, fields: &[MessageMetadataField]) -> Option<String> {
+pub fn render_annotation(msg: &RuntimeMessage, fields: &[MessageMetadataField]) -> Option<String> {
     let segments: Vec<String> = fields.iter().filter_map(|f| f.render(msg)).collect();
     if segments.is_empty() {
         None
@@ -254,7 +257,7 @@ pub fn render_annotation(msg: &Message, fields: &[MessageMetadataField]) -> Opti
     }
 }
 
-fn annotate_message(msg: &mut Message, fields: &[MessageMetadataField]) {
+fn annotate_message(msg: &mut RuntimeMessage, fields: &[MessageMetadataField]) {
     let Some(annotation) = render_annotation(msg, fields) else {
         return;
     };
@@ -288,11 +291,11 @@ mod tests {
         }
     }
 
-    fn apply(messages: Vec<Message>, config: serde_json::Value) -> Vec<Message> {
+    fn apply(messages: Vec<RuntimeMessage>, config: serde_json::Value) -> Vec<RuntimeMessage> {
         MessageMetadataModelViewProvider.apply_model_view(messages, &config, &ctx())
     }
 
-    fn time_annotation(msg: &Message) -> String {
+    fn time_annotation(msg: &RuntimeMessage) -> String {
         render_annotation(msg, &[MessageMetadataField::Timestamp]).unwrap()
     }
 
@@ -307,8 +310,8 @@ mod tests {
 
     #[test]
     fn test_annotates_user_and_agent_messages() {
-        let user = Message::user("hello");
-        let agent = Message::assistant("hi there");
+        let user = RuntimeMessage::user("hello");
+        let agent = RuntimeMessage::assistant("hi there");
         let expected_user = time_annotation(&user);
         let expected_agent = time_annotation(&agent);
 
@@ -324,8 +327,9 @@ mod tests {
 
     #[test]
     fn test_skips_system_and_tool_result_messages() {
-        let system = Message::system("you are a bot");
-        let tool = Message::tool_result("call_1", Some(serde_json::json!({"ok": true})), None);
+        let system = RuntimeMessage::system("you are a bot");
+        let tool =
+            RuntimeMessage::tool_result("call_1", Some(serde_json::json!({"ok": true})), None);
 
         let out = apply(vec![system, tool], serde_json::json!({}));
 
@@ -335,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_explicit_fields_config() {
-        let user = Message::user("hello");
+        let user = RuntimeMessage::user("hello");
         let expected = time_annotation(&user);
         let out = apply(vec![user], serde_json::json!({"fields": ["timestamp"]}));
         assert_eq!(out[0].text().unwrap(), format!("{expected} hello"));
@@ -343,7 +347,7 @@ mod tests {
 
     #[test]
     fn test_empty_fields_disable_annotations() {
-        let user = Message::user("hello");
+        let user = RuntimeMessage::user("hello");
         let out = apply(vec![user], serde_json::json!({"fields": []}));
         assert_eq!(out[0].text().unwrap(), "hello");
         assert_eq!(out[0].content.len(), 1);
@@ -351,7 +355,7 @@ mod tests {
 
     #[test]
     fn test_tool_call_only_agent_message_gets_text_part() {
-        let mut agent = Message::assistant("");
+        let mut agent = RuntimeMessage::assistant("");
         agent.content = vec![ContentPart::ToolCall(ToolCallContentPart::new(
             "call_1",
             "get_weather",
@@ -368,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_empty_text_part_gets_annotation_without_trailing_space() {
-        let agent = Message::assistant("");
+        let agent = RuntimeMessage::assistant("");
         let expected = time_annotation(&agent);
 
         let out = apply(vec![agent], serde_json::json!({}));
@@ -378,7 +382,7 @@ mod tests {
 
     #[test]
     fn test_annotation_format_is_rfc3339_utc() {
-        let user = Message::user("hello");
+        let user = RuntimeMessage::user("hello");
         let out = apply(vec![user], serde_json::json!({}));
         let text = out[0].text().unwrap();
         assert!(text.starts_with("[time 2"), "got: {text}");
@@ -444,7 +448,7 @@ mod tests {
     // author's original text.
     #[test]
     fn strip_inverts_render_annotation() {
-        let agent = Message::assistant("the answer");
+        let agent = RuntimeMessage::assistant("the answer");
         let annotated = format!("{} the answer", time_annotation(&agent));
         assert_eq!(
             strip_leading_timestamp_annotations(&annotated),

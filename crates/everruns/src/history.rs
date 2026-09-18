@@ -6,14 +6,14 @@ use std::time::SystemTime;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use everruns_core::Message;
+use everruns_core::RuntimeMessage;
 use everruns_host::{
     EventCursor, EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventLogError,
     MAX_EVENT_HISTORY_PAGE_SIZE,
 };
 
 use crate::engine::SessionExecution;
-use crate::{ContentPart, SessionId, StoredMessageRole};
+use crate::{ContentPart, MessageRole, SessionId};
 
 const MAX_CURSOR_TOKEN_LEN: usize = 4096;
 const CURSOR_PREFIX: &str = "eh1.";
@@ -210,7 +210,7 @@ pub struct SessionMessage {
     /// Opaque message identifier.
     pub id: String,
     /// Conversational role of the message.
-    pub role: StoredMessageRole,
+    pub role: MessageRole,
     /// Structured text, image, tool-call, and tool-result content.
     pub content: Vec<ContentPart>,
     /// Timestamp recorded by the canonical event.
@@ -232,8 +232,8 @@ impl SessionMessage {
     }
 }
 
-impl From<Message> for SessionMessage {
-    fn from(message: Message) -> Self {
+impl From<RuntimeMessage> for SessionMessage {
+    fn from(message: RuntimeMessage) -> Self {
         Self {
             id: message.id.to_string(),
             role: message.role,

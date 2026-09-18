@@ -89,7 +89,7 @@ impl<T: PhaseEffectSink + ?Sized> EventEmitter for PhaseEffectEmitter<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::Message;
+    use everruns_core::RuntimeMessage;
     use everruns_core::events::{EventContext, INPUT_MESSAGE, InputMessageData};
     use everruns_provider::typed_id::SessionId;
 
@@ -103,7 +103,7 @@ mod tests {
             .emit_phase_event(EventRequest::new(
                 session_id,
                 EventContext::empty(),
-                InputMessageData::new(Message::user("first")),
+                InputMessageData::new(RuntimeMessage::user("first")),
             ))
             .await
             .unwrap();
@@ -111,7 +111,7 @@ mod tests {
             .emit(EventRequest::new(
                 session_id,
                 EventContext::empty(),
-                InputMessageData::new(Message::user("second")),
+                InputMessageData::new(RuntimeMessage::user("second")),
             ))
             .await
             .unwrap();

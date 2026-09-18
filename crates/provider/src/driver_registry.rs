@@ -523,10 +523,10 @@ impl ChatDriver for Box<dyn ChatDriver> {
     }
 }
 
-// The message types moved to `llm_message` when this file outgrew what anyone
+// The message types moved to `message` when this file outgrew what anyone
 // can hold in their head; they are re-exported here so every existing path
 // keeps working.
-pub use crate::llm_message::{
+pub use crate::message::{
     LlmContentPart, Message, MessageContent, MessageRole, fold_system_messages,
 };
 

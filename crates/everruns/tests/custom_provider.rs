@@ -1,7 +1,8 @@
 use async_trait::async_trait;
+use everruns::llm::Message;
 use everruns::{
     Agent, AgentLoopError, ChatDriver, InMemoryEngine, LlmCallConfig, LlmResponseStream,
-    LlmStreamEvent, Message, Provider, ProviderEndpoint,
+    LlmStreamEvent, Provider, ProviderEndpoint,
 };
 
 #[derive(Clone)]

@@ -7,8 +7,8 @@
 // but with direct access to the storage backend, domains, and infra helpers.
 
 use crate::kernel_imports::{
-    Caller, ContentPart, EgressRequest, EgressRequestKind, EgressService, EventData, Message,
-    MessageRole, ToolResultContentPart, UtilityLlmService,
+    Caller, ContentPart, EgressRequest, EgressRequestKind, EgressService, EventData,
+    RuntimeMessage, RuntimeMessageRole, ToolResultContentPart, UtilityLlmService,
     everruns_provider::driver_registry::DriverRegistry, everruns_provider::provider::DriverId,
     everruns_provider::tool_types::ToolDefinition, resolve_runtime_capabilities,
 };
@@ -465,7 +465,7 @@ impl DirectWorkerAdapters {
         session: &Session,
         agent: Option<&Agent>,
         harness: Option<&Harness>,
-    ) -> Result<Vec<Message>> {
+    ) -> Result<Vec<RuntimeMessage>> {
         // Status-agnostic projections: message-filter resolution historically
         // saw the stored records regardless of lifecycle status (EVE-877,
         // EVE-881). The harness arrives pre-merged, so its plain definition is
@@ -762,12 +762,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // Message Operations
     // =========================================================================
 
-    async fn get_message(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
+    async fn get_message(
+        &self,
+        session_id: Uuid,
+        message_id: Uuid,
+    ) -> Result<Option<RuntimeMessage>> {
         let messages = self.load_messages(session_id).await?;
         Ok(messages.into_iter().find(|m| m.id == message_id))
     }
 
-    async fn load_messages(&self, session_id: Uuid) -> Result<Vec<Message>> {
+    async fn load_messages(&self, session_id: Uuid) -> Result<Vec<RuntimeMessage>> {
         let events = self
             .event_service
             .list_message_events(session_id)
@@ -777,7 +781,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to load messages")
             })?;
 
-        let messages: Vec<Message> = events.into_iter().filter_map(event_to_message).collect();
+        let messages: Vec<RuntimeMessage> =
+            events.into_iter().filter_map(event_to_message).collect();
         Ok(messages)
     }
 
@@ -2363,7 +2368,7 @@ fn string_to_provider_type(s: &str) -> DriverId {
 }
 
 /// Convert an event to a message
-fn event_to_message(event: Event) -> Option<Message> {
+fn event_to_message(event: Event) -> Option<RuntimeMessage> {
     match &event.data {
         EventData::InputMessage(data) => Some(data.message.clone()),
         EventData::OutputMessageCompleted(data) => Some(data.message.clone()),
@@ -2377,9 +2382,9 @@ fn event_to_message(event: Event) -> Option<Message> {
                 result: result_json,
                 error: data.error.clone(),
             })];
-            Some(Message {
+            Some(RuntimeMessage {
                 id: MessageId::from_uuid(event.id.uuid()),
-                role: MessageRole::ToolResult,
+                role: RuntimeMessageRole::ToolResult,
                 content,
                 phase: None,
                 phase_source: None,
@@ -2432,9 +2437,9 @@ impl crate::storage::session_task_store::SessionTaskWaker for DirectSessionTaskW
 
         let message_id = everruns_provider::typed_id::MessageId::new();
         let now = chrono::Utc::now();
-        let core_message = everruns_core::Message {
+        let core_message = everruns_core::RuntimeMessage {
             id: message_id,
-            role: everruns_core::MessageRole::User,
+            role: everruns_core::RuntimeMessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
             phase_source: None,

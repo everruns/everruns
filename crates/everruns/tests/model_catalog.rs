@@ -3,9 +3,10 @@
 //! an agent runs.
 
 use async_trait::async_trait;
+use everruns::llm::Message;
 use everruns::{
     Agent, AgentLoopError, ChatDriver, DiscoveredModel, DriverId, InMemoryEngine, LlmCallConfig,
-    LlmResponseStream, LlmStreamEvent, Message, Provider, ProviderEndpoint, models,
+    LlmResponseStream, LlmStreamEvent, Provider, ProviderEndpoint, models,
 };
 
 #[derive(Clone)]

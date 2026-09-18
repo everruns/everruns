@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use everruns_provider::error::Result as CoreResult;
 use everruns_core::events::{Event, EventContext, EventRequest, InputMessageData};
 use everruns_core::harness_definition::HarnessDefinition;
-use everruns_core::message::Message;
+use everruns_core::message::RuntimeMessage;
 use everruns_core::{
     execution_loading::AgentStore, execution_loading::HarnessStore, session_services::KeyInfo, provider_resolution::ProviderStore, session_services::SecretInfo, session_services::SessionStorageStore, execution_loading::SessionStore,
 };
@@ -250,7 +250,7 @@ fn input(session_id: SessionId, text: &str) -> EventRequest {
     EventRequest::new(
         session_id,
         EventContext::empty(),
-        InputMessageData::new(Message::user(text)),
+        InputMessageData::new(RuntimeMessage::user(text)),
     )
 }
 

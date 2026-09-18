@@ -39,14 +39,19 @@ use std::fmt;
 
 use std::time::Duration;
 
-use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmResponse, LlmResponseStream, Message, MessageRole,
-};
+use everruns_provider::driver_registry::{LlmCallConfig, LlmResponse, LlmResponseStream};
 use everruns_provider::error::AgentLoopError;
 use everruns_provider::model::ReasoningEffort;
 use everruns_provider::runtime_provider::Provider;
 use everruns_provider::tool_types::ToolDefinition;
 use serde_json::Value;
+
+/// The provider-facing message and role a direct model call carries.
+///
+/// Re-exported here rather than at the crate root: the root's `MessageRole`
+/// belongs to stored session messages, which is the path most applications are
+/// on. `use everruns::llm::{Message, MessageRole}` keeps both plain-named.
+pub use everruns_provider::driver_registry::{Message, MessageContent, MessageRole};
 
 use crate::Model;
 

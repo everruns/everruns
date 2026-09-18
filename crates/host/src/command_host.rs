@@ -15,7 +15,7 @@ use everruns_core::execution_loading::{AgentStore, HarnessStore, SessionStore};
 use everruns_core::file_services::{FileResolver, ResolvedFile};
 use everruns_core::image_services::{ImageResolver, ResolvedImage};
 use everruns_core::message::{
-    Controls, Message as StoredMessage, MessageRole as StoredMessageRole, patch_dangling_tool_calls,
+    Controls, RuntimeMessage, RuntimeMessageRole, patch_dangling_tool_calls,
 };
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::provider_resolution::ProviderStore;
@@ -124,7 +124,7 @@ impl StoreCommandHost {
             .await
     }
 
-    async fn resolve_images(&self, messages: &[StoredMessage]) -> HashMap<Uuid, ResolvedImage> {
+    async fn resolve_images(&self, messages: &[RuntimeMessage]) -> HashMap<Uuid, ResolvedImage> {
         let Some(resolver) = &self.image_resolver else {
             return HashMap::new();
         };
@@ -141,7 +141,7 @@ impl StoreCommandHost {
         resolved
     }
 
-    async fn resolve_files(&self, messages: &[StoredMessage]) -> HashMap<Uuid, ResolvedFile> {
+    async fn resolve_files(&self, messages: &[RuntimeMessage]) -> HashMap<Uuid, ResolvedFile> {
         let Some(resolver) = &self.file_resolver else {
             return HashMap::new();
         };
@@ -222,7 +222,7 @@ impl StoreCommandHost {
                     &resolved_images,
                     &resolved_files,
                 );
-            if message.role == StoredMessageRole::User
+            if message.role == RuntimeMessageRole::User
                 && let Some(actor) = &message.external_actor
             {
                 llm_message.prepend_text_prefix(&format!("[{}] ", actor.display_label()));

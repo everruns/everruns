@@ -14,7 +14,7 @@ use super::{
     Capability, CapabilityLocalization, CapabilityStatus, ModelViewContext, ModelViewProvider,
 };
 use crate::events::TokenUsage;
-use crate::message::{ContentPart, Message as StoredMessage, MessageRole as StoredMessageRole};
+use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::message_filter::MessageFilterProvider;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -316,7 +316,7 @@ impl CompactionPolicy for ConfiguredCompactionPolicy {
         estimate_total_tokens(messages)
     }
 
-    fn total_tool_result_bytes(&self, messages: &[StoredMessage]) -> usize {
+    fn total_tool_result_bytes(&self, messages: &[RuntimeMessage]) -> usize {
         total_tool_result_bytes(messages)
     }
 
@@ -529,10 +529,10 @@ struct CompactionModelViewProvider;
 impl ModelViewProvider for CompactionModelViewProvider {
     fn apply_model_view(
         &self,
-        messages: Vec<StoredMessage>,
+        messages: Vec<RuntimeMessage>,
         config: &serde_json::Value,
         context: &ModelViewContext<'_>,
-    ) -> Vec<StoredMessage> {
+    ) -> Vec<RuntimeMessage> {
         let config = RuntimeCompactionConfig::from_json(config);
         let masking = build_model_view_messages_owned(messages, &config, context.prior_usage);
         if masking.masked_count > 0 {
@@ -572,7 +572,7 @@ impl MessageFilterProvider for CompactionFilterProvider {
         // The filter provider signals that compaction is active on this session.
         // Actual observation masking is applied at LLM message construction time
         // (in ReasonAtom) rather than at message query time, because masking
-        // operates on the provider `Message` format, not the storage `StoredMessage` format.
+        // operates on the provider `Message` format, not the storage `RuntimeMessage` format.
         //
         // The proactive compaction check in ReasonAtom reads the compaction config
         // and applies masking + budget checks before the LLM call.
@@ -1020,7 +1020,7 @@ pub fn apply_observation_masking(
 #[derive(Debug)]
 pub struct CostControlMaskingResult {
     /// Messages after stale bulky tool results were replaced by summaries.
-    pub messages: Vec<StoredMessage>,
+    pub messages: Vec<RuntimeMessage>,
     /// Number of tool-result messages that were masked.
     pub masked_count: usize,
     /// Tool-result payload bytes before masking.
@@ -1035,7 +1035,7 @@ pub struct CostControlMaskingResult {
 /// view used for provider serialization when the compaction capability is
 /// configured.
 pub fn build_model_view_messages(
-    stored_messages: &[StoredMessage],
+    stored_messages: &[RuntimeMessage],
     compaction_config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
@@ -1046,7 +1046,7 @@ pub fn build_model_view_messages(
 ///
 /// This avoids cloning the message list when masking does not apply.
 pub fn build_model_view_messages_owned(
-    stored_messages: Vec<StoredMessage>,
+    stored_messages: Vec<RuntimeMessage>,
     compaction_config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
@@ -1062,7 +1062,7 @@ pub fn build_model_view_messages_owned(
 /// from being paid for repeatedly even when a large-context model still has
 /// room.
 pub fn apply_cost_control_masking(
-    messages: &[StoredMessage],
+    messages: &[RuntimeMessage],
     config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
@@ -1070,7 +1070,7 @@ pub fn apply_cost_control_masking(
 }
 
 fn apply_cost_control_masking_owned(
-    messages: Vec<StoredMessage>,
+    messages: Vec<RuntimeMessage>,
     config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
@@ -1079,7 +1079,7 @@ fn apply_cost_control_masking_owned(
         .iter()
         .enumerate()
         .filter(|(_, message)| {
-            message.role == StoredMessageRole::ToolResult
+            message.role == RuntimeMessageRole::ToolResult
                 && !is_protected_message_tool_result(&messages, message)
         })
         .map(|(index, _)| index)
@@ -1138,7 +1138,7 @@ fn apply_cost_control_masking_owned(
 
     let tool_result_bytes_after = masked_messages
         .iter()
-        .filter(|message| message.role == StoredMessageRole::ToolResult)
+        .filter(|message| message.role == RuntimeMessageRole::ToolResult)
         .map(message_tool_result_len)
         .sum();
 
@@ -1177,8 +1177,11 @@ fn should_apply_cost_control_masking(
     total_prompt > 0 && (cache_read as f32 / total_prompt as f32) < config.min_cache_read_ratio
 }
 
-fn is_protected_message_tool_result(messages: &[StoredMessage], tool_msg: &StoredMessage) -> bool {
-    if tool_msg.role != StoredMessageRole::ToolResult {
+fn is_protected_message_tool_result(
+    messages: &[RuntimeMessage],
+    tool_msg: &RuntimeMessage,
+) -> bool {
+    if tool_msg.role != RuntimeMessageRole::ToolResult {
         return false;
     }
     let tool_name = find_message_tool_call_name(messages, tool_msg);
@@ -1193,7 +1196,7 @@ struct ReadResultKey {
 }
 
 fn related_recent_paginated_read_results(
-    messages: &[StoredMessage],
+    messages: &[RuntimeMessage],
     tool_indices: &[usize],
     keep_recent: usize,
 ) -> HashSet<usize> {
@@ -1227,8 +1230,8 @@ fn related_recent_paginated_read_results(
 }
 
 fn paginated_read_result_key(
-    messages: &[StoredMessage],
-    tool_msg: &StoredMessage,
+    messages: &[RuntimeMessage],
+    tool_msg: &RuntimeMessage,
 ) -> Option<ReadResultKey> {
     let tool_name = find_message_tool_call_name(messages, tool_msg);
     if !is_read_file_tool_name(&tool_name) {
@@ -1258,13 +1261,13 @@ fn is_read_file_tool_name(tool_name: &str) -> bool {
     )
 }
 
-fn find_message_tool_call_name(messages: &[StoredMessage], tool_msg: &StoredMessage) -> String {
+fn find_message_tool_call_name(messages: &[RuntimeMessage], tool_msg: &RuntimeMessage) -> String {
     let Some(call_id) = tool_msg.tool_call_id() else {
         return "unknown_tool".to_string();
     };
 
     for msg in messages.iter().rev() {
-        if msg.role != StoredMessageRole::Agent {
+        if msg.role != RuntimeMessageRole::Agent {
             continue;
         }
         for tool_call in msg.tool_calls() {
@@ -1277,7 +1280,7 @@ fn find_message_tool_call_name(messages: &[StoredMessage], tool_msg: &StoredMess
     "unknown_tool".to_string()
 }
 
-fn message_tool_result_len(message: &StoredMessage) -> usize {
+fn message_tool_result_len(message: &RuntimeMessage) -> usize {
     let Some(result) = message.tool_result_content() else {
         return 0;
     };
@@ -1290,16 +1293,16 @@ fn message_tool_result_len(message: &StoredMessage) -> usize {
 }
 
 /// Aggregate raw tool-result payload bytes without allocating or overflowing.
-pub fn total_tool_result_bytes(messages: &[StoredMessage]) -> usize {
+pub fn total_tool_result_bytes(messages: &[RuntimeMessage]) -> usize {
     messages
         .iter()
-        .filter(|message| message.role == StoredMessageRole::ToolResult)
+        .filter(|message| message.role == RuntimeMessageRole::ToolResult)
         .fold(0usize, |total, message| {
             total.saturating_add(message_tool_result_len(message))
         })
 }
 
-fn mask_tool_result_message(message: &StoredMessage, tool_name: &str) -> StoredMessage {
+fn mask_tool_result_message(message: &RuntimeMessage, tool_name: &str) -> RuntimeMessage {
     let Some(result) = message.tool_result_content() else {
         return message.clone();
     };
@@ -2083,9 +2086,9 @@ mod tests {
         call_id: &str,
         tool_name: &str,
         result: serde_json::Value,
-    ) -> Vec<StoredMessage> {
+    ) -> Vec<RuntimeMessage> {
         vec![
-            StoredMessage::assistant_with_tools(
+            RuntimeMessage::assistant_with_tools(
                 "",
                 vec![ToolCall {
                     id: call_id.to_string(),
@@ -2093,13 +2096,13 @@ mod tests {
                     arguments: json!({"path": "/workspace/src/lib.rs"}),
                 }],
             ),
-            StoredMessage::tool_result(call_id, Some(result), None),
+            RuntimeMessage::tool_result(call_id, Some(result), None),
         ]
     }
 
     #[test]
     fn test_cost_control_masks_old_read_file_results() {
-        let mut messages = vec![StoredMessage::user("inspect files")];
+        let mut messages = vec![RuntimeMessage::user("inspect files")];
         for index in 0..5 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),
@@ -2148,7 +2151,7 @@ mod tests {
 
     #[test]
     fn test_cost_control_keeps_recent_paginated_read_group() {
-        let mut messages = vec![StoredMessage::user("inspect saved output")];
+        let mut messages = vec![RuntimeMessage::user("inspect saved output")];
         messages.extend(make_message_tool_turn(
             "call_bash",
             "bash",
@@ -2211,7 +2214,7 @@ mod tests {
 
     #[test]
     fn test_model_view_masks_with_compaction_config() {
-        let mut messages = vec![StoredMessage::user("inspect files repeatedly")];
+        let mut messages = vec![RuntimeMessage::user("inspect files repeatedly")];
         for index in 0..9 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),
@@ -2247,7 +2250,7 @@ mod tests {
 
     #[test]
     fn test_compaction_capability_contributes_model_view_provider() {
-        let mut messages = vec![StoredMessage::user("inspect files repeatedly")];
+        let mut messages = vec![RuntimeMessage::user("inspect files repeatedly")];
         for index in 0..9 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),
@@ -2278,7 +2281,7 @@ mod tests {
 
     #[test]
     fn test_model_view_respects_disabled_cost_control_config() {
-        let mut messages = vec![StoredMessage::user("inspect files repeatedly")];
+        let mut messages = vec![RuntimeMessage::user("inspect files repeatedly")];
         for index in 0..5 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),
@@ -2311,7 +2314,7 @@ mod tests {
 
     #[test]
     fn test_cost_control_uses_prior_usage_signal() {
-        let mut messages = vec![StoredMessage::user("run commands")];
+        let mut messages = vec![RuntimeMessage::user("run commands")];
         for index in 0..3 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),
@@ -2387,7 +2390,7 @@ mod tests {
 
     #[test]
     fn test_model_view_uses_provider_cache_signal_from_compaction_config() {
-        let mut messages = vec![StoredMessage::user("run commands")];
+        let mut messages = vec![RuntimeMessage::user("run commands")];
         for index in 0..3 {
             messages.extend(make_message_tool_turn(
                 &format!("call_{index}"),

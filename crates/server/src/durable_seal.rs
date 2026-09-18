@@ -19,7 +19,7 @@
 use std::sync::Arc;
 
 use crate::kernel_imports::{
-    Caller, Message, TURN_STARTED, everruns_provider::user_facing_error::UserFacingError,
+    Caller, RuntimeMessage, TURN_STARTED, everruns_provider::user_facing_error::UserFacingError,
 };
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{
@@ -171,7 +171,7 @@ pub async fn handle_sealed_task(
 
         // 2) User-facing assistant message so the conversation shows the stop.
         let user_error = UserFacingError::new(user_facing_error_codes::PROCESSING_ERROR);
-        let mut message = Message::assistant(
+        let mut message = RuntimeMessage::assistant(
             "This turn was stopped because it repeatedly failed without making progress.",
         );
         let mut metadata = std::collections::HashMap::new();

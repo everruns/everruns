@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    Message, MessageRole,
+    RuntimeMessage, RuntimeMessageRole,
     tool_execution::ToolExecutor,
     tools::{Tool, ToolExecutionResult, ToolRegistry},
 };
@@ -448,9 +448,10 @@ async fn test_tool_result_with_images_message() {
         media_type: "image/png".to_string(),
     }];
 
-    let msg = Message::tool_result_with_images("call_123", Some(json!({"ok": true})), images);
+    let msg =
+        RuntimeMessage::tool_result_with_images("call_123", Some(json!({"ok": true})), images);
 
-    assert_eq!(msg.role, MessageRole::ToolResult);
+    assert_eq!(msg.role, RuntimeMessageRole::ToolResult);
     assert_eq!(msg.tool_call_id(), Some("call_123"));
 
     // Should have ToolResult + Image content parts
@@ -480,7 +481,8 @@ async fn test_tool_result_with_images_llm_conversion() {
         },
     ];
 
-    let msg = Message::tool_result_with_images("call_456", Some(json!({"info": "test"})), images);
+    let msg =
+        RuntimeMessage::tool_result_with_images("call_456", Some(json!({"info": "test"})), images);
 
     let resolved = HashMap::new();
     let llm_msg =

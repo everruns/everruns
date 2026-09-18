@@ -17,23 +17,22 @@ use crate::driver_registry::{
 };
 use crate::file_services::ResolvedFile;
 use crate::image_services::ResolvedImage;
-// Two `Message` types meet in this module: the stored conversation message
-// (`crate::message::Message`, aliased `StoredMessage` here) and the
-// provider-facing wire message (`driver_registry::Message`). The alias keeps
-// every signature in this file unambiguous about which side it is on.
-use crate::message::{ContentPart, Message as StoredMessage, MessageRole as StoredMessageRole};
+// Two message types meet in this module: the lossless stored message
+// (`RuntimeMessage`, persisted via events) and the request-shaped wire message
+// (`driver_registry::Message`) a driver sends upstream.
+use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolCall;
 
-/// Convert a [`StoredMessage`] into a [`Message`] (text-only; images become
+/// Convert a [`RuntimeMessage`] into a [`Message`] (text-only; images become
 /// placeholders). For multimodal messages use
 /// [`llm_message_from_message_with_images`].
-pub fn llm_message_from_message(msg: &StoredMessage) -> Message {
+pub fn llm_message_from_message(msg: &RuntimeMessage) -> Message {
     let role = match msg.role {
-        StoredMessageRole::System => MessageRole::System,
-        StoredMessageRole::User => MessageRole::User,
-        StoredMessageRole::Agent => MessageRole::Assistant,
-        StoredMessageRole::ToolResult => MessageRole::Tool,
+        RuntimeMessageRole::System => MessageRole::System,
+        RuntimeMessageRole::User => MessageRole::User,
+        RuntimeMessageRole::Agent => MessageRole::Assistant,
+        RuntimeMessageRole::ToolResult => MessageRole::Tool,
     };
 
     let tool_calls: Vec<ToolCall> = msg
@@ -66,7 +65,7 @@ pub fn llm_message_from_message(msg: &StoredMessage) -> Message {
     }
 }
 
-/// Convert a [`StoredMessage`] into a [`Message`] with resolved images.
+/// Convert a [`RuntimeMessage`] into a [`Message`] with resolved images.
 ///
 /// - text parts -> `LlmContentPart::Text`
 /// - inline image parts -> `LlmContentPart::Image` (data URL)
@@ -76,25 +75,25 @@ pub fn llm_message_from_message(msg: &StoredMessage) -> Message {
 /// - tool_result parts -> text representation (truncated by the same backstop
 ///   the tool scheduler applies)
 pub fn llm_message_from_message_with_images(
-    msg: &StoredMessage,
+    msg: &RuntimeMessage,
     resolved_images: &HashMap<Uuid, ResolvedImage>,
 ) -> Message {
     llm_message_from_message_with_attachments(msg, resolved_images, &HashMap::new())
 }
 
-/// Convert a [`StoredMessage`] into a [`Message`], resolving image and file parts.
+/// Convert a [`RuntimeMessage`] into a [`Message`], resolving image and file parts.
 ///
 /// `resolved_files` maps file IDs to resolved base64 file content (e.g. PDFs).
 pub fn llm_message_from_message_with_attachments(
-    msg: &StoredMessage,
+    msg: &RuntimeMessage,
     resolved_images: &HashMap<Uuid, ResolvedImage>,
     resolved_files: &HashMap<Uuid, ResolvedFile>,
 ) -> Message {
     let role = match msg.role {
-        StoredMessageRole::System => MessageRole::System,
-        StoredMessageRole::User => MessageRole::User,
-        StoredMessageRole::Agent => MessageRole::Assistant,
-        StoredMessageRole::ToolResult => MessageRole::Tool,
+        RuntimeMessageRole::System => MessageRole::System,
+        RuntimeMessageRole::User => MessageRole::User,
+        RuntimeMessageRole::Agent => MessageRole::Assistant,
+        RuntimeMessageRole::ToolResult => MessageRole::Tool,
     };
 
     let mut parts: Vec<LlmContentPart> = Vec::new();
@@ -196,17 +195,17 @@ pub fn llm_message_from_message_with_attachments(
 }
 
 /// Whether a message contains image_file references that need resolution.
-pub fn message_has_image_files(msg: &StoredMessage) -> bool {
+pub fn message_has_image_files(msg: &RuntimeMessage) -> bool {
     msg.content.iter().any(|p| p.is_image_file())
 }
 
 /// Returns true if the message has any file (e.g. PDF) attachment parts.
-pub fn message_has_files(msg: &StoredMessage) -> bool {
+pub fn message_has_files(msg: &RuntimeMessage) -> bool {
     msg.content.iter().any(|p| p.is_file())
 }
 
 /// Extract all image_file IDs from a message.
-pub fn extract_file_ids(msg: &StoredMessage) -> Vec<Uuid> {
+pub fn extract_file_ids(msg: &RuntimeMessage) -> Vec<Uuid> {
     msg.content
         .iter()
         .filter_map(|p| match p {
@@ -217,7 +216,7 @@ pub fn extract_file_ids(msg: &StoredMessage) -> Vec<Uuid> {
 }
 
 /// Extract all image_file IDs from a message.
-pub fn extract_image_file_ids(msg: &StoredMessage) -> Vec<Uuid> {
+pub fn extract_image_file_ids(msg: &RuntimeMessage) -> Vec<Uuid> {
     msg.content
         .iter()
         .filter_map(|p| match p {
@@ -387,7 +386,7 @@ mod tests {
 
     #[test]
     fn test_message_has_image_files_with_image_file() {
-        let mut message = StoredMessage::user("Just text");
+        let mut message = RuntimeMessage::user("Just text");
         assert!(!message_has_image_files(&message));
         message
             .content
@@ -403,7 +402,7 @@ mod tests {
     fn test_extract_image_file_ids() {
         let first = crate::typed_id::ImageId::new();
         let second = crate::typed_id::ImageId::new();
-        let mut message = StoredMessage::user("images");
+        let mut message = RuntimeMessage::user("images");
         message.content.extend([
             ContentPart::image_file(first),
             ContentPart::image_url("https://example.com/inline"),
@@ -414,7 +413,7 @@ mod tests {
             extract_image_file_ids(&message),
             vec![first.uuid(), second.uuid(), first.uuid()]
         );
-        assert!(extract_image_file_ids(&StoredMessage::user("text")).is_empty());
+        assert!(extract_image_file_ids(&RuntimeMessage::user("text")).is_empty());
     }
 
     #[test]
@@ -422,7 +421,7 @@ mod tests {
         use crate::file_services::ResolvedFile;
 
         let file_id = crate::typed_id::FileId::new();
-        let mut message = StoredMessage::user("summarize this");
+        let mut message = RuntimeMessage::user("summarize this");
         message.content.push(ContentPart::file(file_id));
         assert!(message_has_files(&message));
         assert_eq!(extract_file_ids(&message), vec![file_id.uuid()]);
@@ -464,9 +463,9 @@ mod tests {
 
     #[test]
     fn test_from_message_with_images_text_only() {
-        let message = StoredMessage {
+        let message = RuntimeMessage {
             id: uuid::Uuid::new_v4().into(),
-            role: StoredMessageRole::User,
+            role: RuntimeMessageRole::User,
             content: vec![ContentPart::Text(TextContentPart::new("Hello".to_string()))],
             phase: None,
             phase_source: None,
@@ -490,7 +489,7 @@ mod tests {
     fn test_from_message_with_images_resolved_image() {
         let first = crate::typed_id::ImageId::new();
         let second = crate::typed_id::ImageId::new();
-        let mut message = StoredMessage::user("Look at this");
+        let mut message = RuntimeMessage::user("Look at this");
         message.content.extend([
             ContentPart::image_file(first),
             ContentPart::text("and this"),
@@ -520,7 +519,7 @@ mod tests {
     #[test]
     fn test_from_message_with_images_unresolved_image() {
         let image_id = crate::typed_id::ImageId::from_uuid(Uuid::from_u128(7));
-        let mut message = StoredMessage::user("");
+        let mut message = RuntimeMessage::user("");
         message.content = vec![ContentPart::image_file(image_id)];
         let actual = llm_message_from_message_with_images(&message, &HashMap::new());
         assert_eq!(actual.role, MessageRole::User);
@@ -546,7 +545,7 @@ mod tests {
             .with_item_id("rs_1")
             .with_signature("private-signature")
             .with_encrypted("private-encrypted");
-        let mut message = StoredMessage::assistant_with_tools("answer", calls.clone())
+        let mut message = RuntimeMessage::assistant_with_tools("answer", calls.clone())
             .with_phase(ExecutionPhase::Commentary);
         message
             .content

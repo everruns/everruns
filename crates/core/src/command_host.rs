@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use crate::command::CommandResult;
 use crate::driver_registry::LlmResponseStream;
 use crate::error::{AgentLoopError, Result};
-use crate::message::{Controls, Message};
+use crate::message::{Controls, RuntimeMessage};
 use crate::typed_id::SessionId;
 use crate::user_facing_error::{UserFacingErrorContext, classify_runtime_error_message};
 
@@ -25,7 +25,7 @@ pub struct CommandTurnContext {
     /// Session the command is executing against.
     pub session_id: SessionId,
     /// Conversation messages after capability message filters.
-    pub messages: Vec<Message>,
+    pub messages: Vec<RuntimeMessage>,
     /// Merged system prompt including capability contributions.
     pub system_prompt: String,
     /// Resolved model name, without credentials.
@@ -42,7 +42,7 @@ pub struct SessionCompletionRequest {
     /// System prompts sent in order; empty entries are skipped.
     pub system_prompts: Vec<String>,
     /// Conversation messages to complete against.
-    pub messages: Vec<Message>,
+    pub messages: Vec<RuntimeMessage>,
     /// Per-invocation model and reasoning controls.
     pub controls: Option<Controls>,
     /// Extra provider metadata. The host adds `session_id` itself.

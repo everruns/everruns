@@ -7,9 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::driver_registry::Message;
 use crate::events::TokenUsage;
 // `total_tool_result_bytes` measures the raw stored history; every other hook
-// on this trait operates on the provider-facing wire messages. The alias keeps
-// the two apart at a glance.
-use crate::message::Message as StoredMessage;
+// on this trait operates on the provider-facing wire `Message`.
+use crate::message::RuntimeMessage;
 
 /// Strategy selected by a configured compaction policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -55,7 +54,7 @@ pub struct ObservationMaskingResult {
 pub trait CompactionPolicy: Send + Sync + Debug {
     fn settings(&self) -> CompactionSettings;
     fn estimate_total_tokens(&self, messages: &[Message]) -> usize;
-    fn total_tool_result_bytes(&self, messages: &[StoredMessage]) -> usize;
+    fn total_tool_result_bytes(&self, messages: &[RuntimeMessage]) -> usize;
     fn should_compact_proactively(&self, messages: &[Message], context_window: usize) -> bool;
     fn should_compact_for_cost(
         &self,

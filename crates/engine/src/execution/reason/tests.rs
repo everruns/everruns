@@ -253,8 +253,8 @@ async fn test_repair_dangling_tool_calls_no_tool_calls() {
     use crate::events::EventContext;
     use crate::typed_id::SessionId;
     let messages = vec![
-        StoredMessage::user("Hello"),
-        StoredMessage::assistant("Hi there!"),
+        RuntimeMessage::user("Hello"),
+        RuntimeMessage::assistant("Hi there!"),
     ];
     let emitter = crate::test_fixtures::NoopEventEmitter;
     let session_id = SessionId::new();
@@ -275,9 +275,9 @@ async fn test_repair_dangling_tool_calls_with_result() {
     };
 
     let messages = vec![
-        StoredMessage::user("What's the weather?"),
-        StoredMessage::assistant_with_tools("Let me check", vec![tool_call]),
-        StoredMessage::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
+        RuntimeMessage::user("What's the weather?"),
+        RuntimeMessage::assistant_with_tools("Let me check", vec![tool_call]),
+        RuntimeMessage::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
     ];
 
     let emitter = crate::test_fixtures::NoopEventEmitter;
@@ -299,9 +299,9 @@ async fn test_repair_dangling_tool_calls_missing_result_no_store() {
     };
 
     let messages = vec![
-        StoredMessage::user("Search for rust"),
-        StoredMessage::assistant_with_tools("Searching...", vec![tool_call]),
-        StoredMessage::user("Actually, never mind"),
+        RuntimeMessage::user("Search for rust"),
+        RuntimeMessage::assistant_with_tools("Searching...", vec![tool_call]),
+        RuntimeMessage::user("Actually, never mind"),
     ];
 
     let emitter = crate::test_fixtures::NoopEventEmitter;
@@ -311,7 +311,7 @@ async fn test_repair_dangling_tool_calls_missing_result_no_store() {
         repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01").await;
     // Should have added a cancelled result
     assert_eq!(patched.len(), 4);
-    assert_eq!(patched[2].role, StoredMessageRole::ToolResult);
+    assert_eq!(patched[2].role, RuntimeMessageRole::ToolResult);
     assert_eq!(patched[2].tool_call_id(), Some("call_456"));
 }
 
@@ -372,8 +372,8 @@ async fn test_repair_dangling_tool_calls_settled_result_replayed() {
         arguments: serde_json::json!({"x": 21}),
     };
     let messages = vec![
-        StoredMessage::user("Compute"),
-        StoredMessage::assistant_with_tools("Computing...", vec![tool_call]),
+        RuntimeMessage::user("Compute"),
+        RuntimeMessage::assistant_with_tools("Computing...", vec![tool_call]),
     ];
 
     let store = MockSettledStore;
@@ -392,7 +392,7 @@ async fn test_repair_dangling_tool_calls_settled_result_replayed() {
 
     // Settled result should be replayed (not cancelled message)
     assert_eq!(patched.len(), 3);
-    assert_eq!(patched[2].role, StoredMessageRole::ToolResult);
+    assert_eq!(patched[2].role, RuntimeMessageRole::ToolResult);
     assert_eq!(patched[2].tool_call_id(), Some("call_789"));
 }
 
@@ -446,8 +446,8 @@ async fn test_repair_dangling_tool_calls_interrupted_result_replayed() {
         arguments: serde_json::json!({}),
     };
     let messages = vec![
-        StoredMessage::user("Do it"),
-        StoredMessage::assistant_with_tools("Doing...", vec![tool_call]),
+        RuntimeMessage::user("Do it"),
+        RuntimeMessage::assistant_with_tools("Doing...", vec![tool_call]),
     ];
 
     let store = MockInterruptedStore;
@@ -466,7 +466,7 @@ async fn test_repair_dangling_tool_calls_interrupted_result_replayed() {
 
     assert_eq!(patched.len(), 3);
     let repair = &patched[2];
-    assert_eq!(repair.role, StoredMessageRole::ToolResult);
+    assert_eq!(repair.role, RuntimeMessageRole::ToolResult);
     assert_eq!(repair.tool_call_id(), Some("call_int"));
     // Interrupted replay uses the stored error or fallback text; must contain "interrupted"
     let content = format!("{:?}", repair);
@@ -524,8 +524,8 @@ async fn test_repair_dangling_tool_calls_running_synthesized() {
         arguments: serde_json::json!({}),
     };
     let messages = vec![
-        StoredMessage::user("Start job"),
-        StoredMessage::assistant_with_tools("Starting...", vec![tool_call]),
+        RuntimeMessage::user("Start job"),
+        RuntimeMessage::assistant_with_tools("Starting...", vec![tool_call]),
     ];
 
     let store = MockRunningStore;
@@ -544,7 +544,7 @@ async fn test_repair_dangling_tool_calls_running_synthesized() {
 
     assert_eq!(patched.len(), 3);
     let repair = &patched[2];
-    assert_eq!(repair.role, StoredMessageRole::ToolResult);
+    assert_eq!(repair.role, RuntimeMessageRole::ToolResult);
     assert_eq!(repair.tool_call_id(), Some("call_run"));
     // Running stale claim must warn "uncertain; do not retry automatically"
     let content = format!("{:?}", repair);
@@ -600,8 +600,8 @@ async fn test_repair_dangling_tool_calls_store_error_unknown() {
         arguments: serde_json::json!({}),
     };
     let messages = vec![
-        StoredMessage::user("Do risky op"),
-        StoredMessage::assistant_with_tools("On it...", vec![tool_call]),
+        RuntimeMessage::user("Do risky op"),
+        RuntimeMessage::assistant_with_tools("On it...", vec![tool_call]),
     ];
 
     let store = MockErrorStore;
@@ -620,7 +620,7 @@ async fn test_repair_dangling_tool_calls_store_error_unknown() {
 
     assert_eq!(patched.len(), 3);
     let repair = &patched[2];
-    assert_eq!(repair.role, StoredMessageRole::ToolResult);
+    assert_eq!(repair.role, RuntimeMessageRole::ToolResult);
     assert_eq!(repair.tool_call_id(), Some("call_err"));
     // Store error must NOT say "safe to retry"
     let content = format!("{:?}", repair);
@@ -841,7 +841,10 @@ impl CompactionPolicy for LifecycleStubPolicy {
         90_000
     }
 
-    fn total_tool_result_bytes(&self, _messages: &[everruns_core::message::Message]) -> usize {
+    fn total_tool_result_bytes(
+        &self,
+        _messages: &[everruns_core::message::RuntimeMessage],
+    ) -> usize {
         0
     }
 

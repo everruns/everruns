@@ -27,7 +27,7 @@ use everruns_core::events::{
     Event, EventData, TokenUsage, TurnCancelledData, TurnCompletedData, TurnFailedData,
     TurnSealedData,
 };
-use everruns_core::message::{ContentPart, Message};
+use everruns_core::message::{ContentPart, RuntimeMessage};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
@@ -212,7 +212,7 @@ pub fn build_case_record(
 pub fn build_case_record_from_messages(
     run: &everruns_platform::eval::EvalRun,
     result: &everruns_platform::eval::EvalCaseResult,
-    messages: &[Message],
+    messages: &[RuntimeMessage],
     options: AtifOptions,
 ) -> Value {
     let (extra, session_id) = case_extra(run, result);
@@ -259,9 +259,9 @@ fn case_extra(
 /// Fold post-compaction model-view messages into ATIF steps. Mirrors the event
 /// fold's step shape (user/agent steps, tool-call parts → `tool_calls[]`,
 /// thinking → `reasoning_content`, tool results → `observation.results[]`) but
-/// over reconstructed `Message`s, so it reflects exactly what the model saw.
-fn fold_messages(messages: &[Message], redact: bool) -> Vec<Value> {
-    use everruns_core::message::MessageRole;
+/// over reconstructed `RuntimeMessage`s, so it reflects exactly what the model saw.
+fn fold_messages(messages: &[RuntimeMessage], redact: bool) -> Vec<Value> {
+    use everruns_core::message::RuntimeMessageRole;
 
     let mut steps: Vec<Value> = Vec::new();
     // Index of the agent step that trailing tool results attach observations to.
@@ -274,8 +274,8 @@ fn fold_messages(messages: &[Message], redact: bool) -> Vec<Value> {
     for message in messages {
         let ts = json!(message.created_at.to_rfc3339());
         match message.role {
-            MessageRole::System | MessageRole::User => {
-                let source = if message.role == MessageRole::System {
+            RuntimeMessageRole::System | RuntimeMessageRole::User => {
+                let source = if message.role == RuntimeMessageRole::System {
                     "system"
                 } else {
                     "user"
@@ -294,7 +294,7 @@ fn fold_messages(messages: &[Message], redact: bool) -> Vec<Value> {
                 steps.push(Value::Object(step));
                 open_agent = None;
             }
-            MessageRole::Agent => {
+            RuntimeMessageRole::Agent => {
                 let mut omitted = Vec::new();
                 let content = build_message_content(message, redact, &mut omitted);
                 let mut step = Map::new();
@@ -338,7 +338,7 @@ fn fold_messages(messages: &[Message], redact: bool) -> Vec<Value> {
                 steps.push(Value::Object(step));
                 open_agent = Some(steps.len() - 1);
             }
-            MessageRole::ToolResult => {
+            RuntimeMessageRole::ToolResult => {
                 let mut omitted = Vec::new();
                 let tool_name = message.tool_result_content().and_then(|tr| {
                     tool_names_by_call_id
@@ -406,7 +406,7 @@ fn fold_messages(messages: &[Message], redact: bool) -> Vec<Value> {
 /// result/error text (plus any attached images as image ContentParts) and, when
 /// the result is a subagent spawn, the `subagent_trajectory_ref` linkage.
 fn message_tool_result_observation(
-    message: &Message,
+    message: &RuntimeMessage,
     redact: bool,
     omitted: &mut Vec<Value>,
     tool_name: Option<&str>,
@@ -1234,7 +1234,11 @@ fn timestamp(event: &Event) -> String {
 
 /// Build the ATIF `message` value for a step message. Tool-call/tool-result
 /// parts are represented elsewhere on the step and are skipped here.
-fn build_message_content(message: &Message, redact: bool, omitted: &mut Vec<Value>) -> Value {
+fn build_message_content(
+    message: &RuntimeMessage,
+    redact: bool,
+    omitted: &mut Vec<Value>,
+) -> Value {
     build_content_value(&message.content, redact, false, omitted)
 }
 
@@ -1708,7 +1712,7 @@ mod tests {
             arguments: json!({"query": "weather"}),
         };
 
-        let mut first = Message::assistant_with_tools("checking", vec![tool_call]);
+        let mut first = RuntimeMessage::assistant_with_tools("checking", vec![tool_call]);
         first.content.insert(
             0,
             ContentPart::Reasoning(
@@ -1721,7 +1725,10 @@ mod tests {
         );
 
         vec![
-            event(session, InputMessageData::new(Message::user("hi there"))),
+            event(
+                session,
+                InputMessageData::new(RuntimeMessage::user("hi there")),
+            ),
             event(
                 session,
                 OutputMessageCompletedData::new(first)
@@ -1753,7 +1760,7 @@ mod tests {
             ),
             event(
                 session,
-                OutputMessageCompletedData::new(Message::assistant(
+                OutputMessageCompletedData::new(RuntimeMessage::assistant(
                     "It is sunny. token sk-abcdef0123456789ABCDEF",
                 ))
                 .with_usage(TokenUsage::new(150, 10)),
@@ -1860,7 +1867,7 @@ mod tests {
         let session = SessionId::new();
         let turn_id = TurnId::new();
         let events = vec![
-            event(session, InputMessageData::new(Message::user("hi"))),
+            event(session, InputMessageData::new(RuntimeMessage::user("hi"))),
             event(
                 session,
                 ReasonCompletedData::failure("provider exploded".to_string(), Some(50)),
@@ -1922,7 +1929,7 @@ mod tests {
 
         let session = SessionId::new();
         let image_id = ImageId::new();
-        let mut user = Message::user("look at this");
+        let mut user = RuntimeMessage::user("look at this");
         user.content
             .push(ContentPart::Image(ImageContentPart::from_url(
                 "https://example.com/cat.png",
@@ -1941,7 +1948,7 @@ mod tests {
             event(session, InputMessageData::new(user)),
             event(
                 session,
-                OutputMessageCompletedData::new(Message::assistant_with_tools(
+                OutputMessageCompletedData::new(RuntimeMessage::assistant_with_tools(
                     "taking a screenshot",
                     vec![tool_call],
                 )),
@@ -2005,7 +2012,7 @@ mod tests {
         use everruns_core::message::ImageContentPart;
 
         let session = SessionId::new();
-        let mut user = Message::user("no locator here");
+        let mut user = RuntimeMessage::user("no locator here");
         // An inline image with neither URL nor base64 cannot be materialized.
         user.content.push(ContentPart::Image(ImageContentPart {
             url: None,
@@ -2040,7 +2047,7 @@ mod tests {
 
         let session = SessionId::new();
         let image_id = ImageId::new();
-        let mut user = Message::user("secret url");
+        let mut user = RuntimeMessage::user("secret url");
         user.content
             .push(ContentPart::Image(ImageContentPart::from_url(
                 "https://example.com/private.png",
@@ -2076,13 +2083,13 @@ mod tests {
         // Two messages each carrying a sizeable inlined base64 image, so the
         // per-step serialized size is dominated by the image ContentPart.
         let big_b64 = "A".repeat(2000);
-        let mut m0 = Message::user("first");
+        let mut m0 = RuntimeMessage::user("first");
         m0.content
             .push(ContentPart::Image(ImageContentPart::from_base64(
                 big_b64.clone(),
                 "image/png",
             )));
-        let mut m1 = Message::user("second");
+        let mut m1 = RuntimeMessage::user("second");
         m1.content
             .push(ContentPart::Image(ImageContentPart::from_base64(
                 big_b64,
@@ -2129,11 +2136,11 @@ mod tests {
         let events = vec![
             event(
                 session,
-                InputMessageData::new(Message::user("delegate this")),
+                InputMessageData::new(RuntimeMessage::user("delegate this")),
             ),
             event(
                 session,
-                OutputMessageCompletedData::new(Message::assistant_with_tools(
+                OutputMessageCompletedData::new(RuntimeMessage::assistant_with_tools(
                     "spawning",
                     vec![spawn_call],
                 )),
@@ -2330,7 +2337,7 @@ mod tests {
             name: "search".to_string(),
             arguments: json!({"q": "weather"}),
         };
-        let mut agent = Message::assistant_with_tools("checking", vec![tool_call]);
+        let mut agent = RuntimeMessage::assistant_with_tools("checking", vec![tool_call]);
         agent.content.insert(
             0,
             ContentPart::Reasoning(
@@ -2342,10 +2349,10 @@ mod tests {
             ),
         );
         let messages = vec![
-            Message::user("hi there"),
+            RuntimeMessage::user("hi there"),
             agent,
-            Message::tool_result("call_1", Some(json!("sunny, 21C")), None),
-            Message::assistant("It is sunny."),
+            RuntimeMessage::tool_result("call_1", Some(json!("sunny, 21C")), None),
+            RuntimeMessage::assistant("It is sunny."),
         ];
 
         let doc = build_case_record_from_messages(&run, &result, &messages, AtifOptions::default());
@@ -2393,18 +2400,18 @@ mod tests {
 
         // Five tool-call/result iterations. Default cost-control masking keeps
         // the two most recent tool results and masks the three oldest.
-        let mut messages = vec![Message::user("start")];
+        let mut messages = vec![RuntimeMessage::user("start")];
         for i in 0..5 {
             let call = ToolCall {
                 id: format!("call_{i}"),
                 name: "fetch".to_string(),
                 arguments: json!({"n": i}),
             };
-            messages.push(Message::assistant_with_tools(
+            messages.push(RuntimeMessage::assistant_with_tools(
                 format!("iter {i}"),
                 vec![call],
             ));
-            messages.push(Message::tool_result(
+            messages.push(RuntimeMessage::tool_result(
                 format!("call_{i}"),
                 Some(json!(format!("BULKY_RESULT_{i}"))),
                 None,
@@ -2463,9 +2470,9 @@ mod tests {
             arguments: json!({"target": {"type": "subagent"}}),
         };
         let messages = vec![
-            Message::user("delegate secret sk-abcdef0123456789ABCDEF"),
-            Message::assistant_with_tools("spawning", vec![spawn_call]),
-            Message::tool_result(
+            RuntimeMessage::user("delegate secret sk-abcdef0123456789ABCDEF"),
+            RuntimeMessage::assistant_with_tools("spawning", vec![spawn_call]),
+            RuntimeMessage::tool_result(
                 "call_spawn",
                 Some(json!({"subagent_id": child.to_string(), "status": "running"})),
                 None,
@@ -2514,9 +2521,9 @@ mod tests {
             arguments: json!({"patient": "alice"}),
         };
         let messages = vec![
-            Message::user("lookup alice"),
-            Message::assistant_with_tools("checking", vec![lookup_call]),
-            Message::tool_result(
+            RuntimeMessage::user("lookup alice"),
+            RuntimeMessage::assistant_with_tools("checking", vec![lookup_call]),
+            RuntimeMessage::tool_result(
                 "call_lookup",
                 Some(json!({"subagent_id": fake_child, "status": "matched"})),
                 None,
@@ -2657,7 +2664,7 @@ mod tests {
             .map(|i| {
                 event(
                     session,
-                    InputMessageData::new(Message::user(format!("message number {i}"))),
+                    InputMessageData::new(RuntimeMessage::user(format!("message number {i}"))),
                 )
             })
             .collect()
@@ -2854,8 +2861,11 @@ mod tests {
         // One user message far larger than the (tiny) cap.
         let big = "x".repeat(50_000);
         let events = vec![
-            event(session, InputMessageData::new(Message::user(big))),
-            event(session, InputMessageData::new(Message::user("small"))),
+            event(session, InputMessageData::new(RuntimeMessage::user(big))),
+            event(
+                session,
+                InputMessageData::new(RuntimeMessage::user("small")),
+            ),
         ];
         // Cap of 1 KiB: the giant step cannot fit but must still be emitted
         // alone rather than 413 or loop forever.
@@ -2876,10 +2886,13 @@ mod tests {
         let session_id = "session_x";
         // Put a secret in the second message so it lands in a later segment.
         let events = vec![
-            event(session, InputMessageData::new(Message::user("hello"))),
             event(
                 session,
-                InputMessageData::new(Message::user("token sk-abcdef0123456789ABCDEF here")),
+                InputMessageData::new(RuntimeMessage::user("hello")),
+            ),
+            event(
+                session,
+                InputMessageData::new(RuntimeMessage::user("token sk-abcdef0123456789ABCDEF here")),
             ),
         ];
         let (_, docs) = walk_segments(session_id, &events, 256);

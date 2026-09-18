@@ -521,7 +521,7 @@ impl Event {
 // Input/Output Event Data Types
 // ============================================================================
 
-use crate::message::{ContentPart, Message};
+use crate::message::{ContentPart, RuntimeMessage};
 use crate::tool_narration::{
     ToolNarrationPhase, render_group_headline_with_locale, render_tool_narration_with_locale,
 };
@@ -681,7 +681,7 @@ impl EventData {
     /// Replace every carried message with its publishable projection, dropping
     /// the opaque provider replay state on reasoning parts.
     ///
-    /// The message read path already does this via [`Message::into_public`], so
+    /// The message read path already does this via [`RuntimeMessage::into_public`], so
     /// without it here `GET /v1/sessions/{id}/events` would hand a client
     /// exactly the `signature` / `encrypted` material that
     /// `GET /v1/sessions/{id}/messages` withholds (EVE-933).
@@ -717,7 +717,7 @@ impl EventData {
                 data.messages = data
                     .messages
                     .into_iter()
-                    .map(Message::into_public)
+                    .map(RuntimeMessage::into_public)
                     .collect();
                 EventData::LlmGeneration(data)
             }

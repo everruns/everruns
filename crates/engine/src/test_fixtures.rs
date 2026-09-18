@@ -3,7 +3,7 @@ use chrono::Utc;
 use everruns_core::durability::{PartialStreamState, PartialStreamStore};
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventRequest};
-use everruns_core::message::Message;
+use everruns_core::message::RuntimeMessage;
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 use everruns_provider::error::Result;
@@ -14,7 +14,7 @@ use tokio::sync::RwLock;
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct TestMessageRetriever {
-    messages: Arc<RwLock<HashMap<SessionId, Vec<Message>>>>,
+    messages: Arc<RwLock<HashMap<SessionId, Vec<RuntimeMessage>>>>,
 }
 
 impl TestMessageRetriever {
@@ -22,8 +22,12 @@ impl TestMessageRetriever {
         Self::default()
     }
 
-    pub(crate) async fn add(&self, session_id: SessionId, input: InputMessage) -> Result<Message> {
-        let message = Message {
+    pub(crate) async fn add(
+        &self,
+        session_id: SessionId,
+        input: InputMessage,
+    ) -> Result<RuntimeMessage> {
+        let message = RuntimeMessage {
             id: MessageId::new(),
             role: input.role,
             content: input.content,
@@ -46,7 +50,11 @@ impl TestMessageRetriever {
 
 #[async_trait]
 impl MessageRetriever for TestMessageRetriever {
-    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+    async fn get(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<RuntimeMessage>> {
         Ok(self
             .messages
             .read()
@@ -60,7 +68,7 @@ impl MessageRetriever for TestMessageRetriever {
             }))
     }
 
-    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
         Ok(self
             .messages
             .read()
@@ -70,7 +78,7 @@ impl MessageRetriever for TestMessageRetriever {
             .unwrap_or_default())
     }
 
-    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<RuntimeMessage>> {
         Ok(self.load(query.session_id).await?)
     }
 

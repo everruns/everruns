@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use everruns::{Agent, Engine, LlmSimConfig, Model, SendDisposition, StoredMessageRole};
+use everruns::{Agent, Engine, LlmSimConfig, MessageRole, Model, SendDisposition};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -96,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for message in history
         .messages
         .iter()
-        .filter(|message| message.role == StoredMessageRole::User)
+        .filter(|message| message.role == MessageRole::User)
     {
         println!("- {}", message.text());
     }
