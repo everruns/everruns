@@ -28,6 +28,7 @@ crates/test-support
 crates/worker
 examples/bashkit-repo-agent
 examples/framework-cli-host
+integrations/typesafe
 integrations/brave-search
 integrations/browserless
 integrations/deno
