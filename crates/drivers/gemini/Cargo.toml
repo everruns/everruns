@@ -47,3 +47,6 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 # wiremock serves the golden streaming SSE fixtures; futures drains the stream.
 wiremock = "0.6"
 futures.workspace = true
+
+[lints]
+workspace = true

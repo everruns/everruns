@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration tests for `resource_discovery` tools against a wiremock ARD
 //! registry. Exercises the full `execute_with_context` discover → attach flow,
 //! the MCP and A2A attachment kinds, SSRF local-URL blocking, and the trust gate.

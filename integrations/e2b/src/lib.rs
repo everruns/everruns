@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! E2B cloud sandboxes for Everruns agents.
 //!
 //! `everruns-integrations-e2b` is part of the [Everruns](https://everruns.com)

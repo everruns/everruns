@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Shared turn planning and Input/Reason/Act execution for hosts in the
 //! [Everruns](https://everruns.com) ecosystem.
 //!

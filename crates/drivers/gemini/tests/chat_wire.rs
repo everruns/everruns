@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // Golden-event wire tests for the Gemini streaming driver (EVE-672).
 //
 // These pin the exact `LlmStreamEvent` sequence the Gemini driver emits for a

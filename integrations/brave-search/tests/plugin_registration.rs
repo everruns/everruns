@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration test: verify Brave Search plugin is published by the crate catalog.
 
 #![cfg(feature = "hosted")]

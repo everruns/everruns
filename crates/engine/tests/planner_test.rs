@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Pure turn-planner unit tests (EVE-840).
 //!
 //! These drive the engine as table tests over values — no adapter, store,

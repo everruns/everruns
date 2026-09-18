@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration test: verify the ARD plugin and connector register via inventory.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};

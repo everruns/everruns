@@ -803,15 +803,12 @@ impl Tool for ReadSkillTool {
 
         let located = match arguments.get("scope").and_then(|v| v.as_str()) {
             Some(label) => {
-                let Some(scope) = self.config.scope_by_label(label) else {
+                // Resolve to the index directly: the caller needs the position,
+                // and a second lookup by label only re-derives it.
+                let Some(idx) = self.config.scopes.iter().position(|s| s.label == label) else {
                     return ToolExecutionResult::tool_error(format!("Unknown scope '{label}'"));
                 };
-                let idx = self
-                    .config
-                    .scopes
-                    .iter()
-                    .position(|s| s.label == scope.label)
-                    .unwrap();
+                let scope = &self.config.scopes[idx];
                 match fs
                     .read_file(ctx.session_id, &scope.skill_md_vfs(name))
                     .await

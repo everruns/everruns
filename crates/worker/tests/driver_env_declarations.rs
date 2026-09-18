@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Every registered driver declares the environment variables its own vendor
 //! SDK reads.
 //!

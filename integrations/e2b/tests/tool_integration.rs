@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration tests: tool execute_with_context against wiremock E2B API.
 //!
 //! These tests exercise the full tool execution flow:

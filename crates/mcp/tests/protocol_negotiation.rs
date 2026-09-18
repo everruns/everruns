@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Multi-era protocol negotiation integration tests (knowledge/integrations/mcp-servers.md
 //! "Multi-era protocol support").
 //!

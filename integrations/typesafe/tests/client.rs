@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Client behavior against a mock TypeSafe endpoint: wire shape, retries, and
 //! the credential-safety contract on error paths.
 

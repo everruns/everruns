@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Transport-agnostic [MCP](https://modelcontextprotocol.io) (Model Context
 //! Protocol) client for Everruns agents.
 //!

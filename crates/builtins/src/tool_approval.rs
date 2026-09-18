@@ -13,7 +13,7 @@
 // is either a deadlock or a silent allow, and neither is a good default.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -290,7 +290,12 @@ impl PreToolUseHook for ToolApprovalHook {
         }
 
         let key = (context.session_id, tool_call.name.clone());
-        if let Some(&allowed) = self.remembered.lock().unwrap().get(&key) {
+        if let Some(&allowed) = self
+            .remembered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&key)
+        {
             return if allowed {
                 PreToolUseDecision::Continue(tool_call)
             } else {
@@ -305,12 +310,18 @@ impl PreToolUseHook for ToolApprovalHook {
         {
             ApprovalDecision::Allow => PreToolUseDecision::Continue(tool_call),
             ApprovalDecision::AllowAlways => {
-                self.remembered.lock().unwrap().insert(key, true);
+                self.remembered
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .insert(key, true);
                 PreToolUseDecision::Continue(tool_call)
             }
             ApprovalDecision::Reject => Self::block(tool_call, "rejected by user"),
             ApprovalDecision::RejectAlways => {
-                self.remembered.lock().unwrap().insert(key, false);
+                self.remembered
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .insert(key, false);
                 Self::block(tool_call, "rejected by user")
             }
             ApprovalDecision::Cancelled => Self::block(tool_call, "turn cancelled"),
