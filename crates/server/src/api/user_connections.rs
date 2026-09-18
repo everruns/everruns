@@ -11,7 +11,7 @@ use crate::auth::oauth::GitHubAppService;
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService, McpServerSettings};
 use crate::domains::plugins::oauth_anchor::humanize_connection_name;
 use crate::kernel_imports::{
-    Caller, EgressService, McpServerAuthMode, everruns_provider::typed_id::SessionId,
+    EgressService, McpServerAuthMode, everruns_provider::typed_id::SessionId,
     everruns_provider::url_validation::validate_safe_url, mcp_oauth_provider_id_for_uuid,
 };
 use crate::oauth_client::{egress_oauth_json, exchange_oauth_code};
@@ -868,11 +868,6 @@ pub async fn connection_oauth_callback(
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
     }
-
-    let _ = state
-        .mcp_service
-        .cache_tools_for_bearer_token(&Caller::from(&org), server_id, &token.access_token)
-        .await;
 
     let redirect_target = finalize_oauth_redirect(
         &state.auth_config,

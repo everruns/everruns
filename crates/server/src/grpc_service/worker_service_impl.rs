@@ -394,6 +394,10 @@ impl WorkerService for WorkerServiceImpl {
                     req.org_id,
                     &effective,
                     Some(session.id),
+                    Some(crate::domains::mcp_servers::scoped_mcp::ScopedMcpCacheContext {
+                        agent_id: agent.as_ref().map(|agent| agent.internal_id),
+                        user_id: session.resolved_owner_user_id,
+                    }),
                     self.connection_resolver.as_ref(),
                     self.mcp_server_service.egress_service().as_ref(),
                 )

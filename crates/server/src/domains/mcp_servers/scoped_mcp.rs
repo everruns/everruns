@@ -13,18 +13,117 @@ use crate::kernel_imports::{
     resolve_runtime_capabilities,
 };
 use anyhow::{Result, anyhow};
+use chrono::{DateTime, Utc};
 use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_servers};
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::mcp_server::sanitize_mcp_server_name;
-use everruns_mcp::McpCapability;
+use everruns_mcp::{CacheHints, CacheScope, McpCapability};
 use everruns_platform::{Agent, Harness, Session};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Duration;
+use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
 use crate::domains::mcp_servers::McpServerResolved;
-use crate::domains::mcp_servers::service::{McpServerService, fetch_mcp_tools};
-use crate::storage::StorageBackend;
+use crate::domains::mcp_servers::service::{
+    McpServerService, fetch_mcp_tools, fetch_mcp_tools_with_cache_hints,
+};
+use crate::storage::{McpServiceToolCacheRow, StorageBackend, UpsertMcpServiceToolCache};
+
+const SCOPED_TOOL_CACHE_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+#[derive(Debug, Clone, Copy)]
+pub struct ScopedMcpCacheContext {
+    pub agent_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum CacheIdentity {
+    Service {
+        org_id: i64,
+        preset_id: Uuid,
+        agent_id: Uuid,
+    },
+    User {
+        org_id: i64,
+        preset_id: Uuid,
+        user_id: Uuid,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ScopedToolCacheKey {
+    identity: CacheIdentity,
+    scope: CacheScopeKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum CacheScopeKey {
+    Public,
+    Private(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ScopedRefreshKey {
+    identity: CacheIdentity,
+    credential_hash: String,
+}
+
+#[derive(Debug, Clone)]
+struct CachedScopedTools {
+    tools: Vec<everruns_core::McpToolDefinition>,
+    ttl: Duration,
+    cached_at: DateTime<Utc>,
+}
+
+impl CachedScopedTools {
+    fn age(&self) -> Option<chrono::Duration> {
+        const FUTURE_SKEW_SECS: i64 = 300;
+        let age = Utc::now().signed_duration_since(self.cached_at);
+        if age < chrono::Duration::seconds(-FUTURE_SKEW_SECS) {
+            return None;
+        }
+        Some(age.max(chrono::Duration::zero()))
+    }
+
+    fn is_fresh(&self) -> bool {
+        self.age().is_some_and(|age| {
+            age < chrono::Duration::from_std(self.ttl)
+                .unwrap_or_else(|_| chrono::Duration::hours(24))
+                && age
+                    < chrono::Duration::from_std(SCOPED_TOOL_CACHE_MAX_AGE)
+                        .unwrap_or_else(|_| chrono::Duration::hours(24))
+        })
+    }
+
+    fn is_within_max_age(&self) -> bool {
+        self.age().is_some_and(|age| {
+            age < chrono::Duration::from_std(SCOPED_TOOL_CACHE_MAX_AGE)
+                .unwrap_or_else(|_| chrono::Duration::hours(24))
+        })
+    }
+}
+
+static USER_TOOL_CACHE: LazyLock<Mutex<HashMap<ScopedToolCacheKey, CachedScopedTools>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static SCOPED_REFRESH_LOCKS: LazyLock<ScopedRefreshLocks> =
+    LazyLock::new(ScopedRefreshLocks::default);
+
+#[derive(Default)]
+struct ScopedRefreshLocks {
+    locks: Mutex<HashMap<ScopedRefreshKey, Arc<AsyncMutex<()>>>>,
+}
+
+impl ScopedRefreshLocks {
+    fn lock_for(&self, key: ScopedRefreshKey) -> Arc<AsyncMutex<()>> {
+        let mut locks = self.locks.lock().unwrap_or_else(|error| error.into_inner());
+        locks.retain(|existing, lock| *existing == key || Arc::strong_count(lock) > 1);
+        locks.entry(key).or_default().clone()
+    }
+}
 
 pub fn merge_effective_scoped_mcp_servers(
     harness: &Harness,
@@ -246,22 +345,340 @@ pub async fn materialize_scoped_mcp_servers(
     Ok(materialized)
 }
 
+enum CacheLookup {
+    Fresh(Vec<everruns_core::McpToolDefinition>),
+    Stale(Vec<everruns_core::McpToolDefinition>),
+    Expired,
+    Miss,
+}
+
+fn credential_hash(token: &str) -> String {
+    hex::encode(Sha256::digest(token.as_bytes()))
+}
+
+fn cache_identity(
+    org_id: i64,
+    preset_id: Uuid,
+    acts_as: McpServerActsAs,
+    context: ScopedMcpCacheContext,
+) -> Option<CacheIdentity> {
+    match acts_as {
+        McpServerActsAs::Service => context.agent_id.map(|agent_id| CacheIdentity::Service {
+            org_id,
+            preset_id,
+            agent_id,
+        }),
+        McpServerActsAs::User => context.user_id.map(|user_id| CacheIdentity::User {
+            org_id,
+            preset_id,
+            user_id,
+        }),
+        McpServerActsAs::None => None,
+    }
+}
+
+fn cached_tools_from_service_row(row: McpServiceToolCacheRow) -> CachedScopedTools {
+    CachedScopedTools {
+        tools: serde_json::from_value(row.cached_tools).unwrap_or_default(),
+        ttl: Duration::from_millis(row.ttl_ms.max(0) as u64),
+        cached_at: row.tools_cached_at,
+    }
+}
+
+async fn load_cache_entry(
+    db: &StorageBackend,
+    key: &ScopedToolCacheKey,
+) -> Result<Option<CachedScopedTools>> {
+    match &key.identity {
+        CacheIdentity::Service {
+            org_id,
+            preset_id,
+            agent_id,
+        } => {
+            let (scope, hash) = match &key.scope {
+                CacheScopeKey::Public => ("public", ""),
+                CacheScopeKey::Private(hash) => ("private", hash.as_str()),
+            };
+            Ok(db
+                .get_mcp_service_tool_cache(*org_id, *preset_id, *agent_id, scope, hash)
+                .await?
+                .map(cached_tools_from_service_row))
+        }
+        CacheIdentity::User { .. } => Ok(USER_TOOL_CACHE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(key)
+            .cloned()),
+    }
+}
+
+async fn lookup_cached_tools(
+    db: &StorageBackend,
+    identity: CacheIdentity,
+    hash: &str,
+) -> Result<CacheLookup> {
+    let mut stale = None;
+    let mut expired = false;
+    for scope in [
+        CacheScopeKey::Public,
+        CacheScopeKey::Private(hash.to_string()),
+    ] {
+        let key = ScopedToolCacheKey { identity, scope };
+        let Some(entry) = load_cache_entry(db, &key).await? else {
+            continue;
+        };
+        if entry.is_fresh() {
+            return Ok(CacheLookup::Fresh(entry.tools));
+        }
+        if entry.is_within_max_age() {
+            stale.get_or_insert(entry.tools);
+        } else {
+            expired = true;
+        }
+    }
+    if let Some(tools) = stale {
+        Ok(CacheLookup::Stale(tools))
+    } else if expired {
+        Ok(CacheLookup::Expired)
+    } else {
+        Ok(CacheLookup::Miss)
+    }
+}
+
+async fn invalidate_identity_cache(db: &StorageBackend, identity: CacheIdentity) -> Result<()> {
+    match identity {
+        CacheIdentity::Service {
+            org_id,
+            preset_id,
+            agent_id,
+        } => {
+            db.delete_mcp_service_tool_caches(org_id, preset_id, agent_id)
+                .await?;
+        }
+        CacheIdentity::User { .. } => {
+            USER_TOOL_CACHE
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .retain(|key, _| key.identity != identity);
+        }
+    }
+    Ok(())
+}
+
+async fn store_cached_tools(
+    db: &StorageBackend,
+    identity: CacheIdentity,
+    hash: &str,
+    hints: CacheHints,
+    tools: &[everruns_core::McpToolDefinition],
+) -> Result<()> {
+    let (scope, credential_hash) = match hints.scope {
+        CacheScope::Public => (CacheScopeKey::Public, String::new()),
+        CacheScope::Private => (CacheScopeKey::Private(hash.to_string()), hash.to_string()),
+    };
+    let entry = CachedScopedTools {
+        tools: tools.to_vec(),
+        ttl: hints.ttl,
+        cached_at: Utc::now(),
+    };
+    match identity {
+        CacheIdentity::Service {
+            org_id,
+            preset_id,
+            agent_id,
+        } => {
+            db.upsert_mcp_service_tool_cache(UpsertMcpServiceToolCache {
+                org_id,
+                mcp_server_id: preset_id,
+                agent_id,
+                cache_scope: match scope {
+                    CacheScopeKey::Public => "public",
+                    CacheScopeKey::Private(_) => "private",
+                }
+                .to_string(),
+                credential_hash,
+                cached_tools: serde_json::to_value(tools)?,
+                ttl_ms: hints.ttl.as_millis().min(i64::MAX as u128) as i64,
+            })
+            .await?;
+        }
+        CacheIdentity::User { .. } => {
+            let mut cache = USER_TOOL_CACHE
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            cache.retain(|_, entry| entry.is_within_max_age());
+            cache.insert(ScopedToolCacheKey { identity, scope }, entry);
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn discover_catalog_tools(
+    db: &StorageBackend,
+    org_id: i64,
+    preset_id: Uuid,
+    server_name: &str,
+    server: &ScopedMcpServer,
+    session_id: SessionId,
+    context: ScopedMcpCacheContext,
+    connection_resolver: &Arc<dyn UserConnectionResolver>,
+    egress_service: &dyn EgressService,
+) -> Result<Option<Vec<everruns_core::McpToolDefinition>>> {
+    let Some(identity) = cache_identity(org_id, preset_id, server.acts_as, context) else {
+        return Ok(None);
+    };
+    let provider = everruns_core::mcp_oauth_provider_id_for_uuid(preset_id);
+    let token = connection_resolver
+        .get_mcp_connection_token(session_id, &provider, server.acts_as)
+        .await
+        .map_err(|error| anyhow!("Failed to resolve scoped MCP discovery token: {error}"))?;
+    let Some(token) = token else {
+        invalidate_identity_cache(db, identity).await?;
+        return Ok(None);
+    };
+    let hash = credential_hash(&token);
+    match lookup_cached_tools(db, identity, &hash).await? {
+        CacheLookup::Fresh(tools) => return Ok(Some(tools)),
+        CacheLookup::Expired => {
+            invalidate_identity_cache(db, identity).await?;
+            return Ok(None);
+        }
+        CacheLookup::Stale(_) | CacheLookup::Miss => {}
+    }
+
+    let refresh_key = ScopedRefreshKey {
+        identity,
+        credential_hash: hash.clone(),
+    };
+    let lock = SCOPED_REFRESH_LOCKS.lock_for(refresh_key);
+    let _guard = lock.lock_owned().await;
+    match lookup_cached_tools(db, identity, &hash).await? {
+        CacheLookup::Fresh(tools) => return Ok(Some(tools)),
+        CacheLookup::Expired => {
+            invalidate_identity_cache(db, identity).await?;
+            return Ok(None);
+        }
+        CacheLookup::Stale(stale) => {
+            match fetch_mcp_tools_with_cache_hints(
+                egress_service,
+                &server.url,
+                Some(&token),
+                &server.headers,
+            )
+            .await
+            {
+                Ok(result) => {
+                    if let Some(hints) = result.cache_hints {
+                        store_cached_tools(db, identity, &hash, hints, &result.tools).await?;
+                    }
+                    return Ok(Some(result.tools));
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        server_name,
+                        %error,
+                        "Failed to refresh scoped MCP tool cache; serving cached tools within maximum age"
+                    );
+                    return Ok(Some(stale));
+                }
+            }
+        }
+        CacheLookup::Miss => {}
+    }
+
+    let result = fetch_mcp_tools_with_cache_hints(
+        egress_service,
+        &server.url,
+        Some(&token),
+        &server.headers,
+    )
+    .await?;
+    if let Some(hints) = result.cache_hints {
+        store_cached_tools(db, identity, &hash, hints, &result.tools).await?;
+    }
+    Ok(Some(result.tools))
+}
+
 pub async fn build_materialized_scoped_mcp_tool_definitions(
     db: &StorageBackend,
     org_id: i64,
     servers: &ScopedMcpServers,
     session_id: Option<SessionId>,
+    cache_context: Option<ScopedMcpCacheContext>,
     connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
     egress_service: &dyn EgressService,
 ) -> Result<Vec<ToolDefinition>> {
     let materialized = materialize_scoped_mcp_servers(db, org_id, servers).await?;
-    build_scoped_mcp_tool_definitions(
-        &materialized,
-        session_id,
-        connection_resolver,
-        egress_service,
-    )
-    .await
+    let mut definitions = Vec::new();
+    for (name, server) in &materialized {
+        let source = servers
+            .get(name)
+            .expect("materialized server keeps its name");
+        let cacheable_identity = !server.acts_as.is_none()
+            && source.preset.is_some()
+            && session_id.is_some()
+            && cache_context.is_some()
+            && connection_resolver.is_some();
+        if !cacheable_identity {
+            definitions.extend(
+                build_scoped_mcp_tool_definitions(
+                    &ScopedMcpServers::from([(name.clone(), server.clone())]),
+                    session_id,
+                    connection_resolver,
+                    egress_service,
+                )
+                .await?,
+            );
+            continue;
+        }
+
+        let preset_name = source
+            .preset
+            .as_ref()
+            .expect("cacheable catalog attachment has a preset")
+            .catalog_name();
+        let preset_id = db
+            .get_mcp_server_by_name(org_id, preset_name)
+            .await?
+            .filter(|row| row.status == "active")
+            .ok_or_else(|| {
+                anyhow!("Catalog MCP server preset '{preset_name}' is missing or not active")
+            })?
+            .id
+            .uuid();
+        let tools = discover_catalog_tools(
+            db,
+            org_id,
+            preset_id,
+            name,
+            server,
+            session_id.expect("cacheable catalog attachment has a session"),
+            cache_context.expect("cacheable catalog attachment has cache context"),
+            connection_resolver.expect("cacheable catalog attachment has a resolver"),
+            egress_service,
+        )
+        .await;
+        let tools = match tools {
+            Ok(Some(tools)) => tools,
+            Ok(None) => continue,
+            Err(error) => {
+                tracing::warn!(
+                    server_name = %name,
+                    %error,
+                    "Failed to discover cached catalog MCP tools, skipping server"
+                );
+                continue;
+            }
+        };
+        let capability_id = session_id
+            .map(|id| scoped_mcp_server_uuid(id.uuid(), name))
+            .unwrap_or_else(Uuid::nil);
+        definitions.extend(
+            McpCapability::new(capability_id, name.clone(), None, tools).tool_definitions(),
+        );
+    }
+    Ok(definitions)
 }
 pub async fn build_scoped_mcp_tool_definitions(
     servers: &ScopedMcpServers,
@@ -1333,6 +1750,7 @@ mod tests {
                 everruns_core::DEFAULT_ORG_ID,
                 &servers,
                 Some(SessionId::new()),
+                None,
                 Some(&resolver_trait),
                 &egress,
             )

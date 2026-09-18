@@ -501,10 +501,6 @@ impl McpServerService {
             &headers,
         )
         .await?;
-        let cached_tools = serde_json::to_value(&tools)?;
-        self.db
-            .update_mcp_server_tools(caller.org_id, id, UpdateMcpServerTools { cached_tools })
-            .await?;
         Ok(tools)
     }
 
@@ -551,8 +547,8 @@ impl McpServerService {
     /// background (stale-while-revalidate), so agent resolution never blocks on
     /// an upstream `tools/list`. A cold cache (or `force_refresh`) blocks on a
     /// single-flight refresh shared across concurrent callers. OAuth servers
-    /// cannot self-refresh (they need a user connection token), so they always
-    /// take the blocking path rather than spawning a no-op background refresh.
+    /// are rejected here because their tool lists use the identity-scoped
+    /// attachment cache.
     pub async fn get_tools(
         &self,
         caller: &Caller,
@@ -568,6 +564,11 @@ impl McpServerService {
             .get_mcp_server(caller.org_id, id)
             .await?
             .ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
+        if Self::settings_from_row(&row).auth_mode == McpServerAuthMode::OAuth {
+            anyhow::bail!(
+                "OAuth MCP tools require an identity-scoped attachment and connection grant"
+            );
+        }
 
         if Self::cache_fresh(&row) {
             return Ok(Self::cached_tools(&row));
@@ -578,7 +579,7 @@ impl McpServerService {
             return Ok(Self::cached_tools(&row));
         }
 
-        // Cold cache (or OAuth): block on a single-flight refresh.
+        // Cold cache: block on a single-flight refresh.
         self.refresh_tools_coalesced(caller, id, true).await
     }
 
@@ -588,6 +589,9 @@ impl McpServerService {
     /// matching the batch-load contract without registering indefinitely stale
     /// tool definitions.
     async fn tools_for_row(&self, org_id: i64, row: &McpServerRow) -> Vec<McpToolDefinition> {
+        if Self::settings_from_row(row).auth_mode == McpServerAuthMode::OAuth {
+            return Vec::new();
+        }
         if Self::cache_fresh(row) {
             return Self::cached_tools(row);
         }
@@ -624,9 +628,7 @@ impl McpServerService {
 
     /// Stale-while-revalidate is only safe when a real upstream refresh can
     /// succeed: there must be a recent prior successful fetch to serve, and the
-    /// server must be self-refreshable (OAuth servers need a user connection
-    /// token that `refresh_tools` cannot mint, so revalidating them in the
-    /// background would just spawn no-op tasks on every call).
+    /// server must be self-refreshable.
     fn can_revalidate_in_background(&self, row: &McpServerRow) -> bool {
         Self::cache_within_max_stale(row)
             && Self::settings_from_row(row).auth_mode != McpServerAuthMode::OAuth
@@ -636,10 +638,7 @@ impl McpServerService {
     /// serialize; when `allow_cached` is set, a caller that finds the cache made
     /// fresh while it waited returns that result instead of re-fetching. Forced
     /// refreshes pass `allow_cached = false` so they always delegate to
-    /// `refresh_tools` rather than returning a still-fresh cache hit. (Whether
-    /// that performs an upstream `tools/list` is up to `refresh_tools`: OAuth
-    /// servers serve cached tools without an upstream call, as they cannot mint
-    /// a connection token here.)
+    /// `refresh_tools` rather than returning a still-fresh cache hit.
     async fn refresh_tools_coalesced(
         &self,
         caller: &Caller,
@@ -861,6 +860,22 @@ pub(crate) async fn fetch_mcp_tools(
 ) -> Result<Vec<McpToolDefinition>> {
     let credential = api_key.map(everruns_mcp::McpCredential::bearer);
     everruns_mcp::http_list_tools(egress_service, url, headers, credential.as_ref()).await
+}
+
+pub(crate) async fn fetch_mcp_tools_with_cache_hints(
+    egress_service: &dyn EgressService,
+    url: &str,
+    api_key: Option<&str>,
+    headers: &HashMap<String, String>,
+) -> Result<everruns_mcp::HttpToolsList> {
+    let credential = api_key.map(everruns_mcp::McpCredential::bearer);
+    everruns_mcp::http_list_tools_with_cache_hints(
+        egress_service,
+        url,
+        headers,
+        credential.as_ref(),
+    )
+    .await
 }
 
 #[cfg(test)]
