@@ -104,10 +104,10 @@ CI runs these offline checks without provider credentials. Live model behavior i
 
 ## Demo and recording
 
-`demo/record.sh` produces both the GIF above and the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/spam-triage/demo/transcript.txt) from one live run of the documented command, with the corpus built and credentials exported:
+The screencast runs the same `cargo run -q -p everruns-spam-triage` command shown above. VHS hides most provider wait time but does not replace the models with scripted output. Read the [captured transcript](https://github.com/everruns/everruns/blob/main/examples/spam-triage/demo/transcript.txt) at your own pace.
+
+With the corpus built, credentials exported, and VHS, ffmpeg, and a VHS-compatible browser installed:
 
 ```bash
 bash examples/spam-triage/demo/record.sh
 ```
-
-It prefers VHS, the recorder the other examples use. VHS draws its frames through a headless browser, which will not launch as root in some containers; where VHS is unavailable the script records the same command with [asciinema](https://asciinema.org) and renders it with [agg](https://github.com/asciinema/agg), to the same theme and dimensions. Either recorder hides most provider wait time and neither replaces the models with scripted output.

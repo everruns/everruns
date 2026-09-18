@@ -1,6 +1,5 @@
 data/cache/
 data/corpus.jsonl
 demo/.demo.tmp.gif
-demo/.demo.tmp.cast
 demo/.session.tmp
 demo/.transcript.tmp
