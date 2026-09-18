@@ -550,6 +550,25 @@ impl Environment {
             .unwrap_or(Durability::Checkpointed)
     }
 
+    /// The facts a system prompt states about this environment (EVE-1042).
+    ///
+    /// Read from the bound target rather than written by a harness author, so
+    /// the description cannot disagree with the world it describes.
+    pub fn facts(&self) -> crate::environment_preamble::EnvironmentFacts {
+        crate::environment_preamble::EnvironmentFacts {
+            kind: self.compute.as_ref().map(|compute| compute.kind()),
+            capabilities: self.capabilities(),
+            containment: self.containment.clone(),
+            durability: self.durability(),
+        }
+    }
+
+    /// The environment preamble for this environment, or `None` when there is
+    /// no compute and therefore nothing to say.
+    pub fn preamble(&self) -> Option<String> {
+        crate::environment_preamble::environment_preamble(&self.facts())
+    }
+
     pub fn extension<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
         self.extensions
             .get(&TypeId::of::<T>())
