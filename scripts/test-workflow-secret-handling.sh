@@ -13,6 +13,9 @@
 # in the same run block is accepted as a fallback, but it is strictly weaker:
 # masking is substring-exact, so a consumer that re-encodes the value defeats it.
 
+# THREAT[TM-CI-009]: a credential fetched at runtime is unknown to the Actions log
+# masker, so a step boundary publishes it.
+# Mitigation: fail the build on any workflow that writes one to a log-visible surface.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

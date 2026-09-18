@@ -35,6 +35,9 @@ allowlists itself here. That case belongs to GitHub secret scanning on
 repository content, which this does not duplicate.
 """
 
+# THREAT[TM-CI-009]: a credential can reach a public log by a route the static
+# guard cannot see — a vendor error body, a value a failing test echoes.
+# Mitigation: read the logs themselves and report what the masker did not redact.
 from __future__ import annotations
 
 import math
