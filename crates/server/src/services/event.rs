@@ -657,7 +657,7 @@ mod tests {
     use everruns_core::events::{
         EventContext, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
     };
-    use everruns_core::{DEFAULT_ORG_ID, Message};
+    use everruns_core::{DEFAULT_ORG_ID, RuntimeMessage};
     use everruns_platform::SessionParticipantRole;
     use everruns_provider::typed_id::{AgentId, AgentIdentityId, HarnessId, PrincipalId};
     use std::sync::Arc;
@@ -799,7 +799,7 @@ mod tests {
                 EventRequest::new(
                     session.id,
                     EventContext::empty(),
-                    InputMessageData::new(Message::user("hello")),
+                    InputMessageData::new(RuntimeMessage::user("hello")),
                 )
                 .with_metadata(serde_json::json!({
                     "initiator_principal_id": PrincipalId::from_seed(1).to_string()
@@ -821,7 +821,7 @@ mod tests {
                 EventRequest::new(
                     session.id,
                     EventContext::empty(),
-                    OutputMessageCompletedData::new(Message::assistant("hi")),
+                    OutputMessageCompletedData::new(RuntimeMessage::assistant("hi")),
                 )
                 .with_metadata(serde_json::json!({
                     "agent_id": guest_agent_id.to_string()

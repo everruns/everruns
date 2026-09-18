@@ -1,5 +1,5 @@
 use crate::capabilities::CapabilityRegistry;
-use crate::message::{Message, MessageRole};
+use crate::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::{ErrorDisclosure, user_facing_error_codes};
 
 const ERROR_PLACEHOLDER_MESSAGES: &[&str] = &[
@@ -12,8 +12,8 @@ const ERROR_PLACEHOLDER_MESSAGES: &[&str] = &[
     "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
 ];
 
-pub(super) fn is_error_placeholder_message(msg: &Message) -> bool {
-    if msg.role != MessageRole::Agent {
+pub(super) fn is_error_placeholder_message(msg: &RuntimeMessage) -> bool {
+    if msg.role != RuntimeMessageRole::Agent {
         return false;
     }
     // Must have no tool calls (pure text-only error message)
@@ -46,11 +46,11 @@ pub(super) fn is_error_placeholder_message(msg: &Message) -> bool {
 /// Per-message error-disclosure override from the most recent user message's
 /// controls (mirrors how reasoning effort is resolved). The value is clamped
 /// against the capability-configured ceiling in `resolve_error_disclosure`.
-pub(super) fn error_disclosure_override(messages: &[Message]) -> Option<String> {
+pub(super) fn error_disclosure_override(messages: &[RuntimeMessage]) -> Option<String> {
     messages
         .iter()
         .rev()
-        .find(|m| m.role == MessageRole::User)?
+        .find(|m| m.role == RuntimeMessageRole::User)?
         .controls
         .as_ref()?
         .error_disclosure

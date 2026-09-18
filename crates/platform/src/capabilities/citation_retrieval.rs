@@ -25,7 +25,7 @@ use everruns_core::annotation_hook::{
 };
 use everruns_core::capabilities::Capability;
 use everruns_core::capability_types::CapabilityStatus;
-use everruns_core::message::{AnnotationSource, ContentPart, Message, TextAnnotation};
+use everruns_core::message::{AnnotationSource, ContentPart, RuntimeMessage, TextAnnotation};
 
 /// Canonical capability id.
 pub const CITATION_RETRIEVAL_CAPABILITY_ID: &str = "citation_retrieval";
@@ -179,7 +179,7 @@ struct RetrievalCitation {
 /// Scan the assembled context for retrieval tool results and normalize their
 /// entries. Tool results carry only a `tool_call_id`, so we first map call ids
 /// to tool names from the assistant `ToolCall` parts.
-fn extract_retrieval_citations(messages: &[Message]) -> Vec<RetrievalCitation> {
+fn extract_retrieval_citations(messages: &[RuntimeMessage]) -> Vec<RetrievalCitation> {
     let mut tool_names: HashMap<&str, &str> = HashMap::new();
     for msg in messages {
         for part in &msg.content {
@@ -343,11 +343,11 @@ fn split_sentences(text: &str) -> Vec<Sentence> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::message::{MessageRole, ToolCallContentPart, ToolResultContentPart};
+    use everruns_core::message::{RuntimeMessageRole, ToolCallContentPart, ToolResultContentPart};
 
-    fn tool_call_msg(call_id: &str, tool: &str) -> Message {
-        let mut m = Message::assistant("");
-        m.role = MessageRole::Agent;
+    fn tool_call_msg(call_id: &str, tool: &str) -> RuntimeMessage {
+        let mut m = RuntimeMessage::assistant("");
+        m.role = RuntimeMessageRole::Agent;
         m.content = vec![ContentPart::ToolCall(ToolCallContentPart::new(
             call_id,
             tool,
@@ -356,9 +356,9 @@ mod tests {
         m
     }
 
-    fn tool_result_msg(call_id: &str, result: serde_json::Value) -> Message {
-        let mut m = Message::assistant("");
-        m.role = MessageRole::ToolResult;
+    fn tool_result_msg(call_id: &str, result: serde_json::Value) -> RuntimeMessage {
+        let mut m = RuntimeMessage::assistant("");
+        m.role = RuntimeMessageRole::ToolResult;
         m.content = vec![ContentPart::ToolResult(ToolResultContentPart::new(
             call_id,
             Some(result),

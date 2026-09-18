@@ -1,5 +1,7 @@
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
-use everruns_core::{Message, MessageRetriever, MessageRole, event_emitter::EventEmitter};
+use everruns_core::{
+    MessageRetriever, RuntimeMessage, RuntimeMessageRole, event_emitter::EventEmitter,
+};
 use everruns_provider::ToolResultImage;
 use everruns_provider::tool_types::ToolCall;
 use everruns_provider::typed_id::SessionId;
@@ -10,7 +12,7 @@ use serde_json::json;
 async fn message_fixture_preserves_tool_calls_in_seeded_history() {
     let session_id = SessionId::new();
     let fixture = InMemoryMessageRetriever::new();
-    let message = Message::assistant_with_tools(
+    let message = RuntimeMessage::assistant_with_tools(
         "Checking.",
         vec![ToolCall {
             id: "call_weather".into(),
@@ -43,7 +45,7 @@ async fn message_fixture_preserves_full_parallel_tool_conversation() {
     fixture
         .store(
             session_id,
-            Message::assistant_with_tools("Checking all cities.", calls.clone()),
+            RuntimeMessage::assistant_with_tools("Checking all cities.", calls.clone()),
         )
         .await
         .unwrap();
@@ -51,20 +53,20 @@ async fn message_fixture_preserves_full_parallel_tool_conversation() {
         fixture
             .store(
                 session_id,
-                Message::tool_result(&call.id, Some(json!({"ok": true})), None),
+                RuntimeMessage::tool_result(&call.id, Some(json!({"ok": true})), None),
             )
             .await
             .unwrap();
     }
     fixture
-        .store(session_id, Message::assistant("All done."))
+        .store(session_id, RuntimeMessage::assistant("All done."))
         .await
         .unwrap();
 
     let loaded = fixture.load(session_id).await.unwrap();
     assert_eq!(loaded.len(), 5);
     assert_eq!(loaded[0].tool_calls().len(), 3);
-    assert_eq!(loaded[1].role, MessageRole::ToolResult);
+    assert_eq!(loaded[1].role, RuntimeMessageRole::ToolResult);
     assert_eq!(loaded[4].text(), Some("All done."));
 }
 
@@ -75,7 +77,7 @@ async fn message_fixture_preserves_tool_result_images() {
     fixture
         .store(
             session_id,
-            Message::tool_result_with_images(
+            RuntimeMessage::tool_result_with_images(
                 "call_image",
                 Some(json!({"ok": true})),
                 vec![ToolResultImage {
@@ -88,7 +90,7 @@ async fn message_fixture_preserves_tool_result_images() {
         .unwrap();
 
     let loaded = fixture.load(session_id).await.unwrap();
-    assert_eq!(loaded[0].role, MessageRole::ToolResult);
+    assert_eq!(loaded[0].role, RuntimeMessageRole::ToolResult);
     assert_eq!(loaded[0].tool_call_id(), Some("call_image"));
     assert_eq!(loaded[0].content.len(), 2);
 }
@@ -103,7 +105,7 @@ async fn event_fixture_supports_deterministic_isolated_assertions() {
             .emit(EventRequest::new(
                 session_id,
                 EventContext::empty(),
-                InputMessageData::new(Message::user(text)),
+                InputMessageData::new(RuntimeMessage::user(text)),
             ))
             .await
             .unwrap();

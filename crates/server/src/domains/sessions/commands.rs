@@ -11,7 +11,7 @@ use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, SessionIdledData,
     TurnCancelledData, deserialize_event_data,
 };
-use everruns_core::{Message, SessionContextReport};
+use everruns_core::{RuntimeMessage, SessionContextReport};
 use everruns_platform::ANONYMOUS_USER_ID;
 use everruns_platform::capabilities::session_title_updated_event;
 use everruns_platform::{
@@ -2145,7 +2145,7 @@ impl Command for CancelSession {
             let user_message_event = EventRequest::new(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
-                InputMessageData::new(Message::user("User requested to cancel the work.")),
+                InputMessageData::new(RuntimeMessage::user("User requested to cancel the work.")),
             );
             if let Err(error) = event_service.emit(user_message_event).await {
                 tracing::warn!(session_id = %session_id, error = %error, "Failed to emit user cancellation message");

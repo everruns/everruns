@@ -12860,7 +12860,7 @@ export interface components {
       guardrail_id: string;
       /**
        * @description Stable public ID for the assistant message whose streamed text is replaced.
-       *     This is the same identifier as the subsequent completed `Message.id`.
+       *     This is the same identifier as the subsequent completed `RuntimeMessage.id`.
        * @example message_550e8400e29b41d4a716446655440000
        */
       message_id: string;

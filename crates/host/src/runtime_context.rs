@@ -5,7 +5,7 @@ use std::sync::Arc;
 use everruns_core::ResolvedExecutionSnapshot;
 use everruns_core::capabilities::{CapabilityRegistry, collect_message_filters_only};
 use everruns_core::execution_loading::{AgentStore, HarnessStore, SessionStore};
-use everruns_core::message::{Message, MessageRole};
+use everruns_core::message::{RuntimeMessage, RuntimeMessageRole};
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::provider_resolution::ProviderStore;
@@ -297,11 +297,11 @@ fn validate_requested_topology(
     Ok(())
 }
 
-fn latest_model_override(messages: &[Message]) -> Option<ModelId> {
+fn latest_model_override(messages: &[RuntimeMessage]) -> Option<ModelId> {
     messages
         .iter()
         .rev()
-        .find(|message| message.role == MessageRole::User)
+        .find(|message| message.role == RuntimeMessageRole::User)
         .and_then(|message| message.controls.as_ref())
         .and_then(|controls| controls.model_id)
 }

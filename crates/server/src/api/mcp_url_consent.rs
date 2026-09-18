@@ -224,7 +224,7 @@ pub async fn submit_elicitation_consent(
     // a decision that arrived without them would resume the turn on whatever the
     // org default resolves to — switching provider mid-conversation, carrying
     // the other provider's response ids with it.
-    let mut message = everruns_core::message::Message::user(spoken);
+    let mut message = everruns_core::message::RuntimeMessage::user(spoken);
     message.controls = latest_user_controls(&state, session_id).await;
 
     if let Err(e) = state

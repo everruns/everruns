@@ -273,9 +273,9 @@ pub use llm_error_hook::{
 };
 pub use message::{
     AnnotationSource, ContentPart, ContentType, Controls, ExternalActor, ImageContentPart,
-    ImageFileContentPart, InputContentPart, Message, MessageRole, ReasoningConfig, TextAnnotation,
-    TextContentPart, ToolCallContentPart, ToolResultContentPart, VerificationStatus,
-    VerificationVerdict,
+    ImageFileContentPart, InputContentPart, ReasoningConfig, RuntimeMessage, RuntimeMessageRole,
+    TextAnnotation, TextContentPart, ToolCallContentPart, ToolResultContentPart,
+    VerificationStatus, VerificationVerdict,
 };
 pub use message_filter::{
     ExcludedNoticeTransform, FilterContext, InjectedMessage, InjectionPosition, MessageFilter,
@@ -357,8 +357,7 @@ pub use utility_llm::{
 
 // Private provider-contract imports used by kernel implementation modules.
 pub(crate) use driver_registry::{
-    LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponse, LlmResponseStream,
-    ProviderOpaqueContext,
+    LlmCallConfig, LlmResponse, LlmResponseStream, ProviderOpaqueContext,
 };
 
 // Transport-neutral native compaction contracts. Concrete OpenAI/OpenResponses

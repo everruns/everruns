@@ -11,8 +11,8 @@ use serde_json::json;
 
 /// Build an assistant message whose reasoning part carries every kind of
 /// opaque replay state, plus readable text that must survive.
-fn message_with_replay_state() -> Message {
-    let mut message = Message::assistant("the answer");
+fn message_with_replay_state() -> RuntimeMessage {
+    let mut message = RuntimeMessage::assistant("the answer");
     message.content.push(ContentPart::reasoning(
         everruns_provider::reasoning::ReasoningContentPart::opaque("anthropic")
             .with_item_id("rs_abc")
@@ -42,7 +42,7 @@ fn generation_metadata() -> LlmGenerationMetadata {
     }
 }
 
-fn reasoning_part(message: &Message) -> &everruns_provider::reasoning::ReasoningContentPart {
+fn reasoning_part(message: &RuntimeMessage) -> &everruns_provider::reasoning::ReasoningContentPart {
     message
         .content
         .iter()
@@ -128,13 +128,13 @@ fn into_public_strips_replay_state_from_input_and_generation_messages() {
 #[test]
 fn needs_public_projection_covers_every_message_bearing_variant() {
     assert!(
-        EventData::InputMessage(InputMessageData::new(Message::user("hi")))
+        EventData::InputMessage(InputMessageData::new(RuntimeMessage::user("hi")))
             .needs_public_projection()
     );
     assert!(
-        EventData::OutputMessageCompleted(OutputMessageCompletedData::new(Message::assistant(
-            "hi"
-        )))
+        EventData::OutputMessageCompleted(OutputMessageCompletedData::new(
+            RuntimeMessage::assistant("hi")
+        ))
         .needs_public_projection()
     );
     assert!(
@@ -167,7 +167,7 @@ fn needs_public_projection_covers_every_message_bearing_variant() {
 fn test_event_creation() {
     let session_id = SessionId::new();
     let context = EventContext::empty();
-    let data = InputMessageData::new(Message::user("test"));
+    let data = InputMessageData::new(RuntimeMessage::user("test"));
 
     let event = Event::new(session_id, context, data);
 
@@ -249,7 +249,10 @@ fn test_reason_completed_data() {
 
 #[test]
 fn test_llm_generation_data_success() {
-    let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
+    let messages = vec![
+        RuntimeMessage::user("Hello"),
+        RuntimeMessage::assistant("Hi there!"),
+    ];
     let tools = vec![ToolDefinitionSummary {
         name: "get_weather".to_string(),
         display_name: None,
@@ -308,7 +311,7 @@ fn test_llm_generation_data_success() {
 
 #[test]
 fn test_llm_generation_data_with_full_metadata() {
-    let messages = vec![Message::user("Hello")];
+    let messages = vec![RuntimeMessage::user("Hello")];
     let data = LlmGenerationData::success_with_metadata(
         messages.clone(),
         vec![],
@@ -353,7 +356,7 @@ fn test_llm_generation_data_with_full_metadata() {
 
 #[test]
 fn test_llm_generation_data_failure() {
-    let messages = vec![Message::user("Hello")];
+    let messages = vec![RuntimeMessage::user("Hello")];
     let data = LlmGenerationData::failure(
         messages.clone(),
         vec![],
@@ -431,7 +434,7 @@ fn test_delta_events_are_ephemeral() {
         ),
         (EventData::VoiceOutputTranscriptCompleted(voice), false),
         (
-            OutputMessageCompletedData::new(Message::assistant("done")).into(),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant("done")).into(),
             false,
         ),
         (
@@ -472,7 +475,7 @@ fn test_llm_generation_data_with_request_options() {
     );
 
     let data = LlmGenerationData::success(
-        vec![Message::user("Hello")],
+        vec![RuntimeMessage::user("Hello")],
         vec![],
         Some("Hi".to_string()),
         vec![],
@@ -583,8 +586,9 @@ fn test_output_message_lifecycle_shares_message_id() {
         reason_code: "blocked".to_string(),
         replacement: "Safe response".to_string(),
     };
-    let completed =
-        OutputMessageCompletedData::new(Message::assistant("Safe response").with_id(message_id));
+    let completed = OutputMessageCompletedData::new(
+        RuntimeMessage::assistant("Safe response").with_id(message_id),
+    );
 
     for value in [
         serde_json::to_value(started).unwrap(),
@@ -845,7 +849,7 @@ fn test_reason_item_data_excludes_plaintext_reasoning() {
 
 #[test]
 fn test_llm_generation_ttft_omitted_when_none() {
-    let messages = vec![Message::user("test")];
+    let messages = vec![RuntimeMessage::user("test")];
     let data = LlmGenerationData::success(
         messages,
         vec![],

@@ -3,7 +3,7 @@
 //! The `/chat/completions` message and tool JSON is the lingua franca an
 //! embedder already holds: it arrives from that embedder's own HTTP API, sits
 //! in its stored transcripts, or comes out of another SDK. Everruns' drivers
-//! speak [`LlmMessage`] and [`ToolDefinition`] instead, and translating between
+//! speak [`Message`] and [`ToolDefinition`] instead, and translating between
 //! the two by hand goes wrong in the same places every time — the two assistant
 //! tool-call shapes in circulation, a `tool` message missing its
 //! `tool_call_id`, and multimodal content quietly flattened to its JSON
@@ -30,7 +30,7 @@
 use serde_json::{Map, Value, json};
 use thiserror::Error;
 
-use crate::driver_registry::{LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole};
+use crate::driver_registry::{LlmContentPart, Message, MessageContent, MessageRole};
 use crate::tool_types::{ToolCall, ToolDefinition};
 
 /// Why a piece of OpenAI-shaped JSON could not be read.
@@ -70,7 +70,7 @@ impl From<OpenAiWireError> for crate::error::AgentLoopError {
 
 type Result<T> = std::result::Result<T, OpenAiWireError>;
 
-/// Read one OpenAI chat message into an [`LlmMessage`].
+/// Read one OpenAI chat message into an [`Message`].
 ///
 /// Accepts the shapes the wire actually carries:
 ///
@@ -88,7 +88,7 @@ type Result<T> = std::result::Result<T, OpenAiWireError>;
 /// When the role is missing or unknown, when a `tool` message has no
 /// `tool_call_id` (the provider will reject it), or when a tool call has no
 /// name.
-pub fn message_from_openai(value: &Value) -> Result<LlmMessage> {
+pub fn message_from_openai(value: &Value) -> Result<Message> {
     let object = value.as_object().ok_or(OpenAiWireError::Invalid {
         field: "message",
         expected: "an object",
@@ -98,10 +98,10 @@ pub fn message_from_openai(value: &Value) -> Result<LlmMessage> {
         .and_then(Value::as_str)
         .ok_or(OpenAiWireError::Missing { field: "role" })?;
     let role = match role {
-        "system" | "developer" => LlmMessageRole::System,
-        "user" => LlmMessageRole::User,
-        "assistant" => LlmMessageRole::Assistant,
-        "tool" | "function" => LlmMessageRole::Tool,
+        "system" | "developer" => MessageRole::System,
+        "user" => MessageRole::User,
+        "assistant" => MessageRole::Assistant,
+        "tool" | "function" => MessageRole::Tool,
         other => {
             return Err(OpenAiWireError::UnsupportedRole {
                 role: other.to_owned(),
@@ -110,10 +110,10 @@ pub fn message_from_openai(value: &Value) -> Result<LlmMessage> {
     };
 
     let content = match object.get("content") {
-        None | Some(Value::Null) => LlmMessageContent::Text(String::new()),
-        Some(Value::String(text)) => LlmMessageContent::Text(text.clone()),
+        None | Some(Value::Null) => MessageContent::Text(String::new()),
+        Some(Value::String(text)) => MessageContent::Text(text.clone()),
         Some(Value::Array(parts)) => {
-            LlmMessageContent::Parts(parts.iter().map(content_part_from_openai).collect())
+            MessageContent::Parts(parts.iter().map(content_part_from_openai).collect())
         }
         Some(_) => {
             return Err(OpenAiWireError::Invalid {
@@ -123,9 +123,9 @@ pub fn message_from_openai(value: &Value) -> Result<LlmMessage> {
         }
     };
 
-    let mut message = LlmMessage {
+    let mut message = Message {
         content,
-        ..LlmMessage::text(role, "")
+        ..Message::text(role, "")
     };
 
     if let Some(calls) = object.get("tool_calls") {
@@ -146,7 +146,7 @@ pub fn message_from_openai(value: &Value) -> Result<LlmMessage> {
         Some(id) => message.tool_call_id = Some(id.to_owned()),
         // The provider rejects a tool result it cannot correlate, so this is
         // caught here rather than one round trip later.
-        None if message.role == LlmMessageRole::Tool => {
+        None if message.role == MessageRole::Tool => {
             return Err(OpenAiWireError::Missing {
                 field: "tool_call_id",
             });
@@ -163,34 +163,34 @@ pub fn message_from_openai(value: &Value) -> Result<LlmMessage> {
 ///
 /// The first message that cannot be read, so a bad transcript fails on the
 /// entry at fault rather than silently dropping it.
-pub fn messages_from_openai(values: &[Value]) -> Result<Vec<LlmMessage>> {
+pub fn messages_from_openai(values: &[Value]) -> Result<Vec<Message>> {
     values.iter().map(message_from_openai).collect()
 }
 
-/// Write an [`LlmMessage`] back out as OpenAI chat JSON.
+/// Write an [`Message`] back out as OpenAI chat JSON.
 ///
 /// The inverse of [`message_from_openai`] for everything that has an OpenAI
 /// equivalent: tool calls go out in the nested `function` form the API
 /// expects, and `arguments` as the JSON-encoded string. Everruns' own
 /// additions with no place on this wire — reasoning artifacts, execution
 /// phase, native calls — are left out rather than invented.
-pub fn message_to_openai(message: &LlmMessage) -> Value {
+pub fn message_to_openai(message: &Message) -> Value {
     let mut object = Map::new();
     object.insert(
         "role".to_owned(),
         Value::String(
             match message.role {
-                LlmMessageRole::System => "system",
-                LlmMessageRole::User => "user",
-                LlmMessageRole::Assistant => "assistant",
-                LlmMessageRole::Tool => "tool",
+                MessageRole::System => "system",
+                MessageRole::User => "user",
+                MessageRole::Assistant => "assistant",
+                MessageRole::Tool => "tool",
             }
             .to_owned(),
         ),
     );
     let content = match &message.content {
-        LlmMessageContent::Text(text) => Value::String(text.clone()),
-        LlmMessageContent::Parts(parts) => {
+        MessageContent::Text(text) => Value::String(text.clone()),
+        MessageContent::Parts(parts) => {
             Value::Array(parts.iter().map(content_part_to_openai).collect())
         }
     };
@@ -397,7 +397,7 @@ mod tests {
             {"role": "user", "content": "hi"},
         ]);
         let messages = messages_from_openai(wire.as_array().unwrap()).unwrap();
-        assert_eq!(messages[0].role, LlmMessageRole::System);
+        assert_eq!(messages[0].role, MessageRole::System);
         assert_eq!(messages[1].content.to_text(), "hi");
         let back: Vec<Value> = messages.iter().map(message_to_openai).collect();
         assert_eq!(Value::Array(back), wire);
@@ -407,7 +407,7 @@ mod tests {
     fn developer_is_read_as_a_system_message() {
         let message = message_from_openai(&json!({"role": "developer", "content": "rules"}))
             .expect("the newer system role name is still a system message");
-        assert_eq!(message.role, LlmMessageRole::System);
+        assert_eq!(message.role, MessageRole::System);
     }
 
     #[test]
@@ -500,7 +500,7 @@ mod tests {
             ],
         });
         let message = message_from_openai(&wire).unwrap();
-        let LlmMessageContent::Parts(parts) = &message.content else {
+        let MessageContent::Parts(parts) = &message.content else {
             panic!("the parts array must stay parts");
         };
         assert_eq!(parts.len(), 4);

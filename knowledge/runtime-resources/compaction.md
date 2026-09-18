@@ -591,9 +591,9 @@ Do not include tool output verbatim — reference files by path.
 The summary replaces compacted messages as a single system message:
 
 ```rust
-LlmMessage {
-    role: LlmMessageRole::System,
-    content: LlmMessageContent::Text(format!(
+Message {
+    role: MessageRole::System,
+    content: MessageContent::Text(format!(
         "[CONVERSATION_SUMMARY]\n{}\n[/CONVERSATION_SUMMARY]",
         summary_text
     )),

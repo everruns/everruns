@@ -1,7 +1,7 @@
 //! Tests: collect_tests.
 
 use super::*;
-use crate::message::Message;
+use crate::message::RuntimeMessage;
 use crate::message_filter::{MessageFilter, MessageFilterProvider, MessageQuery};
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolDefinition;
@@ -256,7 +256,7 @@ fn test_collect_message_filters_only_preserves_priority_order() {
 
 #[test]
 fn test_collect_message_filters_only_post_load_invoked() {
-    use crate::message::Message;
+    use crate::message::RuntimeMessage;
 
     struct PostLoadCap;
     struct PostLoadProvider;
@@ -281,7 +281,7 @@ fn test_collect_message_filters_only_post_load_invoked() {
         fn priority(&self) -> i32 {
             0
         }
-        fn post_load(&self, messages: &mut Vec<Message>, _config: &serde_json::Value) {
+        fn post_load(&self, messages: &mut Vec<RuntimeMessage>, _config: &serde_json::Value) {
             // Reverse messages to prove post_load was called
             messages.reverse();
         }
@@ -297,7 +297,10 @@ fn test_collect_message_filters_only_post_load_invoked() {
 
     let collected = collect_message_filters_only(&configs, &registry);
 
-    let mut messages = vec![Message::user("first"), Message::user("second")];
+    let mut messages = vec![
+        RuntimeMessage::user("first"),
+        RuntimeMessage::user("second"),
+    ];
     collected.apply_post_load_filters(&mut messages);
 
     // post_load reversed the messages
@@ -367,14 +370,14 @@ fn test_collect_model_view_providers_honors_resolve_for_model_delegation() {
     );
     let session_id = SessionId::from_seed(42);
     let output = collected.apply_model_view(
-        vec![Message::user("original")],
+        vec![RuntimeMessage::user("original")],
         &ModelViewContext {
             session_id,
             prior_usage: None,
         },
     );
     assert_eq!(
-        output.iter().map(Message::text).collect::<Vec<_>>(),
+        output.iter().map(RuntimeMessage::text).collect::<Vec<_>>(),
         [
             Some("original"),
             Some(format!("delegated:{session_id}").as_str())

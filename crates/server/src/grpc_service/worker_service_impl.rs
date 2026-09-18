@@ -885,7 +885,7 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<AddMessageResponse>, Status> {
         use chrono::Utc;
         use everruns_core::{
-            ContentPart, Controls, EventContext, EventRequest, Message, MessageRole,
+            ContentPart, Controls, EventContext, EventRequest, RuntimeMessage, RuntimeMessageRole,
             events::{InputMessageData, OutputMessageCompletedData},
         };
         use everruns_internal_protocol::{
@@ -922,10 +922,10 @@ impl WorkerService for WorkerServiceImpl {
             .map_err(|e| Status::invalid_argument(format!("Invalid metadata: {}", e)))?;
 
         // Parse role
-        let role = MessageRole::from(req.role.as_str());
+        let role = RuntimeMessageRole::from(req.role.as_str());
 
         // Create the message
-        let message = Message {
+        let message = RuntimeMessage {
             id: uuid::Uuid::now_v7().into(),
             role: role.clone(),
             content,
@@ -939,17 +939,17 @@ impl WorkerService for WorkerServiceImpl {
 
         // Create typed event request based on role
         let event_request = match role {
-            MessageRole::User => EventRequest::new(
+            RuntimeMessageRole::User => EventRequest::new(
                 session_id.into(),
                 EventContext::empty(),
                 InputMessageData::new(message.clone()),
             ),
-            MessageRole::Agent => EventRequest::new(
+            RuntimeMessageRole::Agent => EventRequest::new(
                 session_id.into(),
                 EventContext::empty(),
                 OutputMessageCompletedData::new(message.clone()),
             ),
-            MessageRole::System | MessageRole::ToolResult => {
+            RuntimeMessageRole::System | RuntimeMessageRole::ToolResult => {
                 // System and tool messages are typically stored via emit_event
                 return Err(Status::invalid_argument(
                     "System and tool messages should be added via emit_event",
@@ -4508,9 +4508,9 @@ impl WorkerService for WorkerServiceImpl {
         let message_id = uuid::Uuid::now_v7();
         let now = chrono::Utc::now();
 
-        let core_message = everruns_core::Message {
+        let core_message = everruns_core::RuntimeMessage {
             id: everruns_provider::typed_id::MessageId::from_uuid(message_id),
-            role: everruns_core::MessageRole::User,
+            role: everruns_core::RuntimeMessageRole::User,
             content: vec![everruns_core::ContentPart::text(&req.content)],
             phase: None,
             phase_source: None,

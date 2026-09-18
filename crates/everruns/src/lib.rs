@@ -204,13 +204,18 @@ pub use everruns_host::{
 
 // --- Portable message, model, and platform types ------------------------
 pub use everruns_core::turn::TurnStopReason;
+// `MessageRole` is the role on stored and inspected session messages
+// (`SessionMessage`, `ContextMessage`) — the common path. The wire message and
+// role that travel on a direct model call live in [`llm`], so both keep the
+// plain name on their own surface.
 pub use everruns_core::{
-    ContentPart, Controls, ImageContentPart, InitialFile, InputMessage, MessageRole,
-    ReasoningConfig, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+    ContentPart, Controls, ImageContentPart, InitialFile, InputMessage, ReasoningConfig,
+    RuntimeMessageRole as MessageRole, WorkspacePolicy, WorkspacePolicyBuilder,
+    WorkspacePolicyError,
 };
 pub use everruns_provider::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart,
-    LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
+    LlmResponse, LlmResponseStream, LlmStreamEvent,
 };
 // Reasoning is part of the public surface: `ReasoningConfig` above carries a
 // `ReasoningEffort`, and the artifact types appear on assistant messages.
@@ -313,5 +318,5 @@ pub mod prelude {
     #[deprecated(note = "use WorkspaceBackend and WorkspaceBackendId")]
     pub use crate::{WorkspaceProvider, WorkspaceProviderId};
     pub use everruns_core::turn::TurnStopReason;
-    pub use everruns_core::{ContentPart, InputMessage, MessageRole};
+    pub use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole as MessageRole};
 }

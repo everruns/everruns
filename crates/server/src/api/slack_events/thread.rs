@@ -200,9 +200,9 @@ pub(crate) async fn inject_thread_context(
             exhausted = backfill.exhausted,
             "Thread backfill truncated; telling the agent"
         );
-        let message = everruns_core::Message {
+        let message = everruns_core::RuntimeMessage {
             id: everruns_provider::typed_id::MessageId::new(),
-            role: everruns_core::MessageRole::System,
+            role: everruns_core::RuntimeMessageRole::System,
             content: vec![everruns_core::ContentPart::text(&notice)],
             phase: None,
             phase_source: None,
@@ -246,9 +246,9 @@ pub(crate) async fn inject_thread_context(
             None
         };
 
-        let message = everruns_core::Message {
+        let message = everruns_core::RuntimeMessage {
             id: everruns_provider::typed_id::MessageId::new(),
-            role: everruns_core::MessageRole::User,
+            role: everruns_core::RuntimeMessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
             phase_source: None,

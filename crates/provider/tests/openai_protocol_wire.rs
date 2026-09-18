@@ -11,8 +11,7 @@
 
 use everruns_provider::OpenAIProtocolChatDriver;
 use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
-    LlmStreamEvent,
+    LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
 };
 use everruns_provider::{BearerAuth, Provider};
 use futures::StreamExt;
@@ -133,7 +132,7 @@ async fn text_stream_golden_events() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("gpt-5.2"),
         )
         .await
@@ -182,7 +181,7 @@ async fn fragmented_tool_call_golden_events() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
+            vec![Message::text(MessageRole::User, "weather?")],
             &config("gpt-5.2"),
         )
         .await
@@ -229,7 +228,7 @@ async fn empty_content_with_tool_calls_finish_golden_events() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "ping")],
+            vec![Message::text(MessageRole::User, "ping")],
             &config("gpt-5.2"),
         )
         .await
@@ -272,10 +271,7 @@ async fn extra_headers_reach_the_wire() {
     ];
 
     let stream = driver(&server)
-        .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
-            &call_config,
-        )
+        .chat_completion_stream(vec![Message::text(MessageRole::User, "hi")], &call_config)
         .await
         .expect("stream should start");
     let _ = drain_golden(stream).await;
@@ -327,7 +323,7 @@ async fn chat_completions_reasoning_content_reaches_the_reasoning_channel() {
 
         let stream = driver(&server)
             .chat_completion_stream(
-                vec![LlmMessage::text(LlmMessageRole::User, "think")],
+                vec![Message::text(MessageRole::User, "think")],
                 &config("deepseek-r1"),
             )
             .await

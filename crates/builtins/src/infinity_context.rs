@@ -4,7 +4,7 @@
 //! `query_history` tool for older messages that fell out of the active window.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::message::{ContentPart, Message, MessageRole};
+use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::message_filter::{
     ExcludedNoticeTransform, MessageFilterProvider, MessageQuery, anchored_window,
 };
@@ -311,7 +311,7 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         query.prepend_transform = Some(Arc::new(ExcludedNoticeTransform::infinity_context()));
     }
 
-    fn post_load(&self, messages: &mut Vec<Message>, config: &Value) {
+    fn post_load(&self, messages: &mut Vec<RuntimeMessage>, config: &Value) {
         let config: InfinityContextConfig =
             serde_json::from_value(config.clone()).unwrap_or_default();
         let existing_notice_count = take_existing_excluded_notice(messages);
@@ -384,7 +384,7 @@ fn resolve_candidate_load_limit(config: &InfinityContextConfig) -> usize {
     budget_derived_limit
 }
 
-fn estimate_message_tokens(message: &Message) -> usize {
+fn estimate_message_tokens(message: &RuntimeMessage) -> usize {
     const TOKEN_CHARS: usize = 4;
     let role_overhead = message.role.to_string().len() + 8;
     let content_len: usize = message
@@ -452,7 +452,7 @@ fn estimate_json_value_len(value: &Value) -> usize {
         .unwrap_or(0)
 }
 
-fn take_existing_excluded_notice(messages: &mut Vec<Message>) -> usize {
+fn take_existing_excluded_notice(messages: &mut Vec<RuntimeMessage>) -> usize {
     let Some(first) = messages.first() else {
         return 0;
     };
@@ -464,7 +464,7 @@ fn take_existing_excluded_notice(messages: &mut Vec<Message>) -> usize {
     count
 }
 
-fn parse_excluded_notice_count(message: &Message) -> Option<usize> {
+fn parse_excluded_notice_count(message: &RuntimeMessage) -> Option<usize> {
     let text = message.text()?;
     let rest = text.strip_prefix("[IMPORTANT: ")?;
     let (count, rest) = rest.split_once(' ')?;
@@ -484,18 +484,18 @@ struct TrimOutcome {
 }
 
 /// Insert the hidden-history notice at `position`, clamped to the message list.
-fn insert_excluded_notice(messages: &mut Vec<Message>, position: usize, count: usize) {
+fn insert_excluded_notice(messages: &mut Vec<RuntimeMessage>, position: usize, count: usize) {
     let text = ExcludedNoticeTransform::infinity_context()
         .format
         .replace("{}", &count.to_string());
-    messages.insert(position.min(messages.len()), Message::system(text));
+    messages.insert(position.min(messages.len()), RuntimeMessage::system(text));
 }
 
 /// Trim the live window to the token budget while always keeping the first
 /// `keep_first_messages` (the original task/goal) and the recent tail. Drops a
 /// single contiguous block from the middle and reports how many were hidden.
 fn trim_messages_to_token_budget(
-    messages: &mut Vec<Message>,
+    messages: &mut Vec<RuntimeMessage>,
     config: &InfinityContextConfig,
 ) -> TrimOutcome {
     if messages.is_empty() {
@@ -677,12 +677,12 @@ impl Tool for QueryHistoryTool {
 
 struct SearchResult<'a> {
     index: usize,
-    message: &'a Message,
+    message: &'a RuntimeMessage,
     score: f64,
 }
 
 fn search_messages<'a>(
-    messages: &'a [Message],
+    messages: &'a [RuntimeMessage],
     query: &str,
     limit: usize,
 ) -> Vec<SearchResult<'a>> {
@@ -706,9 +706,9 @@ fn search_messages<'a>(
         }
 
         match message.role {
-            MessageRole::User | MessageRole::Agent => score += 0.2,
-            MessageRole::System => score += 0.1,
-            MessageRole::ToolResult => {}
+            RuntimeMessageRole::User | RuntimeMessageRole::Agent => score += 0.2,
+            RuntimeMessageRole::System => score += 0.1,
+            RuntimeMessageRole::ToolResult => {}
         }
 
         results.push(SearchResult {
@@ -728,7 +728,7 @@ fn search_messages<'a>(
     results
 }
 
-fn extract_text_content(message: &Message) -> String {
+fn extract_text_content(message: &RuntimeMessage) -> String {
     message
         .content
         .iter()
@@ -750,7 +750,7 @@ fn truncate_content(content: &str, max_len: usize) -> String {
     format!("{}...", content.chars().take(max_len).collect::<String>())
 }
 
-fn format_message(message: &Message, index: usize, total: usize) -> Value {
+fn format_message(message: &RuntimeMessage, index: usize, total: usize) -> Value {
     json!({
         "index": index,
         "position": format!("{}/{}", index + 1, total),
@@ -761,7 +761,7 @@ fn format_message(message: &Message, index: usize, total: usize) -> Value {
 }
 
 fn format_range_result(
-    messages: &[&Message],
+    messages: &[&RuntimeMessage],
     start_index: usize,
     total: usize,
 ) -> ToolExecutionResult {
@@ -810,7 +810,7 @@ fn format_search_result(results: &[SearchResult<'_>], total: usize) -> ToolExecu
     }))
 }
 
-fn format_recent_result(messages: &[&Message], total: usize) -> ToolExecutionResult {
+fn format_recent_result(messages: &[&RuntimeMessage], total: usize) -> ToolExecutionResult {
     let formatted: Vec<Value> = messages
         .iter()
         .enumerate()
@@ -1030,10 +1030,10 @@ mod tests {
     fn test_filter_provider_trims_loaded_messages_by_token_budget() {
         let provider = InfinityContextFilterProvider;
         let mut messages = vec![
-            Message::user("the original task"),
-            Message::assistant("old ".repeat(400)),
-            Message::user("recent one"),
-            Message::assistant("recent two"),
+            RuntimeMessage::user("the original task"),
+            RuntimeMessage::assistant("old ".repeat(400)),
+            RuntimeMessage::user("recent one"),
+            RuntimeMessage::assistant("recent two"),
         ];
 
         provider.post_load(
@@ -1061,11 +1061,11 @@ mod tests {
     fn test_filter_provider_applies_hard_cap_after_loading() {
         let provider = InfinityContextFilterProvider;
         let mut messages = vec![
-            Message::user("one"),
-            Message::assistant("two"),
-            Message::user("three"),
-            Message::assistant("four"),
-            Message::user("five"),
+            RuntimeMessage::user("one"),
+            RuntimeMessage::assistant("two"),
+            RuntimeMessage::user("three"),
+            RuntimeMessage::assistant("four"),
+            RuntimeMessage::user("five"),
         ];
 
         provider.post_load(
@@ -1100,11 +1100,11 @@ mod tests {
         let mut query = MessageQuery::new(SessionId::new());
         provider.apply_filters(&mut query, &config);
         let mut messages = vec![
-            Message::user("TASK: build the widget"),
-            Message::assistant("X".repeat(2000)),
-            Message::assistant("Y".repeat(2000)),
-            Message::user("recent a"),
-            Message::assistant("recent b"),
+            RuntimeMessage::user("TASK: build the widget"),
+            RuntimeMessage::assistant("X".repeat(2000)),
+            RuntimeMessage::assistant("Y".repeat(2000)),
+            RuntimeMessage::user("recent a"),
+            RuntimeMessage::assistant("recent b"),
         ];
 
         query.apply_windowing(&mut messages);
@@ -1146,10 +1146,10 @@ mod tests {
     fn test_filter_provider_defers_eviction_to_compaction() {
         let provider = InfinityContextFilterProvider;
         let mut messages = vec![
-            Message::user("task"),
-            Message::assistant("old ".repeat(400)),
-            Message::user("recent one"),
-            Message::assistant("recent two"),
+            RuntimeMessage::user("task"),
+            RuntimeMessage::assistant("old ".repeat(400)),
+            RuntimeMessage::user("recent one"),
+            RuntimeMessage::assistant("recent two"),
         ];
 
         provider.post_load(
@@ -1174,8 +1174,8 @@ mod tests {
     #[test]
     fn test_filter_provider_caps_keep_first_messages_during_post_load() {
         let provider = InfinityContextFilterProvider;
-        let mut messages: Vec<Message> = (0..20)
-            .map(|idx| Message::user(format!("message {idx}")))
+        let mut messages: Vec<RuntimeMessage> = (0..20)
+            .map(|idx| RuntimeMessage::user(format!("message {idx}")))
             .collect();
 
         provider.post_load(
@@ -1200,10 +1200,10 @@ mod tests {
     fn test_filter_provider_default_drops_oversized_first_message() {
         let provider = InfinityContextFilterProvider;
         let mut messages = vec![
-            Message::user("attacker ".repeat(20_000)),
-            Message::assistant("middle"),
-            Message::user("recent one"),
-            Message::assistant("recent two"),
+            RuntimeMessage::user("attacker ".repeat(20_000)),
+            RuntimeMessage::assistant("middle"),
+            RuntimeMessage::user("recent one"),
+            RuntimeMessage::assistant("recent two"),
         ];
 
         provider.post_load(
@@ -1233,10 +1233,10 @@ mod tests {
     fn test_filter_provider_keep_first_messages_anchors_multiple() {
         let provider = InfinityContextFilterProvider;
         let mut messages = vec![
-            Message::user("anchor one"),
-            Message::user("anchor two"),
-            Message::assistant("mid ".repeat(400)),
-            Message::user("recent"),
+            RuntimeMessage::user("anchor one"),
+            RuntimeMessage::user("anchor two"),
+            RuntimeMessage::assistant("mid ".repeat(400)),
+            RuntimeMessage::user("recent"),
         ];
 
         provider.post_load(
@@ -1346,9 +1346,9 @@ mod tests {
             .seed(
                 session_id,
                 vec![
-                    Message::user("First topic"),
-                    Message::assistant("The API key is abc123"),
-                    Message::user("We should keep discussing logging"),
+                    RuntimeMessage::user("First topic"),
+                    RuntimeMessage::assistant("The API key is abc123"),
+                    RuntimeMessage::user("We should keep discussing logging"),
                 ],
             )
             .await;
@@ -1376,7 +1376,10 @@ mod tests {
         retriever
             .seed(
                 session_id,
-                vec![Message::user("one"), Message::assistant("two")],
+                vec![
+                    RuntimeMessage::user("one"),
+                    RuntimeMessage::assistant("two"),
+                ],
             )
             .await;
 
@@ -1404,9 +1407,9 @@ mod tests {
             .seed(
                 session_id,
                 vec![
-                    Message::user("one"),
-                    Message::assistant("two"),
-                    Message::user("three"),
+                    RuntimeMessage::user("one"),
+                    RuntimeMessage::assistant("two"),
+                    RuntimeMessage::user("three"),
                 ],
             )
             .await;
@@ -1436,9 +1439,9 @@ mod tests {
             .seed(
                 session_id,
                 vec![
-                    Message::user("one"),
-                    Message::assistant("two"),
-                    Message::user("three"),
+                    RuntimeMessage::user("one"),
+                    RuntimeMessage::assistant("two"),
+                    RuntimeMessage::user("three"),
                 ],
             )
             .await;
@@ -1476,8 +1479,8 @@ mod tests {
         // state, so InfinityContext must not drop the tool output before provider
         // serialization decides whether stateful continuation is active.
         let mut messages = vec![
-            Message::user("old question"),
-            Message::assistant_with_tools(
+            RuntimeMessage::user("old question"),
+            RuntimeMessage::assistant_with_tools(
                 "calling tool",
                 vec![ToolCall {
                     id: "call_old".to_string(),
@@ -1486,9 +1489,9 @@ mod tests {
                 }],
             ),
             // This tool result is in the min-recent window but its call is trimmed away.
-            Message::tool_result("call_old", Some(serde_json::json!("done")), None),
-            Message::user("new question"),
-            Message::assistant("answer"),
+            RuntimeMessage::tool_result("call_old", Some(serde_json::json!("done")), None),
+            RuntimeMessage::user("new question"),
+            RuntimeMessage::assistant("answer"),
         ];
 
         provider.post_load(
@@ -1497,7 +1500,9 @@ mod tests {
         );
 
         assert!(
-            messages.iter().any(|m| m.role == MessageRole::ToolResult),
+            messages
+                .iter()
+                .any(|m| m.role == RuntimeMessageRole::ToolResult),
             "locally unmatched tool result must be preserved until provider serialization"
         );
 
@@ -1521,8 +1526,8 @@ mod tests {
 
         let provider = InfinityContextFilterProvider;
         let mut messages = vec![
-            Message::user("original task"),
-            Message::assistant_with_tools(
+            RuntimeMessage::user("original task"),
+            RuntimeMessage::assistant_with_tools(
                 "calling tool",
                 vec![ToolCall {
                     id: "call_old".to_string(),
@@ -1530,13 +1535,13 @@ mod tests {
                     arguments: serde_json::json!({}),
                 }],
             ),
-            Message::tool_result(
+            RuntimeMessage::tool_result(
                 "call_old",
                 Some(serde_json::json!("large result ".repeat(500))),
                 None,
             ),
-            Message::user("recent question"),
-            Message::assistant("recent answer"),
+            RuntimeMessage::user("recent question"),
+            RuntimeMessage::assistant("recent answer"),
         ];
 
         provider.post_load(
@@ -1551,7 +1556,7 @@ mod tests {
         assert!(
             messages
                 .iter()
-                .flat_map(Message::tool_calls)
+                .flat_map(RuntimeMessage::tool_calls)
                 .next()
                 .is_none(),
             "the anchored assistant message must not retain a call after its result is hidden"
@@ -1565,7 +1570,7 @@ mod tests {
         let provider = InfinityContextFilterProvider;
         // All 3 messages fit in the window: no orphan expected.
         let mut messages = vec![
-            Message::assistant_with_tools(
+            RuntimeMessage::assistant_with_tools(
                 "calling tool",
                 vec![ToolCall {
                     id: "call_1".to_string(),
@@ -1573,8 +1578,8 @@ mod tests {
                     arguments: serde_json::json!({}),
                 }],
             ),
-            Message::tool_result("call_1", Some(serde_json::json!("content")), None),
-            Message::user("thanks"),
+            RuntimeMessage::tool_result("call_1", Some(serde_json::json!("content")), None),
+            RuntimeMessage::user("thanks"),
         ];
 
         provider.post_load(
@@ -1583,7 +1588,9 @@ mod tests {
         );
 
         assert!(
-            messages.iter().any(|m| m.role == MessageRole::ToolResult),
+            messages
+                .iter()
+                .any(|m| m.role == RuntimeMessageRole::ToolResult),
             "tool result must be kept when its tool call is visible"
         );
     }

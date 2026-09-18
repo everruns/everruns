@@ -23,9 +23,7 @@
 
 use serde_json::json;
 
-use crate::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmMessage, LlmMessageContent, LlmMessageRole,
-};
+use crate::driver_registry::{ChatDriver, LlmCallConfig, Message, MessageContent, MessageRole};
 
 use super::*;
 
@@ -345,8 +343,8 @@ fn test_tool_serialization() {
 #[test]
 fn test_build_input_extracts_system_as_instructions() {
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::System, "You are a helpful assistant"),
-        LlmMessage::text(LlmMessageRole::User, "Hello"),
+        Message::text(MessageRole::System, "You are a helpful assistant"),
+        Message::text(MessageRole::User, "Hello"),
     ];
 
     let (instructions, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
@@ -364,10 +362,10 @@ fn test_build_input_concatenates_multiple_system_messages() {
     // context's hidden-history notice or compaction's summary) must both
     // survive — the later one must not overwrite the real system prompt.
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::System, "You are a helpful assistant"),
-        LlmMessage::text(LlmMessageRole::User, "Hello"),
-        LlmMessage::text(
-            LlmMessageRole::System,
+        Message::text(MessageRole::System, "You are a helpful assistant"),
+        Message::text(MessageRole::User, "Hello"),
+        Message::text(
+            MessageRole::System,
             "[IMPORTANT: 3 earlier messages are NOT visible in this context.]",
         ),
     ];
@@ -387,19 +385,19 @@ fn test_build_input_concatenates_multiple_system_messages() {
 #[test]
 fn test_convert_role() {
     assert_eq!(
-        OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::System),
+        OpenResponsesProtocolChatDriver::convert_role(&MessageRole::System),
         "developer"
     );
     assert_eq!(
-        OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::User),
+        OpenResponsesProtocolChatDriver::convert_role(&MessageRole::User),
         "user"
     );
     assert_eq!(
-        OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::Assistant),
+        OpenResponsesProtocolChatDriver::convert_role(&MessageRole::Assistant),
         "assistant"
     );
     assert_eq!(
-        OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::Tool),
+        OpenResponsesProtocolChatDriver::convert_role(&MessageRole::Tool),
         "tool"
     );
 }
@@ -429,11 +427,11 @@ fn test_build_input_with_tool_calls() {
     // 2. Assistant calls a tool
     // 3. Tool returns result
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::System, "You are helpful"),
-        LlmMessage::text(LlmMessageRole::User, "What time is it?"),
-        LlmMessage {
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text(String::new()),
+        Message::text(MessageRole::System, "You are helpful"),
+        Message::text(MessageRole::User, "What time is it?"),
+        Message {
+            role: MessageRole::Assistant,
+            content: MessageContent::Text(String::new()),
             tool_calls: Some(vec![ToolCall {
                 id: "call_xyz789".to_string(),
                 name: "get_current_time".to_string(),
@@ -445,9 +443,9 @@ fn test_build_input_with_tool_calls() {
             configuration_update: None,
             native_tool_calls: Vec::new(),
         },
-        LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("2025-01-19T10:30:00Z".to_string()),
+        Message {
+            role: MessageRole::Tool,
+            content: MessageContent::Text("2025-01-19T10:30:00Z".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_xyz789".to_string()),
             phase: None,
@@ -484,10 +482,10 @@ fn test_build_input_with_tool_calls_and_text() {
 
     // Assistant message with both text content and tool calls
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::User, "What time is it?"),
-        LlmMessage {
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("Let me check the time for you.".to_string()),
+        Message::text(MessageRole::User, "What time is it?"),
+        Message {
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("Let me check the time for you.".to_string()),
             tool_calls: Some(vec![ToolCall {
                 id: "call_abc".to_string(),
                 name: "get_time".to_string(),
@@ -542,11 +540,11 @@ fn openresponses_requests_should_not_mix_previous_response_id_with_full_transcri
     // This is the exact shape that gets reconstructed on a follow-up turn when
     // the runtime has a `previous_response_id` from the prior assistant turn.
     let messages = vec![
-        LlmMessage::text(LlmMessageRole::System, "You are helpful"),
-        LlmMessage::text(LlmMessageRole::User, "What time is it?"),
-        LlmMessage {
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text("Let me check.".to_string()),
+        Message::text(MessageRole::System, "You are helpful"),
+        Message::text(MessageRole::User, "What time is it?"),
+        Message {
+            role: MessageRole::Assistant,
+            content: MessageContent::Text("Let me check.".to_string()),
             tool_calls: Some(vec![ToolCall {
                 id: "call_xyz789".to_string(),
                 name: "get_current_time".to_string(),
@@ -558,9 +556,9 @@ fn openresponses_requests_should_not_mix_previous_response_id_with_full_transcri
             configuration_update: None,
             native_tool_calls: Vec::new(),
         },
-        LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("2025-01-19T10:30:00Z".to_string()),
+        Message {
+            role: MessageRole::Tool,
+            content: MessageContent::Text("2025-01-19T10:30:00Z".to_string()),
             tool_calls: None,
             tool_call_id: Some("call_xyz789".to_string()),
             phase: None,

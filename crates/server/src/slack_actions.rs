@@ -33,8 +33,8 @@ use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
+use crate::slack_api::{SLACK_API_BASE, slack_api_call};
 use crate::slack_api_error::{SlackApiError, parse_retry_after};
-use crate::slack_delivery::{SLACK_API_BASE, slack_api_call};
 use crate::storage::{EncryptionService, StorageBackend};
 
 /// Routing-tag prefix stamped on Slack-originated sessions by

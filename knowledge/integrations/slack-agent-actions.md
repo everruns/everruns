@@ -122,7 +122,7 @@ bot.
 1. Native `slack` capability with the channel's bot token. **Landed (EVE-1024).**
 2. Interactivity endpoint, manifest `settings.interactivity.request_url`, and
    the approval hint — the approval path end to end. **Landed (EVE-1025).**
-3. Task progress rendering in the delivery adapter.
+3. Task progress rendering in the delivery adapter. **Landed (EVE-1026).**
 
 ## What landed for step 1
 
@@ -234,3 +234,36 @@ authorized is not drawn at all.
 - `crates/server/src/slack_delivery.rs` — delivery adapter and progress rendering
 - [Client Hints](../runtime-resources/client-hints.md) — the pause-and-consent mechanism this reuses
 - [Slack Integration Modernization](slack-modernization.md) — where these three limits were recorded
+
+## What landed for step 3
+
+The summary is **derived, never narrated**. `task.created` and `task.updated`
+already carry real task state, so the delivery adapter folds them into a
+per-turn accumulator and renders it. The model is never asked to report its own
+progress: it forgets, it invents, and it costs tokens on every turn to put a
+machine-checkable fact behind a probabilistic step.
+
+**One message, updated in place, on a shared rhythm.** Events fold in and set a
+dirty flag; the delivery loop's existing 500 ms flush tick decides when to push.
+That is the same cadence the streaming work established (EVE-974) rather than a
+second one, which is also the answer to the ordering question the abstract
+raised: a task summary and an open reply stream are two writers on one thread,
+and one rhythm keeps them predictable. Update volume is bounded by time, not by
+fan-out, so twenty workers settling at once cost one `chat.update`.
+
+An update that does not change the rendered text does not mark the summary
+dirty, so a task reporting only a `state_detail` change costs no Slack call at
+all. That is why the accumulator takes the three rendered fields rather than the
+whole `SessionTask`, whose spec, artifacts and heartbeats churn constantly.
+
+**Nothing rendered when nothing is delegated.** An agent that simply answers
+never populates the accumulator, so no status message is ever created.
+
+**A turn can end with tasks still running** — a background task outlives the
+turn that spawned it. The final push says so explicitly rather than leaving a
+message that reads as live forever.
+
+Naming is the useful part of a small fan-out and noise in a large one, so tasks
+are named up to five and reported as counts beyond that, with the exceptions
+(failed, canceled, awaiting input) ordered first because that is what a reader
+is scanning for.

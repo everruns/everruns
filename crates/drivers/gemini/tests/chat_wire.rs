@@ -14,8 +14,7 @@
 
 use everruns_gemini::GeminiChatDriver;
 use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
-    LlmStreamEvent,
+    LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
 };
 use everruns_provider::{Provider, StaticHeaderAuth};
 use futures::StreamExt;
@@ -162,7 +161,7 @@ async fn text_stream_golden_events() {
     let driver = provider(&server);
     let stream = driver
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("gemini-2.5-flash"),
         )
         .await
@@ -213,7 +212,7 @@ async fn function_call_stream_golden_events() {
     let driver = provider(&server);
     let stream = driver
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
+            vec![Message::text(MessageRole::User, "weather?")],
             &config("gemini-2.5-flash"),
         )
         .await
@@ -254,7 +253,7 @@ async fn eos_without_finish_reason_emits_done() {
     let driver = provider(&server);
     let stream = driver
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("gemini-2.5-flash"),
         )
         .await
@@ -299,7 +298,7 @@ async fn thought_parts_become_reasoning_with_signature() {
 
     let stream = provider(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "think")],
+            vec![Message::text(MessageRole::User, "think")],
             &config("gemini-2.5-flash"),
         )
         .await
@@ -348,7 +347,7 @@ async fn function_call_thought_signature_binds_to_its_call() {
 
     let stream = provider(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
+            vec![Message::text(MessageRole::User, "weather?")],
             &config("gemini-2.5-flash"),
         )
         .await
@@ -382,13 +381,13 @@ async fn function_call_thought_signature_binds_to_its_call() {
 async fn tool_results_replay_function_names_and_object_payloads_on_wire() {
     let server = MockServer::start().await;
     mount_sse(&server, "data: {\"candidates\":[{\"content\":{\"parts\":[]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":2,\"candidatesTokenCount\":0}}\n\n".into()).await;
-    let mut call = LlmMessage::text(LlmMessageRole::Assistant, "");
+    let mut call = Message::text(MessageRole::Assistant, "");
     call.tool_calls = Some(vec![everruns_provider::tool_types::ToolCall {
         id: "call_17".into(),
         name: "get_weather".into(),
         arguments: serde_json::json!({"city":"Paris"}),
     }]);
-    let mut result = LlmMessage::text(LlmMessageRole::Tool, "[18,20]");
+    let mut result = Message::text(MessageRole::Tool, "[18,20]");
     result.tool_call_id = Some("call_17".into());
     let stream = provider(&server)
         .chat_completion_stream(vec![call, result], &config("gemini-2.5-flash"))
@@ -428,7 +427,7 @@ async fn one_frame_preserves_all_parts_calls_signatures_and_terminal_usage() {
     mount_sse(&server, format!("data: {frame}\n\ndata: {late}\n\n")).await;
     let stream = provider(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("gemini-2.5-flash"),
         )
         .await
@@ -471,7 +470,7 @@ async fn rejected_terminal_frame_never_releases_pending_tool_calls() {
         mount_sse(&server, format!("data: {frame}\n\n")).await;
         let stream = provider(&server)
             .chat_completion_stream(
-                vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+                vec![Message::text(MessageRole::User, "hi")],
                 &config("gemini-2.5-flash"),
             )
             .await
@@ -507,7 +506,7 @@ async fn replayed_request_tolerates_an_identical_replay() {
     for _ in 0..2 {
         let stream = provider(&server)
             .chat_completion_stream(
-                vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+                vec![Message::text(MessageRole::User, "hi")],
                 &config("gemini-2.5-flash"),
             )
             .await
@@ -539,7 +538,7 @@ async fn replayed_request_rejects_a_replay_that_changed_the_request() {
     for prompt in ["hi", "something else entirely"] {
         let stream = provider(&server)
             .chat_completion_stream(
-                vec![LlmMessage::text(LlmMessageRole::User, prompt)],
+                vec![Message::text(MessageRole::User, prompt)],
                 &config("gemini-2.5-flash"),
             )
             .await

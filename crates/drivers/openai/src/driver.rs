@@ -16,8 +16,7 @@ use everruns_provider::OpenResponsesProtocolChatDriver;
 use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
-    EmbeddingsDriverFactory, LlmCallConfig, LlmMessage, LlmResponse, LlmResponseStream,
-    ServiceKind,
+    EmbeddingsDriverFactory, LlmCallConfig, LlmResponse, LlmResponseStream, Message, ServiceKind,
 };
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::openai_protocol::{
@@ -164,7 +163,7 @@ impl ChatDriver for OpenAIChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         self.inner
@@ -179,7 +178,7 @@ impl ChatDriver for OpenAIChatDriver {
     async fn chat_completion_non_streaming(
         &self,
         endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         self.inner
@@ -285,7 +284,7 @@ impl ChatDriver for OpenAICompletionsChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         self.inner
@@ -300,7 +299,7 @@ impl ChatDriver for OpenAICompletionsChatDriver {
     async fn chat_completion_non_streaming(
         &self,
         endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         self.inner

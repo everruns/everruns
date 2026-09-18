@@ -64,7 +64,7 @@ mod tests {
         async fn chat_completion_stream(
             &self,
             _endpoint: &crate::ProviderEndpoint,
-            _messages: Vec<crate::LlmMessage>,
+            _messages: Vec<crate::Message>,
             _config: &crate::LlmCallConfig,
         ) -> crate::Result<crate::LlmResponseStream> {
             unreachable!()

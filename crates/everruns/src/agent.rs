@@ -123,7 +123,7 @@ impl Model {
     pub(crate) fn simulated_capturing(
         response: impl Into<String>,
         capture: std::sync::Arc<
-            std::sync::Mutex<Vec<Vec<everruns_provider::driver_registry::LlmMessage>>>,
+            std::sync::Mutex<Vec<Vec<everruns_provider::driver_registry::Message>>>,
         >,
     ) -> Self {
         let mut sim = LlmSimConfig::fixed(response);

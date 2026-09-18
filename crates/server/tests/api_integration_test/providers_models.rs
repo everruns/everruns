@@ -377,7 +377,7 @@ async fn test_events_do_not_publish_reasoning_replay_state() {
 
     let session_id = session.id;
 
-    let mut message = everruns_core::Message::assistant("the answer");
+    let mut message = everruns_core::RuntimeMessage::assistant("the answer");
     message.content.push(everruns_core::ContentPart::reasoning(
         everruns_provider::reasoning::ReasoningContentPart::opaque("anthropic")
             .with_item_id("rs_abc")

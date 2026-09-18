@@ -288,7 +288,7 @@ async fn handle_block_action(
             question: None,
         };
         let blocks = build_resolved_blocks(&request, &decision.as_resolution(clicker));
-        crate::slack_delivery::update_slack_message_blocks(
+        crate::slack_api::update_slack_message_blocks(
             &slack_config.bot_token,
             &channel.id,
             &message.ts,

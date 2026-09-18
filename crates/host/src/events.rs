@@ -10,7 +10,7 @@ use std::sync::{Arc, Weak};
 use async_trait::async_trait;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventData, EventRequest, OutputMessageCompletedData};
-use everruns_core::message::{ContentPart, Message};
+use everruns_core::message::{ContentPart, RuntimeMessage};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::message_retriever::{MessageHistory, MessageRetriever};
 use everruns_provider::error::{AgentLoopError, Result as CoreResult};
@@ -342,7 +342,7 @@ impl EventHistoryReadRequest {
 #[derive(Clone, Debug)]
 pub struct EventHistoryPage {
     /// Canonical messages in persisted event sequence order.
-    pub messages: Vec<Message>,
+    pub messages: Vec<RuntimeMessage>,
     /// Continuation after the last examined canonical envelope.
     pub next_cursor: Option<EventCursor>,
     snapshot_high_watermark: i32,
@@ -1080,7 +1080,7 @@ struct ProjectedMessage {
     event_type: String,
     sequence: i32,
     tool_name: Option<String>,
-    message: Message,
+    message: RuntimeMessage,
 }
 
 /// Read-only message/history projection rebuilt from canonical events.
@@ -1330,7 +1330,7 @@ impl MessageRetriever for EventHistory {
         &self,
         session_id: SessionId,
         message_id: MessageId,
-    ) -> CoreResult<Option<Message>> {
+    ) -> CoreResult<Option<RuntimeMessage>> {
         Ok(self
             .project(session_id)
             .await
@@ -1340,7 +1340,7 @@ impl MessageRetriever for EventHistory {
             .map(|item| item.message))
     }
 
-    async fn load(&self, session_id: SessionId) -> CoreResult<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> CoreResult<Vec<RuntimeMessage>> {
         Ok(self
             .project(session_id)
             .await
@@ -1350,7 +1350,7 @@ impl MessageRetriever for EventHistory {
             .collect())
     }
 
-    async fn load_filtered(&self, query: MessageQuery) -> CoreResult<Vec<Message>> {
+    async fn load_filtered(&self, query: MessageQuery) -> CoreResult<Vec<RuntimeMessage>> {
         let mut messages = self
             .filtered(&query)
             .await
@@ -1383,7 +1383,7 @@ impl MessageRetriever for EventHistory {
         session_id: SessionId,
         offset: usize,
         limit: usize,
-    ) -> CoreResult<Vec<Message>> {
+    ) -> CoreResult<Vec<RuntimeMessage>> {
         if limit == 0 {
             return Ok(Vec::new());
         }
@@ -1430,7 +1430,7 @@ fn core_event_error(error: EventLogError) -> AgentLoopError {
     AgentLoopError::store(error.to_string())
 }
 
-fn message_from_event(event: &Event) -> Option<Message> {
+fn message_from_event(event: &Event) -> Option<RuntimeMessage> {
     match &event.data {
         EventData::InputMessage(data) => Some(data.message.clone()),
         EventData::OutputMessageCompleted(OutputMessageCompletedData { message, .. }) => {
@@ -1448,7 +1448,7 @@ fn message_from_event(event: &Event) -> Option<Message> {
     }
 }
 
-fn tool_completed_to_message(data: everruns_core::events::ToolCompletedData) -> Message {
+fn tool_completed_to_message(data: everruns_core::events::ToolCompletedData) -> RuntimeMessage {
     let mut images = Vec::<ToolResultImage>::new();
     let result = data.result.map(|parts| {
         for part in &parts {
@@ -1476,9 +1476,9 @@ fn tool_completed_to_message(data: everruns_core::events::ToolCompletedData) -> 
         }
     });
     let mut message = if images.is_empty() {
-        Message::tool_result(&data.tool_call_id, result, data.error)
+        RuntimeMessage::tool_result(&data.tool_call_id, result, data.error)
     } else {
-        Message::tool_result_with_images(&data.tool_call_id, result, images)
+        RuntimeMessage::tool_result_with_images(&data.tool_call_id, result, images)
     };
     let mut metadata = std::collections::HashMap::new();
     metadata.insert("tool_name".into(), serde_json::json!(data.tool_name));
@@ -1574,13 +1574,13 @@ mod tests {
         let first = EventRequest::new(
             session_id,
             EventContext::empty(),
-            InputMessageData::new(Message::user("one")),
+            InputMessageData::new(RuntimeMessage::user("one")),
         )
         .into_event(EventId::new(), 1);
         let second = EventRequest::new(
             session_id,
             EventContext::empty(),
-            InputMessageData::new(Message::user("two")),
+            InputMessageData::new(RuntimeMessage::user("two")),
         )
         .into_event(EventId::new(), 2);
         let bytes = format!(
@@ -1651,14 +1651,14 @@ mod tests {
         log.append(EventRequest::new(
             session_id,
             EventContext::empty(),
-            InputMessageData::new(Message::user("hello")),
+            InputMessageData::new(RuntimeMessage::user("hello")),
         ))
         .await
         .expect("append input message");
         log.append(EventRequest::new(
             session_id,
             EventContext::empty(),
-            OutputMessageCompletedData::new(Message::assistant("hi")),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant("hi")),
         ))
         .await
         .expect("append output message");

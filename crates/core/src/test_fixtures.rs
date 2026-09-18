@@ -16,7 +16,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::error::Result;
-use crate::message::Message;
+use crate::message::RuntimeMessage;
 use crate::message_filter::MessageQuery;
 use crate::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 use crate::{
@@ -37,7 +37,7 @@ use chrono::Utc;
 /// for testing purposes. In production, messages are stored via EventEmitter.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct TestMessageRetriever {
-    messages: Arc<RwLock<HashMap<SessionId, Vec<Message>>>>,
+    messages: Arc<RwLock<HashMap<SessionId, Vec<RuntimeMessage>>>>,
 }
 
 impl TestMessageRetriever {
@@ -64,7 +64,7 @@ impl TestMessageRetriever {
     }
 
     /// Pre-populate with messages (useful for testing)
-    pub(crate) async fn seed(&self, session_id: SessionId, messages: Vec<Message>) {
+    pub(crate) async fn seed(&self, session_id: SessionId, messages: Vec<RuntimeMessage>) {
         self.messages.write().await.insert(session_id, messages);
     }
 
@@ -72,8 +72,12 @@ impl TestMessageRetriever {
     ///
     /// Note: In production, messages are stored via EventService.
     /// This method is provided for test setup and in-memory usage.
-    pub(crate) async fn add(&self, session_id: SessionId, input: InputMessage) -> Result<Message> {
-        let message = Message {
+    pub(crate) async fn add(
+        &self,
+        session_id: SessionId,
+        input: InputMessage,
+    ) -> Result<RuntimeMessage> {
+        let message = RuntimeMessage {
             id: MessageId::new(),
             role: input.role,
             content: input.content,
@@ -99,7 +103,7 @@ impl TestMessageRetriever {
     ///
     /// Note: In production, messages are stored via EventEmitter.
     /// This method is provided for test setup and in-memory usage.
-    pub(crate) async fn store(&self, session_id: SessionId, message: Message) -> Result<()> {
+    pub(crate) async fn store(&self, session_id: SessionId, message: RuntimeMessage) -> Result<()> {
         self.messages
             .write()
             .await
@@ -112,7 +116,11 @@ impl TestMessageRetriever {
 
 #[async_trait]
 impl MessageRetriever for TestMessageRetriever {
-    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+    async fn get(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<RuntimeMessage>> {
         Ok(self
             .messages
             .read()
@@ -121,7 +129,7 @@ impl MessageRetriever for TestMessageRetriever {
             .and_then(|messages| messages.iter().find(|m| m.id == message_id).cloned()))
     }
 
-    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
         Ok(self
             .messages
             .read()
@@ -131,7 +139,7 @@ impl MessageRetriever for TestMessageRetriever {
             .unwrap_or_default())
     }
 
-    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<RuntimeMessage>> {
         use crate::message_filter::MessageFilter;
 
         let mut messages = self.load(query.session_id).await?;
@@ -430,7 +438,7 @@ mod tests {
         let store = TestMessageRetriever::new();
         let first = SessionId::from_uuid(Uuid::from_u128(1));
         let second = SessionId::from_uuid(Uuid::from_u128(2));
-        let stored = Message::user("stored");
+        let stored = RuntimeMessage::user("stored");
         store.store(first, stored.clone()).await.unwrap();
         let added = store.add(first, InputMessage::user("added")).await.unwrap();
         let other = store
@@ -473,7 +481,7 @@ mod tests {
             .emit(EventRequest::new(
                 first,
                 EventContext::empty(),
-                InputMessageData::new(Message::user("first")),
+                InputMessageData::new(RuntimeMessage::user("first")),
             ))
             .await
             .unwrap();
@@ -493,7 +501,7 @@ mod tests {
             .emit(EventRequest::new(
                 first,
                 EventContext::empty(),
-                InputMessageData::new(Message::user("last")),
+                InputMessageData::new(RuntimeMessage::user("last")),
             ))
             .await
             .unwrap();
@@ -536,7 +544,7 @@ mod tests {
             .emit(EventRequest::new(
                 first,
                 EventContext::empty(),
-                InputMessageData::new(Message::user("after reset")),
+                InputMessageData::new(RuntimeMessage::user("after reset")),
             ))
             .await
             .unwrap();

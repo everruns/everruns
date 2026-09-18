@@ -32086,7 +32086,7 @@
               },
               {
                 "$ref": "#/components/schemas/ExecutionPhase",
-                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". Refinement is monotonic: once a stream reveals a native\nphase (`Commentary` or `FinalAnswer`) it stays fixed for the rest of the\nmessage — it never flip-flops and never reverts to `None`\n(see `ExecutionPhase::refine_streamed_hint`). Providers without native\nmid-stream phase (Anthropic, Gemini, …) leave this `None` until\ncompletion. The authoritative classification remains the completed\n`Message.phase`. See `knowledge/execution/events.md`."
+                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". Refinement is monotonic: once a stream reveals a native\nphase (`Commentary` or `FinalAnswer`) it stays fixed for the rest of the\nmessage — it never flip-flops and never reverts to `None`\n(see `ExecutionPhase::refine_streamed_hint`). Providers without native\nmid-stream phase (Anthropic, Gemini, …) leave this `None` until\ncompletion. The authoritative classification remains the completed\n`RuntimeMessage.phase`. See `knowledge/execution/events.md`."
               }
             ]
           },
@@ -32119,7 +32119,7 @@
           },
           "message_id": {
             "type": "string",
-            "description": "Stable public ID for the assistant message whose streamed text is replaced.\nThis is the same identifier as the subsequent completed `Message.id`.",
+            "description": "Stable public ID for the assistant message whose streamed text is replaced.\nThis is the same identifier as the subsequent completed `RuntimeMessage.id`.",
             "example": "message_550e8400e29b41d4a716446655440000"
           },
           "reason_code": {
@@ -32173,7 +32173,7 @@
               },
               {
                 "$ref": "#/components/schemas/ExecutionPhase",
-                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". A missing/unknown phase must fall back to the\nassistant-text channel, never the reasoning channel. Only populated when\nthe provider stream reveals a native phase before this event is emitted;\ntoday `output.message.started` is emitted before the LLM call, so this is\ngenerally `None` at start. The authoritative classification remains the\ncompleted `Message.phase`. See `knowledge/execution/events.md`."
+                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". A missing/unknown phase must fall back to the\nassistant-text channel, never the reasoning channel. Only populated when\nthe provider stream reveals a native phase before this event is emitted;\ntoday `output.message.started` is emitted before the LLM call, so this is\ngenerally `None` at start. The authoritative classification remains the\ncompleted `RuntimeMessage.phase`. See `knowledge/execution/events.md`."
               }
             ]
           },

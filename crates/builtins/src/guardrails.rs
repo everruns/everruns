@@ -29,7 +29,7 @@ use crate::tool_hooks::{
 };
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::utility_llm::{UtilityLlmReasoningEffort, UtilityLlmRequest};
-use crate::{LlmMessage, LlmMessageRole};
+use crate::{Message, MessageRole};
 use everruns_core::tool_context::ToolContext;
 use everruns_core::{
     ClassificationAnswer, ClassificationQuestion, ClassificationRequest, ClassifierService,
@@ -283,8 +283,8 @@ async fn run_judge_check(
         truncate_on_char_boundary(content, JUDGE_CONTENT_CAP),
     );
     let request = UtilityLlmRequest::new(vec![
-        LlmMessage::text(LlmMessageRole::System, JUDGE_SYSTEM_PROMPT),
-        LlmMessage::text(LlmMessageRole::User, user_prompt),
+        Message::text(MessageRole::System, JUDGE_SYSTEM_PROMPT),
+        Message::text(MessageRole::User, user_prompt),
     ])
     .with_reasoning_effort(UtilityLlmReasoningEffort::Low)
     .with_max_tokens(64);
@@ -622,8 +622,8 @@ async fn run_moderation_check(
         payload,
     );
     let request = UtilityLlmRequest::new(vec![
-        LlmMessage::text(LlmMessageRole::System, MODERATION_SYSTEM_PROMPT),
-        LlmMessage::text(LlmMessageRole::User, user_prompt),
+        Message::text(MessageRole::System, MODERATION_SYSTEM_PROMPT),
+        Message::text(MessageRole::User, user_prompt),
     ])
     .with_reasoning_effort(UtilityLlmReasoningEffort::Low)
     .with_max_tokens(128);

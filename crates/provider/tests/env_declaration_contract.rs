@@ -9,8 +9,8 @@ use everruns_provider::credential_provider::{
 };
 use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
 use everruns_provider::driver_registry::{
-    BoxedChatDriver, ChatDriver, DriverConfig, DriverDescriptor, LlmCallConfig, LlmMessage,
-    LlmResponseStream,
+    BoxedChatDriver, ChatDriver, DriverConfig, DriverDescriptor, LlmCallConfig, LlmResponseStream,
+    Message,
 };
 use everruns_provider::provider::DriverId;
 use everruns_provider::runtime_provider::ProviderEndpoint;
@@ -22,7 +22,7 @@ impl ChatDriver for Unused {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        _messages: Vec<LlmMessage>,
+        _messages: Vec<Message>,
         _config: &LlmCallConfig,
     ) -> everruns_provider::Result<LlmResponseStream> {
         unreachable!("the contract never sends a request")

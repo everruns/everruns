@@ -865,14 +865,14 @@ mod tests {
     fn project_session_output_returns_only_final_assistant_text() {
         use chrono::Utc;
         use everruns_core::ContentPart;
-        use everruns_core::message::Message;
+        use everruns_core::message::RuntimeMessage;
         use everruns_provider::execution_phase::ExecutionPhase;
         use everruns_provider::typed_id::{EventId, SessionId};
         use serde_json::json;
 
         let sid = SessionId::new();
         let mut seq = 0;
-        let mut output_event = |msg: &Message| {
+        let mut output_event = |msg: &RuntimeMessage| {
             seq += 1;
             EventRow {
                 id: EventId::new(),
@@ -890,10 +890,10 @@ mod tests {
 
         // Intermediate commentary — must be excluded.
         let commentary =
-            Message::assistant("internal commentary").with_phase(ExecutionPhase::Commentary);
+            RuntimeMessage::assistant("internal commentary").with_phase(ExecutionPhase::Commentary);
         // Final answer that also carries a tool call part — only the text
         // should survive; the tool name must never leak.
-        let mut final_msg = Message::assistant("the final answer");
+        let mut final_msg = RuntimeMessage::assistant("the final answer");
         final_msg.content.push(ContentPart::tool_call(
             "call_1",
             "secret_internal_tool",

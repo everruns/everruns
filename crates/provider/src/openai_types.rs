@@ -2,7 +2,7 @@
 //!
 //! The wire shapes [`OpenAIProtocolChatDriver`](super::openai_protocol) serializes
 //! and parses. Crate-private: callers exchange the driver-facing
-//! [`LlmMessage`](crate::driver_registry::LlmMessage) and friends, and convert
+//! [`Message`](crate::driver_registry::Message) and friends, and convert
 //! with [`openai_wire`](crate::openai_wire) when they hold the JSON itself.
 
 use serde::{Deserialize, Serialize};

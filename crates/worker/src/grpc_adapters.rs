@@ -19,7 +19,8 @@ use everruns_core::session_file::{
     GrepSearchResult, SessionFile,
 };
 use everruns_core::{
-    AgentDefinition, ExecutionSession, HarnessDefinition, Message, MessageFilter, MessageRole,
+    AgentDefinition, ExecutionSession, HarnessDefinition, MessageFilter, RuntimeMessage,
+    RuntimeMessageRole,
 };
 use everruns_core::{
     connection_services::ProviderCredentialStore, event_emitter::EventEmitter,
@@ -987,7 +988,11 @@ impl GrpcAdapter {
     ///
     /// Note: This is provided for API layer convenience.
     /// Messages are stored via gRPC call to control-plane.
-    pub async fn add_message(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
+    pub async fn add_message(
+        &self,
+        session_id: Uuid,
+        input: InputMessage,
+    ) -> Result<RuntimeMessage> {
         let mut client = self.client.inner.lock().await;
 
         // Convert content to prost ListValue
@@ -1032,7 +1037,11 @@ impl GrpcAdapter {
 
 #[async_trait]
 impl MessageRetriever for GrpcAdapter {
-    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+    async fn get(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<RuntimeMessage>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::GetMessageRequest {
@@ -1052,7 +1061,7 @@ impl MessageRetriever for GrpcAdapter {
             .transpose()
     }
 
-    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
         let (messages, _, _) = self.load_with_message_limit(session_id, None, None).await?;
         Ok(messages)
     }
@@ -1060,7 +1069,7 @@ impl MessageRetriever for GrpcAdapter {
     async fn load_filtered(
         &self,
         query: everruns_core::message_filter::MessageQuery,
-    ) -> Result<Vec<Message>> {
+    ) -> Result<Vec<RuntimeMessage>> {
         Ok(self.load_filtered_history(query).await?.messages)
     }
 
@@ -1093,9 +1102,9 @@ impl MessageRetriever for GrpcAdapter {
                 MessageFilter::EventTypes(types) => {
                     messages.retain(|m| {
                         types.iter().any(|event_type| match event_type.as_str() {
-                            "input.message" => m.role == MessageRole::User,
-                            "output.message.completed" => m.role == MessageRole::Agent,
-                            "tool.completed" => m.role == MessageRole::ToolResult,
+                            "input.message" => m.role == RuntimeMessageRole::User,
+                            "output.message.completed" => m.role == RuntimeMessageRole::Agent,
+                            "tool.completed" => m.role == RuntimeMessageRole::ToolResult,
                             _ => false,
                         })
                     });
@@ -1142,7 +1151,7 @@ impl GrpcAdapter {
         session_id: SessionId,
         message_limit: Option<i32>,
         after_sequence: Option<i64>,
-    ) -> Result<(Vec<Message>, usize, Option<i64>)> {
+    ) -> Result<(Vec<RuntimeMessage>, usize, Option<i64>)> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::LoadMessagesRequest {
@@ -1256,7 +1265,7 @@ impl everruns_core::CompactionCheckpointStore for GrpcAdapter {
     }
 }
 
-fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
+fn proto_message_to_message(proto_msg: proto::Message) -> Result<RuntimeMessage> {
     let id = proto_uuid_to_uuid(proto_msg.id.as_ref())?;
 
     // Convert prost ListValue to Vec<ContentPart>
@@ -1285,15 +1294,15 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
         .map_err(|e| AgentLoopError::store(format!("Failed to parse message metadata: {}", e)))?;
 
     let role = match proto_msg.role.to_lowercase().as_str() {
-        "system" => everruns_core::MessageRole::System,
-        "user" => everruns_core::MessageRole::User,
+        "system" => everruns_core::RuntimeMessageRole::System,
+        "user" => everruns_core::RuntimeMessageRole::User,
         // Map both "assistant" (legacy) and "agent" to Agent role
-        "assistant" | "agent" => everruns_core::MessageRole::Agent,
-        "tool_result" => everruns_core::MessageRole::ToolResult,
-        _ => everruns_core::MessageRole::User,
+        "assistant" | "agent" => everruns_core::RuntimeMessageRole::Agent,
+        "tool_result" => everruns_core::RuntimeMessageRole::ToolResult,
+        _ => everruns_core::RuntimeMessageRole::User,
     };
 
-    Ok(Message {
+    Ok(RuntimeMessage {
         id: id.into(),
         role,
         content,
@@ -2245,7 +2254,7 @@ fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
 pub struct TurnContext {
     pub agent: Option<Agent>,
     pub session: ExecutionSession,
-    pub messages: Vec<Message>,
+    pub messages: Vec<RuntimeMessage>,
     pub model: Option<ModelSpec>,
     /// MCP tool definitions pre-resolved from agent's MCP capabilities
     pub mcp_tool_definitions: Vec<everruns_provider::tool_types::ToolDefinition>,
@@ -2281,7 +2290,7 @@ pub async fn load_turn_context(
 
     let session = proto_session_to_session(proto_session)?;
 
-    let messages: Vec<Message> = inner
+    let messages: Vec<RuntimeMessage> = inner
         .messages
         .into_iter()
         .map(proto_message_to_message)
@@ -3298,7 +3307,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
         session_id: SessionId,
         limit: Option<usize>,
     ) -> Result<Vec<everruns_platform::PlatformMessage>> {
-        let mut messages: Vec<Message> = self
+        let mut messages: Vec<RuntimeMessage> = self
             .execute_platform_command(
                 "list_messages",
                 serde_json::json!({
@@ -3310,7 +3319,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
         messages.retain(|message| {
             matches!(
                 message.role,
-                everruns_core::MessageRole::User | everruns_core::MessageRole::Agent
+                everruns_core::RuntimeMessageRole::User | everruns_core::RuntimeMessageRole::Agent
             )
         });
 
@@ -3331,7 +3340,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
                 }
                 Some(everruns_platform::PlatformMessage {
                     role: match message.role {
-                        everruns_core::MessageRole::User => "user".to_string(),
+                        everruns_core::RuntimeMessageRole::User => "user".to_string(),
                         _ => "agent".to_string(),
                     },
                     content,

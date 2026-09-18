@@ -3,8 +3,8 @@ use everruns_builtins::InfinityContextCapability;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, ExecutionSession, InitialFile, Message, MessageRole,
-    WorkspacePolicy, session_files::SessionFileSystem,
+    AgentDefinition, CapabilityRegistry, ExecutionSession, InitialFile, RuntimeMessage,
+    RuntimeMessageRole, WorkspacePolicy, session_files::SessionFileSystem,
 };
 // Only the bashkit-gated prompt-hook test defines a capability of its own or
 // appends accepted input.
@@ -296,14 +296,14 @@ async fn runtime_executes_tool_loop_and_persists_messages() {
         4,
         "user + assistant(tool call) + tool result + assistant"
     );
-    assert_eq!(messages[0].role, MessageRole::User);
+    assert_eq!(messages[0].role, RuntimeMessageRole::User);
     assert!(
         messages[1].has_tool_calls(),
         "assistant tool call must be persisted"
     );
-    assert_eq!(messages[2].role, MessageRole::ToolResult);
+    assert_eq!(messages[2].role, RuntimeMessageRole::ToolResult);
     assert_eq!(messages[2].tool_call_id(), Some("call_mul_1"));
-    assert_eq!(messages[3].role, MessageRole::Agent);
+    assert_eq!(messages[3].role, RuntimeMessageRole::Agent);
 
     let event_types: Vec<_> = runtime
         .events()
@@ -366,7 +366,7 @@ async fn query_history_reads_messages_through_in_process_reason_act_path() {
         .unwrap()
         .into_iter()
         .find(|message| {
-            message.role == MessageRole::ToolResult
+            message.role == RuntimeMessageRole::ToolResult
                 && message.tool_call_id() == Some("call_history_1")
         })
         .expect("query_history tool result");
@@ -391,7 +391,7 @@ async fn query_history_reads_seeded_resumed_session_messages() {
         .append(EventRequest::new(
             session_id,
             EventContext::empty(),
-            InputMessageData::new(Message::user("The seeded deployment code is amber.")),
+            InputMessageData::new(RuntimeMessage::user("The seeded deployment code is amber.")),
         ))
         .await
         .unwrap();
@@ -621,8 +621,8 @@ async fn runtime_runs_session_without_agent_entity() {
 
     let messages = runtime.messages(session_id).await.unwrap();
     assert_eq!(messages.len(), 2);
-    assert_eq!(messages[0].role, MessageRole::User);
-    assert_eq!(messages[1].role, MessageRole::Agent);
+    assert_eq!(messages[0].role, RuntimeMessageRole::User);
+    assert_eq!(messages[1].role, RuntimeMessageRole::Agent);
 }
 
 #[tokio::test]
@@ -1220,7 +1220,9 @@ async fn injected_resolver_reaches_tool_context_during_a_turn() {
     let messages = runtime.messages(session_id).await.unwrap();
     let tool_result = messages
         .iter()
-        .find(|m| m.role == MessageRole::ToolResult && m.tool_call_id() == Some("call_echo_1"))
+        .find(|m| {
+            m.role == RuntimeMessageRole::ToolResult && m.tool_call_id() == Some("call_echo_1")
+        })
         .expect("tool result message");
     let serialized = serde_json::to_string(tool_result).expect("serialize tool result");
     assert!(

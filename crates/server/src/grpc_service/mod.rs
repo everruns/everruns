@@ -458,9 +458,9 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
 
         let message_id = everruns_provider::typed_id::MessageId::new();
         let now = chrono::Utc::now();
-        let core_message = everruns_core::Message {
+        let core_message = everruns_core::RuntimeMessage {
             id: message_id,
-            role: everruns_core::MessageRole::User,
+            role: everruns_core::RuntimeMessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
             phase_source: None,
@@ -1192,8 +1192,8 @@ fn json_value_to_proto(value: serde_json::Value) -> prost_types::Value {
     prost_types::Value { kind }
 }
 
-/// Convert a domain Message to a proto Message.
-fn message_to_proto(message: &everruns_core::Message) -> proto::Message {
+/// Convert a domain `RuntimeMessage` to a proto `Message`.
+fn message_to_proto(message: &everruns_core::RuntimeMessage) -> proto::Message {
     use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
     let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
@@ -1233,11 +1233,11 @@ fn message_to_proto(message: &everruns_core::Message) -> proto::Message {
     }
 }
 
-/// Extract a Message from an Event's data field
+/// Extract a RuntimeMessage from an Event's data field
 ///
 /// Events returned from EventService already have data parsed into EventData.
-fn event_to_message(event: &everruns_core::Event) -> Option<everruns_core::Message> {
-    use everruns_core::{ContentPart, EventData, Message};
+fn event_to_message(event: &everruns_core::Event) -> Option<everruns_core::RuntimeMessage> {
+    use everruns_core::{ContentPart, EventData, RuntimeMessage};
 
     match &event.data {
         EventData::InputMessage(d) => Some(d.message.clone()),
@@ -1252,7 +1252,7 @@ fn event_to_message(event: &everruns_core::Event) -> Option<everruns_core::Messa
                     }
                     serde_json::to_value(parts).unwrap_or_default()
                 });
-            Some(Message::tool_result(
+            Some(RuntimeMessage::tool_result(
                 &d.tool_call_id,
                 result,
                 d.error.clone(),

@@ -1009,7 +1009,7 @@ mod tests {
 
     use everruns_core::events::EventData;
     use everruns_core::turn::TurnStopReason;
-    use everruns_core::{ContentPart, InputMessage, MessageRole};
+    use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole};
     use everruns_host::{
         EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventReadLimit,
         EventReadRequest, TurnResult,
@@ -1139,7 +1139,7 @@ mod tests {
         let session = InMemoryEngine::new().create(agent.clone());
         // A rich, multi-part InputMessage goes through unchanged.
         let message = InputMessage {
-            role: MessageRole::User,
+            role: RuntimeMessageRole::User,
             content: vec![
                 ContentPart::text("describe"),
                 ContentPart::text("this attachment"),

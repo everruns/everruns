@@ -21,8 +21,8 @@ use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
-    LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
+    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmResponse,
+    LlmResponseStream, LlmStreamEvent, Message, MessageContent, MessageRole,
     disjoint_prompt_tokens,
 };
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
@@ -337,19 +337,19 @@ impl OpenAIProtocolChatDriver {
         .await
     }
 
-    fn convert_role(role: &LlmMessageRole) -> &'static str {
+    fn convert_role(role: &MessageRole) -> &'static str {
         match role {
-            LlmMessageRole::System => "system",
-            LlmMessageRole::User => "user",
-            LlmMessageRole::Assistant => "assistant",
-            LlmMessageRole::Tool => "tool",
+            MessageRole::System => "system",
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+            MessageRole::Tool => "tool",
         }
     }
 
-    fn convert_message(msg: &LlmMessage) -> OpenAiMessage {
+    fn convert_message(msg: &Message) -> OpenAiMessage {
         let content = match &msg.content {
-            LlmMessageContent::Text(text) => OpenAiContent::Text(text.clone()),
-            LlmMessageContent::Parts(parts) => {
+            MessageContent::Text(text) => OpenAiContent::Text(text.clone()),
+            MessageContent::Parts(parts) => {
                 let openai_parts: Vec<OpenAiContentPart> = parts
                     .iter()
                     .map(|part| match part {
@@ -382,7 +382,7 @@ impl OpenAIProtocolChatDriver {
         };
 
         // OpenAI only accepts tool_calls on assistant messages
-        let tool_calls = if msg.role == LlmMessageRole::Assistant {
+        let tool_calls = if msg.role == MessageRole::Assistant {
             msg.tool_calls.as_ref().map(|calls| {
                 calls
                     .iter()
@@ -450,12 +450,12 @@ impl Default for OpenAIProtocolChatDriver {
 /// Drop Tool-role messages whose tool_call_id has no matching assistant tool call in the
 /// visible window. Chat Completions rejects payloads where a `tool`-role message references
 /// a call that is absent from the conversation.
-fn drop_orphaned_tool_messages(messages: &[LlmMessage]) -> Vec<LlmMessage> {
+fn drop_orphaned_tool_messages(messages: &[Message]) -> Vec<Message> {
     use std::collections::HashSet;
 
     let visible_call_ids: HashSet<&str> = messages
         .iter()
-        .filter(|m| m.role == LlmMessageRole::Assistant)
+        .filter(|m| m.role == MessageRole::Assistant)
         .flat_map(|m| m.tool_calls.iter().flatten())
         .map(|tc| tc.id.as_str())
         .collect();
@@ -463,7 +463,7 @@ fn drop_orphaned_tool_messages(messages: &[LlmMessage]) -> Vec<LlmMessage> {
     if visible_call_ids.is_empty() {
         return messages
             .iter()
-            .filter(|m| m.role != LlmMessageRole::Tool)
+            .filter(|m| m.role != MessageRole::Tool)
             .cloned()
             .collect();
     }
@@ -471,7 +471,7 @@ fn drop_orphaned_tool_messages(messages: &[LlmMessage]) -> Vec<LlmMessage> {
     messages
         .iter()
         .filter(|m| {
-            if m.role == LlmMessageRole::Tool {
+            if m.role == MessageRole::Tool {
                 return m
                     .tool_call_id
                     .as_deref()
@@ -521,7 +521,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
     async fn chat_completion_non_streaming(
         &self,
         endpoint: &ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         // Same request as the streaming path, but with streaming disabled so
@@ -670,7 +670,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         crate::openai_compat::validate_config(config)?;
@@ -1589,7 +1589,7 @@ mod tests {
         }))
         .await;
         assert!(provider.supports_native_non_streaming());
-        let messages = vec![LlmMessage::text(LlmMessageRole::User, "Hello")];
+        let messages = vec![Message::text(MessageRole::User, "Hello")];
         let response = provider
             .chat_completion_non_streaming(messages, &call_config())
             .await
@@ -1630,7 +1630,7 @@ mod tests {
             "usage": {"prompt_tokens": 20, "completion_tokens": 15}
         }))
         .await;
-        let messages = vec![LlmMessage::text(LlmMessageRole::User, "Weather?")];
+        let messages = vec![Message::text(MessageRole::User, "Weather?")];
         let response = provider
             .chat_completion_non_streaming(messages, &call_config())
             .await
@@ -1679,9 +1679,9 @@ mod tests {
                     .insert("agent_id".into(), "agent_xyz789".into());
             }
             let messages = vec![
-                LlmMessage::text(LlmMessageRole::System, "A"),
-                LlmMessage::text(LlmMessageRole::User, "Hello"),
-                LlmMessage::text(LlmMessageRole::System, "B"),
+                Message::text(MessageRole::System, "A"),
+                Message::text(MessageRole::User, "Hello"),
+                Message::text(MessageRole::System, "B"),
             ];
             provider.chat_completion(messages, &config).await.unwrap();
             let requests = server.received_requests().await.unwrap();
@@ -1950,19 +1950,19 @@ mod tests {
     #[test]
     fn orphan_filter_preserves_complete_matched_transcript_and_rejects_missing_ids() {
         use crate::tool_types::ToolCall;
-        let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "");
+        let mut assistant = Message::text(MessageRole::Assistant, "");
         assistant.tool_calls = Some(vec![ToolCall {
             id: "call".into(),
             name: "read_file".into(),
             arguments: json!({"path":"a"}),
         }]);
         let tool = |id: Option<&str>, text: &str| {
-            let mut m = LlmMessage::text(LlmMessageRole::Tool, text);
+            let mut m = Message::text(MessageRole::Tool, text);
             m.tool_call_id = id.map(str::to_string);
             m
         };
         let messages = vec![
-            LlmMessage::text(LlmMessageRole::User, "hello"),
+            Message::text(MessageRole::User, "hello"),
             assistant,
             tool(Some("call"), "file content"),
             tool(Some("trimmed"), "orphan"),

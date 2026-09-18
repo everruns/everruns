@@ -17,7 +17,7 @@ use llm_test_matrix::*;
 use std::time::Instant;
 
 use everruns_builtins::CurrentTimeCapability;
-use everruns_core::message::{ContentPart, Controls, MessageRole, ReasoningConfig};
+use everruns_core::message::{ContentPart, Controls, ReasoningConfig, RuntimeMessageRole};
 use everruns_core::message_retriever::InputMessage;
 use everruns_provider::model::ReasoningEffort;
 use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
@@ -220,7 +220,7 @@ async fn test_gpt52_vs_gpt54_reasoning() {
             .unwrap();
 
         let input = InputMessage {
-            role: MessageRole::User,
+            role: RuntimeMessageRole::User,
             content: vec![ContentPart::text(
                 "A farmer has 17 chickens. All but 9 die. How many are left? Think step by step.",
             )],
