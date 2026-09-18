@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! A Framework host whose own operations appear as `everruns <noun> <verb>`
 //! inside the agent's shell.
 //!
@@ -35,14 +36,14 @@ pub struct Fleet {
 
 impl Fleet {
     pub fn with_demo_services() -> Arc<Self> {
-        let fleet = Self::default();
-        {
-            let mut services = fleet.services.lock().expect("fresh lock");
-            services.insert("api".to_string(), 2);
-            services.insert("worker".to_string(), 1);
-            services.insert("scheduler".to_string(), 1);
-        }
-        Arc::new(fleet)
+        let services = BTreeMap::from([
+            ("api".to_string(), 2),
+            ("worker".to_string(), 1),
+            ("scheduler".to_string(), 1),
+        ]);
+        Arc::new(Self {
+            services: Mutex::new(services),
+        })
     }
 
     pub fn replicas(&self, name: &str) -> Option<u32> {

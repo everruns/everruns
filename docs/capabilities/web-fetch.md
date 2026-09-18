@@ -1,6 +1,6 @@
 ---
 title: Web Fetch
-description: Fetch web content from any URL and convert HTML to clean markdown. Agents can read web pages, extract text, and follow links in their session workspace.
+description: Fetch a URL and convert its HTML to markdown.
 ---
 
 | | |

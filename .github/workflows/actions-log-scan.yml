@@ -68,8 +68,24 @@ jobs:
             # Overlaps the hourly cadence so a run completing on the boundary is
             # not missed by either sweep.
             since="$(date -u -d "${WINDOW_MINUTES} minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
-            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100&status=completed" \
-              --jq ".workflow_runs[] | select(.updated_at > \"${since}\") | .id")"
+            listing="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100&status=completed")"
+
+            # An empty listing means the query or the token is wrong, not that
+            # the repository was quiet -- this endpoint always has history. A
+            # detection job that reports success having scanned nothing is worse
+            # than no job at all, so this is an error rather than a clean sweep.
+            available="$(jq -r '.workflow_runs | length' <<<"$listing")"
+            if [ "$available" -eq 0 ]; then
+              echo "::error::Run listing returned no runs at all. The query or token is wrong; this is not an all-clear."
+              exit 1
+            fi
+
+            # The window is applied with --arg rather than interpolated into the
+            # jq program, so a quoting slip cannot silently match nothing.
+            runs="$(jq -r --arg since "$since" \
+              '.workflow_runs[] | select(.updated_at > $since) | .id' <<<"$listing")"
+            matched="$(printf '%s' "$runs" | grep -c . || true)"
+            echo "Window opens ${since}: ${matched} of ${available} listed run(s) fall inside it."
           fi
 
           collected=0
@@ -93,6 +109,14 @@ jobs:
           done
           echo "collected=$collected" >> "$GITHUB_OUTPUT"
           echo "Collected logs for ${collected} run(s); ${skipped} had none to read."
+
+          # Same reasoning as the empty listing above: runs were in the window,
+          # so reaching the scan step with nothing to read is a failure to
+          # observe, not an absence of findings.
+          if [ -n "${runs}" ] && [ "$collected" -eq 0 ]; then
+            echo "::error::Runs matched the window but no logs could be read; treat this as a failed sweep, not a clean one."
+            exit 1
+          fi
 
       - name: Scan for unmasked credentials
         env:

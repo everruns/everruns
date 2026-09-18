@@ -25,7 +25,7 @@
 //! than once per concurrent tool call.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
@@ -76,7 +76,7 @@ impl InMemoryTokenStore {
         store
             .tokens
             .lock()
-            .unwrap()
+            .unwrap_or_else(PoisonError::into_inner)
             .insert(server_name.into(), tokens);
         store
     }
@@ -85,13 +85,18 @@ impl InMemoryTokenStore {
 #[async_trait]
 impl McpTokenStore for InMemoryTokenStore {
     async fn load(&self, server_name: &str) -> Result<Option<TokenSet>> {
-        Ok(self.tokens.lock().unwrap().get(server_name).cloned())
+        Ok(self
+            .tokens
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(server_name)
+            .cloned())
     }
 
     async fn save(&self, server_name: &str, tokens: &TokenSet) -> Result<()> {
         self.tokens
             .lock()
-            .unwrap()
+            .unwrap_or_else(PoisonError::into_inner)
             .insert(server_name.to_string(), tokens.clone());
         Ok(())
     }

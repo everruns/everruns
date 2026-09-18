@@ -133,9 +133,13 @@ impl GrpcDurableStore {
         let mut backoff = initial_backoff;
         let mut attempt = 0;
 
+        // Parsed once: the endpoint does not change between retries.
+        let base_endpoint = Channel::from_shared(endpoint.clone())
+            .map_err(|e| anyhow::anyhow!("Invalid gRPC endpoint '{endpoint}': {e}"))?;
+
         loop {
             attempt += 1;
-            let mut ep = Channel::from_shared(endpoint.clone()).expect("valid endpoint");
+            let mut ep = base_endpoint.clone();
             if let Some(ref tls) = tls_config {
                 ep = ep
                     .tls_config(tls.clone())

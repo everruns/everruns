@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // Everruns worker
 // Decision: Uses WorkerAppBuilder for composable worker setup
 

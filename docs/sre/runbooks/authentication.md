@@ -1,6 +1,6 @@
 ---
 title: Authentication Configuration Runbook
-description: Configure Everruns authentication modes, personal access tokens, OAuth providers, JWT secrets, token lifetimes, sign-up controls, and production access settings for operators.
+description: Configure authentication modes, personal access tokens, OAuth providers, JWT secrets, token lifetimes, and sign-up controls.
 sidebar:
   label: Authentication
 ---

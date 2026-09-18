@@ -50,3 +50,6 @@ tokio.workspace = true
 
 [features]
 e2b-live-tests = []
+
+[lints]
+workspace = true

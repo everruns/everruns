@@ -23,7 +23,11 @@ impl JsonSchema for SearchInput {
         "BraveWebSearchInput".into()
     }
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schema().try_into().expect("search schema is an object")
+        let Value::Object(map) = schema() else {
+            // Unreachable: `schema()` is a json! object literal.
+            return serde_json::Map::new().into();
+        };
+        map.into()
     }
 }
 

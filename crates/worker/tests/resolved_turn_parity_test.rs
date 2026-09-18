@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // EVE-872: hosted worker adapters project stored records into the same
 // canonical resolved execution snapshot as the Framework runtime, and the
 // projection is identical whether records arrive in-process (direct adapters)

@@ -15,7 +15,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_helpers::{
@@ -429,7 +429,8 @@ impl GeminiChatDriver {
                         }
 
                         let wait = self.retry_config.calculate_backoff(attempts);
-                        *last_error.lock().unwrap() = Some(error_text);
+                        *last_error.lock().unwrap_or_else(PoisonError::into_inner) =
+                            Some(error_text);
                         return RetryDecision::Retry {
                             wait,
                             rate_limit_info: None,
@@ -455,7 +456,11 @@ impl GeminiChatDriver {
                                 "{} (after {} retries, last error: {})",
                                 error_msg,
                                 attempts,
-                                last_error.lock().unwrap().take().unwrap_or_default()
+                                last_error
+                                    .lock()
+                                    .unwrap_or_else(PoisonError::into_inner)
+                                    .take()
+                                    .unwrap_or_default()
                             ),
                         ));
                     }

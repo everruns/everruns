@@ -482,17 +482,17 @@ export default defineConfig({
           },
         ),
         apiSidebarFix(),
-        // Generate /llms.txt, /llms-full.txt and /llms-small.txt so AI tools
-        // can ingest the docs as clean Markdown. Pairs with the
-        // "Use in AI Tools" guide and the AI-crawler allowlist in robots.txt.
+        // Generate /llms.txt, /llms-full.txt, /llms-small.txt and the
+        // per-topic /_llms-txt/<slug>.txt sets so AI tools can ingest the docs
+        // as clean Markdown. Pairs with the "Read the docs as text" section of
+        // the "Use in AI Tools" guide and the AI-crawler allowlist in
+        // robots.txt. Requirements live in knowledge/ui/documentation.md.
         starlightLlmsTxt({
           projectName: "Everruns",
           description:
-            "Everruns is an open-source Rust framework for building AI agents " +
-            "— typed tools, multi-turn sessions, and observable execution — " +
-            "plus a durable platform that runs them in production. These docs " +
-            "cover building with the framework, operating the platform, and " +
-            "the REST API.",
+            "Everruns is a durable agentic harness engine built on Rust. " +
+            "These docs cover deploying and operating the Platform, and " +
+            "building agents with the Framework, SDKs, and REST API.",
           // Answers the first question a reader of llms.txt has: which of the
           // three ways to run Everruns am I looking at? Mirrors the "Choose how
           // you run Everruns" table in the repository README — keep the two in

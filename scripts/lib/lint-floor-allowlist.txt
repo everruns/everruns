@@ -2,34 +2,16 @@
 # unwrap()/expect() debt today. Membership is one-way: a crate may leave this
 # list by opting into the floor, but nothing may be added to it.
 #
-# Approximate production sites per crate at baseline, for sizing the work:
-#   server 741, provider 70, host 45, durable 37, anthropic 33, everruns 32,
-#   builtins 25, core 19, engine 19, platform 12, test-support 12, browserless 9,
-#   mcp 5, e2b 4, cli 3, gemini 2, internal-protocol 2, worker 2, and eight
-#   crates with a single site each.
-crates/ard
-crates/builtins
-crates/capability
-crates/cli
+# Approximate production sites per crate, for sizing the work that remains:
+#   server 437, provider 188, core 72, everruns 39, durable 39, anthropic 33,
+#   host 32, platform 13, browserless 12, test-support 12.
 crates/core
 crates/drivers/anthropic
-crates/drivers/gemini
-crates/drivers/mai
 crates/durable
-crates/engine
 crates/everruns
 crates/host
-crates/internal-protocol
-crates/mcp
 crates/platform
 crates/provider
 crates/server
 crates/test-support
-crates/worker
-examples/bashkit-repo-agent
-examples/framework-cli-host
-integrations/typesafe
-integrations/brave-search
 integrations/browserless
-integrations/deno
-integrations/e2b

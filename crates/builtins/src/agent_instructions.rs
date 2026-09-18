@@ -246,10 +246,12 @@ fn format_conversation_context(files: Vec<ResolvedInstructionFile>) -> Option<St
             break;
         }
         total_bytes += file.content.len();
-        sections.push(
+        // `None` means the file was blank after trimming; nothing to add.
+        if let Some(section) =
             format_instruction_file_content(file.path.trim_start_matches('/'), &file.content)
-                .expect("resolved instruction files are non-empty"),
-        );
+        {
+            sections.push(section);
+        }
     }
     Some(sections.join("\n\n"))
 }

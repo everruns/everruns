@@ -243,9 +243,9 @@ impl McpExecutor {
             // structured result the client can render and the model can relay —
             // and the user re-runs the tool once they are done.
             Err(error) if error.downcast_ref::<UrlElicitationPending>().is_some() => {
-                let pending = error
-                    .downcast_ref::<UrlElicitationPending>()
-                    .expect("checked above");
+                let Some(pending) = error.downcast_ref::<UrlElicitationPending>() else {
+                    return Err(error);
+                };
                 Ok(url_elicitation_result(
                     tool_call.id.clone(),
                     &tool_call.name,

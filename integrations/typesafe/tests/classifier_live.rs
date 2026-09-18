@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live tests for the deployment classifier.
 //!
 //! Gated behind `typesafe-live-tests`:

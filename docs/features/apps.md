@@ -1,8 +1,6 @@
 ---
-title: Everruns Apps for Agent Distribution Channels
+title: Apps
 description: Apps bind a Harness and Agent to inbound distribution channels and expose a publish/unpublish lifecycle.
-sidebar:
-  label: Apps
 ---
 
 An **App** turns a Harness + Agent pair into a deployed service that responds to external messages. The App owns the channel-specific binding (such as Slack, webhook, or AG-UI), the inbound auth, the session-routing strategy, and the publish/unpublish lifecycle.

@@ -62,3 +62,6 @@ hostname = "0.4"
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[lints]
+workspace = true
