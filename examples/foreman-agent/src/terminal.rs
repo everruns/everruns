@@ -1,51 +1,36 @@
-//! Terminal presentation. Nothing here changes a decision.
+//! How a factory run looks while it happens. Nothing here changes a decision.
 //!
 //! Two streams share one screen on purpose: the worker's own output, dimmed,
 //! and the supervisor's readings cutting in while it is still talking. That
 //! interleaving is the architecture, so it is what the demo shows.
+//!
+//! The ANSI layer is [`everruns_example_demo::style`]; only the layout — the
+//! nine-dimension block and the decision line — belongs to this example.
 
 use std::io::Write;
 use std::sync::Mutex;
+
+use everruns_example_demo::style::{
+    BOLD, CYAN, DIM, GREEN, MAGENTA, RED, WIDTH, YELLOW, clip_to, paint,
+};
 
 use crate::factory::Watcher;
 use crate::foreman::{Assessment, DIMENSIONS, Lens};
 use crate::observation::{WorkerKind, WorkerRecord, WorkerStatus};
 use crate::policy::{Action, Intervention};
 
-const RESET: &str = "\x1b[0m";
-const BOLD: &str = "\x1b[1m";
-const DIM: &str = "\x1b[2m";
-const RED: &str = "\x1b[31m";
-const GREEN: &str = "\x1b[32m";
-const YELLOW: &str = "\x1b[33m";
-const MAGENTA: &str = "\x1b[35m";
-const CYAN: &str = "\x1b[36m";
-
-const WIDTH: usize = 104;
-const BAR: usize = 14;
-const LABEL: usize = 24;
 /// Lines shown from one shell script.
 const SCRIPT_LINES: usize = 3;
+/// Width of one probability bar, in cells.
+const BAR: usize = 14;
+/// Column the dimension labels are padded to.
+const LABEL: usize = 24;
 /// Characters of worker text on one line, inside the two-space indent.
 const WRAP: usize = WIDTH - 4;
 
-fn colored() -> bool {
-    std::env::var_os("NO_COLOR").is_none()
-}
-
-/// Clip one line to the recorded terminal width.
+/// Clip one line to the indented body width.
 fn clip(line: &str) -> String {
-    if line.chars().count() <= WIDTH - 4 {
-        return line.to_owned();
-    }
-    format!("{}…", line.chars().take(WIDTH - 5).collect::<String>())
-}
-
-fn paint(code: &str, text: &str) -> String {
-    if code.is_empty() || !colored() {
-        return text.to_owned();
-    }
-    format!("{code}{text}{RESET}")
+    clip_to(line, WRAP)
 }
 
 /// Renders a factory run as it happens.

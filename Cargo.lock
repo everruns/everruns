@@ -2479,6 +2479,8 @@ dependencies = [
 name = "everruns-foreman-agent"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "clap",
  "everruns",
  "everruns-example-demo",
  "everruns-openrouter",

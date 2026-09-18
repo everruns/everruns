@@ -10,8 +10,6 @@
 //! one round trip. That is what makes supervision cheap enough to run *while*
 //! the worker works.
 
-#[cfg(test)]
-use std::sync::Mutex;
 use std::time::Duration;
 
 use everruns::{Classifier, ClassifierError};
@@ -162,9 +160,6 @@ pub enum ForemanError {
     TimedOut(Duration),
     /// The observation could not be serialized into classifier state.
     State(serde_json::Error),
-    /// A scripted supervisor was given no answers to replay.
-    #[cfg(test)]
-    EmptyScript,
 }
 
 impl std::fmt::Display for ForemanError {
@@ -175,22 +170,22 @@ impl std::fmt::Display for ForemanError {
                 write!(f, "assessment exceeded {:.0}s", budget.as_secs_f64())
             }
             Self::State(error) => write!(f, "observation is not valid state: {error}"),
-            #[cfg(test)]
-            Self::EmptyScript => write!(f, "scripted supervisor has nothing to replay"),
         }
     }
 }
 
 impl std::error::Error for ForemanError {}
 
+/// How a reading is answered when the caller answers it.
+type Answer = Box<dyn Fn(&Observation) -> Result<Assessment, ForemanError> + Send + Sync>;
+
 /// The supervisor.
 ///
-/// [`Jev`](Self::Jev) is the real thing. [`Rehearsed`](Self::Rehearsed) derives
-/// its numbers from the evidence instead of asking anything, which keeps the
-/// offline demo the same run every time however the worker is scheduled.
-/// `Scripted`, a test-only third, replays a fixed sequence so a run can be
-/// driven down a path — a stuck worker, an unreachable service — that healthy
-/// evidence never produces.
+/// [`Jev`](Self::Jev) is the real thing: nine questions about live evidence,
+/// one request. [`Fixed`](Self::Fixed) answers from a function the caller
+/// supplies, which is how the demo stays deterministic and how a test drives a
+/// run somewhere healthy evidence never goes — a stuck worker, a service that
+/// will not answer.
 pub enum Foreman {
     /// A classifier answering the nine questions about live evidence.
     Jev {
@@ -199,18 +194,13 @@ pub enum Foreman {
         /// How long one assessment may take before the run treats it as absent.
         budget: Duration,
     },
-    /// A fixed sequence, oldest first, holding on the last entry once spent.
-    #[cfg(test)]
-    Scripted(Mutex<Script>),
-    /// A deterministic reading of the evidence itself.
-    Rehearsed,
-}
-
-/// A fixed sequence of assessments and how far through it a run is.
-#[cfg(test)]
-pub struct Script {
-    assessments: Vec<Assessment>,
-    next: usize,
+    /// Whatever the caller says.
+    Fixed {
+        /// What to call it in the run's header.
+        label: String,
+        /// The answer, from the same evidence a classifier would read.
+        answer: Answer,
+    },
 }
 
 impl Foreman {
@@ -219,26 +209,22 @@ impl Foreman {
         Self::Jev { classifier, budget }
     }
 
-    /// Replay `assessments` in order, holding on the last one once spent.
-    #[cfg(test)]
-    ///
-    /// Holding rather than failing is what makes a scripted run robust: how
-    /// many readings a run takes depends on how chatty the worker is, and the
-    /// interesting part of a sequence is where it ends up.
-    pub fn scripted(assessments: impl IntoIterator<Item = Assessment>) -> Self {
-        Self::Scripted(Mutex::new(Script {
-            assessments: assessments.into_iter().collect(),
-            next: 0,
-        }))
+    /// Answer every reading with `answer`, under the name `label`.
+    pub fn answering(
+        label: impl Into<String>,
+        answer: impl Fn(&Observation) -> Result<Assessment, ForemanError> + Send + Sync + 'static,
+    ) -> Self {
+        Self::Fixed {
+            label: label.into(),
+            answer: Box::new(answer),
+        }
     }
 
     /// The model that answers, for display.
     pub fn model(&self) -> &str {
         match self {
             Self::Jev { .. } => crate::agent::FOREMAN_MODEL,
-            #[cfg(test)]
-            Self::Scripted(_) => "scripted",
-            Self::Rehearsed => "rehearsed",
+            Self::Fixed { label, .. } => label,
         }
     }
 
@@ -268,77 +254,7 @@ impl Foreman {
                 }
                 Ok(assessment)
             }
-            #[cfg(test)]
-            Self::Scripted(script) => {
-                let mut script = script
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                let last = script.assessments.len().checked_sub(1);
-                let index = last
-                    .map(|last| script.next.min(last))
-                    .ok_or(ForemanError::EmptyScript)?;
-                script.next = index + 1;
-                script
-                    .assessments
-                    .get(index)
-                    .copied()
-                    .ok_or(ForemanError::EmptyScript)
-            }
-            Self::Rehearsed => Ok(rehearsed(observation)),
-        }
-    }
-}
-
-/// What a supervisor would plausibly say about this evidence.
-///
-/// Three readings, chosen by what is on the floor rather than by how many times
-/// it has been asked: work under way, work finished but unchecked, and work an
-/// independent pass has now looked at. The offline demo therefore walks the
-/// same CONTINUE → START_VERIFIER → FINISH path whether the worker takes one
-/// second or ten.
-fn rehearsed(observation: &Observation) -> Assessment {
-    let verified = observation
-        .verification_results
-        .iter()
-        .any(|result| result.passed);
-    let working = !observation.active_workers.is_empty();
-    let touched = !observation.changed_files.is_empty();
-
-    if verified {
-        Assessment {
-            implementation_complete: 0.98,
-            tests_sufficient: 0.96,
-            requirements_satisfied: 0.97,
-            needs_verification: 0.04,
-            ready_to_finish: 0.98,
-            meaningful_progress: 0.98,
-            worker_stuck: 0.00,
-            work_off_track: 0.01,
-            needs_human: 0.01,
-        }
-    } else if working {
-        Assessment {
-            implementation_complete: if touched { 0.72 } else { 0.31 },
-            tests_sufficient: if touched { 0.28 } else { 0.10 },
-            requirements_satisfied: if touched { 0.61 } else { 0.22 },
-            needs_verification: if touched { 0.44 } else { 0.11 },
-            ready_to_finish: if touched { 0.18 } else { 0.02 },
-            meaningful_progress: if touched { 0.94 } else { 0.88 },
-            worker_stuck: 0.03,
-            work_off_track: 0.02,
-            needs_human: 0.01,
-        }
-    } else {
-        Assessment {
-            implementation_complete: 0.96,
-            tests_sufficient: 0.91,
-            requirements_satisfied: 0.92,
-            needs_verification: 0.93,
-            ready_to_finish: 0.68,
-            meaningful_progress: 0.95,
-            worker_stuck: 0.01,
-            work_off_track: 0.01,
-            needs_human: 0.01,
+            Self::Fixed { answer, .. } => answer(observation),
         }
     }
 }
@@ -381,52 +297,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_scripted_supervisor_replays_in_order_then_holds() {
-        let first = Assessment {
+    async fn a_supplied_answer_is_what_the_run_reads() {
+        let answer = Assessment {
             worker_stuck: 0.9,
             ..Assessment::default()
         };
-        let second = Assessment {
-            ready_to_finish: 0.95,
-            ..Assessment::default()
-        };
-        let foreman = Foreman::scripted([first, second]);
-        assert_eq!(foreman.assess(&observation()).await.unwrap(), first);
-        assert_eq!(foreman.assess(&observation()).await.unwrap(), second);
-        assert_eq!(foreman.assess(&observation()).await.unwrap(), second);
+        let foreman = Foreman::answering("fixed", move |_| Ok(answer));
+        assert_eq!(foreman.model(), "fixed");
+        assert_eq!(foreman.assess(&observation()).await.unwrap(), answer);
     }
 
     #[tokio::test]
-    async fn an_empty_script_is_a_configuration_mistake() {
-        let foreman = Foreman::scripted([]);
-        assert!(matches!(
-            foreman.assess(&observation()).await,
-            Err(ForemanError::EmptyScript)
-        ));
-    }
-
-    #[test]
-    fn the_rehearsed_reading_follows_the_floor_not_the_call_count() {
-        let mut working = Observation::sample();
-        assert!(!working.active_workers.is_empty());
-        let busy = rehearsed(&working);
-        assert!(busy.ready_to_finish < 0.5);
-
-        working.active_workers.clear();
-        let idle = rehearsed(&working);
-        assert!(idle.needs_verification > 0.65);
-        assert!(idle.implementation_complete > 0.75);
-
-        working
-            .verification_results
-            .push(crate::observation::VerificationResult {
-                worker_id: "worker-2".into(),
-                passed: true,
-                summary: "checked".into(),
-            });
-        let verified = rehearsed(&working);
-        assert!(verified.ready_to_finish > 0.85);
-        assert!(verified.needs_verification < 0.65);
+    async fn a_supervisor_that_cannot_answer_says_so_rather_than_guessing() {
+        let foreman = Foreman::answering("down", |_| {
+            Err(ForemanError::TimedOut(Duration::from_secs(10)))
+        });
+        let error = foreman.assess(&observation()).await.unwrap_err();
+        assert!(error.to_string().contains("exceeded"), "{error}");
     }
 
     #[test]

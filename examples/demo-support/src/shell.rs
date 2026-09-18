@@ -6,57 +6,16 @@
 //! is set, so a piped transcript (see an example's `record.sh`) keeps them for
 //! replay under `less -R`.
 
-use std::sync::OnceLock;
-
 use everruns::{Session, SessionEventKind, Turn};
 
-/// No styling; the default for body text.
-pub const PLAIN: &str = "";
+use crate::style::{BLUE, BOLD, CYAN, GREEN, MAGENTA, RED, WIDTH, YELLOW, clip, paint};
 
-const RESET: &str = "\x1b[0m";
-const BOLD: &str = "\x1b[1m";
-/// Dim style, exported for callers that print quoted file content.
-pub const DIM: &str = "\x1b[2m";
-const RED: &str = "\x1b[31m";
-const GREEN: &str = "\x1b[32m";
-const YELLOW: &str = "\x1b[33m";
-const BLUE: &str = "\x1b[34m";
-const MAGENTA: &str = "\x1b[35m";
-const CYAN: &str = "\x1b[36m";
+pub use crate::style::{DIM, PLAIN};
 
-/// Longest line the demo prints, chosen to fit the recorded terminal.
-const WIDTH: usize = 104;
 /// Lines kept from one shell script.
 const MAX_SCRIPT_LINES: usize = 12;
 /// Lines kept from one command's stdout or stderr.
 const MAX_OUTPUT_LINES: usize = 6;
-
-/// `true` unless `NO_COLOR` is set; read once.
-fn colored() -> bool {
-    static COLORED: OnceLock<bool> = OnceLock::new();
-    *COLORED.get_or_init(|| std::env::var_os("NO_COLOR").is_none())
-}
-
-/// An escape sequence, or nothing when color is disabled.
-fn sgr(code: &str) -> &str {
-    if colored() { code } else { "" }
-}
-
-fn paint(code: &str, text: &str) -> String {
-    if code.is_empty() {
-        return text.to_string();
-    }
-    format!("{}{text}{}", sgr(code), sgr(RESET))
-}
-
-/// Clip one line to the recorded terminal width.
-fn clip(line: &str) -> String {
-    if line.chars().count() <= WIDTH {
-        return line.to_string();
-    }
-    let kept: String = line.chars().take(WIDTH - 1).collect();
-    format!("{kept}…")
-}
 
 /// Title bar printed once at startup.
 pub fn banner(title: &str) {

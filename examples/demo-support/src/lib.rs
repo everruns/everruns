@@ -14,6 +14,7 @@
 //! pointing an observer at one that handles private data.
 
 pub mod shell;
+pub mod style;
 
 use everruns::{Session, SessionEventKind, Turn};
 use serde_json::Value;

@@ -13,7 +13,14 @@ license.workspace = true
 publish = false
 description = "A classifier supervising a coding agent it does not have to stop"
 
+[[bin]]
+# Started the way Foreman is: `foreman run --repo … --job …`.
+name = "foreman"
+path = "src/main.rs"
+
 [dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
 everruns = { path = "../../crates/everruns", features = ["bashkit", "typesafe"] }
 everruns-example-demo = { path = "../demo-support" }
 # The worker runs on an OpenRouter-served model, which the facade does not
