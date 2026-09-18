@@ -99,6 +99,7 @@ everruns-platform = { path = "../platform", features = ["openapi", "environment-
 # Observability exporters are enabled through everruns-host below; core retains
 # neutral event-listener contracts only.
 everruns-mcp = { path = "../mcp" }
+everruns-cli-contract.workspace = true
 everruns-integrations-catalog.workspace = true
 everruns-integrations-typesafe = { path = "../../integrations/typesafe" }
 everruns-integrations-bashkit.workspace = true

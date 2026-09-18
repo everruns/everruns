@@ -32,6 +32,7 @@ members = [
     "crates/turbopuffer",
     "crates/internal-protocol",
     "crates/cli",
+    "crates/cli-contract",
     "crates/durable",
     "crates/ard",
     "crates/integrations-catalog",
@@ -244,6 +245,7 @@ everruns = { path = "crates/everruns", version = "0.28.0" }
 everruns-macros = { path = "crates/macros", version = "0.28.0" }
 everruns-integrations-catalog = { path = "crates/integrations-catalog", version = "0.28.0" }
 everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.28.0" }
+everruns-cli-contract = { path = "crates/cli-contract", version = "0.28.0" }
 everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.28.0" }
 everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.28.0" }
 everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.28.0" }

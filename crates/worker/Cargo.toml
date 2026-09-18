@@ -30,6 +30,9 @@ everruns-provider.workspace = true
 # Production-safe deterministic `llmsim` provider (seeded LlmSim models and
 # LLMSIM_DEMO scenarios). Testing/demo helpers stay out of the worker tree.
 everruns-llmsim.workspace = true
+clap = { workspace = true, features = ["string"] }
+everruns-cli-contract.workspace = true
+everruns-integrations-bashkit.workspace = true
 everruns-platform = { path = "../platform", features = ["embedded-platform-docs", "environment-capabilities", "portable-builtins", "a2a", "container-sandbox"] }
 everruns-integrations-catalog.workspace = true
 everruns-integrations-daytona = { path = "../../integrations/daytona" }

@@ -88,9 +88,15 @@ impl Command for CreateMcpServer {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(CliRoute::new(&["mcp-servers"], "create").with_examples(&[
-            "everruns mcp-servers create --name github --url https://api.example.com/mcp",
-        ]))
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["mcp-servers"], "create").with_examples(&[CliExample::new(
+                "Register an MCP server so agents can use its tools",
+                "everruns mcp-servers create --name github --url https://api.example.com/mcp",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -190,10 +196,15 @@ impl Command for ListMcpServers {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["mcp-servers"], "list")
-                .with_examples(&["everruns mcp-servers list --limit 20"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["mcp-servers"], "list").with_examples(&[CliExample::new(
+                "Find a registered MCP server by name",
+                "everruns mcp-servers list --search github",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -238,10 +249,16 @@ impl Command for GetMcpServer {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["mcp-servers"], "get")
-                .with_examples(&["everruns mcp-servers get mcp_01h9..."]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "get")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Show one MCP server's URL and configuration",
+                "everruns mcp-servers get mcp_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -310,10 +327,16 @@ impl Command for UpdateMcpServerCmd {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["mcp-servers"], "update")
-                .with_examples(&["everruns mcp-servers update mcp_01h9... --name github-prod"]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "update")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Repoint an MCP server at a new URL",
+                "everruns mcp-servers update mcp_01h9 --name github-prod",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -467,11 +490,16 @@ impl Command for DeleteMcpServer {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(
-            CliRoute::new(&["mcp-servers"], "delete").with_examples(&[
-                "everruns mcp-servers delete mcp_01h9...   # archive, restorable",
-            ]),
-        )
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "delete")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Archive an MCP server, keeping it restorable",
+                "everruns mcp-servers delete mcp_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {
@@ -529,9 +557,16 @@ impl Command for DestroyMcpServer {
     }
 
     fn cli() -> Option<CliRoute> {
-        Some(CliRoute::new(&["mcp-servers"], "destroy").with_examples(&[
-            "everruns mcp-servers destroy mcp_01h9...  # permanent, archived servers only",
-        ]))
+        // A const so the declared slices get 'static promotion:
+        // `CliArg::new(..).short(..)` is a const fn, but an array of them
+        // is only promoted inside a const initializer.
+        const ROUTE: CliRoute = CliRoute::new(&["mcp-servers"], "destroy")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Permanently remove an already-archived MCP server",
+                "everruns mcp-servers destroy mcp_01h9",
+            )]);
+        Some(ROUTE)
     }
 
     fn policy() -> Option<&'static Policy> {

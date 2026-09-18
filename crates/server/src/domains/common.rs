@@ -440,6 +440,7 @@ static DEFAULT_DRIVER_REGISTRY: LazyLock<Arc<DriverRegistry>> =
 pub(crate) fn all_feature_flags_for_test() -> FeatureFlags {
     FeatureFlags {
         notifications: true,
+        platform_chat_v2: true,
         evals: true,
         skills: true,
         memory: true,
@@ -774,10 +775,11 @@ impl Ctx {
 // CLI route
 // ============================================================================
 
-// The tree contract is transport-neutral and shared with the bash-tool
-// adapter, so it lives in the bashkit integration rather than being defined
-// twice. Re-exported here because command declarations reference it.
-pub use everruns_integrations_bashkit::cli::CliRoute;
+// The command line is one contract, shared by `everruns-cli` and the
+// agent-facing tree, so its declaration types live in the contract crate
+// rather than in either consumer. Re-exported here because every command
+// declaration references them.
+pub use everruns_cli_contract::{CliArg, CliExample, CliRoute};
 
 // ============================================================================
 // Command trait
