@@ -91,7 +91,7 @@ impl Database {
     /// Atomically persist a refreshed OAuth grant, including rotated refresh token.
     pub async fn update_user_connection_oauth_tokens(
         &self,
-        input: UpdateUserConnectionOAuthTokens,
+        input: UpdateOAuthConnectionTokens,
     ) -> Result<Option<UserConnectionRow>> {
         let row = sqlx::query_as::<_, UserConnectionRow>(
             r#"
@@ -319,15 +319,29 @@ impl Database {
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<Vec<u8>>> {
-        let row: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
+        Ok(self
+            .get_agent_identity_connection_row_for_session(session_id, provider)
+            .await?
+            .and_then(|row| row.access_token_encrypted))
+    }
+
+    pub async fn get_agent_identity_connection_row_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        let row = sqlx::query_as::<_, AgentIdentityConnectionRow>(
             r#"
-            SELECT aic.access_token_encrypted
+            SELECT aic.id, aic.agent_identity_id, aic.provider, aic.connection_type,
+                   aic.provider_user_id, aic.provider_username,
+                   aic.access_token_encrypted, aic.refresh_token_encrypted,
+                   aic.scopes, aic.expires_at, aic.installation_id,
+                   aic.provider_metadata, aic.created_at, aic.updated_at
             FROM sessions s
             JOIN agent_identity_connections aic
                 ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
             WHERE s.id = $1
               AND s.agent_identity_id IS NOT NULL
-              AND aic.access_token_encrypted IS NOT NULL
             LIMIT 1
             "#,
         )
@@ -335,8 +349,7 @@ impl Database {
         .bind(provider)
         .fetch_optional(&self.pool)
         .await?;
-
-        Ok(row.and_then(|(token,)| token))
+        Ok(row)
     }
 
     /// Get the invoking user's own connection row for a session/provider pair.

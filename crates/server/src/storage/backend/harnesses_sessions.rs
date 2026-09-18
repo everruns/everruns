@@ -317,6 +317,8 @@ impl StorageBackend {
 
     /// Get session without org scoping. For internal system use only (e.g. usage tracking).
     pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
+        #[cfg(test)]
+        self.fail_if_forced("get_session_unscoped")?;
         dispatch!(self, get_session_unscoped, id)
     }
 
