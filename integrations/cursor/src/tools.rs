@@ -743,7 +743,7 @@ mod auth_tests {
         // SAFETY: same guarantee as set_var above; clean up before assert.
         unsafe { std::env::remove_var(CURSOR_API_KEY_SECRET) };
         match err {
-            ToolExecutionResult::ConnectionRequired { provider } => {
+            ToolExecutionResult::ConnectionRequired { provider, .. } => {
                 assert_eq!(provider, CURSOR_CONNECTION_PROVIDER);
             }
             other => panic!("expected ConnectionRequired, got {other:?}"),

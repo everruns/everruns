@@ -485,7 +485,7 @@ async fn test_exec_tool_missing_api_key() {
         .await;
 
     match result {
-        ToolExecutionResult::ConnectionRequired { provider } => {
+        ToolExecutionResult::ConnectionRequired { provider, .. } => {
             assert_eq!(provider, "daytona");
         }
         other => panic!("Expected ConnectionRequired, got: {other:?}"),
@@ -1331,7 +1331,7 @@ async fn test_list_snapshots_tool_missing_api_key() {
     let result = tool.execute_with_context(json!({}), &context).await;
 
     match result {
-        ToolExecutionResult::ConnectionRequired { provider } => {
+        ToolExecutionResult::ConnectionRequired { provider, .. } => {
             assert_eq!(provider, "daytona");
         }
         other => panic!("Expected ConnectionRequired, got: {other:?}"),

@@ -583,7 +583,12 @@ fn test_connection_required_into_tool_result() {
 
     let tool_result = result.into_tool_result("call_conn", "daytona_create_sandbox");
     assert_eq!(tool_result.tool_call_id, "call_conn");
-    assert_eq!(tool_result.connection_required, Some("daytona".to_string()));
+    assert_eq!(
+        tool_result.connection_required,
+        Some(everruns_provider::ConnectionRequired::provider_only(
+            "daytona"
+        ))
+    );
     assert!(tool_result.error.is_none());
 
     // Result JSON contains connection_required key
@@ -598,7 +603,9 @@ fn test_connection_required_serialization_roundtrip() {
         result: Some(json!({"connection_required": "daytona"})),
         images: None,
         error: None,
-        connection_required: Some("daytona".to_string()),
+        connection_required: Some(everruns_provider::ConnectionRequired::provider_only(
+            "daytona",
+        )),
         raw_output: None,
     };
 
@@ -606,7 +613,12 @@ fn test_connection_required_serialization_roundtrip() {
     let parsed: everruns_provider::tool_types::ToolResult =
         serde_json::from_str(&json_str).unwrap();
 
-    assert_eq!(parsed.connection_required, Some("daytona".to_string()));
+    assert_eq!(
+        parsed.connection_required,
+        Some(everruns_provider::ConnectionRequired::provider_only(
+            "daytona"
+        ))
+    );
     assert_eq!(parsed.result.unwrap()["connection_required"], "daytona");
 }
 

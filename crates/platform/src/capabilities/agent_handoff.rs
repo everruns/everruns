@@ -1573,7 +1573,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            ToolExecutionResult::ConnectionRequired { provider } if provider == "fake_aws"
+            ToolExecutionResult::ConnectionRequired { provider, .. } if provider == "fake_aws"
         ));
     }
 

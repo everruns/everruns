@@ -28,6 +28,7 @@ use everruns_platform::{
 };
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::Result;
+use everruns_provider::tool_types::{ConnectionRequired, ConnectionRequiredSubject};
 use everruns_provider::typed_id::{AgentId, SessionId};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -61,6 +62,29 @@ struct WorkerMcpResolver<A: WorkerAdapters> {
     adapters: A,
     org_id: i64,
     session_id: Uuid,
+    agent_id: Option<AgentId>,
+}
+
+fn pending_oauth_connection(
+    provider: &str,
+    acts_as: everruns_core::McpServerActsAs,
+    agent_id: Option<AgentId>,
+) -> ConnectionRequired {
+    match (acts_as, agent_id) {
+        (everruns_core::McpServerActsAs::Service, Some(agent_id)) => {
+            ConnectionRequired::with_setup(
+                provider,
+                ConnectionRequiredSubject::Agent,
+                format!("/agents/{agent_id}?tab=mcp"),
+            )
+        }
+        (everruns_core::McpServerActsAs::User, _) => ConnectionRequired::with_setup(
+            provider,
+            ConnectionRequiredSubject::User,
+            "/settings/connections",
+        ),
+        _ => ConnectionRequired::provider_only(provider),
+    }
 }
 
 #[async_trait]
@@ -110,7 +134,13 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
                 Ok(Some(token)) => {
                     headers.insert("Authorization".to_string(), format!("Bearer {token}"));
                 }
-                Ok(None) => pending_oauth_provider = Some(provider.to_string()),
+                Ok(None) => {
+                    pending_oauth_provider = Some(pending_oauth_connection(
+                        provider,
+                        info.acts_as,
+                        self.agent_id,
+                    ));
+                }
                 Err(error) => {
                     tracing::warn!(
                         server = %info.name,
@@ -118,7 +148,11 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
                         %error,
                         "failed to resolve MCP OAuth connection token"
                     );
-                    pending_oauth_provider = Some(provider.to_string());
+                    pending_oauth_provider = Some(pending_oauth_connection(
+                        provider,
+                        info.acts_as,
+                        self.agent_id,
+                    ));
                 }
             }
         }
@@ -483,6 +517,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
         org_id: i64,
         session_id: SessionId,
+        agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         let egress = self.adapters.egress_service()?;
         // A session has a user who can be shown a URL and asked about it, so
@@ -505,6 +540,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             adapters: self.adapters.clone(),
             org_id,
             session_id: session_id.uuid(),
+            agent_id,
         });
         Some(Arc::new(McpExecutor::new(client, resolver)))
     }
@@ -621,6 +657,7 @@ mod mcp_credential_tests {
             adapters,
             org_id: everruns_core::DEFAULT_ORG_ID,
             session_id: Uuid::new_v4(),
+            agent_id: Some(AgentId::from_seed(7)),
         };
         let connection = worker_resolver
             .resolve("linear")
@@ -700,11 +737,51 @@ mod mcp_credential_tests {
             // No header at all, and the executor is told to prompt rather than
             // let the call go out bare against a permissive server.
             assert_eq!(authorization_of(&connection), None, "{acts_as}");
-            assert!(
-                connection.pending_oauth_provider.is_some(),
-                "{acts_as} must surface connection_required"
+            let required = connection
+                .pending_oauth_provider
+                .expect("missing grant must surface connection_required");
+            assert_eq!(
+                required.subject,
+                Some(match acts_as {
+                    McpServerActsAs::Service => ConnectionRequiredSubject::Agent,
+                    McpServerActsAs::User => ConnectionRequiredSubject::User,
+                    McpServerActsAs::None => unreachable!(),
+                })
+            );
+            let expected_setup_url = match acts_as {
+                McpServerActsAs::Service => {
+                    format!("/agents/{}?tab=mcp", AgentId::from_seed(7))
+                }
+                McpServerActsAs::User => "/settings/connections".to_string(),
+                McpServerActsAs::None => unreachable!(),
+            };
+            assert_eq!(
+                required.setup_url.as_deref(),
+                Some(expected_setup_url.as_str())
             );
         }
+    }
+
+    #[tokio::test]
+    async fn a_legacy_missing_grant_keeps_the_provider_only_shape() {
+        let (connection, resolver) = resolve_with(
+            server_info(
+                McpServerActsAs::None,
+                everruns_core::McpServerAuthMode::OAuth,
+                None,
+                &[],
+            ),
+            RecordingResolver::default(),
+        )
+        .await;
+
+        assert_eq!(authorization_of(&connection), None);
+        assert_eq!(*resolver.legacy_calls.lock().unwrap(), 1);
+        let required = connection
+            .pending_oauth_provider
+            .expect("legacy missing grant must still prompt");
+        assert_eq!(required.subject, None);
+        assert_eq!(required.setup_url, None);
     }
 
     #[tokio::test]

@@ -115,9 +115,10 @@ pub use runtime_provider::{
     StaticHeaderAuth,
 };
 pub use tool_types::{
-    BuiltinTool, CONFIRM_URL_ELICITATION_TOOL, ClientSideTool, DeferrablePolicy, SideEffectClass,
-    ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult, ToolResultImage,
-    URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired,
+    BuiltinTool, CONFIRM_URL_ELICITATION_TOOL, ClientSideTool, ConnectionRequired,
+    ConnectionRequiredSubject, DeferrablePolicy, SideEffectClass, ToolCall, ToolDefinition,
+    ToolHints, ToolPolicy, ToolResult, ToolResultImage, URL_ELICITATION_REQUIRED_CODE,
+    UrlElicitationRequired,
 };
 pub use turn_collector::{CollectedTurn, TurnLimits, TurnTiming, collect_turn, limit_stream};
 pub use url_validation::{

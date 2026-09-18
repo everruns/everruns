@@ -52,6 +52,7 @@ use crate::tool_narration::{
     GroupHeadlineAction, ToolNarrationContext, ToolNarrationPhase,
     render_tool_narration_with_locale, summarize_group_actions, tool_call_for_group_summary,
 };
+use crate::tool_types::ConnectionRequired;
 use crate::tool_types::{SideEffectClass, ToolCall, ToolDefinition, ToolResult};
 use crate::typed_id::{AgentId, HarnessId};
 use crate::{
@@ -139,9 +140,9 @@ pub struct ToolCallResult {
     pub success: bool,
     /// Status: "success", "error", "timeout", or "cancelled"
     pub status: String,
-    /// If set, the tool requires a user connection for this provider before it can execute.
+    /// If set, the tool requires a connection before it can execute.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub connection_required: Option<String>,
+    pub connection_required: Option<ConnectionRequired>,
     /// Determinism violation message. When Some, ActAtom::execute returns Err to fail the
     /// durable workflow fast rather than continuing with a corrupted replay.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2827,12 +2828,12 @@ mod tests {
                     result: Some(json!({"connection_required": "daytona"})),
                     images: None,
                     error: None,
-                    connection_required: Some("daytona".to_string()),
+                    connection_required: Some(ConnectionRequired::provider_only("daytona")),
                     raw_output: None,
                 },
                 success: false,
                 status: "success".to_string(),
-                connection_required: Some("daytona".to_string()),
+                connection_required: Some(ConnectionRequired::provider_only("daytona")),
                 determinism_fatal: None,
             }],
             completed: true,
@@ -2844,14 +2845,13 @@ mod tests {
             client_tool_calls: vec![],
             client_tool_definitions: vec![],
         };
-
         let json_str = serde_json::to_string(&result).unwrap();
         let parsed: ActResult = serde_json::from_str(&json_str).unwrap();
 
         assert!(parsed.waiting_for_tool_results);
         assert_eq!(
             parsed.results[0].connection_required,
-            Some("daytona".to_string())
+            result.results[0].connection_required
         );
     }
 

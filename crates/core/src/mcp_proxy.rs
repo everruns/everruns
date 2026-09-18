@@ -185,8 +185,12 @@ pub fn build_mcp_proxy_tools(
 
 /// Map a raw MCP `ToolResult` into the registry's `ToolExecutionResult`.
 fn tool_result_to_execution(result: crate::tool_types::ToolResult) -> ToolExecutionResult {
-    if let Some(provider) = result.connection_required {
-        return ToolExecutionResult::ConnectionRequired { provider };
+    if let Some(required) = result.connection_required {
+        return ToolExecutionResult::ConnectionRequired {
+            provider: required.provider,
+            subject: required.subject,
+            setup_url: required.setup_url,
+        };
     }
     if let Some(error) = result.error {
         return ToolExecutionResult::ToolError(error);
@@ -204,7 +208,9 @@ fn tool_result_to_execution(result: crate::tool_types::ToolResult) -> ToolExecut
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tool_types::{ClientSideTool, DeferrablePolicy, ToolPolicy, ToolResult};
+    use crate::tool_types::{
+        ClientSideTool, ConnectionRequired, DeferrablePolicy, ToolPolicy, ToolResult,
+    };
     use std::sync::Mutex;
 
     fn builtin_def(name: &str) -> BuiltinTool {
@@ -345,7 +351,7 @@ mod tests {
         ] {
             let mut raw = ok_result(serde_json::Value::Null);
             raw.result = None;
-            raw.connection_required = connection.map(str::to_string);
+            raw.connection_required = connection.map(ConnectionRequired::provider_only);
             raw.error = error.map(str::to_string);
             raw.images = images;
             let tool = McpProxyTool::new(
@@ -356,7 +362,7 @@ mod tests {
                 }),
             );
             match (expected, tool.execute(serde_json::json!({})).await) {
-                ("connection", ToolExecutionResult::ConnectionRequired { provider }) => {
+                ("connection", ToolExecutionResult::ConnectionRequired { provider, .. }) => {
                     assert_eq!(provider, "github")
                 }
                 ("error", ToolExecutionResult::ToolError(message)) => assert_eq!(message, "boom"),
