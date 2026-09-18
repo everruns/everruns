@@ -14,8 +14,12 @@ publish = false
 description = "A classifier supervising a coding agent it does not have to stop"
 
 [dependencies]
-everruns = { path = "../../crates/everruns", features = ["bashkit", "openai", "typesafe"] }
+everruns = { path = "../../crates/everruns", features = ["bashkit", "typesafe"] }
 everruns-example-demo = { path = "../demo-support" }
+# The worker runs on an OpenRouter-served model, which the facade does not
+# configure; the driver crate is the supported way to reach one, as in
+# `research-agent`.
+everruns-openrouter = { path = "../../crates/drivers/openrouter" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tempfile = "3"

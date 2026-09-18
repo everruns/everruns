@@ -38,8 +38,11 @@ check ◄───── cancel / start / finish ───── intervene
 ```
 
 The worker never stops to be watched. `session.send` returns a receipt
-immediately; the supervisor reads `session.events()` beside the live turn,
-debouncing routine output and taking a reading at every lifecycle boundary.
+immediately; the supervisor reads `session.events()` beside the live turn.
+Output and tool calls make the run dirty and respect the debounce floor; only
+worker lifecycle boundaries — a turn ending, a verification reporting — bypass
+it. Forcing a reading on every tool call spends the whole iteration budget on a
+chatty worker before it finishes, which a live run showed plainly.
 
 ## What it assesses
 
@@ -100,12 +103,22 @@ Three modes, because the two halves cost very differently:
 | --- | --- | --- | --- |
 | `cargo run -p everruns-foreman-agent` | scripted | deterministic | nothing |
 | `… -- --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
-| `… -- --live` | `gpt-5.6-terra` | `jev-latest` | both, with credits |
+| `… -- --live` | `meta/muse-spark-1.3-contributor` | `jev-latest` | both keys |
 
 Supervision is the cheap half, which is the whole premise: `--live-foreman`
 puts a real classifier over a deterministic worker, so the numbers on screen are
 a live reading of a run that goes the same way every time. That is the mode the
-demo above records.
+demo above records. The worker's own model is Muse Spark's Contributor tier
+through OpenRouter, chosen for the same reason — a worker nobody can afford to
+run often is a poor subject for an experiment about watching one.
+
+A `--live` run takes roughly a minute and a half and costs cents: the worker
+implements the tiers, a read-only verifier quotes the file and line it relied
+on, and the policy finishes on numbers around
+`ready_to_finish 0.91 · requirements_satisfied 0.94 · tests_sufficient 0.91`.
+Neither half is deterministic, so the path varies; a job that leaves the rate
+schedule unstated, for instance, pushes `needs_human` past 0.80 and escalates —
+correctly.
 
 ```bash
 cargo run -p everruns-foreman-agent -- --live --job "Add rate limiting, and test it."

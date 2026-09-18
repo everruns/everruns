@@ -37,7 +37,7 @@ in [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/a
 | Example | Provider and model | What it does |
 | --- | --- | --- |
 | [Bashkit Repo Agent](/framework/examples/bashkit-repo-agent/) | OpenAI `gpt-5.6-terra` | Cuts a release in a real repository with the sandboxed Bashkit shell as its only tool, then verifies the result on disk. |
-| [Foreman](/framework/examples/foreman-agent/) | TypeSafe `jev-latest` over OpenAI `gpt-5.6-terra` | Supervises a live coding session with nine classifier questions per reading, and stops, verifies, or finishes it from a deterministic policy. |
+| [Foreman](/framework/examples/foreman-agent/) | TypeSafe `jev-latest` over OpenRouter `meta/muse-spark-1.3-contributor` | Supervises a live coding session with nine classifier questions per reading, and stops, verifies, or finishes it from a deterministic policy. |
 
 ## Core crate catalog
 

@@ -10,8 +10,15 @@ use std::path::Path;
 use std::process::Command;
 
 /// The job the factory is started on.
-pub const JOB: &str = "Replace the flat shipping rate in shipkit with weight-based tiers, \
-                       and make sure the tier boundaries are covered by tests.";
+///
+/// Free-form, the way a ticket is, but complete: the rate schedule is stated
+/// rather than left to the worker. An underspecified job is a real thing for a
+/// supervisor to find — `needs_human` rises and the run escalates, correctly —
+/// which makes it a bad default for an example about the rest of the loop.
+pub const JOB: &str = "Replace the flat shipping rate in shipkit with weight tiers: 700 cents up \
+                       to 1 kg, 1200 up to 5 kg, 2400 up to 20 kg, and 4800 above that, with the \
+                       existing zone surcharge still added on top. Cover the tier boundaries with \
+                       tests.";
 
 /// The fixture, as repository-relative paths and contents.
 pub const FILES: [(&str, &str); 3] = [

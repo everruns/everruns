@@ -558,8 +558,12 @@ async fn pump(pump: Pump, mut stream: everruns::EventStream, pending: everruns::
                 with(&pump.workers, &pump.id, |worker| worker.output.push(delta));
                 false
             }
-            // A finished tool call is a boundary: the repository may have just
-            // changed, which is exactly when an early reading is worth taking.
+            // A finished tool call changes the repository, so it makes the run
+            // dirty — but it does not bypass the debounce floor. Foreman's
+            // forcing events are worker lifecycle boundaries, which happen a
+            // handful of times per run; a tool call happens constantly, and
+            // forcing on one spends the whole supervisory iteration budget on a
+            // chatty worker long before it finishes.
             SessionEventKind::ToolCompleted {
                 tool_name, success, ..
             } => {
@@ -571,7 +575,7 @@ async fn pump(pump: Pump, mut stream: everruns::EventStream, pending: everruns::
                         if *success { "ok" } else { "failed" }
                     ),
                 );
-                true
+                false
             }
             _ => false,
         };

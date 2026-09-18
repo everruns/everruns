@@ -58,10 +58,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         simulated_config()
     };
     let (worker_model, verifier_model) = if options.live_worker {
-        // OPENAI_API_KEY, declared by the OpenAI driver itself.
+        // OPENROUTER_API_KEY, declared by the OpenRouter driver itself.
         (
-            Model::new(agent::WORKER_MODEL, everruns::OpenAI::from_env()?),
-            Model::new(agent::WORKER_MODEL, everruns::OpenAI::from_env()?),
+            Model::new(
+                agent::WORKER_MODEL,
+                everruns_openrouter::from_env("openrouter")?,
+            ),
+            Model::new(
+                agent::WORKER_MODEL,
+                everruns_openrouter::from_env("openrouter")?,
+            ),
         )
     } else {
         (
@@ -177,6 +183,19 @@ fn worker_script() -> LlmSimConfig {
         SimTurn::Assistant(
             "Weight tiers replace the flat rate, and the boundary at each tier edge is \
              covered by a test. The zone surcharge is unchanged."
+                .to_owned(),
+        ),
+        // A second coding pass, for the run where the policy asks for one after
+        // verification. A worker started on a finished repository should read
+        // it and say so, not repeat its own summary.
+        step(
+            "Re-reading what the last pass left behind.",
+            "sed -n '1,20p' src/rates.py; sed -n '1,14p' tests/test_tiers.py",
+            "call_reread",
+        ),
+        SimTurn::Assistant(
+            "Nothing left to change: the tier table and the boundary tests are already \
+             in place, and the zone surcharge still rides on top."
                 .to_owned(),
         ),
     ])

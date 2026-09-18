@@ -26,6 +26,8 @@ const BAR: usize = 14;
 const LABEL: usize = 24;
 /// Lines shown from one shell script.
 const SCRIPT_LINES: usize = 3;
+/// Characters of worker text on one line, inside the two-space indent.
+const WRAP: usize = WIDTH - 4;
 
 fn colored() -> bool {
     std::env::var_os("NO_COLOR").is_none()
@@ -48,26 +50,52 @@ fn paint(code: &str, text: &str) -> String {
 
 /// Renders a factory run as it happens.
 pub struct Terminal {
-    /// Column position of the worker's dimmed output, so a reading never lands
-    /// halfway through one of its lines.
-    column: Mutex<usize>,
+    /// Worker text not yet printed, so a reading never lands halfway through
+    /// one of its lines and no line runs off the recorded terminal.
+    pending: Mutex<String>,
 }
 
 impl Terminal {
     /// A terminal renderer at the start of a line.
     pub fn new() -> Self {
         Self {
-            column: Mutex::new(0),
+            pending: Mutex::new(String::new()),
         }
     }
 
+    /// Flush whatever the worker was mid-sentence on.
     fn break_line(&self) {
-        let mut column = self.column.lock().unwrap_or_else(|e| e.into_inner());
-        if *column > 0 {
-            println!();
-            *column = 0;
+        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+        if !pending.is_empty() {
+            println!("  {}", paint(DIM, pending.trim_end()));
+            pending.clear();
         }
     }
+}
+
+/// Take the next line to print: up to a newline, or a word break before the
+/// terminal runs out of room. `None` means keep buffering.
+fn next_line(buffer: &mut String) -> Option<String> {
+    if let Some(index) = buffer.find('\n') {
+        let line = buffer[..index].to_owned();
+        buffer.drain(..index + 1);
+        return Some(line);
+    }
+    if buffer.chars().count() <= WRAP {
+        return None;
+    }
+    // A model streams text in chunks of no fixed length, so the break has to be
+    // chosen from the buffer rather than tracked as a column count.
+    let limit = buffer
+        .char_indices()
+        .nth(WRAP)
+        .map_or(buffer.len(), |(index, _)| index);
+    let cut = buffer[..limit].rfind(' ').map_or(limit, |index| index);
+    let line = buffer[..cut].to_owned();
+    buffer.drain(..cut);
+    let trimmed = buffer.trim_start().to_owned();
+    *buffer = trimmed;
+    Some(line)
 }
 
 impl Watcher for Terminal {
@@ -88,22 +116,10 @@ impl Watcher for Terminal {
     fn worker_text(&self, _worker_id: &str, delta: &str) {
         // The worker's own words, dimmed: present, but never competing with the
         // supervisor's numbers.
-        let mut column = self.column.lock().unwrap_or_else(|e| e.into_inner());
-        for chunk in delta.split_inclusive('\n') {
-            if *column == 0 {
-                print!("  ");
-            }
-            print!("{}", paint(DIM, chunk.trim_end_matches('\n')));
-            if chunk.ends_with('\n') {
-                println!();
-                *column = 0;
-            } else {
-                *column += chunk.chars().count();
-                if *column >= WIDTH - 4 {
-                    println!();
-                    *column = 0;
-                }
-            }
+        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+        pending.push_str(delta);
+        while let Some(line) = next_line(&mut pending) {
+            println!("  {}", paint(DIM, line.trim_end()));
         }
         let _ = std::io::stdout().flush();
     }
@@ -230,6 +246,29 @@ fn bar(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn worker_text_breaks_on_newlines_and_then_on_words() {
+        let mut buffer = String::from("first\nsecond");
+        assert_eq!(next_line(&mut buffer).as_deref(), Some("first"));
+        assert_eq!(next_line(&mut buffer), None);
+        assert_eq!(buffer, "second");
+
+        // A single long chunk still breaks, and breaks between words.
+        let mut buffer = "lorem ipsum ".repeat(30);
+        let line = next_line(&mut buffer).unwrap();
+        assert!(line.chars().count() <= WRAP, "{line}");
+        assert!(line.ends_with("ipsum") || line.ends_with("lorem"), "{line}");
+        assert!(!buffer.starts_with(' '));
+    }
+
+    #[test]
+    fn a_word_longer_than_the_line_is_cut_rather_than_held_forever() {
+        let mut buffer = "x".repeat(WRAP + 10);
+        let line = next_line(&mut buffer).unwrap();
+        assert_eq!(line.chars().count(), WRAP);
+        assert_eq!(buffer.chars().count(), 10);
+    }
 
     #[test]
     fn a_bar_is_as_long_as_the_probability() {

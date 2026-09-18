@@ -25,9 +25,9 @@ do.
 
 The worker keeps its own reason/act loop inside a session. `session.send`
 returns a receipt immediately, so the supervisory loop reads `session.events()`
-beside the live turn: routine output is debounced to a floor, and every
-lifecycle boundary — a tool finishing, a turn ending — takes a reading straight
-away. Nothing stops for the factory to think.
+beside the live turn: output and tool calls are debounced to a floor, and
+worker lifecycle boundaries — a turn ending, a verification reporting — take a
+reading straight away. Nothing stops for the factory to think.
 
 ## What it assesses
 
@@ -70,7 +70,7 @@ Supervision is the cheap half, so the two halves go live separately:
 | --- | --- | --- | --- |
 | `cargo run -p everruns-foreman-agent` | scripted | deterministic | nothing |
 | `… -- --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
-| `… -- --live` | `gpt-5.6-terra` | `jev-latest` | both, with credits |
+| `… -- --live` | OpenRouter `meta/muse-spark-1.3-contributor` | `jev-latest` | both keys |
 
 `--live-foreman` puts a real classifier over a deterministic worker, so the
 numbers are a live reading of a run that goes the same way every time. That is
