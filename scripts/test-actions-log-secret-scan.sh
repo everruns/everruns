@@ -85,16 +85,27 @@ expect "env-block: an allowlisted name with an unknown value" flag "$WORK/rotate
 
 # --- benign logs the scanner must stay quiet on -----------------------------
 
-cat > "$WORK/repo-ci-values.log" <<'LOG'
-2026-09-18T04:06:16Z env:
-2026-09-18T04:06:16Z   POSTGRES_PASSWORD: everruns
-2026-09-18T04:06:16Z   SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
-2026-09-18T04:06:16Z   WORKER_GRPC_AUTH_TOKEN: test-grpc-token-for-ci
-2026-09-18T04:06:16Z   EVERRUNS_API_KEY: sdk-compat-test-key
-2026-09-18T04:06:16Z   STORAGE_S3_SECRET_ACCESS_KEY: everruns-secret
-2026-09-18T04:06:16Z   DOPPLER_TOKEN: ***
-2026-09-18T04:06:16Z ##[endgroup]
-LOG
+# The local-development encryption key is read out of ci.yml rather than
+# written here: scripts/test-agent-dev-startup.sh asserts that literal appears
+# in exactly one file under scripts/, and a second copy fails it. Reading it
+# also makes the fixture prove the real thing -- that the allowlist is derived
+# from the workflows -- instead of restating a value that could drift.
+local_dev_key="$(grep -ohE 'SECRETS_ENCRYPTION_KEY: kek-v1:\S+' .github/workflows/ci.yml \
+  | head -1 | sed 's/^SECRETS_ENCRYPTION_KEY: //')"
+if [ -z "$local_dev_key" ]; then
+  echo "FAIL: no SECRETS_ENCRYPTION_KEY literal found in ci.yml to build the fixture from"
+  exit 1
+fi
+{
+  echo "$stamp env:"
+  echo "$stamp   POSTGRES_PASSWORD: everruns"
+  echo "$stamp   SECRETS_ENCRYPTION_KEY: ${local_dev_key}"
+  echo "$stamp   WORKER_GRPC_AUTH_TOKEN: test-grpc-token-for-ci"
+  echo "$stamp   EVERRUNS_API_KEY: sdk-compat-test-key"
+  echo "$stamp   STORAGE_S3_SECRET_ACCESS_KEY: everruns-secret"
+  echo "$stamp   DOPPLER_TOKEN: ***"
+  echo "$stamp ##[endgroup]"
+} > "$WORK/repo-ci-values.log"
 expect "env-block: this repo's committed CI values" quiet "$WORK/repo-ci-values.log"
 
 cat > "$WORK/ordinary-build.log" <<'LOG'
