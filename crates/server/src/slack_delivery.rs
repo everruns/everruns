@@ -148,6 +148,12 @@ pub struct DeliveryRegistration {
     pub tool_visibility: PublicToolVisibility,
     /// Status text for a running tool under `Generic` visibility.
     pub generic_tool_text: String,
+    /// Whether this session declared the approval hint (EVE-1025).
+    ///
+    /// Resolved at registration rather than read per event: a card that cannot
+    /// be drawn must degrade to the ask in prose, and deciding that once keeps
+    /// the two paths from disagreeing mid-turn.
+    pub approvals_enabled: bool,
 }
 
 /// Context needed to deliver Slack messages for a turn.
@@ -166,6 +172,8 @@ struct DeliveryContext {
     /// Tool-activity policy for the pane status line.
     tool_visibility: PublicToolVisibility,
     generic_tool_text: String,
+    /// Whether this session can render an approval card (EVE-1025).
+    approvals_enabled: bool,
     /// Tools running right now. The status line reverts to the thinking text
     /// when this returns to zero, so two overlapping tools do not clear it early.
     active_tool_count: usize,
@@ -270,6 +278,7 @@ impl SlackDeliveryDispatcher {
             recipient_team_id,
             tool_visibility,
             generic_tool_text,
+            approvals_enabled,
         } = registration;
 
         let key = DeliveryKey {
@@ -288,6 +297,7 @@ impl SlackDeliveryDispatcher {
             recipient_team_id,
             tool_visibility,
             generic_tool_text,
+            approvals_enabled,
             active_tool_count: 0,
             last_status: None,
             streams: HashMap::new(),
@@ -537,6 +547,16 @@ impl SlackDeliveryDispatcher {
                     // `tool.completed` is emitted for a failed call too — there is
                     // no `tool.failed` — so the counter cannot strand above zero.
                     events::TOOL_STARTED | events::TOOL_COMPLETED => {
+                        // EVE-1025: a `request_approval` that is actually
+                        // waiting becomes buttons in the thread. Posted here
+                        // rather than at turn end because the pause *is* the
+                        // end of the turn, and the card should land with the
+                        // ask rather than after the terminal notice.
+                        if event.event_type == events::TOOL_COMPLETED
+                            && self.post_approval_card(&ctx, session_id, &event.data).await
+                        {
+                            delivered = true;
+                        }
                         if let Some(live) = self.deliveries.write().await.get_mut(&key) {
                             live.active_tool_count = if event.event_type == events::TOOL_STARTED {
                                 live.active_tool_count + 1
@@ -900,6 +920,66 @@ impl SlackDeliveryDispatcher {
     /// The dispatcher deliberately does not interpret the failure variant.
     /// Transient-vs-permanent is the adapter's judgement (EVE-972); the only
     /// thing the dispatcher decides is whether the user saw the message.
+    /// Post an approval card, if this event is one and this thread can draw it.
+    ///
+    /// Returns whether something was delivered, so a turn that ends on a pause
+    /// is not also given the "nothing came back" notice.
+    ///
+    /// Without the hint, or without a requester to bind the card to, the ask is
+    /// posted as prose instead. That is the documented degradation rather than
+    /// a failure: the model asked, the thread shows the question, and the human
+    /// answers by replying — which is exactly what happens today.
+    async fn post_approval_card(
+        &self,
+        ctx: &DeliveryContext,
+        session_id: Uuid,
+        data: &serde_json::Value,
+    ) -> bool {
+        use crate::slack_approvals::{
+            ApprovalBinding, approval_fallback_text, approval_turn_id, build_approval_blocks,
+            extract_approval_request,
+        };
+
+        let Some(request) = extract_approval_request(data) else {
+            return false;
+        };
+
+        let blocks = if ctx.approvals_enabled {
+            ctx.recipient_user_id.as_ref().and_then(|requester| {
+                build_approval_blocks(
+                    &request,
+                    &ApprovalBinding {
+                        session_id: SessionId::from_uuid(session_id).to_string(),
+                        requester: requester.clone(),
+                        turn_id: approval_turn_id(data),
+                        action: request.action.clone(),
+                    },
+                )
+            })
+        } else {
+            None
+        };
+
+        let text = approval_fallback_text(&request);
+        let result = match blocks {
+            Some(blocks) => {
+                post_slack_blocks(&ctx.bot_token, &ctx.channel, &ctx.thread_ts, &text, &blocks)
+                    .await
+            }
+            None => post_to_slack(&ctx.bot_token, &ctx.channel, &ctx.thread_ts, &text)
+                .await
+                .map_err(|error| SlackApiError::Transient(error.to_string())),
+        };
+
+        match result {
+            Ok(()) => true,
+            Err(error) => {
+                error!(%session_id, %error, "Failed to post the Slack approval ask");
+                false
+            }
+        }
+    }
+
     async fn post(
         &self,
         ctx: &DeliveryContext,
@@ -1189,6 +1269,9 @@ impl SlackDeliveryDispatcher {
             self.register(DeliveryRegistration {
                 session_id: session.id.uuid(),
                 input_message_id,
+                approvals_enabled: crate::slack_approvals::approvals_enabled(
+                    session.hints.as_ref(),
+                ),
                 bot_token: slack_config.bot_token.clone(),
                 channel,
                 thread_ts,
@@ -1886,6 +1969,56 @@ pub(crate) async fn post_slack_message(
     }
 
     info!(channel = channel, parts = total, "Posted response to Slack");
+    Ok(())
+}
+
+/// Post a Block Kit message into a thread.
+///
+/// `text` is the notification/fallback string: a blocks-only post reaches push
+/// notifications and screen readers as an empty message.
+pub(crate) async fn post_slack_blocks(
+    bot_token: &str,
+    channel: &str,
+    thread_ts: &str,
+    text: &str,
+    blocks: &serde_json::Value,
+) -> Result<(), SlackApiError> {
+    let mut payload = serde_json::json!({
+        "channel": channel,
+        "text": text,
+        "blocks": blocks,
+    });
+    if !thread_ts.is_empty() {
+        payload["thread_ts"] = serde_json::json!(thread_ts);
+    }
+    slack_api_call(SLACK_API_BASE, bot_token, "chat.postMessage", payload).await?;
+    Ok(())
+}
+
+/// Rewrite a message's blocks, e.g. to retire an answered approval card.
+///
+/// `text` is the notification/fallback string; `blocks` is what the thread
+/// renders. Both are required — a `chat.update` that sends blocks without text
+/// leaves push notifications and accessibility clients with nothing to read.
+pub(crate) async fn update_slack_message_blocks(
+    bot_token: &str,
+    channel: &str,
+    ts: &str,
+    text: &str,
+    blocks: &serde_json::Value,
+) -> Result<(), SlackApiError> {
+    slack_api_call(
+        SLACK_API_BASE,
+        bot_token,
+        "chat.update",
+        serde_json::json!({
+            "channel": channel,
+            "ts": ts,
+            "text": text,
+            "blocks": blocks,
+        }),
+    )
+    .await?;
     Ok(())
 }
 
@@ -2915,6 +3048,7 @@ mod tests {
                     tool_visibility: PublicToolVisibility::default(),
                     generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
+                    approvals_enabled: true,
                 })
                 .await;
 
@@ -3168,6 +3302,7 @@ mod tests {
                     tool_visibility: PublicToolVisibility::default(),
                     generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
+                    approvals_enabled: true,
                 })
                 .await;
         }
@@ -3644,6 +3779,7 @@ mod tests {
                     tool_visibility,
                     generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
+                    approvals_enabled: true,
                 })
                 .await;
 
@@ -3952,6 +4088,7 @@ mod tests {
                     tool_visibility: PublicToolVisibility::default(),
                     generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
+                    approvals_enabled: true,
                 })
                 .await;
         }
