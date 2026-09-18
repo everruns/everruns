@@ -1,11 +1,11 @@
 ---
-title: Read Tools & Context Economy
-description: How Everruns read-category tools minimize context consumption while maximizing agent situational awareness — parameters, pagination, content-type defaults, and exec output retrieval
+title: Read Tools
+description: Parameters, pagination, content-type defaults, and exec output retrieval for the read-category tools.
 sidebar:
   order: 15
 ---
 
-Agents spend most of their context window on tool results. A single `cat` of a large file can consume thousands of tokens that crowd out reasoning space. Everruns read-category tools are designed to **minimize context consumption while maximizing agent situational awareness**.
+Agents spend most of their context window on tool results. A single `cat` of a large file can consume thousands of tokens that crowd out reasoning space. The read-category tools are built to return the part the agent asked for and nothing else.
 
 Three tools form the read category:
 
@@ -95,7 +95,7 @@ For files larger than the default window, page through with `offset` and `limit`
 
 The 2000-line default covers most source files entirely in a single read. For the rare cases where files are larger, the `total_lines` field tells the agent exactly how much remains.
 
-## Context Economy Best Practices
+## Keeping read results small
 
 The system prompt guides agents toward efficient reading patterns:
 

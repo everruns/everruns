@@ -1,6 +1,6 @@
 ---
 title: CLI
-description: The everruns CLI manages agents, sessions, and conversations from the command line. Useful for scripting, automation, and quick checks without the UI.
+description: Manage agents, sessions, and conversations from the command line.
 sidebar:
   label: CLI
 ---

@@ -1,6 +1,6 @@
 ---
 title: Budgeting
-description: Budget-aware agent behavior. Agents receive information about active budgets, can check remaining balance, and prioritize efficiency when budget is constrained.
+description: Expose active budgets to the agent so it can check the remaining balance and adjust its own spending.
 ---
 
 | | |

@@ -1,24 +1,17 @@
 ---
 title: Introduction
-description: Get started with Everruns, a durable agentic harness engine built on Rust. Deploy, configure, and orchestrate AI agents with built-in persistence and tools.
+description: What Everruns is, what it provides, and where to go next.
 ---
 
-Everruns is a durable agentic harness engine built on Rust with a PostgreSQL-backed durable execution engine. It provides APIs for managing agents, sessions, and runs with streaming event output via SSE.
-
-## Overview
-
-Everruns enables you to build reliable AI agents that can:
-
-- Execute long-running tasks with durability guarantees
-- Stream real-time events to clients
-- Manage conversations through sessions
-- Extend agent capabilities with modular tools
+Everruns is a durable agentic harness engine built on Rust. It provides APIs for
+managing agents, sessions, and runs, streams events over SSE, and persists
+execution state in PostgreSQL so a long-running task survives a worker restart.
 
 ## Key Concepts
 
 ### Agents
 
-Agents are AI assistants with configurable system prompts and capabilities. Each agent can be customized with:
+An agent is a configuration the runtime executes. Each one carries:
 
 - A system prompt that defines its behavior
 - A set of capabilities that provide tools
@@ -34,7 +27,7 @@ Sessions represent conversations with an agent. Each session maintains:
 
 ### Capabilities
 
-Capabilities are modular functionality units that extend agent behavior. They can:
+A capability is a unit of agent behavior. Each one can:
 
 - Add instructions to the system prompt
 - Provide tools for the agent to use
@@ -59,7 +52,7 @@ See [Capabilities](/features/capabilities/) for more details.
 1. Deploy Everruns using the provided Docker images, or create an account on
    [Everruns Cloud](https://app.everruns.com) and skip this step
 2. Configure your LLM providers via the Settings UI
-3. Create an agent with your desired configuration
+3. Create an agent
 4. Start sessions and interact through the API or UI
 
 ### API Access
@@ -78,4 +71,4 @@ Everruns uses a layered architecture:
 - **Worker Layer**: Durable workflows for reliable execution
 - **Storage Layer**: PostgreSQL with encrypted secrets and durable execution state
 
-For detailed architecture information, see the [GitHub repository](https://github.com/everruns/everruns).
+See [Architecture](/getting-started/architecture/) for how these layers interact.

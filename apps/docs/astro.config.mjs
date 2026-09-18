@@ -488,9 +488,9 @@ export default defineConfig({
         starlightLlmsTxt({
           projectName: "Everruns",
           description:
-            "Everruns is a durable agentic harness engine for AI agents. " +
-            "These docs cover deploying, configuring, and building agent " +
-            "applications with the API.",
+            "Everruns is a durable agentic harness engine built on Rust. " +
+            "These docs cover deploying and operating the Platform, and " +
+            "building agents with the Framework, SDKs, and REST API.",
           // Keep the generated llms-full.txt focused on prose docs:
           // - The auto-generated OpenAPI reference is large and already
           //   available as a machine-readable schema at /api/openapi.json.

@@ -1,6 +1,6 @@
 ---
 title: Current Time
-description: Get the current date and time in various formats and timezones. Agents can check wall-clock time for scheduling decisions, logging, and time-aware responses.
+description: Read the current date and time in a chosen format and timezone.
 ---
 
 | | |

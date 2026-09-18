@@ -1,6 +1,6 @@
 ---
 title: Browserless
-description: Integrate Browserless for cloud browser automation, screenshots, scraping, and testing. Configure API keys, connection pooling, and headless Chrome for agents.
+description: "Configure Browserless for headless Chrome automation: API keys, connection pooling, screenshots, and scraping."
 ---
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" aria-hidden="true" style="float: right; margin-left: 16px;"><rect x="2.5" y="4" width="19" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 8.5h19" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="5.6" cy="6.25" r=".75" fill="currentColor"/><circle cx="7.8" cy="6.25" r=".75" fill="currentColor"/></svg>
