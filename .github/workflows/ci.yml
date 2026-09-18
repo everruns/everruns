@@ -900,7 +900,10 @@ jobs:
           cargo run -p everruns-host --features lua --example lua_code_mode_agent
           # Runnable demonstration of the EVE-660 mount resolver (/workspace mount + cwd).
           cargo run -p everruns-host --example mount_fs_workspace
-          cargo test -p everruns-cli --test auth_integration_test --test chat_integration_test --test files_integration_test -- --test-threads=1
+          # --bins runs the unit tests inside src/main.rs, contract_golden among
+          # them: the guard on the shipped command line. Without it the three
+          # named --test targets are all that run and the golden drifts unseen.
+          cargo test -p everruns-cli --bins --test auth_integration_test --test chat_integration_test --test files_integration_test -- --test-threads=1
           # Do not pass --all-features to integration crates: it enables their *-live-tests
           # features, which fail closed without real credentials. Live tests run in their
           # own dedicated jobs (e.g. `daytona-live-test`) that provide Doppler secrets.

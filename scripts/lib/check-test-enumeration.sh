@@ -100,6 +100,36 @@ while IFS= read -r manifest; do
       ;;
   esac
 
+  # Unit tests written inline in a bin target (`#[cfg(test)]` in src/main.rs or
+  # src/bin/*.rs) are a third target kind the rules above never considered. A
+  # crate whose invocations all filter to `--test <name>` runs its integration
+  # targets and nothing else, so those unit tests never execute. crates/cli
+  # carried `contract_golden` — the guard on the shipped command line — in
+  # src/main.rs while CI ran three named --test targets beside it, so the golden
+  # drifted across four merged feature PRs with CI green the whole time.
+  if [ -n "$invocations" ]; then
+    bin_unit_tests=""
+    shopt -s nullglob
+    for bin_src in "$crate_dir/src/main.rs" "$crate_dir"/src/bin/*.rs; do
+      [ -f "$bin_src" ] || continue
+      if grep -q '#\[cfg(test)\]' "$bin_src"; then
+        bin_unit_tests=1
+        break
+      fi
+    done
+    shopt -u nullglob
+
+    if [ -n "$bin_unit_tests" ]; then
+      checked=$((checked + 1))
+      # Covered when some invocation reaches bin targets: it names them
+      # (`--bins`/`--bin <name>`), or it applies no target filter at all.
+      if ! grep -qE -- '--bins?([[:space:]]|$)' <<<"$invocations" &&
+        ! grep -qvE -- '(--lib|--bins?[[:space:]]|--test[[:space:]]|--doc|--ignored)' <<<"$invocations"; then
+        violations+=("${package}: unit tests in a bin target never run — every 'cargo test -p ${package}' filters to --lib/--test, so add --bins")
+      fi
+    fi
+  fi
+
   [ -d "$tests_dir" ] || continue
   shopt -s nullglob
   test_files=("$tests_dir"/*.rs)
