@@ -335,6 +335,101 @@ mod tests {
         );
     }
 
+    /// The node help the eval's shell serves, rendered by the shipped tree.
+    ///
+    /// v2's whole discovery story is `--help`, so an eval whose help is
+    /// hand-rolled measures the hand-rolled help. A leaf's help already comes
+    /// from the contract's own `clap::Command` on both sides; only the root and
+    /// the grouping nodes are the tree's to render, so those are what travels.
+    #[test]
+    fn the_eval_help_matches_the_shipped_tree() {
+        let tree = CliTree::from_source(&InventoryCommandSource);
+
+        // Every node path in the tree, root first.
+        let mut paths: std::collections::BTreeSet<String> =
+            std::collections::BTreeSet::from([String::new()]);
+        for contract in contracts() {
+            let words = &contract.path;
+            for take in 1..=words.len() {
+                paths.insert(words[..take].join(" "));
+            }
+        }
+
+        let help: serde_json::Map<String, serde_json::Value> = paths
+            .into_iter()
+            .filter(|path| path.is_empty() || tree.is_node(path))
+            .filter_map(|path| {
+                render_help(&tree, &path, None)
+                    .ok()
+                    .map(|text| (path, serde_json::Value::String(text)))
+            })
+            .collect();
+
+        let generated = serde_json::to_string_pretty(&serde_json::Value::Object(help))
+            .expect("help serializes")
+            + "\n";
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../evals/platform-capability/help.json"
+        );
+
+        if std::env::var("UPDATE_EVAL_CATALOG").is_ok() {
+            std::fs::write(path, &generated).expect("write help.json");
+            return;
+        }
+
+        let checked_in = std::fs::read_to_string(path).expect("read help.json");
+        assert_eq!(
+            checked_in.trim(),
+            generated.trim(),
+            "evals/platform-capability/help.json is stale. Run \
+             `UPDATE_EVAL_CATALOG=1 cargo test -p everruns-server the_eval_`."
+        );
+    }
+
+    /// The v2 harness the offline eval subject reproduces: its system prompt
+    /// and its one tool.
+    ///
+    /// v2's claim is that the platform is a command in the session's shell, so
+    /// what the eval must reproduce is a `bash` tool and nothing else. Reading
+    /// the schema off `BashTool` rather than restating it is what keeps the two
+    /// arms of the A/B differing only in the surface under test.
+    #[test]
+    fn the_eval_v2_harness_matches_the_shipped_one() {
+        use everruns_core::Tool;
+        use everruns_integrations_bashkit::BashTool;
+
+        let bash = BashTool::default();
+        let harness = serde_json::json!({
+            "system_prompt": crate::harnesses::platform_chat_v2::system_prompt(),
+            "tools": [
+                {
+                    "name": bash.name(),
+                    "description": bash.description(),
+                    "schema": bash.parameters_schema(),
+                },
+            ]
+        });
+        let generated = serde_json::to_string_pretty(&harness).expect("harness serializes") + "\n";
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../evals/platform-capability/harness-v2.json"
+        );
+
+        if std::env::var("UPDATE_EVAL_CATALOG").is_ok() {
+            std::fs::write(path, &generated).expect("write harness-v2.json");
+            return;
+        }
+
+        let checked_in = std::fs::read_to_string(path).expect("read harness-v2.json");
+        assert_eq!(
+            checked_in.trim(),
+            generated.trim(),
+            "evals/platform-capability/harness-v2.json is stale. Run \
+             `UPDATE_EVAL_CATALOG=1 cargo test -p everruns-server the_eval_`."
+        );
+    }
+
     /// The checked-in contract artifact still matches inventory.
     ///
     /// `everruns-cli` reads the artifact, this crate owns the commands, and

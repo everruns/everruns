@@ -129,10 +129,10 @@ Platform operations are a command in that same shell: run \
 is stdout, so it pipes and redirects like anything else. `everruns --help` \
 lists the nouns and `everruns <noun> --help` its verbs.
 
-Every `everruns` call is a round trip, so do not loop over one in the shell. \
-For anything repetitive, pass the whole loop to `execute` in a single call: \
-that script runs server-side where the commands are. `discover` still finds an \
-operation or an unknown schema.
+The whole script is one tool call, so put the loop, the pipe and the \
+follow-up reads in the same script rather than paying a turn for each. Check \
+`everruns <noun> <verb> --help` for a command's flags and its worked example \
+instead of guessing a flag.
 
 ## Rendering entity references
 
@@ -145,7 +145,7 @@ Examples:
 ## Running agents
 
 When asked to \"run an agent\" or \"run X with agent Y\":
-1. Discover the relevant session commands if needed.
+1. Check `everruns sessions --help` for the session commands if needed.
 2. Create a session for the agent using the built-in Generic harness unless the user requested another harness.
 3. Send the user's task to that session.
 4. Wait for completion and retrieve the result.
@@ -162,14 +162,13 @@ Create an Agent Trigger for recurring autonomous work. Do not schedule the Platf
 
 ## Grounding platform state
 
-`discover` finds operations; it does not search resource instances. Never treat zero operation matches as evidence that a resource does not exist. For requests involving an existing entity, find the relevant list/get operations if needed and use `query` for authoritative read-only verification before answering or proposing a mutation.
+`--help` describes commands; it does not search resource instances. Never treat a command you could not find as evidence that a resource does not exist. For requests involving an existing entity, run the relevant list or get command for authoritative verification before answering or proposing a mutation.
 
 Keep creation preflight deterministic and bounded:
-1. Call `discover` at most once for the read operations needed to inspect all named entity families. Do not discover the create/update operation before confirmation.
-2. Call `query` once with one script that performs all required reads. Filter list operations when supported and project only the IDs, names, statuses, capability refs, attachment counts, provider IDs, connection state, and links needed for the decision.
-3. Do not repeat a read or load fully hydrated definitions when a projected list result already answers the question.
+1. Run one script that performs all the required reads. Filter list commands where they support it and project with `jq` only the IDs, names, statuses, capability refs, attachment counts, provider IDs, connection state, and links the decision needs.
+2. Do not repeat a read or load fully hydrated definitions when a projected list result already answers the question.
 
-For plugin or capability assignment, the preflight must inspect all five authoritative views in that single query: `list_plugins`, `list_capabilities`, `list_agents`, `list_connection_providers`, and `list_user_connections`. Provider availability does not prove that the current user is connected, and plugin OAuth metadata does not replace `list_user_connections`.
+For plugin or capability assignment, that one script must inspect all five authoritative views: `everruns plugins list`, `everruns capabilities list`, `everruns agents list`, `everruns user connections providers list`, and `everruns user connections list`. Provider availability does not prove that the current user is connected, and plugin OAuth metadata does not replace the user's own connection list.
 
 Resolve names against returned IDs and links. If a name is ambiguous, show the matching entities and ask the user to choose. For integrations and capabilities, verify and describe these independently:
 - installed: the org has the plugin or integration resource
@@ -197,6 +196,19 @@ Lead with the outcome. Do not include internal reasoning, planning narration, or
 
 - **Always confirm** before creating a harness or agent — these are reusable org-wide entities.
 - **Sessions**: Use common sense. Routine requests (\"run agent X on this task\") can proceed without confirmation. Unusual or high-impact requests (destructive operations, large-scale actions, unclear intent) should be confirmed first.";
+
+/// The shipped prompt, so the offline eval subject grades what ships.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "read by the eval artifact guard in `api::mcp_endpoint::cli_tree`, \
+    which is itself test-only; the accessor belongs beside the prompt"
+    )
+)]
+pub(crate) fn system_prompt() -> &'static str {
+    SYSTEM_PROMPT
+}
 
 #[cfg(test)]
 mod tests {
@@ -243,7 +255,7 @@ mod tests {
     fn v2_spells_the_platform_as_a_shell_command() {
         assert!(SYSTEM_PROMPT.contains("`everruns <noun> <verb> --flags`"));
         assert!(SYSTEM_PROMPT.contains("alongside `cat`, `grep`, and `jq`"));
-        assert!(SYSTEM_PROMPT.contains("do not loop over one in the shell"));
+        assert!(SYSTEM_PROMPT.contains("The whole script is one tool call"));
     }
 
     #[test]
@@ -254,15 +266,30 @@ mod tests {
         assert!(SYSTEM_PROMPT.contains("sharing is not reversible"));
     }
 
+    /// The prompt must not send the model after a tool this harness does not
+    /// ship. v2 dropped `discover`/`query`/`execute` when `platform` moved to
+    /// the shell surface, and the prompt kept telling the model to "pass the
+    /// whole loop to `execute`" and to "use `query` for authoritative
+    /// verification" — instructions with nothing behind them.
+    #[test]
+    fn v2_names_no_tool_it_does_not_have() {
+        let tools = ["discover", "query", "execute"];
+        for tool in tools {
+            assert!(
+                !SYSTEM_PROMPT.contains(&format!("`{tool}`")),
+                "v2 has no `{tool}` tool, but its prompt names one"
+            );
+        }
+    }
+
     /// The preflight discipline is the expensive part of v1's behavior and the
     /// thing TC005 grades; a leaner prompt must not drop it.
     #[test]
     fn v2_keeps_the_authoritative_preflight() {
         assert!(SYSTEM_PROMPT.contains("does not search resource instances"));
-        assert!(SYSTEM_PROMPT.contains("Call `query` once"));
-        assert!(SYSTEM_PROMPT.contains("at most once"));
+        assert!(SYSTEM_PROMPT.contains("Run one script that performs all the required reads"));
         assert!(SYSTEM_PROMPT.contains("all five authoritative views"));
-        assert!(SYSTEM_PROMPT.contains("`list_user_connections`"));
+        assert!(SYSTEM_PROMPT.contains("`everruns user connections list`"));
         assert!(SYSTEM_PROMPT.contains("installed:"));
         assert!(SYSTEM_PROMPT.contains("connected:"));
         assert!(SYSTEM_PROMPT.contains("`create_agent_credential_binding`"));

@@ -106,12 +106,49 @@ server and checked against it —
 | Artifact | What it carries | Guard |
 |---|---|---|
 | `catalog.json` | all 292 commands, real descriptions and schemas | `the_eval_catalog_matches_inventory` |
-| `harness.json` | the shipped system prompt and tool schemas | `the_eval_harness_matches_the_shipped_one` |
+| `harness.json` | Platform Chat's system prompt and tool schemas | `the_eval_harness_matches_the_shipped_one` |
+| `harness-v2.json` | Platform Chat v2's system prompt and its one `bash` schema | `the_eval_v2_harness_matches_the_shipped_one` |
+| `help.json` | `--help` for the root and every node, rendered by the shipped tree | `the_eval_help_matches_the_shipped_tree` |
 | `commands.json` | the shared CLI contract | `the_checked_in_contract_matches_inventory` |
 
-so `discover` returns the text a model really reads, and
+so `discover` returns the text a model really reads,
+`everruns agents --help` prints what the tree prints, and
 `everruns skills list --limit 20` is rejected by the same `clap::Command` the
 server builds.
+
+### The A/B: two surfaces, one dataset
+
+`EVERRUNS_EVAL_HARNESS` picks which shipped surface the offline subject
+reproduces. `platform-chat` (the default) gives the model `discover`, `query`
+and `execute`. `platform-chat-v2` gives it one `bash` tool over a real bashkit
+interpreter in which `everruns` is a builtin, over a namespace with
+`/workspace`, `/workspace/docs` and `/memory`.
+
+```bash
+export EVERRUNS_EVAL_MODE=offline
+export EVERRUNS_EVAL_TARGETS=meta/muse-spark-1.3-contributor
+export EVERRUNS_EVAL_TRIALS=3
+EVERRUNS_EVAL_HARNESS=platform-chat \
+  doppler run --command './target/debug/platform_capability --run'
+EVERRUNS_EVAL_HARNESS=platform-chat-v2 \
+  doppler run --command './target/debug/platform_capability --run'
+```
+
+Nothing else changes between the arms: the same dataset, the same fake control
+plane, the same model. Two details make that true rather than nearly true.
+
+The dataset names v1's tools, so `platform_calls` reads a *role* rather than a
+tool name: on the shell arm a `bash` call counts as `execute` when its script
+runs any operation the catalog marks as a mutation, and as `query` otherwise
+(`control_plane::script_mutates`). And expectations that named only a flat wire
+name now also accept the tree spelling, because v2's shell has no flat
+builtins — `\blist_harnesses\b|everruns\s+harnesses\s+list` is the same
+operation either way.
+
+The v2 arm runs the model's script rather than approximating it, which retires
+the defect that made the v1 arm's `query`/`execute` scripts unfair: statements
+were split by hand, so `for … do … done` never ran as a loop and a pipeline was
+truncated at the first `|`. On the shell arm those are the interpreter's.
 
 What it therefore cannot grade: authorization, validation beyond argument
 shape, and anything depending on a command's real output values. A case

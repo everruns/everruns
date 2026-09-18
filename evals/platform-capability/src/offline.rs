@@ -20,7 +20,7 @@ use std::time::Instant;
 use mira::{RunCx, Sample, Subject, Transcript};
 use serde_json::{Value, json};
 
-use crate::control_plane::{FakeControlPlane, system_prompt, tool_definitions};
+use crate::control_plane::{FakeControlPlane, Harness, system_prompt, tool_definitions};
 
 /// Ceiling on assistant turns, independent of a sample's own `max_iterations`.
 /// A model that never stops calling tools would otherwise burn a key.
@@ -30,12 +30,17 @@ pub struct OfflineSubject {
     base_url: String,
     api_key: String,
     client: reqwest::Client,
+    /// Which shipped surface this arm reproduces. The A/B runs the same
+    /// dataset twice, changing only this.
+    harness: Harness,
 }
 
 impl OfflineSubject {
     /// Build from environment:
     /// - `OPENROUTER_API_KEY` (required)
     /// - `EVERRUNS_EVAL_OFFLINE_BASE_URL` (default OpenRouter)
+    /// - `EVERRUNS_EVAL_HARNESS` (`platform-chat`, the default, or
+    ///   `platform-chat-v2`)
     pub fn from_env() -> Self {
         Self {
             base_url: std::env::var("EVERRUNS_EVAL_OFFLINE_BASE_URL")
@@ -44,6 +49,7 @@ impl OfflineSubject {
                 .to_string(),
             api_key: std::env::var("OPENROUTER_API_KEY").unwrap_or_default(),
             client: reqwest::Client::new(),
+            harness: Harness::from_env(),
         }
     }
 
@@ -94,9 +100,10 @@ impl Subject for OfflineSubject {
             );
         }
 
-        let control_plane = FakeControlPlane::new();
-        let tools = tool_definitions();
-        let mut messages = vec![json!({ "role": "system", "content": system_prompt() })];
+        let control_plane = FakeControlPlane::new(self.harness);
+        let tools = tool_definitions(self.harness);
+        let mut messages =
+            vec![json!({ "role": "system", "content": system_prompt(self.harness) })];
         let mut events: Vec<Value> = Vec::new();
         let mut transcript = Transcript::default();
 
@@ -137,6 +144,10 @@ impl Subject for OfflineSubject {
                 .metadata
                 .insert("resource_name".to_string(), json!(name));
         }
+
+        transcript
+            .metadata
+            .insert("harness".to_string(), json!(self.harness.name()));
 
         let mut iterations = 0usize;
         let mut tool_calls: Vec<String> = Vec::new();
@@ -221,7 +232,7 @@ impl Subject for OfflineSubject {
                         "data": { "tool_call": { "name": name, "arguments": arguments } }
                     }));
 
-                    let output = control_plane.call(&name, &arguments);
+                    let output = control_plane.call(&name, &arguments).await;
                     tool_calls.push(name.clone());
                     events.push(json!({
                         "type": "tool.completed",

@@ -21,18 +21,67 @@
 //! live subject, and the two are selected by env rather than merged.
 
 use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{Map, Value, json};
 
 /// The command surface, as the server generated it.
 const CATALOG: &str = include_str!("../catalog.json");
-/// The shipped harness: system prompt and tool schemas.
+/// Platform Chat v1: system prompt and the three platform tool schemas.
 const HARNESS: &str = include_str!("../harness.json");
+/// Platform Chat v2: system prompt and the one `bash` tool schema.
+const HARNESS_V2: &str = include_str!("../harness-v2.json");
+/// Node help, rendered by the shipped tree. Discovery in v2 is `--help` and
+/// almost nothing else, so hand-rolling it would grade the hand-rolled text.
+const HELP: &str = include_str!("../help.json");
+
+/// Which shipped harness an offline run reproduces.
+///
+/// The A/B is exactly this: the same dataset, the same fake control plane and
+/// the same model, differing only in the surface the model is handed. v1 gets
+/// `discover`/`query`/`execute`; v2 gets one `bash` over a real interpreter in
+/// which `everruns` is a builtin.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Harness {
+    PlatformChat,
+    PlatformChatV2,
+}
+
+impl Harness {
+    /// Selected with `EVERRUNS_EVAL_HARNESS`; v1 stays the default, as it is
+    /// the surface that ships to every org.
+    pub fn from_env() -> Self {
+        match std::env::var("EVERRUNS_EVAL_HARNESS")
+            .unwrap_or_default()
+            .trim()
+        {
+            "platform-chat-v2" | "v2" => Self::PlatformChatV2,
+            _ => Self::PlatformChat,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::PlatformChat => "platform-chat",
+            Self::PlatformChatV2 => "platform-chat-v2",
+        }
+    }
+
+    fn artifact(self) -> &'static str {
+        match self {
+            Self::PlatformChat => HARNESS,
+            Self::PlatformChatV2 => HARNESS_V2,
+        }
+    }
+}
 
 pub struct FakeControlPlane {
-    catalog: Vec<Value>,
-    store: Mutex<Store>,
+    catalog: Arc<Vec<Value>>,
+    store: Arc<Mutex<Store>>,
+    /// Present only for v2, where the model's script is run rather than
+    /// approximated. One instance per case, so `cd`, variables and files
+    /// persist across the turn's tool calls the way a session's shell does.
+    shell: Option<tokio::sync::Mutex<bashkit::Bash>>,
 }
 
 struct Store {
@@ -42,16 +91,16 @@ struct Store {
 }
 
 /// The shipped system prompt, so an offline run grades the prompt that ships.
-pub fn system_prompt() -> String {
-    serde_json::from_str::<Value>(HARNESS)
+pub fn system_prompt(harness: Harness) -> String {
+    serde_json::from_str::<Value>(harness.artifact())
         .ok()
         .and_then(|h| h["system_prompt"].as_str().map(ToOwned::to_owned))
         .unwrap_or_default()
 }
 
-/// The platform tools, in the provider's function-calling shape.
-pub fn tool_definitions() -> Vec<Value> {
-    let harness: Value = serde_json::from_str(HARNESS).expect("harness.json parses");
+/// The harness's tools, in the provider's function-calling shape.
+pub fn tool_definitions(harness: Harness) -> Vec<Value> {
+    let harness: Value = serde_json::from_str(harness.artifact()).expect("harness artifact parses");
     let described = |name: &str| -> String {
         // The tool descriptions live in the platform crate as private consts.
         // These restate their contract in one line each; the schemas, which are
@@ -74,11 +123,17 @@ pub fn tool_definitions() -> Vec<Value> {
                 .iter()
                 .map(|tool| {
                     let name = tool["name"].as_str().unwrap_or_default();
+                    // v2's artifact carries the shipped description verbatim;
+                    // v1's tool descriptions are private consts, so `described`
+                    // restates their contract in one line.
+                    let description = tool["description"]
+                        .as_str()
+                        .map_or_else(|| described(name), ToOwned::to_owned);
                     json!({
                         "type": "function",
                         "function": {
                             "name": name,
-                            "description": described(name),
+                            "description": description,
                             "parameters": tool["schema"],
                         }
                     })
@@ -90,25 +145,69 @@ pub fn tool_definitions() -> Vec<Value> {
 
 impl Default for FakeControlPlane {
     fn default() -> Self {
-        Self::new()
+        Self::new(Harness::PlatformChat)
     }
 }
 
 impl FakeControlPlane {
-    pub fn new() -> Self {
+    pub fn new(harness: Harness) -> Self {
+        let catalog: Arc<Vec<Value>> =
+            Arc::new(serde_json::from_str(CATALOG).expect("catalog.json parses"));
+        let store = Arc::new(Mutex::new(Store::seeded()));
+        let shell = match harness {
+            Harness::PlatformChat => None,
+            Harness::PlatformChatV2 => Some(tokio::sync::Mutex::new(build_shell(
+                catalog.clone(),
+                store.clone(),
+            ))),
+        };
         Self {
-            catalog: serde_json::from_str(CATALOG).expect("catalog.json parses"),
-            store: Mutex::new(Store::seeded()),
+            catalog,
+            store,
+            shell,
         }
     }
 
     /// Run one tool call, returning the text the model sees.
-    pub fn call(&self, tool: &str, arguments: &Value) -> String {
+    pub async fn call(&self, tool: &str, arguments: &Value) -> String {
         match tool {
             "discover" => self.discover(arguments),
             "query" => self.script(arguments, true),
             "execute" => self.script(arguments, false),
+            "bash" => self.bash(arguments).await,
             other => format!("unknown tool `{other}`"),
+        }
+    }
+
+    /// v2's only tool: hand the script to a real interpreter.
+    ///
+    /// Nothing here inspects the script. That is the point: v1's arm has to
+    /// split statements itself and got loops wrong, while here `for`, `|`, `>`
+    /// and `jq` are the shell's, so a failure is the model's or the contract's.
+    async fn bash(&self, arguments: &Value) -> String {
+        let Some(script) = arguments["commands"].as_str() else {
+            return "Missing required parameter: commands".to_string();
+        };
+        let Some(shell) = &self.shell else {
+            return "bash: not available in this harness".to_string();
+        };
+        let mut shell = shell.lock().await;
+        match shell.exec(script).await {
+            Ok(result) => {
+                let mut output = result.stdout.text_lossy().into_owned();
+                let stderr = result.stderr.text_lossy();
+                if !stderr.trim().is_empty() {
+                    if !output.is_empty() && !output.ends_with('\n') {
+                        output.push('\n');
+                    }
+                    output.push_str(&stderr);
+                }
+                if result.exit_code != 0 {
+                    output.push_str(&format!("\n[exit {}]", result.exit_code));
+                }
+                output
+            }
+            Err(error) => format!("bash: {error}"),
         }
     }
 
@@ -118,7 +217,7 @@ impl FakeControlPlane {
 
         if all {
             let mut by_category: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-            for entry in &self.catalog {
+            for entry in self.catalog.iter() {
                 by_category
                     .entry(entry["category"].as_str().unwrap_or(""))
                     .or_default()
@@ -207,115 +306,248 @@ impl FakeControlPlane {
         if words.is_empty() {
             return String::new();
         }
+        if words[0] == "everruns" {
+            return everruns(&self.catalog, &self.store, &words[1..], read_only).0;
+        }
+        // A flat wire name has no contract, so its flags are read positionally.
+        run_wire_name(
+            &self.catalog,
+            &self.store,
+            &words[0],
+            &flat_args(&words[1..]),
+            read_only,
+        )
+        .0
+    }
+}
 
-        let contracts = everruns_cli_contract::commands();
-        let (wire_name, args) = if words[0] == "everruns" {
-            // Longest spelling wins, exactly as the tree resolves it.
-            let rest = &words[1..];
-            if rest.is_empty() || rest[0] == "--help" || rest[0] == "-h" {
-                return self.root_help();
+/// Run `everruns <args…>` and return its output and exit code.
+///
+/// Shared by both arms: v1 reaches it through `query`/`execute`, v2 through the
+/// shell builtin. One implementation is what makes the A/B a comparison of
+/// surfaces rather than of two different fakes.
+fn everruns(
+    catalog: &[Value],
+    store: &Mutex<Store>,
+    args: &[String],
+    read_only: bool,
+) -> (String, i32) {
+    let contracts = everruns_cli_contract::commands();
+    if args.is_empty() || args[0] == "--help" || args[0] == "-h" {
+        return (root_help(), 0);
+    }
+
+    // Longest spelling wins, exactly as the tree resolves it.
+    let mut found = None;
+    for take in (1..=args.len().min(4)).rev() {
+        let spelling = args[..take].join(" ");
+        if let Some(contract) = contracts.iter().find(|c| c.spelling() == spelling) {
+            found = Some((contract, &args[take..]));
+            break;
+        }
+    }
+    let Some((contract, tail)) = found else {
+        return (node_help(args), 1);
+    };
+
+    // The real parser, so an unknown flag fails here for the same reason it
+    // fails in production, and `--help` renders the shipped help.
+    let display = format!("everruns {}", contract.spelling());
+    let parser = contract.clap_command(&display);
+    let argv = std::iter::once(display.clone()).chain(tail.iter().cloned());
+    match parser.try_get_matches_from(argv) {
+        Ok(matches) => {
+            let params = everruns_cli_contract::params_from(contract, &matches);
+            run_wire_name(catalog, store, &contract.wire_name, &params, read_only)
+        }
+        Err(error) => {
+            let code = i32::from(error.use_stderr());
+            (error.render().to_string(), code)
+        }
+    }
+}
+
+/// Run one resolved operation against the in-memory rows.
+fn run_wire_name(
+    catalog: &[Value],
+    store: &Mutex<Store>,
+    wire_name: &str,
+    args: &Value,
+    read_only: bool,
+) -> (String, i32) {
+    let Some(entry) = catalog
+        .iter()
+        .find(|e| e["name"].as_str() == Some(wire_name))
+    else {
+        return (format!("{wire_name}: command not found"), 127);
+    };
+
+    if read_only && !entry["read_only"].as_bool().unwrap_or(false) {
+        return (
+            format!("{wire_name}: not available in query; it is a mutation, so use execute"),
+            1,
+        );
+    }
+
+    (store.lock().expect("store").run(wire_name, args, entry), 0)
+}
+
+/// The help the shipped tree renders for a node, root included.
+///
+/// A leaf's help is clap's, generated from the same contract on both sides, so
+/// only these travel as an artifact.
+fn node_help_text(path: &str) -> Option<String> {
+    static HELP_NODES: std::sync::OnceLock<BTreeMap<String, String>> = std::sync::OnceLock::new();
+    HELP_NODES
+        .get_or_init(|| serde_json::from_str(HELP).expect("help.json parses"))
+        .get(path)
+        .cloned()
+}
+
+fn root_help() -> String {
+    node_help_text("").unwrap_or_else(|| "everruns\n  no commands available\n".to_string())
+}
+
+/// Report against the deepest prefix that exists, so a wrong guess is answered
+/// with the real neighbours, exactly as the shipped tree does.
+fn node_help(words: &[String]) -> String {
+    for take in (1..=words.len()).rev() {
+        let prefix = words[..take].join(" ");
+        if let Some(text) = node_help_text(&prefix) {
+            if take == words.len() {
+                return text;
             }
-            let mut found = None;
-            for take in (1..=rest.len().min(4)).rev() {
-                let spelling = rest[..take].join(" ");
-                if let Some(c) = contracts.iter().find(|c| c.spelling() == spelling) {
-                    found = Some((c, &rest[take..]));
-                    break;
-                }
-            }
-            let Some((contract, tail)) = found else {
-                return self.node_help(rest);
-            };
-
-            // The real parser, so an unknown flag fails here for the same
-            // reason it fails in production.
-            let display = format!("everruns {}", contract.spelling());
-            let parser = contract.clap_command(&display);
-            let argv = std::iter::once(display.clone()).chain(tail.iter().cloned());
-            match parser.try_get_matches_from(argv) {
-                Ok(matches) => (
-                    contract.wire_name.clone(),
-                    everruns_cli_contract::params_from(contract, &matches),
-                ),
-                Err(error) => return error.render().to_string(),
-            }
-        } else {
-            (words[0].clone(), flat_args(&words[1..]))
-        };
-
-        let Some(entry) = self
-            .catalog
-            .iter()
-            .find(|e| e["name"].as_str() == Some(wire_name.as_str()))
-        else {
-            return format!("{wire_name}: command not found");
-        };
-
-        if read_only && !entry["read_only"].as_bool().unwrap_or(false) {
             return format!(
-                "{wire_name}: not available in query; it is a mutation, so use execute"
+                "unknown command `{}` under `everruns {prefix}`\n\n{text}",
+                words[take]
             );
         }
-
-        self.store
-            .lock()
-            .expect("store")
-            .run(&wire_name, &args, entry)
     }
+    format!(
+        "unknown command `everruns {}`\n\n{}",
+        words.join(" "),
+        root_help()
+    )
+}
 
-    fn root_help(&self) -> String {
-        let mut nouns: Vec<&str> = self
-            .catalog
-            .iter()
-            .filter_map(|e| e["cli"].as_str())
-            .filter_map(|cli| cli.split(' ').next())
-            .collect();
-        nouns.sort_unstable();
-        nouns.dedup();
-        format!(
-            "Usage: everruns <command> [--flags]\n\nCommands:\n{}\n\nRun `everruns <command> --help` for its verbs.\n",
-            nouns
+/// Whether a script invokes any operation the catalog marks as a mutation.
+///
+/// Both arms are graded by one dataset, and that dataset names `query` and
+/// `execute`. v2 has a single tool for both, so what a `bash` call counts as is
+/// decided by what it runs: a script that only reads is that arm's `query`, and
+/// one that writes is its `execute`. Without this the A/B would compare a
+/// surface against a scorer written for the other surface.
+pub fn script_mutates(script: &str) -> bool {
+    static MUTATIONS: std::sync::OnceLock<regex::RegexSet> = std::sync::OnceLock::new();
+    MUTATIONS
+        .get_or_init(|| {
+            let catalog: Vec<Value> = serde_json::from_str(CATALOG).expect("catalog.json parses");
+            let read_only: std::collections::HashSet<&str> = catalog
                 .iter()
-                .map(|n| format!("  {n}"))
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-    }
-
-    fn node_help(&self, words: &[String]) -> String {
-        // Report against the deepest prefix that exists, so a wrong guess is
-        // answered with the real neighbours.
-        let contracts = everruns_cli_contract::commands();
-        for take in (1..=words.len()).rev() {
-            let prefix = words[..take].join(" ");
-            let children: Vec<String> = contracts
-                .iter()
-                .filter_map(|c| {
-                    c.spelling()
-                        .strip_prefix(&format!("{prefix} "))
-                        .map(|rest| rest.split(' ').next().unwrap_or(rest).to_string())
-                })
+                .filter(|entry| entry["read_only"].as_bool().unwrap_or(false))
+                .filter_map(|entry| entry["name"].as_str())
                 .collect();
-            if !children.is_empty() {
-                let mut children = children;
-                children.sort_unstable();
-                children.dedup();
-                return format!(
-                    "Usage: everruns {prefix} <command> [--flags]\n\nCommands:\n{}\n",
-                    children
-                        .iter()
-                        .map(|c| format!("  {c}"))
+            let mut patterns: Vec<String> = Vec::new();
+            for entry in &catalog {
+                let Some(name) = entry["name"].as_str() else {
+                    continue;
+                };
+                if read_only.contains(name) {
+                    continue;
+                }
+                // The flat wire name, and the tree spelling with any run of
+                // whitespace between its words, since a model may wrap a long
+                // command line.
+                patterns.push(format!(r"\b{}\b", regex::escape(name)));
+                if let Some(cli) = entry["cli"].as_str() {
+                    let spelling = cli
+                        .split_whitespace()
+                        .map(regex::escape)
                         .collect::<Vec<_>>()
-                        .join("\n")
-                );
+                        .join(r"\s+");
+                    patterns.push(format!(r"\beverruns\s+{spelling}\b"));
+                }
             }
-        }
-        format!(
-            "unknown command `everruns {}`\n\n{}",
-            words.join(" "),
-            self.root_help()
+            regex::RegexSet::new(&patterns).expect("mutation patterns compile")
+        })
+        .is_match(&without_help(script))
+}
+
+/// Drop lines that only ask a command to describe itself.
+///
+/// `everruns agents create --help` names a mutation and performs none. Counting
+/// it as one would fail a read-only case for the very behaviour the CLI cases
+/// reward: reading the help before guessing a flag.
+fn without_help(script: &str) -> String {
+    script
+        .lines()
+        .filter(|line| {
+            let words = line.split_whitespace().collect::<Vec<_>>();
+            !words.iter().any(|word| *word == "--help" || *word == "-h")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The `everruns` builtin: the same resolution the tool path uses, wired into
+/// the interpreter so the model's own script drives it.
+struct EverrunsBuiltin {
+    catalog: Arc<Vec<Value>>,
+    store: Arc<Mutex<Store>>,
+}
+
+#[async_trait::async_trait]
+impl bashkit::Builtin for EverrunsBuiltin {
+    async fn execute(
+        &self,
+        ctx: bashkit::BuiltinContext<'_>,
+    ) -> bashkit::Result<bashkit::ExecResult> {
+        // Mutations are the point of a chat that administers a platform, so the
+        // shell surface has no read-only gate; v1's `query`/`execute` split is
+        // a property of having two tools, not of the catalog.
+        let (output, code) = everruns(&self.catalog, &self.store, ctx.args, false);
+        Ok(if code == 0 {
+            bashkit::ExecResult::ok(output)
+        } else {
+            bashkit::ExecResult::err(output, code)
+        })
+    }
+
+    fn llm_hint(&self) -> Option<&'static str> {
+        Some(
+            "everruns <noun> <verb> --flags: run a platform operation; --help lists nouns and verbs",
         )
     }
+}
+
+/// The v2 session shell: the product's namespace, with `everruns` in it.
+fn build_shell(catalog: Arc<Vec<Value>>, store: Arc<Mutex<Store>>) -> bashkit::Bash {
+    let fs = bashkit::InMemoryFs::new();
+    for dir in [
+        "/workspace",
+        "/workspace/docs",
+        "/memory",
+        "/memory/shared",
+        "/memory/user",
+        "/outputs",
+    ] {
+        fs.add_dir(dir, 0o755);
+    }
+    // One page of documentation, so a case that is told to consult `/docs`
+    // finds something rather than an empty tree. The fake cannot ship the real
+    // corpus, and a case that grades documentation answers belongs on the live
+    // subject.
+    fs.add_file(
+        "/workspace/docs/harnesses.md",
+        b"# Harnesses\n\nA harness is a reusable bundle of capabilities and a system prompt.\n          The built-in `Generic` harness carries file system, bash, storage, schedules and\n          context compaction, and is the default when a session names no harness.\n",
+        0o644,
+    );
+
+    bashkit::Bash::builder()
+        .fs(Arc::new(fs))
+        .cwd("/workspace")
+        .builtin("everruns", Box::new(EverrunsBuiltin { catalog, store }))
+        .build()
 }
 
 impl Store {
@@ -624,12 +856,14 @@ mod tests {
     use super::*;
 
     fn plane() -> FakeControlPlane {
-        FakeControlPlane::new()
+        FakeControlPlane::new(Harness::PlatformChat)
     }
 
-    #[test]
-    fn a_tree_spelling_runs_and_pages_a_family() {
-        let out = plane().call("query", &json!({ "commands": "everruns agents list" }));
+    #[tokio::test]
+    async fn a_tree_spelling_runs_and_pages_a_family() {
+        let out = plane()
+            .call("query", &json!({ "commands": "everruns agents list" }))
+            .await;
         let value: Value = serde_json::from_str(&out).expect("json");
         assert_eq!(value["total"], 2, "{out}");
         assert_eq!(value["data"][0]["name"], "Triage");
@@ -637,53 +871,67 @@ mod tests {
 
     /// The whole point of the fake: an absent flag is rejected by the real
     /// parser, so an offline case measures the same failure production has.
-    #[test]
-    fn an_absent_flag_is_rejected_by_the_real_parser() {
-        let out = plane().call(
-            "query",
-            &json!({ "commands": "everruns skills list --limit 20" }),
-        );
+    #[tokio::test]
+    async fn an_absent_flag_is_rejected_by_the_real_parser() {
+        let out = plane()
+            .call(
+                "query",
+                &json!({ "commands": "everruns skills list --limit 20" }),
+            )
+            .await;
         assert!(out.contains("unexpected argument"), "{out}");
         assert!(out.contains("--limit"), "{out}");
     }
 
-    #[test]
-    fn a_flat_wire_name_still_works() {
-        let out = plane().call("query", &json!({ "commands": "list_harnesses" }));
+    #[tokio::test]
+    async fn a_flat_wire_name_still_works() {
+        let out = plane()
+            .call("query", &json!({ "commands": "list_harnesses" }))
+            .await;
         assert!(out.contains("Generic"), "{out}");
     }
 
-    #[test]
-    fn query_refuses_a_mutation_and_execute_runs_it() {
-        let refused = plane().call(
-            "query",
-            &json!({ "commands": "everruns agents create --name Bot --system-prompt Hi" }),
-        );
+    #[tokio::test]
+    async fn query_refuses_a_mutation_and_execute_runs_it() {
+        let refused = plane()
+            .call(
+                "query",
+                &json!({ "commands": "everruns agents create --name Bot --system-prompt Hi" }),
+            )
+            .await;
         assert!(refused.contains("use execute"), "{refused}");
 
         let plane = plane();
-        let created = plane.call(
-            "execute",
-            &json!({ "commands": "everruns agents create --name Bot --system-prompt Hi" }),
-        );
+        let created = plane
+            .call(
+                "execute",
+                &json!({ "commands": "everruns agents create --name Bot --system-prompt Hi" }),
+            )
+            .await;
         assert!(created.contains("\"name\":\"Bot\""), "{created}");
         // And it persists for the rest of the turn, so a follow-up read works.
-        let listed = plane.call("query", &json!({ "commands": "everruns agents list" }));
+        let listed = plane
+            .call("query", &json!({ "commands": "everruns agents list" }))
+            .await;
         assert!(listed.contains("Bot"), "{listed}");
     }
 
-    #[test]
-    fn a_bare_word_reaches_the_positional_field() {
-        let out = plane().call(
-            "query",
-            &json!({ "commands": "everruns agents get agent_01triage" }),
-        );
+    #[tokio::test]
+    async fn a_bare_word_reaches_the_positional_field() {
+        let out = plane()
+            .call(
+                "query",
+                &json!({ "commands": "everruns agents get agent_01triage" }),
+            )
+            .await;
         assert!(out.contains("Triage"), "{out}");
     }
 
-    #[test]
-    fn discover_finds_an_operation_and_carries_its_spelling() {
-        let out = plane().call("discover", &json!({ "query": "list_harnesses" }));
+    #[tokio::test]
+    async fn discover_finds_an_operation_and_carries_its_spelling() {
+        let out = plane()
+            .call("discover", &json!({ "query": "list_harnesses" }))
+            .await;
         assert!(out.contains("list_harnesses"), "{out}");
         assert!(
             out.contains("input_schema"),
@@ -693,38 +941,221 @@ mod tests {
 
     /// A broad search must not expand every schema, which is the rule the real
     /// surface follows to keep discovery affordable.
-    #[test]
-    fn a_broad_search_omits_schemas() {
-        let out = plane().call("discover", &json!({ "query": "agent" }));
+    #[tokio::test]
+    async fn a_broad_search_omits_schemas() {
+        let out = plane().call("discover", &json!({ "query": "agent" })).await;
         assert!(!out.contains("input_schema"), "{out}");
     }
 
-    #[test]
-    fn help_lists_the_nouns_and_a_nodes_verbs() {
-        let root = plane().call("query", &json!({ "commands": "everruns --help" }));
+    /// The help is the tree's, not a local restatement: a hand-rolled list of
+    /// nouns without descriptions is a different surface from the one that
+    /// ships, and in v2 `--help` is nearly the whole discovery story.
+    #[tokio::test]
+    async fn help_is_the_shipped_rendering() {
+        let root = plane()
+            .call("query", &json!({ "commands": "everruns --help" }))
+            .await;
+        assert!(
+            root.contains("Agent definitions, versions, and their configuration."),
+            "node descriptions travel with the help: {root}"
+        );
+        let node = plane()
+            .call("query", &json!({ "commands": "everruns agents --help" }))
+            .await;
+        assert!(
+            node.contains("Run `everruns agents <command> --help` for flags."),
+            "{node}"
+        );
+        let unknown = plane()
+            .call(
+                "query",
+                &json!({ "commands": "everruns agents frobnicate" }),
+            )
+            .await;
+        assert!(
+            unknown.contains("unknown command `frobnicate`"),
+            "{unknown}"
+        );
+    }
+
+    #[tokio::test]
+    async fn help_lists_the_nouns_and_a_nodes_verbs() {
+        let root = plane()
+            .call("query", &json!({ "commands": "everruns --help" }))
+            .await;
         assert!(root.contains("agents"), "{root}");
-        let node = plane().call("query", &json!({ "commands": "everruns agents" }));
+        let node = plane()
+            .call("query", &json!({ "commands": "everruns agents" }))
+            .await;
         assert!(node.contains("versions") && node.contains("list"), "{node}");
     }
 
-    #[test]
-    fn a_pipeline_runs_its_command_and_ignores_the_filter() {
-        let out = plane().call(
-            "query",
-            &json!({ "commands": "everruns agents list | jq -r '.data[].id'" }),
-        );
+    #[tokio::test]
+    async fn a_pipeline_runs_its_command_and_ignores_the_filter() {
+        let out = plane()
+            .call(
+                "query",
+                &json!({ "commands": "everruns agents list | jq -r '.data[].id'" }),
+            )
+            .await;
         assert!(out.contains("agent_01triage"), "{out}");
     }
 
-    #[test]
-    fn several_statements_run_in_order() {
+    #[tokio::test]
+    async fn several_statements_run_in_order() {
         let plane = plane();
         let out = plane.call(
             "execute",
             &json!({ "commands": "everruns agents create --name A --system-prompt X\neverruns agents list" }),
-        );
+        ).await;
         assert!(out.contains("\"name\":\"A\""), "{out}");
         assert!(out.matches("Triage").count() >= 1, "{out}");
+    }
+}
+
+/// The v2 arm: one `bash` tool over a real interpreter.
+///
+/// These are the cases v1's statement splitter got wrong or could not express
+/// at all. They are the reason the A/B is worth running: if the shell arm can
+/// loop, pipe and keep a file, its failures are the model's and the contract's
+/// rather than the fake's.
+#[cfg(test)]
+mod shell_tests {
+    use super::*;
+
+    fn shell() -> FakeControlPlane {
+        FakeControlPlane::new(Harness::PlatformChatV2)
+    }
+
+    #[test]
+    fn a_help_probe_is_not_a_mutation() {
+        assert!(script_mutates("everruns agents create --name Bot"));
+        assert!(!script_mutates("everruns agents create --help"));
+        assert!(!script_mutates("everruns agents list | jq '.data'"));
+        // A script that reads and then writes is still a write.
+        assert!(script_mutates(
+            "everruns agents create --help\neveruns agents list\neverruns agents update --id a"
+        ));
+    }
+
+    #[tokio::test]
+    async fn v2_ships_one_tool_and_it_is_bash() {
+        let tools = tool_definitions(Harness::PlatformChatV2);
+        let names: Vec<&str> = tools
+            .iter()
+            .filter_map(|t| t["function"]["name"].as_str())
+            .collect();
+        assert_eq!(names, vec!["bash"]);
+        // And the prompt it ships with does not send the model after tools it
+        // no longer has.
+        let prompt = system_prompt(Harness::PlatformChatV2);
+        assert!(!prompt.contains("`discover`"), "{prompt}");
+        assert!(!prompt.contains("`query`"), "{prompt}");
+        assert!(!prompt.contains("`execute`"), "{prompt}");
+    }
+
+    #[tokio::test]
+    async fn everruns_is_a_builtin_in_the_shell() {
+        let out = shell()
+            .call("bash", &json!({ "commands": "everruns agents list" }))
+            .await;
+        assert!(out.contains("Triage"), "{out}");
+    }
+
+    /// v1's splitter truncated at the first `|` and returned the command's own
+    /// JSON. Here the filter runs.
+    #[tokio::test]
+    async fn a_pipeline_runs_its_filter() {
+        let out = shell()
+            .call(
+                "bash",
+                &json!({ "commands": "everruns agents list | jq -r '.data[].name'" }),
+            )
+            .await;
+        assert!(out.contains("Triage"), "{out}");
+        assert!(
+            !out.contains("\"id\""),
+            "jq projected, not passed through: {out}"
+        );
+    }
+
+    /// The defect that made v1's arm unfair: `for … do … done` was split into
+    /// words and the loop body never ran as a loop.
+    #[tokio::test]
+    async fn a_loop_runs_as_a_loop() {
+        let out = shell()
+            .call(
+                "bash",
+                &json!({ "commands": "for name in Alpha Beta; do everruns agents create --name \"$name\" --system-prompt Hi > /dev/null; done\neveruns_count=$(everruns agents list | jq '.total')\necho \"total=$everuns_count\"" }),
+            )
+            .await;
+        assert!(
+            out.contains("total=4"),
+            "two seeded plus two created: {out}"
+        );
+    }
+
+    /// Redirection and a scratch file, which v1 has no filesystem for.
+    #[tokio::test]
+    async fn output_survives_in_the_workspace_between_calls() {
+        let plane = shell();
+        plane
+            .call(
+                "bash",
+                &json!({ "commands": "everruns harnesses list > /workspace/harnesses.json" }),
+            )
+            .await;
+        let out = plane
+            .call(
+                "bash",
+                &json!({ "commands": "jq -r '.data[].name' /workspace/harnesses.json" }),
+            )
+            .await;
+        assert!(out.contains("Generic"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn help_reaches_the_shell_and_a_bad_flag_fails_nonzero() {
+        let out = shell()
+            .call("bash", &json!({ "commands": "everruns --help" }))
+            .await;
+        assert!(out.contains("agents"), "{out}");
+
+        let bad = shell()
+            .call(
+                "bash",
+                &json!({ "commands": "everruns skills list --limit 20" }),
+            )
+            .await;
+        assert!(bad.contains("unexpected argument"), "{bad}");
+        assert!(
+            bad.contains("[exit "),
+            "a parse error is a failed command: {bad}"
+        );
+    }
+
+    /// The shell surface has no read-only gate: a mutation runs, because the
+    /// split into `query` and `execute` was a property of having two tools.
+    #[tokio::test]
+    async fn a_mutation_runs_without_a_second_tool() {
+        let out = shell()
+            .call(
+                "bash",
+                &json!({ "commands": "everruns agents create --name Bot --system-prompt Hi" }),
+            )
+            .await;
+        assert!(out.contains("\"name\":\"Bot\""), "{out}");
+    }
+
+    #[tokio::test]
+    async fn the_docs_mount_is_readable() {
+        let out = shell()
+            .call(
+                "bash",
+                &json!({ "commands": "grep -r Generic /workspace/docs" }),
+            )
+            .await;
+        assert!(out.contains("Generic"), "{out}");
     }
 }
 
@@ -739,8 +1170,8 @@ mod family_tests {
     /// A nested collection is its own family. Filing `create_agent_version`
     /// under `agents` made `list_agent_versions` return agents, which is worse
     /// than an error: the model believes it and keeps going.
-    #[test]
-    fn a_nested_collection_is_its_own_family() {
+    #[tokio::test]
+    async fn a_nested_collection_is_its_own_family() {
         assert_eq!(
             family("/v1/agents/{agent_id}/versions", "create_agent_version"),
             "versions"
@@ -753,20 +1184,24 @@ mod family_tests {
         );
     }
 
-    #[test]
-    fn a_created_version_is_listed_by_its_own_command() {
-        let plane = FakeControlPlane::new();
+    #[tokio::test]
+    async fn a_created_version_is_listed_by_its_own_command() {
+        let plane = FakeControlPlane::new(Harness::PlatformChat);
         plane.call(
             "execute",
             &json!({ "commands": "create_agent_version --agent_id agent_01triage --req {\"summary\":\"before\"}" }),
-        );
-        let listed = plane.call(
-            "query",
-            &json!({ "commands": "list_agent_versions --agent_id agent_01triage" }),
-        );
+        ).await;
+        let listed = plane
+            .call(
+                "query",
+                &json!({ "commands": "list_agent_versions --agent_id agent_01triage" }),
+            )
+            .await;
         assert!(listed.contains("before"), "{listed}");
         // And the agents family is untouched.
-        let agents = plane.call("query", &json!({ "commands": "everruns agents list" }));
+        let agents = plane
+            .call("query", &json!({ "commands": "everruns agents list" }))
+            .await;
         let value: Value = serde_json::from_str(&agents).expect("json");
         assert_eq!(value["total"], 2, "{agents}");
     }
