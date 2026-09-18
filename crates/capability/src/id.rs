@@ -122,9 +122,6 @@ pub fn validate_capability_id(id: &str) -> Result<(), CapabilityError> {
         id: id.to_string(),
         reason,
     };
-    if id.is_empty() {
-        return Err(invalid("capability id must not be empty".to_string()));
-    }
     if id.len() > 128 {
         return Err(invalid(format!(
             "capability id must be at most 128 bytes (got {})",
@@ -136,8 +133,9 @@ pub fn validate_capability_id(id: &str) -> Result<(), CapabilityError> {
             "capability id uses the reserved '__everruns_' namespace".to_string(),
         ));
     }
-    let mut chars = id.chars();
-    let first = chars.next().expect("non-empty checked above");
+    let Some(first) = id.chars().next() else {
+        return Err(invalid("capability id must not be empty".to_string()));
+    };
     if !(first.is_ascii_alphabetic() || first == '_') {
         return Err(invalid(
             "capability id must start with a letter or underscore".to_string(),

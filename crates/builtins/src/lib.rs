@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Portable built-in capabilities for the [Everruns](https://everruns.com) ecosystem.
 //!
 //! `everruns-builtins` is the optional, backend-neutral implementation bundle

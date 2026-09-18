@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration tests for CLI file sync operations.
 //!
 //! Tests the full sync workflow with filesystem operations:

@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! gRPC protocol for Everruns worker ↔ control-plane communication.
 //!
 //! `everruns-internal-protocol` is part of the [Everruns](https://everruns.com)
@@ -520,11 +521,15 @@ pub fn schema_agent_to_proto(value: &everruns_platform::Agent) -> proto::Agent {
         display_name: value.display_name.clone(),
         parallel_tool_calls: value.parallel_tool_calls,
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
+        // All-or-nothing: the reverse conversion rebuilds configs from
+        // `capability_ids` when this list is empty, so a partial list would
+        // silently drop a capability instead.
         capabilities: value
             .capabilities
             .iter()
-            .map(|config| serde_json::to_string(config).expect("capability config serializes"))
-            .collect(),
+            .map(serde_json::to_string)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_default(),
     }
 }
 
@@ -553,11 +558,15 @@ pub fn schema_harness_to_proto(value: &everruns_platform::Harness) -> proto::Har
             .map(|id| uuid_to_proto_uuid(id.uuid())),
         is_built_in: value.is_built_in,
         display_name: value.display_name.clone(),
+        // All-or-nothing: the reverse conversion rebuilds configs from
+        // `capability_ids` when this list is empty, so a partial list would
+        // silently drop a capability instead.
         capabilities: value
             .capabilities
             .iter()
-            .map(|config| serde_json::to_string(config).expect("capability config serializes"))
-            .collect(),
+            .map(serde_json::to_string)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_default(),
     }
 }
 

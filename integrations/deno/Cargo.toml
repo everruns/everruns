@@ -43,3 +43,6 @@ urlencoding = "2.1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
+
+[lints]
+workspace = true

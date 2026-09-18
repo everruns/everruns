@@ -16,3 +16,6 @@ everruns = { path = "../../crates/everruns", features = ["bashkit", "openai"] }
 everruns-example-demo = { path = "../demo-support" }
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

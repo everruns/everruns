@@ -152,10 +152,9 @@ where
         async move {
             let mut out: Vec<(usize, R)> = Vec::with_capacity(group.len());
             for idx in group {
-                let permit = semaphore
-                    .acquire()
-                    .await
-                    .expect("tool scheduler semaphore is never closed");
+                // `ok()`: this semaphore is local and never closed, and
+                // losing the cap beats panicking mid-batch if it ever were.
+                let permit = semaphore.acquire().await.ok();
                 let result = run(idx).await;
                 drop(permit);
                 out.push((idx, result));

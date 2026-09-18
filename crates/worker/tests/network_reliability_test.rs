@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // Scaffold for worker↔control-plane transport-fault tests using `turmoil`
 // (https://github.com/tokio-rs/turmoil). Covers scenario 3 of
 // knowledge/runtime-resources/agent-reliability-tests.md: deterministic network partitions, latency,

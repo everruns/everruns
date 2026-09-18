@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Real API smoke tests for TypeSafe.
 //!
 //! Gated behind the `integration` feature — only compiled when run with:

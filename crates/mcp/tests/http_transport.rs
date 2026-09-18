@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! HTTP transport integration tests.
 //!
 //! The happy paths drive a fake [`EgressService`] so they run offline and

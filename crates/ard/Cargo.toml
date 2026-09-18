@@ -51,3 +51,6 @@ ard-live-tests = []
 everruns-host = { version = "0.28.0", path = "../host", features = ["direct-egress"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
+
+[lints]
+workspace = true

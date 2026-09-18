@@ -217,10 +217,9 @@ impl NativeAsyncCoordinator {
                 Some(lock) => Some(lock.lock_owned().await),
                 None => None,
             };
-            let _permit = permits
-                .acquire()
-                .await
-                .expect("coordinator never closes permits");
+            // `ok()`: the coordinator owns these permits and never closes
+            // them; losing the cap beats panicking inside a spawned job.
+            let _permit = permits.acquire().await.ok();
             let id = call.id().to_owned();
             (id, executor.execute(call).await)
         });
@@ -351,8 +350,9 @@ impl NativeAsyncCoordinator {
             tokio::select! {
                 _ = tokio::time::sleep_until(self.last_heartbeat + std::time::Duration::from_secs(10)) => self.heartbeat().await?,
                 completed = self.jobs.next(), if !self.jobs.is_empty() => {
-                    let (id, result) = completed.expect("nonempty jobs");
-                    self.settle(id, result).await?;
+                    if let Some((id, result)) = completed {
+                        self.settle(id, result).await?;
+                    }
                 }
                 event = stream.next() => {
                     let event = event.ok_or_else(|| AgentLoopError::llm("native response stream ended before completion"))??;

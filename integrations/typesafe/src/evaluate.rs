@@ -65,7 +65,11 @@ impl JsonSchema for EvaluateInput {
         "TypeSafeEvaluateInput".into()
     }
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schema().try_into().expect("evaluate schema is an object")
+        let Value::Object(map) = schema() else {
+            // Unreachable: `schema()` is a json! object literal.
+            return serde_json::Map::new().into();
+        };
+        map.into()
     }
 }
 

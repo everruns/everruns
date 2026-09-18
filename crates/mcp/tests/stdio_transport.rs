@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! stdio transport integration test against the bundled echo fixture.
 //!
 //! Only built with the `stdio` feature, mirroring how runtime/CLI hosts opt in.

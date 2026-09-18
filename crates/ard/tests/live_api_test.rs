@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live ARD registry tests against the public reference registry.
 //!
 //! Gated behind:
@@ -28,7 +29,7 @@ fn live_client() -> ArdRegistryClient {
     let token = std::env::var("ARD_REGISTRY_TOKEN")
         .ok()
         .filter(|t| !t.is_empty());
-    ArdRegistryClient::new(base, token)
+    ArdRegistryClient::new(base, token).expect("build live ARD client")
 }
 
 #[tokio::test]

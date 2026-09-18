@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Proves the tree is reachable from inside a real session's shell.
 //!
 //! The simulator can produce any text it likes, so a canned final answer

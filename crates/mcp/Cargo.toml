@@ -53,3 +53,6 @@ tokio = { workspace = true }
 name = "mcp_stdio_echo"
 path = "src/bin/mcp_stdio_echo.rs"
 required-features = ["stdio"]
+
+[lints]
+workspace = true

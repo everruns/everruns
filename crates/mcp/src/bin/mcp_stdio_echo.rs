@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Minimal MCP stdio server used only by the `stdio` integration test.
 //!
 //! Implements just enough of the protocol — `initialize`, the
@@ -61,7 +62,9 @@ fn main() {
         // Notifications carry no id and get no response.
         if let (Some(id), Some(result)) = (id, result) {
             let response = json!({ "jsonrpc": "2.0", "id": id, "result": result });
-            let mut bytes = serde_json::to_vec(&response).unwrap();
+            let Ok(mut bytes) = serde_json::to_vec(&response) else {
+                continue;
+            };
             bytes.push(b'\n');
             if stdout.write_all(&bytes).is_err() {
                 break;
