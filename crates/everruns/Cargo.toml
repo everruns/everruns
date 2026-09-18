@@ -246,9 +246,9 @@ required-features = ["capabilities", "openai"]
 name = "capability_configuration"
 required-features = ["capabilities"]
 
-# Uses the TypeSafe-backed classifier tool, which `jev` re-exports. Live mode
-# additionally needs `openai`, but the example compiles and runs offline
+# Uses the TypeSafe-backed classifier tool, which `typesafe` re-exports. Live
+# mode additionally needs `openai`, but the example compiles and runs offline
 # against the simulator without it.
 [[example]]
 name = "agent_classification"
-required-features = ["jev"]
+required-features = ["typesafe"]
