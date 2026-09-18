@@ -1423,16 +1423,6 @@ pub struct CreateModelRow {
     pub provider_metadata: Option<serde_json::Value>,
 }
 
-/// Atomic rotation of a persistent agent-identity OAuth connection.
-#[derive(Debug, Clone)]
-pub struct UpdateAgentIdentityConnectionOAuthTokens {
-    pub connection_id: Uuid,
-    pub access_token_encrypted: Vec<u8>,
-    pub refresh_token_encrypted: Vec<u8>,
-    pub expires_at: Option<DateTime<Utc>>,
-    pub scopes: Option<String>,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct UpdateModel {
     pub provider_id: Option<ProviderId>,
@@ -2423,9 +2413,9 @@ pub struct UpsertMcpOAuthSessionCredentials {
     pub expires_at_encrypted: Option<Vec<u8>>,
 }
 
-/// Atomic rotation of a persistent user OAuth connection.
+/// Atomic rotation of a persistent OAuth connection.
 #[derive(Debug, Clone)]
-pub struct UpdateUserConnectionOAuthTokens {
+pub struct UpdateOAuthConnectionTokens {
     pub connection_id: Uuid,
     pub access_token_encrypted: Vec<u8>,
     pub refresh_token_encrypted: Vec<u8>,

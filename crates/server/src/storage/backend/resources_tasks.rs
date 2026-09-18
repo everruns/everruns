@@ -43,7 +43,7 @@ impl StorageBackend {
     }
     pub async fn update_agent_identity_connection_oauth_tokens(
         &self,
-        input: UpdateAgentIdentityConnectionOAuthTokens,
+        input: UpdateOAuthConnectionTokens,
     ) -> Result<Option<AgentIdentityConnectionRow>> {
         dispatch!(self, update_agent_identity_connection_oauth_tokens, input)
     }

@@ -112,7 +112,7 @@ impl Database {
 
     pub async fn update_agent_identity_connection_oauth_tokens(
         &self,
-        input: UpdateAgentIdentityConnectionOAuthTokens,
+        input: UpdateOAuthConnectionTokens,
     ) -> Result<Option<AgentIdentityConnectionRow>> {
         let row = sqlx::query_as::<_, AgentIdentityConnectionRow>(
             r#"

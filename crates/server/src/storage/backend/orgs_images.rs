@@ -610,7 +610,7 @@ impl StorageBackend {
 
     pub async fn update_user_connection_oauth_tokens(
         &self,
-        input: UpdateUserConnectionOAuthTokens,
+        input: UpdateOAuthConnectionTokens,
     ) -> Result<Option<UserConnectionRow>> {
         dispatch!(self, update_user_connection_oauth_tokens, input)
     }

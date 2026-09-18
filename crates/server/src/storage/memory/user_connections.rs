@@ -69,7 +69,7 @@ impl InMemoryDatabase {
 
     pub async fn update_user_connection_oauth_tokens(
         &self,
-        input: UpdateUserConnectionOAuthTokens,
+        input: UpdateOAuthConnectionTokens,
     ) -> Result<Option<UserConnectionRow>> {
         let mut connections = self.user_connections.write();
         let Some(connection) = connections.get_mut(&input.connection_id) else {
