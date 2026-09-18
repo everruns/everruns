@@ -356,7 +356,9 @@ impl TestServer {
         channel_config: Value,
     ) -> Value {
         use everruns_durable::UpdateField;
-        use everruns_server::domains::apps::queries::prepare_channel_storage;
+        use everruns_server::domains::apps::queries::{
+            decrypt_channel_config, prepare_channel_storage,
+        };
         use everruns_server::storage::models::UpdateAppChannel;
 
         let endpoint = self
@@ -365,7 +367,19 @@ impl TestServer {
             .await
             .expect("get fixture endpoint")
             .expect("fixture endpoint exists");
-        let prepared = prepare_channel_storage(self.encryption.as_ref(), &channel_config)
+        let mut merged_config = decrypt_channel_config(
+            self.encryption.as_ref(),
+            endpoint.channel_config_encrypted.as_deref(),
+            &endpoint.channel_config,
+        );
+        if let (Some(existing), Some(update)) =
+            (merged_config.as_object_mut(), channel_config.as_object())
+        {
+            existing.extend(update.clone());
+        } else {
+            merged_config = channel_config;
+        }
+        let prepared = prepare_channel_storage(self.encryption.as_ref(), &merged_config)
             .expect("prepare endpoint config");
         let endpoint = self
             .db
