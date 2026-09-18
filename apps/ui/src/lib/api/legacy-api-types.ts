@@ -2,7 +2,13 @@
 
 // Enums that stay generated (closed sets the server owns) while the entity they
 // annotate is still hand-maintained here.
-import type { EndpointStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
+import type {
+  EndpointStatus,
+  LlmRetryInfo,
+  McpServerActsAs,
+  SessionActivity,
+  SessionSource,
+} from "./schema-types";
 
 // Agent Identity types
 export type AgentIdentityStatus = "active" | "archived" | "deleted";
@@ -21,6 +27,41 @@ export interface AgentIdentity {
   updated_at: string;
   archived_at?: string | null;
   deleted_at?: string | null;
+}
+
+export interface ScopedMcpServer {
+  type?: "http";
+  url?: string;
+  headers?: Record<string, string>;
+  use?: string;
+  actsAs?: McpServerActsAs;
+  tool_discovery?: boolean;
+}
+
+export type ScopedMcpServers = Record<string, ScopedMcpServer>;
+
+export interface AgentMcpAttachmentSourceInfo {
+  source: "capability" | "harness" | "agent";
+  source_label: string;
+}
+
+export interface AgentMcpAttachment {
+  name: string;
+  source: "capability" | "harness" | "agent";
+  source_label: string;
+  overridden_sources: AgentMcpAttachmentSourceInfo[];
+  acts_as: McpServerActsAs;
+  preset_name?: string | null;
+  preset_id?: string | null;
+  connection_provider?: string | null;
+  url?: string | null;
+  header_names: string[];
+  tools_available: boolean;
+  tools: string[];
+  state: "ready" | "connection_missing" | "preset_missing";
+  action: "none" | "connect" | "authorize" | "ask_admin";
+  connected_as?: string | null;
+  editable: boolean;
 }
 
 export interface CreateAgentIdentityRequest {
@@ -104,6 +145,8 @@ export interface Agent {
   initial_files?: InitialFile[];
   /** Tool definitions (including client-side tools), defaults to [] */
   tools?: ToolDefinition[];
+  /** MCP attachments authored directly on the agent. */
+  mcpServers?: ScopedMcpServers;
   /** Network access list for URL filtering */
   network_access?: NetworkAccessList | null;
   status: AgentStatus;
@@ -220,6 +263,8 @@ export interface CreateAgentRequest {
   initial_files?: InitialFile[];
   /** Tool definitions (including client-side tools) */
   tools?: ToolDefinition[];
+  /** MCP attachments authored directly on the agent. */
+  mcpServers?: ScopedMcpServers;
   /** Network access list for URL filtering */
   network_access?: NetworkAccessList;
 }
@@ -249,6 +294,8 @@ export interface UpdateAgentRequest {
   status?: AgentStatus;
   /** Tool definitions (including client-side tools) */
   tools?: ToolDefinition[];
+  /** Replace MCP attachments authored directly on the agent. */
+  mcpServers?: ScopedMcpServers;
   /** Network access list for URL filtering */
   network_access?: NetworkAccessList | null;
   /**

@@ -28,6 +28,7 @@ import { AgentVersionHistory } from "@/components/agents/agent-version-history";
 import { Plus, Pencil, Download, Copy, Zap, Telescope, Boxes, MoreHorizontal } from "lucide-react";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
 import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
+import { AgentMcpPanel } from "@/components/agents/agent-mcp-panel";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import {
   PageContainer,
@@ -618,6 +619,13 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         <PageColumns>
           <PageMain>
             <AgentCredentialsPanel agentId={agentId} />
+          </PageMain>
+        </PageColumns>
+      )}
+      {activeTab === "mcp" && (
+        <PageColumns>
+          <PageMain>
+            <AgentMcpPanel agent={agent} />
           </PageMain>
         </PageColumns>
       )}

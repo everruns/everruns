@@ -25,6 +25,8 @@ import {
   deleteAgentCredentialBinding,
   suspendAgentExposures,
   resumeAgentExposures,
+  getAgentMcpAttachments,
+  revokeAgentMcpConnection,
 } from "@/lib/api/agents";
 import type {
   CreateAgentRequest,
@@ -69,6 +71,23 @@ export function useAgentStats(agentId: string | undefined) {
     ...query,
     isLoading: orgLoading || query.isLoading,
   };
+}
+
+export function useAgentMcpAttachments(agentId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.agents.mcpAttachments(agentId),
+    queryFn: () => getAgentMcpAttachments(agentId as string),
+    enabled: !!agentId,
+  });
+}
+
+export function useRevokeAgentMcpConnection(agentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => revokeAgentMcpConnection(agentId, name),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.mcpAttachments(agentId) }),
+  });
 }
 
 export function useAgentCredentials(agentId: string | undefined) {
