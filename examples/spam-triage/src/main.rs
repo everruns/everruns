@@ -9,6 +9,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use clap::Parser;
 use everruns::{Classifier, Model, TypeSafeAI};
 
 use pipeline::{ADJUDICATION_MODEL, DEFAULT_CONFIDENCE_FLOOR, SCREENING_MODEL, Triage};
@@ -20,7 +21,7 @@ const DEFAULT_CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/data/corpus.j
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let options = Options::parse(std::env::args().skip(1))?;
+    let options = Options::parse();
     let mut emails = dataset::load(&options.corpus)?;
     if let Some(limit) = options.limit {
         emails.truncate(limit);
@@ -167,87 +168,67 @@ fn seconds(elapsed: Duration) -> String {
     format!("{:.2}s", elapsed.as_secs_f64())
 }
 
-/// The three knobs worth exposing: which corpus, how much of it, and where the
-/// escalation threshold sits.
-#[derive(Debug, PartialEq)]
+/// Screen a labeled email corpus with a fast classifier, then route only the
+/// cases it was unsure about to a larger model.
+// The three knobs worth exposing: which corpus, how much of it, and where the
+// escalation threshold sits.
+#[derive(Debug, PartialEq, Parser)]
 struct Options {
+    /// Labeled JSONL corpus to triage, as `data/build-corpus.sh` writes it.
+    #[arg(long, value_name = "PATH", default_value = DEFAULT_CORPUS)]
     corpus: PathBuf,
+
+    /// Triage only the first N emails, for a shorter and cheaper run.
+    #[arg(long, value_name = "N", value_parser = parse_limit)]
     limit: Option<usize>,
+
+    /// Escalate an email when the screen is less sure than this.
+    #[arg(
+        long = "threshold",
+        value_name = "0.5-1.0",
+        default_value_t = DEFAULT_CONFIDENCE_FLOOR,
+        value_parser = parse_threshold,
+    )]
     floor: f64,
 }
 
-impl Default for Options {
-    fn default() -> Self {
-        Self {
-            corpus: PathBuf::from(DEFAULT_CORPUS),
-            limit: None,
-            floor: DEFAULT_CONFIDENCE_FLOOR,
-        }
+fn parse_limit(value: &str) -> Result<usize, String> {
+    match value.parse::<usize>() {
+        Ok(0) => Err("must be at least 1".to_owned()),
+        Ok(limit) => Ok(limit),
+        Err(error) => Err(error.to_string()),
     }
 }
 
-impl Options {
-    fn parse(args: impl IntoIterator<Item = String>) -> Result<Self, io::Error> {
-        let mut options = Options::default();
-        let mut args = args.into_iter();
-        while let Some(flag) = args.next() {
-            let mut value = || {
-                args.next().ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::InvalidInput, format!("{flag} needs a value"))
-                })
-            };
-            match flag.as_str() {
-                "--corpus" => options.corpus = PathBuf::from(value()?),
-                "--limit" => options.limit = Some(parse_with(&flag, &value()?)?),
-                "--threshold" => options.floor = parse_with(&flag, &value()?)?,
-                other => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!(
-                            "unknown argument '{other}'\n\
-                             Usage: spam-triage [--corpus PATH] [--limit N] [--threshold 0.0-1.0]"
-                        ),
-                    ));
-                }
-            }
-        }
-        if !(0.5..=1.0).contains(&options.floor) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "--threshold must be between 0.5 and 1.0; below 0.5 nothing is uncertain",
-            ));
-        }
-        if options.limit == Some(0) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "--limit must be at least 1",
-            ));
-        }
-        Ok(options)
+fn parse_threshold(value: &str) -> Result<f64, String> {
+    let floor: f64 = value.parse().map_err(|_| "must be a number".to_owned())?;
+    // Confidence is `max(p, 1 - p)`, so it cannot fall below 0.5: a lower floor
+    // would leave nothing uncertain and never escalate.
+    if !(0.5..=1.0).contains(&floor) {
+        return Err("must be between 0.5 and 1.0".to_owned());
     }
-}
-
-fn parse_with<T: std::str::FromStr>(flag: &str, value: &str) -> Result<T, io::Error> {
-    value.parse().map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("{flag}: '{value}' is not a valid value"),
-        )
-    })
+    Ok(floor)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn parse(args: &[&str]) -> Result<Options, io::Error> {
-        Options::parse(args.iter().map(|arg| arg.to_string()))
+    fn parse(args: &[&str]) -> Result<Options, clap::Error> {
+        Options::try_parse_from(std::iter::once("spam-triage").chain(args.iter().copied()))
+    }
+
+    #[test]
+    fn the_command_line_grammar_is_well_formed() {
+        // Catches the derive mistakes clap only reports at runtime, such as two
+        // flags claiming the same name.
+        use clap::CommandFactory;
+        Options::command().debug_assert();
     }
 
     #[test]
     fn defaults_point_at_the_built_corpus_and_the_calibrated_floor() {
         let options = parse(&[]).unwrap();
-        assert_eq!(options, Options::default());
         assert!(options.corpus.ends_with("data/corpus.jsonl"));
         assert_eq!(options.floor, DEFAULT_CONFIDENCE_FLOOR);
         assert_eq!(options.limit, None);
@@ -279,17 +260,15 @@ mod tests {
 
     #[test]
     fn a_malformed_invocation_names_what_is_wrong() {
-        for args in [
-            vec!["--limit"],
-            vec!["--limit", "0"],
-            vec!["--limit", "many"],
-            vec!["--jev"],
+        for (args, expected) in [
+            (vec!["--limit"], "--limit"),
+            (vec!["--limit", "0"], "at least 1"),
+            (vec!["--limit", "many"], "invalid digit"),
+            (vec!["--threshold", "high"], "must be a number"),
+            (vec!["--jev"], "--jev"),
         ] {
-            assert_eq!(
-                parse(&args).unwrap_err().kind(),
-                io::ErrorKind::InvalidInput,
-                "{args:?}"
-            );
+            let error = parse(&args).unwrap_err().to_string();
+            assert!(error.contains(expected), "{args:?} reported: {error}");
         }
     }
 

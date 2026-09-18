@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+clap = { workspace = true }
 everruns = { path = "../../crates/everruns", features = ["typesafe"] }
 everruns-openrouter = { path = "../../crates/drivers/openrouter" }
 futures = { workspace = true }

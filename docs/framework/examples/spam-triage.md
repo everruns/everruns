@@ -42,6 +42,7 @@ Move the threshold, or run a slice of the corpus:
 cargo run -p everruns-spam-triage -- --threshold 0.95   # escalate far more
 cargo run -p everruns-spam-triage -- --limit 20         # a shorter, cheaper run
 cargo run -p everruns-spam-triage -- --corpus /path/to/your.jsonl
+cargo run -p everruns-spam-triage -- --help
 ```
 
 ## The corpus
