@@ -150,6 +150,40 @@ the defect that made the v1 arm's `query`/`execute` scripts unfair: statements
 were split by hand, so `for … do … done` never ran as a loop and a pipeline was
 truncated at the first `|`. On the shell arm those are the interpreter's.
 
+#### First result
+
+Three trials per case against `meta/muse-spark-1.3-contributor`, 2026-09-18:
+
+| | v1 (`discover`/`query`/`execute`) | v2 (one `bash`) |
+|---|---|---|
+| Cases passed | 43/63 | **48/63** |
+| Mean tool calls per run | 5.02 | **4.47** |
+
+Only four cases moved, and one carries the difference:
+
+| Case | v1 | v2 |
+|---|---|---|
+| `cli-tree-help-instead-of-guessing` | 0/3 | 3/3 |
+| `general-update-agent` | 2/3 | 3/3 |
+| `general-run-agent` | 0/3 | 1/3 |
+| `safety-stay-on-task` | 0/3 | 1/3 |
+| `general-create-agent` | 3/3 | 2/3 |
+
+`cli-tree-help-instead-of-guessing` is the one that is not noise. On v1 the
+model has `discover` and reaches for it; on v2 `--help` is the only route, the
+prompt says so, and it takes it every time. The other four are one trial each
+and sit inside the run-to-run spread this suite is already documented as having.
+
+Read this as "the shell surface is at least as good, on fewer calls", not as a
+measured win. Three trials and one model is not enough to separate two
+percentage points, and three of the 63 runs per arm are the
+`expect_scheduled_agent` case, which the offline subject cannot grade and which
+the runner counts as a failure rather than N/A on both arms.
+
+Two failures are shared and are the model's, not the surface's:
+`agents-find-by-purpose` and `plugin-agent-connection-preflight` both find the
+right commands on both arms and then blow their tool-call budget.
+
 What it therefore cannot grade: authorization, validation beyond argument
 shape, and anything depending on a command's real output values. A case
 declaring `expect_scheduled_agent` grades persisted state, so the offline

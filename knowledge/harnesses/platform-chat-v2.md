@@ -11,11 +11,21 @@ tags:
 ---
 # Platform Chat v2
 
-Status: partly implemented, running beside v1. The `platform-chat-v2` harness is
-provisioned with a session filesystem, `/memory/shared` is live, and `everruns`
-is a builtin of the session shell. What remains is coverage (most commands have
-no CLI route yet) and the prompt diet. Supersedes nothing until the acceptance
-bar in [Acceptance](#acceptance) is met against the v1 harness.
+Status: partly implemented, running beside v1 behind an org-opt-in flag. The
+`platform-chat-v2` harness is provisioned with a session filesystem,
+`/memory/shared` is live, and `everruns` is a builtin of the session shell. What
+remains is the prompt diet and the memory work in [Rollout](#rollout).
+Supersedes nothing until the acceptance bar in [Acceptance](#acceptance) is met
+against the v1 harness.
+
+First measurement, three trials per case against
+`meta/muse-spark-1.3-contributor` in `evals/platform-capability`: v2 passes
+48/63 to v1's 43/63, on 4.47 tool calls per run against 5.02. One case moved for
+a reason rather than by noise, `cli-tree-help-instead-of-guessing` at 0/3 to
+3/3, because v1 has `discover` to reach for and v2 has only `--help`. Two points
+over three trials is not a win; read it as "at least as good, on fewer calls".
+That is evidence for the mechanism, not the acceptance bar, which is still
+TC001-TC005.
 
 ## Abstract
 
@@ -355,9 +365,10 @@ v2 ships when it passes, against the same models, the cases v1 is graded on:
 1. **P0, the harness.** Done: `platform-chat-v2` is provisioned beside v1 with
    `bashkit_shell` + `session_file_system` + the docs mount, claiming no harness
    role so nothing switches. Bar: TC001-TC005 pass.
-2. **P1, coverage.** The builtin is in (see above). What is left is the tree it
-   spells: route the remaining domains onto it, add `everruns search`, and bound
-   rendered help size per node.
+2. **P1, coverage.** Done for spelling: every routed command has a tree spelling,
+   derived by default. What is left is `everruns search` and bounding rendered
+   help size per node, which matters more now that `--help` is v2's only
+   discovery route.
 3. **P2, memory.** Live mount and server-managed shared Memory: done. Still
    open: a conditional update on `memory_files` so the stale-edit guard is
    atomic, the folder conventions, and the INDEX disclosure block.
@@ -374,4 +385,8 @@ v2 ships when it passes, against the same models, the cases v1 is graded on:
   harness provisions for itself? The latter dogfoods the surface; the former
   does not depend on a model behaving.
 * How much of the v1 preflight discipline survives contact with a real shell?
-  Some of it exists because `query` could not keep state between calls.
+  Some of it exists because `query` could not keep state between calls. The
+  first A/B does not settle it: the shell arm spends fewer calls without losing
+  cases, but `plugin-agent-connection-preflight`, the case the discipline is
+  written for, fails on both arms by exceeding its budget after finding the
+  right commands.

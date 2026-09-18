@@ -1,5 +1,48 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-18
+
+* **Platform Chat v2 measured against v1, and the shell surface holds: 48/63 to
+  43/63 on 4.47 tool calls against 5.02.** Three trials per case against
+  `meta/muse-spark-1.3-contributor`, same dataset, same in-process control
+  plane, same model, differing only in the harness the offline eval subject
+  reproduces. Only one case moved for a reason rather than by noise:
+  `cli-tree-help-instead-of-guessing` went 0/3 to 3/3, because on v1 the model
+  has `discover` and reaches for it, while on v2 `--help` is the only route and
+  the prompt says so. Two percentage points over three trials is not a win, so
+  the reading is "at least as good, on fewer calls", and the two shared failures
+  (`agents-find-by-purpose`, `plugin-agent-connection-preflight`) find the right
+  commands on both arms and then exceed their tool-call budget, which is the
+  model's problem and not the surface's. See
+  [Platform Chat v2](harnesses/platform-chat-v2.md).
+
+* **v2's prompt was instructing the model to use tools v2 had already given up.**
+  Moving `platform` to the shell surface stopped it contributing `discover`,
+  `query` and `execute`, but the harness prompt still said to pass loops to
+  `execute` and to verify with `query`. A prompt naming an absent tool is worse
+  than silence: the model spends a turn discovering the gap. The passages are
+  shell-native now, and a test holds that v2's prompt names no tool it does not
+  ship, which is the kind of drift only a test catches, since neither half is
+  wrong on its own.
+
+* **The eval now runs the model's shell script instead of splitting it by hand.**
+  The offline subject's v1 path approximated bash: statements were split on
+  newlines and `;`, so `for … do … done` never ran as a loop, and pipelines were
+  truncated at the first `|`. The v2 arm hands the script to a real bashkit
+  interpreter with `everruns` as a builtin, so a failure there is the model's or
+  the contract's rather than the splitter's. `--help` is the shipped rendering
+  on both arms too: it travels as a generated artifact from the real `CliTree`,
+  descriptions included, because the hand-rolled version listed bare nouns and
+  in v2 `--help` is nearly the whole discovery story.
+
+* **One dataset grades two surfaces by reading a role, not a tool name.** The
+  cases name v1's `query` and `execute`; v2 has one `bash` for both. Rather than
+  fork the dataset, the scorers classify a `bash` call by what its script runs:
+  `execute` when it invokes an operation the catalog marks as a mutation,
+  `query` otherwise. Help probes are excluded, because `everruns agents create
+  --help` names a mutation and performs none - an earlier run without that
+  exclusion reported a two-point v2 deficit that was entirely the scorer's.
+
 ## 2026-09-17
 
 * **Framework APIs gain stability tiers: LLM surface stable, classifier alpha.** Rust's `#[stable]` / `#[unstable]` are nightly-only, so `crates/everruns` marks stability with one-line rustdoc banners defined in the new `crates/everruns/src/stability.rs` helper, recorded in `knowledge/framework/api-stability.md`. First pass marks `llm` stable and `classifier` alpha; unmarked items stay provisional (treat as alpha).
