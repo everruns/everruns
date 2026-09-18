@@ -628,6 +628,67 @@ impl GrpcAdapter {
             ))
         })
     }
+
+    /// Run a registered domain command as the org's internal caller.
+    ///
+    /// `user_id: None` makes the server resolve `Caller::internal(org_id)`, which
+    /// is what the worker is: trusted, acting for the org rather than for a
+    /// person. The command still runs through `Command::run`, so policy applies
+    /// here exactly as it does for HTTP and MCP callers.
+    async fn execute_session_command(
+        &self,
+        surface: &str,
+        name: &str,
+        params: serde_json::Value,
+    ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
+        let org_id = self.require_org(surface)?;
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .execute_command(proto::ExecuteCommandRequest {
+                name: name.to_string(),
+                api_version: COMMAND_API_VERSION_V1.to_string(),
+                params_json: serde_json::to_vec(&params).map_err(|error| {
+                    AgentLoopError::store(format!("JSON serialization failed: {error}"))
+                })?,
+                org_id,
+                user_id: None,
+                idempotency_key: None,
+                metadata: Default::default(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+
+        match response
+            .result
+            .ok_or_else(|| grpc_missing_field("No command result in response"))?
+        {
+            proto::execute_command_response::Result::OkJson(ok_json) => {
+                let value = serde_json::from_slice(&ok_json).map_err(|error| {
+                    AgentLoopError::store(format!("Failed to decode command response: {error}"))
+                })?;
+                Ok(Ok(value))
+            }
+            proto::execute_command_response::Result::Error(error) => Ok(Err(error)),
+        }
+    }
+
+    /// `execute_session_command` with both failure channels folded into the
+    /// sqldb error vocabulary.
+    async fn sqldb_command(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+    ) -> SqlDbResult<serde_json::Value> {
+        match self
+            .execute_session_command("Session SQL database", name, params)
+            .await
+        {
+            Ok(Ok(value)) => Ok(value),
+            Ok(Err(error)) => Err(command_error_to_sqldb_error(error)),
+            Err(error) => Err(SessionSqlDbError::Internal(error.to_string())),
+        }
+    }
 }
 
 /// Org-scoped gRPC adapter (carries org_id for authorization).
@@ -3444,13 +3505,45 @@ fn grpc_status_to_sqldb_error(status: tonic::Status) -> SessionSqlDbError {
     }
 }
 
-fn proto_db_info_to_core(info: proto::SessionSqlDbDatabaseInfo) -> DatabaseInfo {
+/// Map a domain command failure onto the sqldb error vocabulary.
+///
+/// The command transport carries the coarse `CommandError::Kind` set, so this is
+/// the lossy step the typed RPCs used to avoid. It is lossless for the CRUD
+/// operations that go through it: those only ever raise not-found, conflict,
+/// bad-request and internal. `sql_execute`/`sql_query` keep their typed RPC
+/// precisely because their errors (query timeout, authorizer blocked) have no
+/// `CommandError` kind to survive in.
+fn command_error_to_sqldb_error(error: proto::CommandError) -> SessionSqlDbError {
+    let message = error.message;
+    match proto::command_error::Kind::try_from(error.kind) {
+        Ok(proto::command_error::Kind::NotFound) => SessionSqlDbError::DatabaseNotFound(message),
+        Ok(proto::command_error::Kind::Conflict) => {
+            SessionSqlDbError::DatabaseAlreadyExists(message)
+        }
+        Ok(proto::command_error::Kind::BadRequest) => {
+            SessionSqlDbError::InvalidDatabaseName(message)
+        }
+        Ok(proto::command_error::Kind::Forbidden) => SessionSqlDbError::AuthorizerBlocked(message),
+        _ => SessionSqlDbError::Internal(message),
+    }
+}
+
+fn parse_command_timestamp(value: &serde_json::Value) -> chrono::DateTime<chrono::Utc> {
+    value
+        .as_str()
+        .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
+        .map(|stamp| stamp.with_timezone(&chrono::Utc))
+        .unwrap_or_else(chrono::Utc::now)
+}
+
+fn command_db_info_to_core(value: &serde_json::Value) -> DatabaseInfo {
     DatabaseInfo {
-        name: info.name,
-        size_bytes: info.size_bytes,
-        page_count: info.page_count,
-        created_at: proto_timestamp_or_now(info.created_at.as_ref()),
-        updated_at: proto_timestamp_or_now(info.updated_at.as_ref()),
+        name: value["name"].as_str().unwrap_or_default().to_string(),
+        size_bytes: value["size_bytes"].as_i64().unwrap_or_default(),
+        page_count: i32::try_from(value["page_count"].as_i64().unwrap_or_default())
+            .unwrap_or_default(),
+        created_at: parse_command_timestamp(&value["created_at"]),
+        updated_at: parse_command_timestamp(&value["updated_at"]),
     }
 }
 
@@ -3461,37 +3554,26 @@ impl SessionSqlDbStore for GrpcAdapter {
         session_id: SessionId,
         name: &str,
     ) -> SqlDbResult<DatabaseInfo> {
-        let mut client = self.client.inner.lock().await;
-        let request = proto::SessionSqlDbCreateDatabaseRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            name: name.to_string(),
-        };
-        let response = client
-            .session_sql_db_create_database(request)
-            .await
-            .map_err(grpc_status_to_sqldb_error)?;
-        let db = response
-            .into_inner()
-            .database
-            .ok_or_else(|| SessionSqlDbError::Internal("Missing database in response".into()))?;
-        Ok(proto_db_info_to_core(db))
+        let value = self
+            .sqldb_command(
+                "create_session_database",
+                serde_json::json!({ "session_id": session_id.to_string(), "name": name }),
+            )
+            .await?;
+        Ok(command_db_info_to_core(&value))
     }
 
     async fn list_databases(&self, session_id: SessionId) -> SqlDbResult<Vec<DatabaseInfo>> {
-        let mut client = self.client.inner.lock().await;
-        let request = proto::SessionSqlDbListDatabasesRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-        };
-        let response = client
-            .session_sql_db_list_databases(request)
-            .await
-            .map_err(grpc_status_to_sqldb_error)?;
-        Ok(response
-            .into_inner()
-            .databases
-            .into_iter()
-            .map(proto_db_info_to_core)
-            .collect())
+        let value = self
+            .sqldb_command(
+                "list_session_databases",
+                serde_json::json!({ "session_id": session_id.to_string() }),
+            )
+            .await?;
+        Ok(value
+            .as_array()
+            .map(|items| items.iter().map(command_db_info_to_core).collect())
+            .unwrap_or_default())
     }
 
     async fn get_database(
@@ -3499,29 +3581,29 @@ impl SessionSqlDbStore for GrpcAdapter {
         session_id: SessionId,
         name: &str,
     ) -> SqlDbResult<Option<DatabaseInfo>> {
-        let mut client = self.client.inner.lock().await;
-        let request = proto::SessionSqlDbGetDatabaseRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            name: name.to_string(),
-        };
-        let response = client
-            .session_sql_db_get_database(request)
+        // The command answers a missing database with NotFound; the store
+        // contract answers with `None`.
+        match self
+            .sqldb_command(
+                "get_session_database",
+                serde_json::json!({ "session_id": session_id.to_string(), "name": name }),
+            )
             .await
-            .map_err(grpc_status_to_sqldb_error)?;
-        Ok(response.into_inner().database.map(proto_db_info_to_core))
+        {
+            Ok(value) => Ok(Some(command_db_info_to_core(&value))),
+            Err(SessionSqlDbError::DatabaseNotFound(_)) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     async fn delete_database(&self, session_id: SessionId, name: &str) -> SqlDbResult<bool> {
-        let mut client = self.client.inner.lock().await;
-        let request = proto::SessionSqlDbDeleteDatabaseRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            name: name.to_string(),
-        };
-        let response = client
-            .session_sql_db_delete_database(request)
-            .await
-            .map_err(grpc_status_to_sqldb_error)?;
-        Ok(response.into_inner().deleted)
+        let value = self
+            .sqldb_command(
+                "delete_session_database",
+                serde_json::json!({ "session_id": session_id.to_string(), "name": name }),
+            )
+            .await?;
+        Ok(value["deleted"].as_bool().unwrap_or(false))
     }
 
     async fn sql_execute(
@@ -3587,36 +3669,52 @@ impl SessionSqlDbStore for GrpcAdapter {
         db_name: &str,
         table: Option<&str>,
     ) -> SqlDbResult<Vec<TableSchema>> {
-        let mut client = self.client.inner.lock().await;
-        let request = proto::SessionSqlDbSchemaRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            db_name: db_name.to_string(),
-            table: table.map(|t| t.to_string()),
-        };
-        let response = client
-            .session_sql_db_schema(request)
-            .await
-            .map_err(grpc_status_to_sqldb_error)?;
-        Ok(response
-            .into_inner()
-            .tables
-            .into_iter()
-            .map(|t| TableSchema {
-                name: t.name,
-                columns: t
-                    .columns
-                    .into_iter()
-                    .map(|c| ColumnSchema {
-                        name: c.name,
-                        column_type: c.column_type,
-                        notnull: c.notnull,
-                        pk: c.pk,
-                        default_value: c.default_value,
+        let value = self
+            .sqldb_command(
+                "get_session_database_schema",
+                serde_json::json!({
+                    "session_id": session_id.to_string(),
+                    "name": db_name,
+                    "table": table,
+                }),
+            )
+            .await?;
+
+        Ok(value["tables"]
+            .as_array()
+            .map(|tables| {
+                tables
+                    .iter()
+                    .map(|table| TableSchema {
+                        name: table["name"].as_str().unwrap_or_default().to_string(),
+                        columns: table["columns"]
+                            .as_array()
+                            .map(|columns| {
+                                columns
+                                    .iter()
+                                    .map(|column| ColumnSchema {
+                                        name: column["name"]
+                                            .as_str()
+                                            .unwrap_or_default()
+                                            .to_string(),
+                                        column_type: column["type"]
+                                            .as_str()
+                                            .unwrap_or_default()
+                                            .to_string(),
+                                        notnull: column["notnull"].as_bool().unwrap_or(false),
+                                        pk: column["pk"].as_bool().unwrap_or(false),
+                                        default_value: column["default_value"]
+                                            .as_str()
+                                            .map(|text| text.to_string()),
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        row_count: table["row_count"].as_i64().unwrap_or_default(),
                     })
-                    .collect(),
-                row_count: t.row_count,
+                    .collect()
             })
-            .collect())
+            .unwrap_or_default())
     }
 }
 
@@ -4270,24 +4368,64 @@ mod tests {
     }
 
     #[test]
-    fn test_proto_db_info_to_core() {
-        let proto = proto::SessionSqlDbDatabaseInfo {
-            name: "test".into(),
-            size_bytes: 4096,
-            page_count: 1,
-            created_at: Some(proto::Timestamp {
-                seconds: 1700000000,
-                nanos: 0,
-            }),
-            updated_at: Some(proto::Timestamp {
-                seconds: 1700000000,
-                nanos: 0,
-            }),
-        };
-        let info = proto_db_info_to_core(proto);
+    fn command_db_info_decodes_the_command_json_shape() {
+        // Pins this against `DatabaseInfoResponse` in
+        // `crates/server/src/api/session_databases.rs`: RFC 3339 strings, not
+        // proto timestamps. A change there that this misses is a silent
+        // now()-for-created_at on every database the agent lists.
+        let value = serde_json::json!({
+            "name": "test",
+            "size_bytes": 4096,
+            "page_count": 1,
+            "created_at": "2023-11-14T22:13:20Z",
+            "updated_at": "2023-11-14T22:13:20Z",
+        });
+
+        let info = command_db_info_to_core(&value);
+
         assert_eq!(info.name, "test");
         assert_eq!(info.size_bytes, 4096);
         assert_eq!(info.page_count, 1);
+        assert_eq!(info.created_at.timestamp(), 1700000000);
+        assert_eq!(info.updated_at.timestamp(), 1700000000);
+    }
+
+    #[test]
+    fn command_errors_keep_their_sqldb_meaning() {
+        for (kind, matches) in [
+            (
+                proto::command_error::Kind::NotFound,
+                matches!(
+                    command_error_to_sqldb_error(proto::CommandError {
+                        kind: proto::command_error::Kind::NotFound as i32,
+                        message: "missing".into(),
+                    }),
+                    SessionSqlDbError::DatabaseNotFound(_)
+                ),
+            ),
+            (
+                proto::command_error::Kind::Conflict,
+                matches!(
+                    command_error_to_sqldb_error(proto::CommandError {
+                        kind: proto::command_error::Kind::Conflict as i32,
+                        message: "exists".into(),
+                    }),
+                    SessionSqlDbError::DatabaseAlreadyExists(_)
+                ),
+            ),
+            (
+                proto::command_error::Kind::BadRequest,
+                matches!(
+                    command_error_to_sqldb_error(proto::CommandError {
+                        kind: proto::command_error::Kind::BadRequest as i32,
+                        message: "bad name".into(),
+                    }),
+                    SessionSqlDbError::InvalidDatabaseName(_)
+                ),
+            ),
+        ] {
+            assert!(matches, "{kind:?} lost its sqldb meaning");
+        }
     }
 
     #[test]

@@ -233,16 +233,12 @@ service WorkerService {
     // Session-scoped SQL databases (SQLite over PostgreSQL VFS)
 
     // Create a named database in a session
-    rpc SessionSqlDbCreateDatabase(SessionSqlDbCreateDatabaseRequest) returns (SessionSqlDbCreateDatabaseResponse);
 
     // List all databases for a session
-    rpc SessionSqlDbListDatabases(SessionSqlDbListDatabasesRequest) returns (SessionSqlDbListDatabasesResponse);
 
     // Get metadata for a specific database
-    rpc SessionSqlDbGetDatabase(SessionSqlDbGetDatabaseRequest) returns (SessionSqlDbGetDatabaseResponse);
 
     // Delete a database and all its pages
-    rpc SessionSqlDbDeleteDatabase(SessionSqlDbDeleteDatabaseRequest) returns (SessionSqlDbDeleteDatabaseResponse);
 
     // Execute DDL/DML SQL (auto-creates database if needed)
     rpc SessionSqlDbExecute(SessionSqlDbExecuteRequest) returns (SessionSqlDbExecuteResponse);
@@ -251,7 +247,6 @@ service WorkerService {
     rpc SessionSqlDbQuery(SessionSqlDbQueryRequest) returns (SessionSqlDbQueryResponse);
 
     // Get schema for tables in a database
-    rpc SessionSqlDbSchema(SessionSqlDbSchemaRequest) returns (SessionSqlDbSchemaResponse);
 
     // === Platform management operations ===
     // Used by the platform capability to manage org-wide entities
@@ -1578,15 +1573,6 @@ message CountActiveOrgSchedulesResponse {
 // Session SQL database types
 // ============================================================================
 
-// Database metadata (mirrors core::session_sqldb::DatabaseInfo)
-message SessionSqlDbDatabaseInfo {
-    string name = 1;
-    int64 size_bytes = 2;
-    int32 page_count = 3;
-    Timestamp created_at = 4;
-    Timestamp updated_at = 5;
-}
-
 // Column schema (mirrors core::session_sqldb::ColumnSchema)
 message SessionSqlDbColumnSchema {
     string name = 1;
@@ -1605,46 +1591,11 @@ message SessionSqlDbTableSchema {
 
 // === Create database ===
 
-message SessionSqlDbCreateDatabaseRequest {
-    Uuid session_id = 1;
-    string name = 2;
-}
-
-message SessionSqlDbCreateDatabaseResponse {
-    SessionSqlDbDatabaseInfo database = 1;
-}
-
 // === List databases ===
-
-message SessionSqlDbListDatabasesRequest {
-    Uuid session_id = 1;
-}
-
-message SessionSqlDbListDatabasesResponse {
-    repeated SessionSqlDbDatabaseInfo databases = 1;
-}
 
 // === Get database ===
 
-message SessionSqlDbGetDatabaseRequest {
-    Uuid session_id = 1;
-    string name = 2;
-}
-
-message SessionSqlDbGetDatabaseResponse {
-    optional SessionSqlDbDatabaseInfo database = 1;
-}
-
 // === Delete database ===
-
-message SessionSqlDbDeleteDatabaseRequest {
-    Uuid session_id = 1;
-    string name = 2;
-}
-
-message SessionSqlDbDeleteDatabaseResponse {
-    bool deleted = 1;
-}
 
 // === Execute SQL (DDL/DML) ===
 
@@ -1675,16 +1626,6 @@ message SessionSqlDbQueryResponse {
 }
 
 // === Schema ===
-
-message SessionSqlDbSchemaRequest {
-    Uuid session_id = 1;
-    string db_name = 2;
-    optional string table = 3;
-}
-
-message SessionSqlDbSchemaResponse {
-    repeated SessionSqlDbTableSchema tables = 1;
-}
 
 // ============================================================================
 // Platform management types

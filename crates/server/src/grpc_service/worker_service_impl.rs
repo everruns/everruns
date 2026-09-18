@@ -632,33 +632,6 @@ impl WorkerService for WorkerServiceImpl {
     }
 
     // Session SQL databases.
-    async fn session_sql_db_create_database(
-        &self,
-        request: Request<SessionSqlDbCreateDatabaseRequest>,
-    ) -> Result<Response<SessionSqlDbCreateDatabaseResponse>, Status> {
-        self.handle_session_sql_db_create_database(request).await
-    }
-
-    async fn session_sql_db_list_databases(
-        &self,
-        request: Request<SessionSqlDbListDatabasesRequest>,
-    ) -> Result<Response<SessionSqlDbListDatabasesResponse>, Status> {
-        self.handle_session_sql_db_list_databases(request).await
-    }
-
-    async fn session_sql_db_get_database(
-        &self,
-        request: Request<SessionSqlDbGetDatabaseRequest>,
-    ) -> Result<Response<SessionSqlDbGetDatabaseResponse>, Status> {
-        self.handle_session_sql_db_get_database(request).await
-    }
-
-    async fn session_sql_db_delete_database(
-        &self,
-        request: Request<SessionSqlDbDeleteDatabaseRequest>,
-    ) -> Result<Response<SessionSqlDbDeleteDatabaseResponse>, Status> {
-        self.handle_session_sql_db_delete_database(request).await
-    }
 
     async fn session_sql_db_execute(
         &self,
@@ -672,13 +645,6 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<SessionSqlDbQueryRequest>,
     ) -> Result<Response<SessionSqlDbQueryResponse>, Status> {
         self.handle_session_sql_db_query(request).await
-    }
-
-    async fn session_sql_db_schema(
-        &self,
-        request: Request<SessionSqlDbSchemaRequest>,
-    ) -> Result<Response<SessionSqlDbSchemaResponse>, Status> {
-        self.handle_session_sql_db_schema(request).await
     }
 
     // Generic domain command transport.

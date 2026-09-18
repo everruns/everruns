@@ -526,7 +526,7 @@ async fn direct_worker_rpcs_do_not_leak_storage_errors() {
 /// command RPC. The bespoke `platform_*` RPCs this used to call were dead — the
 /// worker's `PlatformStore` has been on the command surface all along — so
 /// driving the tests through `ExecuteCommand` keeps them on the live path.
-async fn create_grpc_test_session(
+pub(crate) async fn create_grpc_test_session(
     service: &WorkerServiceImpl,
 ) -> (
     everruns_provider::typed_id::SessionId,
@@ -675,7 +675,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
     assert_eq!(denied.code(), tonic::Code::PermissionDenied);
 }
 
-async fn start_grpc_test_server(
+pub(crate) async fn start_grpc_test_server(
     service: WorkerServiceImpl,
 ) -> (
     String,
@@ -1438,26 +1438,6 @@ fn test_json_value_to_proto_object() {
         _ => panic!("Expected StructValue"),
     }
 }
-
-#[test]
-fn test_db_info_to_proto_roundtrip() {
-    use chrono::Utc;
-    let now = Utc::now();
-    let info = everruns_platform::session_sqldb::DatabaseInfo {
-        name: "test_db".into(),
-        size_bytes: 4096,
-        page_count: 1,
-        created_at: now,
-        updated_at: now,
-    };
-    let proto = db_info_to_proto(info);
-    assert_eq!(proto.name, "test_db");
-    assert_eq!(proto.size_bytes, 4096);
-    assert_eq!(proto.page_count, 1);
-    assert!(proto.created_at.is_some());
-    assert!(proto.updated_at.is_some());
-}
-
 // ============================================================================
 // Session task RPC tests — ListOrphanedSessionTasks
 // ============================================================================

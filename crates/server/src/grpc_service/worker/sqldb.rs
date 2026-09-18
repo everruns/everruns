@@ -7,78 +7,6 @@
 use crate::grpc_service::*;
 
 impl WorkerServiceImpl {
-    pub(crate) async fn handle_session_sql_db_create_database(
-        &self,
-        request: Request<SessionSqlDbCreateDatabaseRequest>,
-    ) -> Result<Response<SessionSqlDbCreateDatabaseResponse>, Status> {
-        let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.sqldb_store()?;
-
-        let db = store
-            .create_database(session_id.into(), &req.name)
-            .await
-            .map_err(sqldb_error_to_status)?;
-
-        Ok(Response::new(SessionSqlDbCreateDatabaseResponse {
-            database: Some(db_info_to_proto(db)),
-        }))
-    }
-
-    pub(crate) async fn handle_session_sql_db_list_databases(
-        &self,
-        request: Request<SessionSqlDbListDatabasesRequest>,
-    ) -> Result<Response<SessionSqlDbListDatabasesResponse>, Status> {
-        let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.sqldb_store()?;
-
-        let databases = store
-            .list_databases(session_id.into())
-            .await
-            .map_err(sqldb_error_to_status)?;
-
-        Ok(Response::new(SessionSqlDbListDatabasesResponse {
-            databases: databases.into_iter().map(db_info_to_proto).collect(),
-        }))
-    }
-
-    pub(crate) async fn handle_session_sql_db_get_database(
-        &self,
-        request: Request<SessionSqlDbGetDatabaseRequest>,
-    ) -> Result<Response<SessionSqlDbGetDatabaseResponse>, Status> {
-        let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.sqldb_store()?;
-
-        let db = store
-            .get_database(session_id.into(), &req.name)
-            .await
-            .map_err(sqldb_error_to_status)?;
-
-        Ok(Response::new(SessionSqlDbGetDatabaseResponse {
-            database: db.map(db_info_to_proto),
-        }))
-    }
-
-    pub(crate) async fn handle_session_sql_db_delete_database(
-        &self,
-        request: Request<SessionSqlDbDeleteDatabaseRequest>,
-    ) -> Result<Response<SessionSqlDbDeleteDatabaseResponse>, Status> {
-        let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.sqldb_store()?;
-
-        let deleted = store
-            .delete_database(session_id.into(), &req.name)
-            .await
-            .map_err(sqldb_error_to_status)?;
-
-        Ok(Response::new(SessionSqlDbDeleteDatabaseResponse {
-            deleted,
-        }))
-    }
-
     pub(crate) async fn handle_session_sql_db_execute(
         &self,
         request: Request<SessionSqlDbExecuteRequest>,
@@ -125,41 +53,89 @@ impl WorkerServiceImpl {
             truncated: result.truncated,
         }))
     }
+}
 
-    pub(crate) async fn handle_session_sql_db_schema(
-        &self,
-        request: Request<SessionSqlDbSchemaRequest>,
-    ) -> Result<Response<SessionSqlDbSchemaResponse>, Status> {
-        let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.sqldb_store()?;
+#[cfg(test)]
+mod tests {
+    use crate::grpc_service::tests::{
+        create_grpc_test_session, start_grpc_test_server, test_worker_service,
+    };
+    use everruns_platform::session_sqldb::SessionSqlDbStore;
+    use std::sync::Arc;
 
-        let tables = store
-            .sql_schema(session_id.into(), &req.db_name, req.table.as_deref())
+    /// The session-database CRUD operations reach the server through
+    /// `ExecuteCommand` rather than bespoke RPCs. The worker calls with
+    /// `user_id: None`, so the server resolves `Caller::internal(org_id)`.
+    ///
+    /// End to end on purpose: the unit tests either side of this boundary both
+    /// passed while the command `Ctx` was built without a sqldb store, which
+    /// failed every one of these calls with "not configured". Only a real client
+    /// against a real service catches that.
+    #[tokio::test]
+    async fn session_database_crud_runs_over_the_command_transport() {
+        let service = test_worker_service().await;
+        let (session_id, _harness_id) = create_grpc_test_session(&service).await;
+
+        let (addr, shutdown_tx, server) = start_grpc_test_server(service).await;
+        let client = everruns_worker::GrpcClient::connect(&addr)
             .await
-            .map_err(sqldb_error_to_status)?;
+            .expect("worker grpc client should connect");
+        let store: Arc<dyn SessionSqlDbStore> =
+            Arc::new(everruns_worker::grpc_adapters::GrpcAdapter::new_org_scoped(
+                client,
+                everruns_core::DEFAULT_ORG_ID,
+            ));
 
-        let proto_tables: Vec<proto::SessionSqlDbTableSchema> = tables
-            .into_iter()
-            .map(|t| proto::SessionSqlDbTableSchema {
-                name: t.name,
-                columns: t
-                    .columns
-                    .into_iter()
-                    .map(|c| proto::SessionSqlDbColumnSchema {
-                        name: c.name,
-                        column_type: c.column_type,
-                        notnull: c.notnull,
-                        pk: c.pk,
-                        default_value: c.default_value,
-                    })
-                    .collect(),
-                row_count: t.row_count,
-            })
-            .collect();
+        let created = store
+            .create_database(session_id, "notes")
+            .await
+            .expect("create_session_database over the command transport");
+        assert_eq!(created.name, "notes");
 
-        Ok(Response::new(SessionSqlDbSchemaResponse {
-            tables: proto_tables,
-        }))
+        let listed = store.list_databases(session_id).await.expect("list");
+        assert!(
+            listed.iter().any(|db| db.name == "notes"),
+            "created database missing from the listing: {listed:?}"
+        );
+
+        let fetched = store.get_database(session_id, "notes").await.expect("get");
+        assert_eq!(fetched.map(|db| db.name), Some("notes".to_string()));
+
+        // A missing database is NotFound over the command transport and `None`
+        // in the store contract.
+        let absent = store
+            .get_database(session_id, "absent")
+            .await
+            .expect("get absent");
+        assert!(
+            absent.is_none(),
+            "expected None for a database that does not exist"
+        );
+
+        let schema = store
+            .sql_schema(session_id, "notes", None)
+            .await
+            .expect("schema");
+        assert!(
+            schema.is_empty(),
+            "a fresh database has no tables: {schema:?}"
+        );
+
+        assert!(
+            store
+                .delete_database(session_id, "notes")
+                .await
+                .expect("delete")
+        );
+        assert!(
+            store
+                .get_database(session_id, "notes")
+                .await
+                .expect("get after delete")
+                .is_none()
+        );
+
+        let _ = shutdown_tx.send(());
+        let _ = server.await;
     }
 }

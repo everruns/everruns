@@ -193,20 +193,10 @@ use everruns_internal_protocol::proto::{
     SessionListDirectoryResponse,
     SessionReadFileRequest,
     SessionReadFileResponse,
-    SessionSqlDbCreateDatabaseRequest,
-    SessionSqlDbCreateDatabaseResponse,
-    SessionSqlDbDeleteDatabaseRequest,
-    SessionSqlDbDeleteDatabaseResponse,
     SessionSqlDbExecuteRequest,
     SessionSqlDbExecuteResponse,
-    SessionSqlDbGetDatabaseRequest,
-    SessionSqlDbGetDatabaseResponse,
-    SessionSqlDbListDatabasesRequest,
-    SessionSqlDbListDatabasesResponse,
     SessionSqlDbQueryRequest,
     SessionSqlDbQueryResponse,
-    SessionSqlDbSchemaRequest,
-    SessionSqlDbSchemaResponse,
     SessionStatFileRequest,
     SessionStatFileResponse,
     SessionStorageDeleteSecretRequest,
@@ -709,6 +699,13 @@ impl WorkerServiceImpl {
         // gRPC worker dispatch, not just the in-process direct path.
         .with_event_service(Arc::new(self.event_service.clone()));
 
+        // The session-database commands are the worker's only path to sqldb since
+        // the bespoke RPCs went away, so a Ctx without this store fails every one
+        // of them with "not configured".
+        if let Some(store) = &self.sqldb_store {
+            ctx = ctx.with_sqldb_store(store.clone());
+        }
+
         if let Some(runner) = &self.runner {
             let message_service = Arc::new(crate::domains::messages::MessageService::new(
                 self.db.clone(),
@@ -1108,20 +1105,6 @@ fn sqldb_error_to_status(e: everruns_platform::session_sqldb::SessionSqlDbError)
             tracing::error!("Internal sqldb error: {}", e);
             Status::internal("Internal SQL database error")
         }
-    }
-}
-
-/// Convert a DatabaseInfo to its proto representation.
-fn db_info_to_proto(
-    db: everruns_platform::session_sqldb::DatabaseInfo,
-) -> proto::SessionSqlDbDatabaseInfo {
-    use everruns_internal_protocol::datetime_to_proto_timestamp;
-    proto::SessionSqlDbDatabaseInfo {
-        name: db.name,
-        size_bytes: db.size_bytes,
-        page_count: db.page_count,
-        created_at: Some(datetime_to_proto_timestamp(db.created_at)),
-        updated_at: Some(datetime_to_proto_timestamp(db.updated_at)),
     }
 }
 
