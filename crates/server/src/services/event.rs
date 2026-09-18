@@ -246,9 +246,10 @@ impl EventService {
         metadata
             .entry("initiator_principal_id".to_string())
             .or_insert_with(|| serde_json::Value::String(session.owner_principal_id.to_string()));
-        metadata
-            .entry("acting_principal_id".to_string())
-            .or_insert_with(|| serde_json::Value::String(acting.id.to_string()));
+        metadata.insert(
+            "acting_principal_id".to_string(),
+            serde_json::Value::String(acting.id.to_string()),
+        );
         request.metadata = Some(serde_json::Value::Object(metadata));
     }
 
@@ -636,11 +637,15 @@ mod tests {
     use super::*;
     use crate::event_delivery::EventDelivery;
     use crate::storage::StorageBackend;
-    use crate::storage::models::{CreateSessionParticipantRow, CreateSessionRow};
-    use everruns_core::events::{EventContext, InputMessageData, OutputMessageCompletedData};
+    use crate::storage::models::{
+        CreatePrincipalRow, CreateSessionParticipantRow, CreateSessionRow,
+    };
+    use everruns_core::events::{
+        EventContext, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
+    };
     use everruns_core::{DEFAULT_ORG_ID, Message};
     use everruns_platform::SessionParticipantRole;
-    use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId};
+    use everruns_provider::typed_id::{AgentId, AgentIdentityId, HarnessId, PrincipalId};
     use std::sync::Arc;
 
     fn sample_metadata() -> AgentVersionEventMetadata {
@@ -792,5 +797,81 @@ mod tests {
                 .and_then(|value| value.as_str()),
             Some(guest.id.to_string().as_str())
         );
+    }
+
+    #[tokio::test]
+    async fn service_mcp_event_preserves_initiator_and_overrides_acting_principal() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let identity_id = AgentIdentityId::new();
+        db.create_principal(CreatePrincipalRow {
+            id: PrincipalId::new(),
+            org_id: DEFAULT_ORG_ID,
+            kind: "agent_identity".to_string(),
+            subject_id: Some(identity_id.uuid()),
+            parent_principal_id: None,
+            resolved_user_id: None,
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+        let mut input = test_session_input(AgentId::new());
+        input.agent_id = None;
+        input.harness_id = None;
+        input.agent_identity_id = Some(identity_id);
+        input.mcp_servers = serde_json::json!({
+            "linear": {
+                "use": "catalog:linear",
+                "actsAs": "service"
+            }
+        });
+        let session = db.create_session(input).await.unwrap();
+        let initiator = PrincipalId::new();
+        let wrong_actor = PrincipalId::new();
+
+        let event = event_service
+            .emit(
+                EventRequest::new(
+                    session.id,
+                    EventContext::empty(),
+                    ToolCompletedData::success(
+                        "call-1".to_string(),
+                        "mcp_linear__create_issue".to_string(),
+                        Vec::new(),
+                        None,
+                    ),
+                )
+                .with_metadata(serde_json::json!({
+                    "initiator_principal_id": initiator.to_string(),
+                    "acting_principal_id": wrong_actor.to_string()
+                })),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            event
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("initiator_principal_id"))
+                .and_then(|value| value.as_str()),
+            Some(initiator.to_string().as_str())
+        );
+        let acting_principal_id: PrincipalId = event
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("acting_principal_id"))
+            .and_then(|value| value.as_str())
+            .unwrap()
+            .parse()
+            .unwrap();
+        let acting = db
+            .get_principal(DEFAULT_ORG_ID, acting_principal_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(acting_principal_id, wrong_actor);
+        assert_eq!(acting.kind, "agent_identity");
+        assert_eq!(acting.subject_id, Some(identity_id.uuid()));
     }
 }

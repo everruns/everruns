@@ -34,7 +34,8 @@ use super::models::{
 use crate::auth::oauth::GitHubAppService;
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService};
 use crate::oauth_client::{
-    EgressOAuthRefreshExchange, OAuthRefreshExchange, OAuthRefreshRequest, OAuthTokenResponse,
+    EgressOAuthRefreshExchange, OAuthRefreshError, OAuthRefreshExchange, OAuthRefreshRequest,
+    OAuthTokenResponse,
 };
 
 const OAUTH_REFRESH_SKEW: Duration = Duration::seconds(60);
@@ -225,7 +226,7 @@ impl DbConnectionResolver {
         &self,
         config: OAuthClientConfig,
         refresh_token: String,
-    ) -> Option<OAuthTokenResponse> {
+    ) -> std::result::Result<OAuthTokenResponse, OAuthRefreshError> {
         match self
             .oauth_refresh
             .exchange(OAuthRefreshRequest {
@@ -236,12 +237,13 @@ impl DbConnectionResolver {
             })
             .await
         {
-            Ok(token) => Some(token),
-            Err((status, _)) => {
+            Ok(token) => Ok(token),
+            Err(OAuthRefreshError::InvalidGrant) => Err(OAuthRefreshError::InvalidGrant),
+            Err(OAuthRefreshError::Failed(status)) => {
                 // Do not expose provider responses or credentials. Returning no
                 // token preserves the existing connection_required behavior.
                 tracing::warn!(%status, "MCP OAuth token refresh failed");
-                None
+                Err(OAuthRefreshError::Failed(status))
             }
         }
     }
@@ -291,7 +293,7 @@ impl DbConnectionResolver {
         let Some(config) = self.oauth_client_config(session_id, server_id).await? else {
             return Ok(None);
         };
-        let Some(token) = self.exchange_refresh(config, refresh_token.clone()).await else {
+        let Ok(token) = self.exchange_refresh(config, refresh_token.clone()).await else {
             return Ok(None);
         };
         let rotated_refresh = token.refresh_token.as_deref().unwrap_or(&refresh_token);
@@ -375,7 +377,7 @@ impl DbConnectionResolver {
         let Some(config) = self.oauth_client_config(session_id, server_id).await? else {
             return Ok(None);
         };
-        let Some(token) = self.exchange_refresh(config, refresh_token.clone()).await else {
+        let Ok(token) = self.exchange_refresh(config, refresh_token.clone()).await else {
             return Ok(None);
         };
         let rotated_refresh = token.refresh_token.as_deref().unwrap_or(&refresh_token);
@@ -420,9 +422,9 @@ impl DbConnectionResolver {
             return Ok(None);
         };
         if row.connection_type != "oauth"
-            || !row
+            || row
                 .expires_at
-                .is_some_and(|expiry| expiry <= Utc::now() + OAUTH_REFRESH_SKEW)
+                .is_none_or(|expiry| expiry > Utc::now() + OAUTH_REFRESH_SKEW)
         {
             return self
                 .decrypt(access_token_encrypted, "OAuth access token")
@@ -445,9 +447,9 @@ impl DbConnectionResolver {
         let Some(access_token_encrypted) = row.access_token_encrypted.as_deref() else {
             return Ok(None);
         };
-        if !row
+        if row
             .expires_at
-            .is_some_and(|expiry| expiry <= Utc::now() + OAUTH_REFRESH_SKEW)
+            .is_none_or(|expiry| expiry > Utc::now() + OAUTH_REFRESH_SKEW)
         {
             return self
                 .decrypt(access_token_encrypted, "OAuth access token")
@@ -460,8 +462,20 @@ impl DbConnectionResolver {
         let Some(config) = self.oauth_client_config(session_id, server_id).await? else {
             return Ok(None);
         };
-        let Some(token) = self.exchange_refresh(config, refresh_token.clone()).await else {
-            return Ok(None);
+        let token = match self.exchange_refresh(config, refresh_token.clone()).await {
+            Ok(token) => token,
+            Err(OAuthRefreshError::InvalidGrant) => {
+                self.db
+                    .delete_agent_identity_connection(row.agent_identity_id, &row.provider)
+                    .await
+                    .map_err(|e| {
+                        AgentLoopError::store(format!(
+                            "Failed to revoke invalid identity OAuth grant: {e}"
+                        ))
+                    })?;
+                return Ok(None);
+            }
+            Err(OAuthRefreshError::Failed(_)) => return Ok(None),
         };
         let rotated_refresh = token.refresh_token.as_deref().unwrap_or(&refresh_token);
         let fresh_access_token = token.access_token.clone();
@@ -775,7 +789,13 @@ mod tests {
     struct FakeRefreshExchange {
         calls: AtomicUsize,
         delay: StdDuration,
-        fail: bool,
+        result: FakeRefreshResult,
+    }
+    #[derive(Clone, Copy)]
+    enum FakeRefreshResult {
+        Success,
+        Failed,
+        InvalidGrant,
     }
 
     #[async_trait]
@@ -783,12 +803,20 @@ mod tests {
         async fn exchange(
             &self,
             request: OAuthRefreshRequest,
-        ) -> std::result::Result<OAuthTokenResponse, (axum::http::StatusCode, String)> {
+        ) -> std::result::Result<OAuthTokenResponse, OAuthRefreshError> {
             assert_eq!(request.refresh_token, "old-refresh");
             self.calls.fetch_add(1, Ordering::SeqCst);
             tokio::time::sleep(self.delay).await;
-            if self.fail {
-                return Err((axum::http::StatusCode::BAD_GATEWAY, "provider error".into()));
+            match self.result {
+                FakeRefreshResult::Failed => {
+                    return Err(OAuthRefreshError::Failed(
+                        axum::http::StatusCode::BAD_GATEWAY,
+                    ));
+                }
+                FakeRefreshResult::InvalidGrant => {
+                    return Err(OAuthRefreshError::InvalidGrant);
+                }
+                FakeRefreshResult::Success => {}
             }
             Ok(OAuthTokenResponse {
                 access_token: "fresh-access".to_string(),
@@ -1024,7 +1052,7 @@ mod tests {
         let exchange = Arc::new(FakeRefreshExchange {
             calls: AtomicUsize::new(0),
             delay: StdDuration::ZERO,
-            fail: false,
+            result: FakeRefreshResult::Success,
         });
         DbConnectionResolver::with_oauth_refresh(
             fixture.db.clone(),
@@ -1258,33 +1286,73 @@ mod tests {
 
     #[tokio::test]
     async fn two_different_invoking_users_reach_the_remote_as_the_same_identity() {
-        // One agent identity, two sessions owned by different humans. A service
-        // attachment must present the agent's credential in both, or "acts as
-        // itself" would not hold across users.
         let first = mcp_setup(ATTENDED, true, true).await;
-        let second = mcp_setup(ATTENDED, true, true).await;
-        assert_ne!(
-            first.user_id, second.user_id,
-            "the two sessions must have different humans or this proves nothing"
-        );
+        let second_user_id = Uuid::now_v7();
+        let second_principal_id = PrincipalId::from_seed(43);
+        first
+            .db
+            .create_principal(CreatePrincipalRow {
+                id: second_principal_id,
+                org_id: DEFAULT_ORG_ID,
+                kind: ATTENDED.to_string(),
+                subject_id: Some(Uuid::now_v7()),
+                parent_principal_id: None,
+                resolved_user_id: Some(second_user_id),
+                metadata: serde_json::json!({}),
+            })
+            .await
+            .unwrap();
+        let mut second_input = session_input(Some(second_user_id));
+        second_input.owner_principal_id = second_principal_id;
+        second_input.agent_identity_id = Some(first.identity_id);
+        let second_session = first.db.create_session(second_input).await.unwrap();
+        first
+            .db
+            .upsert_user_connection(CreateUserConnectionRow {
+                user_id: second_user_id,
+                provider: first.provider.clone(),
+                connection_type: "oauth".to_string(),
+                provider_user_id: None,
+                provider_username: Some("second-human".to_string()),
+                access_token_encrypted: Some(
+                    first
+                        .encryption
+                        .encrypt_string("second-user-token")
+                        .unwrap(),
+                ),
+                refresh_token_encrypted: None,
+                scopes: None,
+                expires_at: None,
+                installation_id: None,
+                provider_metadata: None,
+            })
+            .await
+            .unwrap();
+        let resolver = resolver_for(&first);
 
-        let first_token = resolver_for(&first)
+        let first_token = resolver
             .get_mcp_connection_token(first.session_id, &first.provider, McpServerActsAs::Service)
             .await
             .unwrap();
-        let second_token = resolver_for(&second)
-            .get_mcp_connection_token(
-                second.session_id,
-                &second.provider,
-                McpServerActsAs::Service,
-            )
+        let second_token = resolver
+            .get_mcp_connection_token(second_session.id, &first.provider, McpServerActsAs::Service)
             .await
             .unwrap();
 
         assert_eq!(first_token.as_deref(), Some("identity-token"));
         assert_eq!(second_token, first_token);
-        // Neither user's own grant leaked in, despite both holding one.
         assert_ne!(first_token.as_deref(), Some("user-token"));
+        assert_ne!(second_token.as_deref(), Some("second-user-token"));
+        assert_ne!(first.user_id, second_user_id);
+        assert_eq!(
+            first
+                .db
+                .list_agent_identity_connections(first.identity_id)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]
@@ -1381,7 +1449,7 @@ mod tests {
         let exchange = Arc::new(FakeRefreshExchange {
             calls: AtomicUsize::new(0),
             delay: StdDuration::ZERO,
-            fail: false,
+            result: FakeRefreshResult::Success,
         });
         let resolver = DbConnectionResolver::with_oauth_refresh(
             db.clone(),
@@ -1418,6 +1486,137 @@ mod tests {
         assert_eq!(updated.scopes.as_deref(), Some("email.send"));
         assert!(updated.expires_at.is_some_and(|value| value > Utc::now()));
     }
+    #[tokio::test]
+    async fn expired_identity_grant_refreshes_and_persists_rotated_grant() {
+        let fixture = mcp_setup(ATTENDED, false, false).await;
+        fixture
+            .db
+            .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
+                agent_identity_id: fixture.identity_id,
+                provider: fixture.provider.clone(),
+                connection_type: "oauth".to_string(),
+                provider_user_id: None,
+                provider_username: Some("the-agent".to_string()),
+                access_token_encrypted: Some(
+                    fixture.encryption.encrypt_string("stale-access").unwrap(),
+                ),
+                refresh_token_encrypted: Some(
+                    fixture.encryption.encrypt_string("old-refresh").unwrap(),
+                ),
+                scopes: None,
+                expires_at: Some(Utc::now() - Duration::minutes(1)),
+                installation_id: None,
+                provider_metadata: None,
+            })
+            .await
+            .unwrap();
+        let exchange = Arc::new(FakeRefreshExchange {
+            calls: AtomicUsize::new(0),
+            delay: StdDuration::ZERO,
+            result: FakeRefreshResult::Success,
+        });
+        let resolver = DbConnectionResolver::with_oauth_refresh(
+            fixture.db.clone(),
+            fixture.encryption.clone(),
+            None,
+            exchange.clone(),
+        );
+
+        let token = resolver
+            .get_mcp_connection_token(
+                fixture.session_id,
+                &fixture.provider,
+                McpServerActsAs::Service,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(token.as_deref(), Some("fresh-access"));
+        assert_eq!(exchange.calls.load(Ordering::SeqCst), 1);
+        let updated = fixture
+            .db
+            .get_agent_identity_connection(fixture.identity_id, &fixture.provider)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            fixture
+                .encryption
+                .decrypt_to_string(updated.access_token_encrypted.as_deref().unwrap())
+                .unwrap(),
+            "fresh-access"
+        );
+        assert_eq!(
+            fixture
+                .encryption
+                .decrypt_to_string(updated.refresh_token_encrypted.as_deref().unwrap())
+                .unwrap(),
+            "rotated-refresh"
+        );
+        assert_eq!(updated.scopes.as_deref(), Some("email.send"));
+        assert!(updated.expires_at.is_some_and(|value| value > Utc::now()));
+    }
+
+    #[tokio::test]
+    async fn invalid_identity_refresh_grant_is_revoked_without_retry() {
+        let fixture = mcp_setup(ATTENDED, false, false).await;
+        fixture
+            .db
+            .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
+                agent_identity_id: fixture.identity_id,
+                provider: fixture.provider.clone(),
+                connection_type: "oauth".to_string(),
+                provider_user_id: None,
+                provider_username: Some("the-agent".to_string()),
+                access_token_encrypted: Some(
+                    fixture.encryption.encrypt_string("stale-access").unwrap(),
+                ),
+                refresh_token_encrypted: Some(
+                    fixture.encryption.encrypt_string("old-refresh").unwrap(),
+                ),
+                scopes: None,
+                expires_at: Some(Utc::now() - Duration::minutes(1)),
+                installation_id: None,
+                provider_metadata: None,
+            })
+            .await
+            .unwrap();
+        let exchange = Arc::new(FakeRefreshExchange {
+            calls: AtomicUsize::new(0),
+            delay: StdDuration::ZERO,
+            result: FakeRefreshResult::InvalidGrant,
+        });
+        let resolver = DbConnectionResolver::with_oauth_refresh(
+            fixture.db.clone(),
+            fixture.encryption.clone(),
+            None,
+            exchange.clone(),
+        );
+
+        for _ in 0..2 {
+            assert_eq!(
+                resolver
+                    .get_mcp_connection_token(
+                        fixture.session_id,
+                        &fixture.provider,
+                        McpServerActsAs::Service,
+                    )
+                    .await
+                    .unwrap(),
+                None
+            );
+        }
+
+        assert_eq!(exchange.calls.load(Ordering::SeqCst), 1);
+        assert!(
+            fixture
+                .db
+                .get_agent_identity_connection(fixture.identity_id, &fixture.provider)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
 
     #[tokio::test]
     async fn expired_session_grant_refreshes_and_persists_rotated_grant() {
@@ -1438,7 +1637,7 @@ mod tests {
         let exchange = Arc::new(FakeRefreshExchange {
             calls: AtomicUsize::new(0),
             delay: StdDuration::ZERO,
-            fail: false,
+            result: FakeRefreshResult::Success,
         });
         let resolver = DbConnectionResolver::with_oauth_refresh(
             db.clone(),
@@ -1496,7 +1695,7 @@ mod tests {
         let exchange = Arc::new(FakeRefreshExchange {
             calls: AtomicUsize::new(0),
             delay: StdDuration::from_millis(50),
-            fail: false,
+            result: FakeRefreshResult::Success,
         });
         let resolver = Arc::new(DbConnectionResolver::with_oauth_refresh(
             db,
@@ -1546,7 +1745,7 @@ mod tests {
         let exchange = Arc::new(FakeRefreshExchange {
             calls: AtomicUsize::new(0),
             delay: StdDuration::ZERO,
-            fail: true,
+            result: FakeRefreshResult::Failed,
         });
         let resolver = DbConnectionResolver::with_oauth_refresh(
             db.clone(),
