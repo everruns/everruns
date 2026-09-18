@@ -2,6 +2,7 @@ use super::*;
 use crate::kernel_imports::{HarnessId, ScopedMcpServer, SessionId};
 use crate::storage::models::{CreateMcpServerRow, UpdateMcpServer};
 use chrono::Utc;
+use everruns_core::{CapabilityMcpServer, CapabilityMcpServers};
 use everruns_platform::{Agent, AgentStatus, generate_agent_public_id};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -34,6 +35,32 @@ impl UserConnectionResolver for CountingConnectionResolver {
     ) -> everruns_provider::error::Result<Option<String>> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(Some("legacy-token".to_string()))
+    }
+}
+
+#[derive(Default)]
+struct ActingIdentityResolver {
+    calls: std::sync::Mutex<Vec<McpServerActsAs>>,
+}
+
+#[async_trait::async_trait]
+impl UserConnectionResolver for ActingIdentityResolver {
+    async fn get_connection_token(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+    ) -> everruns_provider::error::Result<Option<String>> {
+        Ok(Some("legacy-token".to_string()))
+    }
+
+    async fn get_mcp_connection_token(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+        acts_as: McpServerActsAs,
+    ) -> everruns_provider::error::Result<Option<String>> {
+        self.calls.lock().unwrap().push(acts_as);
+        Ok(Some(format!("{acts_as}-token")))
     }
 }
 
@@ -208,6 +235,36 @@ async fn newly_connected_token_is_visible_on_next_turn_in_same_session() {
     );
 }
 
+#[tokio::test]
+async fn contributed_identity_discovery_uses_only_the_declared_grant_path() {
+    let session_id = SessionId::new();
+    let resolver = Arc::new(ActingIdentityResolver::default());
+    let resolver_trait: Arc<dyn UserConnectionResolver> = resolver.clone();
+
+    for acts_as in [McpServerActsAs::Service, McpServerActsAs::User] {
+        let contribution = CapabilityMcpServer::new(
+            oauth_scoped_server("https://mcp.example.com/mcp", "mcp_oauth_contribution"),
+            acts_as,
+        );
+        assert_eq!(
+            resolve_scoped_mcp_discovery_token(
+                "contributed",
+                contribution.as_scoped(),
+                Some(session_id),
+                Some(&resolver_trait),
+            )
+            .await
+            .unwrap(),
+            Some(format!("{acts_as}-token"))
+        );
+    }
+
+    assert_eq!(
+        *resolver.calls.lock().unwrap(),
+        vec![McpServerActsAs::Service, McpServerActsAs::User]
+    );
+}
+
 fn test_harness() -> Harness {
     Harness {
         id: HarnessId::new(),
@@ -373,11 +430,13 @@ fn merge_effective_scoped_mcp_servers_strips_explicit_only_when_oauth() {
 }
 
 #[test]
-fn merge_with_capabilities_preserves_capability_oauth_strips_explicit() {
+fn explicit_entries_replace_capability_entries_including_acts_as() {
     use everruns_capability::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::capabilities::{Capability, CapabilityRegistry, RiskLevel};
 
-    struct OAuthMcpCapability;
+    struct OAuthMcpCapability {
+        acts_as: McpServerActsAs,
+    }
 
     impl Capability for OAuthMcpCapability {
         fn id(&self) -> &str {
@@ -389,63 +448,70 @@ fn merge_with_capabilities_preserves_capability_oauth_strips_explicit() {
         }
 
         fn description(&self) -> &str {
-            "Capability that contributes a scoped MCP server with OAuth"
+            "Capability that contributes scoped MCP servers with OAuth"
         }
 
         fn risk_level(&self) -> RiskLevel {
             RiskLevel::Low
         }
 
-        fn mcp_servers(&self) -> ScopedMcpServers {
-            let mut servers = ScopedMcpServers::default();
-            servers.insert(
-                "trusted_docs".to_string(),
-                oauth_scoped_server("https://capability.example.com/mcp", "github"),
-            );
-            servers
+        fn mcp_servers(&self) -> CapabilityMcpServers {
+            ["shared", "capability_only"]
+                .into_iter()
+                .map(|name| {
+                    (
+                        name.to_string(),
+                        CapabilityMcpServer::new(
+                            oauth_scoped_server("https://capability.example.com/mcp", "github"),
+                            self.acts_as,
+                        ),
+                    )
+                })
+                .collect()
         }
     }
 
-    let mut registry = CapabilityRegistry::new();
-    registry.register(OAuthMcpCapability);
+    for (contributed_acts_as, explicit_acts_as) in [
+        (McpServerActsAs::User, McpServerActsAs::Service),
+        (McpServerActsAs::Service, McpServerActsAs::User),
+    ] {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(OAuthMcpCapability {
+            acts_as: contributed_acts_as,
+        });
+        let mut harness = test_harness();
+        harness
+            .capabilities
+            .push(AgentCapabilityConfig::new("oauth_mcp_test"));
+        harness.mcp_servers.insert(
+            "shared".to_string(),
+            catalog_server("linear", explicit_acts_as),
+        );
+        let agent = test_agent();
+        let session = test_session(harness.id, agent.public_id);
 
-    let mut harness = test_harness();
-    harness
-        .capabilities
-        .push(AgentCapabilityConfig::new("oauth_mcp_test"));
-    // Explicit OAuth entry on a different name — must be sanitized.
-    harness.mcp_servers.insert(
-        "user_docs".to_string(),
-        oauth_scoped_server("https://harness.example.com/mcp", "github"),
-    );
+        let merged = merge_effective_scoped_mcp_servers_with_capabilities(
+            &harness,
+            Some(&agent),
+            &session,
+            &registry,
+        );
 
-    let agent = test_agent();
-    let session = test_session(harness.id, agent.public_id);
+        assert_eq!(merged.len(), 2);
+        let contributed = merged.get("capability_only").expect("contributed server");
+        assert_eq!(contributed.auth_mode, McpServerAuthMode::OAuth);
+        assert_eq!(contributed.oauth_provider_id.as_deref(), Some("github"));
+        assert_eq!(contributed.acts_as, contributed_acts_as);
 
-    let merged = merge_effective_scoped_mcp_servers_with_capabilities(
-        &harness,
-        Some(&agent),
-        &session,
-        &registry,
-    );
-
-    let trusted = merged.get("trusted_docs").expect("contributed server");
-    assert_eq!(
-        trusted.auth_mode,
-        McpServerAuthMode::OAuth,
-        "capability-contributed OAuth must be preserved"
-    );
-    assert_eq!(trusted.oauth_provider_id.as_deref(), Some("github"));
-    assert!(trusted.tool_discovery);
-
-    let user = merged.get("user_docs").expect("explicit server");
-    assert_eq!(
-        user.auth_mode,
-        McpServerAuthMode::None,
-        "explicit OAuth must be stripped"
-    );
-    assert!(user.oauth_provider_id.is_none());
-    assert!(!user.tool_discovery);
+        let shared = merged.get("shared").expect("one effective shared server");
+        assert_eq!(
+            shared.preset.as_ref().map(|preset| preset.catalog_name()),
+            Some("linear")
+        );
+        assert_eq!(shared.acts_as, explicit_acts_as);
+        assert_eq!(shared.auth_mode, McpServerAuthMode::None);
+        assert!(shared.oauth_provider_id.is_none());
+    }
 }
 
 #[test]
@@ -843,24 +909,39 @@ async fn runtime_catalog_discovery_without_cache_identity_fails_closed() {
 }
 
 #[test]
-fn capability_mcp_validation_rejects_catalog_presets_and_execution_identity() {
-    let preset = ScopedMcpServers::from([(
+fn capability_mcp_validation_rejects_presets_and_allows_declared_identity() {
+    let preset = CapabilityMcpServers::from([(
         "docs".to_string(),
-        catalog_server("linear", McpServerActsAs::None),
+        CapabilityMcpServer::new(
+            catalog_server("linear", McpServerActsAs::None),
+            McpServerActsAs::None,
+        ),
     )]);
     let error = validate_capability_mcp_servers(&preset).unwrap_err();
     assert!(error.to_string().contains("cannot use a catalog preset"));
 
-    let identity = ScopedMcpServers::from([(
-        "docs".to_string(),
-        ScopedMcpServer {
-            url: "https://docs.example.com/mcp".to_string(),
-            acts_as: McpServerActsAs::Service,
-            ..Default::default()
-        },
-    )]);
-    let error = validate_capability_mcp_servers(&identity).unwrap_err();
-    assert!(error.to_string().contains("cannot set actsAs"));
+    for acts_as in [
+        McpServerActsAs::None,
+        McpServerActsAs::Service,
+        McpServerActsAs::User,
+    ] {
+        let contribution = CapabilityMcpServers::from([(
+            "docs".to_string(),
+            CapabilityMcpServer::new(
+                ScopedMcpServer {
+                    url: "https://docs.example.com/mcp".to_string(),
+                    auth_mode: if acts_as.is_none() {
+                        McpServerAuthMode::None
+                    } else {
+                        McpServerAuthMode::OAuth
+                    },
+                    ..Default::default()
+                },
+                acts_as,
+            ),
+        )]);
+        validate_capability_mcp_servers(&contribution).unwrap();
+    }
 }
 
 #[test]

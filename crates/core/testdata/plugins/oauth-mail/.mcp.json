@@ -3,7 +3,8 @@
     "oauth-mail": {
       "type": "http",
       "url": "https://mcp.oauth-mail.test/mcp",
-      "auth": "oauth"
+      "auth": "oauth",
+      "actsAs": "user"
     }
   }
 }

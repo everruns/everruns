@@ -9,6 +9,8 @@
 mod worker_service_impl;
 
 #[cfg(test)]
+mod connection_token_tests;
+#[cfg(test)]
 mod tests;
 
 use crate::domains::mcp_servers::McpServerService;
@@ -496,6 +498,32 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
 
         Ok(())
     }
+}
+
+#[allow(clippy::result_large_err)]
+async fn resolve_connection_token(
+    resolver: &Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
+    session_id: everruns_provider::typed_id::SessionId,
+    provider: &str,
+    acts_as: &str,
+) -> Result<Option<String>, Status> {
+    let token = if acts_as.is_empty() {
+        resolver.get_connection_token(session_id, provider).await
+    } else {
+        let acts_as = match acts_as {
+            "none" => everruns_core::McpServerActsAs::None,
+            "service" => everruns_core::McpServerActsAs::Service,
+            "user" => everruns_core::McpServerActsAs::User,
+            _ => return Err(Status::invalid_argument("Invalid acts_as value")),
+        };
+        resolver
+            .get_mcp_connection_token(session_id, provider, acts_as)
+            .await
+    };
+    token.map_err(|error| {
+        tracing::error!(%error, "Failed to resolve connection token");
+        Status::internal("Failed to resolve connection token")
+    })
 }
 
 /// gRPC service implementation for worker communication

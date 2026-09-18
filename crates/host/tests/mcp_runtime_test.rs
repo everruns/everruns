@@ -10,9 +10,10 @@
 use async_trait::async_trait;
 use everruns_core::command::{CommandDescriptor, CommandSource};
 use everruns_core::{
-    Capability, CapabilityRegistry, CapabilityStatus, EgressRequest, EgressResponse, EgressResult,
-    EgressService, EgressStreamResponse, ScopedMcpServer, ScopedMcpServers, Tool,
-    ToolExecutionResult, tool_context::ToolContext,
+    Capability, CapabilityMcpServer, CapabilityMcpServers, CapabilityRegistry, CapabilityStatus,
+    EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
+    McpServerActsAs, ScopedMcpServer, ScopedMcpServers, Tool, ToolExecutionResult,
+    tool_context::ToolContext,
 };
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
@@ -220,8 +221,16 @@ impl Capability for LiveCapability {
         }]
     }
 
-    fn mcp_servers(&self) -> ScopedMcpServers {
+    fn mcp_servers(&self) -> CapabilityMcpServers {
         scoped_servers()
+            .into_iter()
+            .map(|(name, server)| {
+                (
+                    name,
+                    CapabilityMcpServer::new(server, McpServerActsAs::None),
+                )
+            })
+            .collect()
     }
 
     fn validate_config(&self, config: &Value) -> std::result::Result<(), String> {
@@ -372,6 +381,13 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
             .any(|tool| tool.name() == "live_echo")
     );
     assert!(runtime.list_commands(session_id).await.unwrap().is_empty());
+    assert!(
+        !before
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "mcp_docs__echo")
+    );
     assert_eq!(traffic.lock().unwrap().tools_list_calls, 0);
 
     let invalid = runtime
@@ -424,6 +440,13 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
         runtime.list_commands(session_id).await.unwrap()[0].name,
         "live"
     );
+    assert!(
+        active
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "mcp_docs__echo")
+    );
 
     let live_turn = runtime
         .run_text_turn(session_id, "Use the live tools")
@@ -460,6 +483,13 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
             .any(|tool| tool.name() == "live_echo")
     );
     assert!(runtime.list_commands(session_id).await.unwrap().is_empty());
+    assert!(
+        !inactive
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "mcp_docs__echo")
+    );
     runtime
         .run_text_turn(session_id, "After deactivation")
         .await

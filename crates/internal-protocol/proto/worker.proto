@@ -1408,6 +1408,9 @@ message SessionStorageListSecretsResponse {
 message GetConnectionTokenRequest {
     Uuid session_id = 1;
     string provider = 2;  // e.g. "github", "daytona", "gitlab"
+    // Empty preserves the legacy identity-preferring lookup. MCP attachments
+    // send "none", "service", or "user" to select exactly one grant path.
+    string acts_as = 3;
 }
 
 message GetConnectionTokenResponse {

@@ -71,6 +71,7 @@
 
 // Runtime types (tool definitions, capability types)
 pub mod annotation_hook;
+mod capability_mcp_server;
 pub mod capability_types;
 pub mod tool_fingerprint;
 use everruns_provider::tool_types;
@@ -477,6 +478,9 @@ pub use guardrail_gallery::{
 // chain-merge helpers, and the built-in provisioning templates moved to the
 // `everruns-platform` crate. Core keeps only the portable harness execution
 // configuration consumed during a turn.
+pub use capability_mcp_server::{
+    CapabilityMcpServer, CapabilityMcpServers, capability_mcp_servers_to_scoped,
+};
 pub use harness_definition::HarnessDefinition;
 pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,

@@ -644,8 +644,8 @@ async fn get_declarative_capability_by_public_id(
 mod tests {
     use super::*;
     use crate::kernel_imports::{
-        Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, McpServerActsAs,
-        OrgRole, ScopedMcpServer, ScopedMcpServers,
+        Caller, CapabilityMcpServer, CapabilityMcpServers, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID,
+        DefaultPermissionResolver, McpServerActsAs, McpServerAuthMode, OrgRole, ScopedMcpServer,
     };
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
@@ -674,7 +674,7 @@ mod tests {
 
     fn definition(
         name: &str,
-        mcp_servers: Option<ScopedMcpServers>,
+        mcp_servers: Option<CapabilityMcpServers>,
     ) -> DeclarativeCapabilityDefinition {
         DeclarativeCapabilityDefinition {
             name: name.to_string(),
@@ -705,14 +705,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn declarative_capability_create_and_update_reject_scoped_identity_features() {
+    async fn declarative_capability_rejects_presets_and_accepts_declared_identity() {
         let ctx = test_ctx();
-        let catalog_servers = ScopedMcpServers::from([(
+        let catalog_servers = CapabilityMcpServers::from([(
             "docs".to_string(),
-            ScopedMcpServer {
-                preset: Some("catalog:docs".parse().unwrap()),
-                ..Default::default()
-            },
+            CapabilityMcpServer::new(
+                ScopedMcpServer {
+                    preset: Some("catalog:docs".parse().unwrap()),
+                    ..Default::default()
+                },
+                McpServerActsAs::None,
+            ),
         )]);
 
         let error = CreateDeclarativeCapability(CreateDeclarativeCapabilityRequest {
@@ -729,15 +732,19 @@ mod tests {
         .execute(&ctx)
         .await
         .unwrap();
-        let identity_servers = ScopedMcpServers::from([(
+        let identity_servers = CapabilityMcpServers::from([(
             "docs".to_string(),
-            ScopedMcpServer {
-                url: "https://docs.example.com/mcp".to_string(),
-                acts_as: McpServerActsAs::User,
-                ..Default::default()
-            },
+            CapabilityMcpServer::new(
+                ScopedMcpServer {
+                    url: "https://docs.example.com/mcp".to_string(),
+                    auth_mode: McpServerAuthMode::OAuth,
+                    oauth_provider_id: Some("docs".to_string()),
+                    ..Default::default()
+                },
+                McpServerActsAs::User,
+            ),
         )]);
-        let error = UpdateDeclarativeCapabilityCmd {
+        let updated = UpdateDeclarativeCapabilityCmd {
             id: created.public_id.to_string(),
             req: UpdateDeclarativeCapabilityRequest {
                 definition: Some(definition("inline_capability", Some(identity_servers))),
@@ -746,8 +753,11 @@ mod tests {
         }
         .execute(&ctx)
         .await
-        .unwrap_err();
-        assert!(error.message().contains("cannot set actsAs"));
+        .unwrap();
+        assert_eq!(
+            updated.definition.mcp_servers.unwrap()["docs"].acts_as,
+            McpServerActsAs::User
+        );
     }
 
     #[test]

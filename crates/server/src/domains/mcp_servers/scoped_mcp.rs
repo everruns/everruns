@@ -938,10 +938,14 @@ async fn resolve_scoped_mcp_discovery_token(
         return Ok(None);
     };
 
-    resolver
-        .get_connection_token(session_id, provider)
-        .await
-        .map_err(|error| anyhow!("Failed to resolve scoped MCP discovery token: {error}"))
+    let token = if server.acts_as.is_none() {
+        resolver.get_connection_token(session_id, provider).await
+    } else {
+        resolver
+            .get_mcp_connection_token(session_id, provider, server.acts_as)
+            .await
+    };
+    token.map_err(|error| anyhow!("Failed to resolve scoped MCP discovery token: {error}"))
 }
 
 fn has_authorization_header(headers: &HashMap<String, String>) -> bool {
@@ -951,6 +955,13 @@ fn has_authorization_header(headers: &HashMap<String, String>) -> bool {
 }
 
 pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
+    validate_scoped_mcp_servers_inner(servers, false)
+}
+
+fn validate_scoped_mcp_servers_inner(
+    servers: &ScopedMcpServers,
+    allow_inline_identity: bool,
+) -> Result<()> {
     let mut sanitized = HashSet::new();
 
     for (name, server) in servers {
@@ -960,7 +971,7 @@ pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
         if server.preset.is_some() {
             validate_catalog_reference_shape(name, server)?;
         } else {
-            if server.acts_as != McpServerActsAs::None {
+            if server.acts_as != McpServerActsAs::None && !allow_inline_identity {
                 return Err(anyhow!(
                     "Scoped MCP server '{name}' with actsAs '{}' requires a catalog preset for OAuth",
                     server.acts_as
@@ -996,20 +1007,45 @@ pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
     Ok(())
 }
 
-pub fn validate_capability_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
+pub fn validate_effective_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
+    for (name, server) in servers {
+        if server.preset.is_none() {
+            validate_inline_identity_auth(name, server)?;
+        }
+    }
+    validate_scoped_mcp_servers_inner(servers, true)
+}
+
+fn validate_inline_identity_auth(name: &str, server: &ScopedMcpServer) -> Result<()> {
+    if server.acts_as.is_none() && server.auth_mode == McpServerAuthMode::OAuth {
+        return Err(anyhow!(
+            "MCP server '{name}' with OAuth must act as service or user"
+        ));
+    }
+    if !server.acts_as.is_none() && server.auth_mode != McpServerAuthMode::OAuth {
+        return Err(anyhow!(
+            "MCP server '{name}' with actsAs '{}' must use OAuth",
+            server.acts_as
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_capability_mcp_servers(
+    servers: &everruns_core::CapabilityMcpServers,
+) -> Result<()> {
     for (name, server) in servers {
         if server.preset.is_some() {
             return Err(anyhow!(
                 "Capability-contributed MCP server '{name}' cannot use a catalog preset"
             ));
         }
-        if server.acts_as != McpServerActsAs::None {
-            return Err(anyhow!(
-                "Capability-contributed MCP server '{name}' cannot set actsAs"
-            ));
-        }
+        validate_inline_identity_auth(name, server)?;
     }
-    validate_scoped_mcp_servers(servers)
+    let scoped = everruns_core::capability_mcp_servers_to_scoped(servers);
+    // Contributions are trusted registration output and may carry their own
+    // OAuth client, so they are the documented exception to the catalog-preset rule.
+    validate_scoped_mcp_servers_inner(&scoped, true)
 }
 fn validate_catalog_reference_shape(name: &str, server: &ScopedMcpServer) -> Result<()> {
     let conflicting_field = if !server.url.is_empty() {

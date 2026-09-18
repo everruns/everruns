@@ -10,8 +10,9 @@ use crate::capabilities::{
     DeclarativeCapabilitySkill, DeclarativeCapabilitySkillFile,
     validate_declarative_capability_definition,
 };
+use crate::capability_mcp_server::{CapabilityMcpServer, CapabilityMcpServers};
 use crate::mcp_server::{
-    McpServerAuthMode, McpServerTransportType, ScopedMcpServer, ScopedMcpServers,
+    McpServerActsAs, McpServerAuthMode, McpServerTransportType, ScopedMcpServer,
 };
 
 use super::file_set::PluginFileSet;
@@ -491,7 +492,7 @@ fn compile_mcp_servers(
     file_set: &PluginFileSet,
     manifest: &PluginManifest,
     warnings: &mut Vec<String>,
-) -> Result<Option<ScopedMcpServers>, String> {
+) -> Result<Option<CapabilityMcpServers>, String> {
     if manifest.is_agent_plugins_v1() {
         return Ok(compile_agent_plugins_v1_mcp(file_set, manifest, warnings));
     }
@@ -539,7 +540,7 @@ fn compile_mcp_servers(
         return Ok(None);
     }
 
-    let mut servers = ScopedMcpServers::new();
+    let mut servers = CapabilityMcpServers::new();
 
     for (server_name, server_config) in raw_map {
         // Extract transport type.
@@ -598,6 +599,8 @@ fn compile_mcp_servers(
                 McpServerAuthMode::None
             }
         };
+        let acts_as = parse_plugin_acts_as(&server_name, &server_config)?;
+        validate_plugin_auth_identity(&server_name, &auth_mode, acts_as)?;
 
         // A plugin must never bind to an existing OAuth provider — that would
         // let third-party plugin content read tokens connected for other
@@ -611,13 +614,16 @@ fn compile_mcp_servers(
 
         servers.insert(
             server_name,
-            ScopedMcpServer {
-                transport_type: McpServerTransportType::Http,
-                url,
-                headers,
-                auth_mode,
-                ..ScopedMcpServer::default()
-            },
+            CapabilityMcpServer::new(
+                ScopedMcpServer {
+                    transport_type: McpServerTransportType::Http,
+                    url,
+                    headers,
+                    auth_mode,
+                    ..ScopedMcpServer::default()
+                },
+                acts_as,
+            ),
         );
     }
 
@@ -632,7 +638,7 @@ fn compile_agent_plugins_v1_mcp(
     file_set: &PluginFileSet,
     manifest: &PluginManifest,
     warnings: &mut Vec<String>,
-) -> Option<ScopedMcpServers> {
+) -> Option<CapabilityMcpServers> {
     let content = file_set.text_file("mcp.json")?;
     let value: serde_json::Value = match serde_json::from_str(&content) {
         Ok(value) => value,
@@ -677,7 +683,7 @@ fn compile_agent_plugins_v1_mcp(
         .get("com.everruns")
         .and_then(|extension| extension.get("mcpServers"))
         .and_then(serde_json::Value::as_object);
-    let mut servers = ScopedMcpServers::new();
+    let mut servers = CapabilityMcpServers::new();
 
     for (server_name, server_config) in raw_servers {
         let entry_document = serde_json::json!({
@@ -736,8 +742,8 @@ fn compile_agent_plugins_v1_mcp(
                     .collect()
             })
             .unwrap_or_default();
-        let auth_mode = extension_servers
-            .and_then(|entries| entries.get(server_name))
+        let extension = extension_servers.and_then(|entries| entries.get(server_name));
+        let auth_mode = extension
             .and_then(|entry| entry.get("auth"))
             .and_then(serde_json::Value::as_str)
             .map(str::to_ascii_lowercase)
@@ -752,20 +758,84 @@ fn compile_agent_plugins_v1_mcp(
                 }
             })
             .unwrap_or(McpServerAuthMode::None);
+        let acts_as = match extension
+            .and_then(|entry| entry.get("actsAs").or_else(|| entry.get("acts_as")))
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("none") => McpServerActsAs::None,
+            Some("service") => McpServerActsAs::Service,
+            Some("user") => McpServerActsAs::User,
+            Some(other) => {
+                warnings.push(format!(
+                    "MCP server '{server_name}': unsupported com.everruns actsAs '{other}'; server was skipped"
+                ));
+                continue;
+            }
+            None => {
+                warnings.push(format!(
+                    "MCP server '{server_name}': com.everruns actsAs is required; server was skipped"
+                ));
+                continue;
+            }
+        };
+        if let Err(error) = validate_plugin_auth_identity(server_name, &auth_mode, acts_as) {
+            warnings.push(format!("{error}; server was skipped"));
+            continue;
+        }
 
         servers.insert(
             server_name.clone(),
-            ScopedMcpServer {
-                transport_type: McpServerTransportType::Http,
-                url: url.to_string(),
-                headers,
-                auth_mode,
-                ..ScopedMcpServer::default()
-            },
+            CapabilityMcpServer::new(
+                ScopedMcpServer {
+                    transport_type: McpServerTransportType::Http,
+                    url: url.to_string(),
+                    headers,
+                    auth_mode,
+                    ..ScopedMcpServer::default()
+                },
+                acts_as,
+            ),
         );
     }
 
     (!servers.is_empty()).then_some(servers)
+}
+
+fn parse_plugin_acts_as(
+    server_name: &str,
+    server_config: &serde_json::Value,
+) -> Result<McpServerActsAs, String> {
+    match server_config
+        .get("actsAs")
+        .or_else(|| server_config.get("acts_as"))
+        .and_then(serde_json::Value::as_str)
+    {
+        Some("none") => Ok(McpServerActsAs::None),
+        Some("service") => Ok(McpServerActsAs::Service),
+        Some("user") => Ok(McpServerActsAs::User),
+        Some(other) => Err(format!(
+            "MCP server '{server_name}': unsupported actsAs '{other}'"
+        )),
+        None => Err(format!("MCP server '{server_name}' must declare actsAs")),
+    }
+}
+
+fn validate_plugin_auth_identity(
+    server_name: &str,
+    auth_mode: &McpServerAuthMode,
+    acts_as: McpServerActsAs,
+) -> Result<(), String> {
+    if acts_as.is_none() && auth_mode == &McpServerAuthMode::OAuth {
+        return Err(format!(
+            "MCP server '{server_name}' with OAuth must act as service or user"
+        ));
+    }
+    if !acts_as.is_none() && auth_mode != &McpServerAuthMode::OAuth {
+        return Err(format!(
+            "MCP server '{server_name}' with actsAs '{acts_as}' must use OAuth"
+        ));
+    }
+    Ok(())
 }
 
 fn validate_agent_plugins_remote_url(raw_url: &str) -> Result<(), String> {
@@ -974,6 +1044,7 @@ mod tests {
                 .and_then(|servers| servers.get(name))
                 .expect("portable MCP server");
             assert_eq!(server.auth_mode, McpServerAuthMode::OAuth);
+            assert_eq!(server.acts_as, McpServerActsAs::User);
             assert_eq!(server.url, url);
             assert!(server.oauth_provider_id.is_none());
         }
@@ -989,7 +1060,7 @@ mod tests {
                 "name": "portable-tools",
                 "extensions": {
                     "com.everruns": {
-                        "mcpServers": { "remote": { "auth": "oauth" } }
+                        "mcpServers": { "remote": { "auth": "oauth", "actsAs": "user" } }
                     }
                 }
             })
@@ -1034,7 +1105,7 @@ mod tests {
         assert_eq!(remote.auth_mode, McpServerAuthMode::OAuth);
         assert_eq!(
             serde_json::to_value(remote).unwrap(),
-            serde_json::json!({"type":"http","url":"https://example.com/mcp","auth_mode":"oauth","headers":{"X-Tenant":"public"}})
+            serde_json::json!({"type":"http","url":"https://example.com/mcp","auth_mode":"oauth","headers":{"X-Tenant":"public"},"actsAs":"user"})
         );
         assert!(
             compiled
@@ -1072,7 +1143,7 @@ mod tests {
     }
 
     fn portable_manifest() -> serde_json::Value {
-        serde_json::json!({"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"portable-tools"})
+        serde_json::json!({"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"portable-tools","extensions":{"com.everruns":{"mcpServers":{"remote":{"actsAs":"none"}}}}})
     }
 
     #[test]
@@ -1179,18 +1250,18 @@ mod tests {
     #[test]
     fn legacy_mcp_preserves_public_config_and_rejects_provider_binding() {
         let fs=package(false,serde_json::json!({"name":"legacy","description":"legacy plugin"}),&[(".mcp.json",br#"{"mcpServers":{
-            "oauth":{"url":"https://example.com/mcp","auth":"oauth","headers":{"X-Custom":"1","X-Bad":5},"oauth_provider_id":"github"},
-            "unsupported":{"url":"https://example.com/other","auth":"api_key"},
-            "alias":{"url":"https://example.com/alias","auth_mode":"OAUTH"},
-            "local":{"type":"stdio","command":"npx"}
+            "oauth":{"url":"https://example.com/mcp","auth":"oauth","actsAs":"user","headers":{"X-Custom":"1","X-Bad":5},"oauth_provider_id":"github"},
+            "unsupported":{"url":"https://example.com/other","auth":"api_key","actsAs":"none"},
+            "alias":{"url":"https://example.com/alias","auth_mode":"OAUTH","acts_as":"service"},
+            "local":{"type":"stdio","command":"npx","actsAs":"none"}
         }}"#)]);
         let compiled = compile_plugin(&fs).unwrap();
         assert_eq!(
             serde_json::to_value(compiled.definition.mcp_servers).unwrap(),
             serde_json::json!({
-                "oauth":{"type":"http","url":"https://example.com/mcp","auth_mode":"oauth","headers":{"X-Custom":"1"}},
-                "unsupported":{"type":"http","url":"https://example.com/other"},
-                "alias":{"type":"http","url":"https://example.com/alias","auth_mode":"oauth"}
+                "oauth":{"type":"http","url":"https://example.com/mcp","auth_mode":"oauth","headers":{"X-Custom":"1"},"actsAs":"user"},
+                "unsupported":{"type":"http","url":"https://example.com/other","actsAs":"none"},
+                "alias":{"type":"http","url":"https://example.com/alias","auth_mode":"oauth","actsAs":"service"}
             })
         );
         assert_eq!(
@@ -1202,6 +1273,33 @@ mod tests {
                 "MCP server 'unsupported': auth mode 'api_key' is not supported for plugin servers and will be ignored",
             ]
         );
+    }
+
+    #[test]
+    fn plugin_mcp_identity_is_required_and_must_match_auth() {
+        for (server, expected) in [
+            (
+                serde_json::json!({"url":"https://example.com/mcp"}),
+                "must declare actsAs",
+            ),
+            (
+                serde_json::json!({"url":"https://example.com/mcp","auth":"oauth","actsAs":"none"}),
+                "with OAuth must act as service or user",
+            ),
+            (
+                serde_json::json!({"url":"https://example.com/mcp","actsAs":"user"}),
+                "with actsAs 'user' must use OAuth",
+            ),
+        ] {
+            let mcp = serde_json::json!({"mcpServers":{"remote":server}}).to_string();
+            let error = compile_plugin(&package(
+                false,
+                serde_json::json!({"name":"identity","description":"identity"}),
+                &[(".mcp.json", mcp.as_bytes())],
+            ))
+            .unwrap_err();
+            assert!(error.contains(expected), "{error}");
+        }
     }
 
     #[test]
@@ -1327,7 +1425,7 @@ mod tests {
             if allowed {
                 assert_eq!(
                     serde_json::to_value(compiled.definition.mcp_servers).unwrap(),
-                    serde_json::json!({"remote":{"type":"http","url":url}}),
+                    serde_json::json!({"remote":{"type":"http","url":url,"actsAs":"none"}}),
                     "{url}"
                 );
                 assert!(

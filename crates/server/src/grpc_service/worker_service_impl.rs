@@ -384,7 +384,7 @@ impl WorkerService for WorkerServiceImpl {
             );
 
             if let Err(error) =
-                crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&effective)
+                crate::domains::mcp_servers::scoped_mcp::validate_effective_mcp_servers(&effective)
             {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
@@ -2934,13 +2934,9 @@ impl WorkerService for WorkerServiceImpl {
         let session_id = parse_uuid(req.session_id.as_ref())?;
         let resolver = self.connection_resolver()?;
 
-        let token = resolver
-            .get_connection_token(session_id.into(), &req.provider)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to resolve connection token: {}", e);
-                Status::internal("Failed to resolve connection token")
-            })?;
+        let token =
+            resolve_connection_token(resolver, session_id.into(), &req.provider, &req.acts_as)
+                .await?;
 
         Ok(Response::new(GetConnectionTokenResponse { token }))
     }
