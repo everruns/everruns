@@ -7,18 +7,6 @@ use crate::storage::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndp
 use anyhow::Result;
 use uuid::Uuid;
 
-/// Mirrors the PostgreSQL derivation when an endpoint is enabled or disabled.
-fn derive_status(enabled: bool, app_status: Option<&str>) -> String {
-    if !enabled {
-        "disabled"
-    } else if app_status == Some("published") {
-        "live"
-    } else {
-        "draft"
-    }
-    .to_string()
-}
-
 impl InMemoryDatabase {
     fn sync_ingress_endpoint(&self, channel: &AppChannelRow) {
         let mut endpoints = self.ingress_endpoints.write();
@@ -38,19 +26,6 @@ impl InMemoryDatabase {
 
 fn initial_status(enabled: bool) -> String {
     if enabled { "draft" } else { "disabled" }.to_string()
-}
-
-/// Publish state of an App, read before the channel lock is taken so the two
-/// maps are never held at once.
-impl InMemoryDatabase {
-    fn app_status(&self, app_id: Uuid) -> Option<String> {
-        self.apps.read().get(&app_id).map(|a| a.status.clone())
-    }
-
-    fn app_status_for_channel(&self, channel_id: Uuid) -> Option<String> {
-        let app_id = self.app_channels.read().get(&channel_id)?.app_id;
-        self.app_status(app_id)
-    }
 }
 
 impl InMemoryDatabase {
@@ -442,7 +417,6 @@ impl InMemoryDatabase {
         id: Uuid,
         input: UpdateAppChannel,
     ) -> Result<Option<AppChannelRow>> {
-        let app_status = self.app_status_for_channel(id);
         let mut channels = self.app_channels.write();
         let Some(ch) = channels.get_mut(&id) else {
             return Ok(None);
@@ -461,12 +435,9 @@ impl InMemoryDatabase {
         input.durable_schedule_id.apply(&mut ch.durable_schedule_id);
         if let Some(enabled) = input.enabled {
             ch.enabled = enabled;
-            // Same derivation as the PostgreSQL backend: disabling always
-            // lowers the endpoint, and re-enabling returns it to whatever the
-            // owning App's publish state implies — so re-enabling a channel on
-            // a published App makes it live again rather than stranding it in
-            // draft.
-            ch.status = derive_status(enabled, app_status.as_deref());
+            if !enabled {
+                ch.status = "disabled".to_string();
+            }
         }
         if let Some(status) = input.status.clone() {
             ch.status = status;
@@ -485,7 +456,6 @@ impl InMemoryDatabase {
         input: UpdateAppChannel,
         max_enabled_schedule_channels: i64,
     ) -> Result<Option<AppChannelRow>> {
-        let app_status = self.app_status_for_channel(id);
         let apps = self.apps.read();
         let org_app_ids: std::collections::HashSet<Uuid> = apps
             .values()
