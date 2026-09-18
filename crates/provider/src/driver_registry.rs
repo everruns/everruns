@@ -703,7 +703,7 @@ impl From<&str> for LlmMessageContent {
 ///
 /// `#[non_exhaustive]` for the same reason as [`LlmStreamEvent`]: new content
 /// kinds are additive and must not break downstream `match`es.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum LlmContentPart {
     /// Text content

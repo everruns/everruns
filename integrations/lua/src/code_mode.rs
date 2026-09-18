@@ -404,7 +404,7 @@ Argument types follow each name:\n{}",
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tool_types::{BuiltinTool, ClientSideTool, DeferrablePolicy, ToolHints, ToolPolicy};
+    use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
 
     fn builtin(name: &str, policy: ToolPolicy, hints: ToolHints) -> ToolDefinition {
         ToolDefinition::Builtin(BuiltinTool {
@@ -446,16 +446,7 @@ mod tests {
                 ToolPolicy::RequiresApproval,
                 ToolHints::default(),
             ),
-            ToolDefinition::ClientSide(ClientSideTool {
-                name: "pick_file".to_string(),
-                display_name: None,
-                description: "client".to_string(),
-                parameters: json!({ "type": "object" }),
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-                hints: ToolHints::default(),
-                full_parameters: None,
-            }),
+            ToolDefinition::function("pick_file", "client", json!({ "type": "object" })),
         ];
 
         let transformed = hook.transform(defs);

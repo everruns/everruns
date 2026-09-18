@@ -39,6 +39,7 @@ pub mod native_async;
 pub mod openai_compat;
 #[cfg(feature = "http")]
 pub mod openai_protocol;
+pub mod openai_wire;
 #[cfg(feature = "http")]
 pub mod openresponses_protocol;
 pub mod openresponses_types;
@@ -99,6 +100,7 @@ pub use model_profiles::{get_model_profile, get_model_vendor};
 pub use model_spec::{ModelSpec, UnknownProvider};
 #[cfg(feature = "http")]
 pub use openai_protocol::OpenAIProtocolChatDriver;
+pub use openai_wire::OpenAiWireError;
 #[cfg(feature = "http")]
 pub use openresponses_protocol::{OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension};
 pub use provider::{Provider as ProviderRecord, ProviderStatus, ProviderTraceConfig};
