@@ -21,11 +21,12 @@ use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::{Extension, Json};
-use everruns_platform::{App, AppChannel, SlackChannelConfig};
+use everruns_platform::SlackChannelConfig;
 use serde::Deserialize;
 
 use super::{SlackState, SlackTarget, resolve_slack_channel, verify_slack_signature};
 use crate::api::ErrorResponse;
+use crate::api::app_ingress::{IngressContext, IngressEndpoint};
 use crate::middleware::RequestId;
 use crate::slack_approvals::{
     ApprovalBinding, ApprovalDecision, ApprovalPolicy, ApprovalRequest, build_resolved_blocks,
@@ -174,8 +175,8 @@ fn parse_interaction(body: &[u8]) -> Option<InteractionPayload> {
 
 async fn handle_block_action(
     state: &SlackState,
-    app: &App,
-    slack_channel: &AppChannel,
+    app: &IngressContext,
+    slack_channel: &IngressEndpoint,
     slack_config: &SlackChannelConfig,
     payload: InteractionPayload,
     request_id: Option<String>,
@@ -341,7 +342,7 @@ async fn respond_ephemeral(payload: &InteractionPayload, text: &str) {
 #[allow(clippy::too_many_arguments)]
 async fn post_decision_message(
     state: &SlackState,
-    app: &App,
+    app: &IngressContext,
     session_id: everruns_provider::typed_id::SessionId,
     org_id: i64,
     clicker: &str,
