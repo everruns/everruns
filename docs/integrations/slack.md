@@ -292,3 +292,27 @@ app created before this existed needs its manifest re-saved once.
 
 **If a thread cannot show buttons**, the agent asks in the thread as before and a
 plain reply answers it. Nothing is lost; the question is just prose.
+
+## Task progress
+
+When an agent delegates — a foreman spawning several workers — the thread gets a
+single **Tasks** message that updates itself as workers finish:
+
+```
+Tasks — 3 of 5 finished
+1 failed · 1 running
+✓ db-migration
+✓ cache-warm
+✓ reindex
+✗ export
+◐ notify
+```
+
+Up to five tasks are named; beyond that it reports counts only. Failures lead,
+because that is what you are scanning for.
+
+It is one message, edited in place, so a large fan-out does not turn the thread
+into a changelog. A turn that delegates nothing adds no message at all.
+
+If the turn ends while tasks are still running, the summary says so rather than
+freezing mid-flight — a background task can outlive the turn that started it.
