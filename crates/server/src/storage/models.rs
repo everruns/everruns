@@ -1398,6 +1398,7 @@ pub struct CreateProviderRow {
     pub settings: Option<serde_json::Value>,
 }
 
+
 #[derive(Debug, Clone, Default)]
 pub struct UpdateProvider {
     pub name: Option<String>,
@@ -1952,6 +1953,29 @@ pub struct UpdateMcpServer {
     pub api_key_encrypted: Option<Vec<u8>>,
     pub headers: Option<serde_json::Value>,
     pub settings: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct McpServiceToolCacheRow {
+    pub org_id: i64,
+    pub mcp_server_id: Uuid,
+    pub agent_id: Uuid,
+    pub cache_scope: String,
+    pub credential_hash: String,
+    pub cached_tools: sqlx::types::JsonValue,
+    pub ttl_ms: i64,
+    pub tools_cached_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpsertMcpServiceToolCache {
+    pub org_id: i64,
+    pub mcp_server_id: Uuid,
+    pub agent_id: Uuid,
+    pub cache_scope: String,
+    pub credential_hash: String,
+    pub cached_tools: serde_json::Value,
+    pub ttl_ms: i64,
 }
 
 // ============================================

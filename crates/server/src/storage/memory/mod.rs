@@ -135,6 +135,8 @@ pub struct InMemoryDatabase {
     // Session git refs: (session_id, name) -> ref row
     git_refs: RwLock<HashMap<(SessionId, String), SessionGitRefRow>>,
     mcp_servers: RwLock<HashMap<McpServerId, McpServerRow>>,
+    mcp_service_tool_caches:
+        RwLock<HashMap<(i64, Uuid, Uuid, String, String), McpServiceToolCacheRow>>,
     images: RwLock<HashMap<ImageId, ImageRow>>,
     files: RwLock<HashMap<FileId, FileRow>>,
     skills: RwLock<HashMap<SkillId, SkillRow>>,
@@ -305,6 +307,7 @@ impl Default for InMemoryDatabase {
             git_objects: RwLock::new(HashMap::new()),
             git_refs: RwLock::new(HashMap::new()),
             mcp_servers: RwLock::new(HashMap::new()),
+            mcp_service_tool_caches: RwLock::new(HashMap::new()),
             images: RwLock::new(HashMap::new()),
             files: RwLock::new(HashMap::new()),
             skills: RwLock::new(HashMap::new()),

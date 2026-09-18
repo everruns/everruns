@@ -359,15 +359,20 @@ fn parse_tool_call(text: &str) -> Result<McpToolCallResult> {
         .ok_or_else(|| anyhow!("MCP server returned empty result"))
 }
 
-/// Discover a server's tools via `tools/list`. Negotiates the protocol era
-/// (`Auto`); one-shot with no persistent cache (the control-plane caller layers
-/// its own tool cache on top).
-pub async fn http_list_tools(
+/// A `tools/list` result with the server's optional caching contract.
+#[derive(Debug, Clone)]
+pub struct HttpToolsList {
+    pub tools: Vec<McpToolDefinition>,
+    pub cache_hints: Option<protocol::CacheHints>,
+}
+
+/// Discover a server's tools via `tools/list`, preserving its cache metadata.
+pub async fn http_list_tools_with_cache_hints(
     egress: &dyn EgressService,
     url: &str,
     headers: &HashMap<String, String>,
     credential: Option<&McpCredential>,
-) -> Result<Vec<McpToolDefinition>> {
+) -> Result<HttpToolsList> {
     // Discovery never elicits — a server MUST NOT answer `tools/list` with an
     // `input_required` result — so it declares no input capabilities.
     let capabilities = ClientCapabilities::none();
@@ -384,7 +389,28 @@ pub async fn http_list_tools(
         DISCOVERY_TIMEOUT,
     )
     .await?;
-    parse_tools_list(&text)
+    let cache_hints =
+        extract_json_from_response(&text).and_then(protocol::cache_hints_from_result);
+    Ok(HttpToolsList {
+        tools: parse_tools_list(&text)?,
+        cache_hints,
+    })
+}
+
+/// Discover a server's tools via `tools/list`. Negotiates the protocol era
+/// (`Auto`); one-shot with no persistent cache (the control-plane caller layers
+/// its own tool cache on top).
+pub async fn http_list_tools(
+    egress: &dyn EgressService,
+    url: &str,
+    headers: &HashMap<String, String>,
+    credential: Option<&McpCredential>,
+) -> Result<Vec<McpToolDefinition>> {
+    Ok(
+        http_list_tools_with_cache_hints(egress, url, headers, credential)
+            .await?
+            .tools,
+    )
 }
 
 /// Execute a tool via `tools/call`. Negotiates the protocol era (`Auto`).

@@ -297,6 +297,86 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn get_mcp_service_tool_cache(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+        cache_scope: &str,
+        credential_hash: &str,
+    ) -> Result<Option<McpServiceToolCacheRow>> {
+        Ok(sqlx::query_as::<_, McpServiceToolCacheRow>(
+            r#"
+            SELECT org_id, mcp_server_id, agent_id, cache_scope, credential_hash,
+                   cached_tools, ttl_ms, tools_cached_at
+            FROM mcp_service_tool_caches
+            WHERE org_id = $1
+              AND mcp_server_id = $2
+              AND agent_id = $3
+              AND cache_scope = $4
+              AND credential_hash = $5
+            "#,
+        )
+        .bind(org_id)
+        .bind(mcp_server_id)
+        .bind(agent_id)
+        .bind(cache_scope)
+        .bind(credential_hash)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    pub async fn upsert_mcp_service_tool_cache(
+        &self,
+        input: UpsertMcpServiceToolCache,
+    ) -> Result<McpServiceToolCacheRow> {
+        Ok(sqlx::query_as::<_, McpServiceToolCacheRow>(
+            r#"
+            INSERT INTO mcp_service_tool_caches (
+                org_id, mcp_server_id, agent_id, cache_scope, credential_hash,
+                cached_tools, ttl_ms
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (org_id, mcp_server_id, agent_id, cache_scope, credential_hash)
+            DO UPDATE SET
+                cached_tools = EXCLUDED.cached_tools,
+                ttl_ms = EXCLUDED.ttl_ms,
+                tools_cached_at = NOW()
+            RETURNING org_id, mcp_server_id, agent_id, cache_scope, credential_hash,
+                      cached_tools, ttl_ms, tools_cached_at
+            "#,
+        )
+        .bind(input.org_id)
+        .bind(input.mcp_server_id)
+        .bind(input.agent_id)
+        .bind(&input.cache_scope)
+        .bind(&input.credential_hash)
+        .bind(&input.cached_tools)
+        .bind(input.ttl_ms)
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
+    pub async fn delete_mcp_service_tool_caches(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+    ) -> Result<u64> {
+        Ok(sqlx::query(
+            r#"
+            DELETE FROM mcp_service_tool_caches
+            WHERE org_id = $1 AND mcp_server_id = $2 AND agent_id = $3
+            "#,
+        )
+        .bind(org_id)
+        .bind(mcp_server_id)
+        .bind(agent_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected())
+    }
+
     pub async fn delete_mcp_server(&self, org_id: i64, id: Uuid) -> Result<bool> {
         let result = sqlx::query(
             r#"

@@ -313,6 +313,66 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
+    pub async fn get_mcp_service_tool_cache(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+        cache_scope: &str,
+        credential_hash: &str,
+    ) -> Result<Option<McpServiceToolCacheRow>> {
+        Ok(self
+            .mcp_service_tool_caches
+            .read()
+            .get(&(
+                org_id,
+                mcp_server_id,
+                agent_id,
+                cache_scope.to_string(),
+                credential_hash.to_string(),
+            ))
+            .cloned())
+    }
+
+    pub async fn upsert_mcp_service_tool_cache(
+        &self,
+        input: UpsertMcpServiceToolCache,
+    ) -> Result<McpServiceToolCacheRow> {
+        let row = McpServiceToolCacheRow {
+            org_id: input.org_id,
+            mcp_server_id: input.mcp_server_id,
+            agent_id: input.agent_id,
+            cache_scope: input.cache_scope,
+            credential_hash: input.credential_hash,
+            cached_tools: input.cached_tools,
+            ttl_ms: input.ttl_ms,
+            tools_cached_at: Self::now(),
+        };
+        self.mcp_service_tool_caches.write().insert(
+            (
+                row.org_id,
+                row.mcp_server_id,
+                row.agent_id,
+                row.cache_scope.clone(),
+                row.credential_hash.clone(),
+            ),
+            row.clone(),
+        );
+        Ok(row)
+    }
+
+    pub async fn delete_mcp_service_tool_caches(
+        &self,
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+    ) -> Result<u64> {
+        let mut caches = self.mcp_service_tool_caches.write();
+        let before = caches.len();
+        caches.retain(|key, _| !(key.0 == org_id && key.1 == mcp_server_id && key.2 == agent_id));
+        Ok((before - caches.len()) as u64)
+    }
+
     /// Test-only: backdate a server's tool-cache timestamp so staleness paths
     /// can be exercised without waiting for the TTL to elapse.
     #[cfg(test)]
