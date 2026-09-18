@@ -91,6 +91,7 @@ pub fn routes(state: AppState) -> Router {
 }
 
 #[utoipa::path(
+    description = "List archival App records. This endpoint is read-only and deprecated.",
     get,
     path = "/v1/apps",
     responses(
@@ -117,6 +118,7 @@ pub async fn list_apps(
 }
 
 #[utoipa::path(
+    description = "Get an archival App record. This endpoint is read-only and deprecated.",
     get,
     path = "/v1/apps/{app_id}",
     params(("app_id" = String, Path, description = "App ID")),

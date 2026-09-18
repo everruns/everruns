@@ -435,9 +435,12 @@ pub struct TriggerAgentEndpoint {
     pub endpoint_id: String,
 }
 
+/// Result of running an Agent schedule endpoint immediately.
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct TriggerAgentEndpointOutput {
+    /// Session started or reused by the invocation.
     pub session_id: everruns_provider::typed_id::SessionId,
+    /// Whether the invocation created a new session.
     pub created_session: bool,
 }
 

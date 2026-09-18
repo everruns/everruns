@@ -879,6 +879,7 @@
         "tags": [
           "agent-endpoints"
         ],
+        "description": "List ingress endpoints owned by an Agent.",
         "operationId": "list_agent_endpoints",
         "parameters": [
           {
@@ -921,6 +922,7 @@
         "tags": [
           "agent-endpoints"
         ],
+        "description": "Create an ingress endpoint owned by an Agent.",
         "operationId": "create_agent_endpoint",
         "parameters": [
           {
@@ -982,6 +984,7 @@
         "tags": [
           "agent-endpoints"
         ],
+        "description": "Get one ingress endpoint owned by an Agent.",
         "operationId": "get_agent_endpoint",
         "parameters": [
           {
@@ -1030,6 +1033,7 @@
         "tags": [
           "agent-endpoints"
         ],
+        "description": "Delete an ingress endpoint owned by an Agent.",
         "operationId": "delete_agent_endpoint",
         "parameters": [
           {
@@ -1071,6 +1075,7 @@
         "tags": [
           "agent-endpoints"
         ],
+        "description": "Update an ingress endpoint owned by an Agent.",
         "operationId": "update_agent_endpoint",
         "parameters": [
           {
@@ -1141,6 +1146,7 @@
         "tags": [
           "agent-endpoints"
         ],
+        "description": "Publish an Agent endpoint so it can accept ingress traffic.",
         "operationId": "publish_agent_endpoint",
         "parameters": [
           {
@@ -1191,6 +1197,7 @@
         "tags": [
           "agent-endpoints"
         ],
+        "description": "Run a published Agent schedule endpoint now.",
         "operationId": "trigger_agent_endpoint",
         "parameters": [
           {
@@ -1251,6 +1258,7 @@
         "tags": [
           "agent-endpoints"
         ],
+        "description": "Unpublish an Agent endpoint so it no longer accepts ingress traffic.",
         "operationId": "unpublish_agent_endpoint",
         "parameters": [
           {
@@ -2443,6 +2451,7 @@
         "tags": [
           "apps"
         ],
+        "description": "List archival App records. This endpoint is read-only and deprecated.",
         "operationId": "list_apps",
         "parameters": [
           {
@@ -2493,6 +2502,7 @@
         "tags": [
           "apps"
         ],
+        "description": "Get an archival App record. This endpoint is read-only and deprecated.",
         "operationId": "get_app",
         "parameters": [
           {
@@ -20255,16 +20265,21 @@
       },
       "CreateAgentEndpointRequest": {
         "type": "object",
+        "description": "Request to create an ingress endpoint owned by an Agent.",
         "required": [
           "channel_type"
         ],
         "properties": {
-          "channel_config": {},
+          "channel_config": {
+            "description": "Transport-specific endpoint configuration."
+          },
           "channel_type": {
-            "$ref": "#/components/schemas/ChannelType"
+            "$ref": "#/components/schemas/ChannelType",
+            "description": "Transport used by the endpoint."
           },
           "enabled": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the endpoint can accept ingress traffic."
           }
         }
       },
@@ -38898,16 +38913,19 @@
       },
       "TriggerAgentEndpointOutput": {
         "type": "object",
+        "description": "Result of running an Agent schedule endpoint immediately.",
         "required": [
           "session_id",
           "created_session"
         ],
         "properties": {
           "created_session": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the invocation created a new session."
           },
           "session_id": {
-            "$ref": "#/components/schemas/sessionId"
+            "$ref": "#/components/schemas/sessionId",
+            "description": "Session started or reused by the invocation."
           }
         }
       },
@@ -39251,13 +39269,17 @@
       },
       "UpdateAgentEndpointRequest": {
         "type": "object",
+        "description": "Request to update an ingress endpoint owned by an Agent.",
         "properties": {
-          "channel_config": {},
+          "channel_config": {
+            "description": "Replacement transport-specific endpoint configuration."
+          },
           "enabled": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Whether the endpoint can accept ingress traffic."
           }
         }
       },

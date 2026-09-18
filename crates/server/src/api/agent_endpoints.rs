@@ -49,6 +49,7 @@ pub fn routes(state: AppState) -> Router {
 }
 
 #[utoipa::path(
+    description = "List ingress endpoints owned by an Agent.",
     get,
     path = "/v1/agents/{agent_id}/endpoints",
     params(("agent_id" = String, Path, description = "Agent ID or name")),
@@ -70,6 +71,7 @@ pub async fn list_agent_endpoints(
 }
 
 #[utoipa::path(
+    description = "Create an ingress endpoint owned by an Agent.",
     post,
     path = "/v1/agents/{agent_id}/endpoints",
     params(("agent_id" = String, Path, description = "Agent ID or name")),
@@ -94,6 +96,7 @@ pub async fn create_agent_endpoint(
 }
 
 #[utoipa::path(
+    description = "Get one ingress endpoint owned by an Agent.",
     get,
     path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
     params(
@@ -121,6 +124,7 @@ pub async fn get_agent_endpoint(
 }
 
 #[utoipa::path(
+    description = "Update an ingress endpoint owned by an Agent.",
     patch,
     path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
     params(
@@ -152,6 +156,7 @@ pub async fn update_agent_endpoint(
 }
 
 #[utoipa::path(
+    description = "Delete an ingress endpoint owned by an Agent.",
     delete,
     path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
     params(
@@ -179,6 +184,7 @@ pub async fn delete_agent_endpoint(
 }
 
 #[utoipa::path(
+    description = "Publish an Agent endpoint so it can accept ingress traffic.",
     post,
     path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish",
     params(
@@ -206,6 +212,7 @@ pub async fn publish_agent_endpoint(
 }
 
 #[utoipa::path(
+    description = "Unpublish an Agent endpoint so it no longer accepts ingress traffic.",
     post,
     path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish",
     params(
@@ -233,6 +240,7 @@ pub async fn unpublish_agent_endpoint(
 }
 
 #[utoipa::path(
+    description = "Run a published Agent schedule endpoint now.",
     post,
     path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger",
     params(
