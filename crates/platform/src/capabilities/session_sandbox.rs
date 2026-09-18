@@ -17,9 +17,46 @@ use everruns_core::tool_output_sanitizer::{
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::truncation_info::TruncationInfo;
+use everruns_host::compute::{
+    ComputeCapabilities, ComputeKind, Containment, Durability, NetworkPolicy,
+};
+use everruns_host::environment_preamble::{EnvironmentFacts, environment_preamble};
 use serde_json::{Value, json};
+use std::sync::LazyLock;
 
 pub struct SessionSandboxCapability;
+
+/// The facts this capability's sandbox actually has (EVE-1042).
+///
+/// Stated once, here, and rendered into prose by the shared derivation rather
+/// than described by hand, so the description cannot disagree with the sandbox.
+fn environment_facts() -> EnvironmentFacts {
+    EnvironmentFacts {
+        kind: Some(ComputeKind::Managed),
+        capabilities: ComputeCapabilities::full_machine(),
+        containment: Containment::isolated().network(NetworkPolicy::Allow),
+        // The provider snapshots on pause, which makes resume fast but is not a
+        // guarantee Everruns owns.
+        durability: Durability::ProviderSnapshot,
+    }
+}
+
+static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    // The environment half is derived; what remains is this capability's own
+    // lifecycle guidance, which is the tool contract rather than a description
+    // of the world.
+    let mut prompt =
+        String::from("## Session Sandbox\n\nThis session owns one managed sandbox.\n\n");
+    if let Some(preamble) = environment_preamble(&environment_facts()) {
+        prompt.push_str(&preamble);
+        prompt.push_str("\n\n");
+    }
+    prompt.push_str(
+        "Use the sandbox tools for commands and sandbox file I/O; inspect lifecycle state before \
+         lifecycle-sensitive work, and pause, resume or delete only when asked or when cleaning up.",
+    );
+    prompt
+});
 
 impl Capability for SessionSandboxCapability {
     fn id(&self) -> &str {
@@ -47,9 +84,7 @@ impl Capability for SessionSandboxCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            "This session owns one managed sandbox. Use sandbox tools for commands and sandbox file I/O; inspect lifecycle state before lifecycle-sensitive work and pause/resume/delete only when requested or cleaning up.",
-        )
+        Some(&SYSTEM_PROMPT)
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -817,6 +852,23 @@ mod tests {
     use everruns_core::capabilities::Capability;
     use everruns_core::deployment::DeploymentGrade;
     use everruns_core::tool_context::ToolContext;
+
+    /// EVE-1042: the environment half of this prompt is derived from the facts
+    /// above, so it cannot drift from what the sandbox actually is.
+    #[test]
+    fn the_prompt_describes_the_environment_from_its_facts() {
+        let prompt = SessionSandboxCapability
+            .system_prompt_addition()
+            .expect("a prompt");
+        let derived = environment_preamble(&environment_facts()).expect("a preamble");
+        assert!(
+            prompt.contains(&derived),
+            "the capability prompt must carry the derived preamble verbatim:\n{prompt}"
+        );
+        // A provider snapshot is a fast restore, not a guarantee, and the model
+        // needs to know the difference before it leaves results there.
+        assert!(prompt.contains("not a guarantee"), "{prompt}");
+    }
 
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 

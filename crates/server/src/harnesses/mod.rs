@@ -14,6 +14,7 @@
 mod base;
 mod coding_container;
 mod coding_daytona;
+mod coding_prompt;
 mod coding_session_sandbox;
 mod data_analyst;
 pub mod examples;
