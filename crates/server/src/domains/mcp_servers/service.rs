@@ -1564,6 +1564,58 @@ mod tests {
         let result = svc.get_tools(&test_caller(1), row.id.uuid(), false).await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn oauth_tools_are_never_served_from_the_shared_org_row() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+        let settings = McpServerSettings {
+            auth_mode: McpServerAuthMode::OAuth,
+            ..Default::default()
+        };
+        let row = db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "oauth-shared-cache".into(),
+                    description: None,
+                    url: "https://example.com/mcp".into(),
+                    transport_type: "streamable_http".into(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: Some(McpServerService::settings_to_value(&settings)),
+                },
+            )
+            .await
+            .unwrap();
+        let id = row.id.uuid();
+        db.update_mcp_server_tools(
+            1,
+            id,
+            UpdateMcpServerTools {
+                cached_tools: serde_json::json!([{
+                    "name": "user_a_private_tool",
+                    "description": "Only visible to user A",
+                    "inputSchema": {"type": "object"}
+                }]),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(svc.get_tools(&test_caller(1), id, false).await.is_err());
+        let batch = svc
+            .get_batch_with_tools(&test_caller(1), &[id])
+            .await
+            .unwrap();
+        assert!(
+            batch
+                .get(&id)
+                .expect("OAuth server remains in the batch")
+                .1
+                .is_empty()
+        );
+    }
     #[tokio::test]
     async fn create_and_rename_reject_ambiguous_names_without_changing_stored_identity() {
         let db = Arc::new(StorageBackend::in_memory());

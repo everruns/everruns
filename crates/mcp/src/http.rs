@@ -389,8 +389,7 @@ pub async fn http_list_tools_with_cache_hints(
         DISCOVERY_TIMEOUT,
     )
     .await?;
-    let cache_hints =
-        extract_json_from_response(&text).and_then(protocol::cache_hints_from_result);
+    let cache_hints = extract_json_from_response(&text).and_then(protocol::cache_hints_from_result);
     Ok(HttpToolsList {
         tools: parse_tools_list(&text)?,
         cache_hints,
