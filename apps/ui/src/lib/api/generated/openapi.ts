@@ -323,6 +323,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/mcp-attachments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state and permitted actions are resolved for the current caller. */
+    get: operations["list_agent_mcp_attachments"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/mcp-attachments/{name}/connection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** @description Revokes the current caller's user connection or the agent identity's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged. */
+    delete: operations["revoke_agent_mcp_connection"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/stats": {
     parameters: {
       query?: never;
@@ -4723,6 +4757,75 @@ export interface components {
       source: components["schemas"]["AgentHarnessSource"];
       status: components["schemas"]["AgentHarnessStatus"];
     };
+    /** @description Effective MCP attachment projected for an agent and the current caller. */
+    AgentMcpAttachment: {
+      /** @description Connection action available to the current caller. */
+      action: components["schemas"]["AgentMcpAttachmentAction"];
+      /** @description Identity whose connection is used when the attachment calls the MCP server. */
+      acts_as: components["schemas"]["McpServerActsAs"];
+      /** @description Whether the current caller can revoke the active connection. */
+      can_revoke: boolean;
+      /** @description Connected account name, or the preset name when the provider did not supply one. */
+      connected_as?: string | null;
+      /** @description OAuth provider key used to create or revoke the attachment connection. */
+      connection_provider?: string | null;
+      contributor?: null | components["schemas"]["AgentMcpAttachmentContributor"];
+      /** @description Whether the attachment is defined directly on the agent and can be removed there. */
+      editable: boolean;
+      /** @description Header names configured for the endpoint; secret header values are omitted. */
+      header_names: string[];
+      /** @description Logical attachment name used in the agent's MCP configuration. */
+      name: string;
+      /** @description Lower-precedence configuration layers overridden by this attachment. */
+      overridden_sources: components["schemas"]["AgentMcpAttachmentSourceInfo"][];
+      /** @description ID of the active catalog preset when the reference resolves. */
+      preset_id?: string | null;
+      /** @description Catalog preset name referenced by the attachment, including a missing preset. */
+      preset_name?: string | null;
+      /** @description Highest-precedence configuration layer that supplied this attachment. */
+      source: components["schemas"]["AgentMcpAttachmentSource"];
+      /** @description Human-readable name of the winning capability, harness, or agent layer. */
+      source_label: string;
+      /** @description Current preset and connection availability. */
+      state: components["schemas"]["AgentMcpAttachmentState"];
+      /** @description Cached names of tools exposed by the MCP server. */
+      tools: string[];
+      /** @description Whether at least one cached tool name is available. */
+      tools_available: boolean;
+      /** @description Effective MCP endpoint URL from the catalog preset or inline configuration. */
+      url?: string | null;
+    };
+    /**
+     * @description Action the current caller can take to make an MCP attachment usable.
+     * @enum {string}
+     */
+    AgentMcpAttachmentAction: "none" | "connect" | "authorize" | "ask_admin";
+    /** @description Capability that contributed an effective MCP attachment. */
+    AgentMcpAttachmentContributor: {
+      /** @description UI path for the capability detail page. */
+      href: string;
+      /** @description Canonical capability ID. */
+      id: string;
+      /** @description Human-readable capability name. */
+      name: string;
+    };
+    /**
+     * @description Configuration layer that supplied an effective MCP attachment.
+     * @enum {string}
+     */
+    AgentMcpAttachmentSource: "capability" | "harness" | "agent";
+    /** @description Configuration layer that was overridden by the effective MCP attachment. */
+    AgentMcpAttachmentSourceInfo: {
+      /** @description Overridden configuration layer. */
+      source: components["schemas"]["AgentMcpAttachmentSource"];
+      /** @description Human-readable name of the overridden capability, harness, or agent layer. */
+      source_label: string;
+    };
+    /**
+     * @description Availability state of an effective MCP attachment.
+     * @enum {string}
+     */
+    AgentMcpAttachmentState: "ready" | "connection_missing" | "preset_missing";
     AgentMessage: {
       role: string;
       text: string;
@@ -21096,6 +21199,106 @@ export interface operations {
       };
       /** @description Run not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_mcp_attachments: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Effective MCP attachments for the agent */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentMcpAttachment"][];
+        };
+      };
+      /** @description Agent or harness not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  revoke_agent_mcp_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+        /** @description Effective MCP attachment name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description MCP connection revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Attachment does not use a connection */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent, attachment, preset, or connection not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
         headers: {
           [name: string]: unknown;
         };
