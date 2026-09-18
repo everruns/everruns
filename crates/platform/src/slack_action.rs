@@ -109,7 +109,10 @@ pub enum SlackActionOutcome {
         tz: Option<String>,
     },
     /// The file is shared into the conversation.
-    FileUploaded { file_id: String, permalink: Option<String> },
+    FileUploaded {
+        file_id: String,
+        permalink: Option<String>,
+    },
 }
 
 /// Why an action did not happen.
@@ -180,10 +183,7 @@ pub trait SlackActionInvoker: Send + Sync {
     /// Returns [`SlackActionError::NoSlackSession`] when the bound session did
     /// not come through a Slack endpoint. Implementations must fail closed
     /// there rather than falling back to any other endpoint's credential.
-    async fn invoke(
-        &self,
-        action: SlackAction,
-    ) -> Result<SlackActionOutcome, SlackActionError>;
+    async fn invoke(&self, action: SlackAction) -> Result<SlackActionOutcome, SlackActionError>;
 }
 
 /// `ToolContextExtensions` handle for [`SlackActionInvoker`].

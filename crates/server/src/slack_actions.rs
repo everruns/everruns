@@ -179,10 +179,7 @@ impl From<SlackApiError> for SlackActionError {
 
 #[async_trait]
 impl SlackActionInvoker for DbSlackActionInvoker {
-    async fn invoke(
-        &self,
-        action: SlackAction,
-    ) -> Result<SlackActionOutcome, SlackActionError> {
+    async fn invoke(&self, action: SlackAction) -> Result<SlackActionOutcome, SlackActionError> {
         let kind = action.kind();
         let bot_token = self.resolve_bot_token().await?;
 
@@ -191,9 +188,7 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                 channel,
                 timestamp,
                 name,
-            } => {
-                add_reaction(&self.api_base, &bot_token, &channel, &timestamp, &name).await?
-            }
+            } => add_reaction(&self.api_base, &bot_token, &channel, &timestamp, &name).await?,
             SlackAction::UpdateMessage {
                 channel,
                 timestamp,
@@ -288,7 +283,13 @@ async fn lookup_user(
     bot_token: &str,
     user_id: &str,
 ) -> Result<SlackActionOutcome, SlackActionError> {
-    let body = slack_api_call(api_base, bot_token, "users.info", json!({ "user": user_id })).await?;
+    let body = slack_api_call(
+        api_base,
+        bot_token,
+        "users.info",
+        json!({ "user": user_id }),
+    )
+    .await?;
     let user = body.get("user").ok_or_else(|| {
         SlackActionError::Transient("Slack users.info returned no user".to_string())
     })?;
@@ -800,7 +801,11 @@ mod tests {
 
         let outcome = fixture
             .invoker(ORG, session_id)
-            .with_api_base(format!("{}/", server.uri()).trim_end_matches('/').to_string())
+            .with_api_base(
+                format!("{}/", server.uri())
+                    .trim_end_matches('/')
+                    .to_string(),
+            )
             .invoke(add_reaction_action())
             .await
             .expect("the routing tag must resolve the endpoint");

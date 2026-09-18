@@ -4960,9 +4960,7 @@ impl WorkerService for WorkerServiceImpl {
                     );
                 }
                 let wire: everruns_internal_protocol::proto::SlackActionError = error.into();
-                everruns_internal_protocol::proto::invoke_slack_action_response::Result::Error(
-                    wire,
-                )
+                everruns_internal_protocol::proto::invoke_slack_action_response::Result::Error(wire)
             }
         };
 

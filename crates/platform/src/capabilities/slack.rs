@@ -193,8 +193,7 @@ fn optional_str(arguments: &Value, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-const CHANNEL_SCHEMA_DESCRIPTION: &str =
-    "Slack channel ID the message is in (e.g. \"C0123456789\"), as it appeared on the message \
+const CHANNEL_SCHEMA_DESCRIPTION: &str = "Slack channel ID the message is in (e.g. \"C0123456789\"), as it appeared on the message \
      you are replying to.";
 const TIMESTAMP_SCHEMA_DESCRIPTION: &str =
     "The Slack message's `ts` value (e.g. \"1728394857.123456\"). Not a date.";
@@ -430,9 +429,7 @@ impl Tool for SlackLookupUserTool {
             .trim_end_matches('>')
             .to_string();
         if user_id.is_empty() {
-            return ToolExecutionResult::tool_error(
-                "Parameter `user_id` must be a Slack user ID",
-            );
+            return ToolExecutionResult::tool_error("Parameter `user_id` must be a Slack user ID");
         }
 
         run(context, SlackAction::LookupUser { user_id }).await

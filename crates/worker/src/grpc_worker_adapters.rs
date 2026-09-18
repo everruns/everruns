@@ -31,8 +31,7 @@ use uuid::Uuid;
 
 use crate::grpc_adapters::{
     GrpcAdapter, GrpcBudgetChecker, GrpcClient, GrpcOrgAdapter, GrpcOutboundToolRateLimiter,
-    GrpcSlackActionInvoker,
-    GrpcPaymentAuthority, GrpcSessionCreationAuthority,
+    GrpcPaymentAuthority, GrpcSessionCreationAuthority, GrpcSlackActionInvoker,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
