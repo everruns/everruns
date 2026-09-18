@@ -3,9 +3,9 @@ use std::process::Command;
 use std::sync::Arc;
 
 use everruns::{
-    Agent, Environment, Harness, InMemoryEngine, LlmSimConfig, LocalConfig, LocalGitWorkspace,
-    Model, ResumeError, Session, SessionEnvironmentError, ToolCall, Workspace, WorkspaceHeadId,
-    WorkspacePolicy,
+    Agent, Engine, Environment, Harness, InMemoryEngine, LlmSimConfig, LocalConfig,
+    LocalGitWorkspace, Model, ResumeError, Session, SessionEnvironmentError, ToolCall, Workspace,
+    WorkspaceHeadId, WorkspacePolicy,
 };
 use everruns_core::session_files::SessionFileSystem;
 use serde_json::json;
@@ -105,6 +105,50 @@ async fn restore(agent: Agent, session_id: everruns::SessionId) -> Result<Sessio
     let engine = InMemoryEngine::new();
     engine.attach(session_id, agent).await?;
     engine.resume(session_id).await
+}
+
+#[tokio::test]
+async fn reconstructed_harness_survives_durable_session_restart() {
+    let data = tempfile::tempdir().unwrap();
+    let config = LocalConfig::new(data.path().join("runtime"));
+    let (session_id, serialized) = {
+        let harness = Harness::builder("durable")
+            .capability("current_time")
+            .build()
+            .unwrap();
+        let serialized = serde_json::to_string(&harness).unwrap();
+        let engine = Engine::new();
+        let session = engine
+            .create(agent(config.clone()))
+            .harness(harness)
+            .start()
+            .await
+            .unwrap();
+        let context = session.inspect().await.unwrap();
+        assert!(
+            context
+                .tools
+                .iter()
+                .any(|tool| tool.name == "get_current_time")
+        );
+        (session.session_id(), serialized)
+    };
+
+    let reconstructed: Harness = serde_json::from_str(&serialized).unwrap();
+    let restarted_engine = Engine::new();
+    restarted_engine
+        .attach_with_harness(session_id, agent(config), reconstructed)
+        .await
+        .unwrap();
+    let resumed = restarted_engine.resume(session_id).await.unwrap();
+    let context = resumed.inspect().await.unwrap();
+
+    assert!(
+        context
+            .tools
+            .iter()
+            .any(|tool| tool.name == "get_current_time")
+    );
 }
 
 #[tokio::test]

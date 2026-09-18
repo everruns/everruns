@@ -156,6 +156,13 @@ build another Agent with the same trusted data directory, call
 rejects IDs absent from that Agent's configured local catalog. A new session is
 made durable by its first async operation (`run`, `inspect`, or a history page
 read); merely allocating a synchronous handle does not commit it.
+
+For a session created with an explicit Harness, persist its serialized portable
+definition, deserialize it after restart, and call
+`engine.attach_with_harness(session_id, agent, harness)` instead. Harness
+deserialization validates the definition and generates a new process-local
+runtime identity.
+
 The local profile is for one embedded process at a time. Do not write or edit
 its files as application data: messages are a read-only projection of committed
 events, and the storage formats are not Framework APIs.
