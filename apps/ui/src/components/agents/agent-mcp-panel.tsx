@@ -190,7 +190,7 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
   const [flow, setFlow] = useState<"preset" | "custom">("preset");
   const [search, setSearch] = useState("");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
-  const [actsAs, setActsAs] = useState<McpServerActsAs>("service");
+  const [actsAs, setActsAs] = useState<McpServerActsAs>("none");
   const [customName, setCustomName] = useState("");
   const [customUrl, setCustomUrl] = useState("");
   const [customHeaders, setCustomHeaders] = useState("");
@@ -207,6 +207,8 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
           preset.description?.toLowerCase().includes(needle)),
     );
   }, [presets, search]);
+  const selectedPresetRecord = presets.find((preset) => preset.name === selectedPreset);
+  const identityDisabled = selectedPresetRecord?.auth_mode !== "oauth";
 
   const saveAuthoredAttachments = async (mcpServers: ScopedMcpServers) => {
     await updateAgent.mutateAsync({ agentId: agent.id, request: { mcpServers } });
@@ -217,7 +219,7 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
     setAddOpen(false);
     setSearch("");
     setSelectedPreset(null);
-    setActsAs("service");
+    setActsAs("none");
     setCustomName("");
     setCustomUrl("");
     setCustomHeaders("");
@@ -413,7 +415,10 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
                           : "hover:bg-muted/50"
                       }`}
                       aria-pressed={selectedPreset === preset.name}
-                      onClick={() => setSelectedPreset(preset.name)}
+                      onClick={() => {
+                        setSelectedPreset(preset.name);
+                        setActsAs(preset.auth_mode === "oauth" ? "service" : "none");
+                      }}
                     >
                       <span className="block text-sm font-medium">{preset.name}</span>
                       {preset.description && (
@@ -433,8 +438,19 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
                   <input
                     type="radio"
                     name="mcp-acts-as"
+                    value="none"
+                    checked={actsAs === "none"}
+                    onChange={() => setActsAs("none")}
+                  />
+                  No identity
+                </Label>
+                <Label>
+                  <input
+                    type="radio"
+                    name="mcp-acts-as"
                     value="service"
                     checked={actsAs === "service"}
+                    disabled={identityDisabled}
                     onChange={() => setActsAs("service")}
                   />
                   Service identity
@@ -445,10 +461,16 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
                     name="mcp-acts-as"
                     value="user"
                     checked={actsAs === "user"}
+                    disabled={identityDisabled}
                     onChange={() => setActsAs("user")}
                   />
                   Invoking user
                 </Label>
+                {selectedPresetRecord && identityDisabled && (
+                  <p className="text-xs text-muted-foreground">
+                    This preset does not support OAuth identity grants.
+                  </p>
+                )}
               </fieldset>
             </div>
           ) : (

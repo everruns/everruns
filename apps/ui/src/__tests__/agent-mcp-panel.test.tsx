@@ -98,6 +98,21 @@ describe("AgentMcpPanel", () => {
           archived_at: null,
           deleted_at: null,
         },
+        {
+          id: "preset-2",
+          name: "microsoft_learn",
+          description: "Microsoft Learn documentation",
+          url: "https://learn.microsoft.com/api/mcp",
+          transport_type: "http",
+          status: "active",
+          auth_mode: "none",
+          api_key_set: false,
+          headers: {},
+          created_at: "2026-09-18T00:00:00Z",
+          updated_at: "2026-09-18T00:00:00Z",
+          archived_at: null,
+          deleted_at: null,
+        },
       ],
       isLoading: false,
     });
@@ -147,6 +162,38 @@ describe("AgentMcpPanel", () => {
       }),
     );
     expect(mockRefetch).toHaveBeenCalled();
+  });
+  it("uses no identity for a preset without OAuth support", async () => {
+    render(<AgentMcpPanel agent={agent} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: /microsoft_learn Microsoft Learn documentation/,
+      }),
+    );
+
+    expect(within(dialog).getByRole("radio", { name: "No identity" })).toBeChecked();
+    expect(within(dialog).getByRole("radio", { name: "Service identity" })).toBeDisabled();
+    expect(within(dialog).getByRole("radio", { name: "Invoking user" })).toBeDisabled();
+    expect(dialog).toHaveTextContent("This preset does not support OAuth identity grants.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add server" }));
+
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            microsoft_learn: {
+              use: "catalog:microsoft_learn",
+              actsAs: "none",
+            },
+          },
+        },
+      }),
+    );
   });
 
   it("adds a custom HTTP server with parsed headers and no identity grant", async () => {
