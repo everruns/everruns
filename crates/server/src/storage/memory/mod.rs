@@ -103,6 +103,7 @@ pub(crate) fn matches_search_tokens(search: Option<&str>, texts: &[&str]) -> boo
 /// Stored data for a pinned session: (org_id, pinned_at)
 type PinnedSessionData = (i64, DateTime<Utc>);
 type ReportingOutboxKey = (i64, String, String, String, String);
+type McpServiceToolCacheKey = (i64, Uuid, Uuid, String, String);
 
 /// All data is stored in memory and lost on restart
 pub struct InMemoryDatabase {
@@ -135,8 +136,7 @@ pub struct InMemoryDatabase {
     // Session git refs: (session_id, name) -> ref row
     git_refs: RwLock<HashMap<(SessionId, String), SessionGitRefRow>>,
     mcp_servers: RwLock<HashMap<McpServerId, McpServerRow>>,
-    mcp_service_tool_caches:
-        RwLock<HashMap<(i64, Uuid, Uuid, String, String), McpServiceToolCacheRow>>,
+    mcp_service_tool_caches: RwLock<HashMap<McpServiceToolCacheKey, McpServiceToolCacheRow>>,
     images: RwLock<HashMap<ImageId, ImageRow>>,
     files: RwLock<HashMap<FileId, FileRow>>,
     skills: RwLock<HashMap<SkillId, SkillRow>>,
