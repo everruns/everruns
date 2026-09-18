@@ -37,11 +37,20 @@ fn harness_holds_environment_requirements_and_model_default() {
     assert_eq!(harness.name(), "coding");
     assert_eq!(harness.required_capabilities(), required);
     assert_eq!(harness.required_containment(), ContainmentLevel::Isolated);
-    assert!(harness.default_model().is_some());
+    assert_eq!(harness.default_model(), Some("fallback"));
+
+    let without_default = Harness::builder("minimal").build().expect("valid harness");
+    assert_eq!(without_default.default_model(), None);
 }
 
 #[test]
 fn harness_rejects_invalid_and_duplicate_capabilities() {
+    for name in ["", " ", "\t\n"] {
+        assert_eq!(
+            Harness::builder(name).build().unwrap_err(),
+            HarnessBuildError::BlankName
+        );
+    }
     let invalid = Harness::builder("invalid")
         .capability("bad capability")
         .build()
@@ -63,6 +72,44 @@ fn harness_rejects_invalid_and_duplicate_capabilities() {
         }
     );
 }
+
+#[test]
+fn harness_definition_round_trips_without_runtime_identity() {
+    let required = ComputeCapabilities {
+        native_processes: true,
+        packages: true,
+        pty: true,
+        ..Default::default()
+    };
+    let harness = Harness::builder("coding")
+        .requires_capabilities(required)
+        .requires_containment(ContainmentLevel::Isolated)
+        .capability(CapabilityRef::new("vendor.custom").config(json!({
+            "profile": "portable"
+        })))
+        .model("fallback")
+        .build()
+        .expect("valid harness");
+
+    let value = serde_json::to_value(&harness).expect("harness serializes");
+    assert!(value.get("id").is_none());
+    let round_tripped: Harness = serde_json::from_value(value).expect("harness deserializes");
+
+    assert_eq!(round_tripped.name(), "coding");
+    assert_eq!(round_tripped.required_capabilities(), required);
+    assert_eq!(
+        round_tripped.required_containment(),
+        ContainmentLevel::Isolated
+    );
+    assert_eq!(round_tripped.default_model(), Some("fallback"));
+    assert_eq!(round_tripped.capabilities().len(), 1);
+    assert_eq!(round_tripped.capabilities()[0].id(), "vendor.custom");
+    assert_eq!(
+        round_tripped.capabilities()[0].config_value(),
+        &json!({ "profile": "portable" })
+    );
+}
+
 #[test]
 fn harness_debug_redacts_capability_configuration() {
     let harness = Harness::builder("private")

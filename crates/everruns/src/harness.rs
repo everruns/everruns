@@ -3,6 +3,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use everruns_capability::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use everruns_host::{
     ComputeCapabilities, ContainmentLevel, HarnessBuilder as RuntimeHarnessBuilder,
 };
@@ -15,6 +16,9 @@ use crate::CapabilityRef;
 /// A Harness declares the capabilities available to a session, the Environment
 /// properties it requires, and a lowest-precedence model default. Agent
 /// instructions and starter files do not belong to this value.
+///
+/// Serialization contains only the portable definition. Deserialization
+/// validates that definition and creates a new runtime association identity.
 #[derive(Clone)]
 pub struct Harness {
     inner: Arc<HarnessInner>,
@@ -103,6 +107,65 @@ impl fmt::Debug for Harness {
             )
             .field("default_model", &self.inner.default_model)
             .finish()
+    }
+}
+
+#[derive(Serialize)]
+#[serde(crate = "everruns_capability::serde")]
+struct HarnessDefinitionRef<'a> {
+    name: &'a str,
+    required_capabilities: ComputeCapabilities,
+    required_containment: ContainmentLevel,
+    capabilities: &'a [CapabilityRef],
+    default_model: Option<&'a str>,
+}
+
+#[derive(Deserialize)]
+#[serde(crate = "everruns_capability::serde")]
+struct HarnessDefinitionValue {
+    name: String,
+    required_capabilities: ComputeCapabilities,
+    required_containment: ContainmentLevel,
+    #[serde(default)]
+    capabilities: Vec<CapabilityRef>,
+    #[serde(default)]
+    default_model: Option<String>,
+}
+
+impl Serialize for Harness {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        HarnessDefinitionRef {
+            name: self.name(),
+            required_capabilities: self.required_capabilities(),
+            required_containment: self.required_containment(),
+            capabilities: self.capabilities(),
+            default_model: self.default_model(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Harness {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = HarnessDefinitionValue::deserialize(deserializer)?;
+        let mut builder = Self::builder(value.name)
+            .requires_capabilities(value.required_capabilities)
+            .requires_containment(value.required_containment);
+        for capability in value.capabilities {
+            builder = builder.capability(capability);
+        }
+        if let Some(model) = value.default_model {
+            builder = builder.model(model);
+        }
+        builder
+            .build()
+            .map_err(everruns_capability::serde::de::Error::custom)
     }
 }
 
@@ -231,3 +294,17 @@ impl fmt::Display for HarnessBuildError {
 }
 
 impl std::error::Error for HarnessBuildError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialization_regenerates_runtime_association_identity() {
+        let harness = Harness::builder("portable").build().unwrap();
+        let serialized = serde_json::to_string(&harness).unwrap();
+        let deserialized: Harness = serde_json::from_str(&serialized).unwrap();
+
+        assert_ne!(deserialized.inner.id, harness.inner.id);
+    }
+}
