@@ -76,6 +76,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use uuid::Uuid;
 
+use super::mcp_tool_cache::*;
 use super::models::*;
 
 /// Max search tokens to prevent performance degradation from long inputs.
@@ -103,6 +104,7 @@ pub(crate) fn matches_search_tokens(search: Option<&str>, texts: &[&str]) -> boo
 /// Stored data for a pinned session: (org_id, pinned_at)
 type PinnedSessionData = (i64, DateTime<Utc>);
 type ReportingOutboxKey = (i64, String, String, String, String);
+type McpServiceToolCacheKey = (i64, Uuid, Uuid, String, String);
 
 /// All data is stored in memory and lost on restart
 pub struct InMemoryDatabase {
@@ -135,6 +137,7 @@ pub struct InMemoryDatabase {
     // Session git refs: (session_id, name) -> ref row
     git_refs: RwLock<HashMap<(SessionId, String), SessionGitRefRow>>,
     mcp_servers: RwLock<HashMap<McpServerId, McpServerRow>>,
+    mcp_service_tool_caches: RwLock<HashMap<McpServiceToolCacheKey, McpServiceToolCacheRow>>,
     images: RwLock<HashMap<ImageId, ImageRow>>,
     files: RwLock<HashMap<FileId, FileRow>>,
     skills: RwLock<HashMap<SkillId, SkillRow>>,
@@ -305,6 +308,7 @@ impl Default for InMemoryDatabase {
             git_objects: RwLock::new(HashMap::new()),
             git_refs: RwLock::new(HashMap::new()),
             mcp_servers: RwLock::new(HashMap::new()),
+            mcp_service_tool_caches: RwLock::new(HashMap::new()),
             images: RwLock::new(HashMap::new()),
             files: RwLock::new(HashMap::new()),
             skills: RwLock::new(HashMap::new()),

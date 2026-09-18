@@ -371,6 +371,17 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
     )
     .await
     .unwrap();
+    assert!(
+        remote.mcp_authorization_headers.lock().unwrap().is_empty(),
+        "OAuth callback must not perform shared tool discovery"
+    );
+    let catalog_row = db
+        .get_mcp_server(everruns_core::DEFAULT_ORG_ID, server_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(catalog_row.cached_tools, json!([]));
+    assert!(catalog_row.tools_cached_at.is_none());
 
     let agent = db
         .get_agent(everruns_core::DEFAULT_ORG_ID, agent.id)
@@ -443,11 +454,7 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
     let authorization_headers = remote.mcp_authorization_headers.lock().unwrap().clone();
     assert_eq!(
         authorization_headers,
-        vec![
-            "Bearer initial-access",
-            "Bearer refreshed-access",
-            "Bearer refreshed-access"
-        ]
+        vec!["Bearer refreshed-access", "Bearer refreshed-access"]
     );
     verify_grant_in_separate_process(identity_id, &provider);
 

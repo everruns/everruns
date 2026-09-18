@@ -1014,11 +1014,6 @@ pub async fn connection_oauth_callback(
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
     }
 
-    let _ = state
-        .mcp_service
-        .cache_tools_for_bearer_token(&Caller::from(&org), server_id, &token.access_token)
-        .await;
-
     let redirect_target = finalize_oauth_redirect(
         &state.auth_config,
         &pending.return_to,

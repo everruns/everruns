@@ -1,3 +1,142 @@
+diff --git a/entryToSimpleMarkdown.ts b/entryToSimpleMarkdown.ts
+index 0354f11fb5fd294ba494c02c7cb1f794f957a707..5c0fa90aec362ccb7e39f6beceb8478ba499875f 100644
+--- a/entryToSimpleMarkdown.ts
++++ b/entryToSimpleMarkdown.ts
+@@ -192,6 +192,45 @@ const htmlToMarkdownPipeline = unified()
+ 			}
+ 		};
+ 	})
++	.use(function improveLinkCardHandling() {
++		return (tree) => {
++			// <LinkCard> and <CardGrid> render the title link and its description
++			// as adjacent inline spans, which concatenate into
++			// `[Title](/href)Description` when converted to Markdown. Separate
++			// them so a card grid reads as a list of described links.
++			const descriptions = selectAll(
++				'.sl-link-card .description, .sl-card .body',
++				tree as Parameters<typeof selectAll>[1]
++			);
++			for (const description of descriptions) {
++				description.children.unshift({ type: 'text', value: ' — ' });
++			}
++		};
++	})
++	.use(function absolutizeLinks() {
++		return (tree, file) => {
++			// The text outputs are read away from the site, where a root-relative
++			// `/framework/` resolves against whatever host is serving the reader.
++			// Rewrite them against the site URL so every link stays followable.
++			const site = file.data.starlightLlmsTxt.site;
++			if (!site) return;
++			// `poster` and the media `src` attributes matter because
++			// hast-util-to-mdast turns a <video> into a linked poster image.
++			const urlAttributes = ['href', 'src', 'poster'];
++			for (const node of selectAll(
++				'a[href], img[src], video[src], video[poster], source[src], audio[src]',
++				tree as Parameters<typeof selectAll>[1]
++			)) {
++				for (const attribute of urlAttributes) {
++					const value = node.properties[attribute];
++					if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) {
++						continue;
++					}
++					node.properties[attribute] = new URL(value, site).href;
++				}
++			}
++		};
++	})
+ 	.use(function removeHtmlComments() {
+ 		return (tree) => {
+ 			remove(tree, ({ type }) => type === 'comment');
+@@ -221,7 +260,9 @@ export async function entryToSimpleMarkdown(
+ 	const html = await astroContainer.renderToString(Content, context);
+ 	const file = await htmlToMarkdownPipeline.process({
+ 		value: html,
+-		data: { starlightLlmsTxt: { minify: shouldMinify } },
++		data: {
++			starlightLlmsTxt: { minify: shouldMinify, site: context.site?.href },
++		},
+ 	});
+ 	let markdown = String(file).trim();
+ 	if (shouldMinify && minify.whitespace) {
+diff --git a/env.d.ts b/env.d.ts
+index 97fa3e5c2d6eb8a0e5f6308b2f628dd990224d8d..1fb6820945034901ef604175e29913c83a045d95 100644
+--- a/env.d.ts
++++ b/env.d.ts
+@@ -8,6 +8,8 @@ declare module 'vfile' {
+ 	interface DataMap {
+ 		starlightLlmsTxt: {
+ 			minify: boolean;
++			/** Absolute site URL, used to resolve root-relative links and images. */
++			site: string | undefined;
+ 		};
+ 	}
+ }
+diff --git a/generator.ts b/generator.ts
+index 3a076f3d8b5070980f89e0601cfa11a6583a4ee5..f237a20160e1ca9e5a9846f4bdacfd6a64b2424d 100644
+--- a/generator.ts
++++ b/generator.ts
+@@ -3,11 +3,24 @@ import { getCollection } from 'astro:content';
+ import micromatch from 'micromatch';
+ import { starlightLllmsTxtContext } from 'virtual:starlight-llms-txt/context';
+ import { entryToSimpleMarkdown } from './entryToSimpleMarkdown';
+-import { defaultLang, isDefaultLocale } from './utils';
++import { defaultLang, ensureTrailingSlash, isDefaultLocale } from './utils';
+ 
+ /** Collator to compare two strings in the default language. */
+ const collator = new Intl.Collator(defaultLang);
+ 
++/**
++ * Canonical page URL for a docs entry, so a reader of the concatenated text can
++ * cite the page it came from. Without this the output carries only a title and
++ * site-relative links, which resolve nowhere once the text leaves the site.
++ */
++function pageUrl(id: string, context: APIContext): string | undefined {
++	if (!context.site) return undefined;
++	const base = new URL(ensureTrailingSlash(starlightLllmsTxtContext.base ?? '/'), context.site);
++	// Starlight strips `index` from entry IDs, so the home page has an empty ID.
++	const path = id === '' || id === 'index' ? './' : ensureTrailingSlash(id);
++	return new URL(path, base).href;
++}
++
+ /**
+  * Generates a single plaintext Markdown document from the full website content.
+  */
+@@ -56,6 +69,8 @@ export async function generateLlmsTxt(
+ 		const docSegments = [`# ${doc.data.hero?.title || doc.data.title}`];
+ 		const description = doc.data.hero?.tagline || doc.data.description;
+ 		if (description) docSegments.push(`> ${description}`);
++		const url = pageUrl(doc.id, context);
++		if (url) docSegments.push(`Source: <${url}>`);
+ 		docSegments.push(await entryToSimpleMarkdown(doc, context, minify));
+ 		segments.push(docSegments.join('\n\n'));
+ 	}
+diff --git a/index.ts b/index.ts
+index 5352759b4ae7efb40ed84899e38a7f3d811f4b1b..a14bdf16c0effb2408fa218cc38a9378bca120af 100644
+--- a/index.ts
++++ b/index.ts
+@@ -54,6 +54,7 @@ export default function starlightLlmsTxt(opts: StarlightLllmsTextOptions = {}):
+ 								promote: opts.promote ?? ['index*'],
+ 								demote: opts.demote ?? [],
+ 								exclude: opts.exclude ?? [],
++								excludeSmall: opts.excludeSmall ?? [],
+ 								defaultLocale: config.defaultLocale,
+ 								locales: config.locales,
+ 								pageSeparator: opts.pageSeparator ?? '\n\n',
+diff --git a/llms-custom.txt.ts b/llms-custom.txt.ts
+index f96dbbdd844b7eef9913da53f777ff0124b74ee7..1e8f11d995e055580377b1177825ed9f2abffbd1 100644
+--- a/llms-custom.txt.ts
++++ b/llms-custom.txt.ts
+@@ -30,6 +30,9 @@ export const GET: APIRoute<Props, Params> = async (context) => {
+ 		minify: true,
+ 		description,
+ 		include: context.props.paths,
++		// A page listed in `exclude` is unfit for any text output, so a custom
++		// set matching it must skip it too.
++		exclude: starlightLllmsTxtContext.exclude,
+ 	});
+ 	return new Response(body);
+ };
 diff --git a/llms-full.txt.ts b/llms-full.txt.ts
 index 03f408bf7106a64f1730c381d422ac4a911aeea9..9907aed55358cab7e652991f2946a6e4ecbbccde 100644
 --- a/llms-full.txt.ts
@@ -16,3 +155,66 @@ index 03f408bf7106a64f1730c381d422ac4a911aeea9..9907aed55358cab7e652991f2946a6e4
  	});
  	return new Response(body);
  };
+diff --git a/llms-small.txt.ts b/llms-small.txt.ts
+index 8e114b9c7d74ea7e871b884456d078d2391583ce..77d2c8a35103af5be8cf54efd9c3d0bbaaae0cba 100644
+--- a/llms-small.txt.ts
++++ b/llms-small.txt.ts
+@@ -13,7 +13,9 @@ export const GET: APIRoute = async (context) => {
+ 	const body = await generateLlmsTxt(context, {
+ 		minify: true,
+ 		description: `This is the abridged developer documentation for ${getSiteTitle()}`,
+-		exclude: starlightLllmsTxtContext.exclude,
++		// `excludeSmall` pages are dropped from the abridged set only; they stay
++		// in `llms-full.txt` and in the custom sets that cover them.
++		exclude: [...starlightLllmsTxtContext.exclude, ...starlightLllmsTxtContext.excludeSmall],
+ 	});
+ 	return new Response(body);
+ };
+diff --git a/types.ts b/types.ts
+index 47fce20aadc36d3d23992007e023e35c6204e02b..bf431108ca1608a9fe724ff0023f97e654a32e6f 100644
+--- a/types.ts
++++ b/types.ts
+@@ -28,6 +28,7 @@ export interface ProjectContext {
+ 	promote: NonNullable<StarlightLllmsTextOptions['promote']>;
+ 	demote: NonNullable<StarlightLllmsTextOptions['demote']>;
+ 	exclude: NonNullable<StarlightLllmsTextOptions['exclude']>;
++	excludeSmall: NonNullable<StarlightLllmsTextOptions['excludeSmall']>;
+ 	pageSeparator: NonNullable<StarlightLllmsTextOptions['pageSeparator']>;
+ 	rawContent: NonNullable<StarlightLllmsTextOptions['rawContent']>;
+ 	customSelectors: NonNullable<StarlightLllmsTextOptions['customSelectors']>;
+@@ -187,16 +188,33 @@ export interface StarlightLllmsTextOptions {
+ 	demote?: string[];
+ 
+ 	/**
+-	 * Slugs of pages to exclude from `llms-small.txt`. Supports glob patterns.
++	 * Slugs of pages to exclude from every generated output — `llms-full.txt`,
++	 * `llms-small.txt`, and any `customSets`. Supports glob patterns.
+ 	 *
+ 	 * @default []
+ 	 *
+ 	 * @example
+-	 * // Ignore an old page and all tutorial pages when creating llms-small.txt
++	 * // Ignore an old page and all tutorial pages when generating text output
+ 	 * exclude: ["old-page", "tutorial/**"],
+ 	 */
+ 	exclude?: string[];
+ 
++	/**
++	 * Slugs of pages to exclude from `llms-small.txt` only, on top of
++	 * {@link StarlightLllmsTextOptions.exclude | `exclude`}. Supports glob patterns.
++	 *
++	 * Use this for content that belongs in the complete documentation but is not
++	 * essential in an abridged set, so `llms-small.txt` is meaningfully smaller
++	 * than `llms-full.txt` rather than the same corpus with whitespace collapsed.
++	 *
++	 * @default []
++	 *
++	 * @example
++	 * // Keep operational runbooks out of the abridged set
++	 * excludeSmall: ["sre/**"],
++	 */
++	excludeSmall?: string[];
++
+ 	/**
+ 	 * String used to separate pages in the generated text.
+ 	 * @default "\n\n"

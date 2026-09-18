@@ -52,7 +52,7 @@
 2630 crates/server/src/api/mcp_endpoint/mod.rs
 1739 crates/server/src/api/organizations.rs
 1589 crates/server/src/api/sessions.rs
-1741 crates/server/src/api/user_connections.rs
+1736 crates/server/src/api/user_connections.rs
 1846 crates/server/src/api/voice.rs
 2805 crates/server/src/app_builder.rs
 2932 crates/server/src/atif.rs
@@ -66,7 +66,6 @@
 1898 crates/server/src/domains/budgets/tests.rs
 1872 crates/server/src/domains/common.rs
 2114 crates/server/src/domains/evals/service.rs
-1582 crates/server/src/domains/mcp_servers/service.rs
 1753 crates/server/src/domains/models/service.rs
 2751 crates/server/src/domains/session_files/service.rs
 1897 crates/server/src/domains/session_tasks/commands.rs

@@ -8,7 +8,7 @@
 //! an `IntoCapability` value activates an open third-party reference — with
 //! no core/host imports and no central enum edit anywhere.
 
-use everruns::{Agent, InMemoryEngine, Model, ToolCall};
+use everruns::{Agent, Harness, InMemoryEngine, Model, ToolCall};
 use everruns_llmsim::LlmSimConfig;
 use external_capability_pack::{VendorSearch, math_pack};
 
@@ -17,10 +17,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("Return only the answer.")
         .model(Model::simulated("4"))
-        .capability("session_file_system")
         .build()?;
     let engine = InMemoryEngine::new();
-    let session = engine.create(agent);
+    let harness = Harness::builder("generic")
+        .capability("session_file_system")
+        .build()?;
+    let session = engine.create(agent).harness(harness).start().await?;
     let context = session.inspect().await?;
     assert!(
         context.tools.iter().any(|tool| tool.name == "read_file"),
