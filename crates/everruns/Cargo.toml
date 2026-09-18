@@ -36,6 +36,33 @@ required-features = ["openai"]
 name = "workspace_environment"
 required-features = ["local"]
 
+# The `local_*` suites exercise the SQLite-backed platform `local` turns on.
+# Without the declaration they build under any feature set and fail to resolve
+# `everruns_platform`, so `--all-targets` on the default build is red.
+[[test]]
+name = "local_composability_and_seam_test"
+required-features = ["local"]
+
+[[test]]
+name = "local_platform_store_test"
+required-features = ["local"]
+
+[[test]]
+name = "local_schedule_runner_test"
+required-features = ["local"]
+
+[[test]]
+name = "local_schedule_store_test"
+required-features = ["local"]
+
+[[test]]
+name = "local_spawn_agent_runtime_test"
+required-features = ["local"]
+
+[[test]]
+name = "local_task_registry_test"
+required-features = ["local"]
+
 [features]
 # Default features stay offline: the facade includes the contained session
 # filesystem but activates no provider, shell, web, Lua, MCP, SQLx, server, or
@@ -215,3 +242,10 @@ required-features = ["capabilities", "openai"]
 [[example]]
 name = "capability_configuration"
 required-features = ["capabilities"]
+
+# Uses the TypeSafe-backed classifier tool, which `jev` re-exports. Live mode
+# additionally needs `openai`, but the example compiles and runs offline
+# against the simulator without it.
+[[example]]
+name = "agent_classification"
+required-features = ["jev"]
