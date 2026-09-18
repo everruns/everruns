@@ -315,7 +315,7 @@ async fn test_list_commands_includes_platform_catalog_commands() {
         response
             .commands
             .iter()
-            .any(|command| command.name == "create_app" && command.api_version == "v1")
+            .any(|command| command.name == "create_agent_endpoint" && command.api_version == "v1")
     );
 }
 
