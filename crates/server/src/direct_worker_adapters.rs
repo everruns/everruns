@@ -2795,7 +2795,7 @@ impl DirectPlatformStore {
 
     async fn command_ctx(&self) -> everruns_provider::error::Result<crate::domains::common::Ctx> {
         let caller = self.resolve_caller().await?;
-        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags_cached(
             &self.db,
             self.org_id,
             &everruns_platform::FeatureFlags::current(),

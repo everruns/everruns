@@ -1651,7 +1651,7 @@ async fn resolve_org_by_id(
 
     let role = org_row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member);
 
-    let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+    let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags_cached(
         &state.db,
         org_row.org_id,
         &state.auth.system_feature_flags,
