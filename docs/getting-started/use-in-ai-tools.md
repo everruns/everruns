@@ -72,9 +72,15 @@ tools that would rather read text than HTML.
   [reference](https://docs.everruns.com/_llms-txt/reference.txt),
   [operations](https://docs.everruns.com/_llms-txt/operations.txt).
   Prefer a set over the complete text.
+- `<page>/index.md` — one page on its own: append `index.md` to any docs URL,
+  as in
+  [`/framework/quickstart/index.md`](https://docs.everruns.com/framework/quickstart/index.md).
+  A page is a couple of thousand tokens against a set's tens of thousands, so
+  prefer it whenever you know which page you need. Every built page has one,
+  including the API reference and the site root.
 - [`/api/openapi.json`](https://docs.everruns.com/api/openapi.json) — the REST
   API as OpenAPI 3.0. The text sets carry prose only, so take endpoint shapes
   from here.
 
-Every page in those files begins with its title, its description, and a
+Every one of these begins with the page's title, its description, and a
 `Source:` line holding the canonical URL. Cite that URL, not the text file.
