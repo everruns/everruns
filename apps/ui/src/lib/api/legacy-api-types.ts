@@ -800,24 +800,6 @@ export interface AppChannel {
   updated_at: string;
 }
 
-export interface AppRunEvent {
-  id: string;
-  app_id: string;
-  channel_id: string;
-  channel_type: ChannelType;
-  channel_name?: string | null;
-  status: "pending" | "running" | "completed" | "failed" | "skipped";
-  created_at: string;
-  completed_at?: string | null;
-}
-
-export interface AppRunBucket {
-  hour: string;
-  ok: number;
-  err: number;
-  running?: number;
-}
-
 export interface App {
   id: string;
   name: string;
@@ -838,65 +820,6 @@ export interface App {
   updated_at: string;
   archived_at: string | null;
   deleted_at: string | null;
-}
-
-export interface CreateAppRequest {
-  name: string;
-  description?: string;
-  harness_id: string;
-  agent_id?: string;
-  agent_version_policy?: AgentVersionPolicy;
-  agent_version_id?: string;
-  agent_identity_id?: string;
-  channel_type?: ChannelType;
-  channel_config?:
-    | SlackChannelConfig
-    | AgUiChannelConfig
-    | ScheduleChannelConfig
-    | WebhookChannelConfig
-    | A2aChannelConfig
-    | FcpChannelConfig
-    | PublicChatChannelConfig
-    | Record<string, unknown>;
-}
-
-export interface UpdateAppRequest {
-  name?: string;
-  description?: string;
-  harness_id?: string;
-  agent_id?: string;
-  agent_version_policy?: AgentVersionPolicy;
-  agent_version_id?: string | null;
-  agent_identity_id?: string | null;
-  status?: AppStatus;
-}
-
-export interface AddChannelRequest {
-  channel_type: ChannelType;
-  channel_config?:
-    | SlackChannelConfig
-    | AgUiChannelConfig
-    | ScheduleChannelConfig
-    | WebhookChannelConfig
-    | A2aChannelConfig
-    | FcpChannelConfig
-    | PublicChatChannelConfig
-    | Record<string, unknown>;
-  enabled?: boolean;
-}
-
-export interface UpdateChannelRequest {
-  channel_type?: ChannelType;
-  channel_config?:
-    | SlackChannelConfig
-    | AgUiChannelConfig
-    | ScheduleChannelConfig
-    | WebhookChannelConfig
-    | A2aChannelConfig
-    | FcpChannelConfig
-    | PublicChatChannelConfig
-    | Record<string, unknown>;
-  enabled?: boolean;
 }
 
 // From legacy auth-types.ts; retained as UI compatibility over generated OpenAPI schemas.

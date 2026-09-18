@@ -2,7 +2,7 @@
 
 use everruns_core::channel::{SessionBinding, build_session_routing_tag, resolve_session_binding};
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
-use everruns_platform::{App, AppChannel, SlackChannelConfig, SlackReplyMode};
+use everruns_platform::{SlackChannelConfig, SlackReplyMode};
 use everruns_provider::url_validation::validate_safe_url;
 use std::collections::HashMap;
 
@@ -115,8 +115,8 @@ pub(crate) fn build_attachment_content_parts(
 }
 
 pub(crate) fn build_session_tags(
-    app: &App,
-    slack_channel: &AppChannel,
+    app: &crate::api::app_ingress::IngressContext,
+    slack_channel: &crate::api::app_ingress::IngressEndpoint,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
     surface: SlackSurface,

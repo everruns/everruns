@@ -4368,6 +4368,10 @@ fn schedule_trigger_input(agent_id: AgentId) -> CreateAgentTriggerRow {
         execution_resolved_owner_user_id: None,
         execution_agent_identity_id: None,
         execution_app_id: None,
+        execution_app_public_id: None,
+        execution_app_name: None,
+        execution_agent_version_policy: None,
+        execution_agent_version_id: None,
     }
 }
 

@@ -29,9 +29,6 @@ const mockUseEvals = jest.fn((_options?: { enabled?: boolean }) => ({ data: [] }
 jest.mock("@/hooks/use-evals", () => ({
   useEvals: (options?: { enabled?: boolean }) => mockUseEvals(options),
 }));
-jest.mock("@/hooks/use-apps", () => ({
-  useApps: () => ({ data: [] }),
-}));
 jest.mock("@/hooks/use-agent-identities", () => ({
   useAgentIdentities: () => ({ data: [] }),
 }));
@@ -269,6 +266,12 @@ describe("useGlobalSearch", () => {
     expect(result.current).toContainEqual(
       expect.objectContaining({ category: "navigation", href }),
     );
+  });
+
+  it("does not return the retired Apps route", () => {
+    const { result } = renderHook(() => useGlobalSearch("apps"));
+
+    expect(result.current.some((item) => item.href.startsWith("/apps"))).toBe(false);
   });
 
   it("hides Payments navigation when machine payments are disabled", () => {

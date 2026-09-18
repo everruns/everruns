@@ -11,8 +11,6 @@
 // session is created or any turn runs. Visitors authenticated via the channel's
 // `auth` config (e.g. Google sign-in) bypass the challenge.
 
-use std::sync::LazyLock;
-
 use axum::{
     Extension, Json, Router,
     extract::{ConnectInfo, Path, Request, State},
@@ -24,7 +22,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_platform::{
-    App, AppEndpointAuthMode, AppEndpointAuthProviderConfig, PublicChatChannelConfig,
+    AppEndpointAuthMode, AppEndpointAuthProviderConfig, ChannelType, PublicChatChannelConfig,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -45,18 +43,29 @@ const PUBLIC_CHAT_TOKEN_HEADER: &str = "x-everruns-public-chat-token";
 const ROUTING_TAG_PREFIX: &str = "public_chat";
 const VISITOR_COOKIE: &str = "everruns_public_chat_visitor";
 
-/// Deployment-level gate for the Public Chat feature. When the deployment flag
-/// is off, every public endpoint behaves as if no chat exists (sanitized 404),
-/// regardless of any channel rows. Org-level opt-in additionally gates channel
-/// creation and the builder UI. Resolved once at startup from the env.
-static PUBLIC_CHAT_ENABLED: LazyLock<bool> =
-    LazyLock::new(|| everruns_platform::FeatureFlags::current().public_chat);
-
 pub fn routes(state: AgUiState) -> Router {
     Router::new()
-        .route("/v1/apps/{app_id}/public-chat", post(run_public_chat))
-        .route("/v1/apps/{app_id}/public-chat/config", get(get_config))
+        .route(
+            "/v1/apps/{app_id}/public-chat",
+            post(run_public_chat_legacy),
+        )
+        .route(
+            "/v1/apps/{app_id}/public-chat/config",
+            get(get_config_legacy),
+        )
+        .route(
+            "/v1/e/{channel_id}/public-chat",
+            post(run_public_chat_endpoint),
+        )
+        .route(
+            "/v1/e/{channel_id}/public-chat/config",
+            get(get_config_endpoint),
+        )
         .with_state(state)
+}
+enum PublicChatTarget {
+    LegacyApp(String),
+    Endpoint(String),
 }
 
 /// Non-secret bootstrap configuration the public web app needs to render the
@@ -98,11 +107,25 @@ struct PublicChatCaptchaBootstrap {
     site_key: String,
 }
 
-async fn get_config(
+async fn get_config_legacy(
     State(state): State<AgUiState>,
     Path(app_id): Path<String>,
 ) -> Result<Json<PublicChatBootstrap>, Response> {
-    let (app, _endpoint_internal_id, config) = resolve_published_channel(&state, &app_id).await?;
+    get_config(state, PublicChatTarget::LegacyApp(app_id)).await
+}
+
+async fn get_config_endpoint(
+    State(state): State<AgUiState>,
+    Path(channel_id): Path<String>,
+) -> Result<Json<PublicChatBootstrap>, Response> {
+    get_config(state, PublicChatTarget::Endpoint(channel_id)).await
+}
+
+async fn get_config(
+    state: AgUiState,
+    target: PublicChatTarget,
+) -> Result<Json<PublicChatBootstrap>, Response> {
+    let (app, _endpoint_internal_id, config) = resolve_published_channel(&state, target).await?;
 
     let branding = &config.branding;
     let name = branding
@@ -151,7 +174,7 @@ async fn get_config(
     }))
 }
 
-async fn run_public_chat(
+async fn run_public_chat_legacy(
     State(state): State<AgUiState>,
     Path(app_id): Path<String>,
     req_id: Option<Extension<RequestId>>,
@@ -159,9 +182,47 @@ async fn run_public_chat(
     headers: HeaderMap,
     request: Request,
 ) -> Result<Response, Response> {
+    run_public_chat(
+        state,
+        PublicChatTarget::LegacyApp(app_id),
+        req_id,
+        connect_info,
+        headers,
+        request,
+    )
+    .await
+}
+
+async fn run_public_chat_endpoint(
+    State(state): State<AgUiState>,
+    Path(channel_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    request: Request,
+) -> Result<Response, Response> {
+    run_public_chat(
+        state,
+        PublicChatTarget::Endpoint(channel_id),
+        req_id,
+        connect_info,
+        headers,
+        request,
+    )
+    .await
+}
+
+async fn run_public_chat(
+    state: AgUiState,
+    target: PublicChatTarget,
+    req_id: Option<Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    request: Request,
+) -> Result<Response, Response> {
     let request_id = req_id.map(|Extension(r)| r.0);
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
-    let (app, endpoint_internal_id, config) = resolve_published_channel(&state, &app_id).await?;
+    let (app, endpoint_internal_id, config) = resolve_published_channel(&state, target).await?;
 
     // 1. Authentication. A channel with a real inline `auth` provider requires
     //    a verified credential (e.g. Google sign-in); those visitors are
@@ -335,26 +396,50 @@ async fn verify_turnstile(
 /// public-surface contract).
 async fn resolve_published_channel(
     state: &AgUiState,
-    app_id: &str,
-) -> Result<(App, uuid::Uuid, PublicChatChannelConfig), Response> {
+    target: PublicChatTarget,
+) -> Result<
+    (
+        crate::api::app_ingress::IngressContext,
+        uuid::Uuid,
+        PublicChatChannelConfig,
+    ),
+    Response,
+> {
     // Feature-gated: when the deployment flag is off, the surface does not exist.
-    if !*PUBLIC_CHAT_ENABLED {
+    if !state.public_chat_enabled {
         return Err(ErrorResponse::feature_not_enabled("public_chat").into_response());
     }
-    let app = crate::domains::apps::queries::get_by_public_id_unscoped(
-        &state.db,
-        state.encryption.as_ref(),
-        app_id,
-    )
-    .await
-    .map_err(internal_error)?
-    .ok_or_else(not_found)?;
-
-    let channel = app.public_chat_channel().ok_or_else(not_found)?;
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&state.db, &app, channel)
+    let (app, channel) = match target {
+        PublicChatTarget::LegacyApp(app_id) => {
+            match crate::api::app_ingress::resolve_legacy_endpoint(
+                &state.db,
+                state.encryption.as_ref(),
+                &app_id,
+                ChannelType::PublicChat,
+            )
+            .await
+            .map_err(internal_error)?
+            {
+                crate::api::app_ingress::LegacyEndpointMatch::One(endpoint) => *endpoint,
+                crate::api::app_ingress::LegacyEndpointMatch::NotFound
+                | crate::api::app_ingress::LegacyEndpointMatch::Ambiguous => {
+                    return Err(not_found());
+                }
+            }
+        }
+        PublicChatTarget::Endpoint(channel_id) => crate::api::app_ingress::resolve_endpoint(
+            &state.db,
+            state.encryption.as_ref(),
+            &channel_id,
+        )
         .await
         .map_err(internal_error)?
-    {
+        .ok_or_else(not_found)?,
+    };
+    if channel.channel_type != ChannelType::PublicChat {
+        return Err(not_found());
+    }
+    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
             endpoint_id = %channel.public_id,

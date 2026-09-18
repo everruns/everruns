@@ -46,7 +46,7 @@ use crate::api::sse::SseConnectionTracker;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::apps::{
     A2aInvocationRequest, hash_a2a_api_key, invoke_a2a_app_channel,
-    invoke_a2a_app_channel_with_hook, queries as app_queries,
+    invoke_a2a_app_channel_with_hook,
 };
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -420,20 +420,21 @@ async fn authenticate_request(
     peer_addr: Option<std::net::SocketAddr>,
     body: &[u8],
 ) -> Result<AuthorizedA2a, (StatusCode, Json<ErrorResponse>)> {
-    let app = app_queries::get_by_public_id_unscoped(&state.db, state.encryption.as_ref(), app_id)
-        .await
-        .map_err(internal_error)?
-        .ok_or_else(not_found)?;
+    let (app, channel) =
+        crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+            .await
+            .map_err(internal_error)?
+            .ok_or_else(not_found)?;
+    if !app.matches_legacy_app_id(app_id) {
+        return Err(not_found());
+    }
 
     // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
     // "app does not exist" apart from "app exists but is not published / the
     // channel is disabled / misconfigured". Every such case collapses to a
     // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
     // reason is logged server-side only.
-    let channel_id_typed = channel_id
-        .parse::<everruns_provider::typed_id::AppChannelId>()
-        .map_err(|e| bad_request(format!("Invalid channel ID: {e}")))?;
-    let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
+    let channel_id_typed = channel.public_id;
     if channel.channel_type != everruns_platform::ChannelType::A2a {
         return Err(not_found());
     }
@@ -441,10 +442,7 @@ async fn authenticate_request(
     // endpoint, and every request must present the per-channel API key before
     // session creation. Liveness is resolved before auth so a caller cannot
     // distinguish a misconfigured endpoint from a bad key.
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&state.db, &app, channel)
-        .await
-        .map_err(internal_error)?
-    {
+    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
             endpoint_id = %channel.public_id,
@@ -1381,25 +1379,24 @@ async fn agent_card(
     channel_id: String,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
-    let app = app_queries::get_by_public_id_unscoped(&state.db, state.encryption.as_ref(), &app_id)
-        .await
-        .map_err(internal_error)?
-        .ok_or_else(not_found)?;
-    let channel_id_typed = channel_id
-        .parse::<everruns_provider::typed_id::AppChannelId>()
-        .map_err(|_| not_found())?;
-    let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
+    let (app, channel) = crate::api::app_ingress::resolve_endpoint(
+        &state.db,
+        state.encryption.as_ref(),
+        &channel_id,
+    )
+    .await
+    .map_err(internal_error)?
+    .ok_or_else(not_found)?;
+    if !app.matches_legacy_app_id(&app_id) {
+        return Err(not_found());
+    }
     if channel.channel_type != everruns_platform::ChannelType::A2a {
         return Err(not_found());
     }
     // The Agent Card is only served for a live endpoint: it advertises the
     // invocation URL and security scheme, so publishing it for a draft or
     // suspended endpoint would leak a surface that refuses traffic.
-    if crate::api::app_ingress::endpoint_liveness(&state.db, &app, channel)
-        .await
-        .map_err(internal_error)?
-        .is_err()
-    {
+    if crate::api::app_ingress::endpoint_liveness(&app, &channel).is_err() {
         return Err(not_found());
     }
     let config = channel.a2a_config().ok_or_else(not_found)?;

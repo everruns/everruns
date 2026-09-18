@@ -7,14 +7,8 @@ use serde_json::{Value, json};
 use test_harness::TestServer;
 
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_provider::typed_id::AppChannelId;
 use everruns_server::api::common::Pagination;
-use everruns_server::domains::apps::invoke_scheduled_app_channel;
-use everruns_server::domains::messages::MessageService;
-use everruns_server::domains::sessions::SessionService;
-use everruns_server::event_delivery::EventDelivery;
 use everruns_server::storage::SessionListFilters;
-use everruns_server::storage::models::{CreateAppChannelRow, CreateAuditLogRow};
 
 async fn create_app(
     server: &TestServer,
@@ -35,126 +29,59 @@ async fn create_app(
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let channel_type_for_create = (channel_type != "webhook").then_some(channel_type);
-    let channel_config_for_create = (channel_type != "webhook").then_some(channel_config.clone());
-    let app: Value = server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": name,
-                "description": "test app",
-                "harness_id": server.seed_generic_harness_id.clone(),
-                "agent_id": agent["id"],
-                "channel_type": channel_type_for_create,
-                "channel_config": channel_config_for_create,
-            }),
+    server
+        .seed_app_endpoint(
+            name,
+            agent["id"].as_str().unwrap(),
+            channel_type,
+            channel_config,
         )
         .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    if channel_type == "webhook" {
-        let app_row = server
-            .db
-            .get_app_by_public_id(DEFAULT_ORG_ID, app["id"].as_str().unwrap())
-            .await
-            .expect("get legacy webhook app")
-            .expect("legacy webhook app exists");
-        server
-            .db
-            .create_app_channel(
-                app_row.id,
-                CreateAppChannelRow {
-                    public_id: AppChannelId::new().to_string(),
-                    channel_type: channel_type.to_string(),
-                    channel_config,
-                    channel_config_encrypted: None,
-                    auth: None,
-                    auth_encrypted: None,
-                    durable_schedule_id: None,
-                    enabled: true,
-                },
-            )
-            .await
-            .expect("seed pre-migration webhook channel");
-        return server
-            .get(&format!("/v1/apps/{}", app["id"].as_str().unwrap()))
-            .await
-            .assert_status(StatusCode::OK)
-            .json();
-    }
-
-    app
-}
-
-#[tokio::test]
-async fn webhook_channel_creation_is_rejected_with_agent_trigger_guidance() {
-    let server = TestServer::in_memory().await;
-    let agent: Value = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "deprecated-webhook-agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let response = server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": "deprecated-webhook-app",
-                "harness_id": server.seed_generic_harness_id.clone(),
-                "agent_id": agent["id"],
-                "channel_type": "webhook",
-                "channel_config": {
-                    "token": "secret",
-                    "session_mode": "shared_session",
-                    "message": "payload={{payload}}"
-                }
-            }),
-        )
-        .await;
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body = response.text();
-    assert!(body.contains("webhook trigger"));
-    assert!(body.contains("app's agent"));
 }
 
 async fn publish_app(server: &TestServer, app_id: &str) {
-    server
-        .post(&format!("/v1/apps/{app_id}/publish"), json!({}))
-        .await
-        .assert_status(StatusCode::OK);
+    server.set_app_endpoints_live(app_id, true).await;
 }
+#[tokio::test]
+async fn webhook_legacy_app_channel_mismatch_is_not_found() {
+    let server = TestServer::in_memory().await;
+    let app_a = create_app(
+        &server,
+        "webhook-mismatch-a",
+        "webhook",
+        json!({
+            "token": "secret-a",
+            "session_mode": "shared_session",
+            "message": "{{webhook.body}}",
+        }),
+    )
+    .await;
+    let app_b = create_app(
+        &server,
+        "webhook-mismatch-b",
+        "webhook",
+        json!({
+            "token": "secret-b",
+            "session_mode": "shared_session",
+            "message": "{{webhook.body}}",
+        }),
+    )
+    .await;
+    let app_a_id = app_a["id"].as_str().unwrap();
+    let app_b_id = app_b["id"].as_str().unwrap();
+    let channel_b_id = app_b["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_a_id).await;
+    publish_app(&server, app_b_id).await;
 
-async fn unpublish_app(server: &TestServer, app_id: &str) {
     server
-        .post(&format!("/v1/apps/{app_id}/unpublish"), json!({}))
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_a_id}/webhooks/{channel_b_id}"),
+            vec![("x-everruns-webhook-token", "secret-b")],
+            b"hello".to_vec(),
+        )
         .await
-        .assert_status(StatusCode::OK);
-}
-
-async fn find_schedule(server: &TestServer, app_id: &str, channel_id: &str) -> Option<Value> {
-    let schedules: Value = server
-        .get("/v1/durable/schedules")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    schedules["data"]
-        .as_array()
-        .and_then(|items| {
-            items.iter().find(|item| {
-                item["target"]["input"]["app_id"].as_str() == Some(app_id)
-                    && item["target"]["input"]["channel_id"].as_str() == Some(channel_id)
-            })
-        })
-        .cloned()
+        .assert_status(StatusCode::NOT_FOUND);
 }
 
 async fn list_app_sessions(server: &TestServer, app_id: &str, channel_id: &str) -> Vec<String> {
@@ -202,279 +129,6 @@ async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<S
             })
         })
         .collect()
-}
-
-#[tokio::test]
-async fn app_run_history_paginates_audit_log_fallback() {
-    let server = TestServer::in_memory().await;
-    let app = create_app(
-        &server,
-        "webhook-history",
-        "webhook",
-        json!({
-            "token": "history-token",
-            "session_mode": "session_per_invocation",
-            "message": "history",
-        }),
-    )
-    .await;
-
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    server
-        .db
-        .create_audit_log(CreateAuditLogRow {
-            org_id: DEFAULT_ORG_ID,
-            actor_id: None,
-            event_type: "agent.app_invocation.started".to_string(),
-            ip_address: None,
-            metadata: json!({
-                "app_id": app_id,
-                "app_channel_id": channel_id,
-                "app_channel_type": "webhook",
-            }),
-            domain: "agent".to_string(),
-            action: "agent.app_invocation.started".to_string(),
-            target_type: Some("app_channel".to_string()),
-            target_id: Some(channel_id.to_string()),
-        })
-        .await
-        .expect("create matching audit log");
-
-    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
-    for idx in 0..500 {
-        server
-            .db
-            .create_audit_log(CreateAuditLogRow {
-                org_id: DEFAULT_ORG_ID,
-                actor_id: None,
-                event_type: "agent.app_invocation.started".to_string(),
-                ip_address: None,
-                metadata: json!({
-                    "app_id": format!("app_noise_{idx}"),
-                    "app_channel_id": format!("appchan_noise_{idx}"),
-                    "app_channel_type": "webhook",
-                }),
-                domain: "agent".to_string(),
-                action: "agent.app_invocation.started".to_string(),
-                target_type: Some("app_channel".to_string()),
-                target_id: Some(format!("appchan_noise_{idx}")),
-            })
-            .await
-            .expect("create unrelated audit log");
-    }
-
-    let run_history: Value = server
-        .get(&format!("/v1/apps/{app_id}/runs?window=24h"))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    let runs = run_history["data"].as_array().expect("runs array");
-    assert!(
-        runs.iter()
-            .any(|run| run["channel_id"].as_str() == Some(channel_id)),
-        "matching app invocation should be found beyond the first audit page"
-    );
-}
-
-#[tokio::test]
-async fn schedule_channel_creation_is_rejected_with_agent_trigger_guidance() {
-    let server = TestServer::in_memory().await;
-    let agent: Value = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "deprecated-schedule-agent",
-                "display_name": "Deprecated Schedule Agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let response: Value = server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": "deprecated-schedule-app",
-                "description": "test app",
-                "harness_id": server.seed_generic_harness_id.clone(),
-                "agent_id": agent["id"],
-                "channel_type": "schedule",
-                "channel_config": {
-                    "cron_expression": "0 * * * *",
-                    "timezone": "UTC",
-                    "session_mode": "shared_session",
-                    "message": "scheduled"
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::BAD_REQUEST)
-        .json();
-
-    assert!(
-        response["detail"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("schedule trigger on the app's agent"),
-        "unexpected response: {response:?}"
-    );
-}
-
-#[tokio::test]
-#[ignore = "legacy schedule behavior requires a pre-migration fixture"]
-async fn schedule_channel_binds_to_durable_schedule_and_invokes_shared_session() {
-    let server = TestServer::in_memory().await;
-    let app = create_app(
-        &server,
-        "schedule-checker",
-        "schedule",
-        json!({
-            "cron_expression": "0 * * * *",
-            "timezone": "UTC",
-            "session_mode": "shared_session",
-            "message": "scheduled {{app.name}} {{invocation.source}}",
-            "extra": "preserved",
-        }),
-    )
-    .await;
-
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    assert_eq!(
-        app["channels"][0]["channel_config"]["cron_expression"],
-        "0 0 * * * * *"
-    );
-    assert_eq!(app["channels"][0]["channel_config"]["extra"], "preserved");
-
-    let draft_schedule = find_schedule(&server, app_id, channel_id)
-        .await
-        .expect("draft schedule binding");
-    assert_eq!(draft_schedule["target"]["type"], "activity");
-    assert_eq!(
-        draft_schedule["target"]["name"],
-        "invoke_scheduled_app_channel"
-    );
-    assert_eq!(draft_schedule["enabled"], false);
-    assert_eq!(draft_schedule["cron_expression"], "0 0 * * * * *");
-
-    publish_app(&server, app_id).await;
-
-    let published_schedule = find_schedule(&server, app_id, channel_id)
-        .await
-        .expect("published schedule binding");
-    assert_eq!(published_schedule["enabled"], true);
-
-    let schedule_id = published_schedule["id"].as_str().unwrap();
-    let triggered: Value = server
-        .post(
-            &format!("/v1/durable/schedules/{schedule_id}/trigger"),
-            json!({}),
-        )
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    let run_history: Value = server
-        .get(&format!("/v1/apps/{app_id}/runs?window=24h&groupBy=hour"))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert_eq!(
-        run_history["data"][0]["id"].as_str(),
-        triggered["execution_id"].as_str()
-    );
-    assert_eq!(run_history["data"][0]["app_id"], app_id);
-    assert_eq!(run_history["data"][0]["channel_id"], channel_id);
-    assert_eq!(run_history["data"][0]["channel_type"], "schedule");
-    assert_eq!(run_history["data"][0]["status"], "running");
-    assert_eq!(run_history["buckets"][0]["running"], 1);
-
-    let session_service = SessionService::new(server.db.clone());
-    let message_service = MessageService::new(
-        server.db.clone(),
-        server.runner.clone(),
-        false,
-        EventDelivery::in_memory(),
-    );
-
-    let first = invoke_scheduled_app_channel(
-        &server.db,
-        server.encryption.as_ref(),
-        &session_service,
-        &message_service,
-        DEFAULT_ORG_ID,
-        app_id,
-        channel_id,
-    )
-    .await
-    .expect("first schedule invocation");
-    let second = invoke_scheduled_app_channel(
-        &server.db,
-        server.encryption.as_ref(),
-        &session_service,
-        &message_service,
-        DEFAULT_ORG_ID,
-        app_id,
-        channel_id,
-    )
-    .await
-    .expect("second schedule invocation");
-
-    assert!(first.created_session);
-    assert!(!second.created_session);
-    assert_eq!(first.session_id, second.session_id);
-
-    let texts = list_user_message_texts(&server, &first.session_id.to_string()).await;
-    assert!(
-        texts
-            .iter()
-            .any(|text| text.contains("scheduled schedule-checker schedule"))
-    );
-    assert_eq!(texts.len(), 2);
-
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({
-                "channel_config": {
-                    "cron_expression": "15 * * * *",
-                    "timezone": "America/Chicago",
-                    "session_mode": "shared_session",
-                    "message": "updated {{app.id}}",
-                    "extra": "still-preserved",
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    let updated_schedule = find_schedule(&server, app_id, channel_id)
-        .await
-        .expect("updated schedule binding");
-    assert_eq!(updated_schedule["cron_expression"], "0 15 * * * * *");
-    assert_eq!(updated_schedule["timezone"], "America/Chicago");
-
-    let updated_app: Value = server
-        .get(&format!("/v1/apps/{app_id}"))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert_eq!(
-        updated_app["channels"][0]["channel_config"]["cron_expression"],
-        "0 15 * * * * *"
-    );
-    assert_eq!(
-        updated_app["channels"][0]["channel_config"]["extra"],
-        "still-preserved"
-    );
-
-    server
-        .delete(&format!("/v1/apps/{app_id}/channels/{channel_id}"))
-        .await
-        .assert_status(StatusCode::NO_CONTENT);
-    assert!(find_schedule(&server, app_id, channel_id).await.is_none());
 }
 
 #[tokio::test]
@@ -699,228 +353,4 @@ async fn webhook_channel_per_invocation_rejects_bad_token_and_creates_new_sessio
 
     let sessions = list_app_sessions(&server, app_id, channel_id).await;
     assert_eq!(sessions.len(), 2);
-}
-
-#[tokio::test]
-#[ignore = "legacy schedule behavior requires a pre-migration fixture"]
-async fn schedule_channel_per_invocation_tracks_publish_and_enable_state() {
-    let server = TestServer::in_memory().await;
-    let app = create_app(
-        &server,
-        "scheduled-fanout",
-        "schedule",
-        json!({
-            "cron_expression": "0 6 * * * * *",
-            "timezone": "UTC",
-            "session_mode": "session_per_invocation",
-            "message": "scheduled run {{app.id}}",
-        }),
-    )
-    .await;
-
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-
-    let draft_schedule = find_schedule(&server, app_id, channel_id)
-        .await
-        .expect("draft schedule binding");
-    assert_eq!(draft_schedule["enabled"], false);
-
-    publish_app(&server, app_id).await;
-    let published_schedule = find_schedule(&server, app_id, channel_id)
-        .await
-        .expect("published schedule binding");
-    assert_eq!(published_schedule["enabled"], true);
-
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({ "enabled": false }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-    let disabled_schedule = find_schedule(&server, app_id, channel_id)
-        .await
-        .expect("disabled schedule binding");
-    assert_eq!(disabled_schedule["enabled"], false);
-
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({ "enabled": true }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-    let reenabled_schedule = find_schedule(&server, app_id, channel_id)
-        .await
-        .expect("reenabled schedule binding");
-    assert_eq!(reenabled_schedule["enabled"], true);
-
-    unpublish_app(&server, app_id).await;
-    let unpublished_schedule = find_schedule(&server, app_id, channel_id)
-        .await
-        .expect("unpublished schedule binding");
-    assert_eq!(unpublished_schedule["enabled"], false);
-
-    publish_app(&server, app_id).await;
-
-    let session_service = SessionService::new(server.db.clone());
-    let message_service = MessageService::new(
-        server.db.clone(),
-        server.runner.clone(),
-        false,
-        EventDelivery::in_memory(),
-    );
-
-    let first = invoke_scheduled_app_channel(
-        &server.db,
-        server.encryption.as_ref(),
-        &session_service,
-        &message_service,
-        DEFAULT_ORG_ID,
-        app_id,
-        channel_id,
-    )
-    .await
-    .expect("first schedule invocation");
-    let second = invoke_scheduled_app_channel(
-        &server.db,
-        server.encryption.as_ref(),
-        &session_service,
-        &message_service,
-        DEFAULT_ORG_ID,
-        app_id,
-        channel_id,
-    )
-    .await
-    .expect("second schedule invocation");
-
-    assert!(first.created_session);
-    assert!(second.created_session);
-    assert_ne!(first.session_id, second.session_id);
-
-    let sessions = list_app_sessions(&server, app_id, channel_id).await;
-    assert_eq!(sessions.len(), 2);
-}
-
-#[tokio::test]
-async fn webhook_channel_enforces_publish_and_enable_and_supports_raw_body_templates() {
-    let server = TestServer::in_memory().await;
-    let app = create_app(
-        &server,
-        "raw-webhook",
-        "webhook",
-        json!({
-            "token": "secret-raw",
-            "session_mode": "shared_session",
-            "message": "body={{payload}} raw={{webhook.body}} kind={{webhook.headers.x-kind}} auth={{webhook.headers.authorization}} token={{webhook.headers.x-everruns-webhook-token}}",
-        }),
-    )
-    .await;
-
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-
-    let legacy_status = server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/webhooks/{channel_id}"),
-            vec![
-                ("content-type", "text/plain"),
-                ("x-everruns-webhook-token", "secret-raw"),
-            ],
-            b"before publish".to_vec(),
-        )
-        .await
-        .status();
-    let endpoint_status = server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/e/{channel_id}/webhook"),
-            vec![
-                ("content-type", "text/plain"),
-                ("x-everruns-webhook-token", "secret-raw"),
-            ],
-            b"before publish".to_vec(),
-        )
-        .await
-        .status();
-    assert_eq!(legacy_status, StatusCode::NOT_FOUND);
-    assert_eq!(endpoint_status, legacy_status);
-
-    publish_app(&server, app_id).await;
-
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({ "enabled": false }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/webhooks/{channel_id}"),
-            vec![
-                ("content-type", "text/plain"),
-                ("x-everruns-webhook-token", "secret-raw"),
-            ],
-            b"disabled".to_vec(),
-        )
-        .await
-        // EVE-632 / TM-AUTHZ-006: disabled channel -> generic 404.
-        .assert_status(StatusCode::NOT_FOUND);
-
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({ "enabled": true }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    let response: Value = server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/e/{channel_id}/webhook"),
-            vec![
-                ("content-type", "text/plain"),
-                ("x-everruns-webhook-token", "secret-raw"),
-                ("x-kind", "raw"),
-                ("authorization", "Bearer super-secret"),
-            ],
-            b"plain body".to_vec(),
-        )
-        .await
-        .assert_status(StatusCode::ACCEPTED)
-        .json();
-
-    let texts = list_user_message_texts(&server, response["session_id"].as_str().unwrap()).await;
-    assert!(texts.iter().any(|text| {
-        text == "body=plain body raw=plain body kind=raw auth=[REDACTED] token=[REDACTED]"
-    }));
-
-    let invalid_utf8: Value = server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/webhooks/{channel_id}"),
-            vec![
-                ("content-type", "application/octet-stream"),
-                ("x-everruns-webhook-token", "secret-raw"),
-                ("x-kind", "binary"),
-            ],
-            vec![0x66, 0x6f, 0x80],
-        )
-        .await
-        .assert_status(StatusCode::ACCEPTED)
-        .json();
-
-    let texts =
-        list_user_message_texts(&server, invalid_utf8["session_id"].as_str().unwrap()).await;
-    assert!(
-        texts
-            .iter()
-            .any(|text| text == "body=fo� raw=fo� kind=binary auth= token=[REDACTED]")
-    );
 }

@@ -119,7 +119,6 @@ describe("auth proxy", () => {
       "/",
       "/agent-identities/:path*",
       "/agents/:path*",
-      "/apps/:path*",
       "/capabilities/:path*",
       "/chat/:path*",
       "/chats/:path*",

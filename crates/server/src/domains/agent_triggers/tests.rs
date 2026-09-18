@@ -198,6 +198,12 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         execution_resolved_owner_user_id: resolved_owner_user_id,
         execution_agent_identity_id: agent_identity_id,
         execution_app_id: app_id,
+        execution_app_public_id: Some("app_frozen".to_string()),
+        execution_app_name: Some("Frozen App".to_string()),
+        execution_agent_version_policy: Some("pinned".to_string()),
+        execution_agent_version_id: Some(everruns_provider::typed_id::AgentVersionId::from_uuid(
+            uuid::Uuid::from_u128(61),
+        )),
         status: "active".to_string(),
         created_at: now,
         updated_at: now,
@@ -214,6 +220,11 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     assert_eq!(context.resolved_owner_user_id, resolved_owner_user_id);
     assert_eq!(context.agent_identity_id, agent_identity_id);
     assert_eq!(context.app_id, app_id);
+    assert_eq!(
+        context.agent_version_policy,
+        everruns_platform::AgentVersionPolicy::Pinned
+    );
+    assert_eq!(context.agent_version_id, trigger.execution_agent_version_id);
 }
 
 #[tokio::test]

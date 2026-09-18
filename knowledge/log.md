@@ -305,15 +305,11 @@
   [Release Process](project/release-process.md).
 
 * **Slack had no manual test cases, and it is the reference messaging
-  integration.** [Messaging Integrations](integrations/messaging-integrations.md)
-  lists a UI test case as a parity requirement every platform must ship; FCP has
-  one, Slack never did. Four cases now cover what the 25-case integration suite
-  structurally cannot reach: that Slack *accepts* the generated manifest (not
-  merely that we emit YAML), that a pane reply appears progressively rather than
-  arriving whole, that a status line carries no tool name, that a markdown table
-  renders as a table, and that no turn ends in silence while a successful turn
-  never double-posts a reply and a notice. See
-  [Slack App test cases](test-cases/ui/slack_app/).
+  integration.** Four cases covered what the integration suite could not reach:
+  Slack manifest acceptance, progressive pane replies, safe status lines,
+  Markdown rendering, and terminal notices. The cases depended on the retired
+  App setup UI and were removed with that surface. See
+  [Messaging Integrations](integrations/messaging-integrations.md).
 * **The command line is one contract, shared by the CLI and the agent-facing
   tree.** Deriving the agent-facing parser from each command's JSON Schema
   produced a parallel contract, not the same one: `--system_prompt` where the

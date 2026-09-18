@@ -32,7 +32,6 @@ import type {
   AgUiChannelConfig,
   AgUiToolVisibility,
   AppEndpointAuthConfig,
-  App,
   AppChannel,
   ChannelType,
   FcpChannelConfig,
@@ -56,6 +55,7 @@ import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { cn } from "@/lib/utils";
 
 export const CHANNEL_FORM_KINDS: ChannelType[] = [
+  "schedule",
   "webhook",
   "ag_ui",
   "public_chat",
@@ -469,7 +469,7 @@ function channelIcon(kind: ChannelType) {
 function channelDescription(kind: ChannelType): string {
   switch (kind) {
     case "schedule":
-      return "Run on a cron-driven cadence in any timezone. App-level automation, not in-session.";
+      return "Run this agent on a cron-driven cadence in any timezone.";
     case "webhook":
       return "Authenticated HTTP endpoint. Bearer token or Everruns webhook token header.";
     case "ag_ui":
@@ -493,7 +493,9 @@ export function ChannelTypePicker({
   onChange: (value: ChannelType) => void;
 }) {
   const publicChatEnabled = useFeatureFlag("public_chat");
-  const kinds = CHANNEL_FORM_KINDS.filter((kind) => kind !== "public_chat" || publicChatEnabled);
+  const kinds = CHANNEL_FORM_KINDS.filter(
+    (kind) => kind !== "schedule" && (kind !== "public_chat" || publicChatEnabled),
+  );
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {kinds.map((kind) => {
@@ -549,7 +551,7 @@ export function ChannelForm({
   if (section === "runs") {
     return (
       <div className="border border-dashed p-4 text-sm text-muted-foreground">
-        Run history will appear here when the app run aggregation endpoint is available.
+        Run history will appear here when endpoint run aggregation is available.
       </div>
     );
   }
@@ -561,7 +563,7 @@ export function ChannelForm({
           <div>
             <p className="text-sm font-medium">Enabled</p>
             <p className="text-xs text-muted-foreground">
-              Disabled channels stay configured but do not invoke the app.
+              Disabled endpoints stay configured but do not invoke the agent.
             </p>
           </div>
           <Switch
@@ -760,7 +762,7 @@ export function ChannelForm({
               id="fcp_handshake"
               value={state.fcpHandshake}
               onChange={(event) => update("fcpHandshake", event.target.value)}
-              placeholder="Leave blank to auto-generate from the app name and description."
+              placeholder="Leave blank to auto-generate from the agent name and description."
               rows={4}
             />
             <p className="text-xs text-muted-foreground">
@@ -841,7 +843,7 @@ export function ChannelForm({
                   value={state.publicChatDisplayName}
                   onChange={(event) => update("publicChatDisplayName", event.target.value)}
                   maxLength={120}
-                  placeholder="Falls back to the app name"
+                  placeholder="Falls back to the agent name"
                 />
               </div>
               <div className="space-y-2">
@@ -1146,7 +1148,7 @@ export function ChannelForm({
   );
 }
 
-export function ChannelFormSummary({ app, state }: { app?: App; state: ChannelFormState }) {
+export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
   return (
     <Card className="h-fit">
       <CardContent className="space-y-4 py-4">
@@ -1166,7 +1168,7 @@ export function ChannelFormSummary({ app, state }: { app?: App; state: ChannelFo
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Activation</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Publish {app?.name ?? "the app"} before external clients can invoke this endpoint.
+              Publish this endpoint before external clients can invoke it.
             </p>
           </div>
         )}

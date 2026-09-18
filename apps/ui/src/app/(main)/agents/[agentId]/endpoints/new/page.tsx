@@ -2,13 +2,10 @@
 
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Radio } from "lucide-react";
 import { useAgent } from "@/hooks/use-agents";
-import { useApps } from "@/hooks/use-apps";
+import { useCreateAgentEndpoint } from "@/hooks/use-agent-endpoints";
 import { usePolicies } from "@/hooks/use-policies";
-import { addChannel, createApp } from "@/lib/api/apps";
-import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -21,67 +18,34 @@ import {
   isChannelFormValid,
 } from "@/components/apps/channel-form";
 import {
-  PageContainer,
-  PageBreadcrumb,
-  PageMasthead,
-  PageColumns,
-  PageMain,
-  PageRail,
-  PageFooter,
   BackLink,
+  PageBreadcrumb,
+  PageColumns,
+  PageContainer,
+  PageFooter,
+  PageMain,
+  PageMasthead,
+  PageRail,
 } from "@/components/layout";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 export default function NewAgentEndpointPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params);
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { data: agent, isLoading } = useAgent(agentId);
-  const { data: apps, isLoading: appsLoading } = useApps();
-  const { can, isLoading: policiesLoading } = usePolicies("apps");
+  const { can, isLoading: policiesLoading } = usePolicies("agents");
+  const createEndpoint = useCreateAgentEndpoint(agentId);
   const [formState, setFormState] = useState(() => getDefaultChannelFormState("webhook"));
-
-  const isReadOnly = isReadOnlyStatus(agent?.status);
-  const canManage = !policiesLoading && can("app.manage") && !isReadOnly;
-
-  // The App row an endpoint still has to hang off until EVE-1011 deletes the
-  // table. An agent normally has one; when it has several (the old shape was
-  // one App per channel bundle) new endpoints join the first, and the existing
-  // ones stay editable where they are.
-  const carrierApp = apps?.find((app) => app.agent_id === agentId);
+  const returnHref = `/agents/${agentId}?tab=integrations`;
+  const canManage = !policiesLoading && can("agent.manage") && !isReadOnlyStatus(agent?.status);
 
   useEffect(() => {
-    if (agent && !policiesLoading && !canManage) router.replace(`/agents/${agentId}`);
-  }, [agent, agentId, canManage, policiesLoading, router]);
+    if (agent && !policiesLoading && !canManage) router.replace(returnHref);
+  }, [agent, canManage, policiesLoading, returnHref, router]);
 
-  const createEndpoint = useMutation({
-    mutationFn: async () => {
-      if (!canManage || !agent) throw new Error("Endpoint management is not available");
-      // No carrier App yet: mint one named after the agent. It is never shown
-      // as an App — the product surface for creating them is gone (EVE-998) —
-      // it exists only to own the endpoint row for one more release.
-      const app =
-        carrierApp ??
-        (await createApp({
-          name: getDisplayName(agent),
-          harness_id: agent.harness_id,
-          agent_id: agent.id,
-        }));
-      return addChannel(app.id, {
-        channel_type: formState.kind,
-        channel_config: buildChannelConfig(formState),
-        enabled: formState.enabled,
-      });
-    },
-    onSuccess: (channel) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
-      router.push(`/agents/${agentId}/endpoints/${channel.id}`);
-    },
-  });
-
-  if (isLoading || appsLoading || policiesLoading)
+  if (isLoading || policiesLoading) {
     return <div className="container mx-auto p-6">Loading endpoint form...</div>;
-
+  }
   if (!agent) {
     return (
       <ResourceNotFound
@@ -101,15 +65,14 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
       <PageBreadcrumb
         items={[
           { label: "Agents", href: "/agents" },
-          { label: agentName, href: `/agents/${agent.id}?tab=integrations` },
+          { label: agentName, href: returnHref },
           { label: "New endpoint" },
         ]}
       />
-
       <PageMasthead
         icon={<Radio />}
         title="New endpoint"
-        description="Expose this agent through a webhook, AG-UI, Slack, or one of the other transports."
+        description="Expose this agent through a webhook, AG-UI, Slack, or another transport."
         actions={
           <>
             <Button
@@ -120,22 +83,26 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
               <Check className="size-4" />
               {createEndpoint.isPending ? "Saving..." : "Save endpoint"}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => router.push(`/agents/${agent.id}?tab=integrations`)}
-            >
+            <Button type="button" variant="outline" onClick={() => router.push(returnHref)}>
               Discard
             </Button>
           </>
         }
       />
-
       <form
         id="endpoint-edit-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          createEndpoint.mutate();
+        onSubmit={(event) => {
+          event.preventDefault();
+          createEndpoint.mutate(
+            {
+              channel_type: formState.kind,
+              channel_config: buildChannelConfig(formState),
+              enabled: formState.enabled,
+            },
+            {
+              onSuccess: (endpoint) => router.push(`/agents/${agentId}/endpoints/${endpoint.id}`),
+            },
+          );
         }}
       >
         <PageColumns>
@@ -151,7 +118,6 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
                 />
               </CardContent>
             </Card>
-
             <Card>
               <CardHeader>
                 <CardTitle>
@@ -163,15 +129,13 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
               </CardContent>
             </Card>
           </PageMain>
-
           <PageRail>
-            {carrierApp && <ChannelFormSummary app={carrierApp} state={formState} />}
+            <ChannelFormSummary state={formState} />
           </PageRail>
         </PageColumns>
       </form>
-
       <PageFooter>
-        <BackLink href={`/agents/${agent.id}?tab=integrations`}>Back to {agentName}</BackLink>
+        <BackLink href={returnHref}>Back to {agentName}</BackLink>
       </PageFooter>
     </PageContainer>
   );

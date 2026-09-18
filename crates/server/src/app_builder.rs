@@ -1361,8 +1361,6 @@ impl ServerAppBuilder {
             event_delivery.clone(),
             fcp_rate_limiter,
         );
-        // Public Chat reuses the AG-UI streaming core, so it shares the
-        // `AgUiState` shape but with its own rate-limiter namespace.
         let public_chat_state = api::ag_ui::AgUiState::new(
             db.clone(),
             encryption.clone(),
@@ -1371,7 +1369,8 @@ impl ServerAppBuilder {
             event_delivery.clone(),
             sse_tracker.clone(),
             public_chat_rate_limiter,
-        );
+        )
+        .with_public_chat_enabled(feature_flags.public_chat);
         let session_files_state = api::session_files::AppState::new(
             db.clone(),
             event_service.clone(),
@@ -1598,6 +1597,7 @@ impl ServerAppBuilder {
                 agent_identity_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
+            .merge(api::agent_endpoints::routes(agent_triggers_state.clone()))
             .merge(api::agent_triggers::routes(agent_triggers_state))
             // Evals routes are conditionally merged below based on feature flag.
             .merge(api::harness_examples::routes(harness_examples_state))

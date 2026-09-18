@@ -129,6 +129,284 @@ impl TestServer {
         .await
     }
 
+    pub async fn seed_app_endpoint(
+        &self,
+        name: &str,
+        agent_public_id: &str,
+        channel_type: &str,
+        mut channel_config: Value,
+    ) -> Value {
+        use everruns_core::DEFAULT_ORG_ID;
+        use everruns_provider::typed_id::{AppChannelId, AppId, HarnessId, PrincipalId};
+        use everruns_server::domains::apps::queries::prepare_channel_storage;
+        use everruns_server::storage::models::{
+            CreateAppChannelRow, CreateAppRow, CreatePrincipalRow,
+        };
+        use uuid::Uuid;
+
+        if let Some(provider) = channel_config
+            .get_mut("auth")
+            .and_then(|auth| auth.get_mut("provider"))
+            .and_then(Value::as_object_mut)
+            && provider.get("type").and_then(Value::as_str) == Some("http_basic")
+            && let Some(password) = provider
+                .remove("password")
+                .and_then(|value| value.as_str().map(str::to_owned))
+        {
+            provider.insert(
+                "password_hash".to_string(),
+                Value::String(
+                    everruns_server::storage::password::hash_password(&password)
+                        .expect("hash endpoint password"),
+                ),
+            );
+        }
+
+        let agent = self
+            .db
+            .get_agent_by_public_id(DEFAULT_ORG_ID, agent_public_id)
+            .await
+            .expect("get fixture agent")
+            .expect("fixture agent exists");
+        let principal_id = PrincipalId::new();
+        self.db
+            .create_principal(CreatePrincipalRow {
+                id: principal_id,
+                org_id: DEFAULT_ORG_ID,
+                kind: "system".to_string(),
+                subject_id: Some(Uuid::now_v7()),
+                parent_principal_id: None,
+                resolved_user_id: None,
+                metadata: serde_json::json!({}),
+            })
+            .await
+            .expect("create fixture owner");
+        let prepared = prepare_channel_storage(self.encryption.as_ref(), &channel_config)
+            .expect("prepare endpoint config");
+        let app_id = AppId::new();
+        let app = self
+            .db
+            .create_app(
+                DEFAULT_ORG_ID,
+                CreateAppRow {
+                    public_id: app_id.to_string(),
+                    name: name.to_string(),
+                    description: Some("legacy ingress fixture".to_string()),
+                    harness_id: self
+                        .seed_generic_harness_id
+                        .parse::<HarnessId>()
+                        .expect("generic harness ID")
+                        .uuid(),
+                    agent_id: Some(agent.id.uuid()),
+                    agent_version_policy: "latest".to_string(),
+                    agent_version_id: None,
+                    agent_identity_id: None,
+                    owner_principal_id: principal_id,
+                    resolved_owner_user_id: None,
+                    channel_type: Some(channel_type.to_string()),
+                    channel_config: prepared.channel_config.clone(),
+                    channel_config_encrypted: prepared.channel_config_encrypted.clone(),
+                },
+            )
+            .await
+            .expect("create fixture App");
+        self.db
+            .create_app_channel(
+                app.id,
+                CreateAppChannelRow {
+                    public_id: AppChannelId::new().to_string(),
+                    channel_type: channel_type.to_string(),
+                    channel_config: prepared.channel_config,
+                    channel_config_encrypted: prepared.channel_config_encrypted,
+                    auth: prepared.auth,
+                    auth_encrypted: prepared.auth_encrypted,
+                    durable_schedule_id: None,
+                    enabled: true,
+                },
+            )
+            .await
+            .expect("create fixture endpoint");
+
+        self.get(&format!("/v1/apps/{app_id}"))
+            .await
+            .assert_status(StatusCode::OK)
+            .json()
+    }
+
+    pub async fn set_app_endpoints_live(&self, app_public_id: &str, live: bool) -> Value {
+        use everruns_core::DEFAULT_ORG_ID;
+        use everruns_durable::UpdateField;
+        use everruns_server::storage::models::UpdateApp;
+
+        let app = self
+            .db
+            .get_app_by_public_id(DEFAULT_ORG_ID, app_public_id)
+            .await
+            .expect("get fixture App")
+            .expect("fixture App exists");
+        self.db
+            .update_app(
+                DEFAULT_ORG_ID,
+                app.id,
+                UpdateApp {
+                    status: Some(if live { "published" } else { "draft" }.to_string()),
+                    published_at: if live {
+                        UpdateField::Set(chrono::Utc::now())
+                    } else {
+                        UpdateField::Unchanged
+                    },
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("update fixture App")
+            .expect("fixture App exists");
+        self.db
+            .set_app_endpoint_publish(app.id, live)
+            .await
+            .expect("update fixture endpoint status");
+        self.get(&format!("/v1/apps/{app_public_id}"))
+            .await
+            .assert_status(StatusCode::OK)
+            .json()
+    }
+
+    pub async fn seed_endpoint_for_app(
+        &self,
+        app_public_id: &str,
+        channel_type: &str,
+        channel_config: Value,
+    ) -> Value {
+        use everruns_core::DEFAULT_ORG_ID;
+        use everruns_provider::typed_id::AppChannelId;
+        use everruns_server::domains::apps::queries::prepare_channel_storage;
+        use everruns_server::storage::models::CreateAppChannelRow;
+
+        let app = self
+            .db
+            .get_app_by_public_id(DEFAULT_ORG_ID, app_public_id)
+            .await
+            .expect("get fixture App")
+            .expect("fixture App exists");
+        let prepared = prepare_channel_storage(self.encryption.as_ref(), &channel_config)
+            .expect("prepare endpoint config");
+        let endpoint = self
+            .db
+            .create_app_channel(
+                app.id,
+                CreateAppChannelRow {
+                    public_id: AppChannelId::new().to_string(),
+                    channel_type: channel_type.to_string(),
+                    channel_config: prepared.channel_config,
+                    channel_config_encrypted: prepared.channel_config_encrypted,
+                    auth: prepared.auth,
+                    auth_encrypted: prepared.auth_encrypted,
+                    durable_schedule_id: None,
+                    enabled: true,
+                },
+            )
+            .await
+            .expect("create fixture endpoint");
+        self.get(&format!("/v1/apps/{app_public_id}"))
+            .await
+            .assert_status(StatusCode::OK)
+            .json::<Value>()["channels"]
+            .as_array()
+            .expect("App channels")
+            .iter()
+            .find(|channel| channel["id"].as_str() == Some(endpoint.public_id.as_str()))
+            .expect("created endpoint")
+            .clone()
+    }
+
+    pub async fn set_endpoint_status(&self, endpoint_public_id: &str, status: &str) -> Value {
+        use everruns_server::storage::models::UpdateAppChannel;
+
+        let endpoint = self
+            .db
+            .get_app_channel_by_public_id(endpoint_public_id)
+            .await
+            .expect("get fixture endpoint")
+            .expect("fixture endpoint exists");
+        let endpoint = self
+            .db
+            .update_app_channel(
+                endpoint.id,
+                UpdateAppChannel {
+                    enabled: Some(status != "disabled"),
+                    status: Some(status.to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("update fixture endpoint")
+            .expect("fixture endpoint exists");
+        serde_json::to_value(
+            everruns_server::domains::apps::queries::channel_row_to_channel(
+                self.encryption.as_ref(),
+                endpoint,
+            ),
+        )
+        .expect("serialize fixture endpoint")
+    }
+
+    pub async fn update_endpoint_config(
+        &self,
+        endpoint_public_id: &str,
+        channel_config: Value,
+    ) -> Value {
+        use everruns_durable::UpdateField;
+        use everruns_server::domains::apps::queries::{
+            decrypt_channel_config, prepare_channel_storage,
+        };
+        use everruns_server::storage::models::UpdateAppChannel;
+
+        let endpoint = self
+            .db
+            .get_app_channel_by_public_id(endpoint_public_id)
+            .await
+            .expect("get fixture endpoint")
+            .expect("fixture endpoint exists");
+        let mut merged_config = decrypt_channel_config(
+            self.encryption.as_ref(),
+            endpoint.channel_config_encrypted.as_deref(),
+            &endpoint.channel_config,
+        );
+        if let (Some(existing), Some(update)) =
+            (merged_config.as_object_mut(), channel_config.as_object())
+        {
+            existing.extend(update.clone());
+        } else {
+            merged_config = channel_config;
+        }
+        let prepared = prepare_channel_storage(self.encryption.as_ref(), &merged_config)
+            .expect("prepare endpoint config");
+        let endpoint = self
+            .db
+            .update_app_channel(
+                endpoint.id,
+                UpdateAppChannel {
+                    channel_config: Some(prepared.channel_config),
+                    channel_config_encrypted: UpdateField::from_option(
+                        prepared.channel_config_encrypted,
+                    ),
+                    auth: UpdateField::from_option(prepared.auth),
+                    auth_encrypted: UpdateField::from_option(prepared.auth_encrypted),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("update fixture endpoint")
+            .expect("fixture endpoint exists");
+        serde_json::to_value(
+            everruns_server::domains::apps::queries::channel_row_to_channel(
+                self.encryption.as_ref(),
+                endpoint,
+            ),
+        )
+        .expect("serialize fixture endpoint")
+    }
+
     /// Create a test server backed by a real TCP listener.
     ///
     /// Returns `(server, base_url)`. The server is served on a random port
@@ -630,6 +908,16 @@ impl TestServer {
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("agui"),
         );
+        let public_chat_state = api::ag_ui::AgUiState::new(
+            db.clone(),
+            encryption.clone(),
+            runner.clone(),
+            feature_flags.notifications,
+            event_delivery.clone(),
+            sse_tracker.clone(),
+            api::channel_rate_limit::ChannelRateLimiter::in_memory("public_chat"),
+        )
+        .with_public_chat_enabled(true);
         let fcp_state = api::fcp::FcpState::new(
             db.clone(),
             encryption.clone(),
@@ -711,6 +999,7 @@ impl TestServer {
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::reporting::routes(reporting_state))
             .merge(api::ag_ui::routes(ag_ui_state))
+            .merge(api::public_chat::routes(public_chat_state))
             .merge(api::fcp::routes(fcp_state))
             .merge(api::slack_events::routes(slack_state))
             .merge(api::app_webhooks::routes(app_webhooks_state))

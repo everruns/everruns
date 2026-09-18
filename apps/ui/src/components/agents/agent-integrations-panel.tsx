@@ -2,20 +2,20 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
-import { usePublishChannel, useUnpublishChannel, useUpdateApp } from "@/hooks/use-apps";
 import { useResumeAgentExposures, useSuspendAgentExposures } from "@/hooks/use-agents";
-import { useAgentEndpoints, isTriggerChannel } from "@/hooks/use-agent-endpoints";
+import {
+  isTriggerChannel,
+  useAgentEndpoints,
+  usePublishAgentEndpoint,
+  useTriggerAgentEndpoint,
+} from "@/hooks/use-agent-endpoints";
 import { useAgentTriggers } from "@/hooks/use-agent-triggers";
 import { usePolicies } from "@/hooks/use-policies";
-import { triggerChannel } from "@/lib/api/apps";
-import { queryKeys } from "@/lib/query-keys";
-import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { buttonVariants } from "@/components/ui/button";
 import { ChannelRow } from "@/components/apps/channel-row";
-import { LiveActivityRail } from "@/components/apps/live-activity-rail";
 import { MiniTimeline } from "@/components/apps/mini-timeline";
 import { type StatStripStats } from "@/components/apps/stat-strip";
 import { EndpointUsePanel } from "@/components/agents/endpoint-use-panel";
@@ -29,7 +29,6 @@ import {
   PageRail,
   RailSection,
 } from "@/components/layout";
-import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-select";
 import type { Agent } from "@/lib/api/types";
 import type { AgentEndpoint } from "@/hooks/use-agent-endpoints";
 import { pluralize } from "@/lib/formatting";
@@ -76,44 +75,24 @@ function buildStats(
   };
 }
 
-/// The agent's exposures, in one place: how traffic reaches it (endpoints) and
-/// when it wakes up on its own (triggers).
-///
-/// This absorbs the App detail page (EVE-1009). Endpoints belong to the agent
-/// since EVE-1003, but the management API is still App-scoped, so each row
-/// carries the App that owns its row and addresses writes through it. That
-/// indirection disappears with the App domain (EVE-1011).
 export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
-  const queryClient = useQueryClient();
   const { endpoints, isLoading } = useAgentEndpoints(agent.id);
   const { data: triggers = [] } = useAgentTriggers(agent.id);
-  const { can } = usePolicies("apps");
-  const publishChannel = usePublishChannel();
-  const unpublishChannel = useUnpublishChannel();
-  const updateApp = useUpdateApp();
+  const { can } = usePolicies("agents");
   const suspendExposures = useSuspendAgentExposures();
   const resumeExposures = useResumeAgentExposures();
+  const publishEndpoint = usePublishAgentEndpoint(agent.id);
+  const triggerEndpoint = useTriggerAgentEndpoint(agent.id);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const suspended = agent.exposures_suspended ?? false;
-  const canManage = can("app.manage");
-
-  const triggerMutation = useMutation({
-    mutationFn: ({ appId, channelId }: { appId: string; channelId: string }) =>
-      triggerChannel(appId, channelId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
-    },
-  });
+  const canManage = can("agent.manage");
+  const canDangerous = can("agent.dangerous");
 
   const stats = useMemo(
     () => buildStats(endpoints, triggers.length, suspended),
     [endpoints, suspended, triggers.length],
   );
-
-  // An endpoint whose App row still carries the agent identity. Every App of
-  // this agent should agree, so the first one is the one the control edits.
-  const identityApp = endpoints[0]?.app;
 
   const doors = endpoints.filter(({ channel }) => !isTriggerChannel(channel));
   const scheduleEndpoints = endpoints.filter(({ channel }) => isTriggerChannel(channel));
@@ -153,7 +132,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
               {canManage && (
                 <Link
                   href={`/agents/${agent.id}/endpoints/new`}
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                  className={buttonVariants({ size: "sm" })}
                 >
                   <Plus className="size-4" />
                   Add endpoint
@@ -167,42 +146,30 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
               <Card>
                 <CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
                   <p className="text-sm text-muted-foreground">
-                    This agent is not reachable from outside. Add an endpoint to expose it.
+                    This agent is not reachable from outside.
                   </p>
-                  {canManage && (
-                    <Link
-                      href={`/agents/${agent.id}/endpoints/new`}
-                      className={buttonVariants({ size: "sm" })}
-                    >
-                      <Plus className="size-4" />
-                      Add endpoint
-                    </Link>
-                  )}
                 </CardContent>
               </Card>
             ) : (
               <div className="flex flex-col gap-2">
-                {doors.map(({ channel, app }) => (
+                {doors.map(({ channel }) => (
                   <ChannelRow
                     key={channel.id}
                     channel={channel}
-                    app={app}
                     expanded={expandedId === channel.id}
                     onToggle={() =>
                       setExpandedId((current) => (current === channel.id ? null : channel.id))
                     }
+                    usePanel={<EndpointUsePanel channel={channel} />}
+                    configureHref={
+                      canManage ? `/agents/${agent.id}/endpoints/${channel.id}` : undefined
+                    }
                     onPublishChange={
-                      canManage
-                        ? (publish) =>
-                            (publish ? publishChannel : unpublishChannel).mutate({
-                              appId: app.id,
-                              channelId: channel.id,
-                            })
+                      canDangerous
+                        ? (publish) => publishEndpoint.mutate({ endpointId: channel.id, publish })
                         : undefined
                     }
-                    publishPending={publishChannel.isPending || unpublishChannel.isPending}
-                    usePanel={<EndpointUsePanel channel={channel} />}
-                    configureHref={`/agents/${agent.id}/endpoints/${channel.id}`}
+                    publishPending={publishEndpoint.isPending}
                   />
                 ))}
               </div>
@@ -217,31 +184,24 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
 
             {scheduleEndpoints.length > 0 && (
               <div className="flex flex-col gap-2">
-                {scheduleEndpoints.map(({ channel, app }) => (
+                {scheduleEndpoints.map(({ channel }) => (
                   <ChannelRow
                     key={channel.id}
                     channel={channel}
-                    app={app}
                     expanded={expandedId === channel.id}
                     onToggle={() =>
                       setExpandedId((current) => (current === channel.id ? null : channel.id))
                     }
-                    onRunNow={
-                      canManage && !triggerMutation.isPending
-                        ? () => triggerMutation.mutate({ appId: app.id, channelId: channel.id })
-                        : undefined
+                    configureHref={
+                      canManage ? `/agents/${agent.id}/endpoints/${channel.id}` : undefined
                     }
                     onPublishChange={
-                      canManage
-                        ? (publish) =>
-                            (publish ? publishChannel : unpublishChannel).mutate({
-                              appId: app.id,
-                              channelId: channel.id,
-                            })
+                      canDangerous
+                        ? (publish) => publishEndpoint.mutate({ endpointId: channel.id, publish })
                         : undefined
                     }
-                    publishPending={publishChannel.isPending || unpublishChannel.isPending}
-                    configureHref={`/agents/${agent.id}/endpoints/${channel.id}`}
+                    publishPending={publishEndpoint.isPending}
+                    onRunNow={canManage ? () => triggerEndpoint.mutate(channel.id) : undefined}
                   />
                 ))}
               </div>
@@ -271,27 +231,6 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
               publish state each one should return to.
             </p>
           </RailSection>
-
-          {identityApp && (
-            <RailSection label="Agent identity">
-              <AgentIdentitySelect
-                value={identityApp.agent_identity_id ?? ""}
-                onValueChange={(identityId) =>
-                  updateApp.mutate({
-                    appId: identityApp.id,
-                    data: { agent_identity_id: identityId || null },
-                  })
-                }
-                disabled={!canManage || updateApp.isPending}
-                className="w-full"
-              />
-              <p className="mt-2 text-xs text-muted-foreground">
-                Identity this agent presents when an endpoint starts a session.
-              </p>
-            </RailSection>
-          )}
-
-          {identityApp && <LiveActivityRail appId={identityApp.id} />}
         </PageRail>
       </PageColumns>
     </>

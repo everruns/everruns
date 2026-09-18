@@ -1,35 +1,30 @@
 ---
 type: Specification
-title: "App Endpoint Authentication"
-description: "Shared inbound auth framework for App-published endpoints."
+title: "Endpoint Authentication"
+description: "Shared inbound authentication framework for agent endpoints."
 tags:
   - everruns
   - integrations
 ---
-# App Endpoint Authentication
+# Endpoint Authentication
 
 ## Abstract
 
-Apps publish inbound endpoints such as AG-UI and A2A. Those endpoints need a
-shared authentication model so enterprise schemes can be added once instead of
-reimplemented per channel.
-
-The implementation is channel-local: a user creates an Agent, creates an
-App/channel, then configures auth directly on that endpoint. There is no
-required org-level provider setup. Optional reusable providers may be added
-later as a product convenience.
+Agent endpoints such as AG-UI and A2A need a shared authentication model so
+enterprise schemes can be added once instead of reimplemented per transport.
+Authentication configuration is endpoint-local. There is no required
+organization-level provider setup. Agent-owned endpoint APIs and editors
+manage the configuration; App management and App editor routes are retired.
 
 ## Goals
 
-1. Support OAuth2/OIDC-style enterprise auth for App-published endpoints,
+1. Support OAuth2/OIDC-style enterprise auth for agent endpoints,
    especially Google OIDC, generic OIDC/JWT bearer, OAuth2 introspection, HTTP
    Basic, and reverse-proxy mTLS identity headers.
 2. Preserve existing channel behavior when `auth` is absent:
    AG-UI keeps `anonymous` plus optional `token`; A2A keeps the generated
    hashed API key.
-3. Keep one verifier path for all supported endpoint auth modes so future
-   App-published endpoints can opt in without adding bespoke credential
-   parsing.
+3. Keep one verifier path for all supported endpoint auth modes.
 4. Advertise the effective A2A security scheme in the Agent Card.
 
 ## Non-Goals
@@ -46,8 +41,8 @@ later as a product convenience.
 
 ## Endpoint Auth Model
 
-Supported channels expose auth as `AppChannel.auth` and store it in
-`agent_endpoints.auth`. Deployments with encryption configured store the JSON
+Supported endpoints store auth in `agent_endpoints.auth`. Deployments with
+encryption configured store the JSON
 only in `agent_endpoints.auth_encrypted`; this includes Argon2id password
 hashes, OAuth client secrets, and mTLS proxy secrets.
 
@@ -101,29 +96,29 @@ all configured scopes.
 
 ## Endpoint Addresses
 
-Each App channel has a stable endpoint ID. Canonical ingress routes use
+Each agent endpoint has a stable endpoint ID. Canonical ingress routes use
 `/v1/e/{channel_id}`:
 
 - Slack: `POST /slack/events` and `GET /slack/manifest`.
 - AG-UI: `POST /ag-ui` and `POST /ag-ui/images`.
 - A2A: `POST /a2a` and `GET /a2a/.well-known/agent-card.json`.
-- FCP: `POST /fcp`.
+- FCP: `GET /fcp` and `POST /fcp`.
 - Webhook: `POST /webhook`.
 - API endpoint: `POST /sessions`, plus its session read, message, and cancel
   subroutes.
+- Public Chat: `GET /public-chat/config` and `POST /public-chat`.
 
-Existing `/v1/apps/{app_id}/...` routes are permanent aliases. Aliases that
-include both an App ID and a channel ID return `404` when the IDs do not belong
-together. The channel-less AG-UI and Slack aliases resolve the only enabled
-channel of the requested type. They return `409 Conflict` when multiple enabled
-channels match, with a detail that directs the caller to the endpoint-scoped
-URL. Public Chat URLs do not change.
+Existing `/v1/apps/{app_id}/...` routes are permanent aliases. They resolve
+from endpoint-owned `legacy_app_public_id` and never read `apps` or
+`app_channels`. Channel-less aliases resolve the only live endpoint of the
+requested type. They return `409 Conflict` when multiple live endpoints match,
+with a detail that directs the caller to the endpoint-scoped URL.
 
 ## Enforcement
 
-Supported handlers resolve the published App and enabled channel first, then
-run the auth verifier before rate limiting, session lookup, task polling,
-cancellation, image upload, or message dispatch.
+Supported handlers resolve endpoint identity and liveness first, then run the
+auth verifier before rate limiting, session lookup, task polling, cancellation,
+image upload, or message dispatch.
 
 AG-UI behavior:
 
@@ -165,15 +160,10 @@ Webhook behavior:
   provider misconfiguration.
 
 ## UI
-
-The App channel editor exposes endpoint auth next to the channel config that it
-protects. The default choice preserves the legacy mode for the channel:
-AG-UI remains public/shared-token capable, and A2A remains generated API-key
-based. Enterprise options are configured inline with only fields relevant to
-the selected mode.
-
-The launch UI supports AG-UI and A2A only. Webhook auth remains the existing
-token field.
+Agent Integrations presents endpoint inventory and Agent-owned create and
+configure flows for supported endpoint types. The inventory also exposes
+publish, unpublish, delete, and migrated schedule run-now controls. App editor
+routes are retired.
 
 ## Threat Model
 
@@ -194,7 +184,7 @@ Required coverage:
 3. A2A regression tests for legacy API key behavior and Agent Card scheme
    generation.
 4. AG-UI regression tests that stream and image upload use the same auth gate.
-5. UI type/build coverage for configuring supported modes.
+5. Route-parity tests for canonical endpoint addresses and permanent aliases.
 
 ## References
 

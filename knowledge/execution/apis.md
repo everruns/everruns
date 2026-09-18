@@ -560,7 +560,6 @@ All entity list endpoints support an optional `?search=` query parameter for tok
 | `GET /v1/sessions?search=` | `title` |
 | `GET /v1/harnesses?search=` | `name`, `description` |
 | `GET /v1/skills?search=` | `name`, `description` |
-| `GET /v1/apps?search=` | `name`, `description` |
 | `GET /v1/mcp-servers?search=` | `name`, `description` |
 
 **Convention:** When adding new entity types, always include `?search=` support on the list endpoint. Search should match against `name` and `description` at minimum (case-insensitive, tokenized). Empty or whitespace-only search values are treated as no filter.
@@ -577,7 +576,6 @@ GET /v1/{resource}/config → ResourceConfigResponse
 |----------|-------------|
 | `GET /v1/harnesses/config` | Harness policies |
 | `GET /v1/agents/config` | Agent policies |
-| `GET /v1/apps/config` | App policies |
 | `GET /v1/sessions/config` | Session policies |
 | `GET /v1/mcp-servers/config` | MCP server policies |
 | `GET /v1/providers/config` | LLM provider policies |
@@ -596,11 +594,11 @@ Global per-IP rate limiting applies to all `/v1` API routes (excluding `/health`
 | Login | 10 req/min per IP |, |
 | Register | 5 req/min per IP |, |
 | Token refresh | 30 req/min per IP |, |
-| AG-UI per-app | configurable per app, no default | app config: `AgUiChannelConfig.rate_limit_per_minute` |
+| AG-UI per-endpoint | configurable per endpoint, no default | endpoint config: `AgUiChannelConfig.rate_limit_per_minute` |
 
 Set `RATE_LIMIT_API_REQUESTS_PER_MINUTE=0` to disable global API rate limiting. Auth endpoint limits are not configurable. Returns `429 Too Many Requests` when exceeded.
 
-The AG-UI per-app cap (`POST /v1/apps/{app_id}/ag-ui`) is configured per app via `AgUiChannelConfig.rate_limit_per_minute`. It is keyed by `(app_id, client_ip)` and applied in addition to the global API cap. Set to `0` or omit to disable the per-app cap; values above 1,000,000 are rejected at write time. Distributed deployments share counters via Valkey when `VALKEY_URL` is set; otherwise enforcement is per-instance.
+The AG-UI per-endpoint cap applies to canonical and compatibility routes and is configured via `AgUiChannelConfig.rate_limit_per_minute`. It is keyed by endpoint identity and client IP and applied in addition to the global API cap. Set to `0` or omit to disable the endpoint cap; values above 1,000,000 are rejected at write time. Distributed deployments share counters via Valkey when `VALKEY_URL` is set; otherwise enforcement is per-instance.
 
 ### Resource Limits
 

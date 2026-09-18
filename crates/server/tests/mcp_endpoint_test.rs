@@ -1938,16 +1938,16 @@ async fn test_mcp_execute_list_capabilities() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_rejects_app_trigger_channels_and_supports_webhook_triggers() {
+async fn test_mcp_execute_supports_webhook_triggers() {
     let server = TestServer::in_memory().await;
-    let app_name = format!("repo-checker-{}", unique_suffix());
+    let agent_name = format!("repo-checker-{}", unique_suffix());
 
     let create_agent_resp = mcp_tool_call(
         &server,
         "execute",
         json!({
             "commands": format!(
-                "create_agent --name '{app_name}-agent' --display_name 'Repo Checker Agent' --system_prompt 'Test prompt'"
+                "create_agent --name '{agent_name}' --display_name 'Repo Checker Agent' --system_prompt 'Test prompt'"
             )
         }),
     )
@@ -1961,70 +1961,6 @@ async fn test_mcp_execute_rejects_app_trigger_channels_and_supports_webhook_trig
         .as_str()
         .expect("agent id")
         .to_string();
-
-    let create_resp = mcp_tool_call(
-        &server,
-        "execute",
-        json!({
-            "commands": format!(
-                "create_app --name '{app_name}' --description 'repo checks' --harness_id {} --agent_id {agent_id}",
-                server.seed_generic_harness_id,
-            )
-        }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&create_resp),
-        "create_app failed: {}",
-        tool_text(&create_resp)
-    );
-    let app = tool_json(&create_resp);
-    let app_id = app["id"].as_str().expect("app id");
-
-    let add_schedule_resp = mcp_tool_call(
-        &server,
-        "execute",
-        json!({
-            "commands": format!(
-                "add_schedule_app_channel --app_id {app_id} --cron_expression '*/10 * * * *' --timezone UTC --session_mode shared_session --message 'run checks'"
-            )
-        }),
-    )
-    .await;
-    assert!(
-        tool_is_error(&add_schedule_resp),
-        "add_schedule_app_channel unexpectedly succeeded: {}",
-        tool_text(&add_schedule_resp)
-    );
-    assert!(
-        tool_text(&add_schedule_resp).contains(
-            "bad_request: App schedule channels are deprecated. Create a schedule trigger on the app's agent instead."
-        ),
-        "unexpected schedule channel rejection: {}",
-        tool_text(&add_schedule_resp)
-    );
-    let add_webhook_resp = mcp_tool_call(
-        &server,
-        "execute",
-        json!({
-            "commands": format!(
-                "add_webhook_app_channel --app_id {app_id} --token 'secret-1' --session_mode session_per_invocation --message 'process payload'"
-            )
-        }),
-    )
-    .await;
-    assert!(
-        tool_is_error(&add_webhook_resp),
-        "add_webhook_app_channel unexpectedly succeeded: {}",
-        tool_text(&add_webhook_resp)
-    );
-    assert!(
-        tool_text(&add_webhook_resp).contains(
-            "bad_request: App webhook channels are deprecated. Create a webhook trigger on the app's agent instead."
-        ),
-        "unexpected webhook channel rejection: {}",
-        tool_text(&add_webhook_resp)
-    );
 
     let create_trigger_resp = mcp_tool_call(
         &server,

@@ -46,4 +46,4 @@ Verifies the agent-scoped endpoint create and edit routes, including that they r
 
 - Endpoint create and edit are full-page routes under the agent, matching the existing full-page convention.
 - Every exit path — Save, Discard, Back, not-found — returns to the agent's Integrations tab.
-- An agent with no App yet gets one minted transparently when its first endpoint is created; the tester never sees an App creation step.
+- An agent with no App can create an endpoint directly; the operation does not create or read an App.

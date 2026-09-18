@@ -6,7 +6,7 @@ use crate::storage::StorageBackend;
 use axum::http::HeaderMap;
 use axum::http::HeaderValue;
 use everruns_core::channel::{InboundAttachment, SessionBinding};
-use everruns_platform::{App, SlackChannelConfig, SlackReplyMode};
+use everruns_platform::{SlackChannelConfig, SlackReplyMode};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 
@@ -827,7 +827,7 @@ mod pane_rename_tests {
     }
 
     async fn state_with_pane_session(
-        app: &App,
+        app: &TestIngress,
         stored_title: &str,
     ) -> (SlackState, everruns_provider::typed_id::SessionId) {
         let db = Arc::new(StorageBackend::in_memory());

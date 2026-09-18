@@ -163,25 +163,7 @@ pub async fn invoke_webhook_endpoint(
     {
         return invoke_webhook(state, None, channel_id, req_id, connect_info, headers, body).await;
     }
-    let app_id = crate::api::app_ingress::resolve_endpoint(
-        &state.db,
-        state.encryption.as_ref(),
-        &channel_id,
-    )
-    .await
-    .map_err(internal_error)?
-    .map(|(app, _)| app.public_id.to_string())
-    .ok_or_else(not_found)?;
-    invoke_webhook(
-        state,
-        Some(app_id),
-        channel_id,
-        req_id,
-        connect_info,
-        headers,
-        body,
-    )
-    .await
+    invoke_webhook(state, None, channel_id, req_id, connect_info, headers, body).await
 }
 
 async fn invoke_webhook(
@@ -199,9 +181,15 @@ async fn invoke_webhook(
         .await
         .map_err(internal_error)?
     {
+        let legacy_alias_matches = match app_id.as_deref() {
+            Some(app_id) => trigger.execution_app_public_id.as_deref() == Some(app_id),
+            None => true,
+        };
+        if !legacy_alias_matches {
+            return Err(not_found());
+        }
         return invoke_trigger_webhook(
             state,
-            app_id.as_deref(),
             channel_id,
             trigger,
             req_id,
@@ -211,28 +199,27 @@ async fn invoke_webhook(
         )
         .await;
     }
-    let app_id = app_id.ok_or_else(not_found)?;
-    let app = crate::domains::apps::queries::get_by_public_id_unscoped(
+    let (app, channel) = crate::api::app_ingress::resolve_endpoint(
         &state.db,
         state.encryption.as_ref(),
-        &app_id,
+        &channel_id,
     )
     .await
     .map_err(internal_error)?
     .ok_or_else(not_found)?;
+    if app_id
+        .as_deref()
+        .is_some_and(|legacy_app_id| !app.matches_legacy_app_id(legacy_app_id))
+    {
+        return Err(not_found());
+    }
+    let app_id = app.public_id.to_string();
 
     // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
     // "app does not exist" apart from "app exists but is not published / the
     // channel is disabled / misconfigured". Every such case collapses to a
     // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
     // reason is logged server-side only.
-    let channel_id_typed = channel_id
-        .parse::<everruns_provider::typed_id::AppChannelId>()
-        .map_err(|e| {
-            ErrorResponse::new(format!("Invalid channel ID: {e}"))
-                .into_response(StatusCode::BAD_REQUEST)
-        })?;
-    let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
     if channel.channel_type != everruns_platform::ChannelType::Webhook {
         return Err(not_found());
     }
@@ -240,10 +227,7 @@ async fn invoke_webhook(
     // non-live endpoint, and every request must present the per-channel shared
     // secret before session creation. Liveness is resolved before auth so a
     // caller cannot distinguish a misconfigured endpoint from a bad token.
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&state.db, &app, channel)
-        .await
-        .map_err(internal_error)?
-    {
+    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
             endpoint_id = %channel.public_id,
@@ -321,7 +305,6 @@ async fn invoke_webhook(
 #[allow(clippy::too_many_arguments)]
 async fn invoke_trigger_webhook(
     state: AppWebhookState,
-    legacy_app_id: Option<&str>,
     ingress_id: String,
     trigger: crate::storage::models::AgentTriggerRow,
     req_id: Option<axum::Extension<RequestId>>,
@@ -341,19 +324,6 @@ async fn invoke_trigger_webhook(
         .map_err(internal_error)?
         .is_some_and(|agent| agent.status == "active" && !agent.exposures_suspended);
     if !agent_is_live {
-        return Err(not_found());
-    }
-    if let Some(app_id) = trigger.execution_app_id {
-        let app = state
-            .db
-            .get_app_by_id(trigger.org_id, app_id)
-            .await
-            .map_err(internal_error)?
-            .ok_or_else(not_found)?;
-        if legacy_app_id.is_some_and(|expected| expected != app.public_id) {
-            return Err(not_found());
-        }
-    } else if legacy_app_id.is_some() {
         return Err(not_found());
     }
 
