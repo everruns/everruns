@@ -579,7 +579,7 @@ pub(crate) async fn run_app_agent_stream(
     let sse_guard = state
         .sse_tracker
         .try_acquire(app.org_id, session.session.id.uuid())
-        .map_err(|rejection| too_many_requests(&rejection.to_string()))?;
+        .map_err(|r| too_many_requests(&r.report("ag_ui", app.org_id, &session.session.id)))?;
 
     // Seed prior history only on first use of the thread so a new AG-UI client can
     // carry conversation context into the durable session without triggering old runs.
