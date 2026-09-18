@@ -33,7 +33,8 @@ use everruns_provider::typed_id::SessionId;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
-use crate::slack_delivery::{SLACK_API_BASE, SlackApiError, parse_retry_after, slack_api_call};
+use crate::slack_api_error::{SlackApiError, parse_retry_after};
+use crate::slack_delivery::{SLACK_API_BASE, slack_api_call};
 use crate::storage::{EncryptionService, StorageBackend};
 
 /// Routing-tag prefix stamped on Slack-originated sessions by
@@ -440,6 +441,83 @@ async fn complete_upload(
         warn!(file_id = %file_id, "Slack completeUploadExternal returned no permalink");
     }
     Ok(SlackActionOutcome::FileUploaded { file_id, permalink })
+}
+
+// ============================================================================
+// Entry points
+// ============================================================================
+
+/// Build the in-process invoker for one session.
+///
+/// Lives here rather than in `direct_worker_adapters` so the adapter states
+/// only that it has a route, and the construction stays next to the resolution
+/// rules it depends on.
+pub fn in_process_invoker(
+    db: &Arc<StorageBackend>,
+    encryption: Option<&Arc<EncryptionService>>,
+    org_id: i64,
+    session_id: SessionId,
+) -> Arc<dyn SlackActionInvoker> {
+    Arc::new(DbSlackActionInvoker::new(
+        db.clone(),
+        encryption.cloned(),
+        org_id,
+        session_id,
+    ))
+}
+
+/// Serve one `InvokeSlackAction` RPC (EVE-1024).
+///
+/// The invoker resolves which Slack endpoint created the session and reads that
+/// endpoint's `bot_token`, both org-scoped, so a session id from another tenant
+/// resolves to nothing. The token is used here and never returned: the response
+/// carries the action's outcome or a typed error.
+///
+/// A failed action is a successful RPC. The capability distinguishes "not a
+/// Slack session" (a tool error the model should act on) from a transient fault
+/// (an internal error), and a `Status` would flatten both into one transport
+/// failure.
+pub async fn serve_rpc(
+    db: &Arc<StorageBackend>,
+    encryption: Option<&Arc<EncryptionService>>,
+    request: tonic::Request<everruns_internal_protocol::proto::InvokeSlackActionRequest>,
+) -> Result<
+    tonic::Response<everruns_internal_protocol::proto::InvokeSlackActionResponse>,
+    tonic::Status,
+> {
+    use everruns_internal_protocol::proto;
+
+    let req = request.into_inner();
+    let session_id = SessionId::parse(&req.session_id)
+        .map_err(|e| tonic::Status::invalid_argument(format!("invalid session_id: {e}")))?;
+    let action: SlackAction = req
+        .action
+        .ok_or_else(|| tonic::Status::invalid_argument("missing action"))?
+        .into();
+
+    let invoker = in_process_invoker(db, encryption, req.org_id, session_id);
+    let result = match invoker.invoke(action).await {
+        Ok(outcome) => outcome.into(),
+        Err(error) => {
+            if !matches!(error, SlackActionError::NoSlackSession) {
+                // A non-Slack session is an ordinary configuration outcome and
+                // would otherwise log one line per turn for any agent that has
+                // the capability enabled broadly.
+                warn!(
+                    session_id = %session_id,
+                    org_id = req.org_id,
+                    error = %error,
+                    "Slack action failed"
+                );
+            }
+            let wire: proto::SlackActionError = error.into();
+            proto::invoke_slack_action_response::Result::Error(wire)
+        }
+    };
+
+    Ok(tonic::Response::new(proto::InvokeSlackActionResponse {
+        result: Some(result),
+    }))
 }
 
 #[cfg(test)]

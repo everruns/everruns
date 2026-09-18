@@ -31,7 +31,7 @@ use uuid::Uuid;
 
 use crate::grpc_adapters::{
     GrpcAdapter, GrpcBudgetChecker, GrpcClient, GrpcOrgAdapter, GrpcOutboundToolRateLimiter,
-    GrpcPaymentAuthority, GrpcSessionCreationAuthority, GrpcSlackActionInvoker,
+    GrpcPaymentAuthority, GrpcSessionCreationAuthority,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
@@ -530,11 +530,13 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         org_id: i64,
         session_id: everruns_provider::typed_id::SessionId,
     ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
-        Some(Arc::new(GrpcSlackActionInvoker::new(
-            self.client.clone(),
-            org_id,
-            session_id,
-        )))
+        Some(Arc::new(
+            crate::grpc_slack_actions::GrpcSlackActionInvoker::new(
+                self.client.clone(),
+                org_id,
+                session_id,
+            ),
+        ))
     }
 
     fn payment_authority(

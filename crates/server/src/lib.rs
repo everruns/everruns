@@ -43,6 +43,7 @@ pub use platform::{
     oss_built_in_harnesses, oss_connector_registry, oss_host_composition,
     oss_host_composition_for_grade,
 };
+pub mod harness_chain;
 pub mod harnesses;
 
 // Direct worker adapters for in-process task worker
@@ -123,6 +124,7 @@ pub mod valkey;
 
 // Slack delivery dispatcher for event-driven message posting
 pub mod slack_actions;
+pub mod slack_api_error;
 pub mod slack_delivery;
 
 // App builder for composable server configurations
