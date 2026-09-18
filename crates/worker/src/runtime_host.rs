@@ -69,21 +69,24 @@ fn pending_oauth_connection(
     provider: &str,
     acts_as: everruns_core::McpServerActsAs,
     agent_id: Option<AgentId>,
-) -> ConnectionRequired {
+) -> anyhow::Result<ConnectionRequired> {
     match (acts_as, agent_id) {
         (everruns_core::McpServerActsAs::Service, Some(agent_id)) => {
-            ConnectionRequired::with_setup(
+            Ok(ConnectionRequired::with_setup(
                 provider,
                 ConnectionRequiredSubject::Agent,
                 format!("/agents/{agent_id}?tab=mcp"),
-            )
+            ))
         }
-        (everruns_core::McpServerActsAs::User, _) => ConnectionRequired::with_setup(
+        (everruns_core::McpServerActsAs::Service, None) => {
+            anyhow::bail!("MCP service attachment requires an agent")
+        }
+        (everruns_core::McpServerActsAs::User, _) => Ok(ConnectionRequired::with_setup(
             provider,
             ConnectionRequiredSubject::User,
             "/settings/connections",
-        ),
-        _ => ConnectionRequired::provider_only(provider),
+        )),
+        _ => Ok(ConnectionRequired::provider_only(provider)),
     }
 }
 
@@ -139,7 +142,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
                         provider,
                         info.acts_as,
                         self.agent_id,
-                    ));
+                    )?);
                 }
                 Err(error) => {
                     tracing::warn!(
@@ -152,7 +155,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
                         provider,
                         info.acts_as,
                         self.agent_id,
-                    ));
+                    )?);
                 }
             }
         }
@@ -782,6 +785,37 @@ mod mcp_credential_tests {
             .expect("legacy missing grant must still prompt");
         assert_eq!(required.subject, None);
         assert_eq!(required.setup_url, None);
+    }
+
+    #[tokio::test]
+    async fn an_agentless_service_missing_grant_is_rejected() {
+        let resolver = Arc::new(RecordingResolver::default());
+        let adapters = StubAdapters {
+            info: server_info(
+                McpServerActsAs::Service,
+                everruns_core::McpServerAuthMode::OAuth,
+                None,
+                &[],
+            ),
+            resolver: resolver.clone(),
+        };
+        let result = WorkerMcpResolver {
+            adapters,
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            session_id: Uuid::new_v4(),
+            agent_id: None,
+        }
+        .resolve("linear")
+        .await;
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "MCP service attachment requires an agent"
+        );
+        assert_eq!(
+            *resolver.acts_as_calls.lock().unwrap(),
+            vec![McpServerActsAs::Service]
+        );
     }
 
     #[tokio::test]
