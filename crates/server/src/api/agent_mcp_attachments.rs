@@ -16,7 +16,7 @@ use utoipa::ToSchema;
 use super::agents::AppState;
 use super::common::{ApiResult, ApiResultExt, ErrorResponse};
 
-pub fn routes(state: AppState) -> Router {
+pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
             "/v1/agents/{agent_id}/mcp-attachments",
@@ -26,7 +26,6 @@ pub fn routes(state: AppState) -> Router {
             "/v1/agents/{agent_id}/mcp-attachments/{name}/connection",
             axum::routing::delete(revoke_agent_mcp_connection),
         )
-        .with_state(state)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]

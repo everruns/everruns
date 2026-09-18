@@ -506,6 +506,7 @@ pub fn routes(state: AppState) -> Router {
             "/v1/agents/{agent_id}/health-checks/{run_id}",
             get(get_health_check),
         )
+        .merge(super::agent_mcp_attachments::routes())
         .route(
             "/v1/agents/{agent_id}",
             get(get_agent)
