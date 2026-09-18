@@ -1948,5 +1948,4 @@ mod high_risk_admin_gate_tests {
 
         assert!(authorize_effective_harness_view(&DefaultPermissionResolver, &caller).is_ok());
     }
-
 }
