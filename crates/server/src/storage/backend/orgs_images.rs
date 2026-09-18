@@ -685,6 +685,36 @@ impl StorageBackend {
         dispatch!(self, get_connection_user_for_session, session_id, provider)
     }
 
+    pub async fn session_has_human_initiator(&self, session_id: SessionId) -> Result<bool> {
+        dispatch!(self, session_has_human_initiator, session_id)
+    }
+
+    pub async fn get_agent_identity_connection_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        dispatch!(
+            self,
+            get_agent_identity_connection_for_session,
+            session_id,
+            provider
+        )
+    }
+
+    pub async fn get_owner_user_connection_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<UserConnectionRow>> {
+        dispatch!(
+            self,
+            get_owner_user_connection_for_session,
+            session_id,
+            provider
+        )
+    }
+
     pub async fn get_connection_token_for_user(
         &self,
         user_id: Uuid,

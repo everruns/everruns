@@ -345,9 +345,12 @@ impl SessionService {
             scoped_mcp_layers.push(agent_mcp_servers);
         }
         scoped_mcp_layers.push(&req.mcp_servers);
-        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers(
+        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers_for_org(
+            &self.db,
+            org_id,
             scoped_mcp_layers,
-        )?;
+        )
+        .await?;
 
         // Serialize capabilities to JSON for storage
         let capabilities_json = serde_json::to_value(&session_capabilities)?;
@@ -602,10 +605,12 @@ impl SessionService {
         )
         .await?
         .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
-        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers([
-            &effective_harness.mcp_servers,
-            &req.mcp_servers,
-        ])?;
+        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers_for_org(
+            &self.db,
+            org_id,
+            [&effective_harness.mcp_servers, &req.mcp_servers],
+        )
+        .await?;
         let owner_principal = self
             .principal_service
             .default_owner_principal(caller, None)

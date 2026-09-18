@@ -39,6 +39,7 @@ pub(crate) fn test_app() -> App {
             internal_id: uuid::Uuid::nil(),
             channel_type: ChannelType::Slack,
             channel_config: serde_json::json!({}),
+            auth: None,
             enabled: true,
             status: everruns_platform::EndpointStatus::Live,
             created_at: now,

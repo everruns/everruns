@@ -3227,6 +3227,7 @@ dependencies = [
  "everruns-host",
  "everruns-integrations-bashkit",
  "everruns-integrations-catalog",
+ "everruns-integrations-typesafe",
  "everruns-integrations-web-fetch",
  "everruns-internal-protocol",
  "everruns-mcp",

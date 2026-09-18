@@ -7,7 +7,9 @@ use everruns_platform::Agent;
 use everruns_platform::Session;
 use everruns_provider::model::Model;
 use everruns_provider::provider::Provider;
-use everruns_server::storage::models::{CreateAgentRow, UpdateOrganizationSettings};
+use everruns_server::storage::models::{
+    CreateAgentRow, CreateMcpServerRow, UpdateOrganizationSettings,
+};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -1122,4 +1124,63 @@ async fn test_update_app_missing_agent_returns_not_found() {
         )
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_agent_catalog_mcp_attachment_round_trip() {
+    let server = TestServer::in_memory().await;
+    server
+        .db
+        .create_mcp_server(
+            DEFAULT_ORG_ID,
+            CreateMcpServerRow {
+                name: "linear-catalog".to_string(),
+                description: None,
+                url: "https://mcp.linear.app/mcp".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: Some(json!({
+                    "auth_mode": "oauth",
+                    "oauth": {}
+                })),
+            },
+        )
+        .await
+        .unwrap();
+
+    let created: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "catalog-mcp-agent",
+                "system_prompt": "Use the attached Linear tools",
+                "mcpServers": {
+                    "project-tracker": {
+                        "use": "catalog:linear-catalog",
+                        "actsAs": "service"
+                    }
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    assert_eq!(
+        created["mcpServers"]["project-tracker"],
+        json!({
+            "use": "catalog:linear-catalog",
+            "actsAs": "service"
+        })
+    );
+
+    let fetched: Value = server
+        .get(&format!("/v1/agents/{}", created["id"].as_str().unwrap()))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(
+        fetched["mcpServers"]["project-tracker"],
+        created["mcpServers"]["project-tracker"]
+    );
 }

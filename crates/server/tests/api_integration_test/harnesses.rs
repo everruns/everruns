@@ -92,8 +92,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        23,
-        "Generic harness should have 23 capabilities"
+        24,
+        "Generic harness should have 24 capabilities"
     );
     assert!(
         cap_ids.contains(&"human_intent"),
@@ -143,6 +143,10 @@ async fn test_get_generic_harness() {
     assert!(
         cap_ids.contains(&"loop_detection"),
         "Should have loop detection"
+    );
+    assert!(
+        cap_ids.contains(&"soft_approval"),
+        "Should have soft approval"
     );
     assert!(
         cap_ids.contains(&"message_metadata"),
@@ -432,8 +436,8 @@ async fn test_copy_seed_generic_harness() {
     // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),
-        23,
-        "Copied harness should have same 23 capabilities"
+        24,
+        "Copied harness should have same 24 capabilities"
     );
     assert!(
         copied
@@ -589,7 +593,8 @@ async fn test_chat_harness_includes_platform_capability() {
             "tool_call_repair",
             "loop_detection",
             "error_disclosure",
-            "compaction"
+            "compaction",
+            "soft_approval"
         ],
         "Platform Chat should keep platform operations, commands, and runtime safeguards locally"
     );
