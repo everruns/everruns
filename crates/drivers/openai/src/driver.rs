@@ -194,7 +194,19 @@ impl ChatDriver for OpenAIChatDriver {
         let Some(api_url) = endpoint.url("responses") else {
             return Ok(None);
         };
-        // Skip discovery for non-standard custom URLs (proxies, self-hosted)
+        // Skip discovery for non-standard custom URLs (proxies, self-hosted).
+        //
+        // This gate is a credential boundary, not just a capability check: the
+        // base URL is org-configured and `models_url_for_api_url` derives a
+        // request URL from it, so anything that reaches the network here
+        // resolves this provider's key against a host that merely *looks* like
+        // the vendor (`api.openai.com.evil.example`,
+        // `resource.openai.azure.com@evil.example`). A generic
+        // OpenAI-compatible fallback must not be attached here for that reason
+        // — a caller that wants one for a host it trusts calls
+        // `model_discovery::list_openai_compatible_models_best_effort`
+        // itself. Covered by
+        // `public_discovery_gates_both_protocols_before_accessing_credentials`.
         if !supports_model_listing(&api_url) {
             return Ok(None);
         }
@@ -303,7 +315,19 @@ impl ChatDriver for OpenAICompletionsChatDriver {
         let Some(api_url) = endpoint.url("chat/completions") else {
             return Ok(None);
         };
-        // Skip discovery for non-standard custom URLs (proxies, self-hosted)
+        // Skip discovery for non-standard custom URLs (proxies, self-hosted).
+        //
+        // This gate is a credential boundary, not just a capability check: the
+        // base URL is org-configured and `models_url_for_api_url` derives a
+        // request URL from it, so anything that reaches the network here
+        // resolves this provider's key against a host that merely *looks* like
+        // the vendor (`api.openai.com.evil.example`,
+        // `resource.openai.azure.com@evil.example`). A generic
+        // OpenAI-compatible fallback must not be attached here for that reason
+        // — a caller that wants one for a host it trusts calls
+        // `model_discovery::list_openai_compatible_models_best_effort`
+        // itself. Covered by
+        // `public_discovery_gates_both_protocols_before_accessing_credentials`.
         if !supports_model_listing(&api_url) {
             return Ok(None);
         }

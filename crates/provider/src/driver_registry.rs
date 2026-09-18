@@ -19,7 +19,6 @@ use crate::credential_schema::CredentialFormSchema;
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -179,34 +178,9 @@ pub enum LlmStreamEvent {
     Error(LlmStreamError),
 }
 
-/// Model information discovered from a provider's list_models API
-///
-/// Represents a model available from a provider. Used for dynamic model discovery
-/// to sync available models from provider APIs into the database.
-///
-/// The `discovered_profile` field carries structured capability/limit metadata
-/// parsed from the provider's API response (e.g., Anthropic's capabilities object).
-/// During model sync, this profile is merged with hardcoded profiles: hardcoded
-/// values take precedence (they include cost data not available from APIs),
-/// but discovered data fills gaps for models without hardcoded profiles.
-#[derive(Debug, Clone)]
-pub struct DiscoveredModel {
-    /// Model identifier (e.g., "gpt-5.2", "claude-opus-4-5-20251101")
-    pub model_id: String,
-    /// Human-readable display name (if provided by API)
-    pub display_name: Option<String>,
-    /// When the model was created/released
-    pub created_at: Option<DateTime<Utc>>,
-    /// Owner or organization (e.g., "openai", "system")
-    pub owned_by: Option<String>,
-    /// Service capabilities advertised for this concrete model (for example,
-    /// `chat` or `embeddings`). These are distinct from provider-level
-    /// services: an OpenAI provider supports both, but each model does not.
-    pub capabilities: Vec<String>,
-    /// Structured profile built from provider API metadata (capabilities, limits).
-    /// Populated by drivers that return rich model metadata (e.g., Anthropic /v1/models).
-    pub discovered_profile: Option<crate::model::ModelProfile>,
-}
+// `DiscoveredModel` is the discovery module's own type; it lives there and is
+// re-exported here so every existing path keeps working.
+pub use crate::model_discovery::DiscoveredModel;
 
 /// Metadata about LLM completion
 ///
@@ -235,6 +209,14 @@ pub struct LlmCompletionMetadata {
     pub cache_read_tokens: Option<u32>,
     /// Tokens written to cache (Anthropic-specific), disjoint from `prompt_tokens`
     pub cache_creation_tokens: Option<u32>,
+    /// Reasoning tokens the provider billed as part of `completion_tokens`.
+    ///
+    /// A *subset* of `completion_tokens`, not an addition to it: providers
+    /// that report reasoning separately (OpenAI
+    /// `completion_tokens_details.reasoning_tokens`) still count it in the
+    /// completion total. Reported so callers can attribute the spend rather
+    /// than infer it from the visible answer's length.
+    pub reasoning_tokens: Option<u32>,
     /// Authoritative cost of this generation in USD, when the provider reports
     /// it inline (e.g. OpenRouter's `usage.cost`). `None` for providers that do
     /// not return a cost.
@@ -252,6 +234,12 @@ pub struct LlmCompletionMetadata {
     /// When present, this value should be preserved on the assistant message and sent
     /// back as-is in subsequent requests. Only set by providers with native phase support.
     pub phase: Option<String>,
+    /// The request body the driver sent, when
+    /// [`LlmCallConfig::capture_request`] asked for it.
+    ///
+    /// Verbatim, as serialized for the wire. `None` when the capture was not
+    /// requested, or on a driver that does not support it.
+    pub request_body: Option<serde_json::Value>,
     /// Provider-reported prompt-cache diagnostics, verbatim.
     ///
     /// Present only when the request opted in via
@@ -322,52 +310,24 @@ pub trait ChatDriver: Send + Sync {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
-        use futures::StreamExt;
-
-        let mut stream = self
-            .chat_completion_stream(endpoint, messages, config)
-            .await?;
-        let mut text = String::new();
-        let mut reasoning: Vec<crate::reasoning::ReasoningContentPart> = Vec::new();
-        let mut tool_calls = Vec::new();
-        let mut metadata = LlmCompletionMetadata::default();
-
-        while let Some(event) = stream.next().await {
-            match event? {
-                LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
-                // Deltas are a live-rendering concern; the terminal
-                // `ReasoningItem` carries the durable artifact.
-                LlmStreamEvent::ReasoningDelta { .. } => {}
-                LlmStreamEvent::ReasoningItem(item) => reasoning.push(item),
-                LlmStreamEvent::ToolCalls(calls) => tool_calls = calls,
-                LlmStreamEvent::NativeToolCall(_) => {
-                    return Err(crate::error::AgentLoopError::config(
-                        "native async/custom calls require a streaming coordinator",
-                    ));
-                }
-                // Streamed phase hint is a mid-stream refinement only; the
-                // non-streaming collector relies on the terminal Done metadata.
-                LlmStreamEvent::MessagePhase(_) => {}
-                LlmStreamEvent::Done(meta) => metadata = *meta,
-                LlmStreamEvent::Error(err) => {
-                    return Err(crate::error::AgentLoopError::llm_kind(
-                        err.kind(),
-                        err.to_string(),
-                    ));
-                }
-            }
-        }
-
-        Ok(LlmResponse {
-            text,
-            reasoning,
-            tool_calls: if tool_calls.is_empty() {
-                None
-            } else {
-                Some(tool_calls)
-            },
-            metadata,
-        })
+        // One folding loop for the whole runtime: the same rules (and the
+        // same `config.limits`) apply whether a caller collects the stream
+        // itself or takes the non-streaming path.
+        //
+        // The connect phase is inside the budget too. It is a provider round
+        // trip that can hang before any event exists to collect, so bounding
+        // only the fold would leave the whole point of the limit unbounded.
+        let limits = config.limits;
+        let (stream, spent) = crate::turn_collector::connect_within(
+            &limits,
+            self.chat_completion_stream(endpoint, messages, config),
+        )
+        .await?;
+        Ok(
+            crate::turn_collector::collect_turn(stream, &limits.after(spent), |_| {})
+                .await?
+                .into_response(),
+        )
     }
 
     /// Whether this driver can complete without SSE on the wire.
@@ -563,223 +523,12 @@ impl ChatDriver for Box<dyn ChatDriver> {
     }
 }
 
-// ============================================================================
-// Message Types
-// ============================================================================
-
-/// Message format for LLM calls (provider-agnostic)
-#[derive(Debug, Clone)]
-pub struct LlmMessage {
-    /// Provider-native call identities, retained alongside portable fallbacks.
-    pub native_tool_calls: Vec<crate::native_async::NativeToolCall>,
-    pub role: LlmMessageRole,
-    pub content: LlmMessageContent,
-    pub tool_calls: Option<Vec<ToolCall>>,
-    pub tool_call_id: Option<String>,
-    /// Execution phase for assistant messages.
-    /// Helps models distinguish between intermediate working commentary (`Commentary`)
-    /// and completed answers (`FinalAnswer`) in multi-step tool-calling flows.
-    /// Only set on assistant messages. Must be preserved when replaying conversation history.
-    pub phase: Option<crate::execution_phase::ExecutionPhase>,
-    /// Provider reasoning artifacts for this assistant turn, in emission order.
-    ///
-    /// Drivers replay these verbatim in the position the provider issued them:
-    /// each keeps its own signature, id and encrypted payload, so interleaved
-    /// thinking and per-call thought signatures survive a round trip. Empty for
-    /// messages without reasoning.
-    pub reasoning: Vec<crate::reasoning::ReasoningContentPart>,
-    /// Astra effort transition immediately before this message. Other protocols
-    /// ignore it; it is never rendered as conversation text.
-    pub configuration_update: Option<crate::model::ReasoningEffort>,
-}
-
-impl LlmMessage {
-    /// Create a message with text content
-    pub fn text(role: LlmMessageRole, content: impl Into<String>) -> Self {
-        Self {
-            native_tool_calls: Vec::new(),
-            role,
-            content: LlmMessageContent::Text(content.into()),
-            tool_calls: None,
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-            configuration_update: None,
-        }
-    }
-
-    /// Create a message with content parts (text, images, audio)
-    pub fn parts(role: LlmMessageRole, parts: Vec<LlmContentPart>) -> Self {
-        Self {
-            native_tool_calls: Vec::new(),
-            role,
-            content: LlmMessageContent::Parts(parts),
-            tool_calls: None,
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-            configuration_update: None,
-        }
-    }
-
-    /// Get content as plain text string (for simple cases)
-    pub fn content_as_text(&self) -> String {
-        self.content.to_text()
-    }
-
-    /// Prepend a prefix to the first text content.
-    ///
-    /// Used by ReasonAtom to inject external actor identity (e.g. `"[Alice] "`)
-    /// into user messages from external channels.
-    pub fn prepend_text_prefix(&mut self, prefix: &str) {
-        match &mut self.content {
-            LlmMessageContent::Text(text) => {
-                *text = format!("{}{}", prefix, text);
-            }
-            LlmMessageContent::Parts(parts) => {
-                for part in parts.iter_mut() {
-                    if let LlmContentPart::Text { text } = part {
-                        *text = format!("{}{}", prefix, text);
-                        return;
-                    }
-                }
-                // No text part found — prepend one
-                parts.insert(
-                    0,
-                    LlmContentPart::Text {
-                        text: prefix.to_string(),
-                    },
-                );
-            }
-        }
-    }
-}
-
-/// Fold every `System`-role message into a single string, joined in order with
-/// blank lines.
-///
-/// Multiple system messages legitimately occur in one request: the agent system
-/// prompt plus, e.g., `infinity_context`'s hidden-history notice or
-/// `compaction`'s `[CONVERSATION_SUMMARY]`. Drivers that map the system role into
-/// a dedicated top-level field (Anthropic `system`, Gemini `system_instruction`,
-/// OpenResponses `instructions`) must accumulate rather than overwrite — otherwise
-/// the real agent system prompt is silently dropped and only the last notice
-/// survives. Returns `None` when there are no system messages.
-pub fn fold_system_messages(messages: &[LlmMessage]) -> Option<String> {
-    let mut system: Option<String> = None;
-    for msg in messages {
-        if msg.role == LlmMessageRole::System {
-            let text = msg.content.to_text();
-            system = Some(match system.take() {
-                Some(existing) if !existing.is_empty() => format!("{existing}\n\n{text}"),
-                _ => text,
-            });
-        }
-    }
-    system
-}
-
-/// Message content - either a simple string or array of content parts
-#[derive(Debug, Clone)]
-pub enum LlmMessageContent {
-    /// Simple text content
-    Text(String),
-    /// Array of content parts (text, images, audio)
-    Parts(Vec<LlmContentPart>),
-}
-
-impl LlmMessageContent {
-    /// Convert to plain text (concatenates text parts, ignores media)
-    pub fn to_text(&self) -> String {
-        match self {
-            LlmMessageContent::Text(s) => s.clone(),
-            LlmMessageContent::Parts(parts) => parts
-                .iter()
-                .filter_map(|p| match p {
-                    LlmContentPart::Text { text } => Some(text.clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join(""),
-        }
-    }
-
-    /// Check if content is simple text
-    pub fn is_text(&self) -> bool {
-        matches!(self, LlmMessageContent::Text(_))
-    }
-
-    /// Check if content has multiple parts
-    pub fn is_parts(&self) -> bool {
-        matches!(self, LlmMessageContent::Parts(_))
-    }
-}
-
-impl From<String> for LlmMessageContent {
-    fn from(s: String) -> Self {
-        LlmMessageContent::Text(s)
-    }
-}
-
-impl From<&str> for LlmMessageContent {
-    fn from(s: &str) -> Self {
-        LlmMessageContent::Text(s.to_string())
-    }
-}
-
-/// A single content part within a message
-///
-/// `#[non_exhaustive]` for the same reason as [`LlmStreamEvent`]: new content
-/// kinds are additive and must not break downstream `match`es.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub enum LlmContentPart {
-    /// Text content
-    Text { text: String },
-    /// Image content (base64 data URL or HTTP URL)
-    Image { url: String },
-    /// Audio content (base64 data URL)
-    Audio { url: String },
-    /// File content, e.g. a PDF document (base64 data URL or file URL)
-    File {
-        url: String,
-        filename: Option<String>,
-    },
-}
-
-impl LlmContentPart {
-    /// Create a text content part
-    pub fn text(text: impl Into<String>) -> Self {
-        LlmContentPart::Text { text: text.into() }
-    }
-
-    /// Create an image content part from URL (can be data URL or HTTP URL)
-    pub fn image(url: impl Into<String>) -> Self {
-        LlmContentPart::Image { url: url.into() }
-    }
-
-    /// Create an audio content part from URL (typically a data URL)
-    pub fn audio(url: impl Into<String>) -> Self {
-        LlmContentPart::Audio { url: url.into() }
-    }
-
-    /// Create a file content part from URL (typically a data URL)
-    pub fn file(url: impl Into<String>, filename: Option<String>) -> Self {
-        LlmContentPart::File {
-            url: url.into(),
-            filename,
-        }
-    }
-}
-
-/// Message role for LLM calls
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LlmMessageRole {
-    System,
-    User,
-    Assistant,
-    Tool,
-}
+// The message types moved to `llm_message` when this file outgrew what anyone
+// can hold in their head; they are re-exported here so every existing path
+// keeps working.
+pub use crate::llm_message::{
+    LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole, fold_system_messages,
+};
 
 // ============================================================================
 // Configuration and Response Types
@@ -933,6 +682,27 @@ pub struct LlmCallConfig {
     pub extra_headers: Vec<(String, String)>,
     /// Prompt-cache diagnostics requested for this call.
     pub cache_diagnostics: Option<CacheDiagnosticsConfig>,
+    /// Record the exact request body the driver sends, on
+    /// [`LlmCompletionMetadata::request_body`].
+    ///
+    /// Off by default. A driver's serialization is its own — which fields it
+    /// sends, how it shapes tools and reasoning — so a consumer that has to
+    /// show or store what was actually asked cannot reconstruct it and ends up
+    /// fabricating an approximation. This hands over the real thing.
+    ///
+    /// THREAT[TM-LLM-039]: the body carries the whole prompt, so turning this
+    /// on is a deliberate choice about where that prompt may be written — off
+    /// by default, and never enabled by the runtime on a caller's behalf.
+    /// Credentials are not part of it: authentication travels in headers,
+    /// which are not serialized into the body.
+    pub capture_request: bool,
+    /// Bounds on how long this call may run and how much it may return.
+    ///
+    /// Enforced wherever a stream is folded into a turn: the non-streaming
+    /// path below, and any caller using
+    /// [`collect_turn`](crate::turn_collector::collect_turn). Unbounded by
+    /// default, so a driver that ignores them behaves as before.
+    pub limits: crate::turn_collector::TurnLimits,
 }
 
 impl LlmCallConfig {
@@ -1105,9 +875,21 @@ impl LlmCallConfigBuilder {
         self
     }
 
+    /// Record the exact request body this call sends.
+    pub fn capture_request(mut self, capture: bool) -> Self {
+        self.config.capture_request = capture;
+        self
+    }
+
     /// Request provider prompt-cache diagnostics for this call.
     pub fn cache_diagnostics(mut self, config: CacheDiagnosticsConfig) -> Self {
         self.config.cache_diagnostics = Some(config);
+        self
+    }
+
+    /// Bound how long this call may run and how much it may return.
+    pub fn limits(mut self, limits: crate::turn_collector::TurnLimits) -> Self {
+        self.config.limits = limits;
         self
     }
 
@@ -2093,6 +1875,8 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            capture_request: false,
+            limits: Default::default(),
             reasoning_state: None,
         }
     }

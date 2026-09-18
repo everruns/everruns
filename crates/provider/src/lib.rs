@@ -30,6 +30,8 @@ pub mod driver_helpers;
 pub mod driver_registry;
 pub mod error;
 pub mod execution_phase;
+pub mod llm_error;
+pub mod llm_message;
 pub mod llm_retry;
 pub mod model;
 pub mod model_discovery;
@@ -39,6 +41,9 @@ pub mod native_async;
 pub mod openai_compat;
 #[cfg(feature = "http")]
 pub mod openai_protocol;
+#[cfg(feature = "http")]
+mod openai_types;
+pub mod openai_wire;
 #[cfg(feature = "http")]
 pub mod openresponses_protocol;
 pub mod openresponses_types;
@@ -50,6 +55,7 @@ pub mod stream_accumulator;
 pub mod stream_reconnect;
 pub mod tool_schema_compat;
 pub mod tool_types;
+pub mod turn_collector;
 pub mod typed_id;
 pub mod url_validation;
 pub mod user_facing_error;
@@ -98,6 +104,7 @@ pub use model_profiles::{get_model_profile, get_model_vendor};
 pub use model_spec::{ModelSpec, UnknownProvider};
 #[cfg(feature = "http")]
 pub use openai_protocol::OpenAIProtocolChatDriver;
+pub use openai_wire::OpenAiWireError;
 #[cfg(feature = "http")]
 pub use openresponses_protocol::{OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension};
 pub use provider::{Provider as ProviderRecord, ProviderStatus, ProviderTraceConfig};
@@ -112,6 +119,7 @@ pub use tool_types::{
     ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult, ToolResultImage,
     URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired,
 };
+pub use turn_collector::{CollectedTurn, TurnLimits, TurnTiming, collect_turn, limit_stream};
 pub use url_validation::{
     UrlValidationError, is_blocked_ip, validate_safe_url, validate_url_dns_pinned,
 };

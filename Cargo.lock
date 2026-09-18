@@ -2192,6 +2192,7 @@ dependencies = [
  "everruns-llmsim",
  "everruns-macros",
  "everruns-openai",
+ "everruns-openrouter",
  "everruns-platform",
  "everruns-provider",
  "everruns-test-support",

@@ -36,6 +36,33 @@ required-features = ["openai"]
 name = "workspace_environment"
 required-features = ["local"]
 
+# The `local_*` suites exercise the SQLite-backed platform `local` turns on.
+# Without the declaration they build under any feature set and fail to resolve
+# `everruns_platform`, so `--all-targets` on the default build is red.
+[[test]]
+name = "local_composability_and_seam_test"
+required-features = ["local"]
+
+[[test]]
+name = "local_platform_store_test"
+required-features = ["local"]
+
+[[test]]
+name = "local_schedule_runner_test"
+required-features = ["local"]
+
+[[test]]
+name = "local_schedule_store_test"
+required-features = ["local"]
+
+[[test]]
+name = "local_spawn_agent_runtime_test"
+required-features = ["local"]
+
+[[test]]
+name = "local_task_registry_test"
+required-features = ["local"]
+
 [features]
 # Default features stay offline: the facade includes the contained session
 # filesystem but activates no provider, shell, web, Lua, MCP, SQLx, server, or
@@ -104,6 +131,7 @@ a2a = ["local", "everruns-platform/a2a"]
 # default so the standard facade build pulls in no provider or Reqwest edge; the
 # `OpenAI` config type and its driver wiring compile only with this feature.
 openai = ["dep:everruns-openai"]
+openrouter = ["dep:everruns-openrouter"]
 # Typed classification: the TypeSafe-backed `ClassifierService` behind
 # `Classifier`, re-exported so one import reaches both halves.
 typesafe = ["dep:everruns-integrations-typesafe"]
@@ -130,6 +158,7 @@ everruns-integrations-duckduckgo = { workspace = true, optional = true }
 # workspace inheritance; the workspace dependency carries the independently
 # versioned provider package's current release baseline.
 everruns-openai = { workspace = true, optional = true }
+everruns-openrouter = { workspace = true, optional = true }
 # Client + framework surface only: the workspace dependency leaves the crate's
 # `hosted` feature off, so enabling `typesafe` on the facade does not drag in
 # everruns-platform. Guarded by scripts/lib/check-portable-builtins-isolation.sh.
@@ -216,3 +245,10 @@ required-features = ["capabilities", "openai"]
 [[example]]
 name = "capability_configuration"
 required-features = ["capabilities"]
+
+# Uses the TypeSafe-backed classifier tool, which `typesafe` re-exports. Live
+# mode additionally needs `openai`, but the example compiles and runs offline
+# against the simulator without it.
+[[example]]
+name = "agent_classification"
+required-features = ["typesafe"]

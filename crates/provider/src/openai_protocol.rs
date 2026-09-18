@@ -17,8 +17,7 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::{Client, Url};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
@@ -31,6 +30,7 @@ use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
+use crate::openai_types::*;
 use crate::runtime_provider::ProviderEndpoint;
 use crate::stream_accumulator::StreamToolCallAccumulator;
 use crate::stream_reconnect::connect_sse_with_reconnect;
@@ -105,6 +105,22 @@ pub fn models_url_for_api_url(api_url: &str) -> String {
     url.to_string()
 }
 
+/// The request body, as JSON, when the call asked for it to be captured.
+///
+/// Serializing the same value that goes on the wire keeps the capture honest:
+/// it cannot drift from what was actually sent. A serialization failure yields
+/// `None` rather than failing the call — a diagnostic must never be the reason
+/// a request does not happen.
+fn capture_request_body(
+    config: &LlmCallConfig,
+    request: &impl serde::Serialize,
+) -> Option<serde_json::Value> {
+    config
+        .capture_request
+        .then(|| serde_json::to_value(request).ok())
+        .flatten()
+}
+
 /// Build the error returned when the `/models` endpoint responds with a
 /// non-success status.
 ///
@@ -112,8 +128,9 @@ pub fn models_url_for_api_url(api_url: &str) -> String {
 /// act on the *kind* of failure (credential checks distinguishing a rejected
 /// key from an unreachable provider) do not have to re-parse the message.
 pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
-    AgentLoopError::llm_kind(
-        LlmErrorKind::from_provider_status(status.as_u16(), ""),
+    AgentLoopError::llm_http(
+        status.as_u16(),
+        "",
         format!("Models API returned status {status}"),
     )
 }
@@ -253,10 +270,13 @@ impl OpenAIProtocolChatDriver {
                         // Exhausted billing quota is surfaced as a 429 but is not
                         // transient — fail fast instead of burning retries.
                         if is_provider_quota_message(&error_text) {
-                            return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                                LlmErrorKind::QuotaExhausted,
-                                format!("OpenAI API error ({}): {}", status, error_text),
-                            ));
+                            return RetryDecision::Terminal(
+                                AgentLoopError::llm_kind(
+                                    LlmErrorKind::QuotaExhausted,
+                                    format!("OpenAI API error ({}): {}", status, error_text),
+                                )
+                                .with_status(status.as_u16()),
+                            );
                         }
 
                         let wait = rate_limit_info
@@ -271,7 +291,13 @@ impl OpenAIProtocolChatDriver {
                         };
                     }
 
-                    // Non-retryable error or max retries exceeded
+                    // Non-retryable error or max retries exceeded. The
+                    // rate-limit headers are read before the body is consumed
+                    // so a terminal 429 still carries the provider's own
+                    // retry delay.
+                    let retry_after = is_rate_limit_status(status)
+                        .then(|| RateLimitInfo::from_openai_headers(response.headers()))
+                        .and_then(|info| info.retry_after_secs);
                     let error_text = response.text().await.unwrap_or_default();
                     let error_msg = format!("OpenAI API error ({}): {}", status, error_text);
 
@@ -287,23 +313,23 @@ impl OpenAIProtocolChatDriver {
                         ));
                     }
 
-                    // Attach the semantic error kind while the HTTP status and
-                    // body are still available (see LlmErrorKind).
-                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
-
-                    if attempts > 0 {
-                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                            kind,
-                            format!(
-                                "{} (after {} retries, last error: {})",
-                                error_msg,
-                                attempts,
-                                last_error.lock().unwrap().take().unwrap_or_default()
-                            ),
-                        ));
+                    // Classify and preserve the status/code while the HTTP
+                    // response is still structured (see LlmError).
+                    let message = if attempts > 0 {
+                        format!(
+                            "{} (after {} retries, last error: {})",
+                            error_msg,
+                            attempts,
+                            last_error.lock().unwrap().take().unwrap_or_default()
+                        )
+                    } else {
+                        error_msg
+                    };
+                    let mut error = AgentLoopError::llm_http(status.as_u16(), &error_text, message);
+                    if let Some(secs) = retry_after {
+                        error = error.with_retry_after_secs(secs);
                     }
-
-                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
+                    RetryDecision::Terminal(error)
                 }
             },
             |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
@@ -532,6 +558,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             verbosity: config.verbosity.clone(),
             metadata,
         };
+        let captured_request = capture_request_body(config, &request);
         let api_url = endpoint.url("chat/completions").ok_or_else(|| {
             AgentLoopError::Configuration(
                 "OpenAI Chat Completions provider has no base URL".to_string(),
@@ -586,22 +613,27 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             }
             None => (String::new(), Vec::new(), None, None),
         };
-        let (prompt_tokens, completion_tokens, cached_tokens, cost) = body
+        let (prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens, cost) = body
             .usage
             .map(|usage| {
                 let cached = usage
                     .prompt_tokens_details
                     .as_ref()
                     .and_then(|details| details.cached_tokens);
+                let reasoning = usage
+                    .completion_tokens_details
+                    .as_ref()
+                    .and_then(|details| details.reasoning_tokens);
                 let prompt = usage.prompt_tokens.unwrap_or(0);
                 (
                     Some(prompt),
                     usage.completion_tokens,
                     Some(disjoint_prompt_tokens(prompt, cached)),
+                    reasoning,
                     usage.cost,
                 )
             })
-            .unwrap_or((None, None, None, None));
+            .unwrap_or((None, None, None, None, None));
         Ok(LlmResponse {
             text,
             reasoning: reasoning.into_iter().collect(),
@@ -618,6 +650,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 completion_tokens,
                 cache_read_tokens: cached_tokens,
                 cache_creation_tokens: None,
+                reasoning_tokens,
                 provider_cost_usd: cost,
                 model: Some(config.model.clone()),
                 finish_reason,
@@ -628,6 +661,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 },
                 response_id: body.id,
                 phase: None,
+                request_body: captured_request,
                 cache_diagnostics: None,
             },
         })
@@ -706,10 +740,12 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             })
             .await?;
 
+        let captured_request = Arc::new(capture_request_body(config, &request));
         let model = config.model.clone();
         let completion_tokens = Arc::new(Mutex::new(CompletionTokenCount::default()));
         let prompt_tokens = Arc::new(Mutex::new(0u32));
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
+        let reasoning_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         // OpenAI-compatible gateways (e.g. OpenRouter) report an authoritative
         // per-request cost in `usage.cost`; direct OpenAI leaves it absent.
         let provider_cost_usd = Arc::new(Mutex::new(Option::<f64>::None));
@@ -740,12 +776,14 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                     let completion_tokens = Arc::clone(&completion_tokens);
                     let prompt_tokens = Arc::clone(&prompt_tokens);
                     let cache_read_tokens = Arc::clone(&cache_read_tokens);
+                    let reasoning_tokens = Arc::clone(&reasoning_tokens);
                     let provider_cost_usd = Arc::clone(&provider_cost_usd);
                     let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
                     let finish_reason = Arc::clone(&finish_reason);
                     let accumulated_reasoning = Arc::clone(&accumulated_reasoning);
                     let response_id = Arc::clone(&response_id);
                     let retry_metadata_for_done = shared_retry_metadata.clone();
+                    let captured_request = Arc::clone(&captured_request);
 
                     async move {
                         let event = match result {
@@ -764,6 +802,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                             };
                             let input_tokens = *prompt_tokens.lock().unwrap();
                             let cached = *cache_read_tokens.lock().unwrap();
+                            let reasoning_used = *reasoning_tokens.lock().unwrap();
                             let cost = *provider_cost_usd.lock().unwrap();
                             let resp_id = response_id.lock().unwrap().clone();
                             let mut reason = finish_reason.lock().unwrap().clone();
@@ -819,6 +858,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     )),
                                     completion_tokens: Some(output_tokens),
                                     cache_read_tokens: cached,
+                                    reasoning_tokens: reasoning_used,
                                     cache_creation_tokens: None,
                                     provider_cost_usd: cost,
                                     model: Some(model),
@@ -827,6 +867,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                         .map(|arc| (*arc).clone()),
                                     response_id: resp_id,
                                     phase: None,
+                                    request_body: (*captured_request).clone(),
                                     cache_diagnostics: None,
                                 },
                             ))));
@@ -860,6 +901,14 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                         && details.cached_tokens.is_some()
                                     {
                                         *cache_read_tokens.lock().unwrap() = details.cached_tokens;
+                                    }
+                                    // Reasoning is billed inside completion_tokens;
+                                    // keep the breakdown so callers can attribute it.
+                                    if let Some(details) = &usage.completion_tokens_details
+                                        && details.reasoning_tokens.is_some()
+                                    {
+                                        *reasoning_tokens.lock().unwrap() =
+                                            details.reasoning_tokens;
                                     }
                                     // Authoritative cost from OpenAI-compatible gateways
                                     // (e.g. OpenRouter `usage.cost`, in USD credits).
@@ -999,213 +1048,6 @@ pub fn is_openai_request_too_large(status: reqwest::StatusCode, error_text: &str
     false
 }
 
-// ============================================================================
-// OpenAI API Types
-// ============================================================================
-
-#[derive(Debug, Serialize)]
-struct OpenAiRequest {
-    model: String,
-    messages: Vec<OpenAiMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u32>,
-    stream: bool,
-    /// Request usage info in streaming response (required for token counts)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stream_options: Option<OpenAiStreamOptions>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<Vec<OpenAiTool>>,
-    /// Request-level control over parallel tool calls. Omitted when unset so the
-    /// provider default applies.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    parallel_tool_calls: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_effort: Option<String>,
-    /// Speed selector: OpenAI service tier ("flex", "default", "priority").
-    /// Omitted when `None` so the provider keeps its default ("auto") routing.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    service_tier: Option<String>,
-    /// Verbosity selector ("low", "medium", "high"). Top-level field on the
-    /// Chat Completions API. Omitted when `None` so the provider keeps its
-    /// default ("medium") output length.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    verbosity: Option<String>,
-    /// Metadata for tracking API usage (up to 16 key-value pairs).
-    /// Useful for correlating requests with session_id, agent_id, org_id, etc.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    metadata: Option<std::collections::HashMap<String, String>>,
-}
-
-#[derive(Debug, Serialize)]
-struct OpenAiStreamOptions {
-    include_usage: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-enum OpenAiContent {
-    Text(String),
-    Parts(Vec<OpenAiContentPart>),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-enum OpenAiContentPart {
-    Text {
-        r#type: String,
-        text: String,
-    },
-    ImageUrl {
-        r#type: String,
-        image_url: OpenAiImageUrl,
-    },
-    InputAudio {
-        r#type: String,
-        input_audio: OpenAiInputAudio,
-    },
-    File {
-        r#type: String,
-        file: OpenAiFile,
-    },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiFile {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    filename: Option<String>,
-    file_data: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiImageUrl {
-    url: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiInputAudio {
-    data: String,
-    format: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiMessage {
-    role: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    content: Option<OpenAiContent>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_calls: Option<Vec<OpenAiToolCall>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_call_id: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiTool {
-    r#type: String,
-    function: OpenAiFunction,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiFunction {
-    name: String,
-    description: String,
-    parameters: Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    strict: Option<bool>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiToolCall {
-    id: String,
-    r#type: String,
-    function: OpenAiFunctionCall,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OpenAiFunctionCall {
-    name: String,
-    arguments: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)] // id and model are deserialized but used by event listeners, not directly
-struct OpenAiStreamChunk {
-    /// Unique identifier for this completion
-    #[serde(default)]
-    id: Option<String>,
-    /// Model used for completion (may differ from requested)
-    #[serde(default)]
-    model: Option<String>,
-    choices: Vec<OpenAiStreamChoice>,
-    #[serde(default)]
-    usage: Option<OpenAiUsage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiUsage {
-    prompt_tokens: Option<u32>,
-    completion_tokens: Option<u32>,
-    /// Detailed breakdown of prompt tokens (includes cached tokens)
-    #[serde(default)]
-    prompt_tokens_details: Option<OpenAiPromptTokensDetails>,
-    /// Authoritative per-request cost in USD credits, returned by
-    /// OpenAI-compatible gateways such as OpenRouter. Absent for direct OpenAI.
-    #[serde(default)]
-    cost: Option<f64>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct OpenAiPromptTokensDetails {
-    /// Number of tokens retrieved from cache
-    #[serde(default)]
-    cached_tokens: Option<u32>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiStreamChoice {
-    delta: OpenAiDelta,
-    #[serde(default)]
-    finish_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiDelta {
-    #[serde(default)]
-    content: Option<String>,
-    /// Reasoning text on the Chat Completions wire. Reasoning models reached
-    /// over this protocol (DeepSeek-R1, Qwen, Groq, Fireworks) stream it here;
-    /// vendors split between two field names for the same thing.
-    #[serde(default)]
-    reasoning_content: Option<String>,
-    #[serde(default)]
-    reasoning: Option<String>,
-    #[serde(default)]
-    tool_calls: Option<Vec<OpenAiStreamToolCall>>,
-}
-
-impl OpenAiDelta {
-    fn reasoning_text(&self) -> Option<&str> {
-        self.reasoning_content
-            .as_deref()
-            .or(self.reasoning.as_deref())
-            .filter(|text| !text.is_empty())
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiStreamToolCall {
-    index: u32,
-    id: Option<String>,
-    function: Option<OpenAiStreamFunction>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiStreamFunction {
-    name: Option<String>,
-    arguments: Option<String>,
-}
-
 /// Drains tool calls that were accumulated but not yet emitted, returning a
 /// final `ToolCalls` event for the `[DONE]` handler. Returns `None` when nothing
 /// is pending (the common case, since the finish chunk normally drains them).
@@ -1310,7 +1152,7 @@ fn process_stream_choice(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     // ========================================================================
     // Request-too-large detection tests
@@ -1620,6 +1462,40 @@ mod tests {
             json!([{"type":"function","function":{"name":"lookup","description":"Lookup","parameters":{"type":"object","allOf":[{"type":"object"}]}}}])
         );
     }
+    #[test]
+    fn the_request_capture_is_opt_in_and_is_what_goes_on_the_wire() {
+        let request = OpenAiRequest {
+            model: "gpt-5-mini".into(),
+            messages: vec![],
+            temperature: Some(0.5),
+            max_tokens: Some(64),
+            stream: true,
+            stream_options: None,
+            tools: None,
+            parallel_tool_calls: None,
+            reasoning_effort: None,
+            service_tier: None,
+            verbosity: None,
+            metadata: None,
+        };
+
+        let mut config = call_config();
+        assert_eq!(
+            capture_request_body(&config, &request),
+            None,
+            "the prompt is not recorded unless the caller asked"
+        );
+
+        config.capture_request = true;
+        let captured = capture_request_body(&config, &request).expect("the body is captured");
+        // The same value the wire gets, so the capture cannot drift from it.
+        assert_eq!(captured, serde_json::to_value(&request).unwrap());
+        assert_eq!(captured["model"], json!("gpt-5-mini"));
+        assert_eq!(captured["temperature"], json!(0.5));
+        // Authentication travels in headers; nothing credential-shaped is here.
+        assert!(captured.get("api_key").is_none());
+    }
+
     fn call_config() -> LlmCallConfig {
         LlmCallConfig {
             reasoning_state: None,
@@ -1640,6 +1516,8 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            capture_request: false,
+            limits: Default::default(),
         }
     }
     async fn mock_provider(sse: &str) -> (wiremock::MockServer, crate::Provider) {

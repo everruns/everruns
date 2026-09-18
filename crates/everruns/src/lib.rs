@@ -183,10 +183,13 @@ pub mod __macro_support {
 
 // --- Real LLM provider configuration (feature-gated) --------------------
 // The default facade build stays offline; provider modules compile only when
-// their feature is enabled. `openai` adds `providers::openai::OpenAI`.
+// their feature is enabled. `openai` adds `providers::openai::OpenAI`,
+// `openrouter` adds `providers::openrouter::OpenRouter`.
 pub mod providers;
 #[cfg(feature = "openai")]
 pub use providers::openai::{OpenAI, OpenAIError};
+#[cfg(feature = "openrouter")]
+pub use providers::openrouter::{OpenRouter, OpenRouterError};
 
 // --- Runtime construction and execution ---------------------------------
 // Note: the value-first `AgentBuilder` above intentionally replaces the

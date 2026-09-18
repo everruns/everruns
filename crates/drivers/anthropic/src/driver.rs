@@ -321,23 +321,23 @@ impl AnthropicChatDriver {
                         return RetryDecision::Terminal(AgentLoopError::request_too_large(error_msg));
                     }
 
-                    // Attach the semantic error kind while the HTTP status and
-                    // body are still available (see LlmErrorKind).
-                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
-
-                    if attempts > 0 {
-                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                            kind,
-                            format!(
-                                "{} (after {} retries, last error: {})",
-                                error_msg,
-                                attempts,
-                                last_error.lock().unwrap().take().unwrap_or_default()
-                            ),
-                        ));
-                    }
-
-                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
+                    // Classified, and its status preserved, while the HTTP
+                    // response is still structured (see LlmError).
+                    let message = if attempts > 0 {
+                        format!(
+                            "{} (after {} retries, last error: {})",
+                            error_msg,
+                            attempts,
+                            last_error.lock().unwrap().take().unwrap_or_default()
+                        )
+                    } else {
+                        error_msg
+                    };
+                    RetryDecision::Terminal(AgentLoopError::llm_http(
+                        status.as_u16(),
+                        &error_text,
+                        message,
+                    ))
                 }
             },
             |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
@@ -1313,10 +1313,10 @@ impl ChatDriver for AnthropicChatDriver {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            // Classified at the boundary so credential checks can tell a
-            // rejected key (401/403) from an outage without parsing strings.
-            return Err(AgentLoopError::llm_kind(
-                LlmErrorKind::from_provider_status(status.as_u16(), &body),
+            // Classified at the boundary: a rejected key is not an outage.
+            return Err(AgentLoopError::llm_http(
+                status.as_u16(),
+                &body,
                 format!("Models API returned {}: {}", status, body),
             ));
         }

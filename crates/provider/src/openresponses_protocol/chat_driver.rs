@@ -604,6 +604,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                         let cached = *cache_read_tokens.lock().unwrap();
                                         let written = response_obj.pointer("/usage/input_tokens_details/cache_write_tokens")
                                             .and_then(Value::as_u64).map(|n| n.min(u32::MAX as u64) as u32);
+                                        let reasoning_used = response_obj.pointer("/usage/output_tokens_details/reasoning_tokens")
+                                            .and_then(Value::as_u64).map(|n| n.min(u32::MAX as u64) as u32);
 
                                         Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                                             // `input` is OpenAI's cache-inclusive prompt count;
@@ -613,6 +615,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             completion_tokens: Some(output),
                                             cache_read_tokens: cached,
                                             cache_creation_tokens: written,
+                                            reasoning_tokens: reasoning_used,
                                             provider_cost_usd,
                                             model: Some(model),
                                             finish_reason: Some(reason),
@@ -623,6 +626,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                                 .and_then(Value::as_str)
                                                 .map(str::to_owned),
                                             phase,
+                                            request_body: None,
                                             cache_diagnostics: None,
                                         })))
                                     }

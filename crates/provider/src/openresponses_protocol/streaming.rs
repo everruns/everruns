@@ -496,6 +496,11 @@ pub(crate) fn handle_streaming_event(
                 .as_ref()
                 .and_then(|u| u.input_tokens_details.as_ref())
                 .and_then(|d| d.cache_write_tokens);
+            let reasoning_used = response
+                .usage
+                .as_ref()
+                .and_then(|u| u.output_tokens_details.as_ref())
+                .map(|d| d.reasoning_tokens);
             let provider_cost_usd = response.usage.as_ref().and_then(|u| u.cost);
 
             LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
@@ -508,12 +513,14 @@ pub(crate) fn handle_streaming_event(
                 completion_tokens: Some(output),
                 cache_read_tokens: cached,
                 cache_creation_tokens: written,
+                reasoning_tokens: reasoning_used,
                 provider_cost_usd,
                 model: Some(model),
                 finish_reason: Some(reason),
                 retry_metadata: retry_metadata.map(|arc| (*arc).clone()),
                 response_id: Some(response.id),
                 phase,
+                request_body: None,
                 cache_diagnostics: None,
             }))
         }

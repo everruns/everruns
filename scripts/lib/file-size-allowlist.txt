@@ -22,7 +22,7 @@
 3714 crates/durable/src/persistence/memory.rs
 3921 crates/durable/src/persistence/postgres.rs
 2444 crates/durable/tests/postgres_integration_test.rs
-3334 crates/engine/src/execution/act.rs
+3329 crates/engine/src/execution/act.rs
 2886 crates/engine/src/execution/reason.rs
 1871 crates/everruns/src/agent.rs
 1680 crates/everruns/src/session.rs
@@ -41,8 +41,8 @@
 2079 crates/platform/src/capabilities/agent_handoff.rs
 3832 crates/platform/src/capabilities/subagents.rs
 2037 crates/platform/src/session_sandbox.rs
-2788 crates/provider/src/driver_registry.rs
-2195 crates/provider/src/openai_protocol.rs
+2572 crates/provider/src/driver_registry.rs
+2073 crates/provider/src/openai_protocol.rs
 1535 crates/provider/src/openresponses_types.rs
 2933 crates/server/src/api/ag_ui.rs
 1952 crates/server/src/api/agents.rs

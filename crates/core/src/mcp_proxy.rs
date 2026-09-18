@@ -229,19 +229,19 @@ mod tests {
     }
 
     fn client_side_mcp_def(name: &str) -> ToolDefinition {
-        ToolDefinition::ClientSide(ClientSideTool {
-            name: name.to_string(),
-            display_name: None,
-            description: "an mcp tool".to_string(),
-            parameters: serde_json::json!({
-                "type": "object",
-                "properties": { "q": { "type": "string" } }
-            }),
-            category: Some("MCP Servers".to_string()),
-            deferrable: DeferrablePolicy::Automatic,
-            hints: ToolHints::default().with_open_world(true),
-            full_parameters: None,
-        })
+        ToolDefinition::ClientSide(
+            ClientSideTool::new(
+                name,
+                "an mcp tool",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": { "q": { "type": "string" } }
+                }),
+            )
+            .with_category("MCP Servers")
+            .with_deferrable(DeferrablePolicy::Automatic)
+            .with_hints(ToolHints::default().with_open_world(true)),
+        )
     }
 
     /// Records the calls it receives and returns a canned result.
