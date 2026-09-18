@@ -219,6 +219,7 @@ export default defineConfig({
                     { label: "Research Agent", slug: "framework/examples/research-agent" },
                     { label: "Incident Commander Agent", slug: "framework/examples/incident-commander-agent" },
                     { label: "Bashkit Repo Agent", slug: "framework/examples/bashkit-repo-agent" },
+                    { label: "Spam Triage", slug: "framework/examples/spam-triage" },
                   ],
                 },
               ],

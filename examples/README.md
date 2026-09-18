@@ -12,6 +12,7 @@ repository: these Cargo packages depend on local workspace crates.
 | [Research](research-agent/) | Search and fetch primary sources | `cargo run -p everruns-research-agent` |
 | [Incident Commander](incident-commander-agent/) | Investigate evidence and persist a safe update | `cargo run -p everruns-incident-commander-agent` |
 | [Bashkit Repo](bashkit-repo-agent/) | Modify and verify a repository through a sandboxed shell | `cargo run -p everruns-bashkit-repo-agent` |
+| [Spam Triage](spam-triage/) | Route only the classifier's uncertain cases to a larger model | `cargo run -p everruns-spam-triage` |
 
 Each README lists credentials, contrasting scenarios, expected outcomes, and
 limits. Support Agent, Everruns Support Agent, and Bashkit Repo Agent use the

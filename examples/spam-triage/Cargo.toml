@@ -1,0 +1,17 @@
+[package]
+name = "everruns-spam-triage"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+
+[dependencies]
+everruns = { path = "../../crates/everruns", features = ["typesafe"] }
+everruns-openrouter = { path = "../../crates/drivers/openrouter" }
+futures = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

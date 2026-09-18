@@ -3304,6 +3304,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-spam-triage"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-openrouter",
+ "futures",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-support-agent"
 version = "0.1.0"
 dependencies = [

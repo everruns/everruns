@@ -9,7 +9,7 @@ contains the maintained public examples. Each imports the `everruns` facade.
 ## Complete agents
 
 The root-level [`examples`](https://github.com/everruns/everruns/tree/main/examples)
-catalog contains six Framework walkthroughs. Each folder includes the program,
+catalog contains seven Framework walkthroughs. Each folder includes the program,
 instructions, fixtures where applicable, and recording scripts. Run them from a
 repository checkout: their dependencies point to the workspace crates.
 
@@ -23,6 +23,7 @@ behavior and recording logic; it does not establish the quality of a live model'
 | [Coding Review Agent](/framework/examples/coding-review-agent/) | Anthropic `claude-sonnet-5` | Reads a refund contract and executes a fixed regression before reporting a defect. |
 | [Research Agent](/framework/examples/research-agent/) | OpenRouter `z-ai/glm-5.2` | Searches and fetches primary sources before writing a cited brief. |
 | [Incident Commander Agent](/framework/examples/incident-commander-agent/) | Meta Model API `muse-spark-1.3` | Investigates fixture telemetry and persists an evidence-backed incident update. |
+| [Spam Triage](/framework/examples/spam-triage/) | TypeSafe `jev-latest` and OpenRouter `meta/muse-spark-1.3-contributor` | Screens a labeled email corpus with a classifier and routes only the uncertain cases to a larger model. |
 
 Start with Support for typed tools, Research for reusable capabilities, or Code
 Review for restricted execution. Each walkthrough shows the agent builder and

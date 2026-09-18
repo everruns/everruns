@@ -58,6 +58,7 @@ members = [
     "examples/everruns-support-agent",
     "examples/coding-review-agent",
     "examples/research-agent",
+    "examples/spam-triage",
     "examples/incident-commander-agent",
     "examples/coding-cli",
     "examples/framework-cli-host",

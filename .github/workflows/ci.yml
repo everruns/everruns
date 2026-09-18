@@ -155,6 +155,7 @@ jobs:
               - 'examples/incident-commander-agent/**'
               - 'examples/coding-cli/**'
               - 'examples/bashkit-repo-agent/**'
+              - 'examples/spam-triage/**'
               - 'examples/demo-support/**'
               - 'scripts/cli-e2e-test.sh'
               - 'scripts/lib/check-everruns-examples.sh'
@@ -820,11 +821,15 @@ jobs:
           cargo test -p everruns-support-agent -p everruns-coding-review-agent \
             -p everruns-research-agent -p everruns-incident-commander-agent \
             -p everruns-framework-support-agent -p everruns-bashkit-repo-agent \
-            -p everruns-example-demo
-          for example in support-agent everruns-support-agent coding-review-agent research-agent incident-commander-agent bashkit-repo-agent; do
+            -p everruns-spam-triage -p everruns-example-demo
+          for example in support-agent everruns-support-agent coding-review-agent research-agent incident-commander-agent bashkit-repo-agent spam-triage; do
+            # spam-triage additionally owns data/: the script that downloads and
+            # samples its corpus. The messages themselves are never vendored.
+            extra=()
+            if [[ "$example" == spam-triage ]]; then extra=(! -name data); fi
             unexpected="$(find "examples/$example" -mindepth 1 -maxdepth 1 \
               ! -name .gitignore ! -name Cargo.toml ! -name README.md \
-              ! -name src ! -name demo -print)"
+              ! -name src ! -name demo "${extra[@]}" -print)"
             if [[ -n "$unexpected" ]]; then
               echo "Unexpected files in examples/$example/:"
               echo "$unexpected"
