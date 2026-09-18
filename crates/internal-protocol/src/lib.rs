@@ -12,6 +12,9 @@
 // Decision: Proto is transport layer, Rust schemas remain source of truth
 
 mod capability_wire;
+// Slack endpoint action seam (EVE-1024): the action crosses the wire, the
+// endpoint's bot_token does not.
+mod slack_action_wire;
 
 use chrono::{DateTime, TimeZone, Utc};
 use everruns_provider::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};

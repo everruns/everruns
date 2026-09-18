@@ -305,6 +305,7 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "GitHub Scout", slug: "capabilities/github-scout" },
+                        { label: "Slack", slug: "capabilities/slack" },
                       ],
                     },
                     {

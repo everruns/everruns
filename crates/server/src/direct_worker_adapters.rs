@@ -1682,6 +1682,21 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.sqldb_store.clone()
     }
 
+    fn slack_action_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_provider::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
+        // In-process: the invoker reads the endpoint row directly, so there is
+        // no RPC hop and the bot token never leaves this process either.
+        Some(Arc::new(crate::slack_actions::DbSlackActionInvoker::new(
+            self.db.clone(),
+            self.encryption.clone(),
+            org_id,
+            session_id,
+        )))
+    }
+
     fn sandbox_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>> {

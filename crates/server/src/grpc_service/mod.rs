@@ -132,6 +132,8 @@ use everruns_internal_protocol::proto::{
     InvokePlatformCommandSurfaceResponse,
     InvokeScheduledAppChannelRequest,
     InvokeScheduledAppChannelResponse,
+    InvokeSlackActionRequest,
+    InvokeSlackActionResponse,
     ListCommandsRequest,
     ListCommandsResponse,
     ListOrphanedSessionTasksRequest,

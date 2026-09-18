@@ -31,6 +31,7 @@ use uuid::Uuid;
 
 use crate::grpc_adapters::{
     GrpcAdapter, GrpcBudgetChecker, GrpcClient, GrpcOrgAdapter, GrpcOutboundToolRateLimiter,
+    GrpcSlackActionInvoker,
     GrpcPaymentAuthority, GrpcSessionCreationAuthority,
 };
 use crate::mcp_executor::McpServerInfo;
@@ -523,6 +524,18 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             GrpcBudgetChecker::new(self.client.clone(), org_id)
                 .with_agent_id(agent_id.map(|id| id.to_string())),
         ))
+    }
+
+    fn slack_action_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_provider::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
+        Some(Arc::new(GrpcSlackActionInvoker::new(
+            self.client.clone(),
+            org_id,
+            session_id,
+        )))
     }
 
     fn payment_authority(

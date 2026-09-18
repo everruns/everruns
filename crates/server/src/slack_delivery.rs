@@ -1250,7 +1250,17 @@ const PERMANENT_SLACK_ERRORS: &[&str] = &[
     "token_revoked",
     "account_inactive",
     "no_text",
+    // `reactions.add` on an emoji the bot already placed. Retrying can never
+    // succeed, and the caller reads it as the already-satisfied outcome it is
+    // rather than a failure (EVE-1024).
+    "already_reacted",
 ];
+
+/// Prefix `SlackApiError::from_code` renders a Slack `error` code behind.
+///
+/// Kept beside `from_code` and `code` so the one place that writes the wrapping
+/// is the one place that reads it back.
+const SLACK_ERROR_MESSAGE_PREFIX: &str = "Slack API error: ";
 
 /// Ceiling on an honoured `Retry-After`.
 ///
@@ -1277,11 +1287,11 @@ pub(crate) enum SlackApiError {
 
 impl SlackApiError {
     /// Classify a Slack `error` code from an `ok: false` body.
-    fn from_code(code: &str, retry_after: Option<std::time::Duration>) -> Self {
+    pub(crate) fn from_code(code: &str, retry_after: Option<std::time::Duration>) -> Self {
         if code == "ratelimited" {
             return Self::RateLimited { retry_after };
         }
-        let message = format!("Slack API error: {code}");
+        let message = format!("{SLACK_ERROR_MESSAGE_PREFIX}{code}");
         if PERMANENT_SLACK_ERRORS.contains(&code) {
             Self::Permanent(message)
         } else {
@@ -1292,6 +1302,20 @@ impl SlackApiError {
     /// Whether retrying this failure is pointless.
     fn is_permanent(&self) -> bool {
         matches!(self, Self::Permanent(_))
+    }
+
+    /// The Slack `error` code this failure was built from, when it came from an
+    /// `ok: false` body rather than from transport trouble.
+    ///
+    /// Lets a caller act on a specific code without re-deriving Slack's
+    /// classification or substring-matching a rendered message.
+    pub(crate) fn code(&self) -> Option<&str> {
+        match self {
+            Self::RateLimited { .. } => Some("ratelimited"),
+            Self::Permanent(message) | Self::Transient(message) => {
+                message.strip_prefix(SLACK_ERROR_MESSAGE_PREFIX)
+            }
+        }
     }
 }
 
@@ -1326,7 +1350,9 @@ fn retry_wait(error: &SlackApiError, backoff: std::time::Duration) -> std::time:
 }
 
 /// Slack sends `Retry-After` in whole seconds.
-fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<std::time::Duration> {
+pub(crate) fn parse_retry_after(
+    headers: &reqwest::header::HeaderMap,
+) -> Option<std::time::Duration> {
     headers
         .get(reqwest::header::RETRY_AFTER)?
         .to_str()
@@ -1674,7 +1700,7 @@ async fn post_to_slack_with_retry_base(
     unreachable!()
 }
 
-const SLACK_API_BASE: &str = "https://slack.com/api";
+pub(crate) const SLACK_API_BASE: &str = "https://slack.com/api";
 
 /// Characters Slack accepts in one `markdown` block.
 const SLACK_MARKDOWN_BLOCK_LIMIT: usize = 12_000;
@@ -1993,7 +2019,7 @@ pub(crate) async fn post_slack_message(
 /// here rather than being rewritten per endpoint (EVE-974). Posting keeps its
 /// own loop above, which splits one reply across several calls and logs each
 /// part.
-async fn slack_api_call(
+pub(crate) async fn slack_api_call(
     base_url: &str,
     bot_token: &str,
     method: &str,

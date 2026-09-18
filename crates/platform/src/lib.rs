@@ -52,6 +52,10 @@ pub mod vector_store;
 pub mod agent_trigger;
 pub mod app;
 
+// The seam a Slack-native capability acts through; the Slack endpoint row it
+// resolves against lives in `app` (EVE-1024).
+pub mod slack_action;
+
 // Stored Agent/AgentVersion persistence records carved out of `everruns-core`
 // (EVE-877). Execution consumes only `everruns_core::AgentDefinition`, produced
 // by `Agent::execution_definition` at the platform loading seam.
@@ -163,6 +167,11 @@ pub use session::{
 // Session metadata mutation (EVE-897).
 pub use everruns_host::session_services::session_mutator;
 pub use everruns_host::{SessionMutator, SessionMutatorExt};
+
+// Slack endpoint actions (EVE-1024).
+pub use slack_action::{
+    SlackAction, SlackActionError, SlackActionInvoker, SlackActionInvokerExt, SlackActionOutcome,
+};
 
 // Session SQL database (EVE-897).
 pub use session_sqldb::{

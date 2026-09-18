@@ -4910,6 +4910,67 @@ impl WorkerService for WorkerServiceImpl {
         }))
     }
 
+    /// Perform one Slack action as the session's own endpoint bot (EVE-1024).
+    ///
+    /// The invoker resolves which Slack endpoint created the session and reads
+    /// that endpoint's `bot_token`, both org-scoped, so a session id from
+    /// another tenant resolves to nothing. The token is used here and never
+    /// returned: the response carries the action's outcome or a typed error.
+    ///
+    /// A failed action is a successful RPC. The capability distinguishes "not a
+    /// Slack session" (a tool error the model should act on) from a transient
+    /// fault (an internal error), and a `Status` would flatten both into one
+    /// transport failure.
+    async fn invoke_slack_action(
+        &self,
+        request: Request<InvokeSlackActionRequest>,
+    ) -> Result<Response<InvokeSlackActionResponse>, Status> {
+        use everruns_platform::slack_action::{SlackAction, SlackActionError, SlackActionInvoker};
+        use everruns_provider::typed_id::SessionId;
+
+        let req = request.into_inner();
+        let session_id = SessionId::parse(&req.session_id)
+            .map_err(|e| Status::invalid_argument(format!("invalid session_id: {e}")))?;
+        let action: SlackAction = req
+            .action
+            .ok_or_else(|| Status::invalid_argument("missing action"))?
+            .into();
+
+        let invoker = crate::slack_actions::DbSlackActionInvoker::new(
+            self.db.clone(),
+            self.encryption.clone(),
+            req.org_id,
+            session_id,
+        );
+
+        let result = invoker.invoke(action).await;
+
+        let result = match result {
+            Ok(outcome) => outcome.into(),
+            Err(error) => {
+                if !matches!(error, SlackActionError::NoSlackSession) {
+                    // A non-Slack session is an ordinary configuration outcome
+                    // and would otherwise fill the log with one line per turn
+                    // for any agent that has the capability enabled broadly.
+                    tracing::warn!(
+                        session_id = %session_id,
+                        org_id = req.org_id,
+                        error = %error,
+                        "Slack action failed"
+                    );
+                }
+                let wire: everruns_internal_protocol::proto::SlackActionError = error.into();
+                everruns_internal_protocol::proto::invoke_slack_action_response::Result::Error(
+                    wire,
+                )
+            }
+        };
+
+        Ok(Response::new(InvokeSlackActionResponse {
+            result: Some(result),
+        }))
+    }
+
     async fn execute_machine_payment(
         &self,
         request: Request<ExecuteMachinePaymentRequest>,

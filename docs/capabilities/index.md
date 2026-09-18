@@ -86,6 +86,7 @@ External-service capabilities and blueprint-backed workflows.
 | Capability | ID | Tools |
 |---|---|---|
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
+| [Slack](/capabilities/slack/) | `slack` | 4 |
 
 ### Platform
 
