@@ -56,7 +56,7 @@ pub async fn resolve_effective_harness(
             .collect();
         let capabilities =
             crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
-                &db,
+                db,
                 org_id,
                 capabilities,
             )
