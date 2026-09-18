@@ -185,7 +185,6 @@ path is compare-then-write, not a conditional statement, because `memory_files`
 has no conditional update. Two writers racing on the same file can still
 interleave, which is what Fix 2 is for.
 
-
 Add a mount source resolved at access time rather than copy time, and teach the
 session file service to route reads and writes under a memory mount to
 `memory_files`:
