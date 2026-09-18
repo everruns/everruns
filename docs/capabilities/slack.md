@@ -90,8 +90,8 @@ Content is capped at 8 MiB.
   is" is wider than "the thread that asked", and the reply path already answers in the thread.
 - A retired or disabled endpoint stops acting immediately, even for a session it created earlier.
 - Slack rate limits reach the agent with Slack's own retry advice rather than as a generic failure.
-- The [Slack MCP server](/integrations/mcp-servers/) stays supported for anything this does not
-  cover. This removes the second credential for the common cases; it does not replace MCP.
+- The [Slack MCP server](/features/mcp/) stays supported for anything this does not cover. This
+  removes the second credential for the common cases; it does not replace MCP.
 
 ## See Also
 
