@@ -645,7 +645,14 @@ pub(crate) async fn process_slack_message(
                 mcp_servers: Default::default(),
                 system_prompt: None,
                 initial_files: vec![],
-                hints: None,
+                // EVE-1025: this thread can draw an approval card, so the
+                // session says so. A surface that does not declare the hint
+                // gets today's behaviour — no card, the ask stays prose — which
+                // is the degradation Client Hints asks for rather than a gap.
+                hints: Some(std::collections::HashMap::from([(
+                    crate::slack_approvals::SLACK_APPROVAL_HINT.to_string(),
+                    serde_json::Value::Bool(true),
+                )])),
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
@@ -887,6 +894,9 @@ pub(crate) async fn process_slack_message(
                 recipient_team_id: slack_config.team_id.clone(),
                 tool_visibility: slack_config.tool_visibility,
                 generic_tool_text: slack_config.generic_tool_text.clone(),
+                approvals_enabled: crate::slack_approvals::approvals_enabled_in(
+                    session.hints.as_ref(),
+                ),
             })
             .await;
     } else {

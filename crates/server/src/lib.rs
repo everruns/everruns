@@ -125,6 +125,7 @@ pub mod valkey;
 // Slack delivery dispatcher for event-driven message posting
 pub mod slack_actions;
 pub mod slack_api_error;
+pub mod slack_approvals;
 pub mod slack_delivery;
 
 // App builder for composable server configurations
