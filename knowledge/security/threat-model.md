@@ -1522,6 +1522,7 @@ Key GitHub guarantee: for `pull_request` triggers, the workflow YAML is read fro
 | TM-CI-006 | First-time-contributor approval grants persistent CI access | Medium | GitHub setting "Require approval for all outside collaborators" recommended at the org/repo level. Not enforced in this repo's workflows; orthogonal to the per-secret scoping above | **OPERATIONAL** |
 | TM-CI-007 | `GITHUB_TOKEN` exfil on PR | Low | GitHub scopes the fork-PR `GITHUB_TOKEN` to read-only by default. `docker-publish.yml` uses it only on `push`/tag jobs; PR-validation jobs do not log in to GHCR | MITIGATED |
 | TM-CI-008 | Shell injection through release tag inputs in write-scoped publish jobs | High | `cli-binaries.yml` and `docker-publish.yml` pass dispatch/tag values through step environment variables and quote every shell expansion; no attacker-controlled `${{ inputs.* }}` or tag expression is interpolated directly into `run:` scripts. Release/tag validation remains ahead of credentialed publication. Third-party actions in these write-scoped workflows are pinned to reviewed commit SHAs. | MITIGATED |
+| TM-CI-009 | Runtime-fetched credential disclosed in a public workflow log | High | The Actions log masker only knows values that arrived through `secrets.*`. A credential fetched at runtime (`doppler secrets get`) is invisible to it, so writing one to `$GITHUB_ENV` or `$GITHUB_OUTPUT` publishes it in the `env:` group the runner prints for every later step — no `echo` required. Observed in run 35305647248, which put live TypeSafe keys in a public log. Fetched credentials are now scoped to the one process that needs them (`doppler run -- <cmd>`); `scripts/test-workflow-secret-handling.sh` fails CI on any workflow that writes a credential to a log-visible surface, and hourly `actions-log-scan.yml` scans recent run logs for credentials the masker did not redact. See [`ci-secret-handling.md`](ci-secret-handling.md) | MITIGATED |
 
 ### Mitigation Details
 
@@ -1531,6 +1532,9 @@ The four workflows touched in this category previously declared secrets at workf
 - The step itself has an `if: github.event_name == 'push'` guard, and the secret is set at step `env:` only.
 
 This ensures GitHub never instantiates the secret value into a runner that is executing fork-PR-controlled code (build.rs, proc-macros, test bodies, or PR-built binaries).
+
+**TM-CI-009, disclosure is a separate failure mode from exfiltration:**
+TM-CI-001..005 all concern PR-controlled code *reading* a secret out of a runner. TM-CI-009 needs no attacker in the loop at all: the runner itself prints the value, on a push-gated job, into a log that is world-readable because the repository is public. The push-only gating that mitigates the exfiltration threats therefore does nothing for this one, which is why it gets its own controls. Static prevention cannot be the whole answer either — it only sees credentials the workflow names, not one a vendor error body returns or a failing test echoes — so detection sits behind it.
 
 **TM-CI-006, Outside-collaborator approval gate:**
 Even with per-secret scoping, an attacker who controls a previously-approved fork can submit malicious PRs that the workflow base-branch YAML still runs. The remaining defense layer is the GitHub org setting "Require approval for all outside collaborators" under Actions → General → Fork pull request workflows. This is a repo/org-level operational control, not a workflow change, and is therefore tracked here for visibility.
