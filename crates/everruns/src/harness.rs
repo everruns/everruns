@@ -10,6 +10,7 @@ use everruns_host::{
 use everruns_provider::typed_id::HarnessId;
 
 use crate::CapabilityRef;
+use crate::session::{EnvironmentSessionBuilder, Session, SessionEnvironmentError};
 
 /// A reusable description of what an agent runs on.
 ///
@@ -210,7 +211,7 @@ impl HarnessBuilder {
             return Err(HarnessBuildError::BlankName);
         }
 
-        let registry = crate::agent::framework_capability_registry(false);
+        let registry = crate::capability_config::framework_capability_registry(false);
         let mut activated = everruns_capability::ActivationSet::new();
         let mut capabilities = Vec::with_capacity(self.capabilities.len());
         for capability in self.capabilities {
@@ -224,7 +225,7 @@ impl HarnessBuilder {
                 .canonical_id(capability.id())
                 .unwrap_or(capability.id())
                 .to_string();
-            crate::agent::validate_registered_capability_config(
+            crate::capability_config::validate_registered_capability_config(
                 &registry,
                 &canonical_id,
                 capability.config_value(),
@@ -294,6 +295,120 @@ impl fmt::Display for HarnessBuildError {
 }
 
 impl std::error::Error for HarnessBuildError {}
+
+impl Session {
+    /// Permanently bind this new session to an explicit Environment.
+    ///
+    /// [`EnvironmentSessionBuilder::start`] persists the opaque head binding
+    /// before any runtime can execute. The same head is observable through
+    /// [`workspace_head`](Self::workspace_head) for the session lifetime.
+    pub fn environment(self, environment: everruns_host::Environment) -> EnvironmentSessionBuilder {
+        EnvironmentSessionBuilder {
+            session: self,
+            environment,
+        }
+    }
+
+    /// Permanently bind this new session to a workspace head.
+    ///
+    /// This is the common workspace-only form of [`environment`](Self::environment):
+    /// `engine.create(agent).workspace(head).start().await?`.
+    pub fn workspace(self, head: everruns_host::WorkspaceHead) -> EnvironmentSessionBuilder {
+        self.environment(everruns_host::Environment::new(head))
+    }
+
+    /// Bind this new session permanently to a Harness.
+    ///
+    /// The Harness remains optional. Without this call, session construction
+    /// follows the existing anonymous-harness path.
+    pub fn harness(self, harness: Harness) -> HarnessSessionBuilder {
+        HarnessSessionBuilder {
+            session: self,
+            harness,
+        }
+    }
+
+    fn bind_harness(&self, harness: Harness) -> Result<(), SessionEnvironmentError> {
+        if self.has_started() {
+            return Err(SessionEnvironmentError::AlreadyStarted);
+        }
+        if let Some(bound) = self.inner.harness.get() {
+            return if bound.is_same_binding(&harness) {
+                Ok(())
+            } else {
+                Err(SessionEnvironmentError::HarnessAlreadyBound)
+            };
+        }
+        self.inner.execution.bind_harness(harness.clone())?;
+        self.inner
+            .harness
+            .set(harness)
+            .map_err(|_| SessionEnvironmentError::HarnessAlreadyBound)
+    }
+}
+
+/// A not-yet-running Session with its Harness selected.
+pub struct HarnessSessionBuilder {
+    session: Session,
+    harness: Harness,
+}
+
+impl HarnessSessionBuilder {
+    /// Select an Environment for this Harness-bound Session.
+    pub fn environment(
+        self,
+        environment: everruns_host::Environment,
+    ) -> HarnessEnvironmentSessionBuilder {
+        HarnessEnvironmentSessionBuilder {
+            session: self.session,
+            harness: self.harness,
+            environment,
+        }
+    }
+
+    /// Select a workspace head for this Harness-bound Session.
+    pub fn workspace(self, head: everruns_host::WorkspaceHead) -> HarnessEnvironmentSessionBuilder {
+        self.environment(everruns_host::Environment::new(head))
+    }
+
+    /// Freeze the Harness binding and select the Agent's default Environment.
+    pub async fn start(self) -> Result<Session, SessionEnvironmentError> {
+        self.session.bind_harness(self.harness)?;
+        self.session.start().await?;
+        Ok(self.session)
+    }
+}
+
+/// A not-yet-running Session with its Harness and Environment selected.
+pub struct HarnessEnvironmentSessionBuilder {
+    session: Session,
+    harness: Harness,
+    environment: everruns_host::Environment,
+}
+
+impl HarnessEnvironmentSessionBuilder {
+    /// Persist and freeze both bindings before execution starts.
+    pub async fn start(self) -> Result<Session, SessionEnvironmentError> {
+        self.session.bind_harness(self.harness)?;
+        EnvironmentSessionBuilder {
+            session: self.session,
+            environment: self.environment,
+        }
+        .start()
+        .await
+    }
+}
+
+impl EnvironmentSessionBuilder {
+    /// Add a Harness to the selected Environment before starting.
+    pub fn harness(self, harness: Harness) -> HarnessEnvironmentSessionBuilder {
+        HarnessEnvironmentSessionBuilder {
+            session: self.session,
+            harness,
+            environment: self.environment,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

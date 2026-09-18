@@ -27,6 +27,9 @@ use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::runtime_provider::Provider;
 use everruns_provider::typed_id::SessionId;
 
+use crate::capability_config::{
+    framework_capability_registry, validate_registered_capability_config,
+};
 use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_tool_schema};
 
 /// A model selected for an [`Agent`].
@@ -1421,76 +1424,9 @@ fn legacy_workspace_provider_conflict() -> crate::SessionEnvironmentError {
 fn legacy_workspace_provider_unavailable(provider_id: String) -> crate::ResumeError {
     crate::ResumeError::WorkspaceProviderUnavailable { provider_id }
 }
-pub(crate) fn framework_capability_registry(
-    hosted_base: bool,
-) -> everruns_core::CapabilityRegistry {
-    #[cfg(not(feature = "builtins"))]
-    let _ = hosted_base;
-    let registry = everruns_core::CapabilityRegistry::new();
-    #[cfg(feature = "builtins")]
-    let registry = {
-        let mut registry = registry;
-        if hosted_base {
-            everruns_builtins::register_portable_capabilities(&mut registry)
-                .expect("portable built-in catalog must have unique capability IDs");
-        } else {
-            everruns_builtins::register_runtime_capabilities(&mut registry)
-                .expect("portable runtime catalog must have unique capability IDs");
-        }
-        registry
-    };
-    everruns_host::compose_runtime_capability_registry(registry)
-}
-
-pub(crate) fn validate_registered_capability_config(
-    registry: &everruns_core::CapabilityRegistry,
-    id: &str,
-    config: &serde_json::Value,
-) -> Result<(), BuildError> {
-    if let Some(capability) = registry.get(id) {
-        capability
-            .validate_config(config)
-            .map_err(|reason| BuildError::InvalidCapability {
-                id: id.to_string(),
-                reason,
-            })?;
-    }
-
-    #[cfg(feature = "builtins")]
-    if id == everruns_builtins::AUTO_TOOL_SEARCH_CAPABILITY_ID {
-        validate_tool_search_config(config).map_err(|reason| BuildError::InvalidCapability {
-            id: id.to_string(),
-            reason,
-        })?;
-    }
-
-    if everruns_core::is_declarative_capability(id) || everruns_capability::is_plugin_capability(id)
-    {
-        let mut definition =
-            serde_json::from_value::<everruns_core::DeclarativeCapabilityDefinition>(
-                config.clone(),
-            )
-            .map_err(|error| BuildError::InvalidCapability {
-                id: id.to_string(),
-                reason: format!("invalid declarative capability config: {error}"),
-            })?;
-        // Plugin identities have already been validated by their compiler and
-        // intentionally allow names outside the narrower declarative contract.
-        if everruns_capability::is_plugin_capability(id) {
-            definition.name = "plugin".to_string();
-        }
-        everruns_core::validate_declarative_capability_definition(&definition).map_err(
-            |reason| BuildError::InvalidCapability {
-                id: id.to_string(),
-                reason,
-            },
-        )?;
-    }
-    Ok(())
-}
 
 #[cfg(feature = "builtins")]
-fn validate_tool_search_config(config: &serde_json::Value) -> Result<(), String> {
+pub(crate) fn validate_tool_search_config(config: &serde_json::Value) -> Result<(), String> {
     let object = config
         .as_object()
         .expect("capability config object validated before built-in schema");

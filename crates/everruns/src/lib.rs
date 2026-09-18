@@ -109,7 +109,10 @@ pub use everruns_integrations_filesystem::FileSystem;
 pub use everruns_integrations_typesafe::{Jev, TypeSafeClassifier};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations_web_fetch::WebFetch;
-pub use harness::{Harness, HarnessBuildError, HarnessBuilder};
+pub use harness::{
+    Harness, HarnessBuildError, HarnessBuilder, HarnessEnvironmentSessionBuilder,
+    HarnessSessionBuilder,
+};
 pub use history::{
     HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
     ResumeError, SessionMessage,
@@ -123,8 +126,7 @@ pub use mcp::McpServer;
 pub use models::{CatalogError, ModelInfo};
 pub use plugin::PluginError;
 pub use session::{
-    CancelError, EnvironmentSessionBuilder, HarnessEnvironmentSessionBuilder,
-    HarnessSessionBuilder, RunError, SendDisposition, SentMessage, Session,
+    CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session,
     SessionEnvironmentError, Turn, TurnHandle,
 };
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
