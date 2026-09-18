@@ -710,6 +710,27 @@ impl everruns_core::tool_execution::OutboundToolRateLimiter for OrgRateLimiter {
     }
 }
 
+/// Decide one gRPC-backed outbound tool call, failing closed when no limiter is
+/// configured.
+///
+/// Lives beside the limiter rather than in the gRPC handler so the "no limiter
+/// means deny" rule is stated once, next to the thing it guards.
+pub async fn allow_outbound_tool_call(
+    limiter: Option<&std::sync::Arc<OrgRateLimiter>>,
+    org_key: &str,
+) -> bool {
+    match limiter {
+        Some(limiter) => limiter.check_outbound_tool_call(org_key).await.is_ok(),
+        None => {
+            tracing::error!(
+                org_key = %org_key,
+                "gRPC outbound tool rate limiter is not configured; denying tool call"
+            );
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

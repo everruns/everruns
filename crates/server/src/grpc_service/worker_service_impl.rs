@@ -4800,7 +4800,6 @@ impl WorkerService for WorkerServiceImpl {
             &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
             "http://localhost:9300",
         );
-
         Ok(Response::new(PlatformGetBaseUrlResponse { base_url }))
     }
 
@@ -4893,21 +4892,21 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         request: Request<CheckOutboundToolRateLimitRequest>,
     ) -> Result<Response<CheckOutboundToolRateLimitResponse>, Status> {
-        let req = request.into_inner();
-        let allowed = match &self.org_rate_limiter {
-            Some(limiter) => limiter.check_outbound_tool_call(&req.org_key).await.is_ok(),
-            None => {
-                tracing::error!(
-                    org_key = %req.org_key,
-                    "gRPC outbound tool rate limiter is not configured; denying tool call"
-                );
-                false
-            }
-        };
-
+        let allowed = crate::auth::rate_limit::allow_outbound_tool_call(
+            self.org_rate_limiter.as_ref(),
+            &request.into_inner().org_key,
+        )
+        .await;
         Ok(Response::new(CheckOutboundToolRateLimitResponse {
             allowed,
         }))
+    }
+
+    async fn invoke_slack_action(
+        &self,
+        request: Request<InvokeSlackActionRequest>,
+    ) -> Result<Response<InvokeSlackActionResponse>, Status> {
+        crate::slack_actions::serve_rpc(&self.db, self.encryption.as_ref(), request).await
     }
 
     async fn execute_machine_payment(
