@@ -22,7 +22,7 @@ pub fn map_tool_error(err: ToolExecutionResult) -> CommandError {
         ToolExecutionResult::InternalError(error) => {
             CommandError::internal(anyhow::anyhow!(error.message))
         }
-        ToolExecutionResult::ConnectionRequired { provider } => {
+        ToolExecutionResult::ConnectionRequired { provider, .. } => {
             CommandError::unprocessable(format!("Connection required: {provider}"))
         }
         ToolExecutionResult::Success(_) | ToolExecutionResult::SuccessWithImages { .. } => {

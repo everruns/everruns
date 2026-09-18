@@ -1428,9 +1428,7 @@ impl ReadManyFilesTool {
                 ToolExecutionResult::InternalError(error) => {
                     return ToolExecutionResult::InternalError(error);
                 }
-                ToolExecutionResult::ConnectionRequired { provider } => {
-                    return ToolExecutionResult::ConnectionRequired { provider };
-                }
+                required @ ToolExecutionResult::ConnectionRequired { .. } => return required,
             };
 
             let mut candidate = results.clone();

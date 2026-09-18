@@ -1833,8 +1833,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         let snapshot = ResolvedExecutionSnapshot::project(&harness, agent.as_ref(), &session)?;
         let messages = self.event_history.load(session_id).await?;
 
-        // Discover tools from the session's scoped MCP servers so they appear
-        // to the LLM alongside built-in tools (knowledge/integrations/runtime-mcp.md D4).
+        // Discover session MCP tools for the LLM (knowledge/integrations/runtime-mcp.md D4).
         #[cfg(feature = "mcp")]
         let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
         #[cfg(feature = "mcp")]
@@ -1864,6 +1863,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         &self,
         _org_id: i64,
         session_id: SessionId,
+        _agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         let session = self.session_store.get_session(session_id).await.ok()??;
         let agent = match session.agent_id {

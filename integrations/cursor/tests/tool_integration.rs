@@ -241,7 +241,7 @@ async fn missing_token_prompts_connection() {
         .await;
 
     match result {
-        ToolExecutionResult::ConnectionRequired { provider } => assert_eq!(provider, "cursor"),
+        ToolExecutionResult::ConnectionRequired { provider, .. } => assert_eq!(provider, "cursor"),
         other => panic!("Expected ConnectionRequired, got {other:?}"),
     }
 }

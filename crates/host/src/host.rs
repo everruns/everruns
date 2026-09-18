@@ -379,6 +379,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         &self,
         _org_id: i64,
         _session_id: SessionId,
+        _agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         None
     }
@@ -1695,17 +1696,15 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             .await?;
     }
 
-    // Register the session's MCP tools as first-class registry tools, so they
-    // execute through the regular `ToolExecutor` path and are visible to
-    // everything that introspects the registry (spawn_background, tool_search,
-    // openai_tool_search namespaces, ...). The turn's tool definitions already
-    // include the discovered MCP tools, so no re-discovery is needed; the host's
-    // MCP executor supplies execution (knowledge/integrations/runtime-mcp.md D5).
-    // The MCP invoker is reused below for the guardrails `mcp` check, which
-    // delegates a guardrail decision to an external endpoint over the same
-    // scoped-MCP client/auth (knowledge/execution/guardrails.md).
+    // Register session MCP tools through the regular registry path used by
+    // spawn_background, tool_search, and OpenAI namespaces. Definitions already
+    // contain discovered tools; the host executor supplies execution.
+    // Reuse the scoped MCP client for the guardrails `mcp` check.
     let mut mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>> = None;
-    if let Some(mcp) = adapter.mcp_executor(org_id, input.context.session_id).await {
+    if let Some(mcp) = adapter
+        .mcp_executor(org_id, input.context.session_id, input.agent_id)
+        .await
+    {
         let invoker: Arc<dyn everruns_core::McpToolInvoker> = mcp;
         for tool in everruns_core::build_mcp_proxy_tools(&input.tool_definitions, invoker.clone()) {
             tool_registry.register_boxed(tool);

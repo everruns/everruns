@@ -321,7 +321,7 @@ async fn test_exec_tool_missing_api_token() {
         .await;
 
     match result {
-        ToolExecutionResult::ConnectionRequired { provider } => {
+        ToolExecutionResult::ConnectionRequired { provider, .. } => {
             assert_eq!(provider, "sprites");
         }
         other => panic!("Expected ConnectionRequired, got: {other:?}"),

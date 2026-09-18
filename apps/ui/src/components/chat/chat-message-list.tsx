@@ -101,6 +101,12 @@ interface ChatMessageListProps {
   emptyState?: ReactNode;
 }
 
+interface SetupConnectionArguments {
+  provider?: string;
+  subject?: "agent" | "user";
+  setup_url?: string;
+}
+
 /** A derived join/leave marker interleaved into the transcript by timestamp. */
 interface ParticipantMarker {
   id: string;
@@ -408,7 +414,9 @@ export const ChatMessageList = memo(function ChatMessageList({
               key={toolCall.id}
               sessionId={sessionId}
               toolCallId={toolCall.id}
-              provider={(toolCall.arguments as { provider?: string })?.provider ?? "unknown"}
+              provider={(toolCall.arguments as SetupConnectionArguments)?.provider ?? "unknown"}
+              subject={(toolCall.arguments as SetupConnectionArguments)?.subject}
+              setupUrl={(toolCall.arguments as SetupConnectionArguments)?.setup_url}
               toolResultsMap={toolResultsMap}
             />
           ))}
@@ -446,7 +454,9 @@ export const ChatMessageList = memo(function ChatMessageList({
             key={toolCall.id}
             sessionId={sessionId}
             toolCallId={toolCall.id}
-            provider={(toolCall.arguments as { provider?: string })?.provider ?? "unknown"}
+            provider={(toolCall.arguments as SetupConnectionArguments)?.provider ?? "unknown"}
+            subject={(toolCall.arguments as SetupConnectionArguments)?.subject}
+            setupUrl={(toolCall.arguments as SetupConnectionArguments)?.setup_url}
             toolResultsMap={toolResultsMap}
           />
         ))}

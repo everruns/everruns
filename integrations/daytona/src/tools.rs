@@ -3207,7 +3207,7 @@ mod tests {
             .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
             .await;
         match result {
-            ToolExecutionResult::ConnectionRequired { provider } => {
+            ToolExecutionResult::ConnectionRequired { provider, .. } => {
                 assert_eq!(provider, "daytona");
             }
             _ => panic!("Expected ConnectionRequired for missing API key, got: {result:?}"),
@@ -3368,7 +3368,7 @@ mod tests {
             .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
             .await;
         match result {
-            ToolExecutionResult::ConnectionRequired { provider } => {
+            ToolExecutionResult::ConnectionRequired { provider, .. } => {
                 assert_eq!(provider, "daytona");
             }
             _ => panic!("Expected ConnectionRequired for missing API key, got: {result:?}"),
@@ -3413,7 +3413,7 @@ mod tests {
             )
             .await;
         match result {
-            ToolExecutionResult::ConnectionRequired { provider } => {
+            ToolExecutionResult::ConnectionRequired { provider, .. } => {
                 assert_eq!(provider, "daytona");
             }
             _ => panic!("Expected ConnectionRequired for missing API key, got: {result:?}"),
@@ -3618,7 +3618,7 @@ mod tests {
             .execute_with_context(json!({"method": "GET", "path": "/sandbox"}), &context)
             .await;
         match result {
-            ToolExecutionResult::ConnectionRequired { provider } => {
+            ToolExecutionResult::ConnectionRequired { provider, .. } => {
                 assert_eq!(provider, "daytona");
             }
             _ => panic!("Expected ConnectionRequired for missing API key, got: {result:?}"),

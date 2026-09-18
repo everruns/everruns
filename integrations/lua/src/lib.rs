@@ -736,7 +736,7 @@ mod engine {
             R::SuccessWithImages { result, .. } => Ok(result),
             R::ToolError(e) => Err(e),
             R::InternalError(_) => Err("tool internal error".to_string()),
-            R::ConnectionRequired { provider } => {
+            R::ConnectionRequired { provider, .. } => {
                 Err(format!("tool requires a connection: {provider}"))
             }
         }

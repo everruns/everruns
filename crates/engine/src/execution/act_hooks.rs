@@ -254,24 +254,32 @@ impl PostActHook for ConnectionSetupHook {
         result: &mut ActResult,
         _tool_definitions: &[ToolDefinition],
     ) -> Vec<PostActAction> {
-        let providers: Vec<String> = result
+        let connections: Vec<crate::tool_types::ConnectionRequired> = result
             .results
             .iter()
             .filter_map(|r| r.connection_required.clone())
             .collect();
-
-        if providers.is_empty() {
+        if connections.is_empty() {
             return vec![];
         }
 
         result.waiting_for_tool_results = true;
 
-        let tool_calls: Vec<ToolCall> = providers
+        let tool_calls: Vec<ToolCall> = connections
             .iter()
-            .map(|provider| ToolCall {
-                id: format!("setup_conn_{}", Uuid::now_v7()),
-                name: "setup_connection".to_string(),
-                arguments: json!({ "provider": provider }),
+            .map(|required| {
+                let mut arguments = json!({ "provider": required.provider });
+                if let Some(subject) = required.subject {
+                    arguments["subject"] = json!(subject);
+                }
+                if let Some(setup_url) = required.setup_url.as_deref() {
+                    arguments["setup_url"] = json!(setup_url);
+                }
+                ToolCall {
+                    id: format!("setup_conn_{}", Uuid::now_v7()),
+                    name: "setup_connection".to_string(),
+                    arguments,
+                }
             })
             .collect();
 
@@ -439,7 +447,7 @@ pub(super) async fn run_post_act_hooks<E: EventEmitter>(
 mod tests {
     use super::*;
     use crate::execution::act::ToolCallResult;
-    use crate::tool_types::ToolResult;
+    use crate::tool_types::{ConnectionRequired, ConnectionRequiredSubject, ToolResult};
     use std::sync::Mutex;
 
     fn make_tool_call_result(connection_required: Option<&str>) -> ToolCallResult {
@@ -454,12 +462,12 @@ mod tests {
                 result: Some(json!({})),
                 images: None,
                 error: None,
-                connection_required: connection_required.map(|s| s.to_string()),
+                connection_required: connection_required.map(ConnectionRequired::provider_only),
                 raw_output: None,
             },
             success: true,
             status: "success".to_string(),
-            connection_required: connection_required.map(|s| s.to_string()),
+            connection_required: connection_required.map(ConnectionRequired::provider_only),
             determinism_fatal: None,
         }
     }
@@ -508,6 +516,44 @@ mod tests {
                 assert_eq!(tool_calls.len(), 1);
                 assert_eq!(tool_calls[0].name, "setup_connection");
                 assert_eq!(tool_calls[0].arguments["provider"], "github");
+            }
+        }
+    }
+
+    #[test]
+    fn connection_setup_hook_preserves_subject_and_setup_url() {
+        let required = ConnectionRequired::with_setup(
+            "mcp_oauth_linear",
+            ConnectionRequiredSubject::Agent,
+            "/agents/agent_123?tab=mcp",
+        );
+        let mut call_result = make_tool_call_result(None);
+        call_result.result.connection_required = Some(required.clone());
+        call_result.connection_required = Some(required);
+        let mut result = ActResult {
+            results: vec![call_result],
+            completed: true,
+            success_count: 0,
+            error_count: 0,
+            waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
+            blocked: false,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
+        };
+
+        let actions = ConnectionSetupHook.on_completed(&mut result, &[]);
+
+        match &actions[0] {
+            PostActAction::EmitToolCallRequested { tool_calls, .. } => {
+                assert_eq!(
+                    tool_calls[0].arguments,
+                    json!({
+                        "provider": "mcp_oauth_linear",
+                        "subject": "agent",
+                        "setup_url": "/agents/agent_123?tab=mcp",
+                    })
+                );
             }
         }
     }
