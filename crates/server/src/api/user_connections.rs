@@ -183,14 +183,13 @@ struct PendingOAuthState {
     return_to: String,
     mode: String,
     session_id: Option<String>,
-    /// Set only for `mode = identity`. Resolved before the redirect so the
-    /// callback never creates an identity from attacker-influenced input. The
-    /// callback re-checks permission and org ownership before it writes to the
-    /// identity that was authorized (EVE-1030).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    agent_identity_id: Option<String>,
+    /// Set only for `mode = identity`. These bind the callback to the exact
+    /// agent and identity resolved before the redirect. The callback atomically
+    /// requires both to remain active, linked, and in the authorized org.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    agent_identity_id: Option<String>,
     popup: bool,
     code_verifier: String,
 }
@@ -676,8 +675,8 @@ pub async fn authorize_connection(
     // Identity mode authorizes a grant the agent owns: one credential shared by
     // every session and every invoking user. That is a different privilege from
     // connecting your own account, so it is gated and resolved here, before the
-    // redirect — the callback then only writes to an identity that was already
-    // authorized rather than acting on whatever comes back (EVE-1030).
+    // redirect. The callback writes only while this exact agent remains linked
+    // to the identity that was authorized (EVE-1030).
     let identity_agent = match mode.as_str() {
         "identity" => {
             let agent_public_id = query.agent_id.ok_or((
