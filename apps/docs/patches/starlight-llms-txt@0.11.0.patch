@@ -1,3 +1,17 @@
+diff --git a/package.json b/package.json
+index 6cf8519..121beac 100644
+--- a/package.json
++++ b/package.json
+@@ -7,7 +7,8 @@
+   "author": "delucis",
+   "type": "module",
+   "exports": {
+-    ".": "./index.ts"
++    ".": "./index.ts",
++    "./entry-to-simple-markdown": "./entryToSimpleMarkdown.ts"
+   },
+   "dependencies": {
+     "@astrojs/mdx": "^7.0.0",
 diff --git a/entryToSimpleMarkdown.ts b/entryToSimpleMarkdown.ts
 index 0354f11fb5fd294ba494c02c7cb1f794f957a707..5c0fa90aec362ccb7e39f6beceb8478ba499875f 100644
 --- a/entryToSimpleMarkdown.ts

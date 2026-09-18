@@ -1,8 +1,9 @@
-// Verifies the agent-readable outputs in the build: /llms.txt and the text sets
-// it advertises. The docs build happily emits an llms.txt with no index, an
-// "abridged" set the same size as the complete one, or pages whose Source URL
-// points at a route that does not exist — all of which shipped unnoticed before
-// this check existed. Requirements live in knowledge/ui/documentation.md.
+// Verifies the agent-readable outputs in the build: per-page Markdown,
+// /llms.txt, and the text sets it advertises. The docs build happily emits an
+// llms.txt with no index, an "abridged" set the same size as the complete one,
+// or pages whose Source URL points at a route that does not exist — all of which
+// shipped unnoticed before this check existed. Requirements live in
+// knowledge/ui/documentation.md.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +34,44 @@ const read = (name) => {
 const index = read("llms.txt");
 const full = read("llms-full.txt");
 const small = read("llms-small.txt");
+const sitemap = read("sitemap.xml");
+
+let pageMarkdownCount = 0;
+if (sitemap) {
+  const pageUrls = [...sitemap.matchAll(/<loc>(https:\/\/[^<]+)<\/loc>/g)]
+    .map((match) => match[1])
+    .filter((url) => !new URL(url).pathname.startsWith("/api/"));
+  check(pageUrls.length > 0, "sitemap.xml contains no page URLs");
+
+  for (const url of pageUrls) {
+    if (!url.startsWith(`${site}/`)) {
+      errors.push(`sitemap URL is not on ${site}: ${url}`);
+      continue;
+    }
+
+    const route = decodeURIComponent(new URL(url).pathname).replace(/^\/+|\/+$/g, "");
+    const relative = path.join(route, "index.md");
+    const markdown = read(relative);
+    if (markdown === null) continue;
+
+    pageMarkdownCount += 1;
+    check(markdown.length > 0, `per-page Markdown is empty: ${relative}`);
+    check(markdown.startsWith("# "), `per-page Markdown has no page title: ${relative}`);
+    check(
+      markdown.includes(`Source: <${url}>`),
+      `per-page Markdown has no canonical Source URL: ${relative}`
+    );
+    check(
+      !markdown.includes("[Section titled "),
+      `per-page Markdown contains a heading anchor artifact: ${relative}`
+    );
+    const relativeLinks = [...markdown.matchAll(/\]\((\/[^/)][^)]*)\)/g)];
+    check(
+      relativeLinks.length === 0,
+      `per-page Markdown contains a root-relative link: ${relative}`
+    );
+  }
+}
 
 // llms.txt must be an index, not just a pointer to two dumps: the three ways to
 // run Everruns, one link per documentation set, and the machine-readable
@@ -135,7 +174,8 @@ const setDir = path.join(distRoot, "_llms-txt");
 const sets = existsSync(setDir) ? readdirSync(setDir).filter((f) => f.endsWith(".txt")) : [];
 const kb = (text) => `${Math.round(text.length / 1024)} KB`;
 console.log(
-  `Verified agent-readable docs output: llms.txt index, ${sets.length} documentation set(s), ` +
+  `Verified agent-readable docs output: ${pageMarkdownCount} per-page Markdown file(s), ` +
+    `llms.txt index, ${sets.length} documentation set(s), ` +
     `llms-full.txt (${kb(full)}), llms-small.txt (${kb(small)}), ` +
     `api/openapi.json (${Math.round(statSync(schemaPath).size / 1024)} KB).`
 );

@@ -344,33 +344,39 @@ Agents read the docs as text, not HTML. The site must serve that text itself
 rather than leave crawlers to reconstruct it, and the text must be usable
 without the site next to it.
 
-1. `/llms.txt` must be an index, not a pointer to two dumps: the three ways to
+1. Every canonical prose docs page must have a Markdown representation at
+   `<route>/index.md` (and the home page at `/index.md`). Each file must carry
+   the page title, description, canonical `Source:` URL, absolute links, and the
+   same rendered MDX cleanup as the whole-corpus output. Generated OpenAPI
+   reference pages use `/api/openapi.json` as their machine-readable form
+2. `/llms.txt` must be an index, not a pointer to two dumps: the three ways to
    run Everruns (mirroring the README's "Choose how you run Everruns" table),
    one link per documentation set, and the machine-readable surfaces the sets
    leave out. `starlight-llms-txt` derives no page index from the sidebar, so
    the index exists only as far as `customSets` and `optionalLinks` describe it
-2. Every documentation set in `astro.config.mjs` must correspond to a sidebar
+3. Every documentation set in `astro.config.mjs` must correspond to a sidebar
    topic, so a reader with a narrow question can take one set — the complete
    text is around 250k tokens
-3. Every page in every text output must carry a `Source:` line with its
+4. Every page in every text output must carry a `Source:` line with its
    canonical URL, and links must be absolute: the outputs are read away from
    the site, where a root-relative path resolves against the wrong host
-4. `llms-small.txt` must be meaningfully smaller than `llms-full.txt` (at most
+5. `llms-small.txt` must be meaningfully smaller than `llms-full.txt` (at most
    75%). Whitespace collapse alone is not an abridgement; `excludeSmall` drops
    the vendor- and operator-specific long tails, which stay reachable in
    `llms-full.txt` and in the sets
-5. The REST API is excluded from the text outputs because the OpenAPI schema is
-   the better machine-readable form — so the schema must actually be served, at
-   `/api/openapi.json` (`apps/docs/scripts/copy-openapi.mjs`)
-6. `robots.txt` must allow the AI crawlers that respect it
-7. `apps/docs/scripts/verify-llms.mjs` enforces all of the above at postbuild,
-   including that each `Source:` URL resolves to a built page
-8. Requirements 1-4 need behavior the upstream plugin does not have; the delta
+6. The REST API is excluded from the Markdown and corpus text outputs because
+   the OpenAPI schema is the better machine-readable form — so the schema must
+   actually be served, at `/api/openapi.json`
+   (`apps/docs/scripts/copy-openapi.mjs`)
+7. `robots.txt` must allow the AI crawlers that respect it
+8. `apps/docs/scripts/verify-llms.mjs` enforces all of the above at postbuild,
+   including that each prose sitemap page has an `index.md` and each `Source:`
+   URL resolves to a built page
+9. Requirements 2-5 need behavior the upstream plugin does not have; the delta
    lives in `apps/docs/patches/starlight-llms-txt@0.11.0.patch` and must be
-   re-cut when the plugin is upgraded
-
-Everruns does not yet serve a per-page Markdown representation (`<page>.md`).
-Readers take one documentation set or the whole text instead.
+   re-cut when the plugin is upgraded. The per-page route lives in
+   `apps/docs/integrations/per-page-markdown.mjs` and reuses the same patched
+   Markdown converter
 
 ### Diagram Rendering
 

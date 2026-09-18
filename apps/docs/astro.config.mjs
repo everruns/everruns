@@ -7,6 +7,7 @@ import starlightLlmsTxt from "starlight-llms-txt";
 import starlightLinksValidator from "starlight-links-validator";
 import apiSidebarFix from "./plugins/api-sidebar-fix.ts";
 import remarkStripRustHiddenLines from "./plugins/remark-strip-rust-hidden-lines.ts";
+import perPageMarkdown from "./integrations/per-page-markdown.mjs";
 import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -639,6 +640,7 @@ export default defineConfig({
       },
       lastUpdated: true,
     }),
+    perPageMarkdown(),
     sitemapEnhance(),
   ],
 });
