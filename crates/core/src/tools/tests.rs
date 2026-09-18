@@ -7,6 +7,47 @@ struct CountingTool {
     label: &'static str,
 }
 
+#[test]
+fn structured_connection_required_preserves_provider_and_adds_actionable_details() {
+    use crate::tool_types::{
+        ConnectionRequired, ConnectionRequiredSubject, ConnectionRequiredSubjectKind,
+    };
+
+    let result = ToolExecutionResult::connection_required_for(
+        "mcp_oauth_linear",
+        ConnectionRequiredSubject {
+            kind: ConnectionRequiredSubjectKind::Agent,
+            name: "Release Manager".to_string(),
+        },
+        "/agents/agent_1?tab=mcp",
+    )
+    .into_tool_result("call_1", "mcp_linear_create_issue");
+
+    assert_eq!(
+        result.connection_required.as_deref(),
+        Some("mcp_oauth_linear")
+    );
+    assert_eq!(
+        ConnectionRequired::from_tool_result(&result),
+        Some(ConnectionRequired {
+            provider: "mcp_oauth_linear".to_string(),
+            subject: ConnectionRequiredSubject {
+                kind: ConnectionRequiredSubjectKind::Agent,
+                name: "Release Manager".to_string(),
+            },
+            setup_url: "/agents/agent_1?tab=mcp".to_string(),
+        })
+    );
+    assert_eq!(
+        result.result,
+        Some(serde_json::json!({
+            "connection_required": "mcp_oauth_linear",
+            "subject": {"kind": "agent", "name": "Release Manager"},
+            "setup_url": "/agents/agent_1?tab=mcp",
+        }))
+    );
+}
+
 #[async_trait]
 impl Tool for CountingTool {
     fn name(&self) -> &str {

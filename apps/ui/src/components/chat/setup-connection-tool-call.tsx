@@ -5,13 +5,13 @@
  *
  * The worker emits a synthetic `setup_connection` client-side tool call when a
  * server-side tool (e.g. daytona_create_sandbox) discovers no connection is
- * configured. This component renders an inline card with a "Connect" button;
- * clicking it opens the shared ApiKeyDialog. After the user saves (or cancels),
- * a tool result is submitted via the API and the workflow resumes.
+ * configured. Structured calls link to the subject's internal setup page.
+ * Legacy calls keep the shared connection dialog. After the user saves or
+ * cancels, a tool result is submitted via the API and the workflow resumes.
  */
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Check, LinkIcon, X } from "lucide-react";
 import { useConnectionProviders } from "@/hooks/use-user-connections";
 import { ApiKeyDialog } from "@/components/connections/api-key-dialog";
@@ -26,14 +26,41 @@ interface SetupConnectionToolCallProps {
   toolCallId: string;
   /** Provider id from the tool call arguments (e.g. "daytona") */
   provider: string;
+  subject?: {
+    kind: "agent" | "user";
+    name: string;
+  };
+  setupUrl?: string;
   /** Existing tool results map — if a result already exists, show completed state */
   toolResultsMap: Map<string, ToolCompletedData>;
+}
+function trustedSetup(
+  subject: SetupConnectionToolCallProps["subject"],
+  setupUrl: string | undefined,
+): { subject: NonNullable<SetupConnectionToolCallProps["subject"]>; url: string } | undefined {
+  if (
+    !subject ||
+    (subject.kind !== "agent" && subject.kind !== "user") ||
+    typeof subject.name !== "string" ||
+    !subject.name.trim() ||
+    typeof setupUrl !== "string"
+  ) {
+    return undefined;
+  }
+  if (subject.kind === "user") {
+    return setupUrl === "/settings/connections" ? { subject, url: setupUrl } : undefined;
+  }
+  return /^\/agents\/[A-Za-z0-9_-]+\?tab=mcp$/.test(setupUrl)
+    ? { subject, url: setupUrl }
+    : undefined;
 }
 
 export function SetupConnectionToolCall({
   sessionId,
   toolCallId,
   provider,
+  subject,
+  setupUrl,
   toolResultsMap,
 }: SetupConnectionToolCallProps) {
   const { data: providers = [] } = useConnectionProviders();
@@ -50,6 +77,12 @@ export function SetupConnectionToolCall({
   // If we already have a tool result for this call, show completed state
   const existingResult = toolResultsMap.get(toolCallId);
   const isCompleted = existingResult != null || status === "connected" || status === "cancelled";
+  const actionableSetup = trustedSetup(subject, setupUrl);
+  const subjectDescription = actionableSetup
+    ? `Connect ${actionableSetup.subject.name}'s ${displayName} account to continue`
+    : `Connect your ${displayName} account to continue`;
+  const setupLabel =
+    actionableSetup?.subject.kind === "agent" ? "Open MCP settings" : "Open connections";
 
   const handleConnected = async () => {
     setStatus("submitting");
@@ -132,9 +165,7 @@ export function SetupConnectionToolCall({
         <ProviderIcon iconName={icon} className="h-5 w-5 text-foreground" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground">{displayName} connection required</p>
-          <p className="text-xs text-muted-foreground">
-            Connect your {displayName} account to continue
-          </p>
+          <p className="text-xs text-muted-foreground">{subjectDescription}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -146,14 +177,21 @@ export function SetupConnectionToolCall({
           >
             Skip
           </Button>
-          <Button
-            size="sm"
-            onClick={() => (isOAuth ? handleOAuthConnect() : setDialogOpen(true))}
-            disabled={status === "submitting"}
-          >
-            <LinkIcon className="h-3.5 w-3.5 mr-1" />
-            Connect
-          </Button>
+          {actionableSetup ? (
+            <LinkButton size="sm" href={actionableSetup.url}>
+              <LinkIcon className="h-3.5 w-3.5 mr-1" />
+              {setupLabel}
+            </LinkButton>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => (isOAuth ? handleOAuthConnect() : setDialogOpen(true))}
+              disabled={status === "submitting"}
+            >
+              <LinkIcon className="h-3.5 w-3.5 mr-1" />
+              Connect
+            </Button>
+          )}
         </div>
       </div>
 

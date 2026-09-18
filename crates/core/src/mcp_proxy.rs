@@ -185,8 +185,15 @@ pub fn build_mcp_proxy_tools(
 
 /// Map a raw MCP `ToolResult` into the registry's `ToolExecutionResult`.
 fn tool_result_to_execution(result: crate::tool_types::ToolResult) -> ToolExecutionResult {
+    if let Some(connection) = crate::tool_types::ConnectionRequired::from_tool_result(&result) {
+        return ToolExecutionResult::connection_required_for(
+            connection.provider,
+            connection.subject,
+            connection.setup_url,
+        );
+    }
     if let Some(provider) = result.connection_required {
-        return ToolExecutionResult::ConnectionRequired { provider };
+        return ToolExecutionResult::connection_required(provider);
     }
     if let Some(error) = result.error {
         return ToolExecutionResult::ToolError(error);
@@ -356,7 +363,7 @@ mod tests {
                 }),
             );
             match (expected, tool.execute(serde_json::json!({})).await) {
-                ("connection", ToolExecutionResult::ConnectionRequired { provider }) => {
+                ("connection", ToolExecutionResult::ConnectionRequired { provider, .. }) => {
                     assert_eq!(provider, "github")
                 }
                 ("error", ToolExecutionResult::ToolError(message)) => assert_eq!(message, "boom"),
@@ -372,6 +379,41 @@ mod tests {
                 }
                 other => panic!("unexpected mapping: {other:?}"),
             }
+        }
+    }
+
+    #[test]
+    fn proxy_result_mapping_preserves_structured_connection_details() {
+        let result = ToolResult {
+            tool_call_id: "call-1".to_string(),
+            result: Some(serde_json::json!({
+                "connection_required": "linear",
+                "subject": {"kind": "agent", "name": "Release Manager"},
+                "setup_url": "/agents/agent_1?tab=mcp"
+            })),
+            images: None,
+            error: None,
+            connection_required: Some("linear".to_string()),
+            raw_output: None,
+        };
+
+        match tool_result_to_execution(result) {
+            ToolExecutionResult::ConnectionRequired {
+                provider,
+                subject,
+                setup_url,
+            } => {
+                assert_eq!(provider, "linear");
+                assert_eq!(
+                    subject,
+                    Some(crate::tool_types::ConnectionRequiredSubject {
+                        kind: crate::tool_types::ConnectionRequiredSubjectKind::Agent,
+                        name: "Release Manager".to_string(),
+                    })
+                );
+                assert_eq!(setup_url.as_deref(), Some("/agents/agent_1?tab=mcp"));
+            }
+            other => panic!("unexpected mapping: {other:?}"),
         }
     }
 

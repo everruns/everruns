@@ -169,8 +169,33 @@ impl WorkerServiceImpl {
                         tracing::error!(%error, "Failed to resolve Agent MCP credentials");
                         Status::internal("Failed to resolve MCP credentials")
                     })?;
+                    let acts_as = r.acts_as;
+                    let mut server = resolved_mcp_server_to_proto(r, secret_bindings);
+                    if let Some((subject, setup_url)) =
+                        crate::mcp_worker_info::connection_setup_details(
+                            &self.db,
+                            acts_as,
+                            agent.as_ref(),
+                            session.resolved_owner_user_id,
+                        )
+                        .await
+                        .map_err(|error| {
+                            tracing::error!(%error, "Failed to resolve MCP connection subject");
+                            Status::internal("Failed to resolve scoped MCP server")
+                        })?
+                    {
+                        server.connection_subject_kind = Some(
+                            match subject.kind {
+                                everruns_core::ConnectionRequiredSubjectKind::Agent => "agent",
+                                everruns_core::ConnectionRequiredSubjectKind::User => "user",
+                            }
+                            .to_string(),
+                        );
+                        server.connection_subject_name = Some(subject.name);
+                        server.connection_setup_url = Some(setup_url);
+                    }
                     return Ok(Response::new(GetMcpServerByPrefixResponse {
-                        server: Some(resolved_mcp_server_to_proto(r, secret_bindings)),
+                        server: Some(server),
                     }));
                 }
             }

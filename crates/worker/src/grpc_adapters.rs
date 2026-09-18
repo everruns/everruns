@@ -55,6 +55,7 @@ use tonic::transport::Channel;
 use uuid::Uuid;
 
 use crate::grpc_durable_store::GrpcClientAuth;
+use crate::mcp_executor::proto_mcp_server_to_info;
 
 const COMMAND_API_VERSION_V1: &str = "v1";
 
@@ -961,43 +962,6 @@ fn proto_uuid_to_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<Uuid> {
         .map(|u| &u.value)
         .ok_or_else(|| grpc_missing_field("Missing UUID in response"))?;
     Uuid::parse_str(uuid_str).map_err(|e| AgentLoopError::store(format!("Invalid UUID: {}", e)))
-}
-
-fn proto_mcp_server_to_info(
-    proto_server: proto::McpServerInfo,
-) -> Result<crate::mcp_executor::McpServerInfo> {
-    let auth_mode = if proto_server.auth_mode.is_empty() && proto_server.api_key.is_some() {
-        everruns_core::McpServerAuthMode::ApiKey
-    } else {
-        everruns_core::McpServerAuthMode::from(proto_server.auth_mode.as_str())
-    };
-
-    Ok(crate::mcp_executor::McpServerInfo {
-        id: proto_uuid_to_uuid(proto_server.id.as_ref())?,
-        name: proto_server.name,
-        url: proto_server.url,
-        api_key: proto_server.api_key,
-        headers: proto_server.headers,
-        auth_mode,
-        protocol_mode: everruns_core::McpProtocolMode::from(proto_server.protocol_mode.as_str()),
-        oauth_provider_id: proto_server.oauth_provider_id,
-        acts_as: everruns_core::McpServerActsAs::from(proto_server.acts_as.as_str()),
-        secret_bindings: proto_server.secret_bindings.into_iter().fold(
-            std::collections::HashMap::new(),
-            |mut bindings, binding| {
-                bindings
-                    .entry(binding.tool_name)
-                    .or_insert_with(Vec::new)
-                    .push(everruns_mcp::McpSecretBinding {
-                        parameter_name: binding.parameter_name,
-                        value: binding.value,
-                        setup_url: binding.setup_url,
-                        label: binding.label,
-                    });
-                bindings
-            },
-        ),
-    })
 }
 
 fn proto_timestamp_to_datetime(ts: &proto::Timestamp) -> chrono::DateTime<chrono::Utc> {
@@ -3977,11 +3941,24 @@ mod tests {
             name: "linear".to_string(),
             url: "https://mcp.linear.app/mcp".to_string(),
             acts_as: "service".to_string(),
+            connection_subject_kind: Some("agent".to_string()),
+            connection_subject_name: Some("Release Manager".to_string()),
+            connection_setup_url: Some("/agents/agent_1?tab=mcp".to_string()),
             ..Default::default()
         };
 
         let info = proto_mcp_server_to_info(proto_server).unwrap();
         assert_eq!(info.acts_as, everruns_core::McpServerActsAs::Service);
+        let subject = info.connection_subject.unwrap();
+        assert_eq!(
+            subject.kind,
+            everruns_core::ConnectionRequiredSubjectKind::Agent
+        );
+        assert_eq!(subject.name, "Release Manager");
+        assert_eq!(
+            info.connection_setup_url.as_deref(),
+            Some("/agents/agent_1?tab=mcp")
+        );
 
         let old_server = proto::McpServerInfo {
             id: Some(uuid_to_proto(id)),

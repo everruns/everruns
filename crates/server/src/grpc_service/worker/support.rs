@@ -70,6 +70,9 @@ pub(crate) fn resolved_mcp_server_to_proto(
         oauth_provider_id: resolved.oauth_provider_id,
         secret_bindings: flatten_secret_bindings(secret_bindings),
         acts_as: resolved.acts_as.to_string(),
+        connection_subject_kind: None,
+        connection_subject_name: None,
+        connection_setup_url: None,
     }
 }
 

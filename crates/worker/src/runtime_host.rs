@@ -5,8 +5,8 @@
 use async_trait::async_trait;
 use everruns_core::tool_context::ToolContextExtensions;
 use everruns_core::{
-    CapabilityRegistry, EgressService, ResolvedExecutionSnapshot, SessionExecutionState,
-    UtilityLlmService,
+    CapabilityRegistry, ConnectionRequired, EgressService, ResolvedExecutionSnapshot,
+    SessionExecutionState, UtilityLlmService,
 };
 use everruns_core::{
     connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
@@ -123,6 +123,13 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             }
         }
 
+        let pending_oauth_details = pending_oauth_provider.as_ref().and_then(|provider| {
+            Some(ConnectionRequired {
+                provider: provider.clone(),
+                subject: info.connection_subject?,
+                setup_url: info.connection_setup_url?,
+            })
+        });
         Ok(Some(McpConnection {
             name: info.name,
             endpoint: McpEndpoint::Http {
@@ -133,6 +140,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             protocol_mode: info.protocol_mode,
             oauth_provider_id: info.oauth_provider_id,
             pending_oauth_provider,
+            pending_oauth_details,
             secret_bindings: info.secret_bindings,
         }))
     }
@@ -574,6 +582,23 @@ mod mcp_credential_tests {
         api_key: Option<&str>,
         headers: &[(&str, &str)],
     ) -> crate::mcp_executor::McpServerInfo {
+        let (connection_subject, connection_setup_url) = match acts_as {
+            McpServerActsAs::Service => (
+                Some(everruns_core::ConnectionRequiredSubject {
+                    kind: everruns_core::ConnectionRequiredSubjectKind::Agent,
+                    name: "Release Manager".to_string(),
+                }),
+                Some("/agents/agent_1?tab=mcp".to_string()),
+            ),
+            McpServerActsAs::User => (
+                Some(everruns_core::ConnectionRequiredSubject {
+                    kind: everruns_core::ConnectionRequiredSubjectKind::User,
+                    name: "Ada Lovelace".to_string(),
+                }),
+                Some("/settings/connections".to_string()),
+            ),
+            McpServerActsAs::None => (None, None),
+        };
         crate::mcp_executor::McpServerInfo {
             id: Uuid::new_v4(),
             name: "linear".to_string(),
@@ -582,6 +607,8 @@ mod mcp_credential_tests {
             protocol_mode: everruns_core::McpProtocolMode::Auto,
             oauth_provider_id: Some(format!("mcp_oauth_{}", Uuid::new_v4())),
             acts_as,
+            connection_subject,
+            connection_setup_url,
             api_key: api_key.map(str::to_string),
             headers: headers
                 .iter()
@@ -703,6 +730,25 @@ mod mcp_credential_tests {
             assert!(
                 connection.pending_oauth_provider.is_some(),
                 "{acts_as} must surface connection_required"
+            );
+            let details = connection
+                .pending_oauth_details
+                .expect("scoped attachments carry actionable setup details");
+            assert_eq!(
+                details.subject.kind,
+                match acts_as {
+                    McpServerActsAs::Service => everruns_core::ConnectionRequiredSubjectKind::Agent,
+                    McpServerActsAs::User => everruns_core::ConnectionRequiredSubjectKind::User,
+                    McpServerActsAs::None => unreachable!(),
+                }
+            );
+            assert_eq!(
+                details.setup_url,
+                match acts_as {
+                    McpServerActsAs::Service => "/agents/agent_1?tab=mcp",
+                    McpServerActsAs::User => "/settings/connections",
+                    McpServerActsAs::None => unreachable!(),
+                }
             );
         }
     }

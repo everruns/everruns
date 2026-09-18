@@ -7,7 +7,9 @@
 
 use crate::auth::McpCredential;
 use async_trait::async_trait;
-use everruns_core::{McpProtocolMode, McpServerAuthMode, McpToolCallResult, McpToolDefinition};
+use everruns_core::{
+    ConnectionRequired, McpProtocolMode, McpServerAuthMode, McpToolCallResult, McpToolDefinition,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -44,6 +46,8 @@ pub struct McpConnection {
     /// call into a `connection_required` tool result (rendering an inline
     /// connect prompt) instead of a raw 401.
     pub pending_oauth_provider: Option<String>,
+    /// Actionable subject and setup path for `pending_oauth_provider`.
+    pub pending_oauth_details: Option<ConnectionRequired>,
     /// Write-only Agent credentials bound to exact MCP tool parameters. Values
     /// are resolved by the control plane and injected only inside the executor.
     pub secret_bindings: HashMap<String, Vec<McpSecretBinding>>,
@@ -82,6 +86,7 @@ impl McpConnection {
             protocol_mode: McpProtocolMode::Auto,
             oauth_provider_id: None,
             pending_oauth_provider: None,
+            pending_oauth_details: None,
             secret_bindings: HashMap::new(),
         }
     }

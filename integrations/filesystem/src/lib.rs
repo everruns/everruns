@@ -1428,8 +1428,8 @@ impl ReadManyFilesTool {
                 ToolExecutionResult::InternalError(error) => {
                     return ToolExecutionResult::InternalError(error);
                 }
-                ToolExecutionResult::ConnectionRequired { provider } => {
-                    return ToolExecutionResult::ConnectionRequired { provider };
+                connection @ ToolExecutionResult::ConnectionRequired { .. } => {
+                    return connection;
                 }
             };
 

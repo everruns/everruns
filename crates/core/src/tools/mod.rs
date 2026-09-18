@@ -18,8 +18,8 @@ use tracing::error;
 
 use crate::background::BackgroundExecutableTool;
 use crate::tool_types::{
-    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
-    ToolResultImage,
+    BuiltinTool, ConnectionRequiredSubject, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints,
+    ToolPolicy, ToolResult, ToolResultImage,
 };
 use crate::{
     tool_context::ToolContext, tool_context::ToolContextService, tool_context::ToolContextServices,
@@ -88,6 +88,10 @@ pub enum ToolExecutionResult {
     ConnectionRequired {
         /// Connection provider id (e.g. "daytona", "brave_search")
         provider: String,
+        /// Subject whose grant is missing, when the producer can identify it.
+        subject: Option<ConnectionRequiredSubject>,
+        /// UI path where the missing grant can be configured.
+        setup_url: Option<String>,
     },
 }
 
@@ -149,6 +153,21 @@ impl ToolExecutionResult {
     pub fn connection_required(provider: impl Into<String>) -> Self {
         ToolExecutionResult::ConnectionRequired {
             provider: provider.into(),
+            subject: None,
+            setup_url: None,
+        }
+    }
+
+    /// Signal that a named subject must configure a provider grant.
+    pub fn connection_required_for(
+        provider: impl Into<String>,
+        subject: ConnectionRequiredSubject,
+        setup_url: impl Into<String>,
+    ) -> Self {
+        ToolExecutionResult::ConnectionRequired {
+            provider: provider.into(),
+            subject: Some(subject),
+            setup_url: Some(setup_url.into()),
         }
     }
 
@@ -254,16 +273,27 @@ impl ToolExecutionResult {
                     raw_output: None,
                 }
             }
-            ToolExecutionResult::ConnectionRequired { ref provider } => ToolResult {
-                tool_call_id: tool_call_id.to_string(),
-                result: Some(serde_json::json!({
-                    "connection_required": provider,
-                })),
-                images: None,
-                error: None,
-                connection_required: Some(provider.clone()),
-                raw_output: None,
-            },
+            ToolExecutionResult::ConnectionRequired {
+                provider,
+                subject,
+                setup_url,
+            } => {
+                let mut result = serde_json::json!({ "connection_required": provider });
+                if let Some(subject) = subject {
+                    result["subject"] = serde_json::to_value(subject).unwrap_or(Value::Null);
+                }
+                if let Some(setup_url) = setup_url {
+                    result["setup_url"] = Value::String(setup_url);
+                }
+                ToolResult {
+                    tool_call_id: tool_call_id.to_string(),
+                    result: Some(result),
+                    images: None,
+                    error: None,
+                    connection_required: Some(provider),
+                    raw_output: None,
+                }
+            }
         }
     }
 }

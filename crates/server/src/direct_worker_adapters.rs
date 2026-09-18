@@ -43,15 +43,18 @@ use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::domains::budgets::BudgetService;
+use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::scoped_mcp::{
     build_materialized_scoped_mcp_tool_definitions,
     merge_effective_scoped_mcp_servers_with_capabilities,
     resolve_scoped_mcp_server_with_capabilities, validate_scoped_mcp_servers,
 };
-use crate::domains::mcp_servers::{McpServerResolved, McpServerService};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::max_iterations;
+use crate::mcp_worker_info::{
+    apply_connection_setup_details, name_from_path, resolved_mcp_server_to_worker_info,
+};
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
@@ -60,36 +63,6 @@ use everruns_durable::WorkflowEventStore;
 // Helper to create store errors
 pub(crate) fn store_error(msg: impl Into<String>) -> AgentLoopError {
     AgentLoopError::store(msg)
-}
-
-fn resolved_mcp_server_to_worker_info(
-    resolved: McpServerResolved,
-    secret_bindings: HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
-) -> McpServerInfo {
-    McpServerInfo {
-        id: resolved.id,
-        name: resolved.name,
-        url: resolved.url,
-        api_key: resolved.api_key,
-        headers: resolved.headers,
-        auth_mode: resolved.auth_mode,
-        protocol_mode: resolved.protocol_mode,
-        oauth_provider_id: resolved.oauth_provider_id,
-        acts_as: resolved.acts_as,
-        secret_bindings,
-    }
-}
-
-/// Extract file name from path
-fn name_from_path(path: &str) -> String {
-    if path == "/" {
-        return "/".to_string();
-    }
-    std::path::Path::new(path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_string()
 }
 
 struct DirectBudgetChecker {
@@ -1477,10 +1450,20 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     )
                     .await
                     .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
-                return Ok(resolved_mcp_server_to_worker_info(
-                    resolved,
-                    secret_bindings,
-                ));
+                let acts_as = resolved.acts_as;
+                let mut info = resolved_mcp_server_to_worker_info(resolved, secret_bindings);
+                apply_connection_setup_details(
+                    &self.db,
+                    acts_as,
+                    agent.as_ref(),
+                    session.resolved_owner_user_id,
+                    &mut info,
+                )
+                .await
+                .map_err(|error| {
+                    store_error(format!("Failed to resolve MCP connection subject: {error}"))
+                })?;
+                return Ok(info);
             }
         }
 
@@ -3200,6 +3183,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::mcp_servers::McpServerResolved;
     use crate::storage::models::CreateHarnessRow;
 
     #[test]
@@ -3501,6 +3485,22 @@ mod tests {
         assert_eq!(direct.acts_as, everruns_core::McpServerActsAs::Service);
         assert_eq!(grpc.url, direct.url);
         assert_eq!(grpc.acts_as, direct.acts_as.to_string());
+        let subject = direct.connection_subject.as_ref().unwrap();
+        assert_eq!(
+            subject.kind,
+            everruns_core::ConnectionRequiredSubjectKind::Agent
+        );
+        assert_eq!(subject.name, "pinned-mcp-agent");
+        assert_eq!(grpc.connection_subject_kind.as_deref(), Some("agent"));
+        assert_eq!(
+            grpc.connection_subject_name.as_deref(),
+            Some(subject.name.as_str())
+        );
+        assert_eq!(
+            direct.connection_setup_url,
+            Some(format!("/agents/{agent_id}?tab=mcp"))
+        );
+        assert_eq!(grpc.connection_setup_url, direct.connection_setup_url);
         // A `service` attachment is wired to the connection store keyed by its
         // preset, so both paths report OAuth rather than a neutral descriptor
         // (EVE-1029). The point of this test is that the two paths agree.

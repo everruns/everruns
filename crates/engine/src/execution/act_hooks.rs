@@ -13,7 +13,8 @@
 
 use crate::events::{EventContext, EventRequest, ToolCallRequestedData};
 use crate::tool_types::{
-    CONFIRM_URL_ELICITATION_TOOL, ToolCall, ToolDefinition, ToolResult, UrlElicitationRequired,
+    CONFIRM_URL_ELICITATION_TOOL, ConnectionRequired, ToolCall, ToolDefinition, ToolResult,
+    UrlElicitationRequired,
 };
 use crate::{event_emitter::EventEmitter, tool_context::ToolContext};
 use async_trait::async_trait;
@@ -254,24 +255,33 @@ impl PostActHook for ConnectionSetupHook {
         result: &mut ActResult,
         _tool_definitions: &[ToolDefinition],
     ) -> Vec<PostActAction> {
-        let providers: Vec<String> = result
+        let connections: Vec<(String, Option<ConnectionRequired>)> = result
             .results
             .iter()
-            .filter_map(|r| r.connection_required.clone())
+            .filter_map(|r| {
+                r.connection_required
+                    .clone()
+                    .map(|provider| (provider, ConnectionRequired::from_tool_result(&r.result)))
+            })
             .collect();
-
-        if providers.is_empty() {
+        if connections.is_empty() {
             return vec![];
         }
 
         result.waiting_for_tool_results = true;
 
-        let tool_calls: Vec<ToolCall> = providers
+        let tool_calls: Vec<ToolCall> = connections
             .iter()
-            .map(|provider| ToolCall {
+            .map(|(provider, details)| ToolCall {
                 id: format!("setup_conn_{}", Uuid::now_v7()),
                 name: "setup_connection".to_string(),
-                arguments: json!({ "provider": provider }),
+                arguments: details
+                    .as_ref()
+                    .map(|details| {
+                        serde_json::to_value(details)
+                            .unwrap_or_else(|_| json!({ "provider": provider }))
+                    })
+                    .unwrap_or_else(|| json!({ "provider": provider })),
             })
             .collect();
 
@@ -464,6 +474,39 @@ mod tests {
         }
     }
 
+    #[test]
+    fn connection_setup_hook_propagates_subject_and_setup_url() {
+        let hook = ConnectionSetupHook;
+        let mut tool_result = make_tool_call_result(Some("mcp_oauth_linear"));
+        tool_result.result.result = Some(json!({
+            "connection_required": "mcp_oauth_linear",
+            "subject": {"kind": "user", "name": "Ada Lovelace"},
+            "setup_url": "/settings/connections",
+        }));
+        let mut result = ActResult {
+            results: vec![tool_result],
+            completed: true,
+            success_count: 0,
+            error_count: 0,
+            waiting_for_tool_results: false,
+            waiting_for_url_elicitation: false,
+            blocked: false,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
+        };
+
+        let actions = hook.on_completed(&mut result, &[]);
+
+        let PostActAction::EmitToolCallRequested { tool_calls, .. } = &actions[0];
+        assert_eq!(
+            tool_calls[0].arguments,
+            json!({
+                "provider": "mcp_oauth_linear",
+                "subject": {"kind": "user", "name": "Ada Lovelace"},
+                "setup_url": "/settings/connections",
+            })
+        );
+    }
     #[test]
     fn test_connection_setup_hook_no_connections() {
         let hook = ConnectionSetupHook;

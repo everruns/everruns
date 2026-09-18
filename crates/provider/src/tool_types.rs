@@ -720,6 +720,48 @@ impl ToolCall {
     }
 }
 
+/// Kind of subject whose connection is required.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionRequiredSubjectKind {
+    Agent,
+    User,
+}
+
+/// Human-readable subject whose provider grant is missing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ConnectionRequiredSubject {
+    pub kind: ConnectionRequiredSubjectKind,
+    pub name: String,
+}
+
+/// Actionable details for a missing provider grant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ConnectionRequired {
+    pub provider: String,
+    pub subject: ConnectionRequiredSubject,
+    pub setup_url: String,
+}
+
+impl ConnectionRequired {
+    /// Recover structured details from a tool result, if the producer supplied them.
+    pub fn from_tool_result(result: &ToolResult) -> Option<Self> {
+        let value = result.result.as_ref()?;
+        let provider = result.connection_required.as_ref()?;
+        if value.get("connection_required")?.as_str()? != provider {
+            return None;
+        }
+        Some(Self {
+            provider: provider.clone(),
+            subject: serde_json::from_value(value.get("subject")?.clone()).ok()?,
+            setup_url: value.get("setup_url")?.as_str()?.to_string(),
+        })
+    }
+}
+
 /// Tool execution result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
@@ -821,6 +863,53 @@ impl ToolResult {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn structured_connection_required_requires_all_details_and_keeps_legacy_provider() {
+        let result: ToolResult = serde_json::from_value(json!({
+            "tool_call_id": "call_123",
+            "result": {
+                "connection_required": "mcp_oauth_linear",
+                "subject": {"kind": "user", "name": "Ada Lovelace"},
+                "setup_url": "/settings/connections"
+            },
+            "error": null,
+            "connection_required": "mcp_oauth_linear"
+        }))
+        .unwrap();
+
+        assert_eq!(
+            ConnectionRequired::from_tool_result(&result),
+            Some(ConnectionRequired {
+                provider: "mcp_oauth_linear".to_string(),
+                subject: ConnectionRequiredSubject {
+                    kind: ConnectionRequiredSubjectKind::User,
+                    name: "Ada Lovelace".to_string(),
+                },
+                setup_url: "/settings/connections".to_string(),
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(result).unwrap()["connection_required"],
+            "mcp_oauth_linear"
+        );
+    }
+
+    #[test]
+    fn structured_connection_required_rejects_a_mismatched_provider() {
+        let result: ToolResult = serde_json::from_value(json!({
+            "tool_call_id": "call_123",
+            "result": {
+                "connection_required": "untrusted_provider",
+                "subject": {"kind": "user", "name": "Ada Lovelace"},
+                "setup_url": "/settings/connections"
+            },
+            "error": null,
+            "connection_required": "mcp_oauth_linear"
+        }))
+        .unwrap();
+
+        assert!(ConnectionRequired::from_tool_result(&result).is_none());
+    }
 
     fn definition(kind: &str) -> ToolDefinition {
         serde_json::from_value(json!({"type":kind,"name":"tool","description":"Description","parameters":{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}})).unwrap()

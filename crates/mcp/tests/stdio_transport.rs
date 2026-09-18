@@ -22,6 +22,7 @@ fn fixture_connection() -> McpConnection {
         protocol_mode: McpProtocolMode::Auto,
         oauth_provider_id: None,
         pending_oauth_provider: None,
+        pending_oauth_details: None,
         secret_bindings: HashMap::new(),
     }
 }

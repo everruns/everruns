@@ -409,6 +409,14 @@ export const ChatMessageList = memo(function ChatMessageList({
               sessionId={sessionId}
               toolCallId={toolCall.id}
               provider={(toolCall.arguments as { provider?: string })?.provider ?? "unknown"}
+              subject={
+                (
+                  toolCall.arguments as {
+                    subject?: { kind: "agent" | "user"; name: string };
+                  }
+                )?.subject
+              }
+              setupUrl={(toolCall.arguments as { setup_url?: string })?.setup_url}
               toolResultsMap={toolResultsMap}
             />
           ))}
@@ -447,6 +455,14 @@ export const ChatMessageList = memo(function ChatMessageList({
             sessionId={sessionId}
             toolCallId={toolCall.id}
             provider={(toolCall.arguments as { provider?: string })?.provider ?? "unknown"}
+            subject={
+              (
+                toolCall.arguments as {
+                  subject?: { kind: "agent" | "user"; name: string };
+                }
+              )?.subject
+            }
+            setupUrl={(toolCall.arguments as { setup_url?: string })?.setup_url}
             toolResultsMap={toolResultsMap}
           />
         ))}

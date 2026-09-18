@@ -1272,6 +1272,11 @@ message McpServerInfo {
     repeated McpSecretBinding secret_bindings = 9;
     // Requested scoped attachment identity: "none", "service", or "user".
     string acts_as = 10;
+    // Structured subject whose OAuth grant is used by this attachment.
+    optional string connection_subject_kind = 11;
+    optional string connection_subject_name = 12;
+    // UI path where the subject's missing grant can be configured.
+    optional string connection_setup_url = 13;
 }
 
 message McpSecretBinding {

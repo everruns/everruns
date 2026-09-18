@@ -51,6 +51,7 @@ pub mod direct_worker_adapters;
 pub mod execution_metadata;
 mod kernel_imports;
 pub mod knowledge_store;
+mod mcp_worker_info;
 
 // ATIF trajectory interchange (knowledge/evaluation/atif-adoption.md)
 pub mod atif;

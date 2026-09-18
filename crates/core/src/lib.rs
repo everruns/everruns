@@ -366,6 +366,9 @@ pub(crate) use driver_registry::{
 pub(crate) use everruns_provider::compact::CompactOutputItem;
 
 // Tool abstraction re-exports
+pub use tool_types::{
+    ConnectionRequired, ConnectionRequiredSubject, ConnectionRequiredSubjectKind,
+};
 pub use tools::{
     CliSpelling, Tool, ToolExecutionResult, ToolInternalError, ToolRegistry, ToolRegistryBuilder,
 };

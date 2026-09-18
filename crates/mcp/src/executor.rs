@@ -152,9 +152,16 @@ impl McpExecutor {
         // Return a connection_required result (the host renders an inline
         // connect prompt) instead of letting the call fail with a 401.
         if let Some(provider) = &connection.pending_oauth_provider {
+            let result = connection.pending_oauth_details.as_ref().map(|details| {
+                serde_json::json!({
+                    "connection_required": provider,
+                    "subject": details.subject,
+                    "setup_url": details.setup_url,
+                })
+            });
             return Ok(ToolResult {
                 tool_call_id: tool_call.id.clone(),
-                result: None,
+                result,
                 images: None,
                 error: Some(format!(
                     "MCP server '{}' requires an OAuth connection. \
