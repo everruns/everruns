@@ -384,7 +384,7 @@ impl WorkerService for WorkerServiceImpl {
             );
 
             if let Err(error) =
-                crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&effective)
+                crate::domains::mcp_servers::scoped_mcp::validate_effective_mcp_servers(&effective)
             {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
@@ -2930,19 +2930,15 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         request: Request<GetConnectionTokenRequest>,
     ) -> Result<Response<GetConnectionTokenResponse>, Status> {
-        let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
-        let resolver = self.connection_resolver()?;
-
-        let token = resolver
-            .get_connection_token(session_id.into(), &req.provider)
+        handle_legacy_connection_token_request(self.connection_resolver()?, request.into_inner())
             .await
-            .map_err(|e| {
-                tracing::error!("Failed to resolve connection token: {}", e);
-                Status::internal("Failed to resolve connection token")
-            })?;
+    }
 
-        Ok(Response::new(GetConnectionTokenResponse { token }))
+    async fn get_mcp_connection_token(
+        &self,
+        request: Request<GetMcpConnectionTokenRequest>,
+    ) -> Result<Response<GetConnectionTokenResponse>, Status> {
+        handle_mcp_connection_token_request(self.connection_resolver()?, request.into_inner()).await
     }
 
     async fn get_connection_user(

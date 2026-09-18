@@ -18,10 +18,10 @@
 //!
 //! Each capability is in its own file with collocated tools.
 
+use crate::capability_mcp_server::CapabilityMcpServers;
 use crate::command::{
     CommandDescriptor, CommandExecutionContext, CommandResult, ExecuteCommandRequest,
 };
-use crate::mcp_server::ScopedMcpServers;
 use crate::message_filter::MessageFilterProvider;
 use crate::session_files::SessionFileSystem;
 use crate::tool_types::{ToolCall, ToolDefinition};
@@ -615,12 +615,12 @@ pub trait Capability: Send + Sync {
     /// These are merged into harness/agent/session scoped MCP config at runtime.
     /// Explicit scoped MCP config overrides capability-contributed defaults by
     /// logical server name.
-    fn mcp_servers(&self) -> ScopedMcpServers {
-        ScopedMcpServers::default()
+    fn mcp_servers(&self) -> CapabilityMcpServers {
+        CapabilityMcpServers::default()
     }
 
     /// Returns config-aware remote MCP server contributions.
-    fn mcp_servers_with_config(&self, _config: &serde_json::Value) -> ScopedMcpServers {
+    fn mcp_servers_with_config(&self, _config: &serde_json::Value) -> CapabilityMcpServers {
         self.mcp_servers()
     }
 

@@ -2,7 +2,7 @@ use super::{
     CapabilityStatus, MountAccess, MountPoint, RiskLevel, SKILLS_DISCOVERY_PATH, SkillContribution,
 };
 use crate::capability_types::MountSource;
-use crate::{CapabilityInfo, ScopedMcpServers, validate_skill_name};
+use crate::{CapabilityInfo, CapabilityMcpServers, validate_skill_name};
 use everruns_capability::{CapabilityId, plugin_capability_id};
 use serde::{Deserialize, Serialize};
 
@@ -45,7 +45,7 @@ pub struct DeclarativeCapabilityDefinition {
     #[serde(default)]
     pub system_prompt: Option<String>,
     #[serde(default)]
-    pub mcp_servers: Option<ScopedMcpServers>,
+    pub mcp_servers: Option<CapabilityMcpServers>,
     #[serde(default)]
     pub skills: Vec<DeclarativeCapabilitySkill>,
     #[serde(default)]
@@ -516,7 +516,7 @@ mod tests {
                                     .map(|i| {
                                         (
                                             format!("server-{i}"),
-                                            serde_json::json!({"url":"https://example.com/mcp"}),
+                                            serde_json::json!({"url":"https://example.com/mcp","actsAs":"none"}),
                                         )
                                     })
                                     .collect(),

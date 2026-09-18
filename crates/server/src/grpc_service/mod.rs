@@ -9,6 +9,8 @@
 mod worker_service_impl;
 
 #[cfg(test)]
+mod connection_token_tests;
+#[cfg(test)]
 mod tests;
 
 use crate::domains::mcp_servers::McpServerService;
@@ -111,6 +113,7 @@ use everruns_internal_protocol::proto::{
     GetImageArtifactInfoResponse,
     GetImageArtifactRequest,
     GetImageArtifactResponse,
+    GetMcpConnectionTokenRequest,
     GetMcpServerByPrefixRequest,
     GetMcpServerByPrefixResponse,
     GetMessageRequest,
@@ -498,6 +501,68 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
 
         Ok(())
     }
+}
+
+#[allow(clippy::result_large_err)]
+async fn resolve_legacy_connection_token(
+    resolver: &Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
+    session_id: everruns_provider::typed_id::SessionId,
+    provider: &str,
+) -> Result<Option<String>, Status> {
+    resolver
+        .get_connection_token(session_id, provider)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "Failed to resolve connection token");
+            Status::internal("Failed to resolve connection token")
+        })
+}
+
+async fn handle_legacy_connection_token_request(
+    resolver: &Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
+    request: GetConnectionTokenRequest,
+) -> Result<Response<GetConnectionTokenResponse>, Status> {
+    let session_id = parse_uuid(request.session_id.as_ref())?;
+    let token =
+        resolve_legacy_connection_token(resolver, session_id.into(), &request.provider).await?;
+    Ok(Response::new(GetConnectionTokenResponse { token }))
+}
+
+async fn handle_mcp_connection_token_request(
+    resolver: &Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
+    request: GetMcpConnectionTokenRequest,
+) -> Result<Response<GetConnectionTokenResponse>, Status> {
+    let session_id = parse_uuid(request.session_id.as_ref())?;
+    let token = resolve_mcp_connection_token(
+        resolver,
+        session_id.into(),
+        &request.provider,
+        &request.acts_as,
+    )
+    .await?;
+    Ok(Response::new(GetConnectionTokenResponse { token }))
+}
+
+#[allow(clippy::result_large_err)]
+async fn resolve_mcp_connection_token(
+    resolver: &Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
+    session_id: everruns_provider::typed_id::SessionId,
+    provider: &str,
+    acts_as: &str,
+) -> Result<Option<String>, Status> {
+    let acts_as = match acts_as {
+        "none" => everruns_core::McpServerActsAs::None,
+        "service" => everruns_core::McpServerActsAs::Service,
+        "user" => everruns_core::McpServerActsAs::User,
+        _ => return Err(Status::invalid_argument("Invalid acts_as value")),
+    };
+    resolver
+        .get_mcp_connection_token(session_id, provider, acts_as)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "Failed to resolve connection token");
+            Status::internal("Failed to resolve connection token")
+        })
 }
 
 /// gRPC service implementation for worker communication

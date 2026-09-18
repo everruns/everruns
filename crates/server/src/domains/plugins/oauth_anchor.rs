@@ -277,18 +277,23 @@ async fn create_anchor(
 mod tests {
     use super::*;
     use everruns_core::capabilities::{CapabilityStatus, DeclarativeCapabilityDefinition};
-    use everruns_core::{ScopedMcpServer, ScopedMcpServers};
+    use everruns_core::{
+        CapabilityMcpServer, CapabilityMcpServers, McpServerActsAs, ScopedMcpServer,
+    };
     use std::sync::Arc;
 
     fn oauth_definition(server_name: &str, url: &str) -> DeclarativeCapabilityDefinition {
-        let mut servers = ScopedMcpServers::new();
+        let mut servers = CapabilityMcpServers::new();
         servers.insert(
             server_name.to_string(),
-            ScopedMcpServer {
-                url: url.to_string(),
-                auth_mode: McpServerAuthMode::OAuth,
-                ..ScopedMcpServer::default()
-            },
+            CapabilityMcpServer::new(
+                ScopedMcpServer {
+                    url: url.to_string(),
+                    auth_mode: McpServerAuthMode::OAuth,
+                    ..ScopedMcpServer::default()
+                },
+                McpServerActsAs::User,
+            ),
         );
         DeclarativeCapabilityDefinition {
             name: "resend".to_string(),

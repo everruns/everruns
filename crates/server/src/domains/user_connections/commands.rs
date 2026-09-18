@@ -139,7 +139,10 @@ mod tests {
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateUserConnectionRow;
     use everruns_core::capabilities::{CapabilityStatus, DeclarativeCapabilityDefinition};
-    use everruns_core::{Caller, McpServerAuthMode, OrgRole, ScopedMcpServer, ScopedMcpServers};
+    use everruns_core::{
+        Caller, CapabilityMcpServer, CapabilityMcpServers, McpServerActsAs, McpServerAuthMode,
+        OrgRole, ScopedMcpServer,
+    };
     use std::sync::Arc;
     use uuid::Uuid;
 
@@ -213,14 +216,17 @@ mod tests {
     async fn plugin_oauth_provider_and_current_user_connection_are_independent() {
         let db = Arc::new(StorageBackend::in_memory());
         let user_id = Uuid::new_v4();
-        let mut servers = ScopedMcpServers::new();
+        let mut servers = CapabilityMcpServers::new();
         servers.insert(
             "resend".to_string(),
-            ScopedMcpServer {
-                url: "https://mcp.resend.com/mcp".to_string(),
-                auth_mode: McpServerAuthMode::OAuth,
-                ..ScopedMcpServer::default()
-            },
+            CapabilityMcpServer::new(
+                ScopedMcpServer {
+                    url: "https://mcp.resend.com/mcp".to_string(),
+                    auth_mode: McpServerAuthMode::OAuth,
+                    ..ScopedMcpServer::default()
+                },
+                McpServerActsAs::User,
+            ),
         );
         let mut definition = DeclarativeCapabilityDefinition {
             name: "resend".to_string(),

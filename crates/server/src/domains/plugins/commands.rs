@@ -1418,13 +1418,16 @@ mod tests {
     }
 
     #[test]
-    fn compiled_plugin_install_and_update_reject_scoped_identity_features() {
-        let catalog = everruns_core::ScopedMcpServers::from([(
+    fn compiled_plugin_validation_rejects_presets_and_accepts_declared_identity() {
+        let catalog = everruns_core::CapabilityMcpServers::from([(
             "docs".to_string(),
-            everruns_core::ScopedMcpServer {
-                preset: Some("catalog:docs".parse().unwrap()),
-                ..Default::default()
-            },
+            everruns_core::CapabilityMcpServer::new(
+                everruns_core::ScopedMcpServer {
+                    preset: Some("catalog:docs".parse().unwrap()),
+                    ..Default::default()
+                },
+                everruns_core::McpServerActsAs::None,
+            ),
         )]);
         let error = validate_compiled_mcp_servers(&DeclarativeCapabilityDefinition {
             name: "catalog-plugin".to_string(),
@@ -1435,21 +1438,23 @@ mod tests {
         .unwrap_err();
         assert!(error.message().contains("cannot use a catalog preset"));
 
-        let identity = everruns_core::ScopedMcpServers::from([(
+        let identity = everruns_core::CapabilityMcpServers::from([(
             "docs".to_string(),
-            everruns_core::ScopedMcpServer {
-                url: "https://docs.example.com/mcp".to_string(),
-                acts_as: everruns_core::McpServerActsAs::Service,
-                ..Default::default()
-            },
+            everruns_core::CapabilityMcpServer::new(
+                everruns_core::ScopedMcpServer {
+                    url: "https://docs.example.com/mcp".to_string(),
+                    auth_mode: everruns_core::McpServerAuthMode::OAuth,
+                    ..Default::default()
+                },
+                everruns_core::McpServerActsAs::Service,
+            ),
         )]);
-        let error = validate_compiled_mcp_servers(&DeclarativeCapabilityDefinition {
+        validate_compiled_mcp_servers(&DeclarativeCapabilityDefinition {
             name: "identity-plugin".to_string(),
             description: "test plugin".to_string(),
             mcp_servers: Some(identity),
             ..Default::default()
         })
-        .unwrap_err();
-        assert!(error.message().contains("cannot set actsAs"));
+        .unwrap();
     }
 }

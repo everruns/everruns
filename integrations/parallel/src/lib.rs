@@ -31,7 +31,9 @@ pub mod payments;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
 };
-use everruns_core::{McpServerAuthMode, ScopedMcpServer, ScopedMcpServers};
+use everruns_core::{
+    CapabilityMcpServer, CapabilityMcpServers, McpServerActsAs, McpServerAuthMode, ScopedMcpServer,
+};
 use everruns_platform::connector::ConnectorPlugin;
 use serde_json::{Value, json};
 
@@ -292,21 +294,28 @@ For Parallel tool calls, generate one stable `session_id` for the conversation a
         ]
     }
 
-    fn mcp_servers_with_config(&self, config: &serde_json::Value) -> ScopedMcpServers {
-        let mut servers = ScopedMcpServers::default();
+    fn mcp_servers_with_config(&self, config: &serde_json::Value) -> CapabilityMcpServers {
+        let mut servers = CapabilityMcpServers::default();
+        let use_connection = Self::use_connection(config);
         servers.insert(
             PARALLEL_SERVER_NAME.to_string(),
-            ScopedMcpServer {
-                url: Self::mcp_url(config).to_string(),
-                auth_mode: if Self::use_connection(config) {
-                    McpServerAuthMode::OAuth
-                } else {
-                    McpServerAuthMode::None
+            CapabilityMcpServer::new(
+                ScopedMcpServer {
+                    url: Self::mcp_url(config).to_string(),
+                    auth_mode: if use_connection {
+                        McpServerAuthMode::OAuth
+                    } else {
+                        McpServerAuthMode::None
+                    },
+                    oauth_provider_id: use_connection.then(|| PARALLEL_PROVIDER_ID.to_string()),
+                    ..Default::default()
                 },
-                oauth_provider_id: Self::use_connection(config)
-                    .then(|| PARALLEL_PROVIDER_ID.to_string()),
-                ..Default::default()
-            },
+                if use_connection {
+                    McpServerActsAs::User
+                } else {
+                    McpServerActsAs::None
+                },
+            ),
         );
         servers
     }
@@ -337,6 +346,7 @@ mod tests {
         assert_eq!(server.url, PARALLEL_MCP_URL);
         assert_eq!(server.auth_mode, McpServerAuthMode::None);
         assert_eq!(server.oauth_provider_id, None);
+        assert_eq!(server.acts_as, McpServerActsAs::None);
     }
 
     #[test]
@@ -350,6 +360,7 @@ mod tests {
             server.oauth_provider_id.as_deref(),
             Some(PARALLEL_PROVIDER_ID)
         );
+        assert_eq!(server.acts_as, McpServerActsAs::User);
     }
 
     #[test]
@@ -364,6 +375,7 @@ mod tests {
             server.oauth_provider_id.as_deref(),
             Some(PARALLEL_PROVIDER_ID)
         );
+        assert_eq!(server.acts_as, McpServerActsAs::User);
     }
 
     #[test]
