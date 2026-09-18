@@ -8,7 +8,7 @@
 pub(crate) mod support;
 
 mod artifacts;
-mod commands;
+pub(crate) mod commands;
 mod connections;
 mod credentials;
 mod durable;
@@ -17,9 +17,6 @@ mod files;
 mod leases;
 mod messages;
 mod notifications;
-mod platform_agents;
-mod platform_harnesses;
-mod platform_meta;
 mod platform_sessions;
 mod policy;
 mod resilience;

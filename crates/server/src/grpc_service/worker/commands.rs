@@ -208,3 +208,43 @@ impl WorkerServiceImpl {
         }))
     }
 }
+
+/// Helpers for driving registered commands over this module's RPC from tests in
+/// the rest of `grpc_service`. It lives beside the handler it exercises so the
+/// shared gRPC test file does not accumulate transport plumbing.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::grpc_service::*;
+    use tonic::Request;
+
+    /// Run one registered command over the gRPC command transport and return its
+    /// JSON result, failing the test on a domain error rather than swallowing it.
+    pub(crate) async fn execute_test_command(
+        service: &WorkerServiceImpl,
+        name: &str,
+        params: serde_json::Value,
+    ) -> serde_json::Value {
+        let response = service
+            .execute_command(Request::new(ExecuteCommandRequest {
+                name: name.to_string(),
+                api_version: "v1".to_string(),
+                params_json: serde_json::to_vec(&params).expect("serialize params"),
+                org_id: everruns_core::DEFAULT_ORG_ID,
+                user_id: None,
+                idempotency_key: None,
+                metadata: std::collections::HashMap::new(),
+            }))
+            .await
+            .unwrap_or_else(|status| panic!("{name} transport failure: {status:?}"))
+            .into_inner();
+
+        match response.result.expect("command result") {
+            proto::execute_command_response::Result::OkJson(ok) => {
+                serde_json::from_slice(&ok).expect("command output is json")
+            }
+            proto::execute_command_response::Result::Error(error) => {
+                panic!("{name} failed: {error:?}")
+            }
+        }
+    }
+}

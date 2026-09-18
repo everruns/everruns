@@ -157,42 +157,7 @@ use everruns_internal_protocol::proto::{
     McpToolDef,
     OptionalSessionTaskResponse,
     OrphanedSessionTaskEntry, // orphan-scan entry for ListOrphanedSessionTasks
-    PlatformCapabilityInfo,
     PlatformCommandSurfaceOperation,
-    PlatformCopyHarnessRequest,
-    PlatformCopyHarnessResponse,
-    PlatformCreateAgentRequest,
-    PlatformCreateAgentResponse,
-    PlatformCreateHarnessRequest,
-    PlatformCreateHarnessResponse,
-    PlatformCreateSessionRequest,
-    PlatformCreateSessionResponse,
-    PlatformDeleteAgentRequest,
-    PlatformDeleteAgentResponse,
-    PlatformDeleteHarnessRequest,
-    PlatformDeleteHarnessResponse,
-    PlatformDeleteSessionRequest,
-    PlatformDeleteSessionResponse,
-    PlatformGetBaseUrlRequest,
-    PlatformGetBaseUrlResponse,
-    PlatformGetMessagesRequest,
-    PlatformGetMessagesResponse,
-    PlatformListAgentsRequest,
-    PlatformListAgentsResponse,
-    PlatformListCapabilitiesRequest,
-    PlatformListCapabilitiesResponse,
-    PlatformListHarnessesRequest,
-    PlatformListHarnessesResponse,
-    PlatformListSessionsRequest,
-    PlatformListSessionsResponse,
-    PlatformSendMessageRequest,
-    PlatformSendMessageResponse,
-    PlatformUpdateAgentRequest,
-    PlatformUpdateAgentResponse,
-    PlatformUpdateHarnessRequest,
-    PlatformUpdateHarnessResponse,
-    PlatformWaitForIdleRequest,
-    PlatformWaitForIdleResponse,
     // Platform management types
     PruneTerminalSessionTasksRequest,
     PruneTerminalSessionTasksResponse,
@@ -284,7 +249,7 @@ use everruns_internal_protocol::proto::{
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer,
     datetime_to_proto_timestamp as ip_datetime_to_proto_timestamp, proto_event_request_to_schema,
-    schema_agent_to_proto, schema_event_to_proto, schema_harness_to_proto, schema_session_to_proto,
+    schema_agent_to_proto, schema_event_to_proto, schema_harness_to_proto,
 };
 use std::pin::Pin;
 use std::sync::Arc;
@@ -779,11 +744,6 @@ impl WorkerServiceImpl {
         Ok(self
             .domain_ctx_for_caller(caller)
             .with_feature_flags(feature_flags))
-    }
-
-    async fn org_domain_ctx(&self, org_id: i64) -> Result<crate::domains::common::Ctx, Status> {
-        self.org_domain_ctx_for_caller(everruns_core::Caller::internal(org_id))
-            .await
     }
 
     /// Get durable store or return unavailable error

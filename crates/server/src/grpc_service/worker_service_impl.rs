@@ -704,98 +704,10 @@ impl WorkerService for WorkerServiceImpl {
     }
 
     // Platform harness management.
-    async fn platform_list_harnesses(
-        &self,
-        request: Request<PlatformListHarnessesRequest>,
-    ) -> Result<Response<PlatformListHarnessesResponse>, Status> {
-        self.handle_platform_list_harnesses(request).await
-    }
-
-    async fn platform_create_harness(
-        &self,
-        request: Request<PlatformCreateHarnessRequest>,
-    ) -> Result<Response<PlatformCreateHarnessResponse>, Status> {
-        self.handle_platform_create_harness(request).await
-    }
-
-    async fn platform_update_harness(
-        &self,
-        request: Request<PlatformUpdateHarnessRequest>,
-    ) -> Result<Response<PlatformUpdateHarnessResponse>, Status> {
-        self.handle_platform_update_harness(request).await
-    }
-
-    async fn platform_delete_harness(
-        &self,
-        request: Request<PlatformDeleteHarnessRequest>,
-    ) -> Result<Response<PlatformDeleteHarnessResponse>, Status> {
-        self.handle_platform_delete_harness(request).await
-    }
-
-    async fn platform_copy_harness(
-        &self,
-        request: Request<PlatformCopyHarnessRequest>,
-    ) -> Result<Response<PlatformCopyHarnessResponse>, Status> {
-        self.handle_platform_copy_harness(request).await
-    }
 
     // Platform agent management.
-    async fn platform_list_agents(
-        &self,
-        request: Request<PlatformListAgentsRequest>,
-    ) -> Result<Response<PlatformListAgentsResponse>, Status> {
-        self.handle_platform_list_agents(request).await
-    }
-
-    async fn platform_create_agent(
-        &self,
-        request: Request<PlatformCreateAgentRequest>,
-    ) -> Result<Response<PlatformCreateAgentResponse>, Status> {
-        self.handle_platform_create_agent(request).await
-    }
-
-    async fn platform_update_agent(
-        &self,
-        request: Request<PlatformUpdateAgentRequest>,
-    ) -> Result<Response<PlatformUpdateAgentResponse>, Status> {
-        self.handle_platform_update_agent(request).await
-    }
-
-    async fn platform_delete_agent(
-        &self,
-        request: Request<PlatformDeleteAgentRequest>,
-    ) -> Result<Response<PlatformDeleteAgentResponse>, Status> {
-        self.handle_platform_delete_agent(request).await
-    }
 
     // Platform session management and messaging.
-    async fn platform_list_sessions(
-        &self,
-        request: Request<PlatformListSessionsRequest>,
-    ) -> Result<Response<PlatformListSessionsResponse>, Status> {
-        self.handle_platform_list_sessions(request).await
-    }
-
-    async fn platform_create_session(
-        &self,
-        request: Request<PlatformCreateSessionRequest>,
-    ) -> Result<Response<PlatformCreateSessionResponse>, Status> {
-        self.handle_platform_create_session(request).await
-    }
-
-    async fn platform_delete_session(
-        &self,
-        request: Request<PlatformDeleteSessionRequest>,
-    ) -> Result<Response<PlatformDeleteSessionResponse>, Status> {
-        self.handle_platform_delete_session(request).await
-    }
-
-    async fn platform_send_message(
-        &self,
-        request: Request<PlatformSendMessageRequest>,
-    ) -> Result<Response<PlatformSendMessageResponse>, Status> {
-        self.handle_platform_send_message(request).await
-    }
 
     async fn invoke_scheduled_app_channel(
         &self,
@@ -811,34 +723,7 @@ impl WorkerService for WorkerServiceImpl {
         self.handle_invoke_agent_trigger(request).await
     }
 
-    async fn platform_get_messages(
-        &self,
-        request: Request<PlatformGetMessagesRequest>,
-    ) -> Result<Response<PlatformGetMessagesResponse>, Status> {
-        self.handle_platform_get_messages(request).await
-    }
-
-    async fn platform_wait_for_idle(
-        &self,
-        request: Request<PlatformWaitForIdleRequest>,
-    ) -> Result<Response<PlatformWaitForIdleResponse>, Status> {
-        self.handle_platform_wait_for_idle(request).await
-    }
-
     // Platform capability and base-URL lookup.
-    async fn platform_list_capabilities(
-        &self,
-        request: Request<PlatformListCapabilitiesRequest>,
-    ) -> Result<Response<PlatformListCapabilitiesResponse>, Status> {
-        self.handle_platform_list_capabilities(request).await
-    }
-
-    async fn platform_get_base_url(
-        &self,
-        _request: Request<PlatformGetBaseUrlRequest>,
-    ) -> Result<Response<PlatformGetBaseUrlResponse>, Status> {
-        self.handle_platform_get_base_url(_request).await
-    }
 
     // Budgets, rate limits, payments, and session authorization.
     async fn check_budgets_for_session(
