@@ -28,15 +28,19 @@ pub fn contract_for(
     route: &CliRoute,
     schema: &Value,
 ) -> ContractCommand {
-    contract_with(
+    // `contract_with` returns `None` only when no spelling could be derived,
+    // which a declared route rules out by construction.
+    match contract_with(
         wire_name,
         description,
         method,
         http_path,
         Some(route),
         schema,
-    )
-    .expect("a declared route always yields a spelling")
+    ) {
+        Some(contract) => contract,
+        None => panic!("a declared route always yields a spelling, but {wire_name} produced none"),
+    }
 }
 
 /// Build a contract from a declared route, or from what the command already

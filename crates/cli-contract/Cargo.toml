@@ -17,3 +17,6 @@ readme = "README.md"
 clap = { workspace = true, features = ["string", "color"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+
+[lints]
+workspace = true

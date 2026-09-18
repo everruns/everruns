@@ -42,6 +42,8 @@
 //! assert!(command.after_help().contains("List the ten most recent agents:"));
 //! ```
 
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+
 use clap::builder::{BoolishValueParser, PossibleValuesParser};
 use clap::{Arg, ArgAction, ColorChoice, Command};
 use serde::{Deserialize, Serialize};
@@ -358,8 +360,17 @@ fn json_or_text(text: &str) -> serde_json::Value {
 pub fn commands() -> &'static [ContractCommand] {
     static COMMANDS: std::sync::OnceLock<Vec<ContractCommand>> = std::sync::OnceLock::new();
     COMMANDS.get_or_init(|| {
-        serde_json::from_str(include_str!("../commands.json"))
-            .expect("commands.json is generated and checked in; a parse failure means it is stale")
+        // The artifact is compiled in, so a parse failure is a broken build
+        // rather than a runtime condition: there is no catalog to fall back to
+        // and an empty one would silently serve a CLI with no commands. The
+        // parse error travels with the message, because "it is stale" alone
+        // does not say which field moved.
+        match serde_json::from_str(include_str!("../commands.json")) {
+            Ok(commands) => commands,
+            Err(error) => panic!(
+                "commands.json is generated and checked in; a parse failure means it is stale: {error}"
+            ),
+        }
     })
 }
 
