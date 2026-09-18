@@ -121,6 +121,13 @@ guardrail engine.
   The platform still pins its own: the knob is absent from the guardrail config
   an agent author writes, rather than absent from the type
   (THREAT[TM-LLM-037]).
+- Ids pass through verbatim; nothing here rewrites them, matching the catalog
+  contract that ids are the provider's own
+  ([`crates/everruns/src/models.rs`](../../crates/everruns/src/models.rs)). The
+  vendor accepts `jev-latest` and exact versions, and rejects bare `jev` with
+  `Unknown model`. Mapping `jev` to `jev-latest` here would invent an id the
+  vendor does not know, so a value copied out of our docs into the vendor's own
+  API would fail, and an answer would report a version for an id never sent.
 - Two credentials, two audiences: `SystemClassifierConfig::from_env` reads the
   platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafe::from_env`
   reads an embedding application's own `TYPESAFE_API_KEY` — the latter is what

@@ -182,16 +182,21 @@ where a provider is pure transport and serves many models with no default.
 ```rust
 # use everruns::Classifier;
 # fn run(classifier: Classifier) {
-// Pin a version rather than tracking the vendor's default.
-let pinned = classifier.model("jev-1.13.0");
-# let _ = pinned;
+let classifier = classifier.model("jev-latest");
+# let _ = classifier;
 # }
 ```
 
-A single call can override it again with the same method on the builder. A
-deployment that must pin a model does so by never exposing the knob in the
-config an agent writes — not by the type being unable to carry one, because
-there will be other classifiers and other models.
+Ids are the provider's own, so they are spelled the way the vendor spells them.
+`jev-latest` is TypeSafe's alias for the current Jev and is what `TypeSafe` asks
+for when you name nothing; an exact id like `jev-1.13.0` pins a version so a
+vendor update cannot move your thresholds under you. Bare `jev` is not an id the
+API knows — nothing here rewrites what you pass.
+
+A single call can override the model again with the same method on the builder.
+A deployment that must pin one does so by never exposing the knob in the config
+an agent writes — not by the type being unable to carry one, because there will
+be other classifiers and other models.
 
 A deployment running the Everruns platform configures a separate
 `UTILITY_TYPESAFE_API_KEY` for its [guardrails](/capabilities/guardrails/) — a

@@ -146,7 +146,7 @@ impl Classifier {
     ///
     /// ```
     /// # use everruns::Classifier;
-    /// let classifier = Classifier::simulated(0.5).model("jev-1.13.0");
+    /// let classifier = Classifier::simulated(0.5).model("jev-latest");
     /// # let _ = classifier;
     /// ```
     pub fn model(mut self, model: impl Into<String>) -> Self {
