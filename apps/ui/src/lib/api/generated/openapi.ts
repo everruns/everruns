@@ -227,8 +227,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description List ingress endpoints owned by an Agent. */
     get: operations["list_agent_endpoints"];
     put?: never;
+    /** @description Create an ingress endpoint owned by an Agent. */
     post: operations["create_agent_endpoint"];
     delete?: never;
     options?: never;
@@ -243,12 +245,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Get one ingress endpoint owned by an Agent. */
     get: operations["get_agent_endpoint"];
     put?: never;
     post?: never;
+    /** @description Delete an ingress endpoint owned by an Agent. */
     delete: operations["delete_agent_endpoint"];
     options?: never;
     head?: never;
+    /** @description Update an ingress endpoint owned by an Agent. */
     patch: operations["update_agent_endpoint"];
     trace?: never;
   };
@@ -261,6 +266,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** @description Publish an Agent endpoint so it can accept ingress traffic. */
     post: operations["publish_agent_endpoint"];
     delete?: never;
     options?: never;
@@ -277,6 +283,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** @description Run a published Agent schedule endpoint now. */
     post: operations["trigger_agent_endpoint"];
     delete?: never;
     options?: never;
@@ -293,6 +300,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** @description Unpublish an Agent endpoint so it no longer accepts ingress traffic. */
     post: operations["unpublish_agent_endpoint"];
     delete?: never;
     options?: never;
@@ -635,7 +643,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @deprecated */
+    /**
+     * @deprecated
+     * @description List archival App records. This endpoint is read-only and deprecated.
+     */
     get: operations["list_apps"];
     put?: never;
     post?: never;
@@ -652,7 +663,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @deprecated */
+    /**
+     * @deprecated
+     * @description Get an archival App record. This endpoint is read-only and deprecated.
+     */
     get: operations["get_app"];
     put?: never;
     post?: never;
@@ -6302,9 +6316,13 @@ export interface components {
        */
       tool_name: string;
     };
+    /** @description Request to create an ingress endpoint owned by an Agent. */
     CreateAgentEndpointRequest: {
+      /** @description Transport-specific endpoint configuration. */
       channel_config?: unknown;
+      /** @description Transport used by the endpoint. */
       channel_type: components["schemas"]["ChannelType"];
+      /** @description Whether the endpoint can accept ingress traffic. */
       enabled?: boolean;
     };
     /** @description Request to create a new agent */
@@ -16996,8 +17014,11 @@ export interface components {
       /** @description The tool name, if known. */
       tool_name?: string | null;
     };
+    /** @description Result of running an Agent schedule endpoint immediately. */
     TriggerAgentEndpointOutput: {
+      /** @description Whether the invocation created a new session. */
       created_session: boolean;
+      /** @description Session started or reused by the invocation. */
       session_id: components["schemas"]["sessionId"];
     };
     TriggerAgentTriggerOutput: {
@@ -17167,8 +17188,11 @@ export interface components {
      * @enum {string}
      */
     TurnWaitStatus: "completed" | "failed" | "timeout";
+    /** @description Request to update an ingress endpoint owned by an Agent. */
     UpdateAgentEndpointRequest: {
+      /** @description Replacement transport-specific endpoint configuration. */
       channel_config?: unknown;
+      /** @description Whether the endpoint can accept ingress traffic. */
       enabled?: boolean | null;
     };
     /** @description Request to update an agent. Only provided fields will be updated. */
