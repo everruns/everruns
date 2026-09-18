@@ -7,6 +7,7 @@ pub mod durable_runner;
 pub mod grpc_adapters;
 pub mod grpc_durable_store;
 pub mod grpc_slack_actions;
+pub mod grpc_sqldb_adapter;
 pub mod grpc_worker_adapters;
 pub mod leased_resource_cleanup;
 pub mod mcp_elicitation_consent;
@@ -19,6 +20,8 @@ pub mod session_task_reaper;
 mod stream_heartbeater;
 pub mod task_error;
 pub mod unified_worker;
+#[cfg(test)]
+mod unified_worker_test_adapters;
 pub mod worker_adapters;
 
 // Re-export main types

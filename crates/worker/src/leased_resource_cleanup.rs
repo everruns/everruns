@@ -76,7 +76,7 @@ pub async fn execute_cleanup_activity<A: WorkerAdapters>(
         .await?;
 
     let resolver = adapters.connection_resolver();
-    let storage_store = adapters.storage_store();
+    let storage_store = adapters.storage_store_unscoped();
 
     let mut summary = CleanupSummary {
         claimed: resources.len(),

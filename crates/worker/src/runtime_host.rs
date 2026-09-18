@@ -336,8 +336,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn storage_store(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn everruns_core::session_services::SessionStorageStore>> {
-        Some(self.adapters.storage_store())
+        Some(self.adapters.storage_store(org_id))
     }
 
     fn connection_resolver(
@@ -364,7 +365,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         if let Some(search) = self.adapters.knowledge_index_search(org_id) {
             extensions.insert(Arc::new(KnowledgeIndexSearchExt(search)));
         }
-        extensions.insert(Arc::new(SessionSqlDbStoreExt(self.adapters.sqldb_store())));
+        extensions.insert(Arc::new(SessionSqlDbStoreExt(
+            self.adapters.sqldb_store(org_id),
+        )));
         // EVE-1024. Installed per session because the invoker is bound to this
         // org and session; a deployment without a control-plane route provides
         // none and the Slack capability's tools fail closed.
@@ -493,7 +496,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             Arc::new(NoAuthProvider),
             Arc::new(everruns_mcp::ConsentingUrlElicitations::new(Arc::new(
                 crate::mcp_elicitation_consent::SessionElicitationConsents::new(
-                    self.adapters.storage_store(),
+                    self.adapters.storage_store(org_id),
                     session_id,
                 ),
             ))),
@@ -994,11 +997,21 @@ mod mcp_credential_tests {
         }
         fn sqldb_store(
             &self,
+            _org_id: i64,
         ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
             unimplemented!()
         }
-        fn storage_store(&self) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+        fn storage_store(
+            &self,
+            _org_id: i64,
+        ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
             unimplemented!()
+        }
+
+        fn storage_store_unscoped(
+            &self,
+        ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+            self.storage_store(everruns_core::DEFAULT_ORG_ID)
         }
         fn image_artifact_store(
             &self,

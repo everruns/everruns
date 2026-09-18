@@ -1929,7 +1929,8 @@ impl RuntimeHostAdapter for InProcessRuntime {
         self.file_store.clone()
     }
 
-    fn storage_store(&self) -> Option<Arc<dyn SessionStorageStore>> {
+    fn storage_store(&self, _org_id: i64) -> Option<Arc<dyn SessionStorageStore>> {
+        // In-process runtime: the store is already bound to this runtime's org.
         Some(self.storage_store.clone())
     }
 

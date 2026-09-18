@@ -6,6 +6,7 @@
 // Decision: Remaining top-level services are cross-cutting infra helpers only
 // Decision: Split into submodules for maintainability (EVE-101).
 
+mod worker;
 mod worker_service_impl;
 
 #[cfg(test)]
@@ -158,42 +159,7 @@ use everruns_internal_protocol::proto::{
     McpToolDef,
     OptionalSessionTaskResponse,
     OrphanedSessionTaskEntry, // orphan-scan entry for ListOrphanedSessionTasks
-    PlatformCapabilityInfo,
     PlatformCommandSurfaceOperation,
-    PlatformCopyHarnessRequest,
-    PlatformCopyHarnessResponse,
-    PlatformCreateAgentRequest,
-    PlatformCreateAgentResponse,
-    PlatformCreateHarnessRequest,
-    PlatformCreateHarnessResponse,
-    PlatformCreateSessionRequest,
-    PlatformCreateSessionResponse,
-    PlatformDeleteAgentRequest,
-    PlatformDeleteAgentResponse,
-    PlatformDeleteHarnessRequest,
-    PlatformDeleteHarnessResponse,
-    PlatformDeleteSessionRequest,
-    PlatformDeleteSessionResponse,
-    PlatformGetBaseUrlRequest,
-    PlatformGetBaseUrlResponse,
-    PlatformGetMessagesRequest,
-    PlatformGetMessagesResponse,
-    PlatformListAgentsRequest,
-    PlatformListAgentsResponse,
-    PlatformListCapabilitiesRequest,
-    PlatformListCapabilitiesResponse,
-    PlatformListHarnessesRequest,
-    PlatformListHarnessesResponse,
-    PlatformListSessionsRequest,
-    PlatformListSessionsResponse,
-    PlatformSendMessageRequest,
-    PlatformSendMessageResponse,
-    PlatformUpdateAgentRequest,
-    PlatformUpdateAgentResponse,
-    PlatformUpdateHarnessRequest,
-    PlatformUpdateHarnessResponse,
-    PlatformWaitForIdleRequest,
-    PlatformWaitForIdleResponse,
     // Platform management types
     PruneTerminalSessionTasksRequest,
     PruneTerminalSessionTasksResponse,
@@ -229,20 +195,10 @@ use everruns_internal_protocol::proto::{
     SessionListDirectoryResponse,
     SessionReadFileRequest,
     SessionReadFileResponse,
-    SessionSqlDbCreateDatabaseRequest,
-    SessionSqlDbCreateDatabaseResponse,
-    SessionSqlDbDeleteDatabaseRequest,
-    SessionSqlDbDeleteDatabaseResponse,
     SessionSqlDbExecuteRequest,
     SessionSqlDbExecuteResponse,
-    SessionSqlDbGetDatabaseRequest,
-    SessionSqlDbGetDatabaseResponse,
-    SessionSqlDbListDatabasesRequest,
-    SessionSqlDbListDatabasesResponse,
     SessionSqlDbQueryRequest,
     SessionSqlDbQueryResponse,
-    SessionSqlDbSchemaRequest,
-    SessionSqlDbSchemaResponse,
     SessionStatFileRequest,
     SessionStatFileResponse,
     SessionStorageDeleteSecretRequest,
@@ -285,7 +241,7 @@ use everruns_internal_protocol::proto::{
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer,
     datetime_to_proto_timestamp as ip_datetime_to_proto_timestamp, proto_event_request_to_schema,
-    schema_agent_to_proto, schema_event_to_proto, schema_harness_to_proto, schema_session_to_proto,
+    schema_agent_to_proto, schema_event_to_proto, schema_harness_to_proto,
 };
 use std::pin::Pin;
 use std::sync::Arc;
@@ -745,6 +701,13 @@ impl WorkerServiceImpl {
         // gRPC worker dispatch, not just the in-process direct path.
         .with_event_service(Arc::new(self.event_service.clone()));
 
+        // The session-database commands are the worker's only path to sqldb since
+        // the bespoke RPCs went away, so a Ctx without this store fails every one
+        // of them with "not configured".
+        if let Some(store) = &self.sqldb_store {
+            ctx = ctx.with_sqldb_store(store.clone());
+        }
+
         if let Some(runner) = &self.runner {
             let message_service = Arc::new(crate::domains::messages::MessageService::new(
                 self.db.clone(),
@@ -780,11 +743,6 @@ impl WorkerServiceImpl {
         Ok(self
             .domain_ctx_for_caller(caller)
             .with_feature_flags(feature_flags))
-    }
-
-    async fn org_domain_ctx(&self, org_id: i64) -> Result<crate::domains::common::Ctx, Status> {
-        self.org_domain_ctx_for_caller(everruns_core::Caller::internal(org_id))
-            .await
     }
 
     /// Get durable store or return unavailable error
@@ -1149,20 +1107,6 @@ fn sqldb_error_to_status(e: everruns_platform::session_sqldb::SessionSqlDbError)
             tracing::error!("Internal sqldb error: {}", e);
             Status::internal("Internal SQL database error")
         }
-    }
-}
-
-/// Convert a DatabaseInfo to its proto representation.
-fn db_info_to_proto(
-    db: everruns_platform::session_sqldb::DatabaseInfo,
-) -> proto::SessionSqlDbDatabaseInfo {
-    use everruns_internal_protocol::datetime_to_proto_timestamp;
-    proto::SessionSqlDbDatabaseInfo {
-        name: db.name,
-        size_bytes: db.size_bytes,
-        page_count: db.page_count,
-        created_at: Some(datetime_to_proto_timestamp(db.created_at)),
-        updated_at: Some(datetime_to_proto_timestamp(db.updated_at)),
     }
 }
 

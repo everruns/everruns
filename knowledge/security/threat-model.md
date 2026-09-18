@@ -292,6 +292,8 @@ This is accepted by assumption rather than fixed by per-org token scoping (a lar
 
 If the worker boundary is ever exposed to untrusted networks, or the shared token leaks, an attacker gains full cross-org Owner authority. Future hardening would scope worker tokens per org.
 
+Session-scoped worker surfaces that route through `ExecuteCommand` rather than a bespoke RPC gain one layer inside this boundary: the command verifies that the session belongs to the `org_id` the caller claims (`q::verify_session_ownership`), where the bespoke RPCs took `session_id` from the request and addressed the store directly. This does not constrain a token holder, who can claim the victim's `org_id` and satisfy the check; it catches the confused-deputy case where a worker addresses a session from one org while acting for another. The session-database RPCs moved onto the command surface for this reason among others; the remaining bespoke session RPCs still address their stores by `session_id` alone.
+
 **TM-AUTHZ-004, Command Runner as Single Enforcement Point:**
 `Command::run` (`crates/server/src/domains/common.rs`) evaluates `Command::policy()` against the active `PermissionResolver` before dispatching to `execute`. HTTP adapters call `run`; MCP and gRPC `ExecuteCommand` route through `dispatch()` which calls `run`. Coverage is enforced by iterating `inventory::iter::<CommandDescriptor>` in a test, so new mutating commands that forget `policy()` fail the build. The legacy `#[policy]` attribute macro was removed, service-layer checks were redundant with `Command::run` and hardcoded `DefaultPermissionResolver`, re-introducing `TM-AUTHZ-008`.
 
