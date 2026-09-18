@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! The published integration executes through the ordinary Framework facade.
 
 use everruns::IntoCapability;

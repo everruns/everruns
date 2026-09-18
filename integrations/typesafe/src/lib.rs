@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! [TypeSafe](https://typesafe.ai) typed classification for Everruns agents.
 //!
 //! One crate covers the whole surface: the vendor [`client`], the agent-facing

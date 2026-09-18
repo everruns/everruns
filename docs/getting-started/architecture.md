@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: Explore the Everruns system architecture, including the control plane, worker nodes, durable execution engine, and real-time SSE event streaming design.
+description: "The Everruns system architecture: control plane, worker nodes, durable execution engine, and SSE event streaming."
 ---
 
 Everruns is a **headless durable agentic harness engine** built for reliability and scale. It provides a REST API for managing agents, sessions, and runs with real-time event streaming via SSE.

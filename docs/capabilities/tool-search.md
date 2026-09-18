@@ -1,6 +1,6 @@
 ---
 title: Tool Search
-description: Provider-agnostic deferred tool loading for agents with many tools. Hides tool parameter schemas until the model loads them on demand, reducing prompt token usage on any model.
+description: Provider-agnostic deferred tool loading. Tool parameter schemas stay hidden until the model loads them on demand.
 sidebar:
   order: 92
 ---

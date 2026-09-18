@@ -1,6 +1,6 @@
 ---
 title: Events
-description: Real-time SSE streaming for full session observability. Event categories, structure, and the wire protocol.
+description: "SSE streaming of session events: categories, structure, and the wire protocol."
 ---
 
 Every action during a session, user input, LLM responses, tool calls, lifecycle transitions, emits an **event**. The event log is the source of truth for session state; the SSE stream is a live tail of that log.

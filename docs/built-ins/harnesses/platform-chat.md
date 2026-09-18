@@ -1,6 +1,6 @@
 ---
 title: Platform Chat Harness
-description: Focused catalog-backed platform tools for the global chat interface.
+description: Catalog-backed platform tools for the global chat interface.
 ---
 
 The **Platform Chat** harness is a focused operator environment built on the

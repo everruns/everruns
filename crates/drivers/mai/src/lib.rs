@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Microsoft MAI provider driver for Everruns.
 //!
 //! `everruns-mai` is part of the [Everruns](https://everruns.com) ecosystem. It

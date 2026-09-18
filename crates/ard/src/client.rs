@@ -275,16 +275,17 @@ pub struct ArdRegistryClient {
 }
 
 impl ArdRegistryClient {
-    pub fn new(base_url: impl Into<String>, auth_token: Option<String>) -> Self {
-        Self {
+    pub fn new(base_url: impl Into<String>, auth_token: Option<String>) -> Result<Self, String> {
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| format!("build ARD registry HTTP client: {e}"))?;
+        Ok(Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             auth_token,
-            http: reqwest::Client::builder()
-                .no_proxy()
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .expect("build ARD registry HTTP client"),
-        }
+            http,
+        })
     }
 
     fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {

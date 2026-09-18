@@ -38,3 +38,6 @@ ui-capabilities = []
 [dev-dependencies]
 anyhow.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
+
+[lints]
+workspace = true

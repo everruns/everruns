@@ -1,8 +1,6 @@
 ---
-title: Bashkit Bash Sandbox for Agents
-description: Use Bashkit to run agent shell commands inside a virtual Bash interpreter with sandboxed filesystems, resource limits, network controls, and async execution.
-sidebar:
-  label: Bashkit
+title: Bashkit
+description: Run agent shell commands inside a virtual Bash interpreter with sandboxed filesystems, resource limits, network controls, and async execution.
 ---
 
 [Bashkit](https://github.com/everruns/bashkit) is a virtual Bash interpreter written in Rust. It provides sandboxed, in-process execution with no real filesystem access by default, purpose-built for running untrusted bash scripts in multi-tenant agent environments.

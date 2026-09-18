@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // Wire-level tests for the Microsoft MAI driver.
 //
 // These exercise the full path: `MaiChatDriver` builds an OpenAI-compatible

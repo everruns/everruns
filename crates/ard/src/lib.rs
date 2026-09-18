@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Agentic Resource Discovery (ARD) — client integration.
 //!
 //! Adds a `resource_discovery` capability that lets a running agent discover

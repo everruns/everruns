@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 pub const PROGRESS_GUARD_CAPABILITY_ID: &str = "progress_guard";
 
@@ -478,7 +478,7 @@ impl PostToolExecHook for ProgressGuardHook {
         context: &ToolContext,
     ) {
         let warning = {
-            let mut state = self.state.lock().expect("progress guard state poisoned");
+            let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
             let progress = state
                 .sessions
                 .entry(context.session_id.to_string())

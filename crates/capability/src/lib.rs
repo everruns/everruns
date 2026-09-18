@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! The neutral Everruns capability contract (EVE-873).
 //!
 //! One open identity/configuration contract shared by the `everruns`

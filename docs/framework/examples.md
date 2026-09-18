@@ -1,6 +1,6 @@
 ---
 title: Runnable Examples
-description: Explore complete Framework programs maintained and compiled with the everruns crate.
+description: Complete Framework programs, maintained and compiled with the everruns crate.
 ---
 
 The [`crates/everruns/examples` catalog](https://github.com/everruns/everruns/tree/main/crates/everruns/examples)

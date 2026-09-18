@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 // Everruns CLI
 //
 // Design Decision: Use clap derive for ergonomic argument parsing.

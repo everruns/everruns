@@ -1,6 +1,6 @@
 ---
 title: Evals
-description: Define, run, and track behavioral tests for your agents. Each eval case runs a real session and is scored, so you can compare models, catch regressions, and gate App publishes on pass rates.
+description: Define, run, and track behavioral tests for agents. Each case runs a real session and is scored; App publishes can be gated on pass rates.
 sidebar:
   label: Evals
 ---

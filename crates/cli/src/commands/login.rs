@@ -164,20 +164,20 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
     // it back unchanged; otherwise we refuse to exchange the code.
     let expected_state = start.state.clone();
 
-    let server = tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port))
-            .await
-            .expect("Failed to bind localhost port");
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port))
+        .await
+        .with_context(|| format!("Failed to bind localhost port {port}"))?;
 
-        // Accept one connection
-        let (mut stream, _) = listener
-            .accept()
-            .await
-            .expect("Failed to accept connection");
+    let server = tokio::spawn(async move {
+        // Accept one connection. A failure here leaves the caller waiting on
+        // the timeout below, which reports it as a login that never completed.
+        let Ok((mut stream, _)) = listener.accept().await else {
+            return;
+        };
         let mut buf = vec![0u8; 4096];
-        let n = tokio::io::AsyncReadExt::read(&mut stream, &mut buf)
-            .await
-            .expect("Failed to read request");
+        let Ok(n) = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await else {
+            return;
+        };
         let request = String::from_utf8_lossy(&buf[..n]);
 
         // Parse `code` and `state` from the GET request line, then enforce that

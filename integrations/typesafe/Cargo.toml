@@ -52,3 +52,6 @@ live-tests = []
 everruns = { path = "../../crates/everruns" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
+
+[lints]
+workspace = true

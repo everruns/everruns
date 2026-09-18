@@ -178,7 +178,10 @@ impl Tool for DiscoverResourcesTool {
         }
 
         let token = resolve_token(context).await;
-        let client = ArdRegistryClient::new(registry.url.clone(), token);
+        let client = match ArdRegistryClient::new(registry.url.clone(), token) {
+            Ok(client) => client,
+            Err(e) => return ToolExecutionResult::tool_error(e),
+        };
         let request = SearchRequest {
             query: SearchQuery {
                 text,
@@ -491,7 +494,8 @@ impl AttachResourceTool {
             .ok_or_else(|| ToolExecutionResult::tool_error("entry has no url or data"))?;
         let addrs = self.validate_url(context, url).await?;
         let token = resolve_token(context).await;
-        let client = ArdRegistryClient::new(entry.source.clone().unwrap_or_default(), token);
+        let client = ArdRegistryClient::new(entry.source.clone().unwrap_or_default(), token)
+            .map_err(ToolExecutionResult::tool_error)?;
         if self.config.allow_local_urls && context.egress_service.is_none() {
             return client
                 .fetch_artifact(url, &addrs)
