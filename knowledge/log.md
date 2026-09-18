@@ -1,5 +1,49 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-18
+
+* **Platform Chat v2 measured against v1, and the shell surface holds: 48/63 to
+  43/63 on 4.47 tool calls against 5.02.** Three trials per case against
+  `meta/muse-spark-1.3-contributor`, same dataset, same in-process control
+  plane, same model, differing only in the harness the offline eval subject
+  reproduces. Only one case moved for a reason rather than by noise:
+  `cli-tree-help-instead-of-guessing` went 0/3 to 3/3, because on v1 the model
+  has `discover` and reaches for it, while on v2 `--help` is the only route and
+  the prompt says so. Two percentage points over three trials is not a win, so
+  the reading is "at least as good, on fewer calls", and the two shared failures
+  (`agents-find-by-purpose`, `plugin-agent-connection-preflight`) find the right
+  commands on both arms and then exceed their tool-call budget, which is the
+  model's problem and not the surface's. See
+  [Platform Chat v2](harnesses/platform-chat-v2.md).
+
+* **v2's prompt was instructing the model to use tools v2 had already given up.**
+  Moving `platform` to the shell surface stopped it contributing `discover`,
+  `query` and `execute`, but the harness prompt still said to pass loops to
+  `execute` and to verify with `query`. A prompt naming an absent tool is worse
+  than silence: the model spends a turn discovering the gap. The passages are
+  shell-native now, and a test holds that v2's prompt names no tool it does not
+  ship, which is the kind of drift only a test catches, since neither half is
+  wrong on its own.
+
+* **The eval now runs the model's shell script instead of splitting it by hand.**
+  The offline subject's v1 path approximated bash: statements were split on
+  newlines and `;`, so `for … do … done` never ran as a loop, and pipelines were
+  truncated at the first `|`. The v2 arm hands the script to a real bashkit
+  interpreter with `everruns` as a builtin, so a failure there is the model's or
+  the contract's rather than the splitter's. `--help` is the shipped rendering
+  on both arms too: it travels as a generated artifact from the real `CliTree`,
+  descriptions included, because the hand-rolled version listed bare nouns and
+  in v2 `--help` is nearly the whole discovery story.
+
+* **One dataset grades two surfaces by reading a role, not a tool name.** The
+  cases name v1's `query` and `execute`; v2 has one `bash` for both. Rather than
+  fork the dataset, the scorers classify a `bash` call by what its script runs:
+  `execute` when it invokes an operation the catalog marks as a mutation,
+  `query` otherwise. Help probes are excluded, because `everruns agents create
+  --help` names a mutation and performs none, and a classifier that cannot tell
+  those apart fails a read-only case for the behaviour the CLI cases reward:
+  reading the help before guessing a flag.
+
 ## 2026-09-17
 
 * **Framework APIs gain stability tiers: LLM surface stable, classifier alpha.** Rust's `#[stable]` / `#[unstable]` are nightly-only, so `crates/everruns` marks stability with one-line rustdoc banners defined in the new `crates/everruns/src/stability.rs` helper, recorded in `knowledge/framework/api-stability.md`. First pass marks `llm` stable and `classifier` alpha; unmarked items stay provisional (treat as alpha).
@@ -236,6 +280,18 @@
 
 ## 2026-09-15
 
+* **Platform Chat v2 is behind an org-opt-in feature flag.** It is a different way
+  to do what the current surface already does, not a deployment capability an
+  operator runs, so `platform_chat_v2` is `experimental` and not
+  `platform_managed`: an org admin turns it on, and `for_org` keeps it off until
+  they do even where the deployment allows it. The gate reads on list and on
+  session creation rather than at provisioning, because built-ins are seeded by
+  name when an org is created and gating there would leave an org that enables
+  the flag later without the harness until something re-provisioned. Hiding is
+  not a control on its own — a harness id is stable and guessable — so selecting
+  a gated harness is rejected as well. See
+  [Platform Chat v2](harnesses/platform-chat-v2.md).
+
 * **Per-crate versioning was bumping more crates per release, not fewer, and the
   cause was additive change being classified as breaking.** At `0.x` the minor is
   the breaking slot, so adding an enum variant or a struct field to a base crate
@@ -258,6 +314,80 @@
   renders as a table, and that no turn ends in silence while a successful turn
   never double-posts a reply and a notice. See
   [Slack App test cases](test-cases/ui/slack_app/).
+* **The command line is one contract, shared by the CLI and the agent-facing
+  tree.** Deriving the agent-facing parser from each command's JSON Schema
+  produced a parallel contract, not the same one: `--system_prompt` where the
+  CLI ships `--system-prompt`, no short options where it ships `-f -H -t -a -s
+  -o`, a different positional shape. `everruns-cli-contract` now holds the
+  grammar as data and owns the one `clap::Command` builder both surfaces call; a
+  command declares the part a schema cannot know (short options, bare words,
+  worked examples) beside itself, and the rest comes from the schema. The
+  shipped CLI's spellings are pinned by a golden snapshot, so where the two
+  disagree the surface with users does not move. Turning on the guard that
+  parses every documented example found that most of them did not run. The CLI
+  mounts the contract commands it does not hand-write, dispatching them through
+  the method and path each already declares, so it grew from 44 to 82 commands
+  without a hand-written implementation for any of them and without a single
+  shipped spelling changing. See [Command tree](execution/command-tree.md).
+
+* **A leaf's flags are parsed by clap, compiled from the schema the command
+  already publishes.** The tree hand-parsed `--flag value` pairs, which kept an
+  unknown flag as a string property and passed it on, so `--limti 10` became a
+  silently dropped argument; required fields surfaced as deserialization errors
+  from the far side of a dispatch; and a positional had to be faked by rewriting
+  the command string before the interpreter saw it. `CliCommandSpec` now carries
+  the command's JSON Schema, a leaf compiles into a `clap::Command`, and the
+  parse and the `--help` are generated from that one declaration. `crates/cli`
+  cannot lend its definition: it is clap derive over the SDK with client-side
+  work of its own. What is shared is the parser and its conventions. Note that
+  `clap::Command` is a runtime builder over owned strings, which is why a tree
+  assembled from specs fetched at runtime is possible where `CliRoute`, being
+  `&'static`, is not. See [Command tree](execution/command-tree.md).
+
+* **`everruns` is a builtin of the agent's own shell, by forwarding rather than a
+  local tree.** The tree in `integrations/bashkit/src/cli.rs` resolves in-process,
+  and a hosted worker cannot do that: `CliRoute` is `&'static`, so a tree cannot
+  be rebuilt from specs fetched at runtime, and the commands live behind the
+  control plane. A tool that already accepts a script now declares a
+  `CliSpelling` and the shell installs a builtin that hands it the rendered
+  command line, keeping grammar, help, authorization, and error shaping where
+  they already are. The builtin is installed from the session's tool registry, so
+  it re-spells a surface the session already has rather than granting one: a
+  harness that withholds the capability withholds the command, with no capability
+  list to keep in sync. See [Platform Chat v2](harnesses/platform-chat-v2.md).
+
+* **Memory mounts are live, not snapshots.** `memory.md` always specified
+  write-through, but the implementation copied a Memory's files into
+  `session_files` at session creation, so every session was a private fork: a
+  note written in one was invisible to the next and died with the session. The
+  server-managed mounts (`/memory/agent`, `/memory/user`, and the new
+  `/memory/shared`) now resolve per access against `memory_files`. Resolution is
+  derived from the session row, so it survives a restart with no mount table and
+  a workspace without a session row of its own resolves to no mounts, which is
+  the privacy boundary for `/memory/user`. Capability-configured `mounts[]` still
+  snapshot. See [Memory](runtime-resources/memory.md).
+
+* **Proposed Platform Chat v2: one Bashkit shell instead of three bespoke tools.**
+  v1 runs bash without a filesystem, so its `discover`/`query`/`execute` split is a
+  toolset boundary rather than a permission one, and its rules live in ~4 KB of prompt
+  prose. v2 composes what already exists — `bashkit_shell` over the session filesystem,
+  the `everruns` command tree, the virtual `/docs` mount, and a Memory mounted
+  read-write at `/memory`. Two real gaps block it: no host inserts the
+  `CliCommandSourceHandle` that installs the CLI builtin, and Memory mounts are
+  snapshots copied into `session_files` at session creation rather than the
+  write-through the spec promises, so concurrent chat threads cannot share memory at
+  all. Proposed, not implemented. See [Platform Chat v2](harnesses/platform-chat-v2.md).
+
+* **Platform Chat memory is both shared and private, as sibling mounts.**
+  The two are not alternatives: the runtime already mounts `/memory/agent` beside
+  `/memory/user`, and the private path's boundary is already enforced end to end.
+  v2 reuses `/memory/user` verbatim and adds `/memory/shared`, one memory per
+  (org, surface), resolved by reserved name so no new scope or migration is
+  needed. They are siblings rather than overlays because the spec rejects
+  overlapping mounts; precedence is resolved in the disclosed index instead.
+  Writes default to private, and promotion to shared is an explicit user act,
+  because a shared note has been read by other people's threads and cannot be
+  taken back. See [Platform Chat v2](harnesses/platform-chat-v2.md).
 
 ## 2026-09-14
 

@@ -18,6 +18,7 @@ name = "everruns"
 path = "src/main.rs"
 
 [dependencies]
+everruns-cli-contract.workspace = true
 # CLI
 clap.workspace = true
 

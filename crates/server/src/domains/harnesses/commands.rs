@@ -348,6 +348,10 @@ impl Command for ListHarnesses {
             .list_harnesses(ctx.org_id(), self.search.as_deref(), self.include_archived)
             .await
             .map_err(classify_anyhow)?;
+        let rows = rows
+            .into_iter()
+            .filter(|row| feature_gated_harness_is_visible(&ctx.feature_flags, &row.name))
+            .collect();
         q::load_harnesses_list(&ctx.db, rows)
             .await
             .map_err(classify_anyhow)
@@ -355,6 +359,26 @@ impl Command for ListHarnesses {
 }
 
 inventory::submit! { CommandDescriptor::of::<ListHarnesses>() }
+
+/// Whether a built-in harness behind a feature flag is visible to this org.
+///
+/// Gated on read rather than on provisioning. Built-ins are seeded by name when
+/// an org is created, so gating there would mean an org that turns the flag on
+/// afterwards never receives the harness until something re-provisions it. A
+/// filter here makes the flag take effect the moment it is flipped, in both
+/// directions.
+///
+/// Nothing else changes for an org with the flag off: the harness row exists,
+/// it takes no role, and `platform-chat` stays the surface the UI opens.
+pub(crate) fn feature_gated_harness_is_visible(
+    flags: &everruns_platform::FeatureFlags,
+    name: &str,
+) -> bool {
+    match name {
+        crate::harnesses::platform_chat_v2::PLATFORM_CHAT_V2_HARNESS_NAME => flags.platform_chat_v2,
+        _ => true,
+    }
+}
 
 // ============================================================================
 // GetHarness
@@ -1278,5 +1302,78 @@ mod tests {
             .await
             .expect_err("second user harness exceeds the cap");
         assert_eq!(err.status().as_u16(), 409);
+    }
+}
+
+#[cfg(test)]
+mod feature_gate_tests {
+    use super::*;
+    use crate::harnesses::platform_chat_v2::PLATFORM_CHAT_V2_HARNESS_NAME;
+    use everruns_platform::FeatureFlags;
+
+    fn flags(v2: bool) -> FeatureFlags {
+        FeatureFlags {
+            platform_chat_v2: v2,
+            ..FeatureFlags::default()
+        }
+    }
+
+    #[test]
+    fn v2_is_hidden_until_the_org_enables_it() {
+        assert!(!feature_gated_harness_is_visible(
+            &flags(false),
+            PLATFORM_CHAT_V2_HARNESS_NAME
+        ));
+        assert!(feature_gated_harness_is_visible(
+            &flags(true),
+            PLATFORM_CHAT_V2_HARNESS_NAME
+        ));
+    }
+
+    /// The gate is a named allowlist, not a default-deny: every other harness
+    /// is unaffected whichever way the flag sits.
+    #[test]
+    fn no_other_harness_is_gated() {
+        for name in ["base", "generic", "platform-chat", "coding-session-sandbox"] {
+            assert!(
+                feature_gated_harness_is_visible(&flags(false), name),
+                "{name}"
+            );
+            assert!(
+                feature_gated_harness_is_visible(&flags(true), name),
+                "{name}"
+            );
+        }
+    }
+
+    /// The flag is org-opt-in rather than deployment-managed, which is what
+    /// makes it an org admin's switch. `platform_managed` flags are not
+    /// offered to an org at all.
+    #[test]
+    fn the_flag_is_offered_to_org_admins() {
+        let definition = everruns_platform::feature_flags::API_FEATURE_FLAG_DEFINITIONS
+            .iter()
+            .find(|definition| definition.name == "platform_chat_v2")
+            .expect("platform_chat_v2 is a declared flag");
+        assert!(
+            !definition.platform_managed,
+            "an org has to be able to turn it on"
+        );
+        assert!(definition.experimental);
+    }
+
+    /// An org that has not opted in gets nothing, even with the deployment
+    /// flag on: `for_org` is an intersection.
+    #[test]
+    fn the_deployment_flag_alone_does_not_enable_an_org() {
+        let system = flags(true);
+        let org = FeatureFlags::for_org(&system, &std::collections::HashMap::new());
+        assert!(!org.platform_chat_v2);
+
+        let opted_in = FeatureFlags::for_org(
+            &system,
+            &std::collections::HashMap::from([("platform_chat_v2".to_string(), true)]),
+        );
+        assert!(opted_in.platform_chat_v2);
     }
 }

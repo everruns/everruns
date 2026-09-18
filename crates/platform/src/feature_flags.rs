@@ -75,6 +75,14 @@ pub struct FeatureFlags {
     /// wherever sandboxes are already enabled.
     /// See `knowledge/harnesses/execution-environments.md`.
     pub environments: bool,
+    /// Platform Chat v2: the operator chat surface as one shell. Platform
+    /// operations are the `everruns` command beside `cat`, `grep` and `jq`
+    /// rather than three bespoke tools, over a session filesystem carrying the
+    /// product docs and shared operator memory. Experimental and org-opt-in:
+    /// it is a different way to do what v1 already does, so an org chooses it
+    /// rather than being enrolled. v1 keeps the chat role either way.
+    /// See `knowledge/harnesses/platform-chat-v2.md`.
+    pub platform_chat_v2: bool,
     /// Machine-payment custody, policy, audit, and paid capability surfaces.
     /// Deployment-controlled and off by default on every grade because spend is
     /// irreversible. Unlike experimental flags, this is not org-configurable.
@@ -223,6 +231,18 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         platform_managed: false,
     },
     FeatureFlagDefinition {
+        name: "platform_chat_v2",
+        label: "Platform Chat v2",
+        description: "Runs Platform Chat as one shell: platform operations are the `everruns` \
+             command alongside ordinary shell tools, over a filesystem holding the product \
+             documentation and notes that outlive a conversation. The current Platform Chat is \
+             unchanged and stays the default.",
+        experimental: true,
+        // An org opts itself in: this is a different way to do what the current
+        // surface already does, not a deployment capability an operator runs.
+        platform_managed: false,
+    },
+    FeatureFlagDefinition {
         name: "observers",
         label: "Observers",
         description: "Runs automatic online scoring on your production sessions. It continuously \
@@ -291,6 +311,7 @@ impl FeatureFlags {
             voice: opt_in("voice", system.voice),
             agent_delegation: opt_in("agent_delegation", system.agent_delegation),
             observers: opt_in("observers", system.observers),
+            platform_chat_v2: opt_in("platform_chat_v2", system.platform_chat_v2),
             public_chat: opt_in("public_chat", system.public_chat),
             webmcp: opt_in("webmcp", system.webmcp),
             environments: opt_in("environments", system.environments),
@@ -312,6 +333,7 @@ impl FeatureFlags {
             voice: experimental_flag("FEATURE_VOICE", grade),
             agent_delegation: experimental_flag("FEATURE_AGENT_DELEGATION", grade),
             observers: experimental_flag("FEATURE_OBSERVERS", grade),
+            platform_chat_v2: experimental_flag("FEATURE_PLATFORM_CHAT_V2", grade),
             public_chat: experimental_flag("FEATURE_PUBLIC_CHAT", grade),
             webmcp: experimental_flag("FEATURE_WEBMCP", grade),
             // Environments describe the sandbox surface, so a deployment that
@@ -354,6 +376,7 @@ impl FeatureFlags {
             ("environments".to_string(), self.environments),
             ("public_chat".to_string(), self.public_chat),
             ("webmcp".to_string(), self.webmcp),
+            ("platform_chat_v2".to_string(), self.platform_chat_v2),
             ("machine_payments".to_string(), self.machine_payments),
         ]))
     }
@@ -361,6 +384,7 @@ impl FeatureFlags {
     /// Look up a flag by name (for dynamic/string-based access).
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
+            "platform_chat_v2" => self.platform_chat_v2,
             "notifications" => self.notifications,
             "evals" => self.evals,
             "skills" => self.skills,
@@ -413,6 +437,7 @@ impl FeatureFlags {
             voice: true,
             agent_delegation: true,
             observers: true,
+            platform_chat_v2: true,
             environments: true,
             public_chat: true,
             webmcp: true,
@@ -541,6 +566,7 @@ mod tests {
     #[test]
     fn test_is_enabled_dynamic() {
         let flags = FeatureFlags {
+            platform_chat_v2: false,
             notifications: true,
             evals: true,
             skills: true,
@@ -612,6 +638,7 @@ mod tests {
     #[test]
     fn test_serialization() {
         let flags = FeatureFlags {
+            platform_chat_v2: false,
             notifications: true,
             evals: true,
             skills: true,

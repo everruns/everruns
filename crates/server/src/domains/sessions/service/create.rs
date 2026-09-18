@@ -489,6 +489,7 @@ impl SessionService {
 
         let scoped_memory = ScopedMemoryContext {
             agent_id,
+            harness_id: Some(harness_id),
             // User memory is private to the resolved user. Do not materialize it
             // into caller-attached shared workspaces because workspace files are
             // currently workspace-wide rather than participant-local.

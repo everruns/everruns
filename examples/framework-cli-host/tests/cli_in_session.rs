@@ -98,7 +98,7 @@ async fn a_mutating_command_changes_application_state() {
 
     let result = run_with_shell(
         fleet.clone(),
-        &["everruns fleet scale --name api --replicas 4"],
+        &["everruns fleet scale api --replicas 4"],
         true,
     )
     .await;
