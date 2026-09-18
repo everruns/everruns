@@ -1,4 +1,4 @@
-//! Deployment-owned TypeSafe classifier wiring.
+//! Deployment-owned Jev classifier wiring.
 //!
 //! Core owns the neutral contract (`ClassifierService`); this module owns the
 //! vendor. Nothing above core learns that the classifications come from TypeSafe.
@@ -39,23 +39,33 @@ pub const UTILITY_TYPESAFE_API_KEY_ENV: &str = "UTILITY_TYPESAFE_API_KEY";
 /// models, and the type should not be the thing preventing that.
 pub const CLASSIFIER_MODEL: &str = DEFAULT_MODEL;
 
-/// TypeSafe-backed implementation of core's provider-neutral classifier.
+/// The TypeSafe provider, behind core's provider-neutral classifier.
+///
+/// Named for the account that issues the key, exactly as `OpenAI` is on the
+/// model side: this type is transport and credentials, and the model it reaches
+/// is a string id (`jev-latest` by default, any `jev-*` via
+/// [`model`](Self::model)). Jev is a model, so it gets an id rather than a type,
+/// the way `gpt-5.6-terra` does.
+///
+/// The agent-facing [`Jev`](crate::Jev) capability, its `jev_evaluate` tool and
+/// the `jev` guardrail engine stay named for the model, because a model is what
+/// answers them.
 #[derive(Clone)]
-pub struct TypeSafeClassifier {
+pub struct TypeSafe {
     client: TypeSafeClient,
     model: Option<String>,
 }
 
-impl std::fmt::Debug for TypeSafeClassifier {
+impl std::fmt::Debug for TypeSafe {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TypeSafeClassifier")
+        f.debug_struct("TypeSafe")
             .field("model", &self.model.as_deref().unwrap_or(CLASSIFIER_MODEL))
             .field("configured", &true)
             .finish()
     }
 }
 
-impl TypeSafeClassifier {
+impl TypeSafe {
     /// Construct the service from the application's own `TYPESAFE_API_KEY`.
     ///
     /// This is the embedder's path — an application holding its own key, the
@@ -107,7 +117,7 @@ impl TypeSafeClassifier {
 }
 
 #[async_trait]
-impl ClassifierService for TypeSafeClassifier {
+impl ClassifierService for TypeSafe {
     fn is_configured(&self) -> bool {
         true
     }
@@ -147,7 +157,7 @@ impl ClassifierService for TypeSafeClassifier {
     }
 
     fn name(&self) -> &'static str {
-        "TypeSafeClassifier"
+        "TypeSafe"
     }
 }
 
@@ -220,7 +230,7 @@ fn from_vendor_answer(answer: &Answer) -> ClassificationAnswer {
 pub enum SystemClassifierConfig {
     /// Classification calls are unavailable; dependent checks fail open.
     Disabled,
-    /// Enable the TypeSafe classifier with a system-owned API key.
+    /// Enable the Jev classifier with a system-owned TypeSafe API key.
     TypeSafe {
         /// Deployment-owned credential.
         api_key: String,
@@ -257,7 +267,7 @@ impl SystemClassifierConfig {
             Self::Disabled => Arc::new(DisabledClassifierService),
             // Guardrails are the primary caller and sit on latency-critical
             // seams, so the deployment client does not retry.
-            Self::TypeSafe { api_key } => Arc::new(TypeSafeClassifier::without_retries(api_key)),
+            Self::TypeSafe { api_key } => Arc::new(TypeSafe::without_retries(api_key)),
         }
     }
 }
@@ -280,7 +290,7 @@ mod tests {
 
     #[test]
     fn service_debug_never_renders_the_key() {
-        let service = TypeSafeClassifier::new("ts-secret-value");
+        let service = TypeSafe::new("ts-secret-value");
         assert!(!format!("{service:?}").contains("ts-secret-value"));
     }
 
@@ -363,7 +373,7 @@ mod tests {
 
     #[tokio::test]
     async fn empty_requests_are_rejected_before_any_round_trip() {
-        let service = TypeSafeClassifier::new("unused");
+        let service = TypeSafe::new("unused");
         let error = service
             .evaluate(ClassificationRequest::new("state"))
             .await

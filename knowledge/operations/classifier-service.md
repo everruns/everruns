@@ -99,12 +99,21 @@ already depend on integrations, so they compose the service into
 `HostComposition` from above, and the client needs only one home. Host no
 longer knows TypeSafe exists.
 
-The crate is published, so the `everruns` facade re-exports `TypeSafeClassifier`
-and `Jev` behind its `jev` feature: an embedding application reaches both halves
-through one import, exactly as it does for OpenAI.
+The crate is published, so the `everruns` facade re-exports `TypeSafe` and
+`Jev` behind its `typesafe` feature: an embedding application reaches both
+halves through one import, exactly as it does for OpenAI.
+
+**Named by layer.** The vendor has three, and each is named where it belongs:
+TypeSafe is the company and the account that issues the key, System One is the
+API, and Jev is the model. So the provider type is `TypeSafe`, mirroring
+`OpenAI` — transport and credentials, named for the account — and the model is a
+string id (`jev-latest`, `jev-1.13.0`), the way `gpt-5.6-terra` is. Jev gets no
+type because Jev is a model. What an agent sees stays model-named, since a model
+is what answers it: the `Jev` capability, the `jev_evaluate` tool, and the `jev`
+guardrail engine.
 
 - The model is selectable, and defaulted rather than required. A service has
-  its own default (`jev-latest`); `TypeSafeClassifier::model` overrides it for
+  its own default (`jev-latest`); `TypeSafe::model` overrides it for
   every call, and `ClassificationRequest::model` overrides it for one. This is
   the difference from the utility LLM service, whose model is fixed: there will
   be other classifiers and other versions of this one, and pinning
@@ -113,7 +122,7 @@ through one import, exactly as it does for OpenAI.
   an agent author writes, rather than absent from the type
   (THREAT[TM-LLM-037]).
 - Two credentials, two audiences: `SystemClassifierConfig::from_env` reads the
-  platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafeClassifier::from_env`
+  platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafe::from_env`
   reads an embedding application's own `TYPESAFE_API_KEY` — the latter is what
   [`Classifier`](../framework/application-api.md#direct-classification-boundary) uses outside the platform.
 - Configured from process environment: `UTILITY_TYPESAFE_API_KEY`. Unset or

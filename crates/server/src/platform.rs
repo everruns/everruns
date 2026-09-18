@@ -168,7 +168,7 @@ mod tests {
         assert_eq!(
             service.name(),
             if configured {
-                "TypeSafeClassifier"
+                "TypeSafe"
             } else {
                 "DisabledClassifierService"
             }

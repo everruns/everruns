@@ -22,7 +22,7 @@ use everruns_core::capabilities::Capability;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PreToolUseDecision;
 use everruns_host::OpenAiUtilityLlmService;
-use everruns_integrations_typesafe::TypeSafeClassifier;
+use everruns_integrations_typesafe::TypeSafe;
 use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy,
 };
@@ -122,7 +122,7 @@ impl Subject for GuardrailCalibrationSubject {
 
         let context = match engine.as_str() {
             "jev" => ToolContext::new(SessionId::new())
-                .with_classifier(Arc::new(TypeSafeClassifier::new(key))),
+                .with_classifier(Arc::new(TypeSafe::new(key))),
             _ => ToolContext::new(SessionId::new())
                 .with_utility_llm_service(Arc::new(OpenAiUtilityLlmService::new(key))),
         };

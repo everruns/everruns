@@ -14,11 +14,11 @@
 #![cfg(feature = "live-tests")]
 
 use everruns_core::{ClassificationQuestion, ClassificationRequest, ClassifierService};
-use everruns_integrations_typesafe::TypeSafeClassifier;
+use everruns_integrations_typesafe::TypeSafe;
 
-fn service() -> TypeSafeClassifier {
+fn service() -> TypeSafe {
     match std::env::var("UTILITY_TYPESAFE_API_KEY") {
-        Ok(key) if !key.trim().is_empty() => TypeSafeClassifier::new(key),
+        Ok(key) if !key.trim().is_empty() => TypeSafe::new(key),
         _ => panic!("UTILITY_TYPESAFE_API_KEY not set — cannot run live judgment tests"),
     }
 }
