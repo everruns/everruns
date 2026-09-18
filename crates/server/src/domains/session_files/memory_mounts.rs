@@ -408,6 +408,16 @@ impl MemoryMountRouter {
 /// One entry today. A harness that wants shared memory declares it here rather
 /// than by configuration, so the name cannot drift between the session service
 /// that creates the Memory and the file service that mounts it.
+///
+// THREAT[TM-TENANT-015]: a harness listed here gets one org-scoped Memory that
+// every session of it reads and writes, so a note one member leaves is visible
+// to every other member of that org who can open the same surface. That is the
+// feature, not a leak, but it is the one place `/memory` is deliberately not
+// private: `/memory/agent` and `/memory/user` stay scoped by owner, and
+// `/memory/user` additionally goes through the `resolved_owner_user_id` check
+// in `queries::verify_session`. Adding a harness here widens that blast radius
+// to its whole org, so it is a source-level allowlist rather than
+// configuration, and sharing is not reversible once written.
 pub fn shared_memory_name_for_harness(harness_name: &str) -> Option<String> {
     match harness_name {
         crate::harnesses::platform_chat_v2::PLATFORM_CHAT_V2_HARNESS_NAME => {
