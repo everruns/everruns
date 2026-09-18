@@ -22,8 +22,9 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    body::Body,
+    body::{Body, to_bytes},
     http::{Method, Request, StatusCode},
+    response::Response,
 };
 use everruns_durable::InMemoryWorkflowEventStore;
 
@@ -31,10 +32,13 @@ use everruns_platform::ChannelType;
 use everruns_provider::typed_id::PrincipalId;
 use everruns_server::EventDelivery;
 use everruns_server::api;
+use everruns_server::domains::apps::{hash_a2a_api_key, hash_app_api_key};
 use everruns_server::storage::Database;
 use everruns_server::storage::StorageBackend;
 use everruns_worker::{RunnerBackend, create_runner_with_backend};
+use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
+use sha2::Sha256;
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use test_harness::get_database_url;
 use tower::ServiceExt;
@@ -50,32 +54,47 @@ async fn pool() -> PgPool {
 async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable() {
     let pool = pool().await;
     let fixture = seed(&pool, "endpoint-no-app-reads", "published").await;
+    let ag_ui_token = "migration-ag-ui-token";
+    let public_chat_token = "migration-public-chat-token";
+    let fcp_token = "migration-fcp-token";
+    let webhook_token = "migration-webhook-token";
+    let a2a_key = "evra2a_migration_key";
+    let api_key = "evr_app_migration_key";
+    let slack_signing_secret = "migration-slack-signing-secret";
     seed_ingress_endpoint(
         &pool,
         &fixture,
         ChannelType::AgUi,
-        json!({"anonymous": true, "token": "expected"}),
+        json!({"anonymous": true, "token": ag_ui_token}),
     )
     .await;
     seed_ingress_endpoint(
         &pool,
         &fixture,
         ChannelType::PublicChat,
-        json!({"anonymous": true, "token": "expected"}),
+        json!({"anonymous": true, "token": public_chat_token}),
     )
     .await;
     seed_ingress_endpoint(
         &pool,
         &fixture,
         ChannelType::Fcp,
-        json!({"anonymous": false, "token": "expected"}),
+        json!({
+            "anonymous": false,
+            "token": fcp_token,
+            "response_timeout_seconds": 1
+        }),
     )
     .await;
     let webhook_id = seed_ingress_endpoint(
         &pool,
         &fixture,
         ChannelType::Webhook,
-        json!({"token": "expected", "message": "{{body}}"}),
+        json!({
+            "token": webhook_token,
+            "message": "{{webhook.body}}",
+            "session_mode": "session_per_invocation"
+        }),
     )
     .await;
     let a2a_id = seed_ingress_endpoint(
@@ -83,9 +102,10 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         &fixture,
         ChannelType::A2a,
         json!({
-            "api_key_hash": "never-matches",
+            "api_key_hash": hash_a2a_api_key(a2a_key),
             "api_key_prefix": "evra2a_test...",
-            "message": "{{message}}"
+            "message": "{{a2a.text}}",
+            "session_mode": "session_per_invocation"
         }),
     )
     .await;
@@ -94,8 +114,9 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         &fixture,
         ChannelType::ApiEndpoint,
         json!({
-            "api_key_hash": "never-matches",
-            "api_key_prefix": "evr_app_test..."
+            "api_key_hash": hash_app_api_key(api_key),
+            "api_key_prefix": "evr_app_test...",
+            "session_mode": "session_per_invocation"
         }),
     )
     .await;
@@ -110,6 +131,19 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         }),
     )
     .await;
+    sqlx::query(
+        "UPDATE agent_endpoints
+         SET channel_config = $1
+         WHERE id = $2",
+    )
+    .bind(json!({
+        "signing_secret": slack_signing_secret,
+        "bot_token": "xoxb-migration-test"
+    }))
+    .bind(fixture.endpoint_id)
+    .execute(&pool)
+    .await
+    .expect("configure Slack endpoint credentials");
 
     let role = format!("ingress_no_apps_{}", Uuid::new_v4().simple());
     let create_role = format!("CREATE ROLE {role} NOLOGIN");
@@ -119,7 +153,17 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         .expect("create restricted ingress role");
     let grants = format!(
         "GRANT USAGE ON SCHEMA public TO {role};
-         GRANT SELECT ON agents, agent_endpoints, agent_triggers TO {role};"
+         GRANT SELECT ON
+             organizations, agents, agent_endpoints, agent_triggers,
+             harnesses, harness_capabilities, agent_capabilities, agent_versions,
+             principals, users, sessions, workspaces, session_participants,
+             events, images, models
+         TO {role};
+         GRANT INSERT ON
+             sessions, workspaces, session_participants, events, images,
+             reporting_outbox, audit_logs
+         TO {role};
+         GRANT UPDATE ON sessions, agent_endpoints TO {role};"
     );
     sqlx::raw_sql(sqlx::AssertSqlSafe(grants.as_str()))
         .execute(&pool)
@@ -161,23 +205,52 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     );
     let router = ingress_router(restricted_db).await;
     let app_id = &fixture.app_public_id;
+    let initial_session_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE app_id = $1")
+            .bind(fixture.app_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count initial App sessions");
+    let ag_ui_body = serde_json::to_vec(&json!({
+        "threadId": Uuid::new_v4().to_string(),
+        "runId": Uuid::new_v4().to_string(),
+        "state": {},
+        "messages": [{
+            "id": Uuid::new_v4().to_string(),
+            "role": "user",
+            "content": "legacy AG-UI alias"
+        }],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+    }))
+    .expect("serialize AG-UI request");
 
+    let ag_ui_authorization = format!("Bearer {ag_ui_token}");
     assert_route_status(
         &router,
         Method::POST,
         &format!("/v1/apps/{app_id}/ag-ui"),
-        &[("content-type", "application/json")],
-        br#"{}"#,
-        StatusCode::UNAUTHORIZED,
+        &[
+            ("content-type", "application/json"),
+            ("authorization", &ag_ui_authorization),
+        ],
+        &ag_ui_body,
+        StatusCode::OK,
     )
     .await;
+
+    let (image_content_type, image_body) = png_multipart_body();
     assert_route_status(
         &router,
         Method::POST,
         &format!("/v1/apps/{app_id}/ag-ui/images"),
-        &[("content-type", "multipart/form-data; boundary=empty")],
-        b"--empty--\r\n",
-        StatusCode::UNAUTHORIZED,
+        &[
+            ("content-type", &image_content_type),
+            ("authorization", &ag_ui_authorization),
+        ],
+        &image_body,
+        StatusCode::CREATED,
     )
     .await;
     assert_route_status(
@@ -189,13 +262,30 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         StatusCode::OK,
     )
     .await;
+    let public_chat_body = serde_json::to_vec(&json!({
+        "threadId": Uuid::new_v4().to_string(),
+        "runId": Uuid::new_v4().to_string(),
+        "state": {},
+        "messages": [{
+            "id": Uuid::new_v4().to_string(),
+            "role": "user",
+            "content": "legacy Public Chat alias"
+        }],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+    }))
+    .expect("serialize Public Chat request");
     assert_route_status(
         &router,
         Method::POST,
         &format!("/v1/apps/{app_id}/public-chat"),
-        &[("content-type", "application/json")],
-        br#"{}"#,
-        StatusCode::UNAUTHORIZED,
+        &[
+            ("content-type", "application/json"),
+            ("x-everruns-public-chat-token", public_chat_token),
+        ],
+        &public_chat_body,
+        StatusCode::OK,
     )
     .await;
     assert_route_status(
@@ -207,15 +297,27 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         StatusCode::OK,
     )
     .await;
-    assert_route_status(
+    let fcp_authorization = format!("Bearer {fcp_token}");
+    let fcp_response = request_route(
         &router,
         Method::POST,
         &format!("/v1/apps/{app_id}/fcp"),
-        &[("content-type", "text/plain")],
+        &[
+            ("content-type", "text/plain"),
+            ("authorization", &fcp_authorization),
+        ],
         b"hello",
-        StatusCode::UNAUTHORIZED,
     )
     .await;
+    assert_eq!(
+        fcp_response.status(),
+        StatusCode::GATEWAY_TIMEOUT,
+        "authenticated FCP alias must reach its bounded downstream timeout"
+    );
+    assert!(
+        fcp_response.headers().contains_key("set-cookie"),
+        "FCP must create a session before its downstream timeout"
+    );
     assert_route_status(
         &router,
         Method::GET,
@@ -225,33 +327,78 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         StatusCode::OK,
     )
     .await;
-    assert_route_status(
+
+    let slack_event_body = serde_json::to_vec(&json!({
+        "type": "url_verification",
+        "challenge": "migration-challenge"
+    }))
+    .expect("serialize Slack event");
+    let (slack_event_timestamp, slack_event_signature) =
+        sign_slack_request(slack_signing_secret, &slack_event_body);
+    let slack_event_response = request_route(
         &router,
         Method::POST,
         &format!("/v1/apps/{app_id}/slack/events"),
-        &[("content-type", "application/json")],
-        br#"{}"#,
-        StatusCode::UNAUTHORIZED,
+        &[
+            ("content-type", "application/json"),
+            ("x-slack-request-timestamp", &slack_event_timestamp),
+            ("x-slack-signature", &slack_event_signature),
+        ],
+        &slack_event_body,
     )
     .await;
-    assert_route_status(
+    assert_eq!(slack_event_response.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(slack_event_response).await["challenge"],
+        "migration-challenge"
+    );
+
+    let slack_interactivity_body = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair(
+            "payload",
+            &json!({
+                "type": "view_submission",
+                "user": {"id": "U_MIGRATION"}
+            })
+            .to_string(),
+        )
+        .finish()
+        .into_bytes();
+    let (slack_interactivity_timestamp, slack_interactivity_signature) =
+        sign_slack_request(slack_signing_secret, &slack_interactivity_body);
+    let slack_interactivity_response = request_route(
         &router,
         Method::POST,
         &format!("/v1/apps/{app_id}/slack/interactivity"),
-        &[("content-type", "application/x-www-form-urlencoded")],
-        b"payload=%7B%7D",
-        StatusCode::UNAUTHORIZED,
+        &[
+            ("content-type", "application/x-www-form-urlencoded"),
+            ("x-slack-request-timestamp", &slack_interactivity_timestamp),
+            ("x-slack-signature", &slack_interactivity_signature),
+        ],
+        &slack_interactivity_body,
     )
     .await;
-    assert_route_status(
+    assert_eq!(slack_interactivity_response.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(slack_interactivity_response).await["ok"],
+        true
+    );
+
+    let webhook_response = request_route(
         &router,
         Method::POST,
         &format!("/v1/apps/{app_id}/webhooks/{webhook_id}"),
-        &[("content-type", "application/json")],
-        br#"{}"#,
-        StatusCode::UNAUTHORIZED,
+        &[
+            ("content-type", "application/json"),
+            ("x-everruns-webhook-token", webhook_token),
+        ],
+        br#"{"event":"migration"}"#,
     )
     .await;
+    assert_eq!(webhook_response.status(), StatusCode::ACCEPTED);
+    let webhook_result = response_json(webhook_response).await;
+    assert_eq!(webhook_result["accepted"], true);
+    assert_eq!(webhook_result["created_session"], true);
     assert_route_status(
         &router,
         Method::GET,
@@ -261,36 +408,101 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         StatusCode::OK,
     )
     .await;
-    assert_route_status(
+
+    let a2a_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "migration-request",
+        "method": "message/send",
+        "params": {
+            "message": {
+                "role": "user",
+                "messageId": "migration-message",
+                "parts": [{"kind": "text", "text": "legacy A2A alias"}]
+            }
+        }
+    }))
+    .expect("serialize A2A request");
+    let a2a_authorization = format!("Bearer {a2a_key}");
+    let a2a_response = request_route(
         &router,
         Method::POST,
         &format!("/v1/apps/{app_id}/a2a/{a2a_id}"),
-        &[("content-type", "application/json")],
-        br#"{"jsonrpc":"2.0","id":1,"method":"message/send","params":{}}"#,
-        StatusCode::UNAUTHORIZED,
+        &[
+            ("content-type", "application/json"),
+            ("authorization", &a2a_authorization),
+        ],
+        &a2a_body,
     )
     .await;
-    for (method, suffix) in [
-        (Method::POST, "sessions"),
-        (Method::GET, "sessions/ses_missing"),
-        (Method::POST, "sessions/ses_missing/messages"),
-        (Method::POST, "sessions/ses_missing/cancel"),
-    ] {
-        assert_route_status(
-            &router,
-            method,
-            &format!("/v1/apps/{app_id}/api/{api_id}/{suffix}"),
-            &[("content-type", "application/json")],
-            br#"{"message":"hello"}"#,
-            StatusCode::UNAUTHORIZED,
-        )
-        .await;
-    }
+    assert_eq!(a2a_response.status(), StatusCode::OK);
+    let a2a_result = response_json(a2a_response).await;
+    assert_eq!(a2a_result["result"]["status"]["state"], "submitted");
+    assert!(a2a_result["result"]["contextId"].as_str().is_some());
+
+    let api_authorization = format!("Bearer {api_key}");
+    let api_create_response = request_route(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/api/{api_id}/sessions"),
+        &[
+            ("content-type", "application/json"),
+            ("authorization", &api_authorization),
+        ],
+        br#"{"message":"legacy API alias"}"#,
+    )
+    .await;
+    assert_eq!(api_create_response.status(), StatusCode::CREATED);
+    let api_session = response_json(api_create_response).await;
+    assert_eq!(api_session["created_session"], true);
+    let api_session_id = api_session["session_id"]
+        .as_str()
+        .expect("API alias session id");
+    assert_route_status(
+        &router,
+        Method::GET,
+        &format!("/v1/apps/{app_id}/api/{api_id}/sessions/{api_session_id}"),
+        &[("authorization", &api_authorization)],
+        b"",
+        StatusCode::OK,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/api/{api_id}/sessions/{api_session_id}/messages"),
+        &[
+            ("content-type", "application/json"),
+            ("authorization", &api_authorization),
+        ],
+        br#"{"message":"legacy API follow-up"}"#,
+        StatusCode::ACCEPTED,
+    )
+    .await;
+    assert_route_status(
+        &router,
+        Method::POST,
+        &format!("/v1/apps/{app_id}/api/{api_id}/sessions/{api_session_id}/cancel"),
+        &[("authorization", &api_authorization)],
+        b"",
+        StatusCode::OK,
+    )
+    .await;
+
+    let final_session_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE app_id = $1")
+            .bind(fixture.app_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count final App sessions");
+    assert!(
+        final_session_count >= initial_session_count + 6,
+        "AG-UI, Public Chat, FCP, Webhook, A2A, and API aliases must create sessions"
+    );
 
     restricted_pool.close().await;
     let drop_role = format!(
         "REVOKE ALL PRIVILEGES ON SCHEMA public FROM {role};
-         REVOKE ALL PRIVILEGES ON agents, agent_endpoints, agent_triggers FROM {role};
+         REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM {role};
          DROP ROLE {role};"
     );
     sqlx::raw_sql(sqlx::AssertSqlSafe(drop_role.as_str()))
@@ -418,11 +630,22 @@ async fn assert_route_status(
     body: &[u8],
     expected: StatusCode,
 ) {
+    let response = request_route(router, method, uri, headers, body).await;
+    assert_eq!(response.status(), expected, "{uri}");
+}
+
+async fn request_route(
+    router: &Router,
+    method: Method,
+    uri: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+) -> Response {
     let mut request = Request::builder().method(method).uri(uri);
     for (name, value) in headers {
         request = request.header(*name, *value);
     }
-    let response = router
+    router
         .clone()
         .oneshot(
             request
@@ -430,8 +653,42 @@ async fn assert_route_status(
                 .expect("build ingress request"),
         )
         .await
-        .expect("run ingress request");
-    assert_eq!(response.status(), expected, "{uri}");
+        .expect("run ingress request")
+}
+
+async fn response_json(response: Response) -> Value {
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read response body");
+    serde_json::from_slice(&body).expect("parse JSON response")
+}
+
+fn sign_slack_request(secret: &str, body: &[u8]) -> (String, String) {
+    let timestamp = chrono::Utc::now().timestamp().to_string();
+    let basestring = format!("v0:{timestamp}:{}", String::from_utf8_lossy(body));
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("valid HMAC key");
+    mac.update(basestring.as_bytes());
+    let signature = format!("v0={}", hex::encode(mac.finalize().into_bytes()));
+    (timestamp, signature)
+}
+
+fn png_multipart_body() -> (String, Vec<u8>) {
+    let boundary = format!("migration-{}", Uuid::new_v4().simple());
+    let mut body = format!(
+        "--{boundary}\r\n\
+         Content-Disposition: form-data; name=\"file\"; filename=\"migration.png\"\r\n\
+         Content-Type: image/png\r\n\r\n"
+    )
+    .into_bytes();
+    body.extend_from_slice(&[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
+        0x77, 0x53, 0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x60,
+        0x60, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xe2, 0x21, 0xbc, 0x33, 0x00, 0x00, 0x00, 0x00,
+        0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ]);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
 }
 
 /// One isolated org + agent + app + endpoint + owner principal, seeded directly
