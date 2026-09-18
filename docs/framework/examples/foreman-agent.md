@@ -56,6 +56,13 @@ untracked paths a diff cannot show, recent session events, verification
 results, and the previous assessment and decision. An unbounded observation
 would make supervision as slow as the work it is watching.
 
+That snapshot goes to the classifier's service on every reading, so on a live
+run a bounded slice of the repository leaves the machine — point `--live` at a
+private repository only if that is acceptable for it. The repository content in
+an observation is also untrusted input to the classifier, and that it can only
+produce a number is the point: the classifier never names an action, and every
+action the policy can take is in one readable file.
+
 ## Run it
 
 Clone the repository and run from its root:

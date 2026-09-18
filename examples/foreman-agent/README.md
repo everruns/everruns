@@ -89,6 +89,19 @@ character diff, 12,000 characters per tail, 30 events, and 10 workers of
 history. An unbounded observation would make supervision as slow as the work it
 is watching.
 
+That snapshot goes to the classifier's service on every reading, so on a live
+run a bounded slice of the repository — the diff, the changed paths, whatever
+the worker printed — leaves the machine. Point `--live` at a private repository
+only if that is acceptable for it, the same judgment any third-party search or
+model call asks for. The offline mode sends nothing anywhere.
+
+The repository content in an observation is also untrusted input to the
+classifier, so a hostile repository can try to talk it into a number. That it
+can only produce a *number* is the point: the classifier never names an action,
+and every action the policy can take is in `src/policy.rs` where it can be read.
+The worst a poisoned reading buys is a wrong intervention on a worker that is
+already sandboxed.
+
 ## Run it
 
 ```bash
@@ -112,13 +125,19 @@ demo above records. The worker's own model is Muse Spark's Contributor tier
 through OpenRouter, chosen for the same reason — a worker nobody can afford to
 run often is a poor subject for an experiment about watching one.
 
-A `--live` run takes roughly a minute and a half and costs cents: the worker
-implements the tiers, a read-only verifier quotes the file and line it relied
-on, and the policy finishes on numbers around
+A `--live` run takes a minute or two and costs cents: the worker implements the
+tiers, a read-only verifier quotes the file and line it relied on, and the
+policy finishes on numbers around
 `ready_to_finish 0.91 · requirements_satisfied 0.94 · tests_sufficient 0.91`.
-Neither half is deterministic, so the path varies; a job that leaves the rate
-schedule unstated, for instance, pushes `needs_human` past 0.80 and escalates —
-correctly.
+
+Neither half is deterministic, so the path varies, and escalation is a real
+outcome rather than a failed run: a job that leaves the rate schedule unstated
+pushes `needs_human` past 0.80, and a run that spends its three workers while
+`ready_to_finish` sits at 0.82 asks for a person instead of guessing. Both are
+the supervisor working. The process exits nonzero only when the factory decided
+nothing at all — when it ran out of clock, or finished without touching the
+repository. `FOREMAN_MAX_WORKERS` and the other `FOREMAN_*` variables move the
+budgets if you want a longer leash.
 
 ```bash
 cargo run -p everruns-foreman-agent -- --live --job "Add rate limiting, and test it."

@@ -113,15 +113,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let outcome = factory.run().await;
     report(&outcome, &workspace);
 
-    // The example's own success condition is the factory's decision, not the
-    // quality of the code a live model wrote.
-    if outcome.status != Status::Finished {
-        return Err(format!("factory {}", outcome.status.label()).into());
+    // The success condition is that the factory reached a decision, not that it
+    // reached a particular one: escalation is the supervisor doing its job, and
+    // a person is standing right here. Only a run that ran out of clock decided
+    // nothing at all.
+    match outcome.status {
+        Status::TimedOut => Err("factory ran out of time without deciding".into()),
+        Status::Finished if !fixture::changed(&workspace) => {
+            Err("factory finished without changing the repository".into())
+        }
+        _ => Ok(()),
     }
-    if !fixture::changed(&workspace) {
-        return Err("factory finished without changing the repository".into());
-    }
-    Ok(())
 }
 
 /// The job on one line that fits beside its label.
@@ -144,14 +146,16 @@ fn worker_label(live: bool) -> String {
 
 /// Bounds for a scripted worker, which finishes in seconds rather than minutes.
 ///
-/// Only the intervals move. Every threshold is what a live run uses, because
-/// the policy is the part worth seeing unchanged.
+/// Only the clocks move, and they are pinned rather than overridable because
+/// the scripted worker's own timing is fixed. Every threshold and every budget
+/// is what a live run uses, `FOREMAN_*` overrides included, because the policy
+/// is the part worth seeing unchanged.
 fn simulated_config() -> Config {
     Config {
         min_assessment_interval: Duration::from_millis(1_000),
         periodic_assessment: Duration::from_millis(2_500),
         overall_timeout: Duration::from_secs(180),
-        ..Config::default()
+        ..Config::from_env()
     }
 }
 
@@ -234,6 +238,9 @@ fn report(outcome: &factory::Outcome, workspace: &std::path::Path) {
             "decision",
             &format!("{} — {}", intervention.action.label(), intervention.reason),
         );
+    }
+    if outcome.status == Status::Escalated {
+        demo::field("asking for", "a person — see the decision above");
     }
     if let Some(assessment) = &outcome.last_assessment {
         demo::field(

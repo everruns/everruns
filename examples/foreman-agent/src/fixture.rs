@@ -49,7 +49,15 @@ pub fn materialize(root: &Path) -> io::Result<()> {
 /// Best-effort baseline commit. Without Git the run still works; the supervisor
 /// simply has no diff to look at, which is one evidence stream short rather
 /// than a failure.
+///
+/// Skipped entirely inside an existing work tree. The example is documented as
+/// destructive to whatever directory it is pointed at, but overwriting files
+/// somebody can recover with `git checkout` is a different thing from writing a
+/// commit into their history, so this one does not happen by accident.
 fn commit_baseline(root: &Path) {
+    if inside_work_tree(root) {
+        return;
+    }
     let git = |args: &[&str]| {
         Command::new("git")
             .arg("-C")
@@ -72,6 +80,18 @@ fn commit_baseline(root: &Path) {
         "-m",
         "Flat shipping rates",
     ]);
+}
+
+/// Whether `root` already belongs to a Git work tree.
+fn inside_work_tree(root: &Path) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .is_ok_and(|output| {
+            output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true"
+        })
 }
 
 /// One host-side observation about the repository after the run.
@@ -155,6 +175,30 @@ mod tests {
                 check.label
             );
         }
+    }
+
+    #[test]
+    fn an_existing_work_tree_keeps_its_own_history() {
+        let outer = tempfile::tempdir().unwrap();
+        materialize(outer.path()).unwrap();
+        assert!(inside_work_tree(outer.path()));
+        let head = |root: &Path| {
+            Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        };
+        let before = head(outer.path());
+        assert!(before.is_some(), "the fixture commits its own baseline");
+
+        // Materializing again, as if somebody pointed the example at a
+        // repository they own: files are rewritten, history is not.
+        materialize(outer.path()).unwrap();
+        assert_eq!(head(outer.path()), before);
     }
 
     #[test]

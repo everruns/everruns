@@ -233,8 +233,11 @@ impl Factory {
                 _ => dirty = true,
             }
 
-            let interval_elapsed =
-                since.is_none_or(|since| since >= self.config.min_assessment_interval);
+            // Re-read the clock: `since` was measured before the wait above, and
+            // deciding eligibility on a stale reading costs a whole extra trip
+            // around the loop before the floor is seen to have passed.
+            let interval_elapsed = last_assessment
+                .is_none_or(|at| at.elapsed() >= self.config.min_assessment_interval);
             if !(force || (dirty && interval_elapsed)) {
                 continue;
             }
