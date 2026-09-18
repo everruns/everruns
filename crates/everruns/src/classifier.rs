@@ -91,7 +91,10 @@ impl fmt::Display for ClassifierError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ClassifierError::MissingService => {
-                write!(f, "classifier has no service; use Classifier::new(service)")
+                write!(
+                    f,
+                    "classifier has no service; use Classifier::new(model, service)"
+                )
             }
             ClassifierError::NoQuestions => {
                 write!(f, "classification has no questions; ask at least one")
