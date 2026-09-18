@@ -69,7 +69,7 @@ impl InMemoryDatabase {
 
     pub async fn update_user_connection_oauth_tokens(
         &self,
-        input: UpdateUserConnectionOAuthTokens,
+        input: UpdateOAuthConnectionTokens,
     ) -> Result<Option<UserConnectionRow>> {
         let mut connections = self.user_connections.write();
         let Some(connection) = connections.get_mut(&input.connection_id) else {
@@ -168,6 +168,17 @@ impl InMemoryDatabase {
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<Vec<u8>>> {
+        Ok(self
+            .get_agent_identity_connection_row_for_session(session_id, provider)
+            .await?
+            .and_then(|row| row.access_token_encrypted))
+    }
+
+    pub async fn get_agent_identity_connection_row_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
         let sessions = self.sessions.read();
         let Some(session) = sessions.get(&session_id) else {
             return Ok(None);
@@ -180,12 +191,8 @@ impl InMemoryDatabase {
         let id_connections = self.agent_identity_connections.read();
         Ok(id_connections
             .values()
-            .find(|c| {
-                c.agent_identity_id == identity_id
-                    && c.provider == provider
-                    && c.access_token_encrypted.is_some()
-            })
-            .and_then(|c| c.access_token_encrypted.clone()))
+            .find(|c| c.agent_identity_id == identity_id && c.provider == provider)
+            .cloned())
     }
 
     /// Get the invoking user's own connection row for a session/provider pair.

@@ -2314,6 +2314,7 @@ dependencies = [
  "chrono",
  "clap",
  "dialoguer",
+ "everruns-cli-contract",
  "everruns-provider",
  "everruns-sdk",
  "futures",
@@ -2329,6 +2330,15 @@ dependencies = [
  "tokio",
  "toml",
  "urlencoding",
+]
+
+[[package]]
+name = "everruns-cli-contract"
+version = "0.28.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2470,6 +2480,7 @@ name = "everruns-framework-cli-host"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "clap",
  "everruns-anthropic",
  "everruns-core",
  "everruns-host",
@@ -2570,6 +2581,7 @@ dependencies = [
  "async-trait",
  "bashkit",
  "chrono",
+ "clap",
  "everruns-capability",
  "everruns-core",
  "everruns-provider",
@@ -3223,6 +3235,7 @@ dependencies = [
  "dotenvy",
  "everruns-builtins",
  "everruns-capability",
+ "everruns-cli-contract",
  "everruns-core",
  "everruns-durable",
  "everruns-host",
@@ -3349,15 +3362,18 @@ dependencies = [
  "async-trait",
  "base64 0.23.1",
  "chrono",
+ "clap",
  "everruns-anthropic",
  "everruns-bedrock",
  "everruns-capability",
+ "everruns-cli-contract",
  "everruns-core",
  "everruns-durable",
  "everruns-engine",
  "everruns-fireworks",
  "everruns-gemini",
  "everruns-host",
+ "everruns-integrations-bashkit",
  "everruns-integrations-browserless",
  "everruns-integrations-catalog",
  "everruns-integrations-daytona",

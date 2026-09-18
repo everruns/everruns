@@ -1,7 +1,7 @@
 //! Shared OAuth token-exchange client for MCP connection flows.
 
 use crate::kernel_imports::{
-    EgressRequest, EgressRequestKind, EgressService,
+    EgressRequest, EgressRequestKind, EgressResponse, EgressService,
     everruns_provider::url_validation::validate_safe_url,
     everruns_provider::url_validation::validate_url_dns_pinned,
 };
@@ -30,13 +30,18 @@ pub(crate) struct OAuthRefreshRequest {
     pub client_secret: Option<String>,
     pub refresh_token: String,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OAuthRefreshError {
+    InvalidGrant,
+    Failed(StatusCode),
+}
 
 #[async_trait]
 pub(crate) trait OAuthRefreshExchange: Send + Sync {
     async fn exchange(
         &self,
         request: OAuthRefreshRequest,
-    ) -> Result<OAuthTokenResponse, (StatusCode, String)>;
+    ) -> Result<OAuthTokenResponse, OAuthRefreshError>;
 }
 
 pub(crate) struct EgressOAuthRefreshExchange {
@@ -54,7 +59,7 @@ impl OAuthRefreshExchange for EgressOAuthRefreshExchange {
     async fn exchange(
         &self,
         request: OAuthRefreshRequest,
-    ) -> Result<OAuthTokenResponse, (StatusCode, String)> {
+    ) -> Result<OAuthTokenResponse, OAuthRefreshError> {
         exchange_oauth_refresh_token(
             self.egress.as_ref(),
             &request.token_endpoint,
@@ -94,7 +99,7 @@ async fn exchange_oauth_refresh_token(
     client_id: &str,
     client_secret: Option<&str>,
     refresh_token: &str,
-) -> Result<OAuthTokenResponse, (StatusCode, String)> {
+) -> Result<OAuthTokenResponse, OAuthRefreshError> {
     let mut params = vec![
         ("grant_type", "refresh_token".to_string()),
         ("client_id", client_id.to_string()),
@@ -103,7 +108,45 @@ async fn exchange_oauth_refresh_token(
     if let Some(secret) = client_secret {
         params.push(("client_secret", secret.to_string()));
     }
-    exchange_oauth_token(egress, token_endpoint, params).await
+    validate_safe_url(token_endpoint)
+        .map_err(|_| OAuthRefreshError::Failed(StatusCode::BAD_REQUEST))?;
+    let body = serde_urlencoded::to_string(&params)
+        .map_err(|_| OAuthRefreshError::Failed(StatusCode::BAD_GATEWAY))?
+        .into_bytes();
+    let response = send_oauth_request(
+        egress,
+        "POST",
+        token_endpoint,
+        &[(
+            "Content-Type",
+            "application/x-www-form-urlencoded".to_string(),
+        )],
+        body,
+    )
+    .await
+    .map_err(|(status, _)| OAuthRefreshError::Failed(status))?;
+    if !(200..300).contains(&response.status) {
+        tracing::warn!(
+            status = response.status,
+            body_len = response.body.len(),
+            "OAuth external service rejected refresh request"
+        );
+        let invalid_grant = serde_json::from_slice::<serde_json::Value>(&response.body)
+            .ok()
+            .and_then(|body| {
+                body.get("error")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_owned)
+            })
+            .is_some_and(|error| error == "invalid_grant");
+        return Err(if invalid_grant {
+            OAuthRefreshError::InvalidGrant
+        } else {
+            OAuthRefreshError::Failed(StatusCode::BAD_GATEWAY)
+        });
+    }
+    serde_json::from_slice(&response.body)
+        .map_err(|_| OAuthRefreshError::Failed(StatusCode::BAD_GATEWAY))
 }
 
 async fn exchange_oauth_token(
@@ -141,6 +184,27 @@ pub(crate) async fn egress_oauth_json<T: serde::de::DeserializeOwned>(
     headers: &[(&str, String)],
     body: Vec<u8>,
 ) -> Result<T, (StatusCode, String)> {
+    let response = send_oauth_request(egress, method, url, headers, body).await?;
+    if !(200..300).contains(&response.status) {
+        tracing::warn!(
+            status = response.status,
+            body_len = response.body.len(),
+            "OAuth external service rejected request"
+        );
+        return Err((StatusCode::BAD_GATEWAY, "Bad gateway".to_string()));
+    }
+
+    serde_json::from_slice(&response.body)
+        .map_err(|e| sanitized_bad_gateway("External service response parse", &e))
+}
+
+async fn send_oauth_request(
+    egress: &dyn EgressService,
+    method: &str,
+    url: &str,
+    headers: &[(&str, String)],
+    body: Vec<u8>,
+) -> Result<EgressResponse, (StatusCode, String)> {
     // THREAT[TM-TOOL-018]: bind the outbound connection to the IPs validated
     // for this request, including token refreshes of long-lived credentials.
     let (parsed, pinned_addrs) = validate_url_dns_pinned(url)
@@ -166,15 +230,49 @@ pub(crate) async fn egress_oauth_json<T: serde::de::DeserializeOwned>(
         .await
         .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
 
-    if !(200..300).contains(&response.status) {
-        tracing::warn!(
-            status = response.status,
-            body_len = response.body.len(),
-            "OAuth external service rejected request"
-        );
-        return Err((StatusCode::BAD_GATEWAY, "Bad gateway".to_string()));
+    Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    struct InvalidGrantEgress;
+
+    #[async_trait]
+    impl EgressService for InvalidGrantEgress {
+        async fn send(
+            &self,
+            _request: EgressRequest,
+        ) -> everruns_core::EgressResult<EgressResponse> {
+            Ok(EgressResponse {
+                status: 400,
+                headers: BTreeMap::new(),
+                body: br#"{"error":"invalid_grant","error_description":"expired"}"#.to_vec(),
+            })
+        }
+
+        async fn send_stream(
+            &self,
+            _request: EgressRequest,
+        ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+            panic!("streaming egress is not used by OAuth refresh")
+        }
     }
 
-    serde_json::from_slice(&response.body)
-        .map_err(|e| sanitized_bad_gateway("External service response parse", &e))
+    #[tokio::test]
+    async fn refresh_classifies_invalid_grant_without_exposing_provider_body() {
+        let error = exchange_oauth_refresh_token(
+            &InvalidGrantEgress,
+            "https://8.8.8.8/token",
+            "client",
+            None,
+            "refresh",
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error, OAuthRefreshError::InvalidGrant);
+    }
 }

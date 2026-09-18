@@ -118,6 +118,17 @@ assert_tree_excludes \
   "$FRAMEWORK_MINIMAL_TREE" \
   everruns-builtins everruns-platform reqwest rustls hyper
 
+# The typed-judgment integration has two halves: a client + framework surface an
+# embedder can carry on its own, and a `hosted` half that registers the connector
+# into the platform plugin system. Enabling the facade's `typesafe` feature must
+# reach only the first, or `everruns` stops being embeddable without the control
+# plane. `inventory` is not listed: everruns-core carries it unconditionally.
+FRAMEWORK_TYPESAFE_TREE=$(cargo tree -p everruns --no-default-features --features typesafe -e normal --prefix none)
+assert_tree_excludes \
+  "everruns --no-default-features --features typesafe normal dependency tree" \
+  "$FRAMEWORK_TYPESAFE_TREE" \
+  everruns-builtins everruns-platform
+
 HOST_MINIMAL_TREE=$(cargo tree -p everruns-host --no-default-features -e normal --prefix none)
 assert_tree_excludes \
   "everruns-host --no-default-features normal dependency tree" \

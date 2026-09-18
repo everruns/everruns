@@ -610,7 +610,7 @@ impl StorageBackend {
 
     pub async fn update_user_connection_oauth_tokens(
         &self,
-        input: UpdateUserConnectionOAuthTokens,
+        input: UpdateOAuthConnectionTokens,
     ) -> Result<Option<UserConnectionRow>> {
         dispatch!(self, update_user_connection_oauth_tokens, input)
     }
@@ -697,6 +697,18 @@ impl StorageBackend {
         dispatch!(
             self,
             get_agent_identity_connection_for_session,
+            session_id,
+            provider
+        )
+    }
+    pub async fn get_agent_identity_connection_row_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        dispatch!(
+            self,
+            get_agent_identity_connection_row_for_session,
             session_id,
             provider
         )

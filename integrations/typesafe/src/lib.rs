@@ -2,7 +2,7 @@
 //!
 //! One crate covers the whole surface: the vendor [`client`], the agent-facing
 //! `jev` capability, the connector an operator configures, and the
-//! [`TypeSafeClassifier`] the platform wires in to back guardrail checks. It
+//! [`TypeSafeAI`] the platform wires in to back guardrail checks. It
 //! brings typed classification — a calibrated number rather than prose — to the
 //! [Everruns](https://everruns.com) ecosystem.
 //!
@@ -18,6 +18,23 @@
 //!
 //! assert_eq!(JevCapability.id(), "jev");
 //! ```
+//!
+//! # The vendor's own documentation
+//!
+//! Worth reading alongside this crate, because the concepts are theirs:
+//!
+//! - [System One](https://docs.typesafe.ai/concepts/system-one) — the class of
+//!   model, and why it returns typed decisions rather than text.
+//! - [Primitives](https://docs.typesafe.ai/primitives) — the three question
+//!   types: [Noul](https://docs.typesafe.ai/primitives/noul),
+//!   [Choice](https://docs.typesafe.ai/primitives/choice), and
+//!   [Score](https://docs.typesafe.ai/primitives/score).
+//! - [State](https://docs.typesafe.ai/concepts/state) — what to put in the
+//!   value a question is asked about.
+//! - [Confidence](https://docs.typesafe.ai/confidence) — how certainty is
+//!   reported, and why it is not the probability.
+//! - [Patterns](https://docs.typesafe.ai/patterns) — fan-out,
+//!   confidence-gated routing, composite scoring, intent routing.
 //!
 //! For an embedded agent, hand the credential in directly:
 //!
@@ -49,24 +66,24 @@ pub use capability::JevCapability;
 #[cfg(feature = "hosted")]
 pub use capability::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 #[cfg(feature = "hosted")]
-pub use connection::TypeSafeConnector;
+pub use connection::TypeSafeAIConnector;
 pub use evaluate::EvaluateInput;
 pub use framework::Jev;
 
-/// The classifier the platform wires into its host composition, and the
-/// deployment credential that enables it.
+/// The classifier provider the platform wires into its host composition, and
+/// the deployment credential that enables it.
 pub use classifier::{
-    CLASSIFIER_MODEL, SystemClassifierConfig, TypeSafeClassifier, UTILITY_TYPESAFE_API_KEY_ENV,
+    CLASSIFIER_MODEL, SystemClassifierConfig, TypeSafeAI, UTILITY_TYPESAFE_API_KEY_ENV,
 };
 /// The vendor client this capability runs on, re-exported at the crate root so
 /// callers reach it without naming the module.
-pub use client::{Error, Evaluation, Question, Result, RetryPolicy, TypeSafeClient};
+pub use client::{Error, Evaluation, Question, Result, RetryPolicy, TypeSafeAIClient};
 
 /// Capability id.
 ///
-/// The capability and its tool are named for the model that answers, Jev;
-/// the connection, the crate, and the API key stay named for the vendor whose
-/// account issues them.
+/// The capability, its tool, and the classifier are named for the model that
+/// answers, Jev; the client, the connection, the crate, and the API keys stay
+/// named for the vendor whose account issues them.
 pub const CAPABILITY_ID: &str = "jev";
 /// Session-secret name used when no user connection is configured.
 pub const TYPESAFE_API_KEY_SECRET: &str = client::API_KEY_ENV;

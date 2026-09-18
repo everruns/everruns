@@ -134,7 +134,7 @@ openai = ["dep:everruns-openai"]
 openrouter = ["dep:everruns-openrouter"]
 # Typed classification: the TypeSafe-backed `ClassifierService` behind
 # `Classifier`, re-exported so one import reaches both halves.
-jev = ["dep:everruns-integrations-typesafe"]
+typesafe = ["dep:everruns-integrations-typesafe"]
 
 [dependencies]
 # Neutral capability contract (EVE-873): `CapabilityId`/`CapabilityRef`,
@@ -159,6 +159,9 @@ everruns-integrations-duckduckgo = { workspace = true, optional = true }
 # versioned provider package's current release baseline.
 everruns-openai = { workspace = true, optional = true }
 everruns-openrouter = { workspace = true, optional = true }
+# Client + framework surface only: the workspace dependency leaves the crate's
+# `hosted` feature off, so enabling `typesafe` on the facade does not drag in
+# everruns-platform. Guarded by scripts/lib/check-portable-builtins-isolation.sh.
 everruns-integrations-typesafe = { workspace = true, optional = true }
 async-trait.workspace = true
 uuid.workspace = true

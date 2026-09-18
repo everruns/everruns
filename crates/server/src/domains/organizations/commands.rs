@@ -109,6 +109,17 @@ impl Command for ResolveOrg {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        // `/v1/resolve-org` is an action at the API root, so derivation would
+        // spell it `resolve-org resolve`. It belongs under the noun it acts on.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["orgs"], "resolve").with_examples(&[CliExample::new(
+                "Look up an organization by its identifier",
+                "everruns orgs resolve --id org_01h9",
+            )]);
+        Some(ROUTE)
+    }
+
     fn positional_arg() -> Option<&'static str> {
         Some("id")
     }

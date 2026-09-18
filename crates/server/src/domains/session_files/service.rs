@@ -6,6 +6,7 @@
 // method recursively creates files and directories from mount point definitions.
 
 use crate::domains::session_files::limits::{QuotaLimits, check_write_quota as quota_check};
+use crate::domains::session_files::memory_mounts::{MemoryMount, MemoryMountRouter};
 use crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry;
 use crate::kernel_imports::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepResult, GrepSearchResult, MountAccess,
@@ -100,15 +101,77 @@ pub struct WorkspaceFileService {
     db: Arc<StorageBackend>,
     virtual_registry:
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
+    /// Live routing for server-managed Memory mounts: reads and writes under
+    /// `/memory/...` resolve against `memory_files` per call instead of against
+    /// a copy taken at session creation. See `memory_mounts.rs`.
+    ///
+    /// Not optional, because a service that silently skipped it would write a
+    /// shared note into one session's private files and lose it.
+    memory_mounts: Arc<MemoryMountRouter>,
     quota: QuotaLimits,
 }
 
 impl WorkspaceFileService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
+            memory_mounts: Arc::new(MemoryMountRouter::new(db.clone())),
             db,
             virtual_registry: None,
             quota: QuotaLimits::from_env(),
+        }
+    }
+
+    /// Resolve a path to the Memory that serves it, if any.
+    async fn route_memory(&self, session_id: Uuid, path: &str) -> Option<(MemoryMount, String)> {
+        self.memory_mounts.route(session_id, path).await
+    }
+
+    /// Drop a workspace's cached memory mounts (session deleted).
+    pub fn evict_memory_mounts(&self, workspace_id: Uuid) {
+        self.memory_mounts.evict(&workspace_id);
+    }
+
+    fn memory_session_path(mount: &MemoryMount, inner: &str) -> String {
+        if inner == "/" {
+            mount.mount_path.clone()
+        } else {
+            format!("{}{}", mount.mount_path, inner)
+        }
+    }
+
+    fn memory_info_to_file_info(
+        session_id: Uuid,
+        mount: &MemoryMount,
+        row: crate::storage::models::MemoryFileInfoRow,
+    ) -> FileInfo {
+        let path = Self::memory_session_path(mount, &row.path);
+        FileInfo {
+            id: row.id,
+            session_id,
+            path: path.clone(),
+            name: FileInfo::name_from_path(&path),
+            is_directory: row.is_directory,
+            is_readonly: mount.readonly,
+            size_bytes: row.size_bytes,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+
+    /// A directory entry standing for a mount root on the way down to it, so a
+    /// listing of `/` shows `/memory` even though no session file exists there.
+    fn synthetic_directory(session_id: Uuid, path: &str) -> FileInfo {
+        let now = chrono::Utc::now();
+        FileInfo {
+            id: Uuid::nil(),
+            session_id,
+            path: path.to_string(),
+            name: FileInfo::name_from_path(path),
+            is_directory: true,
+            is_readonly: false,
+            size_bytes: 0,
+            created_at: now,
+            updated_at: now,
         }
     }
 
@@ -180,6 +243,26 @@ impl WorkspaceFileService {
         let path = Self::normalize_path(&req.path);
         Self::validate_path(&path)?;
         self.ensure_path_not_virtual(session_id, &path)?;
+
+        if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
+            let content = match req.content.as_deref() {
+                Some(text) => {
+                    SessionFile::decode_content(text, req.encoding.as_deref().unwrap_or("text"))?
+                }
+                None => Vec::new(),
+            };
+            if self.memory_mounts.stat(&mount, &inner).await?.is_some() {
+                return Err(anyhow!("File already exists at path: {}", path));
+            }
+            self.memory_mounts
+                .write_file(&mount, &inner, content)
+                .await?;
+            return self
+                .read_file(session_id, &path)
+                .await?
+                .ok_or_else(|| anyhow!("Failed to create file at path: {}", path));
+        }
+
         self.ensure_parent_path_writable(session_id, &path).await?;
 
         // Decode content if provided
@@ -236,6 +319,13 @@ impl WorkspaceFileService {
         let path = Self::normalize_path(&req.path);
         Self::validate_path(&path)?;
         self.ensure_path_not_virtual(session_id, &path)?;
+
+        if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
+            self.memory_mounts.create_directory(&mount, &inner).await?;
+            let display = Self::memory_session_path(&mount, &inner);
+            return Ok(Self::synthetic_directory(session_id, &display));
+        }
+
         self.ensure_parent_path_writable(session_id, &path).await?;
 
         // Check if already exists
@@ -358,6 +448,38 @@ impl WorkspaceFileService {
     pub async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
         let path = Self::normalize_path(path);
 
+        if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
+            let Some(info) = self.memory_mounts.stat(&mount, &inner).await? else {
+                return Ok(None);
+            };
+            let bytes = if info.is_directory {
+                None
+            } else {
+                self.memory_mounts.read_file(&mount, &inner).await?
+            };
+            let (content, encoding) = match bytes.as_ref() {
+                Some(bytes) => {
+                    let (c, e) = SessionFile::encode_content(bytes);
+                    (Some(c), e)
+                }
+                None => (None, "text".to_string()),
+            };
+            let display = Self::memory_session_path(&mount, &info.path);
+            return Ok(Some(SessionFile {
+                id: info.id,
+                session_id,
+                path: display.clone(),
+                name: FileInfo::name_from_path(&display),
+                content,
+                encoding,
+                is_directory: info.is_directory,
+                is_readonly: mount.readonly,
+                size_bytes: info.size_bytes,
+                created_at: info.created_at,
+                updated_at: info.updated_at,
+            }));
+        }
+
         // Check virtual mounts first
         if let Some(registry) = &self.virtual_registry
             && let Some(vf) = registry.read_file(&session_id, &path)
@@ -405,6 +527,35 @@ impl WorkspaceFileService {
             }));
         }
 
+        if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
+            // The mount root is a directory even before the Memory has files.
+            if inner == "/" {
+                let now = chrono::Utc::now();
+                return Ok(Some(FileStat {
+                    path: path.clone(),
+                    name: FileInfo::name_from_path(&path),
+                    is_directory: true,
+                    is_readonly: mount.readonly,
+                    size_bytes: 0,
+                    created_at: now,
+                    updated_at: now,
+                }));
+            }
+            let Some(info) = self.memory_mounts.stat(&mount, &inner).await? else {
+                return Ok(None);
+            };
+            let display = Self::memory_session_path(&mount, &info.path);
+            return Ok(Some(FileStat {
+                path: display.clone(),
+                name: FileInfo::name_from_path(&display),
+                is_directory: info.is_directory,
+                is_readonly: mount.readonly,
+                size_bytes: info.size_bytes,
+                created_at: info.created_at,
+                updated_at: info.updated_at,
+            }));
+        }
+
         // Check virtual mounts first
         if let Some(registry) = &self.virtual_registry
             && let Some(vf) = registry.read_file(&session_id, &path)
@@ -435,6 +586,20 @@ impl WorkspaceFileService {
     /// List directory contents
     pub async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
         let path = Self::normalize_path(path);
+
+        if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
+            let entries = self.memory_mounts.list_directory(&mount, &inner).await?;
+            let mut entries: Vec<FileInfo> = entries
+                .into_iter()
+                .map(|row| Self::memory_info_to_file_info(session_id, &mount, row))
+                .collect();
+            entries.sort_by(|a, b| {
+                b.is_directory
+                    .cmp(&a.is_directory)
+                    .then_with(|| a.path.cmp(&b.path))
+            });
+            return Ok(entries);
+        }
 
         // Check if directory exists in virtual mounts
         let virtual_dir_exists = self.virtual_registry.as_ref().is_some_and(|r| {
@@ -482,6 +647,17 @@ impl WorkspaceFileService {
             }
         }
 
+        // A mount root has no session-file row, so a listing on the way down to
+        // one must synthesize the directory entry or `/memory` looks empty.
+        {
+            let router = &self.memory_mounts;
+            for mount_path in router.mounts_below(session_id, &path).await {
+                let name = FileInfo::name_from_path(&mount_path);
+                entries.retain(|entry| entry.name != name);
+                entries.push(Self::synthetic_directory(session_id, &mount_path));
+            }
+        }
+
         // Sort to match DB ordering: directories first, then by path
         entries.sort_by(|a, b| {
             b.is_directory
@@ -495,10 +671,25 @@ impl WorkspaceFileService {
     /// List all files recursively
     pub async fn list_all(&self, session_id: Uuid) -> Result<Vec<FileInfo>> {
         let rows = self.db.list_all_session_files(session_id).await?;
-        Ok(rows
+        let mut entries: Vec<FileInfo> = rows
             .into_iter()
             .map(Self::row_to_file_info_from_info)
-            .collect())
+            .collect();
+
+        // Mounted Memory files are part of the namespace, and a recursive
+        // listing is what `/memory/user` redaction filters, so they must appear
+        // here under their mounted paths.
+        {
+            let router = &self.memory_mounts;
+            for mount in router.all_mounts(session_id).await.iter() {
+                entries.push(Self::synthetic_directory(session_id, &mount.mount_path));
+                for row in router.list_all(mount).await? {
+                    entries.push(Self::memory_info_to_file_info(session_id, mount, row));
+                }
+            }
+        }
+
+        Ok(entries)
     }
 
     /// Update a file
@@ -515,6 +706,21 @@ impl WorkspaceFileService {
             && registry.is_virtual_path(&session_id, &path)
         {
             return Err(anyhow!("Cannot modify readonly file: {}", path));
+        }
+
+        if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
+            let Some(info) = self.memory_mounts.stat(&mount, &inner).await? else {
+                return Ok(None);
+            };
+            if info.is_directory {
+                return Err(anyhow!("Cannot update directory: {}", path));
+            }
+            if let Some(ref text) = req.content {
+                let bytes =
+                    SessionFile::decode_content(text, req.encoding.as_deref().unwrap_or("text"))?;
+                self.memory_mounts.write_file(&mount, &inner, bytes).await?;
+            }
+            return self.read_file(session_id, &path).await;
         }
 
         // Check if file exists and is not readonly
@@ -574,6 +780,24 @@ impl WorkspaceFileService {
         let expected_bytes = SessionFile::decode_content(expected_content, expected_encoding)?;
         let content = SessionFile::decode_content(content, encoding)?;
 
+        if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
+            // Compare-then-write rather than the single SQL statement the
+            // session store uses: `memory_files` has no conditional update yet,
+            // so two writers racing on the *same* file can still interleave.
+            // The convention that keeps that rare is one file per writer; see
+            // `knowledge/harnesses/platform-chat-v2.md`.
+            let Some(current) = self.memory_mounts.read_file(&mount, &inner).await? else {
+                return Ok(None);
+            };
+            if current != expected_bytes {
+                return Ok(None);
+            }
+            self.memory_mounts
+                .write_file(&mount, &inner, content)
+                .await?;
+            return self.read_file(session_id, &path).await;
+        }
+
         // Fetch metadata only (no content) to avoid transferring large blobs
         // just to check flags. Content equality is enforced atomically in SQL by
         // update_session_file_if_content_matches below.
@@ -606,6 +830,15 @@ impl WorkspaceFileService {
     /// Delete a file or directory
     pub async fn delete(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
         let path = Self::normalize_path(path);
+
+        if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
+            // Deleting a mount root would empty the shared Memory for every
+            // other session; the mount itself is not the agent's to remove.
+            if inner == "/" {
+                return Err(anyhow!("Cannot delete mount point: {}", path));
+            }
+            return self.memory_mounts.delete(&mount, &inner, recursive).await;
+        }
 
         if path == "/" {
             if recursive {
@@ -680,6 +913,19 @@ impl WorkspaceFileService {
 
         Self::validate_path(&dst_path)?;
 
+        // A move or copy that crosses a Memory mount boundary cannot be one
+        // storage statement, so it is read + write (+ delete) through this same
+        // service. Directories are refused rather than walked: a recursive
+        // cross-store copy is not what any caller needs today.
+        if self
+            .crosses_memory_mount(session_id, &src_path, &dst_path)
+            .await
+        {
+            return self
+                .transfer_across_memory_mount(session_id, &src_path, &dst_path, true)
+                .await;
+        }
+
         // Check source exists
         let source = self.db.get_session_file(session_id, &src_path).await?;
         if source.is_none() {
@@ -713,6 +959,19 @@ impl WorkspaceFileService {
         let dst_path = Self::normalize_path(&req.dst_path);
 
         Self::validate_path(&dst_path)?;
+
+        // A move or copy that crosses a Memory mount boundary cannot be one
+        // storage statement, so it is read + write (+ delete) through this same
+        // service. Directories are refused rather than walked: a recursive
+        // cross-store copy is not what any caller needs today.
+        if self
+            .crosses_memory_mount(session_id, &src_path, &dst_path)
+            .await
+        {
+            return self
+                .transfer_across_memory_mount(session_id, &src_path, &dst_path, false)
+                .await;
+        }
 
         // Check source exists and is not a directory
         let source = self.db.get_session_file(session_id, &src_path).await?;
@@ -796,7 +1055,112 @@ impl WorkspaceFileService {
             }
         }
 
+        // Mounted Memory content is part of the namespace the agent greps, and
+        // `/memory/user` privacy is enforced by the caller's path-prefix
+        // exclusion, which is applied to these paths too.
+        {
+            let router = &self.memory_mounts;
+            let regex = build_grep_regex(&req.pattern)?;
+            let path_matcher = req
+                .path_pattern
+                .as_deref()
+                .map(everruns_core::session_path::GrepPathPattern::new)
+                .transpose()?;
+            for mount in router.all_mounts(session_id).await.iter() {
+                if req
+                    .excluded_path_prefix
+                    .as_deref()
+                    .is_some_and(|prefix| mount.mount_path.starts_with(prefix))
+                {
+                    continue;
+                }
+                for row in router.list_all(mount).await? {
+                    if row.is_directory || row.size_bytes > MAX_GREP_FILE_BYTES {
+                        continue;
+                    }
+                    let display = Self::memory_session_path(mount, &row.path);
+                    if path_matcher
+                        .as_ref()
+                        .is_some_and(|matcher| !matcher.is_match(&display))
+                    {
+                        continue;
+                    }
+                    if req
+                        .excluded_path_prefix
+                        .as_deref()
+                        .is_some_and(|prefix| display.starts_with(prefix))
+                    {
+                        continue;
+                    }
+                    let Some(bytes) = router.read_file(mount, &row.path).await? else {
+                        continue;
+                    };
+                    let Ok(text) = String::from_utf8(bytes) else {
+                        continue;
+                    };
+                    let matches: Vec<GrepMatch> = text
+                        .lines()
+                        .enumerate()
+                        .filter(|(_, line)| regex.is_match(line))
+                        .map(|(index, line)| GrepMatch {
+                            path: display.clone(),
+                            line_number: index + 1,
+                            line: line.to_string(),
+                        })
+                        .collect();
+                    if !matches.is_empty() {
+                        results.push(GrepResult {
+                            path: display,
+                            matches,
+                        });
+                    }
+                }
+            }
+        }
+
         Ok(results)
+    }
+
+    /// True when either end of a move or copy sits inside a Memory mount.
+    async fn crosses_memory_mount(&self, session_id: Uuid, src: &str, dst: &str) -> bool {
+        self.route_memory(session_id, src).await.is_some()
+            || self.route_memory(session_id, dst).await.is_some()
+    }
+
+    async fn transfer_across_memory_mount(
+        &self,
+        session_id: Uuid,
+        src: &str,
+        dst: &str,
+        remove_source: bool,
+    ) -> Result<Option<SessionFile>> {
+        let Some(source) = self.read_file(session_id, src).await? else {
+            return Err(anyhow!("Source not found: {}", src));
+        };
+        if source.is_directory {
+            return Err(anyhow!(
+                "Cannot move or copy a directory across a memory mount: {}",
+                src
+            ));
+        }
+        if self.stat(session_id, dst).await?.is_some() {
+            return Err(anyhow!("Destination already exists: {}", dst));
+        }
+        let created = self
+            .create_file(
+                session_id,
+                CreateFileInput {
+                    path: dst.to_string(),
+                    content: source.content.clone(),
+                    encoding: Some(source.encoding.clone()),
+                    is_readonly: Some(false),
+                },
+            )
+            .await?;
+        if remove_source {
+            self.delete(session_id, src, false).await?;
+        }
+        Ok(Some(created))
     }
 
     fn row_to_session_file(row: SessionFileRow) -> SessionFile {

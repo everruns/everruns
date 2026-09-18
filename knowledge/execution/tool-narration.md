@@ -32,7 +32,7 @@ unowned/foreign calls fall back to generic display-name phrasing.
 
 Two levels:
 
-1. **Tool level (default).** [`Tool::narrate`](../../crates/core/src/tools.rs)
+1. **Tool level (default).** [`Tool::narrate`](../../crates/core/src/tools/mod.rs)
    returns the line for a call to that tool (default `None`). The tool knows its
    own arguments, so this is the natural home for its wording.
 

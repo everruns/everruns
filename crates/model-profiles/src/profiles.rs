@@ -317,10 +317,14 @@ const LLMSIM: &[&str] = &["llmsim"];
 // which targets OpenAI deployments rather than MAI deployments.
 const MICROSOFT_MAI: &[&str] = &["mai", "openai", "openrouter", "openai_completions"];
 // Muse is served first-party by Meta Model API and through OpenAI-compatible
-// gateways. The Contributor tier is first-party only because its data-use
-// terms are part of Meta's own Model API product.
+// gateways, both tiers alike. The Contributor tier was listed first-party only
+// on the assumption that its data-use bargain was a Meta Model API product
+// term; it is not. OpenRouter serves `meta/muse-spark-1.3-contributor` and
+// passes Meta's tier pricing through unchanged ($0.10/$0.002/$0.20 against the
+// standard tier's $1.25/$0.15/$4.25), so the id means the same thing and buys
+// the same discount on either route. Surface still gates *capabilities*: a
+// gateway route loses phases and tool search, which `profile_data` handles.
 const META_MUSE: &[&str] = &["meta", "openai", "openrouter", "openai_completions"];
-const META_ONLY: &[&str] = &["meta"];
 
 static REGISTRY: &[ModelDescriptor] = &[
     // OpenAI
@@ -438,9 +442,12 @@ static REGISTRY: &[ModelDescriptor] = &[
         META_MUSE,
     ),
     md(
-        &["muse-spark-1.3-contributor"],
+        &[
+            "muse-spark-1.3-contributor",
+            "meta/muse-spark-1.3-contributor",
+        ],
         ModelVendor::Meta,
-        META_ONLY,
+        META_MUSE,
     ),
     md(
         &["muse-spark-1.2", "meta/muse-spark-1.2"],
@@ -448,9 +455,12 @@ static REGISTRY: &[ModelDescriptor] = &[
         META_MUSE,
     ),
     md(
-        &["muse-spark-1.2-contributor"],
+        &[
+            "muse-spark-1.2-contributor",
+            "meta/muse-spark-1.2-contributor",
+        ],
         ModelVendor::Meta,
-        META_ONLY,
+        META_MUSE,
     ),
     md(
         &["minimax-m3", "minimax/minimax-m3"],
@@ -4718,7 +4728,9 @@ mod tests {
         let contributor = get_model_profile("meta", "muse-spark-1.2-contributor").unwrap();
         assert_eq!(contributor.name, "Muse Spark 1.2 Contributor");
         assert_eq!(contributor.family, "muse-spark-1.2");
-        assert!(get_model_profile("openrouter", "muse-spark-1.2-contributor").is_none());
+        // Both tiers reach the gateways under their vendor-prefixed ids, which
+        // is how OpenRouter spells them.
+        assert!(get_model_profile("openrouter", "meta/muse-spark-1.2-contributor").is_some());
     }
 
     #[test]
@@ -4731,7 +4743,26 @@ mod tests {
         assert!(!openrouter.supports_phases);
         assert!(!openrouter.tool_search);
 
-        assert!(get_model_profile("openrouter", "muse-spark-1.3-contributor").is_none());
+        // The Contributor tier is gated the same way, not withheld. It was
+        // listed first-party only on the assumption that its data-use bargain
+        // was a Meta Model API product term; OpenRouter serves it and passes
+        // Meta's tier pricing through unchanged.
+        let contributor_direct = get_model_profile("meta", "muse-spark-1.3-contributor").unwrap();
+        assert!(contributor_direct.supports_phases);
+        assert!(contributor_direct.tool_search);
+
+        let contributor_gateway =
+            get_model_profile("openrouter", "meta/muse-spark-1.3-contributor").unwrap();
+        assert!(!contributor_gateway.supports_phases);
+        assert!(!contributor_gateway.tool_search);
+        // Same id, same tier: the discount is the reason to pick it, so the
+        // profile must not quietly hand back standard-tier pricing.
+        let cost = contributor_gateway
+            .cost
+            .expect("contributor tier is priced");
+        assert_eq!(cost.input, 0.10);
+        assert_eq!(cost.output, 0.20);
+
         assert_eq!(
             get_model_vendor("meta", "muse-spark-1.3"),
             Some(ModelVendor::Meta)

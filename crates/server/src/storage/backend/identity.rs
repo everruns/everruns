@@ -200,6 +200,8 @@ impl StorageBackend {
         subject_id: Uuid,
     ) -> Result<Option<PrincipalRow>> {
         #[cfg(test)]
+        self.fail_if_forced("get_principal_by_subject")?;
+        #[cfg(test)]
         self.record_session_list_lookup().await;
         dispatch!(self, get_principal_by_subject, org_id, kind, subject_id)
     }
@@ -496,6 +498,8 @@ impl StorageBackend {
     }
 
     pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
+        #[cfg(test)]
+        self.fail_if_forced("get_agent")?;
         #[cfg(test)]
         self.record_session_list_lookup().await;
         dispatch!(self, get_agent, org_id, id)

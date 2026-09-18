@@ -27,6 +27,21 @@ impl StorageBackend {
         dispatch!(self, upsert_agent_identity_connection, input)
     }
 
+    pub async fn upsert_agent_identity_connection_for_active_agent(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+        input: CreateAgentIdentityConnectionRow,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        dispatch!(
+            self,
+            upsert_agent_identity_connection_for_active_agent,
+            org_id,
+            agent_id,
+            input
+        )
+    }
+
     pub async fn get_agent_identity_connection(
         &self,
         identity_id: AgentIdentityId,
@@ -40,6 +55,19 @@ impl StorageBackend {
         identity_id: AgentIdentityId,
     ) -> Result<Vec<AgentIdentityConnectionRow>> {
         dispatch!(self, list_agent_identity_connections, identity_id)
+    }
+    pub async fn update_agent_identity_connection_oauth_tokens(
+        &self,
+        input: UpdateOAuthConnectionTokens,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        dispatch!(self, update_agent_identity_connection_oauth_tokens, input)
+    }
+
+    pub async fn delete_all_agent_identity_connections(
+        &self,
+        identity_id: AgentIdentityId,
+    ) -> Result<u64> {
+        dispatch!(self, delete_all_agent_identity_connections, identity_id)
     }
 
     pub async fn delete_agent_identity_connection(

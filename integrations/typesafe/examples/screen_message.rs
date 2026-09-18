@@ -8,7 +8,7 @@
 //! stage becomes one question, they all ride one round trip, and the block
 //! threshold is a number your code owns.
 
-use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeClient};
+use everruns_integrations_typesafe::{Evaluation, Question, TypeSafeAIClient};
 
 /// Categories scored on every message, with the level that trips a block.
 const HAZARDS: &[(&str, &str)] = &[
@@ -29,7 +29,7 @@ const BLOCK_AT: f64 = 0.5;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = TypeSafeClient::from_env()?;
+    let client = TypeSafeAIClient::from_env()?;
     let message = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "Here's the deployment checklist you asked for.".to_string());
