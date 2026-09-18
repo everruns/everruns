@@ -265,6 +265,87 @@ require(
     "publish-run selection must reject the wrong release SHA",
 )
 
+# The release plan must not dispatch a never-published crate at a platform
+# version that was already cut: its pins name that version, but the siblings
+# published at it came from the older commit, so cargo's verification build
+# compiles it against stale dependency source. Exercised rather than asserted
+# textually, because the failure mode is logic, not wording.
+import contextlib
+import io
+import re
+import textwrap
+import urllib.request
+
+plan_src = textwrap.dedent(
+    re.search(r"python3 - <<'PY' > release-plan\.json\n(.*?)\n\s*PY\n", crate_release, re.S).group(1)
+)
+plan_state: dict = {}
+
+
+class _FakeResponse:
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def read(self) -> bytes:
+        return self._text.encode()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
+
+
+def _fake_urlopen(url, timeout=None):
+    name = plan_state["lookup"][url.rsplit("/", 1)[-1]]
+    versions = plan_state["registry"].get(name)
+    if not versions:
+        raise urllib.error.HTTPError(url, 404, "not published", None, None)
+    return _FakeResponse("\n".join(json.dumps({"vers": v}) for v in sorted(versions)))
+
+
+def release_plan(packages: dict[str, str], registry: dict[str, set[str]]) -> list[str]:
+    """Run the workflow's own plan script against a stubbed crates.io index."""
+    plan_state["registry"] = registry
+    plan_state["lookup"] = {n.lower(): n for n in packages}
+    meta = {"packages": [
+        {"name": n, "version": v, "dependencies": []} for n, v in packages.items()
+    ]}
+    original_urlopen = urllib.request.urlopen
+    original_check_output = subprocess.check_output
+    urllib.request.urlopen = _fake_urlopen
+    subprocess.check_output = lambda *a, **k: json.dumps(meta)
+    captured = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(captured):
+            exec(compile(plan_src, "release-plan", "exec"), {"__name__": "__main__"})
+    finally:
+        urllib.request.urlopen = original_urlopen
+        subprocess.check_output = original_check_output
+    return [entry["package"] for entry in json.loads(captured.getvalue())]
+
+
+PLATFORM = "0.28.0"
+with contextlib.redirect_stderr(io.StringIO()):
+    deferred = release_plan(
+        {"everruns-core": PLATFORM, "everruns-integrations-typesafe": PLATFORM},
+        {"everruns-core": {"0.27.0", PLATFORM}},
+    )
+    joined = release_plan(
+        {"everruns-core": PLATFORM, "everruns-integrations-typesafe": PLATFORM},
+        {"everruns-core": {"0.27.0"}},
+    )
+    resumed = release_plan(
+        {"everruns-core": PLATFORM, "everruns-host": PLATFORM},
+        {"everruns-core": {"0.27.0", PLATFORM}, "everruns-host": {"0.27.0"}},
+    )
+require(deferred == [], "a never-published crate must not publish at an already-cut platform version")
+require(
+    sorted(joined) == ["everruns-core", "everruns-integrations-typesafe"],
+    "a new crate must publish with the platform version being cut",
+)
+require(resumed == ["everruns-host"], "a re-run must still finish a partially published cascade")
+
 legacy_macros = repo / "crates/everruns-macros"
 require(not legacy_macros.exists(), "legacy crates/everruns-macros path must not exist")
 macros_manifest = repo / "crates/macros/Cargo.toml"
