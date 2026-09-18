@@ -4,7 +4,7 @@
 # An entry may not grow. A file that drops under 1500 lines must be
 # removed from this list. Do not add an entry by hand to admit a new
 # oversized file — split the file instead.
-4628 apps/ui/src/lib/api/legacy-api-types.ts
+4551 apps/ui/src/lib/api/legacy-api-types.ts
 3637 crates/builtins/src/compaction.rs
 3081 crates/builtins/src/guardrails.rs
 1597 crates/builtins/src/infinity_context.rs
@@ -33,7 +33,7 @@
 1765 crates/host/src/real_disk.rs
 2213 crates/host/src/runtime.rs
 2807 crates/host/tests/runtime_host_test.rs
-2795 crates/internal-protocol/src/lib.rs
+2593 crates/internal-protocol/src/lib.rs
 4880 crates/model-profiles/src/profiles.rs
 1802 crates/platform/src/app.rs
 2698 crates/platform/src/background_run.rs
@@ -44,9 +44,9 @@
 2570 crates/provider/src/driver_registry.rs
 2073 crates/provider/src/openai_protocol.rs
 1535 crates/provider/src/openresponses_types.rs
-2933 crates/server/src/api/ag_ui.rs
+2904 crates/server/src/api/ag_ui.rs
 1952 crates/server/src/api/agents.rs
-1779 crates/server/src/api/app_a2a.rs
+1776 crates/server/src/api/app_a2a.rs
 2559 crates/server/src/api/common.rs
 3660 crates/server/src/api/durable.rs
 2630 crates/server/src/api/mcp_endpoint/mod.rs
@@ -63,22 +63,22 @@
 1543 crates/server/src/domains/agent_triggers/commands.rs
 2483 crates/server/src/domains/agents/commands.rs
 1898 crates/server/src/domains/budgets/tests.rs
-1872 crates/server/src/domains/common.rs
+1870 crates/server/src/domains/common.rs
 2114 crates/server/src/domains/evals/service.rs
 1753 crates/server/src/domains/models/service.rs
 2751 crates/server/src/domains/session_files/service.rs
 1897 crates/server/src/domains/session_tasks/commands.rs
 2192 crates/server/src/domains/sessions/commands.rs
 1631 crates/server/src/grpc_service/tests.rs
-5232 crates/server/src/grpc_service/worker_service_impl.rs
+5231 crates/server/src/grpc_service/worker_service_impl.rs
 3874 crates/server/src/seed.rs
 1570 crates/server/src/services/provider_resolver.rs
-4592 crates/server/src/slack_delivery.rs
+4591 crates/server/src/slack_delivery.rs
 4555 crates/server/src/storage/memory/tests.rs
 3880 crates/server/src/storage/models.rs
-2589 crates/server/tests/app_a2a_integration_test.rs
+1897 crates/server/tests/app_a2a_integration_test.rs
 1745 crates/server/tests/evals_integration_test.rs
-4254 crates/server/tests/mcp_endpoint_test.rs
+4190 crates/server/tests/mcp_endpoint_test.rs
 4917 crates/server/tests/repository_integration_test.rs
 1737 crates/test-support/src/capabilities/fake_aws.rs
 4744 crates/test-support/tests/reason_atom_test.rs
