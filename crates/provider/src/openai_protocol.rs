@@ -112,8 +112,9 @@ pub fn models_url_for_api_url(api_url: &str) -> String {
 /// act on the *kind* of failure (credential checks distinguishing a rejected
 /// key from an unreachable provider) do not have to re-parse the message.
 pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
-    AgentLoopError::llm_kind(
-        LlmErrorKind::from_provider_status(status.as_u16(), ""),
+    AgentLoopError::llm_http(
+        status.as_u16(),
+        "",
         format!("Models API returned status {status}"),
     )
 }
@@ -253,10 +254,13 @@ impl OpenAIProtocolChatDriver {
                         // Exhausted billing quota is surfaced as a 429 but is not
                         // transient — fail fast instead of burning retries.
                         if is_provider_quota_message(&error_text) {
-                            return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                                LlmErrorKind::QuotaExhausted,
-                                format!("OpenAI API error ({}): {}", status, error_text),
-                            ));
+                            return RetryDecision::Terminal(
+                                AgentLoopError::llm_kind(
+                                    LlmErrorKind::QuotaExhausted,
+                                    format!("OpenAI API error ({}): {}", status, error_text),
+                                )
+                                .with_status(status.as_u16()),
+                            );
                         }
 
                         let wait = rate_limit_info
@@ -271,7 +275,13 @@ impl OpenAIProtocolChatDriver {
                         };
                     }
 
-                    // Non-retryable error or max retries exceeded
+                    // Non-retryable error or max retries exceeded. The
+                    // rate-limit headers are read before the body is consumed
+                    // so a terminal 429 still carries the provider's own
+                    // retry delay.
+                    let retry_after = is_rate_limit_status(status)
+                        .then(|| RateLimitInfo::from_openai_headers(response.headers()))
+                        .and_then(|info| info.retry_after_secs);
                     let error_text = response.text().await.unwrap_or_default();
                     let error_msg = format!("OpenAI API error ({}): {}", status, error_text);
 
@@ -287,23 +297,23 @@ impl OpenAIProtocolChatDriver {
                         ));
                     }
 
-                    // Attach the semantic error kind while the HTTP status and
-                    // body are still available (see LlmErrorKind).
-                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
-
-                    if attempts > 0 {
-                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                            kind,
-                            format!(
-                                "{} (after {} retries, last error: {})",
-                                error_msg,
-                                attempts,
-                                last_error.lock().unwrap().take().unwrap_or_default()
-                            ),
-                        ));
+                    // Classify and preserve the status/code while the HTTP
+                    // response is still structured (see LlmError).
+                    let message = if attempts > 0 {
+                        format!(
+                            "{} (after {} retries, last error: {})",
+                            error_msg,
+                            attempts,
+                            last_error.lock().unwrap().take().unwrap_or_default()
+                        )
+                    } else {
+                        error_msg
+                    };
+                    let mut error = AgentLoopError::llm_http(status.as_u16(), &error_text, message);
+                    if let Some(secs) = retry_after {
+                        error = error.with_retry_after_secs(secs);
                     }
-
-                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
+                    RetryDecision::Terminal(error)
                 }
             },
             |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
@@ -586,22 +596,27 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             }
             None => (String::new(), Vec::new(), None, None),
         };
-        let (prompt_tokens, completion_tokens, cached_tokens, cost) = body
+        let (prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens, cost) = body
             .usage
             .map(|usage| {
                 let cached = usage
                     .prompt_tokens_details
                     .as_ref()
                     .and_then(|details| details.cached_tokens);
+                let reasoning = usage
+                    .completion_tokens_details
+                    .as_ref()
+                    .and_then(|details| details.reasoning_tokens);
                 let prompt = usage.prompt_tokens.unwrap_or(0);
                 (
                     Some(prompt),
                     usage.completion_tokens,
                     Some(disjoint_prompt_tokens(prompt, cached)),
+                    reasoning,
                     usage.cost,
                 )
             })
-            .unwrap_or((None, None, None, None));
+            .unwrap_or((None, None, None, None, None));
         Ok(LlmResponse {
             text,
             reasoning: reasoning.into_iter().collect(),
@@ -618,6 +633,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 completion_tokens,
                 cache_read_tokens: cached_tokens,
                 cache_creation_tokens: None,
+                reasoning_tokens,
                 provider_cost_usd: cost,
                 model: Some(config.model.clone()),
                 finish_reason,
@@ -710,6 +726,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         let completion_tokens = Arc::new(Mutex::new(CompletionTokenCount::default()));
         let prompt_tokens = Arc::new(Mutex::new(0u32));
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
+        let reasoning_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         // OpenAI-compatible gateways (e.g. OpenRouter) report an authoritative
         // per-request cost in `usage.cost`; direct OpenAI leaves it absent.
         let provider_cost_usd = Arc::new(Mutex::new(Option::<f64>::None));
@@ -740,6 +757,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                     let completion_tokens = Arc::clone(&completion_tokens);
                     let prompt_tokens = Arc::clone(&prompt_tokens);
                     let cache_read_tokens = Arc::clone(&cache_read_tokens);
+                    let reasoning_tokens = Arc::clone(&reasoning_tokens);
                     let provider_cost_usd = Arc::clone(&provider_cost_usd);
                     let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
                     let finish_reason = Arc::clone(&finish_reason);
@@ -764,6 +782,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                             };
                             let input_tokens = *prompt_tokens.lock().unwrap();
                             let cached = *cache_read_tokens.lock().unwrap();
+                            let reasoning_used = *reasoning_tokens.lock().unwrap();
                             let cost = *provider_cost_usd.lock().unwrap();
                             let resp_id = response_id.lock().unwrap().clone();
                             let mut reason = finish_reason.lock().unwrap().clone();
@@ -819,6 +838,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     )),
                                     completion_tokens: Some(output_tokens),
                                     cache_read_tokens: cached,
+                                    reasoning_tokens: reasoning_used,
                                     cache_creation_tokens: None,
                                     provider_cost_usd: cost,
                                     model: Some(model),
@@ -860,6 +880,14 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                         && details.cached_tokens.is_some()
                                     {
                                         *cache_read_tokens.lock().unwrap() = details.cached_tokens;
+                                    }
+                                    // Reasoning is billed inside completion_tokens;
+                                    // keep the breakdown so callers can attribute it.
+                                    if let Some(details) = &usage.completion_tokens_details
+                                        && details.reasoning_tokens.is_some()
+                                    {
+                                        *reasoning_tokens.lock().unwrap() =
+                                            details.reasoning_tokens;
                                     }
                                     // Authoritative cost from OpenAI-compatible gateways
                                     // (e.g. OpenRouter `usage.cost`, in USD credits).
@@ -1149,6 +1177,9 @@ struct OpenAiUsage {
     /// Detailed breakdown of prompt tokens (includes cached tokens)
     #[serde(default)]
     prompt_tokens_details: Option<OpenAiPromptTokensDetails>,
+    /// Detailed breakdown of completion tokens (includes reasoning tokens)
+    #[serde(default)]
+    completion_tokens_details: Option<OpenAiCompletionTokensDetails>,
     /// Authoritative per-request cost in USD credits, returned by
     /// OpenAI-compatible gateways such as OpenRouter. Absent for direct OpenAI.
     #[serde(default)]
@@ -1160,6 +1191,13 @@ struct OpenAiPromptTokensDetails {
     /// Number of tokens retrieved from cache
     #[serde(default)]
     cached_tokens: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct OpenAiCompletionTokensDetails {
+    /// Reasoning tokens billed inside `completion_tokens`
+    #[serde(default)]
+    reasoning_tokens: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1640,6 +1678,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            limits: Default::default(),
         }
     }
     async fn mock_provider(sse: &str) -> (wiremock::MockServer, crate::Provider) {

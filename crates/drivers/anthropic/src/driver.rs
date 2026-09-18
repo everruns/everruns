@@ -325,19 +325,22 @@ impl AnthropicChatDriver {
                     // body are still available (see LlmErrorKind).
                     let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
 
-                    if attempts > 0 {
-                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                            kind,
-                            format!(
-                                "{} (after {} retries, last error: {})",
-                                error_msg,
-                                attempts,
-                                last_error.lock().unwrap().take().unwrap_or_default()
-                            ),
-                        ));
-                    }
-
-                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
+                    let message = if attempts > 0 {
+                        format!(
+                            "{} (after {} retries, last error: {})",
+                            error_msg,
+                            attempts,
+                            last_error.lock().unwrap().take().unwrap_or_default()
+                        )
+                    } else {
+                        error_msg
+                    };
+                    RetryDecision::Terminal(AgentLoopError::llm_http_kind(
+                        kind,
+                        status.as_u16(),
+                        &error_text,
+                        message,
+                    ))
                 }
             },
             |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
@@ -1315,8 +1318,9 @@ impl ChatDriver for AnthropicChatDriver {
             let body = response.text().await.unwrap_or_default();
             // Classified at the boundary so credential checks can tell a
             // rejected key (401/403) from an outage without parsing strings.
-            return Err(AgentLoopError::llm_kind(
-                LlmErrorKind::from_provider_status(status.as_u16(), &body),
+            return Err(AgentLoopError::llm_http(
+                status.as_u16(),
+                &body,
                 format!("Models API returned {}: {}", status, body),
             ));
         }

@@ -359,14 +359,18 @@ impl RuntimeProvider {
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponseStream> {
         let id = self.id.to_string();
+        let limits = config.limits;
         let stream = self
             .driver
             .chat_completion_stream(&self.endpoint, messages, config)
             .await
             .map_err(|error| error.with_provider(&id))?;
-        Ok(Box::pin(stream.map(move |result| {
-            result.map_err(|error| error.with_provider(&id))
-        })))
+        let stream: crate::driver_registry::LlmResponseStream =
+            Box::pin(stream.map(move |result| result.map_err(|error| error.with_provider(&id))));
+        // The call's limits bind whoever consumes the stream, not just the
+        // collected path: a caller rendering events itself is exactly the one
+        // with no other way to bound a provider that stops sending.
+        Ok(crate::turn_collector::limit_stream(stream, limits))
     }
 
     pub async fn chat_completion(
@@ -980,6 +984,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            limits: Default::default(),
             reasoning_state: None,
         };
         let start = Provider::new(

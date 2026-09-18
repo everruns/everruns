@@ -203,6 +203,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            limits: Default::default(),
         };
         for effort in [ReasoningEffort::None, ReasoningEffort::Minimal] {
             config.reasoning_effort = Some(effort);

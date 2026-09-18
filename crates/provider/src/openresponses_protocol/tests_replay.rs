@@ -112,6 +112,7 @@ async fn stateless_gateway_request_replays_full_transcript_on_the_wire() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        limits: Default::default(),
         reasoning_state: None,
     };
 
@@ -247,6 +248,7 @@ async fn rejected_stateful_continuation_replays_repaired_transcript_once() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        limits: Default::default(),
         reasoning_state: None,
     };
 
@@ -329,6 +331,7 @@ async fn openrouter_provider_does_not_send_hosted_tool_search() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        limits: Default::default(),
         reasoning_state: None,
     };
 
@@ -408,6 +411,7 @@ async fn openai_provider_omits_openrouter_routing_controls() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        limits: Default::default(),
         reasoning_state: None,
     };
 
@@ -481,6 +485,7 @@ async fn openresponses_stream_skips_done_sentinel() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        limits: Default::default(),
         reasoning_state: None,
     };
 
@@ -577,6 +582,7 @@ async fn tool_call_contract_covers_request_wire_and_stream_parser() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        limits: Default::default(),
         reasoning_state: None,
     };
 
@@ -1285,6 +1291,7 @@ fn test_request_reasoning_none_is_omitted() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        limits: Default::default(),
         reasoning_state: None,
     };
 
@@ -1324,6 +1331,7 @@ fn test_request_reasoning_high_is_included() {
         volatile_suffix_len: 0,
         extra_headers: Vec::new(),
         cache_diagnostics: None,
+        limits: Default::default(),
         reasoning_state: None,
     };
 

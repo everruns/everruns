@@ -60,6 +60,15 @@ pub enum LlmErrorKind {
     AttestationRequired,
     /// Provider rejected the request shape (4xx that is not auth/quota/429).
     InvalidRequest,
+    /// The provider answered, but the answer could not be used as a turn: the
+    /// stream ended before its terminal event, or it exceeded a limit the
+    /// caller set.
+    ///
+    /// Distinct from [`Unavailable`](Self::Unavailable) because retrying does
+    /// not help by itself, and from [`Other`](Self::Other) because the
+    /// classification is certain — the failure was decided on Everruns' side
+    /// of the wire, not guessed from provider prose.
+    MalformedResponse,
     /// Unclassified; downstream falls back to string classification.
     Other,
 }
@@ -150,10 +159,37 @@ impl LlmErrorKind {
 }
 
 /// LLM provider error with a semantic kind attached by the driver.
+///
+/// [`kind`](Self::kind) is what runtime policy keys on. The transport fields
+/// beside it — [`status`](Self::status), [`code`](Self::code),
+/// [`retry_after_secs`](Self::retry_after_secs) — are the provider's own
+/// answer, recorded at the boundary where it was still structured. Without
+/// them an embedder that has to re-express a failure (an HTTP API in front of
+/// Everruns, a retry budget of its own) can only scrape them back out of
+/// [`message`](Self::message), which is display text and not a contract.
+///
+/// `#[non_exhaustive]`: the boundary keeps learning to preserve more, and a
+/// field addition must not break construction downstream. Build with
+/// [`LlmError::new`] and the `with_*` setters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct LlmError {
     pub kind: LlmErrorKind,
     pub message: String,
+    /// HTTP status the provider answered with, when the failure arrived as an
+    /// HTTP response. `None` for SDK, transport, and protocol failures that
+    /// never carried one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<u16>,
+    /// The provider's own machine-readable error code, verbatim (OpenAI
+    /// `error.code`, Anthropic `error.type`). Kept beside `kind` rather than
+    /// folded into it: `kind` is Everruns' taxonomy, this is the provider's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// Delay the provider asked for before another attempt, in seconds
+    /// (`Retry-After` or an equivalent rate-limit header).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_after_secs: Option<u64>,
     /// Retries already consumed below the turn loop.
     #[serde(default)]
     pub retry_attempts: u32,
@@ -163,6 +199,43 @@ pub struct LlmError {
     /// Whether a lower provider layer already made the terminal retry decision.
     #[serde(default)]
     pub retry_handled: bool,
+}
+
+impl LlmError {
+    /// A provider failure with its semantic kind and nothing else known.
+    pub fn new(kind: LlmErrorKind, message: impl Into<String>) -> Self {
+        LlmError {
+            kind,
+            message: message.into(),
+            status: None,
+            code: None,
+            retry_after_secs: None,
+            retry_attempts: 0,
+            retry_wait_ms: 0,
+            retry_handled: false,
+        }
+    }
+
+    /// Record the HTTP status the provider answered with.
+    #[must_use]
+    pub fn with_status(mut self, status: u16) -> Self {
+        self.status = Some(status);
+        self
+    }
+
+    /// Record the provider's machine-readable error code.
+    #[must_use]
+    pub fn with_code(mut self, code: impl Into<String>) -> Self {
+        self.code = Some(code.into());
+        self
+    }
+
+    /// Record the delay the provider asked for before another attempt.
+    #[must_use]
+    pub fn with_retry_after_secs(mut self, secs: u64) -> Self {
+        self.retry_after_secs = Some(secs);
+        self
+    }
 }
 
 impl std::fmt::Display for LlmError {
@@ -243,6 +316,26 @@ pub enum AgentLoopError {
     DriverNotRegistered(String),
 }
 
+/// Read the provider's machine-readable error code out of a JSON error body.
+///
+/// Both shapes in circulation are accepted: OpenAI-style `error.code` and
+/// Anthropic-style `error.type`. A body that is not JSON, or carries neither,
+/// yields `None` — this never guesses a code out of prose.
+fn provider_error_code_in(body: &str) -> Option<String> {
+    let body = body.trim();
+    if !body.starts_with('{') {
+        return None;
+    }
+    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
+    let error = parsed.get("error")?;
+    let code = error
+        .get("code")
+        .and_then(|value| value.as_str())
+        .or_else(|| error.get("type").and_then(|value| value.as_str()))?;
+    let code = code.trim();
+    (!code.is_empty()).then(|| code.to_owned())
+}
+
 impl AgentLoopError {
     /// Prefix provider-bound messages without changing structured identifiers.
     pub fn with_provider(mut self, provider: &str) -> Self {
@@ -265,24 +358,110 @@ impl AgentLoopError {
     /// Create an LLM error with no semantic kind (falls back to string
     /// classification downstream).
     pub fn llm(msg: impl Into<String>) -> Self {
-        AgentLoopError::Llm(LlmError {
-            kind: LlmErrorKind::Other,
-            message: msg.into(),
-            retry_attempts: 0,
-            retry_wait_ms: 0,
-            retry_handled: false,
-        })
+        AgentLoopError::Llm(LlmError::new(LlmErrorKind::Other, msg))
     }
 
     /// Create an LLM error with a semantic kind assigned at the driver boundary.
     pub fn llm_kind(kind: LlmErrorKind, msg: impl Into<String>) -> Self {
-        AgentLoopError::Llm(LlmError {
-            kind,
-            message: msg.into(),
-            retry_attempts: 0,
-            retry_wait_ms: 0,
-            retry_handled: false,
-        })
+        AgentLoopError::Llm(LlmError::new(kind, msg))
+    }
+
+    /// Create an LLM error from an HTTP failure, classifying it and keeping
+    /// the status.
+    ///
+    /// This is the constructor HTTP drivers reach for: it is the one place
+    /// that both classifies (via
+    /// [`LlmErrorKind::from_provider_status`]) and preserves the status a
+    /// consumer would otherwise have to parse back out of the message.
+    pub fn llm_http(status: u16, body: &str, msg: impl Into<String>) -> Self {
+        Self::llm_http_kind(
+            LlmErrorKind::from_provider_status(status, body),
+            status,
+            body,
+            msg,
+        )
+    }
+
+    /// Create an LLM error from an HTTP failure a driver has already
+    /// classified, keeping the status and the provider's error code.
+    ///
+    /// The counterpart to [`llm_http`](Self::llm_http) for drivers whose
+    /// protocol extension classifies more precisely than status and body
+    /// alone allow.
+    pub fn llm_http_kind(
+        kind: LlmErrorKind,
+        status: u16,
+        body: &str,
+        msg: impl Into<String>,
+    ) -> Self {
+        let mut error = LlmError::new(kind, msg).with_status(status);
+        if let Some(code) = provider_error_code_in(body) {
+            error = error.with_code(code);
+        }
+        AgentLoopError::Llm(error)
+    }
+
+    /// Attach the HTTP status to an LLM error that was classified elsewhere.
+    ///
+    /// No-op on non-LLM variants, whose status is implied by the variant and
+    /// reported by [`http_status`](Self::http_status).
+    #[must_use]
+    pub fn with_status(mut self, status: u16) -> Self {
+        if let AgentLoopError::Llm(error) = &mut self {
+            error.status = Some(status);
+        }
+        self
+    }
+
+    /// Attach the delay the provider asked for before another attempt.
+    #[must_use]
+    pub fn with_retry_after_secs(mut self, secs: u64) -> Self {
+        if let AgentLoopError::Llm(error) = &mut self {
+            error.retry_after_secs = Some(secs);
+        }
+        self
+    }
+
+    /// The HTTP status this failure corresponds to, if any.
+    ///
+    /// Reports the recorded status for [`Llm`](Self::Llm), and the status the
+    /// variant itself stands for where Everruns classified the failure
+    /// semantically instead of carrying one:
+    /// [`ModelNotAvailable`](Self::ModelNotAvailable) is `404` and
+    /// [`RequestTooLarge`](Self::RequestTooLarge) is `413`. Everything else is
+    /// `None` — a caller putting an API in front of Everruns picks its own
+    /// status rather than being handed a guess.
+    pub fn http_status(&self) -> Option<u16> {
+        match self {
+            AgentLoopError::Llm(error) => error.status,
+            AgentLoopError::ModelNotAvailable(_) => Some(404),
+            AgentLoopError::RequestTooLarge(_) => Some(413),
+            _ => None,
+        }
+    }
+
+    /// The provider's own machine-readable error code, if one was preserved.
+    pub fn provider_error_code(&self) -> Option<&str> {
+        match self {
+            AgentLoopError::Llm(error) => error.code.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// The delay the provider asked for before another attempt, in seconds.
+    ///
+    /// Reads the recorded `Retry-After` first, then the delay
+    /// [`LlmErrorKind::BillingPressure`] carries.
+    pub fn retry_after_secs(&self) -> Option<u64> {
+        match self {
+            AgentLoopError::Llm(error) => error.retry_after_secs.or(match error.kind {
+                LlmErrorKind::BillingPressure {
+                    retry_after_secs, ..
+                } => retry_after_secs,
+                _ => None,
+            }),
+            _ => None,
+        }
     }
 
     /// Attach retries already consumed by a lower provider layer. The reason
@@ -396,12 +575,17 @@ impl AgentLoopError {
         match self {
             AgentLoopError::Llm(err) => match err.kind {
                 LlmErrorKind::RateLimited => true,
-                LlmErrorKind::Other => {
-                    let msg_lower = err.message.to_ascii_lowercase();
-                    msg_lower.contains("(429)")
-                        || msg_lower.contains("rate limit")
-                        || msg_lower.contains("too many requests")
-                }
+                // A recorded status is the provider's own answer; the string
+                // scan below is the fallback for failures that carry none.
+                LlmErrorKind::Other => match err.status {
+                    Some(status) => status == 429,
+                    None => {
+                        let msg_lower = err.message.to_ascii_lowercase();
+                        msg_lower.contains("(429)")
+                            || msg_lower.contains("rate limit")
+                            || msg_lower.contains("too many requests")
+                    }
+                },
                 _ => false,
             },
             _ => false,
@@ -413,9 +597,10 @@ impl AgentLoopError {
         match self {
             AgentLoopError::Llm(err) => match err.kind {
                 LlmErrorKind::Authentication => true,
-                LlmErrorKind::Other => {
-                    err.message.contains("(401)") || err.message.contains("(403)")
-                }
+                LlmErrorKind::Other => match err.status {
+                    Some(status) => status == 401 || status == 403,
+                    None => err.message.contains("(401)") || err.message.contains("(403)"),
+                },
                 _ => false,
             },
             _ => false,
@@ -427,14 +612,17 @@ impl AgentLoopError {
         match self {
             AgentLoopError::Llm(err) => match err.kind {
                 LlmErrorKind::Unavailable => true,
-                LlmErrorKind::Other => {
-                    let msg = &err.message;
-                    msg.contains("(500)")
-                        || msg.contains("(502)")
-                        || msg.contains("(503)")
-                        || msg.contains("(504)")
-                        || msg.contains("(529)")
-                }
+                LlmErrorKind::Other => match err.status {
+                    Some(status) => status >= 500,
+                    None => {
+                        let msg = &err.message;
+                        msg.contains("(500)")
+                            || msg.contains("(502)")
+                            || msg.contains("(503)")
+                            || msg.contains("(504)")
+                            || msg.contains("(529)")
+                    }
+                },
                 _ => false,
             },
             _ => false,
@@ -453,6 +641,7 @@ impl AgentLoopError {
                 | LlmErrorKind::QuotaExhausted
                 | LlmErrorKind::BillingPressure { .. }
                 | LlmErrorKind::AttestationRequired
+                | LlmErrorKind::MalformedResponse
                 | LlmErrorKind::InvalidRequest => false,
                 LlmErrorKind::Other => crate::llm_retry::is_transient_error_message(&err.message),
             },
@@ -544,7 +733,9 @@ impl AgentLoopError {
                     LlmErrorKind::AttestationRequired => {
                         Some(user_facing_error_codes::PROVIDER_ATTESTATION_REQUIRED)
                     }
-                    LlmErrorKind::InvalidRequest | LlmErrorKind::Other => None,
+                    LlmErrorKind::InvalidRequest
+                    | LlmErrorKind::MalformedResponse
+                    | LlmErrorKind::Other => None,
                 };
                 match code {
                     Some(code) => {
@@ -1416,5 +1607,93 @@ mod tests {
             }
         }
         assert_eq!(json_val(&Fails), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn llm_http_records_the_status_and_provider_code() {
+        let body =
+            r#"{"error":{"message":"no","code":"model_not_found","type":"invalid_request_error"}}"#;
+        let error = AgentLoopError::llm_http(404, body, "OpenAI API error (404)");
+        assert_eq!(error.http_status(), Some(404));
+        assert_eq!(error.provider_error_code(), Some("model_not_found"));
+    }
+
+    #[test]
+    fn llm_http_falls_back_to_the_anthropic_error_type() {
+        let body = r#"{"error":{"type":"overloaded_error","message":"busy"}}"#;
+        let error = AgentLoopError::llm_http(529, body, "Anthropic API error (529)");
+        assert_eq!(error.provider_error_code(), Some("overloaded_error"));
+        assert_eq!(error.llm_error_kind(), Some(LlmErrorKind::Unavailable));
+    }
+
+    #[test]
+    fn a_non_json_body_yields_no_provider_code() {
+        let error = AgentLoopError::llm_http(503, "upstream is down", "boom");
+        assert_eq!(error.http_status(), Some(503));
+        assert_eq!(error.provider_error_code(), None);
+    }
+
+    #[test]
+    fn semantic_variants_report_the_status_they_stand_for() {
+        assert_eq!(
+            AgentLoopError::model_not_available("gpt-5").http_status(),
+            Some(404)
+        );
+        assert_eq!(
+            AgentLoopError::request_too_large("too big").http_status(),
+            Some(413)
+        );
+        assert_eq!(AgentLoopError::Cancelled.http_status(), None);
+    }
+
+    #[test]
+    fn a_recorded_status_classifies_an_untyped_failure() {
+        // The message carries no "(429)" marker, so only the recorded status
+        // can answer this — the case that forced embedders to scrape strings.
+        let error = AgentLoopError::llm_http(429, "slow down", "provider refused the request");
+        assert!(error.is_rate_limited());
+        assert_eq!(error.retry_after_secs(), None);
+        assert!(!AgentLoopError::llm("provider refused the request").is_rate_limited());
+    }
+
+    #[test]
+    fn retry_after_prefers_the_recorded_delay_over_the_billing_hint() {
+        let error = AgentLoopError::llm_kind(
+            LlmErrorKind::BillingPressure {
+                reason: BillingPressureReason::InFlightBudgetExhausted,
+                retry_after_secs: Some(30),
+            },
+            "budget",
+        );
+        assert_eq!(error.retry_after_secs(), Some(30));
+        assert_eq!(error.with_retry_after_secs(5).retry_after_secs(), Some(5));
+    }
+
+    #[test]
+    fn transport_fields_survive_a_serde_round_trip_and_default_when_absent() {
+        let error = LlmError::new(LlmErrorKind::RateLimited, "slow down")
+            .with_status(429)
+            .with_code("rate_limit_exceeded")
+            .with_retry_after_secs(12);
+        let json = serde_json::to_value(&error).unwrap();
+        let back: LlmError = serde_json::from_value(json).unwrap();
+        assert_eq!(back.status, Some(429));
+        assert_eq!(back.code.as_deref(), Some("rate_limit_exceeded"));
+        assert_eq!(back.retry_after_secs, Some(12));
+
+        let legacy: LlmError =
+            serde_json::from_str(r#"{"kind":"other","message":"legacy"}"#).unwrap();
+        assert_eq!(legacy.status, None);
+        assert_eq!(legacy.code, None);
+    }
+
+    #[test]
+    fn a_malformed_response_is_classified_and_never_retried() {
+        let error = AgentLoopError::llm_kind(
+            LlmErrorKind::MalformedResponse,
+            "stream ended before its terminal event",
+        );
+        assert!(!error.is_transient_llm_error());
+        assert!(!error.is_rate_limited());
     }
 }

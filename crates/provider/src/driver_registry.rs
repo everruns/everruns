@@ -235,6 +235,14 @@ pub struct LlmCompletionMetadata {
     pub cache_read_tokens: Option<u32>,
     /// Tokens written to cache (Anthropic-specific), disjoint from `prompt_tokens`
     pub cache_creation_tokens: Option<u32>,
+    /// Reasoning tokens the provider billed as part of `completion_tokens`.
+    ///
+    /// A *subset* of `completion_tokens`, not an addition to it: providers
+    /// that report reasoning separately (OpenAI
+    /// `completion_tokens_details.reasoning_tokens`) still count it in the
+    /// completion total. Reported so callers can attribute the spend rather
+    /// than infer it from the visible answer's length.
+    pub reasoning_tokens: Option<u32>,
     /// Authoritative cost of this generation in USD, when the provider reports
     /// it inline (e.g. OpenRouter's `usage.cost`). `None` for providers that do
     /// not return a cost.
@@ -322,52 +330,16 @@ pub trait ChatDriver: Send + Sync {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
-        use futures::StreamExt;
-
-        let mut stream = self
+        // One folding loop for the whole runtime: the same rules (and the
+        // same `config.limits`) apply whether a caller collects the stream
+        // itself or takes the non-streaming path.
+        let limits = config.limits;
+        let stream = self
             .chat_completion_stream(endpoint, messages, config)
             .await?;
-        let mut text = String::new();
-        let mut reasoning: Vec<crate::reasoning::ReasoningContentPart> = Vec::new();
-        let mut tool_calls = Vec::new();
-        let mut metadata = LlmCompletionMetadata::default();
-
-        while let Some(event) = stream.next().await {
-            match event? {
-                LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
-                // Deltas are a live-rendering concern; the terminal
-                // `ReasoningItem` carries the durable artifact.
-                LlmStreamEvent::ReasoningDelta { .. } => {}
-                LlmStreamEvent::ReasoningItem(item) => reasoning.push(item),
-                LlmStreamEvent::ToolCalls(calls) => tool_calls = calls,
-                LlmStreamEvent::NativeToolCall(_) => {
-                    return Err(crate::error::AgentLoopError::config(
-                        "native async/custom calls require a streaming coordinator",
-                    ));
-                }
-                // Streamed phase hint is a mid-stream refinement only; the
-                // non-streaming collector relies on the terminal Done metadata.
-                LlmStreamEvent::MessagePhase(_) => {}
-                LlmStreamEvent::Done(meta) => metadata = *meta,
-                LlmStreamEvent::Error(err) => {
-                    return Err(crate::error::AgentLoopError::llm_kind(
-                        err.kind(),
-                        err.to_string(),
-                    ));
-                }
-            }
-        }
-
-        Ok(LlmResponse {
-            text,
-            reasoning,
-            tool_calls: if tool_calls.is_empty() {
-                None
-            } else {
-                Some(tool_calls)
-            },
-            metadata,
-        })
+        Ok(crate::turn_collector::collect_turn(stream, &limits, |_| {})
+            .await?
+            .into_response())
     }
 
     /// Whether this driver can complete without SSE on the wire.
@@ -933,6 +905,13 @@ pub struct LlmCallConfig {
     pub extra_headers: Vec<(String, String)>,
     /// Prompt-cache diagnostics requested for this call.
     pub cache_diagnostics: Option<CacheDiagnosticsConfig>,
+    /// Bounds on how long this call may run and how much it may return.
+    ///
+    /// Enforced wherever a stream is folded into a turn: the non-streaming
+    /// path below, and any caller using
+    /// [`collect_turn`](crate::turn_collector::collect_turn). Unbounded by
+    /// default, so a driver that ignores them behaves as before.
+    pub limits: crate::turn_collector::TurnLimits,
 }
 
 impl LlmCallConfig {
@@ -1108,6 +1087,12 @@ impl LlmCallConfigBuilder {
     /// Request provider prompt-cache diagnostics for this call.
     pub fn cache_diagnostics(mut self, config: CacheDiagnosticsConfig) -> Self {
         self.config.cache_diagnostics = Some(config);
+        self
+    }
+
+    /// Bound how long this call may run and how much it may return.
+    pub fn limits(mut self, limits: crate::turn_collector::TurnLimits) -> Self {
+        self.config.limits = limits;
         self
     }
 
@@ -2093,6 +2078,7 @@ mod tests {
             volatile_suffix_len: 0,
             extra_headers: Vec::new(),
             cache_diagnostics: None,
+            limits: Default::default(),
             reasoning_state: None,
         }
     }

@@ -377,19 +377,22 @@ impl OpenResponsesProtocolChatDriver {
                             LlmErrorKind::from_provider_status(status.as_u16(), &error_text)
                         });
 
-                    if attempts > 0 {
-                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                            kind,
-                            format!(
-                                "{} (after {} retries, last error: {})",
-                                error_msg,
-                                attempts,
-                                last_error.lock().unwrap().take().unwrap_or_default()
-                            ),
-                        ));
-                    }
-
-                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
+                    let message = if attempts > 0 {
+                        format!(
+                            "{} (after {} retries, last error: {})",
+                            error_msg,
+                            attempts,
+                            last_error.lock().unwrap().take().unwrap_or_default()
+                        )
+                    } else {
+                        error_msg
+                    };
+                    RetryDecision::Terminal(AgentLoopError::llm_http_kind(
+                        kind,
+                        status.as_u16(),
+                        &error_text,
+                        message,
+                    ))
                 }
             },
             |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),

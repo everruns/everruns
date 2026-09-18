@@ -50,6 +50,7 @@ pub mod stream_accumulator;
 pub mod stream_reconnect;
 pub mod tool_schema_compat;
 pub mod tool_types;
+pub mod turn_collector;
 pub mod typed_id;
 pub mod url_validation;
 pub mod user_facing_error;
@@ -112,6 +113,7 @@ pub use tool_types::{
     ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult, ToolResultImage,
     URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired,
 };
+pub use turn_collector::{CollectedTurn, TurnLimits, TurnTiming, collect_turn, limit_stream};
 pub use url_validation::{
     UrlValidationError, is_blocked_ip, validate_safe_url, validate_url_dns_pinned,
 };
