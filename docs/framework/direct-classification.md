@@ -263,7 +263,7 @@ let agent = Agent::builder()
          jev_evaluate and report the numbers rather than judging by eye.",
     )
     .model(Model::new("gpt-5.6-terra", OpenAI::from_env()?))
-    .capability(Jev::new(std::env::var("TYPESAFE_API_KEY")?))
+    .capability(Jev::from_env()?)
     .build()?;
 
 let session = Engine::new().create(agent);
