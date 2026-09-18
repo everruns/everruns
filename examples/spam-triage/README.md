@@ -2,6 +2,8 @@
 
 Classify a hundred emails with a fast classifier, then send only the ones it was unsure about to a larger model. The interesting decision is not spam or not — it is which emails are worth a second opinion, and that decision is made in your code, from a number.
 
+![Spam Triage terminal demo](demo/demo.gif)
+
 ## What you learn
 
 Reading a classifier's confidence as a value your code branches on, and pairing it with a direct model call for the cases the number says are unsettled.
@@ -97,10 +99,10 @@ CI runs these offline checks without provider credentials. Live model behavior i
 
 ## Demo and recording
 
-`demo/transcript.txt` is a real 30-email run, the same command the tape records. Recording the screencast needs the corpus built, credentials exported, and VHS, ffmpeg, and a VHS-compatible browser installed:
+`demo/record.sh` produces both the GIF above and `demo/transcript.txt` from one live run of the documented command, with the corpus built and credentials exported:
 
 ```bash
 bash examples/spam-triage/demo/record.sh
 ```
 
-VHS hides most provider wait time but does not replace the models with scripted output.
+It prefers VHS, the recorder the other examples use. VHS draws its frames through a headless browser, which will not launch as root in some containers; where VHS is unavailable the script records the same command with [asciinema](https://asciinema.org) and renders it with [agg](https://github.com/asciinema/agg), to the same theme and dimensions. Either recorder hides most provider wait time and neither replaces the models with scripted output.

@@ -2,44 +2,44 @@ SCREEN      jev-latest (TypeSafe)
 ADJUDICATE  meta/muse-spark-1.3-contributor (OpenRouter)
 CORPUS      examples/spam-triage/data/corpus.jsonl — 30 emails, escalating below 0.80 confidence
 
-screening 30 emails... 30 answered in 1.48s, 7 below the floor
-adjudicating 7 uncertain emails... 7 answered in 10.83s
+screening 30 emails... 30 answered in 1.56s, 5 below the floor
+adjudicating 5 uncertain emails... 5 answered in 14.30s
 
   MESSAGE          LABEL      P(SPAM)  VERDICT    ROUTE    SUBJECT
-  hard_ham/00001   legitimate    0.21  legitimate routed   Personal Finance: Resolutions You Can Keep
-  spam/00001       spam          0.96  spam       screened Life Insurance - Why Pay More?
-  hard_ham/00008   legitimate    0.35  legitimate routed   Lindows.com: Michael's Minute: Lindows.com R…
+  hard_ham/00001   legitimate    0.20  legitimate screened Personal Finance: Resolutions You Can Keep
+  spam/00001       spam          0.95  spam       screened Life Insurance - Why Pay More?
+  hard_ham/00008   legitimate    0.34  legitimate routed   Lindows.com: Michael's Minute: Lindows.com R…
   spam/00011       spam          0.98  spam       screened ^^^^^Cell Phone Belt Clips $1.95^^^^^^ 18070
-  hard_ham/00016   legitimate    0.28  legitimate routed   [Lockergnome Windows Daily] Brilliant Mistak…
+  hard_ham/00016   legitimate    0.26  legitimate routed   [Lockergnome Windows Daily] Brilliant Mistak…
   spam/00021       spam          0.96  spam       screened [ILUG] BUSINESS
   hard_ham/00023   legitimate    0.13  legitimate screened [Lockergnome Apple Core] Skip Content
-  spam/00031       spam          0.80  spam       screened [ILUG] (no subject)
+  spam/00031       spam          0.81  spam       screened [ILUG] (no subject)
   hard_ham/00031   legitimate    0.13  legitimate screened Reg Headlines Thursday July 11
-  spam/00041       spam          0.87  spam       screened enter Chinese market
+  spam/00041       spam          0.88  spam       screened enter Chinese market
   hard_ham/00038   legitimate    0.15  legitimate screened Moore: Speech recognition next hurdle (Tech …
   spam/00051       spam          0.97  spam       screened FORTUNE 500 COMPANY HIRING, AT HOME REPS.
-  hard_ham/00046   legitimate    0.16  legitimate screened CNET NEWS.COM: Copies, Webcasts tangled in d…
-  spam/00061       spam          0.75  spam       routed   Re: Instant Quote
+  hard_ham/00046   legitimate    0.14  legitimate screened CNET NEWS.COM: Copies, Webcasts tangled in d…
+  spam/00061       spam          0.74  spam       routed   Re: Instant Quote
   hard_ham/00054   legitimate    0.43  legitimate routed   Take all your music on the road (ZDNET SHOPP…
-  spam/00071       spam          0.79  spam       routed   WebDesignHQ Newsletter
-  hard_ham/00061   legitimate    0.17  legitimate screened NEWS.COM INVESTOR: Techs fall with consumer …
-  spam/00081       spam          0.97  spam       screened [ILUG] ilug,Bigger, Fuller Breasts Naturally…
+  spam/00071       spam          0.80  spam       screened WebDesignHQ Newsletter
+  hard_ham/00061   legitimate    0.16  legitimate screened NEWS.COM INVESTOR: Techs fall with consumer …
+  spam/00081       spam          0.96  spam       screened [ILUG] ilug,Bigger, Fuller Breasts Naturally…
   hard_ham/00069   legitimate    0.13  legitimate screened [Lockergnome Windows Daily] Deeper Uplink
-  spam/00091       spam          0.92  spam       screened shop your loan to lenders for the best rate …
-  hard_ham/00076   legitimate    0.17  legitimate screened NEWS.COM INVESTOR: Techs rise, but Dow falls…
-  spam/00101       spam          0.96  spam       screened Take your Marketing to the Next Level
-  hard_ham/00084   legitimate    0.17  legitimate screened [Lockergnome Penguin Shell] Good Hearts
+  spam/00091       spam          0.93  spam       screened shop your loan to lenders for the best rate …
+  hard_ham/00076   legitimate    0.16  legitimate screened NEWS.COM INVESTOR: Techs rise, but Dow falls…
+  spam/00101       spam          0.95  spam       screened Take your Marketing to the Next Level
+  hard_ham/00084   legitimate    0.18  legitimate screened [Lockergnome Penguin Shell] Good Hearts
   spam/00111       spam          0.97  spam       screened ADV: Professional Teeth Whitening At Home! o…
-  hard_ham/00091   legitimate    0.14  legitimate screened [Lockergnome Apple Core] Intuitive Cash
+  hard_ham/00091   legitimate    0.15  legitimate screened [Lockergnome Apple Core] Intuitive Cash
   spam/00121       spam          0.94  spam       screened DON'T LET A COMPUTER VIRUS RUIN YOUR DAY! 12…
-  hard_ham/00099   legitimate    0.14  legitimate screened CNET NEWS.COM: Jobs touts OS X, iPods, iMac
+  hard_ham/00099   legitimate    0.13  legitimate screened CNET NEWS.COM: Jobs touts OS X, iPods, iMac
   spam/00131       spam          0.98  spam       screened MSNBC: Rates Hit 18 year Low 4.75% ...28940
-  hard_ham/00107   legitimate    0.25  legitimate routed   Canon USA Reseller News : July
+  hard_ham/00107   legitimate    0.26  legitimate routed   Canon USA Reseller News : July
   spam/00141       spam          0.93  spam       screened Iraq Today Daily News - FREE Trial
 
 SUMMARY
   screen alone     30/30   100.0%
   with routing     30/30   100.0%
-  routing         23 settled, 7 escalated (0 rescued, 0 broken, 0 unreadable)
-  screening        1.48s      19897 input tokens
-  adjudication    10.83s       7424 tokens, $0.0009
+  routing         25 settled, 5 escalated (0 rescued, 0 broken, 0 unreadable)
+  screening        1.56s      19897 input tokens
+  adjudication    14.30s       5941 tokens, $0.0009
