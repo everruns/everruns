@@ -185,6 +185,8 @@ jobs:
               # change to one has to run those tests. Without this a rewrite of
               # a report script reached main with its own test never running.
               - 'scripts/report_*.py'
+              # scripts/test-actions-log-secret-scan.sh drives the log scanner.
+              - 'scripts/scan_*.py'
               - 'scripts/lib/**'
               - 'scripts/select_publish_run.py'
               - 'scripts/sync-publish-pin-versions.py'
