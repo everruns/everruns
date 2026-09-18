@@ -1,0 +1,29 @@
+# Semantic supervision: a fast classifier watches a slow coding agent while it
+# works. The worker is an ordinary Framework agent on the Bashkit shell; the
+# supervisor is `Classifier`, asking nine narrow questions about bounded
+# evidence in one request. The policy that acts on the numbers is plain Rust.
+#
+# A Framework port of https://github.com/thruwire/foreman.
+
+[package]
+name = "everruns-foreman-agent"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+description = "A classifier supervising a coding agent it does not have to stop"
+
+[dependencies]
+everruns = { path = "../../crates/everruns", features = ["bashkit", "typesafe"] }
+everruns-example-demo = { path = "../demo-support" }
+# The worker runs on an OpenRouter-served model, which the facade does not
+# configure; the driver crate is the supported way to reach one, as in
+# `research-agent`.
+everruns-openrouter = { path = "../../crates/drivers/openrouter" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+
+[lints]
+workspace = true
