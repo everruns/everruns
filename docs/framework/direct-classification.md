@@ -36,6 +36,31 @@ the same shape, a different contract.
 | decides the outcome | the model's words | your threshold, in your code |
 | streams | yes | no — one round trip |
 
+## Install
+
+```bash
+cargo add everruns --features typesafe
+export TYPESAFE_API_KEY=...
+```
+
+`--features typesafe` bundles the TypeSafe classifier provider: `TypeSafeAI`,
+which `TypeSafeAI::from_env()` builds from `TYPESAFE_API_KEY`, and the `Jev`
+capability for [handing the same tool to an agent](#giving-an-agent-the-classifier).
+Get a key at [typesafe.ai](https://typesafe.ai).
+
+`everruns` itself stays vendor-free without that feature: `Classifier::new`
+takes any `ClassifierService`, exactly as `Model::new` takes any provider.
+
+:::note[Not on crates.io yet]
+The `typesafe` feature ships in the next release: the published `everruns`
+0.28.0 does not list it, so the `cargo add` above does not resolve yet. Until
+that release is cut, depend on the repository:
+
+```toml
+everruns = { git = "https://github.com/everruns/everruns", features = ["typesafe"] }
+```
+:::
+
 ## Three primitives
 
 A classification asks one or more questions about the same state. Each is one of
@@ -171,18 +196,6 @@ That surface is the contract itself: every question type and the full
 Implementing `ClassifierService` is also how a different classifier — another
 vendor, or a fine-tuned local model — plugs into the same `Classifier`,
 guardrails included.
-
-## Credentials
-
-`TypeSafeAI::from_env()` reads your application's own
-`TYPESAFE_API_KEY`, and requires the `typesafe` feature:
-
-```toml
-everruns = { version = "0.28", features = ["typesafe"] }
-```
-
-`everruns` itself stays vendor-free without that feature: `Classifier::new`
-takes any `ClassifierService`, exactly as `Model::new` takes any provider.
 
 ## Choosing a model
 
