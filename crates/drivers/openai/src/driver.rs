@@ -194,9 +194,16 @@ impl ChatDriver for OpenAIChatDriver {
         let Some(api_url) = endpoint.url("responses") else {
             return Ok(None);
         };
-        // Skip discovery for non-standard custom URLs (proxies, self-hosted)
+        // A custom URL (proxy, gateway, self-hosted) is not OpenAI's catalog,
+        // but most of them serve the OpenAI-compatible listing; try it rather
+        // than reporting no catalog for an endpoint that has one.
         if !supports_model_listing(&api_url) {
-            return Ok(None);
+            return Ok(
+                everruns_provider::model_discovery::list_openai_compatible_models_best_effort(
+                    endpoint,
+                )
+                .await,
+            );
         }
 
         let models_url = models_url_for_api_url(&api_url);
@@ -303,9 +310,16 @@ impl ChatDriver for OpenAICompletionsChatDriver {
         let Some(api_url) = endpoint.url("chat/completions") else {
             return Ok(None);
         };
-        // Skip discovery for non-standard custom URLs (proxies, self-hosted)
+        // A custom URL (proxy, gateway, self-hosted) is not OpenAI's catalog,
+        // but most of them serve the OpenAI-compatible listing; try it rather
+        // than reporting no catalog for an endpoint that has one.
         if !supports_model_listing(&api_url) {
-            return Ok(None);
+            return Ok(
+                everruns_provider::model_discovery::list_openai_compatible_models_best_effort(
+                    endpoint,
+                )
+                .await,
+            );
         }
 
         let models_url = models_url_for_api_url(&api_url);

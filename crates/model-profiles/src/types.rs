@@ -48,7 +48,7 @@ impl std::fmt::Display for ServiceKind {
 // Deliberately a plain comment, not rustdoc: utoipa copies the doc comment
 // into this schema's `description` in `docs/api/openapi.json`, and internal
 // versioning rationale does not belong in the public API spec.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[non_exhaustive]
 pub struct ModelCost {
@@ -86,7 +86,7 @@ impl ModelCost {
 /// For example, OpenAI charges higher rates for prompts exceeding 200K tokens.
 // `#[non_exhaustive]` for the same reason as `ModelCost` above, and a plain
 // comment for the same reason; construct with `CostTier::new`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[non_exhaustive]
 pub struct CostTier {
@@ -118,7 +118,7 @@ impl CostTier {
 }
 
 /// Token limits for the model
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ModelLimits {
     /// Maximum context window size in tokens
@@ -146,7 +146,7 @@ pub enum Modality {
 }
 
 /// Model modalities for input and output
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ModelModalities {
     /// Supported input modalities
@@ -216,7 +216,7 @@ impl std::fmt::Display for ReasoningEffort {
 }
 
 /// Named reasoning effort value for UI display
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ReasoningEffortValue {
     /// The API value (e.g., "low", "medium")
@@ -226,7 +226,7 @@ pub struct ReasoningEffortValue {
 }
 
 /// Reasoning effort configuration for a model
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ReasoningEffortConfig {
     /// Available reasoning effort values for this model
@@ -250,7 +250,7 @@ pub enum Speed {
 }
 
 /// Named speed value for UI display
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SpeedValue {
     /// The API value (e.g., "flex", "priority")
@@ -260,7 +260,7 @@ pub struct SpeedValue {
 }
 
 /// Speed configuration for a model
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SpeedConfig {
     /// Available speed values for this model
@@ -284,7 +284,7 @@ pub enum Verbosity {
 }
 
 /// Named verbosity value for UI display
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct VerbosityValue {
     /// The API value (e.g., "low", "high")
@@ -294,7 +294,7 @@ pub struct VerbosityValue {
 }
 
 /// Verbosity configuration for a model
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct VerbosityConfig {
     /// Available verbosity values for this model
@@ -349,7 +349,7 @@ impl ModelVendor {
 ///
 /// The registry of profiles lives in `crate::profiles`; retired models are
 /// dropped from it as vendors sunset them.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ModelProfile {
     /// Display name of the model
