@@ -693,6 +693,7 @@ inventory::submit! { CommandDescriptor::of::<ExportEvalRunArtifacts>() }
 pub struct ExportEvalRunDataset {
     pub eval_id: String,
     pub run_id: String,
+    #[serde(flatten)]
     pub req: super::dataset::ExportEvalRunDatasetRequest,
 }
 

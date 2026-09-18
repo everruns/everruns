@@ -7,6 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+clap = { workspace = true, features = ["string", "color"] }
 everruns-host = { path = "../../crates/host", features = ["bashkit", "filesystem"] }
 everruns-core = { path = "../../crates/core" }
 everruns-provider = { path = "../../crates/provider" }

@@ -2,7 +2,7 @@
 
 use everruns::IntoCapability;
 use everruns_core::Capability;
-use everruns_integrations_typesafe::{Jev, JevCapability, TypeSafeClient};
+use everruns_integrations_typesafe::{Jev, JevCapability, TypeSafeAIClient};
 use serde_json::json;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
 
@@ -43,7 +43,7 @@ async fn an_agent_tool_call_returns_decision_ready_numbers() {
         .await;
 
     let definition = Jev::with_client(
-        TypeSafeClient::builder(CREDENTIAL)
+        TypeSafeAIClient::builder(CREDENTIAL)
             .base_url(server.uri())
             .build(),
     )
@@ -77,7 +77,7 @@ async fn framework_reports_http_errors_without_upstream_credential_echoes() {
         .await;
 
     let definition = Jev::with_client(
-        TypeSafeClient::builder(CREDENTIAL)
+        TypeSafeAIClient::builder(CREDENTIAL)
             .base_url(server.uri())
             .build(),
     )

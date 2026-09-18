@@ -8,6 +8,9 @@ use crate::services::PrincipalService;
 use crate::storage::{StorageBackend, UpdateAgent};
 
 use super::tests_support::*;
+use crate::domains::session_files::memory_mounts::{
+    AGENT_MEMORY_MOUNT_PATH, USER_MEMORY_MOUNT_PATH,
+};
 
 #[test]
 fn sanitize_session_capabilities_removes_daytona_base_url_overrides() {

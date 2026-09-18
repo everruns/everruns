@@ -9,6 +9,7 @@
 use super::types::{SessionFacetCount, SessionFacetsResponse};
 use crate::api::common::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
+use crate::domains::session_files::memory_mounts::shared_memory_name_for_harness;
 use crate::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::limits::OrgCaps;
@@ -60,8 +61,6 @@ use uuid::Uuid;
 
 use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
 
-const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";
-const USER_MEMORY_MOUNT_PATH: &str = "/memory/user";
 // THREAT[TM-AUTHZ-009][TM-A2A-007]: Session reuse and budget attribution match these routing
 // namespaces. This list is append-only: removing a retired prefix would let external callers forge
 // tags that older routing paths can still match.
@@ -145,6 +144,7 @@ pub(crate) struct SessionListHydration {
 pub(crate) struct ScopedMemoryContext {
     agent_id: Option<AgentId>,
     user_id: Option<Uuid>,
+    harness_id: Option<HarnessId>,
 }
 
 mod capabilities;

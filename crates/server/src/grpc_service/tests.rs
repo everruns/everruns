@@ -522,6 +522,10 @@ async fn direct_worker_rpcs_do_not_leak_storage_errors() {
 }
 
 async fn create_grpc_test_session(service: &WorkerServiceImpl) -> proto::Session {
+    // By name, not by position. This list is newest-first, so taking the first
+    // row silently re-points every test here whenever a built-in is added, and
+    // a feature-gated one lands the session on a harness the org may not create
+    // sessions with. `generic` is the built-in these tests actually want.
     let harness = service
         .platform_list_harnesses(Request::new(PlatformListHarnessesRequest {
             org_id: everruns_core::DEFAULT_ORG_ID,
@@ -531,8 +535,8 @@ async fn create_grpc_test_session(service: &WorkerServiceImpl) -> proto::Session
         .into_inner()
         .harnesses
         .into_iter()
-        .next()
-        .expect("seeded harness");
+        .find(|harness| harness.name == "generic")
+        .expect("seeded generic harness");
 
     service
         .platform_create_session(Request::new(PlatformCreateSessionRequest {

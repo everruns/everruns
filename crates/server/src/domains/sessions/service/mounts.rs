@@ -92,10 +92,7 @@ impl SessionService {
         );
         ensure_no_reserved_memory_mounts(&mounts)?;
         if let Some(scoped_memory) = scoped_memory {
-            mounts.extend(
-                self.collect_scoped_memory_mounts(org_id, scoped_memory)
-                    .await?,
-            );
+            self.ensure_scoped_memories(org_id, scoped_memory).await?;
         }
         Ok(mounts)
     }
@@ -300,48 +297,103 @@ impl SessionService {
         Ok(mounts)
     }
 
-    pub(crate) async fn collect_scoped_memory_mounts(
+    /// Create the server-managed Memories this session will read, without
+    /// mounting anything.
+    ///
+    /// They used to be mounted by copying their files into `session_files`,
+    /// which made every session a private fork: a note written in one was
+    /// invisible to the next and died with the session. The file service now
+    /// routes `/memory/...` straight to `memory_files`
+    /// (`session_files::memory_mounts`), so the only thing session creation
+    /// still owes is that the rows exist. Creating them here rather than
+    /// lazily on first read keeps creation on the authenticated path that
+    /// already knows the org, the agent, and the owner.
+    pub(crate) async fn ensure_scoped_memories(
         &self,
         org_id: i64,
         context: ScopedMemoryContext,
-    ) -> Result<Vec<MountPoint>> {
-        let mut mounts = Vec::with_capacity(2);
-
+    ) -> Result<()> {
         if let Some(agent_id) = context.agent_id {
-            let memory = self
-                .get_or_create_scoped_memory(
-                    org_id,
-                    "agent",
-                    Some(agent_id),
-                    None,
-                    format!("agent-memory-{}", agent_id.uuid().simple()),
-                    "Server-managed per-agent memory.",
-                )
-                .await?;
-            mounts.push(
-                self.memory_row_to_mount(memory, AGENT_MEMORY_MOUNT_PATH)
-                    .await?,
-            );
+            self.get_or_create_scoped_memory(
+                org_id,
+                "agent",
+                Some(agent_id),
+                None,
+                format!("agent-memory-{}", agent_id.uuid().simple()),
+                "Server-managed per-agent memory.",
+            )
+            .await?;
         }
 
         if let Some(user_id) = context.user_id {
-            let memory = self
-                .get_or_create_scoped_memory(
-                    org_id,
-                    "user",
-                    None,
-                    Some(user_id),
-                    format!("user-memory-{}", user_id.simple()),
-                    "Server-managed per-user memory.",
-                )
-                .await?;
-            mounts.push(
-                self.memory_row_to_mount(memory, USER_MEMORY_MOUNT_PATH)
-                    .await?,
-            );
+            self.get_or_create_scoped_memory(
+                org_id,
+                "user",
+                None,
+                Some(user_id),
+                format!("user-memory-{}", user_id.simple()),
+                "Server-managed per-user memory.",
+            )
+            .await?;
         }
 
-        Ok(mounts)
+        self.ensure_shared_harness_memory(org_id, context.harness_id)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Create the Memory every session of one harness shares, when that
+    /// harness declares one.
+    ///
+    /// Org-scoped and keyed by a reserved name, so `UNIQUE(org_id, name)` on
+    /// live rows is the whole uniqueness story: no new scope, no migration, and
+    /// no id a built-in harness definition would have to know.
+    pub(crate) async fn ensure_shared_harness_memory(
+        &self,
+        org_id: i64,
+        harness_id: Option<HarnessId>,
+    ) -> Result<()> {
+        let Some(harness_id) = harness_id else {
+            return Ok(());
+        };
+        let Some(harness) = self.db.get_harness(org_id, harness_id).await? else {
+            return Ok(());
+        };
+        let Some(name) = shared_memory_name_for_harness(&harness.name) else {
+            return Ok(());
+        };
+        let existing = self
+            .db
+            .list_memories(org_id, None, false)
+            .await?
+            .into_iter()
+            .any(|memory| memory.name == name && memory.status == "active");
+        if existing {
+            return Ok(());
+        }
+        self.db
+            .create_memory(
+                org_id,
+                CreateMemoryRow {
+                    public_id: MemoryId::new().to_string(),
+                    name,
+                    description: Some(
+                        "Shared memory for every session of this chat surface.".to_string(),
+                    ),
+                    scope: "org".to_string(),
+                    owner_agent_id: None,
+                    owner_user_id: None,
+                    source_type: "manual".to_string(),
+                    source_config: serde_json::json!({}),
+                    is_readonly: false,
+                    sync_status: "idle".to_string(),
+                    owner_principal_id: None,
+                    resolved_owner_user_id: None,
+                },
+            )
+            .await?;
+        Ok(())
     }
 
     pub(crate) async fn get_or_create_scoped_memory(
@@ -381,19 +433,5 @@ impl SessionService {
                 },
             )
             .await
-    }
-
-    pub(crate) async fn memory_row_to_mount(
-        &self,
-        memory: MemoryRow,
-        mount_path: &str,
-    ) -> Result<MountPoint> {
-        let files = self.db.list_all_memory_files(memory.id).await?;
-        Ok(MountPoint::new(
-            mount_path,
-            MountAccess::ReadWrite,
-            MountSource::directory(memory_files_to_mount_entries(files)),
-            MEMORY_CAPABILITY_ID,
-        ))
     }
 }

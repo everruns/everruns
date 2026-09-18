@@ -52,7 +52,6 @@ jobs:
             command: cargo test -p everruns-integrations-cursor --features cursor-live-tests --test live_api_test -- --test-threads=1
           - name: Sprites Live API Tests
             command: cargo test -p everruns-integrations-sprites --features sprites-live-tests --test live_api_test -- --test-threads=1
-            required_secret: SPRITES_API_TOKEN
           - name: Brave Search API Tests
             command: cargo test -p everruns-integrations-brave-search --features integration
           - name: TypeSafe System One API Tests
@@ -96,11 +95,9 @@ jobs:
         with:
           shared-key: "debug"
 
-      - name: Export required Doppler secret
-        if: ${{ matrix.required_secret != null && matrix.required_secret != '' }}
-        run: |
-          echo "${{ matrix.required_secret }}=$(doppler secrets get ${{ matrix.required_secret }} --plain)" >> "$GITHUB_ENV"
-
+      # Every secret reaches the matrix command through `doppler run` below.
+      # An $GITHUB_ENV export would add nothing but an unmasked copy in every
+      # later step's env block.
       - name: Run live tests
         run: doppler run -- ${{ matrix.command }}
 

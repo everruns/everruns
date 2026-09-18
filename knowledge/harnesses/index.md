@@ -5,3 +5,4 @@
 * [Coding Daytona Harness](coding-daytona-harness.md) - Built-in coding harness backed by Daytona cloud sandboxes.
 * [Sandbox Abstraction](sandbox-abstraction.md) - Provider-neutral filesystem, compute, lifecycle, and checkpoint model.
 * [Execution Environments](execution-environments.md) - Two-axis model separating where commands run from what they may touch.
+* [Platform Chat v2](platform-chat-v2.md) - Proposed rebuild of Platform Chat on one Bashkit shell with the everruns CLI, read-only docs, and shared writable memory.

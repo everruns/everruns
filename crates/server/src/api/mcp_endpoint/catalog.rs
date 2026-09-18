@@ -51,16 +51,6 @@ static INVENTORY_TOOL_DEFS: LazyLock<HashMap<&'static str, ToolDef>> = LazyLock:
         .collect()
 });
 
-/// Original (un-rewritten) input schemas, keyed by command name. The tree's
-/// leaf help renders exact flag names from these via `bash_usage`.
-static INVENTORY_SCHEMAS: LazyLock<HashMap<&'static str, serde_json::Value>> =
-    LazyLock::new(|| {
-        inventory::iter::<crate::domains::common::CommandDescriptor>
-            .into_iter()
-            .map(|desc| ((desc.meta)().name, (desc.param_schema)()))
-            .collect()
-    });
-
 impl CatalogContext {
     /// Convert to a domain Ctx for inventory-registered command dispatch.
     pub fn to_domain_ctx(&self) -> crate::domains::common::Ctx {
@@ -157,17 +147,12 @@ pub(crate) fn make_help_callback()
         Box::pin(async move {
             let path = args.param_str("path").unwrap_or_default().to_string();
             let unknown = args.param_str("unknown").map(ToOwned::to_owned);
-            super::cli_tree::render_help(
-                super::cli_tree::tree(),
-                &path,
-                unknown.as_deref(),
-                |wire, display| {
-                    INVENTORY_SCHEMAS
-                        .get(wire)
-                        .map(|schema| bash_usage(display, schema))
-                        .unwrap_or_else(|| format!("Usage: {display} [--flags]\n"))
-                },
-            )
+            // A leaf's help is its own parser's, rendered from the contract
+            // both surfaces share. This host cannot reach clap to *parse* —
+            // ScriptedTool consumes argv before a builtin sees it — but help
+            // needs no argv, so a command is described here in exactly the
+            // words `everruns-cli` describes it in.
+            super::cli_tree::render_help(super::cli_tree::tree(), &path, unknown.as_deref())
         })
     }
 }
