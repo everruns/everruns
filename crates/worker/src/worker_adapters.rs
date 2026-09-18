@@ -260,9 +260,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get the LLM driver registry
     fn driver_registry(&self) -> DriverRegistry;
 
-    /// Get the session SQL database store.
+    /// Get the session SQL database store, scoped to the caller's org.
+    ///
+    /// Org-scoped like `image_artifact_store`: the store is reached from both
+    /// the agent's runtime tools and the org-scoped command surface, and the two
+    /// cannot agree on which sessions exist without the org.
     fn sqldb_store(
         &self,
+        org_id: i64,
     ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>;
 
     fn native_async_store(
@@ -301,8 +306,23 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // is no default — implementors must explicitly return None or Some.
     // =========================================================================
 
-    /// Get the session storage store for kv_store/secret_store tools.
-    fn storage_store(&self) -> Arc<dyn everruns_core::session_services::SessionStorageStore>;
+    /// Get the session storage store for kv_store/secret_store tools, scoped to
+    /// the caller's org. See `sqldb_store` for why this carries an org.
+    fn storage_store(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore>;
+
+    /// The same store for background sweepers that run across every org.
+    ///
+    /// Leased-resource cleanup and the session-task reaper claim work in batches
+    /// that span organizations — `LeasedResource` carries no org at all — so there
+    /// is no org to scope them by. They are named apart from `storage_store`
+    /// rather than handed an invented org, so the org-less trust context is
+    /// visible at the call site instead of buried in a default.
+    fn storage_store_unscoped(
+        &self,
+    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore>;
 
     /// Get the image artifact store for tool-side image persistence.
     fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore>;

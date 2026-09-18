@@ -591,6 +591,13 @@ impl GrpcClient {
 #[derive(Clone)]
 pub struct GrpcAdapter {
     client: GrpcClient,
+    /// The org this adapter speaks for, when it has one.
+    ///
+    /// `None` is the cross-org background sweeper context (leased-resource
+    /// cleanup, the task reaper): those claim work spanning organizations, so
+    /// there is no org to carry. Surfaces that reach the org-scoped command
+    /// transport require `Some`, and say so rather than inventing a default.
+    org_id: Option<i64>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
 }
 
@@ -598,10 +605,28 @@ impl GrpcAdapter {
     pub fn new(client: GrpcClient) -> Self {
         Self {
             client,
+            org_id: None,
             proactive_compaction_attempts: Arc::new(
                 everruns_core::ProactiveCompactionAttemptTracker::default(),
             ),
         }
+    }
+
+    pub fn new_org_scoped(client: GrpcClient, org_id: i64) -> Self {
+        Self {
+            org_id: Some(org_id),
+            ..Self::new(client)
+        }
+    }
+
+    /// The org this adapter speaks for, or an error naming the surface that
+    /// needs one. Callers that reach the command transport go through here.
+    fn require_org(&self, surface: &str) -> Result<i64> {
+        self.org_id.ok_or_else(|| {
+            AgentLoopError::store(format!(
+                "{surface} requires an org-scoped adapter; this one is the cross-org sweeper context"
+            ))
+        })
     }
 }
 

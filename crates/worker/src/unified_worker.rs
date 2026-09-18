@@ -2416,14 +2416,22 @@ mod tests {
             }
             fn sqldb_store(
                 &self,
+                _org_id: i64,
             ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>
             {
                 unimplemented!()
             }
             fn storage_store(
                 &self,
+                _org_id: i64,
             ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
                 unimplemented!()
+            }
+
+            fn storage_store_unscoped(
+                &self,
+            ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+                self.storage_store(everruns_core::DEFAULT_ORG_ID)
             }
             fn image_artifact_store(
                 &self,

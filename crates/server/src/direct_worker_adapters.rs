@@ -1678,7 +1678,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn sqldb_store(
         &self,
+        _org_id: i64,
     ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
+        // In-process: the store talks to the database directly, so the org is
+        // already enforced by the commands and queries that reach it.
         self.sqldb_store.clone()
     }
 
@@ -1718,7 +1721,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
         })
     }
 
-    fn storage_store(&self) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+    fn storage_store(
+        &self,
+        _org_id: i64,
+    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+        self.storage_store_unscoped()
+    }
+
+    fn storage_store_unscoped(
+        &self,
+    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
         self.storage_store
             .clone()
             .expect("DirectWorkerAdapters: storage_store not set (call with_storage_store)")
