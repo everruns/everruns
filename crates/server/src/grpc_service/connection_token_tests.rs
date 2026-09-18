@@ -1,4 +1,4 @@
-use super::resolve_connection_token;
+use super::resolve_mcp_connection_token;
 use everruns_core::McpServerActsAs;
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_provider::error::Result;
@@ -32,20 +32,16 @@ impl UserConnectionResolver for RecordingResolver {
 }
 
 #[tokio::test]
-async fn connection_token_dispatch_preserves_legacy_and_exact_mcp_identity_paths() {
+async fn mcp_connection_token_dispatch_uses_only_exact_identity_paths() {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let resolver: Arc<dyn UserConnectionResolver> = Arc::new(RecordingResolver {
         calls: calls.clone(),
     });
     let session_id = SessionId::new();
 
-    for (wire_value, expected_token) in [
-        ("", "legacy"),
-        ("none", "none"),
-        ("service", "service"),
-        ("user", "user"),
-    ] {
-        let token = resolve_connection_token(&resolver, session_id, "github", wire_value)
+    for (wire_value, expected_token) in [("none", "none"), ("service", "service"), ("user", "user")]
+    {
+        let token = resolve_mcp_connection_token(&resolver, session_id, "github", wire_value)
             .await
             .unwrap();
         assert_eq!(token.as_deref(), Some(expected_token));
@@ -54,16 +50,15 @@ async fn connection_token_dispatch_preserves_legacy_and_exact_mcp_identity_paths
     assert_eq!(
         *calls.lock().unwrap(),
         vec![
-            None,
             Some(McpServerActsAs::None),
             Some(McpServerActsAs::Service),
             Some(McpServerActsAs::User),
         ]
     );
 
-    let error = resolve_connection_token(&resolver, session_id, "github", "system")
+    let error = resolve_mcp_connection_token(&resolver, session_id, "github", "system")
         .await
         .unwrap_err();
     assert_eq!(error.code(), tonic::Code::InvalidArgument);
-    assert_eq!(calls.lock().unwrap().len(), 4);
+    assert_eq!(calls.lock().unwrap().len(), 3);
 }

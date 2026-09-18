@@ -2930,15 +2930,15 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         request: Request<GetConnectionTokenRequest>,
     ) -> Result<Response<GetConnectionTokenResponse>, Status> {
-        let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
-        let resolver = self.connection_resolver()?;
+        handle_legacy_connection_token_request(self.connection_resolver()?, request.into_inner())
+            .await
+    }
 
-        let token =
-            resolve_connection_token(resolver, session_id.into(), &req.provider, &req.acts_as)
-                .await?;
-
-        Ok(Response::new(GetConnectionTokenResponse { token }))
+    async fn get_mcp_connection_token(
+        &self,
+        request: Request<GetMcpConnectionTokenRequest>,
+    ) -> Result<Response<GetConnectionTokenResponse>, Status> {
+        handle_mcp_connection_token_request(self.connection_resolver()?, request.into_inner()).await
     }
 
     async fn get_connection_user(

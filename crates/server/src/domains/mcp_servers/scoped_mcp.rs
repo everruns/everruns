@@ -433,6 +433,11 @@ async fn resolve_matched_scoped_mcp_server(
         return Ok(Some(resolved));
     }
 
+    let mut headers = server.headers;
+    if !server.acts_as.is_none() {
+        headers.retain(|key, _| !key.eq_ignore_ascii_case("authorization"));
+    }
+
     Ok(Some(McpServerResolved {
         id: scoped_mcp_server_uuid(session_id, &name),
         name,
@@ -442,7 +447,7 @@ async fn resolve_matched_scoped_mcp_server(
         oauth_provider_id: server.oauth_provider_id,
         acts_as: server.acts_as,
         api_key: None,
-        headers: server.headers,
+        headers,
     }))
 }
 

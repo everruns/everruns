@@ -197,6 +197,39 @@ fn detects_authorization_header_case_insensitively() {
     headers.insert("authorization".to_string(), "Bearer token".to_string());
     assert!(has_authorization_header(&headers));
 }
+#[tokio::test]
+async fn inline_identity_attachment_discards_authorization_headers_after_resolution() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let service = McpServerService::new(db, None);
+
+    for acts_as in [McpServerActsAs::User, McpServerActsAs::Service] {
+        let server = ScopedMcpServer {
+            url: "https://mcp.example.com/mcp".to_string(),
+            acts_as,
+            headers: HashMap::from([
+                ("aUtHoRiZaTiOn".to_string(), "Bearer injected".to_string()),
+                ("X-Tenant".to_string(), "tenant-1".to_string()),
+            ]),
+            ..Default::default()
+        };
+
+        let resolved = resolve_matched_scoped_mcp_server(
+            &service,
+            everruns_core::DEFAULT_ORG_ID,
+            Uuid::now_v7(),
+            Some(("contributed".to_string(), server)),
+        )
+        .await
+        .unwrap()
+        .expect("inline server should resolve");
+
+        assert_eq!(resolved.acts_as, acts_as);
+        assert_eq!(
+            resolved.headers,
+            HashMap::from([("X-Tenant".to_string(), "tenant-1".to_string())])
+        );
+    }
+}
 
 #[tokio::test]
 async fn newly_connected_token_is_visible_on_next_turn_in_same_session() {
