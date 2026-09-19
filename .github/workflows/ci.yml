@@ -2648,10 +2648,22 @@ jobs:
 
       - name: Run MCP harness and gRPC tests 100 sequential times
         run: |
+          harness_binary="$(
+            cargo test -p everruns-test-support --test mcp_harness_test --all-features \
+              --no-run --message-format=json |
+              jq -r 'select(.reason == "compiler-artifact" and .target.name == "mcp_harness_test" and .executable != null) | .executable'
+          )"
+          grpc_binary="$(
+            cargo test -p everruns-server --test mcp_acts_as_grpc_test \
+              --no-run --message-format=json |
+              jq -r 'select(.reason == "compiler-artifact" and .target.name == "mcp_acts_as_grpc_test" and .executable != null) | .executable'
+          )"
+          test -x "$harness_binary"
+          test -x "$grpc_binary"
           for run in $(seq 1 100); do
             echo "MCP harness and gRPC soak run ${run}/100"
-            cargo test -p everruns-test-support --test mcp_harness_test --all-features
-            cargo test -p everruns-server --test mcp_acts_as_grpc_test
+            "$harness_binary"
+            "$grpc_binary"
           done
 
   ci-opt-out-policy:
