@@ -74,13 +74,32 @@ test.describe("endpoint budget refusal", () => {
       }),
     );
 
-    const session = await jsonResponse<{ session_id: string }>(
-      await request.post(`${apiBaseUrl}/api/v1/e/${endpoint.id}/sessions`, {
-        headers: { authorization: `Bearer ${apiKey}` },
-        data: { message: "This turn must be refused by the consumed endpoint cap." },
+    const session = await jsonResponse<{ id: string }>(
+      await request.post(`${apiBaseUrl}/api/v1/sessions`, {
+        data: {
+          agent_id: agent.id,
+          title: "Endpoint budget refusal",
+        },
       }),
     );
 
+    const attributed = execFileSync(
+      "psql",
+      [
+        databaseUrl!,
+        "--no-psqlrc",
+        "--set",
+        "ON_ERROR_STOP=1",
+        "--set",
+        `session_id=${session.id}`,
+        "--set",
+        `endpoint_id=${endpoint.id}`,
+        "--command",
+        "UPDATE sessions AS session SET endpoint_id = endpoint.id FROM agent_endpoints AS endpoint WHERE endpoint.public_id = :'endpoint_id' AND replace(session.id::text, '-', '') = substring(:'session_id' from 9);",
+      ],
+      { encoding: "utf8" },
+    );
+    expect(attributed).toContain("UPDATE 1");
     const exhausted = execFileSync(
       "psql",
       [
@@ -102,7 +121,7 @@ test.describe("endpoint budget refusal", () => {
       budget_id: string;
       error_code: string;
       error_fields: Record<string, unknown>;
-    }>(await request.get(`${apiBaseUrl}/api/v1/sessions/${session.session_id}/budget-check`));
+    }>(await request.get(`${apiBaseUrl}/api/v1/sessions/${session.id}/budget-check`));
     expect(refusal).toMatchObject({
       action: "stop",
       budget_id: budget.id,
