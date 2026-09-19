@@ -135,7 +135,7 @@ Two blueprints ship in-tree and are worth reading as references:
 - [`integrations/github/src/lib.rs`](https://github.com/everruns/everruns/blob/main/integrations/github/src/lib.rs) —
   the minimal case: one config field, a pattern constant shared with the runtime
   check that enforces it.
-- [`integrations/openrouter-workspace/src/model_scout.rs`](https://github.com/everruns/everruns/blob/main/integrations/openrouter-workspace/src/model_scout.rs) —
+- [`integrations/openrouter/src/model_scout.rs`](https://github.com/everruns/everruns/blob/main/integrations/openrouter/src/model_scout.rs) —
   the fuller case: numeric bounds tied to runtime constants, a nested config type,
   and a spend budget.
 

@@ -104,8 +104,8 @@ types. The former core paths move as follows:
 | `everruns_core::McpCapability` and MCP capability-ID helpers | `everruns_mcp::*` |
 | `everruns_core::DirectEgressService` | `everruns_host::DirectEgressService` with `direct-egress` |
 | `everruns_core::SystemEmailConfig` and Resend types | `everruns_platform::*` |
-| `everruns_core::ModelScoutCapability` and `OpenRouterWorkspaceCapability` | `everruns_integrations_openrouter_workspace::*` |
-| `everruns_core::OpenRouterServerToolsCapability` | `everruns_integrations_openrouter_workspace::OpenRouterServerToolsCapability` |
+| `everruns_core::ModelScoutCapability` and `OpenRouterWorkspaceCapability` | `everruns_integrations_openrouter::*` |
+| `everruns_core::OpenRouterServerToolsCapability` | `everruns_integrations_openrouter::OpenRouterServerToolsCapability` |
 | `everruns_core::{HumanIntentCapability, InfinityContextCapability, SkillsCapability, AttachSkillCapability, ToolApprovalCapability}` | `everruns_builtins::*` |
 | `everruns_core::{OpenUiCapability, A2UiCapability}` | `everruns_builtins::*` with `ui-capabilities` |
 | `everruns_core::skill::ProcessCommandExecutor` | `everruns_host::ProcessCommandExecutor` with the host `process` feature |

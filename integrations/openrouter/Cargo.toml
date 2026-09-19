@@ -1,5 +1,5 @@
 [package]
-name = "everruns-integrations-openrouter-workspace"
+name = "everruns-integrations-openrouter"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
-documentation = "https://docs.rs/everruns-integrations-openrouter-workspace"
+documentation = "https://docs.rs/everruns-integrations-openrouter"
 description = "OpenRouter workspace, model-scout, and server-tool capabilities for Everruns agents"
 readme = "README.md"
 keywords = ["everruns", "openrouter", "models", "agents"]

@@ -20,7 +20,7 @@ so the agent loop never dispatches them. This capability contributes *request
 intent*, not executable tools, the selected tools are compiled into the
 OpenRouter request's `tools` array as provider-executed entries.
 The concrete implementation lives in the focused
-`everruns-integrations-openrouter-workspace` crate; core carries only the
+`everruns-integrations-openrouter` crate; core carries only the
 provider-neutral routing contract.
 
 This is the OpenRouter counterpart to client-executed web access like
