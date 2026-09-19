@@ -9,8 +9,13 @@
 //! No database required.
 //!
 //! Run with: cargo test -p everruns-server --test client_side_tools_test
+mod test_harness;
 
+use axum::http::StatusCode;
+use everruns_builtins::normalize_ask_user_arguments;
+use everruns_platform::{Agent, Session};
 use serde_json::json;
+use test_harness::TestServer;
 
 // ============================================
 // Agent with Client-Side Tools
@@ -380,4 +385,111 @@ fn test_tool_call_and_result_correlation() {
     let parsed_result: ToolResult = serde_json::from_str(&result_json).unwrap();
 
     assert_eq!(parsed_call.id, parsed_result.tool_call_id);
+}
+
+#[tokio::test]
+async fn omitted_ask_user_question_ids_resume_through_tool_results() {
+    let server = TestServer::in_memory().await;
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "ask-user-test-agent",
+                "display_name": "Ask User Test",
+                "description": "Agent for ask_user integration coverage",
+                "system_prompt": "Ask structured questions."
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let session: Session = server
+        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    server
+        .db
+        .update_session(
+            1,
+            session.id,
+            everruns_server::storage::models::UpdateSession {
+                status: Some("waiting_for_tool_results".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update session status")
+        .expect("session exists");
+
+    let normalized = normalize_ask_user_arguments(&json!({
+        "questions": [{
+            "header": "Target",
+            "question": "Where should I deploy?",
+            "options": [
+                {"label": "Staging", "description": "Safe and reversible."},
+                {"label": "Production", "description": "Serves live traffic."}
+            ]
+        }]
+    }))
+    .expect("valid ask_user arguments");
+    assert_eq!(normalized["questions"][0]["id"], "question_1");
+    server
+        .db
+        .create_event(everruns_server::storage::models::CreateEventRow {
+            session_id: session.id,
+            event_type: "tool.call_requested".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({
+                "tool_calls": [{
+                    "id": "call_ask_user",
+                    "name": "ask_user",
+                    "arguments": normalized
+                }]
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("emit normalized ask_user call");
+
+    let response = server
+        .post(
+            &format!("/v1/sessions/{}/tool-results", session.id),
+            json!({
+                "tool_results": [{
+                    "tool_call_id": "call_ask_user",
+                    "result": {
+                        "status": "answered",
+                        "answered_by": "user",
+                        "answers": [{
+                            "id": "question_1",
+                            "selected": ["Staging"],
+                            "other_text": null
+                        }]
+                    }
+                }]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json_value();
+    assert_eq!(response["status"], "active");
+
+    let events = server
+        .db
+        .list_events(
+            session.id,
+            None,
+            None,
+            &["tool.completed".to_string()],
+            &[],
+            None,
+            Some(10),
+        )
+        .await
+        .expect("list tool completion events");
+    let completed = events.last().expect("tool result persisted");
+    assert_eq!(completed.data["tool_call_id"], "call_ask_user");
 }

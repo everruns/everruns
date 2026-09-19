@@ -2,7 +2,9 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_core::{FinalizedToolCallsContext, FinalizedToolCallsHook};
+use everruns_core::{
+    FinalizedToolCallRejection, FinalizedToolCallsContext, FinalizedToolCallsHook,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -177,7 +179,8 @@ pub fn normalize_ask_user_arguments(arguments: &Value) -> Result<Value, String> 
     }
     let mut request: AskUserRequest = serde_json::from_value(contract_arguments)
         .map_err(|error| format!("invalid ask_user arguments: {error}"))?;
-    validate_ask_user_request(&request)?;
+    validate_ask_user_request(&request)
+        .map_err(|error| format!("invalid ask_user arguments: {error}"))?;
 
     let mut used_ids: HashSet<String> = request
         .questions
@@ -276,16 +279,34 @@ struct AskUserFinalizedToolCallsHook;
 #[async_trait]
 impl FinalizedToolCallsHook for AskUserFinalizedToolCallsHook {
     async fn apply(&self, _context: &FinalizedToolCallsContext<'_>, calls: &mut [ToolCall]) {
-        for call in calls {
-            if call.name == ASK_USER_TOOL_NAME
-                && let Ok(arguments) = normalize_ask_user_arguments(&call.arguments)
-            {
-                call.arguments = arguments;
-            }
-        }
+        let _ = normalize_ask_user_calls(calls);
+    }
+
+    async fn apply_with_rejections(
+        &self,
+        _context: &FinalizedToolCallsContext<'_>,
+        calls: &mut [ToolCall],
+    ) -> Vec<FinalizedToolCallRejection> {
+        normalize_ask_user_calls(calls)
     }
 }
 
+fn normalize_ask_user_calls(calls: &mut [ToolCall]) -> Vec<FinalizedToolCallRejection> {
+    let mut rejections = Vec::new();
+    for call in calls {
+        if call.name != ASK_USER_TOOL_NAME {
+            continue;
+        }
+        match normalize_ask_user_arguments(&call.arguments) {
+            Ok(arguments) => call.arguments = arguments,
+            Err(error) => rejections.push(FinalizedToolCallRejection {
+                tool_call_id: call.id.clone(),
+                error,
+            }),
+        }
+    }
+    rejections
+}
 fn ask_user_parameters_schema() -> Value {
     json!({
         "type": "object",
