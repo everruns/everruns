@@ -2,6 +2,23 @@
 
 ## 2026-09-19
 
+* **A live PoC settled how far Slack one-click install can go, and disproved two
+  assumptions on the way.** `apps.manifest.create` accepts the manifest we
+  already generate — whole, `agent_view` and all — and returns the signing
+  secret with it, so three of the four fields an operator types today can be
+  obtained without a human. It does not verify `request_url` at save time. It
+  cannot, however, install without a consent screen. So the target is one
+  consent per agent, not zero, and a Slack Marketplace listing turns out not to
+  be on the critical path at all. Disproved: that one-click and per-agent bot
+  identity were in tension (they are not), and that the app cannot exist before
+  the endpoint is live (the API path does not check). Also surfaced a real
+  defect — the generated manifest declared no `oauth_config.redirect_urls`, so
+  no generated app could ever be OAuth-installed; invisible until now because
+  the copy-paste flow never runs OAuth. Recorded as [Slack One-Click
+  Install](integrations/slack-one-click-install.md).
+
+## 2026-09-19
+
 * **The utility LLM picks its backend from which key you set, and the model is
   now an env var.** `UTILITY_OPENROUTER_API_KEY` routes internal model work
   (Analyze, Health, `llm_judge` guardrails) through OpenRouter,

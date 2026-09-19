@@ -60,12 +60,14 @@ pub(crate) async fn handle_slack_manifest(
     let channel_public_id = slack_channel.public_id.to_string();
     let request_url = slack_webhook_url(&state.api_base_url, &channel_public_id);
     let interactivity_url = slack_interactivity_url(&state.api_base_url, &channel_public_id);
+    let redirect_url = slack_oauth_redirect_url(&state.api_base_url, &channel_public_id);
     let manifest_yaml = build_manifest_yaml(
         &app.name,
         &display_name,
         app.description.as_deref(),
         &request_url,
         &interactivity_url,
+        &redirect_url,
         agent_surface_enabled,
         &starters,
     );
@@ -103,6 +105,21 @@ pub(crate) fn slack_webhook_url(api_base_url: &str, channel_public_id: &str) -> 
 pub(crate) fn slack_interactivity_url(api_base_url: &str, channel_public_id: &str) -> String {
     format!(
         "{}/v1/e/{}/slack/interactivity",
+        api_base_url.trim_end_matches('/'),
+        channel_public_id
+    )
+}
+
+/// OAuth redirect target for this endpoint's Slack app.
+///
+/// Slack refuses `/oauth/v2/authorize` outright when the app declares no
+/// redirect URL ("redirect_uri did not match any configured URIs"), so an app
+/// without this can never be installed by OAuth — only by the copy-paste flow,
+/// which is why the omission went unnoticed. The route itself does not exist
+/// yet; declaring it here is what makes the app installable once it does.
+pub(crate) fn slack_oauth_redirect_url(api_base_url: &str, channel_public_id: &str) -> String {
+    format!(
+        "{}/v1/e/{}/slack/oauth/callback",
         api_base_url.trim_end_matches('/'),
         channel_public_id
     )
@@ -251,6 +268,7 @@ pub(crate) fn build_manifest_yaml(
     app_description: Option<&str>,
     request_url: &str,
     interactivity_url: &str,
+    redirect_url: &str,
     agent_surface_enabled: bool,
     starters: &[ConversationStarter],
 ) -> String {
@@ -261,6 +279,7 @@ pub(crate) fn build_manifest_yaml(
     let long_desc = yaml_escape(&long_desc);
     let request_url = yaml_escape(request_url);
     let interactivity_url = yaml_escape(interactivity_url);
+    let redirect_url = yaml_escape(redirect_url);
 
     // The agent surface is additive: it adds a scope, a feature block and four
     // events on top of the channel bot, which keeps working exactly as before.
@@ -295,6 +314,8 @@ pub(crate) fn build_manifest_yaml(
          \x20   always_online: true\n\
          {agent_view}\
          oauth_config:\n\
+         \x20 redirect_urls:\n\
+         \x20   - \"{redirect_url}\"\n\
          \x20 scopes:\n\
          \x20   bot:\n\
          \x20     - chat:write\n\
