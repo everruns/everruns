@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::containment::{ContainmentMode, SandboxOptions, SandboxProvider, policy};
 use async_trait::async_trait;
-use everruns_containment::{ContainmentMode, SandboxOptions, SandboxProvider, policy};
 use everruns_core::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
@@ -18,8 +18,8 @@ use everruns_provider::tool_types::{DeferrablePolicy, ToolCall, ToolHints};
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
 
-use crate::approval::{DenyAll, HostShellApproval, ShellApprovalGate, ShellApprovalRequest};
-use crate::config::{ApprovalPolicy, HostShellConfig};
+use super::approval::{DenyAll, HostShellApproval, ShellApprovalGate, ShellApprovalRequest};
+use super::config::{ApprovalPolicy, HostShellConfig};
 
 /// The tool the `host_shell` capability contributes.
 pub struct BashTool {
@@ -153,7 +153,7 @@ impl BashTool {
         let mut process = sandbox.command(cwd, command).map_err(|error| {
             ToolExecutionResult::tool_error(format!("containment setup failed: {error:#}"))
         })?;
-        everruns_containment::configure_stdio(&mut process);
+        crate::containment::configure_stdio(&mut process);
         let mut child = process
             .spawn()
             .map_err(|error| ToolExecutionResult::tool_error(format!("spawn failed: {error}")))?;
@@ -250,7 +250,7 @@ impl BashTool {
         }
 
         let gate = Self::approval_gate(context);
-        let sandbox = everruns_containment::provider(self.config.sandbox_options());
+        let sandbox = crate::containment::provider(self.config.sandbox_options());
 
         if self.config.approval == ApprovalPolicy::Untrusted
             && !policy::is_trusted_read_only(command)
@@ -308,7 +308,7 @@ impl BashTool {
 }
 
 fn full_access() -> Arc<dyn SandboxProvider> {
-    everruns_containment::provider(SandboxOptions::new(ContainmentMode::FullAccess))
+    crate::containment::provider(SandboxOptions::new(ContainmentMode::FullAccess))
 }
 
 /// This binary's file name, so `pkill -f <name>` is recognized as self-directed.

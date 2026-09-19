@@ -322,7 +322,7 @@ mod host_compute {
         root: PathBuf,
         default_timeout_secs: u64,
         #[cfg(feature = "native-containment")]
-        containment: Option<everruns_containment::SandboxOptions>,
+        containment: Option<crate::containment::SandboxOptions>,
     }
 
     impl HostCompute {
@@ -349,13 +349,13 @@ mod host_compute {
         /// profile claiming less than this target now enforces is refused,
         /// exactly as it is for an isolated target.
         ///
-        /// [`everruns_containment::ContainmentMode::FullAccess`] is not
+        /// [`crate::containment::ContainmentMode::FullAccess`] is not
         /// containment and is rejected here: pass no options instead, and the
         /// target keeps saying `None` honestly.
         #[cfg(feature = "native-containment")]
         pub fn contained(
             mut self,
-            options: everruns_containment::SandboxOptions,
+            options: crate::containment::SandboxOptions,
         ) -> Result<Self, ComputeError> {
             if options.mode().is_full_access() {
                 return Err(ComputeError::Unavailable(
@@ -408,7 +408,7 @@ mod host_compute {
                 root: self.root.clone(),
                 default_timeout_secs: self.default_timeout_secs,
                 #[cfg(feature = "native-containment")]
-                sandbox: self.containment.clone().map(everruns_containment::provider),
+                sandbox: self.containment.clone().map(crate::containment::provider),
             }))
         }
     }
@@ -418,7 +418,7 @@ mod host_compute {
         pub(super) root: PathBuf,
         pub(super) default_timeout_secs: u64,
         #[cfg(feature = "native-containment")]
-        pub(super) sandbox: Option<Arc<dyn everruns_containment::SandboxProvider>>,
+        pub(super) sandbox: Option<Arc<dyn crate::containment::SandboxProvider>>,
     }
 
     #[async_trait]
@@ -549,7 +549,7 @@ mod host_compute_tests {
     #[cfg(feature = "native-containment")]
     #[tokio::test]
     async fn a_contained_host_target_enforces_native_containment() {
-        use everruns_containment::{ContainmentMode, SandboxOptions};
+        use crate::containment::{ContainmentMode, SandboxOptions};
 
         let directory = tempfile::tempdir().expect("temp dir");
         let compute = HostCompute::new(directory.path())

@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use everruns_containment::{
+use everruns_host::containment::{
     ContainmentMode, SandboxLauncher, SandboxOptions, SandboxProvider, configure_stdio, provider,
 };
 use tokio::process::Command;

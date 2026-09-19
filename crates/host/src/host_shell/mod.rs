@@ -1,6 +1,3 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-#![deny(missing_docs)]
-
 //! The `bash` tool over real host processes, contained by the kernel.
 //!
 //! Everruns already had two shells that could not be the third. `bashkit_shell`
@@ -12,8 +9,16 @@
 //! the agent is already running on, bounded by a kernel policy rather than by a
 //! promise.
 //!
-//! The boundary itself lives in [`everruns_containment`]. This crate is the
+//! The boundary itself is [`crate::containment`]. This module is the
 //! agent-facing half: the capability, its configuration, and the tool.
+//!
+//! It lives in `everruns-host` rather than an integration crate because it is
+//! an *embedder* capability, not a hosted-product one. Running arbitrary host
+//! processes is something a CLI host, a CI runner, or an operator's own box
+//! opts into; it is not something a shared multi-tenant worker should offer.
+//! `everruns-host` is where an embedder composes its runtime, so that is where
+//! this belongs, next to [`HostCompute`](crate::HostCompute), which contains
+//! commands under the same policy.
 //!
 //! # Choosing between this and `bashkit_shell`
 //!
@@ -24,13 +29,11 @@
 //! suite. It requires a real-disk session filesystem, and says so rather than
 //! pretending when it gets a virtual one.
 //!
-//! This crate is part of the [Everruns](https://everruns.com) ecosystem.
-//!
 //! # Example
 //!
 //! ```
 //! use everruns_core::capabilities::Capability;
-//! use everruns_integrations_host_shell::{HostShell, HostShellCapability};
+//! use everruns_host::host_shell::{HostShell, HostShellCapability};
 //!
 //! assert_eq!(HostShellCapability.id(), "host_shell");
 //! assert_eq!(HostShellCapability.tools().len(), 1);
@@ -39,7 +42,7 @@
 //! let shell = HostShell::new();
 //! assert_eq!(
 //!     shell.containment_mode(),
-//!     everruns_containment::ContainmentMode::WorkspaceWrite
+//!     everruns_host::containment::ContainmentMode::WorkspaceWrite
 //! );
 //! ```
 
@@ -48,28 +51,17 @@ mod config;
 mod tool;
 
 use async_trait::async_trait;
-use everruns_containment::{ContainmentMode, danger_warning, network_access};
 use everruns_core::capabilities::{
-    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
-    SystemPromptContext,
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext,
 };
 use everruns_core::tools::Tool;
 use serde_json::Value;
 
+use crate::containment::{ContainmentMode, SandboxLauncher, danger_warning, network_access};
+
 pub use approval::{HostShellApproval, ShellApprovalGate, ShellApprovalRequest};
 pub use config::{ApprovalPolicy, HostShellConfig};
 pub use tool::BashTool;
-
-/// Capability plugins this crate contributes to a hosted catalog.
-///
-/// Experimental: it runs real processes on the machine hosting the agent, which
-/// is a decision an operator makes deliberately per deployment, never one a
-/// default should make for them.
-pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    experimental_only: true,
-    feature_flag: None,
-    factory: || Box::new(HostShellCapability),
-}];
 
 /// The capability reference id.
 pub const HOST_SHELL_CAPABILITY_ID: &str = "host_shell";
@@ -77,8 +69,8 @@ pub const HOST_SHELL_CAPABILITY_ID: &str = "host_shell";
 /// Agent-facing host shell configuration.
 ///
 /// ```
-/// use everruns_containment::ContainmentMode;
-/// use everruns_integrations_host_shell::{ApprovalPolicy, HostShell};
+/// use everruns_host::containment::ContainmentMode;
+/// use everruns_host::host_shell::{ApprovalPolicy, HostShell};
 ///
 /// let shell = HostShell::new()
 ///     .containment(ContainmentMode::ReadOnly)
@@ -92,6 +84,7 @@ pub struct HostShell {
     containment: Option<ContainmentMode>,
     approval: Option<ApprovalPolicy>,
     writable_roots: Vec<String>,
+    launcher: Option<SandboxLauncher>,
 }
 
 impl HostShell {
@@ -115,6 +108,35 @@ impl HostShell {
     /// Add a directory commands may write beyond the workspace.
     pub fn writable_root(mut self, root: impl Into<String>) -> Self {
         self.writable_roots.push(root.into());
+        self
+    }
+
+    /// Select how the Linux helper process is launched.
+    ///
+    /// The default looks for `everruns-sandbox-exec` beside the current
+    /// executable, then on `PATH`. A single-binary embedder has neither, because
+    /// cargo does not build a dependency's binaries: it routes the arguments
+    /// back into [`containment::worker::run_from_args`] from its own `main` and
+    /// names that here.
+    ///
+    /// ```no_run
+    /// # use everruns_host::containment::SandboxLauncher;
+    /// # use everruns_host::host_shell::HostShell;
+    /// // In `main`, before anything else runs:
+    /// let mut arguments = std::env::args().skip(1);
+    /// if arguments.next().as_deref() == Some("__sandbox-exec") {
+    ///     everruns_host::containment::worker::run_from_args(arguments)?;
+    /// }
+    ///
+    /// let shell = HostShell::new()
+    ///     .launcher(SandboxLauncher::ReexecSelf(vec!["__sandbox-exec".into()]));
+    /// # let _ = shell;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    ///
+    /// [`containment::worker::run_from_args`]: crate::containment::worker::run_from_args
+    pub fn launcher(mut self, launcher: SandboxLauncher) -> Self {
+        self.launcher = Some(launcher);
         self
     }
 }
@@ -144,6 +166,20 @@ impl everruns_capability::IntoCapability for HostShell {
         }
         if !self.writable_roots.is_empty() {
             config.insert("writable_roots".into(), self.writable_roots.into());
+        }
+        if let Some(launcher) = self.launcher {
+            config.insert(
+                "launcher".into(),
+                match launcher {
+                    SandboxLauncher::Discover => Value::from("discover"),
+                    SandboxLauncher::Helper(path) => {
+                        serde_json::json!({ "helper": path.to_string_lossy() })
+                    }
+                    SandboxLauncher::ReexecSelf(arguments) => {
+                        serde_json::json!({ "reexec_self": arguments })
+                    }
+                },
+            );
         }
         everruns_capability::CapabilityRef::new(HOST_SHELL_CAPABILITY_ID)
             .config(Value::Object(config))
@@ -289,6 +325,15 @@ impl Capability for HostShellCapability {
                     "description": "Caches and tool state a build needs to write, beyond the \
                                     workspace."
                 },
+                "launcher": {
+                    "title": "How the Linux helper process is launched",
+                    "description": "\"discover\" finds everruns-sandbox-exec beside the binary \
+                                    or on PATH. {\"helper\": path} names it. \
+                                    {\"reexec_self\": [args]} re-execs this binary with those \
+                                    leading arguments, which it must route into the containment \
+                                    worker.",
+                    "default": "discover"
+                },
                 "foreground_timeout_secs": {"type": "integer", "minimum": 1, "default": 120},
                 "background_timeout_secs": {"type": "integer", "minimum": 1, "default": 86400},
                 "max_output_bytes": {"type": "integer", "minimum": 1, "default": 1048576}
@@ -342,6 +387,28 @@ mod tests {
         HostShellCapability
             .validate_config(&config)
             .expect("what the builder writes must be what the capability accepts");
+    }
+
+    #[test]
+    fn a_single_binary_embedder_can_name_itself_as_the_launcher() {
+        let spec = HostShell::new()
+            .launcher(SandboxLauncher::ReexecSelf(vec!["__sandbox-exec".into()]))
+            .into_capability();
+        let config = spec.capability_ref().config_value().clone();
+
+        assert_eq!(
+            config["launcher"],
+            json!({"reexec_self": ["__sandbox-exec"]})
+        );
+        HostShellCapability
+            .validate_config(&config)
+            .expect("what the builder writes must be what the capability accepts");
+        assert_eq!(
+            HostShellConfig::from_json(&config)
+                .expect("parses")
+                .launcher,
+            SandboxLauncher::ReexecSelf(vec!["__sandbox-exec".to_string()])
+        );
     }
 
     #[test]

@@ -1,8 +1,18 @@
 use std::path::Path;
 
-use everruns::{Agent, BuildError, ContainmentMode, HostShell, Provider, WorkspacePolicy};
+use everruns::{
+    Agent, BuildError, ContainmentMode, HostShell, Provider, SandboxLauncher, WorkspacePolicy,
+};
 
 pub const MODEL: &str = "gpt-5.6-terra";
+
+/// The argument this binary routes into the containment worker.
+///
+/// On Linux the kernel policy is applied by a helper process, and cargo does not
+/// build a dependency's binaries, so `everruns-sandbox-exec` is not beside this
+/// example. Being that helper ourselves is what a single-binary embedder does
+/// anyway; see `main`.
+pub const SANDBOX_WORKER_ARGUMENT: &str = "__sandbox-exec";
 
 /// An agent with one capability: a contained shell on this machine.
 ///
@@ -20,7 +30,13 @@ pub fn build(provider: impl Into<Provider>, workspace: &Path) -> Result<Agent, B
         .max_iterations(16)
         .workspace(workspace)
         .workspace_policy(WorkspacePolicy::read_write())
-        .capability(HostShell::new().containment(ContainmentMode::WorkspaceWrite))
+        .capability(
+            HostShell::new()
+                .containment(ContainmentMode::WorkspaceWrite)
+                .launcher(SandboxLauncher::ReexecSelf(vec![
+                    SANDBOX_WORKER_ARGUMENT.to_string(),
+                ])),
+        )
         .build()
 }
 

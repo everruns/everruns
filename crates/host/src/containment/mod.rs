@@ -1,15 +1,14 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-#![deny(missing_docs)]
-
-//! Kernel containment for commands an agent runs on the machine it is running on.
+//! Kernel containment for commands run on the machine hosting the agent.
 //!
-//! `everruns-host` answers *where* a command runs ([`Compute`]); this package
+//! [`Compute`](crate::Compute) answers *where* a command runs; this module
 //! answers *what that command may touch*. It is the implementation behind
-//! `ContainmentLevel::Native`: Seatbelt on macOS, Landlock plus seccomp on
-//! Linux, ported from Yolop's `src/exec/sandbox.rs`.
+//! [`ContainmentLevel::Native`](crate::ContainmentLevel), applied by
+//! [`HostCompute::contained`](crate::HostCompute::contained) and by the
+//! [`host_shell`](crate::host_shell) capability: Seatbelt on macOS, Landlock
+//! plus seccomp on Linux, ported from Yolop's `src/exec/sandbox.rs`.
 //!
-//! Two invariants carry over from Yolop and are the reason this is a boundary
-//! rather than a helper:
+//! Two invariants carry over from Yolop and are why this is a boundary rather
+//! than a helper:
 //!
 //! 1. **Model input never selects a host executable or widens a mount.** A
 //!    caller configures [`SandboxOptions`] once; a tool passes only a script.
@@ -19,12 +18,13 @@
 //!    has no implementation and says so through [`danger_warning`] at every
 //!    mode.
 //!
-//! This crate is part of the [Everruns](https://everruns.com) ecosystem.
+//! Behind the `native-containment` feature, so the Landlock, seccomp, and
+//! tree-sitter dependencies stay out of a default `everruns-host` build.
 //!
 //! # Example
 //!
 //! ```
-//! use everruns_containment::{ContainmentMode, SandboxOptions, provider};
+//! use everruns_host::containment::{ContainmentMode, SandboxOptions, provider};
 //!
 //! let contained = provider(SandboxOptions::new(ContainmentMode::WorkspaceWrite));
 //! assert_eq!(contained.mode(), ContainmentMode::WorkspaceWrite);
@@ -32,10 +32,8 @@
 //!
 //! // Full access is the honest name for no containment at all.
 //! let open = provider(SandboxOptions::new(ContainmentMode::FullAccess));
-//! assert!(everruns_containment::danger_warning(open.mode()).is_some());
+//! assert!(everruns_host::containment::danger_warning(open.mode()).is_some());
 //! ```
-//!
-//! [`Compute`]: https://docs.rs/everruns-host
 
 pub mod policy;
 pub mod worker;

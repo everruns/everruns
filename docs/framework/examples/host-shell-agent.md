@@ -59,6 +59,9 @@ discarded afterwards.
 
 Kernel containment needs macOS, or Linux with Landlock ABI v3 fully enforced
 (Linux 6.2 or a backport). On a kernel that cannot enforce it, the provider
-fails closed and the example says so instead of running uncontained. On Linux,
-the `everruns-sandbox-exec` helper must be next to the binary or on `PATH`;
-`cargo run` from the workspace puts it there.
+fails closed and the example says so instead of running uncontained.
+
+On Linux the policy is applied by a helper process, and this example is its own:
+`main` routes a `__sandbox-exec` re-exec into the containment worker and names
+that through `SandboxLauncher::ReexecSelf`, which is what a single-binary
+embedder does. Nothing else needs to be on disk.

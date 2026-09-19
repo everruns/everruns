@@ -85,7 +85,7 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     // stops both features being on at once; the capability an agent enables is
     // what decides which shell it gets.
     #[cfg(feature = "host-shell")]
-    _registry.register(everruns_integrations_host_shell::HostShellCapability);
+    _registry.register(crate::host_shell::HostShellCapability);
     #[cfg(feature = "web-fetch")]
     _registry.register(everruns_integrations_web_fetch::WebFetchCapability::from_env());
     #[cfg(feature = "duckduckgo")]

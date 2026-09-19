@@ -5,7 +5,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use everruns::{ContainmentMode, Engine, SandboxOptions};
+use everruns::{ContainmentMode, Engine, SandboxLauncher, SandboxOptions};
 use everruns_example_demo::shell as demo;
 
 mod agent;
@@ -13,8 +13,19 @@ mod fixture;
 
 const DEFAULT_TASK: &str = "The test suite is failing. Find out why and fix it.";
 
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Before anything else, including the async runtime: a re-exec of this
+    // binary as the containment worker restricts itself and then execs bash, so
+    // it must not start a runtime or touch the terminal first.
+    let mut arguments = std::env::args().skip(1);
+    if arguments.next().as_deref() == Some(agent::SANDBOX_WORKER_ARGUMENT) {
+        everruns::containment_worker(arguments)?;
+    }
+    run()
+}
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let options = Options::parse(std::env::args_os().skip(1))?;
     let (_temporary, workspace) = match options.workspace {
         Some(path) => (None, path),
@@ -63,8 +74,11 @@ async fn report_boundary(workspace: &Path) {
     /// temp directory would prove nothing.
     const OUTSIDE: &str = "/etc/everruns-containment-probe";
 
-    let sandbox =
-        everruns::containment_provider(SandboxOptions::new(ContainmentMode::WorkspaceWrite));
+    let sandbox = everruns::containment_provider(
+        SandboxOptions::new(ContainmentMode::WorkspaceWrite).launcher(SandboxLauncher::ReexecSelf(
+            vec![agent::SANDBOX_WORKER_ARGUMENT.to_string()],
+        )),
+    );
     demo::section("THE BOUNDARY, BEFORE THE AGENT TOUCHES IT");
     for (label, script, expected) in [
         (

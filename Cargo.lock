@@ -2202,13 +2202,11 @@ dependencies = [
  "cron",
  "everruns-builtins",
  "everruns-capability",
- "everruns-containment",
  "everruns-core",
  "everruns-host",
  "everruns-integrations-bashkit",
  "everruns-integrations-duckduckgo",
  "everruns-integrations-filesystem",
- "everruns-integrations-host-shell",
  "everruns-integrations-typesafe",
  "everruns-integrations-web-fetch",
  "everruns-llmsim",
@@ -2394,20 +2392,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-containment"
-version = "0.29.0"
-dependencies = [
- "anyhow",
- "landlock",
- "libc",
- "seccompiler",
- "tempfile",
- "tokio",
- "tree-sitter",
- "tree-sitter-bash",
-]
-
-[[package]]
 name = "everruns-core"
 version = "0.29.0"
 dependencies = [
@@ -2575,17 +2559,16 @@ dependencies = [
 name = "everruns-host"
 version = "0.29.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "chrono",
  "everruns-builtins",
  "everruns-capability",
- "everruns-containment",
  "everruns-core",
  "everruns-engine",
  "everruns-integrations-bashkit",
  "everruns-integrations-duckduckgo",
  "everruns-integrations-filesystem",
- "everruns-integrations-host-shell",
  "everruns-integrations-lua",
  "everruns-integrations-web-fetch",
  "everruns-llmsim",
@@ -2597,6 +2580,7 @@ dependencies = [
  "fs2",
  "futures",
  "ignore",
+ "landlock",
  "libc",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2604,6 +2588,7 @@ dependencies = [
  "rand 0.10.2",
  "regex",
  "reqwest 0.13.5",
+ "seccompiler",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -2613,6 +2598,8 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "tree-sitter",
+ "tree-sitter-bash",
  "uuid",
  "wiremock",
 ]
@@ -2716,7 +2703,6 @@ dependencies = [
  "everruns-integrations-duckduckgo",
  "everruns-integrations-e2b",
  "everruns-integrations-github",
- "everruns-integrations-host-shell",
  "everruns-integrations-openai-image",
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
@@ -2879,21 +2865,6 @@ dependencies = [
  "tokio",
  "tracing",
  "wiremock",
-]
-
-[[package]]
-name = "everruns-integrations-host-shell"
-version = "0.29.0"
-dependencies = [
- "async-trait",
- "everruns-capability",
- "everruns-containment",
- "everruns-core",
- "everruns-provider",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
 ]
 
 [[package]]

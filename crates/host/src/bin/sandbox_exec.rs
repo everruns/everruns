@@ -5,11 +5,11 @@
 //! success: it execs bash in place so the restrictions it installed are the
 //! ones the shell and every descendant run under.
 //!
-//! [`SandboxProvider`]: everruns_containment::SandboxProvider
-//! [`WorkerRequest::parse`]: everruns_containment::worker::WorkerRequest::parse
+//! [`SandboxProvider`]: everruns_host::containment::SandboxProvider
+//! [`WorkerRequest::parse`]: everruns_host::containment::worker::WorkerRequest::parse
 
 fn main() -> anyhow::Result<()> {
-    everruns_containment::worker::run_from_args(std::env::args_os().skip(1))?;
+    everruns_host::containment::worker::run_from_args(std::env::args_os().skip(1))?;
     // `run_from_args` returns `Infallible` on success, so this is unreachable.
     Ok(())
 }

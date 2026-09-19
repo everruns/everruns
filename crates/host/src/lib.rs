@@ -42,6 +42,8 @@ mod capabilities;
 mod command_host;
 mod composition;
 pub mod compute;
+#[cfg(feature = "native-containment")]
+pub mod containment;
 #[cfg(feature = "direct-egress")]
 mod egress;
 pub mod environment_preamble;
@@ -51,6 +53,8 @@ mod extensions;
 mod file_store_decorators;
 mod grep_limits;
 mod host;
+#[cfg(feature = "host-shell")]
+pub mod host_shell;
 mod in_memory;
 mod in_process_execution;
 #[cfg(feature = "mcp")]

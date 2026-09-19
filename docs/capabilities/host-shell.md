@@ -126,14 +126,27 @@ refused before it is spawned.
 
 ## Deployment
 
-The capability is experimental and off in production deployments: running real
-processes on the worker host is an operator decision per deployment, not a
-default. Embedders turn it on with the `host-shell` feature on `everruns` or
-`everruns-host`.
+This is an embedder capability, not a hosted-product one. It ships in
+`everruns-host` behind the `host-shell` feature (also reachable as `host-shell`
+on the `everruns` facade) and is deliberately absent from the hosted catalog:
+handing agents arbitrary host processes is something a CLI host, a CI runner, or
+an operator's own box opts into, not something a shared multi-tenant worker
+should offer.
 
-On Linux the helper binary `everruns-sandbox-exec`, shipped by
-`everruns-containment`, must sit next to the host binary or on `PATH`. A
-single-binary embedder can route the worker into its own executable instead.
+On Linux the kernel policy is applied by a helper process, selected with the
+`launcher` config key:
+
+| `launcher` | Meaning |
+|---|---|
+| `"discover"` (default) | find `everruns-sandbox-exec` beside the binary, then on `PATH` |
+| `{"helper": "<path>"}` | run that binary |
+| `{"reexec_self": ["<arg>"]}` | re-exec this binary with those leading arguments |
+
+`everruns-host` ships `everruns-sandbox-exec` under the same feature, but cargo
+does not build a dependency's binaries, so a single-binary host will not find
+one beside it. Such a host routes the arguments into
+`everruns_host::containment::worker::run_from_args` from its own `main` and
+selects `reexec_self`. See `examples/host-shell-agent`.
 
 ## See Also
 

@@ -10,25 +10,25 @@
 //!
 //! The helper is [`everruns-sandbox-exec`], shipped by this package. An
 //! embedder that would rather not ship a second file points
-//! [`SandboxLauncher::ReexecSelf`](crate::SandboxLauncher::ReexecSelf) at its
+//! [`SandboxLauncher::ReexecSelf`](super::SandboxLauncher::ReexecSelf) at its
 //! own binary and routes the leading argument here.
 //!
 //! ```no_run
 //! // In an embedder's `main`, before anything else runs:
 //! let mut arguments = std::env::args().skip(1);
 //! if arguments.next().as_deref() == Some("__sandbox-exec") {
-//!     everruns_containment::worker::run_from_args(arguments)?;
+//!     everruns_host::containment::worker::run_from_args(arguments)?;
 //! }
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 //!
-//! [`everruns-sandbox-exec`]: https://docs.rs/everruns-containment
+//! [`everruns-sandbox-exec`]: https://docs.rs/everruns-host
 
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 
-use crate::ContainmentMode;
+use super::ContainmentMode;
 
 /// The request a launcher encodes on the helper's command line.
 #[derive(Clone, Debug, PartialEq, Eq)]

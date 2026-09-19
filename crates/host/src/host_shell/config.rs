@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use everruns_containment::{ContainmentMode, SandboxLauncher, SandboxOptions};
+use crate::containment::{ContainmentMode, SandboxLauncher, SandboxOptions};
 use serde_json::Value;
 
 /// When a human is asked before a command runs, or before it runs uncontained.
@@ -149,6 +149,7 @@ impl HostShellConfig {
                 "max_output_bytes" => {
                     parsed.max_output_bytes = positive_u64(key, value)? as usize;
                 }
+                "launcher" => parsed.launcher = parse_launcher(value)?,
                 other => return Err(format!("unknown host_shell config key: {other}")),
             }
         }
@@ -171,6 +172,52 @@ impl HostShellConfig {
         } else {
             self.foreground_timeout_secs
         }
+    }
+}
+
+/// Read a [`SandboxLauncher`] from config.
+///
+/// A process-level fact rather than an agent-level one, but the capability
+/// config is the channel it has, and every agent in one process gives the same
+/// answer. It is here because cargo does not build a dependency's binaries: a
+/// single-binary embedder has no `everruns-sandbox-exec` beside it, and
+/// `{"reexec_self": [...]}` is how it says "route those arguments back into
+/// `containment::worker::run_from_args` in my own `main`".
+fn parse_launcher(value: &Value) -> Result<SandboxLauncher, String> {
+    if let Some(name) = value.as_str() {
+        return match name {
+            "discover" => Ok(SandboxLauncher::Discover),
+            other => Err(format!(
+                "unknown launcher `{other}`; expected discover, or an object with helper or \
+                 reexec_self"
+            )),
+        };
+    }
+    let Some(object) = value.as_object() else {
+        return Err("launcher must be a string or an object".to_string());
+    };
+    match object
+        .iter()
+        .next()
+        .map(|(key, value)| (key.as_str(), value))
+    {
+        Some(("helper", path)) if object.len() == 1 => path
+            .as_str()
+            .map(|path| SandboxLauncher::Helper(PathBuf::from(path)))
+            .ok_or_else(|| "launcher.helper must be a string".to_string()),
+        Some(("reexec_self", arguments)) if object.len() == 1 => arguments
+            .as_array()
+            .ok_or_else(|| "launcher.reexec_self must be an array".to_string())?
+            .iter()
+            .map(|argument| {
+                argument
+                    .as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| "launcher.reexec_self entries must be strings".to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(SandboxLauncher::ReexecSelf),
+        _ => Err("launcher object must have exactly one of helper or reexec_self".to_string()),
     }
 }
 
@@ -225,6 +272,40 @@ mod tests {
         ] {
             let error = HostShellConfig::from_json(&config).expect_err("rejected");
             assert!(!error.is_empty(), "the error must say what was wrong");
+        }
+    }
+
+    #[test]
+    fn every_launcher_shape_round_trips() {
+        assert_eq!(
+            HostShellConfig::from_json(&json!({"launcher": "discover"}))
+                .expect("parses")
+                .launcher,
+            SandboxLauncher::Discover
+        );
+        assert_eq!(
+            HostShellConfig::from_json(&json!({"launcher": {"helper": "/usr/bin/sbx"}}))
+                .expect("parses")
+                .launcher,
+            SandboxLauncher::Helper(PathBuf::from("/usr/bin/sbx"))
+        );
+        assert_eq!(
+            HostShellConfig::from_json(&json!({"launcher": {"reexec_self": ["__sandbox-exec"]}}))
+                .expect("parses")
+                .launcher,
+            SandboxLauncher::ReexecSelf(vec!["__sandbox-exec".to_string()])
+        );
+    }
+
+    #[test]
+    fn an_ambiguous_or_unknown_launcher_is_refused() {
+        for config in [
+            json!({"launcher": "reexec"}),
+            json!({"launcher": {"helper": "/a", "reexec_self": ["b"]}}),
+            json!({"launcher": {}}),
+            json!({"launcher": 7}),
+        ] {
+            assert!(HostShellConfig::from_json(&config).is_err(), "{config}");
         }
     }
 
