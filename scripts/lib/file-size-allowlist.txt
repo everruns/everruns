@@ -27,10 +27,10 @@
 1832 crates/everruns/src/agent.rs
 1677 crates/everruns/src/session.rs
 1741 crates/host/src/events.rs
-1750 crates/host/src/host.rs
+1725 crates/host/src/host.rs
 4024 crates/host/src/observability/braintrust.rs
 2518 crates/host/src/observability/otel.rs
-2214 crates/host/src/runtime.rs
+2213 crates/host/src/runtime.rs
 2807 crates/host/tests/runtime_host_test.rs
 2593 crates/internal-protocol/src/lib.rs
 4880 crates/model-profiles/src/profiles.rs
@@ -68,7 +68,6 @@
 2751 crates/server/src/domains/session_files/service.rs
 1897 crates/server/src/domains/session_tasks/commands.rs
 2192 crates/server/src/domains/sessions/commands.rs
-1612 crates/server/src/grpc_service/tests.rs
 3874 crates/server/src/seed.rs
 1570 crates/server/src/services/provider_resolver.rs
 4591 crates/server/src/slack_delivery.rs

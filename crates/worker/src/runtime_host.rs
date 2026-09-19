@@ -3,7 +3,6 @@
 // the neutral everruns-host execution contract.
 
 use async_trait::async_trait;
-use everruns_capability::CapabilityRef;
 use everruns_core::tool_context::ToolContextExtensions;
 use everruns_core::{
     CapabilityRegistry, EgressService, ResolvedExecutionSnapshot, SessionExecutionState,
@@ -17,7 +16,7 @@ use everruns_core::{
     provider_resolution::ProviderStore, session_files::SessionFileSystem,
     tool_execution::PaymentAuthority,
 };
-use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter};
+use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter, ToolContextRequest};
 use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
 };
@@ -386,12 +385,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Some(self.adapters.connection_resolver())
     }
 
-    fn tool_context_extensions(
-        &self,
-        org_id: i64,
-        session_id: SessionId,
-        resolved_capabilities: &[CapabilityRef],
-    ) -> ToolContextExtensions {
+    fn tool_context_extensions(&self, request: ToolContextRequest<'_>) -> ToolContextExtensions {
+        let ToolContextRequest {
+            org_id,
+            session_id,
+            resolved_capabilities,
+        } = request;
         let mut extensions = ToolContextExtensions::default();
         let platform_store = self.adapters.platform_store(org_id, session_id);
         // Shell-surface platform harnesses omit the forwarding tools, so install
