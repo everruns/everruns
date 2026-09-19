@@ -1,6 +1,6 @@
 use everruns::{
     Agent, CapabilityRef, ComputeCapabilities, ContainmentLevel, Harness, HarnessBuildError,
-    InMemoryEngine, Model,
+    HarnessRequirementError, InMemoryEngine, Model, SessionEnvironmentError,
 };
 use serde_json::json;
 
@@ -158,6 +158,32 @@ async fn bound_harness_composes_with_agent_capabilities() {
             .tools
             .iter()
             .any(|tool| tool.name == "get_current_time")
+    );
+}
+
+#[tokio::test]
+async fn harness_negotiates_against_the_default_environment() {
+    let harness = Harness::builder("coding")
+        .requires_capabilities(ComputeCapabilities {
+            native_processes: true,
+            ..Default::default()
+        })
+        .build()
+        .expect("valid harness");
+
+    let error = InMemoryEngine::new()
+        .create(simulated_agent())
+        .harness(harness)
+        .start()
+        .await
+        .err()
+        .expect("the default environment has no native process target");
+
+    assert_eq!(
+        error,
+        SessionEnvironmentError::HarnessRequirement(HarnessRequirementError::MissingCapability {
+            capability: "native_processes",
+        })
     );
 }
 

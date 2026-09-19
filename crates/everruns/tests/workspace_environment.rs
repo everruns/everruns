@@ -3,9 +3,9 @@ use std::process::Command;
 use std::sync::Arc;
 
 use everruns::{
-    Agent, Engine, Environment, Harness, InMemoryEngine, LlmSimConfig, LocalConfig,
-    LocalGitWorkspace, Model, ResumeError, Session, SessionEnvironmentError, ToolCall, Workspace,
-    WorkspaceHeadId, WorkspacePolicy,
+    Agent, Engine, Environment, Harness, HarnessRequirementError, InMemoryEngine, LlmSimConfig,
+    LocalConfig, LocalGitWorkspace, Model, ResumeError, Session, SessionEnvironmentError, ToolCall,
+    Workspace, WorkspaceHeadId, WorkspacePolicy,
 };
 use everruns_core::session_files::SessionFileSystem;
 use serde_json::json;
@@ -605,6 +605,44 @@ impl everruns::Compute for IsolatedCompute {
         Err(everruns::ComputeError::Unsupported("connect"))
     }
 }
+struct ContainerCompute;
+
+#[async_trait::async_trait]
+impl everruns::Compute for ContainerCompute {
+    fn id(&self) -> &str {
+        "test-container"
+    }
+
+    fn kind(&self) -> everruns::ComputeKind {
+        everruns::ComputeKind::Container
+    }
+
+    fn capabilities(&self) -> everruns::ComputeCapabilities {
+        everruns::ComputeCapabilities {
+            native_processes: true,
+            packages: true,
+            pty: true,
+            ports: true,
+            portable_checkpoint: true,
+            network_enforced: true,
+        }
+    }
+
+    fn enforced_containment(&self) -> everruns::ContainmentLevel {
+        everruns::ContainmentLevel::Isolated
+    }
+
+    fn durability(&self) -> everruns::Durability {
+        everruns::Durability::Checkpointed
+    }
+
+    async fn connect(
+        &self,
+        _head: &everruns::WorkspaceHead,
+    ) -> Result<Arc<dyn everruns::ComputeSession>, everruns::ComputeError> {
+        Err(everruns::ComputeError::Unsupported("connect"))
+    }
+}
 
 /// A target that contains nothing, the way a real machine does.
 struct UncontainedCompute;
@@ -652,6 +690,135 @@ async fn test_head() -> (
         .unwrap();
     let head = workspace.head("compute").create().await.unwrap();
     (repository, data, head)
+}
+
+#[tokio::test]
+async fn harness_rejects_a_vfs_environment_without_native_processes() {
+    let (_repository, data, head) = test_head().await;
+    let environment = Environment::builder()
+        .workspace(head)
+        .compute(Arc::new(IsolatedCompute))
+        .build()
+        .unwrap();
+    let harness = Harness::builder("coding")
+        .requires_capabilities(everruns::ComputeCapabilities {
+            native_processes: true,
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+
+    let error = create_session(agent(LocalConfig::new(data.path().join("runtime"))))
+        .harness(harness)
+        .environment(environment)
+        .start()
+        .await
+        .err()
+        .expect("native processes are unavailable");
+
+    assert_eq!(
+        error,
+        SessionEnvironmentError::HarnessRequirement(HarnessRequirementError::MissingCapability {
+            capability: "native_processes",
+        })
+    );
+    assert!(error.to_string().contains("native_processes"));
+}
+
+#[tokio::test]
+async fn harness_accepts_a_host_environment_with_native_processes() {
+    let (_repository, data, head) = test_head().await;
+    let environment = Environment::builder()
+        .workspace(head)
+        .compute(Arc::new(UncontainedCompute))
+        .build()
+        .unwrap();
+    let harness = Harness::builder("host")
+        .requires_capabilities(everruns::ComputeCapabilities::full_machine())
+        .build()
+        .unwrap();
+
+    create_session(agent(LocalConfig::new(data.path().join("runtime"))))
+        .harness(harness)
+        .environment(environment)
+        .start()
+        .await
+        .expect("host capabilities satisfy the harness");
+}
+
+#[tokio::test]
+async fn harness_accepts_a_container_environment_with_full_requirements() {
+    let (_repository, data, head) = test_head().await;
+    let environment = Environment::builder()
+        .workspace(head)
+        .compute(Arc::new(ContainerCompute))
+        .build()
+        .unwrap();
+    let harness = Harness::builder("container")
+        .requires_capabilities(everruns::ComputeCapabilities {
+            native_processes: true,
+            packages: true,
+            pty: true,
+            ports: true,
+            portable_checkpoint: true,
+            network_enforced: true,
+        })
+        .requires_containment(everruns::ContainmentLevel::Isolated)
+        .build()
+        .unwrap();
+
+    create_session(agent(LocalConfig::new(data.path().join("runtime"))))
+        .harness(harness)
+        .environment(environment)
+        .start()
+        .await
+        .expect("container capabilities satisfy the harness");
+}
+
+#[tokio::test]
+async fn harness_rejects_an_environment_with_insufficient_containment() {
+    let (_repository, data, head) = test_head().await;
+    let environment = Environment::builder()
+        .workspace(head)
+        .compute(Arc::new(UncontainedCompute))
+        .build()
+        .unwrap();
+    let harness = Harness::builder("contained")
+        .requires_containment(everruns::ContainmentLevel::Native)
+        .build()
+        .unwrap();
+
+    let error = create_session(agent(LocalConfig::new(data.path().join("runtime"))))
+        .harness(harness)
+        .environment(environment)
+        .start()
+        .await
+        .err()
+        .expect("host containment is too weak");
+
+    assert_eq!(
+        error,
+        SessionEnvironmentError::HarnessRequirement(HarnessRequirementError::ContainmentTooWeak {
+            required: everruns::ContainmentLevel::Native,
+            available: everruns::ContainmentLevel::None,
+        })
+    );
+}
+
+#[tokio::test]
+async fn environment_requirements_are_not_checked_without_a_harness() {
+    let (_repository, data, head) = test_head().await;
+    let environment = Environment::builder()
+        .workspace(head)
+        .compute(Arc::new(IsolatedCompute))
+        .build()
+        .unwrap();
+
+    create_session(agent(LocalConfig::new(data.path().join("runtime"))))
+        .environment(environment)
+        .start()
+        .await
+        .expect("an unbound session has no harness requirements");
 }
 
 #[tokio::test]
