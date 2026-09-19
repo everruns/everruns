@@ -152,6 +152,49 @@ async fn reconstructed_harness_survives_durable_session_restart() {
 }
 
 #[tokio::test]
+async fn reconstructed_harness_is_negotiated_before_attach_returns() {
+    let data = tempfile::tempdir().unwrap();
+    let config = LocalConfig::new(data.path().join("runtime"));
+    let session_id = {
+        let engine = Engine::new();
+        let session = engine
+            .create(agent(config.clone()))
+            .harness(Harness::builder("durable").build().unwrap())
+            .start()
+            .await
+            .unwrap();
+        session.inspect().await.unwrap();
+        session.session_id()
+    };
+    let incompatible = Harness::builder("durable")
+        .requires_capabilities(everruns::ComputeCapabilities {
+            native_processes: true,
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+    let restarted_engine = Engine::new();
+
+    let error = restarted_engine
+        .attach_with_harness(session_id, agent(config), incompatible)
+        .await
+        .expect_err("reconstructed harness must be negotiated");
+
+    assert_eq!(
+        error,
+        ResumeError::Environment(SessionEnvironmentError::MissingHarnessCapability {
+            capability: "native_processes"
+        })
+    );
+    assert!(
+        matches!(
+            restarted_engine.resume(session_id).await,
+            Err(ResumeError::SessionNotFound { .. })
+        ),
+        "failed negotiation must not register a resumable session"
+    );
+}
+#[tokio::test]
 async fn ordinary_sessions_select_a_permanent_head_before_execution() {
     let engine = InMemoryEngine::new();
     let agent = Agent::builder()

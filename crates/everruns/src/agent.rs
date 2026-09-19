@@ -504,19 +504,14 @@ impl Agent {
         Ok(())
     }
 
-    pub(crate) async fn bind_default_session_environment(
+    pub(crate) async fn default_session_environment(
         &self,
-        binding_store: &dyn EnvironmentBindingStore,
         session_id: SessionId,
     ) -> Result<Environment, crate::SessionEnvironmentError> {
-        let environment = self
-            .default_workspace
+        self.default_workspace
             .environment(session_id)
             .await
-            .map_err(crate::SessionEnvironmentError::Workspace)?;
-        self.bind_session_environment(binding_store, session_id, &environment)
-            .await?;
-        Ok(environment)
+            .map_err(crate::SessionEnvironmentError::Workspace)
     }
 
     pub(crate) async fn reopen_session_environment(

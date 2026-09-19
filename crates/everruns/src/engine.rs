@@ -35,7 +35,7 @@ pub(crate) trait SessionExecution: Send + Sync + fmt::Debug {
         &self,
         environment: &Environment,
     ) -> Result<(), SessionEnvironmentError>;
-    async fn bind_default_environment(&self) -> Result<Environment, SessionEnvironmentError>;
+    async fn default_environment(&self) -> Result<Environment, SessionEnvironmentError>;
     async fn reopen_environment(&self) -> Result<Option<Environment>, ResumeError>;
 }
 
@@ -116,6 +116,13 @@ impl Engine {
         }
         let binding = self.binding(session_id);
         let environment = binding.reopen_environment().await?;
+        if let (Some(harness), Some(environment)) =
+            (binding.harness_snapshot(), environment.as_ref())
+        {
+            harness
+                .negotiate(environment)
+                .map_err(ResumeError::Environment)?;
+        }
         let session = Session::new(binding, environment);
         self.remember_state(session_id, &session);
         Ok(session)
@@ -168,6 +175,15 @@ impl Engine {
             .is_some();
         if !exists {
             return Err(ResumeError::SessionNotFound { session_id });
+        }
+        if let Some(harness) = &harness
+            && let Some(environment) = agent
+                .reopen_session_environment(backends.binding_store.as_ref(), session_id)
+                .await?
+        {
+            harness
+                .negotiate(&environment)
+                .map_err(ResumeError::Environment)?;
         }
         self.inner
             .sessions
@@ -479,15 +495,9 @@ impl SessionExecution for EngineSessionExecution {
             .await
     }
 
-    async fn bind_default_environment(&self) -> Result<Environment, SessionEnvironmentError> {
+    async fn default_environment(&self) -> Result<Environment, SessionEnvironmentError> {
         let agent = self.agent_snapshot();
-        let backends = self
-            .backends()
-            .await
-            .map_err(|_| SessionEnvironmentError::Unavailable)?;
-        agent
-            .bind_default_session_environment(backends.binding_store.as_ref(), self.session_id)
-            .await
+        agent.default_session_environment(self.session_id).await
     }
 
     async fn reopen_environment(&self) -> Result<Option<Environment>, ResumeError> {

@@ -64,6 +64,7 @@ mod mcp;
 pub mod models;
 mod plugin;
 mod session;
+mod session_environment;
 /// Stability tiers and the marking convention.
 pub mod stability;
 mod tool;
@@ -148,9 +149,10 @@ pub use mcp::McpServer;
 pub use models::{CatalogError, ModelInfo};
 pub use plugin::PluginError;
 pub use session::{
-    CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session,
-    SessionEnvironmentError, Turn, TurnHandle,
+    CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session, Turn,
+    TurnHandle,
 };
+pub use session_environment::SessionEnvironmentError;
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 
 #[cfg(feature = "local")]
