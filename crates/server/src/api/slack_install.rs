@@ -235,20 +235,7 @@ async fn finish_install_inner(
 
     let mut config = parse_config(&endpoint.channel_config);
     let mut provisioned = config.provisioned_app.take().ok_or("no provisioned app")?;
-    let expected = provisioned
-        .install_state
-        .take()
-        .ok_or("no install in flight")?;
-    if !constant_time_eq(&expected, &presented) {
-        return Err("state mismatch");
-    }
-    let issued = provisioned
-        .install_state_issued_at
-        .take()
-        .ok_or("no issue time")?;
-    if chrono::Utc::now() - issued > chrono::Duration::minutes(INSTALL_STATE_TTL_MINUTES) {
-        return Err("install state expired");
-    }
+    spend_install_state(&mut provisioned, &presented, chrono::Utc::now())?;
     let client_id = provisioned.client_id.clone();
     if provisioned.client_secret.is_empty() {
         return Err("no client secret");
@@ -275,6 +262,34 @@ async fn finish_install_inner(
     persist(state, endpoint.internal_id, &config)
         .await
         .map_err(|_| "failed to store install result")?;
+    Ok(())
+}
+
+/// Check the presented nonce against the stored one and spend it.
+///
+/// Pure and separately tested because it is the whole of this route's
+/// protection: it has no auth, so every way in is through here. Takes `now`
+/// rather than reading the clock so expiry is testable without sleeping.
+///
+/// On success the nonce and its timestamp are cleared from `provisioned`, so
+/// the caller storing it back is what makes a replay find nothing to match.
+fn spend_install_state(
+    provisioned: &mut ProvisionedSlackApp,
+    presented: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), &'static str> {
+    let expected = provisioned
+        .install_state
+        .take()
+        .ok_or("no install in flight")?;
+    let issued = provisioned.install_state_issued_at.take();
+    if !constant_time_eq(&expected, presented) {
+        return Err("state mismatch");
+    }
+    let issued = issued.ok_or("no issue time")?;
+    if now - issued > chrono::Duration::minutes(INSTALL_STATE_TTL_MINUTES) {
+        return Err("install state expired");
+    }
     Ok(())
 }
 
@@ -544,6 +559,74 @@ mod tests {
             .expect("exchange succeeds");
         assert_eq!(exchanged.bot_token, "xoxb-real-token");
         assert_eq!(exchanged.team_id, "T0123");
+    }
+
+    fn provisioned(state: Option<&str>, issued_minutes_ago: Option<i64>) -> ProvisionedSlackApp {
+        ProvisionedSlackApp {
+            app_id: "A0123".to_string(),
+            client_id: "4567.89".to_string(),
+            client_secret: "secret".to_string(),
+            install_state: state.map(str::to_string),
+            install_state_issued_at: issued_minutes_ago
+                .map(|ago| chrono::Utc::now() - chrono::Duration::minutes(ago)),
+        }
+    }
+
+    #[test]
+    fn spending_a_matching_nonce_clears_it() {
+        let nonce = mint_install_state();
+        let mut app = provisioned(Some(&nonce), Some(0));
+        assert!(spend_install_state(&mut app, &nonce, chrono::Utc::now()).is_ok());
+        assert!(app.install_state.is_none(), "a replay must find nothing");
+        assert!(app.install_state_issued_at.is_none());
+    }
+
+    #[test]
+    fn a_wrong_nonce_is_refused_and_still_burns_the_stored_one() {
+        let nonce = mint_install_state();
+        let mut app = provisioned(Some(&nonce), Some(0));
+        assert_eq!(
+            spend_install_state(&mut app, "not-the-nonce", chrono::Utc::now()),
+            Err("state mismatch")
+        );
+        // Taken even on refusal: leaving it set would let an attacker who can
+        // trigger the callback keep guessing against the same value.
+        assert!(app.install_state.is_none());
+    }
+
+    #[test]
+    fn an_empty_nonce_cannot_stand_in_for_a_missing_one() {
+        let mut app = provisioned(Some(&mint_install_state()), Some(0));
+        assert_eq!(
+            spend_install_state(&mut app, "", chrono::Utc::now()),
+            Err("state mismatch")
+        );
+    }
+
+    #[test]
+    fn a_callback_with_no_install_in_flight_is_refused() {
+        let mut app = provisioned(None, None);
+        assert_eq!(
+            spend_install_state(&mut app, "anything", chrono::Utc::now()),
+            Err("no install in flight")
+        );
+    }
+
+    #[test]
+    fn a_nonce_past_its_window_is_refused_even_when_it_matches() {
+        let nonce = mint_install_state();
+        let mut app = provisioned(Some(&nonce), Some(INSTALL_STATE_TTL_MINUTES + 1));
+        assert_eq!(
+            spend_install_state(&mut app, &nonce, chrono::Utc::now()),
+            Err("install state expired")
+        );
+    }
+
+    #[test]
+    fn a_nonce_inside_its_window_is_accepted() {
+        let nonce = mint_install_state();
+        let mut app = provisioned(Some(&nonce), Some(INSTALL_STATE_TTL_MINUTES - 1));
+        assert!(spend_install_state(&mut app, &nonce, chrono::Utc::now()).is_ok());
     }
 
     #[test]
