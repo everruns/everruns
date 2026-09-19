@@ -69,10 +69,7 @@ jest.mock("@/components/budgets/budget-panel", () => ({
     subjectId: string;
     canManage: boolean;
   }) => (
-    <div
-      data-testid={`budget-${subjectType}-${subjectId}`}
-      data-can-manage={String(canManage)}
-    />
+    <div data-testid={`budget-${subjectType}-${subjectId}`} data-can-manage={String(canManage)} />
   ),
 }));
 
