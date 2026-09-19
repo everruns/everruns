@@ -146,10 +146,11 @@ impl Session {
             }
             return Ok(());
         }
-        let environment = self.inner.execution.bind_default_environment().await?;
+        let environment = self.inner.execution.default_environment().await?;
         if let Some(harness) = self.inner.harness.get() {
             harness.validate_environment(&environment)?;
         }
+        self.inner.execution.bind_environment(&environment).await?;
         self.inner
             .environment
             .set(environment)

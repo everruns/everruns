@@ -605,6 +605,38 @@ impl everruns::Compute for IsolatedCompute {
         Err(everruns::ComputeError::Unsupported("connect"))
     }
 }
+
+struct CapabilityLimitedCompute;
+
+#[async_trait::async_trait]
+impl everruns::Compute for CapabilityLimitedCompute {
+    fn id(&self) -> &str {
+        "test-capability-limited"
+    }
+
+    fn kind(&self) -> everruns::ComputeKind {
+        everruns::ComputeKind::Vfs
+    }
+
+    fn capabilities(&self) -> everruns::ComputeCapabilities {
+        everruns::ComputeCapabilities::default()
+    }
+
+    fn enforced_containment(&self) -> everruns::ContainmentLevel {
+        everruns::ContainmentLevel::Isolated
+    }
+
+    fn durability(&self) -> everruns::Durability {
+        everruns::Durability::Checkpointed
+    }
+
+    async fn connect(
+        &self,
+        _head: &everruns::WorkspaceHead,
+    ) -> Result<Arc<dyn everruns::ComputeSession>, everruns::ComputeError> {
+        Err(everruns::ComputeError::Unsupported("connect"))
+    }
+}
 struct ContainerCompute;
 
 #[async_trait::async_trait]
@@ -693,36 +725,79 @@ async fn test_head() -> (
 }
 
 #[tokio::test]
-async fn harness_rejects_a_vfs_environment_without_native_processes() {
-    let (_repository, data, head) = test_head().await;
-    let environment = Environment::builder()
-        .workspace(head)
-        .compute(Arc::new(IsolatedCompute))
-        .build()
-        .unwrap();
-    let harness = Harness::builder("coding")
-        .requires_capabilities(everruns::ComputeCapabilities {
-            native_processes: true,
-            ..Default::default()
-        })
-        .build()
-        .unwrap();
+async fn harness_reports_every_missing_vfs_capability() {
+    let cases = [
+        (
+            "native_processes",
+            everruns::ComputeCapabilities {
+                native_processes: true,
+                ..Default::default()
+            },
+        ),
+        (
+            "packages",
+            everruns::ComputeCapabilities {
+                packages: true,
+                ..Default::default()
+            },
+        ),
+        (
+            "pty",
+            everruns::ComputeCapabilities {
+                pty: true,
+                ..Default::default()
+            },
+        ),
+        (
+            "ports",
+            everruns::ComputeCapabilities {
+                ports: true,
+                ..Default::default()
+            },
+        ),
+        (
+            "portable_checkpoint",
+            everruns::ComputeCapabilities {
+                portable_checkpoint: true,
+                ..Default::default()
+            },
+        ),
+        (
+            "network_enforced",
+            everruns::ComputeCapabilities {
+                network_enforced: true,
+                ..Default::default()
+            },
+        ),
+    ];
 
-    let error = create_session(agent(LocalConfig::new(data.path().join("runtime"))))
-        .harness(harness)
-        .environment(environment)
-        .start()
-        .await
-        .err()
-        .expect("native processes are unavailable");
+    for (capability, required) in cases {
+        let (_repository, data, head) = test_head().await;
+        let environment = Environment::builder()
+            .workspace(head)
+            .compute(Arc::new(CapabilityLimitedCompute))
+            .build()
+            .unwrap();
+        let harness = Harness::builder(format!("requires-{capability}"))
+            .requires_capabilities(required)
+            .build()
+            .unwrap();
 
-    assert_eq!(
-        error,
-        SessionEnvironmentError::HarnessRequirement(HarnessRequirementError::MissingCapability {
-            capability: "native_processes",
-        })
-    );
-    assert!(error.to_string().contains("native_processes"));
+        let error = create_session(agent(LocalConfig::new(data.path().join("runtime"))))
+            .harness(harness)
+            .environment(environment)
+            .start()
+            .await
+            .err()
+            .expect("required capability is unavailable");
+
+        assert_eq!(
+            error,
+            SessionEnvironmentError::HarnessRequirement(
+                HarnessRequirementError::MissingCapability { capability }
+            )
+        );
+    }
 }
 
 #[tokio::test]

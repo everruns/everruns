@@ -163,6 +163,7 @@ async fn bound_harness_composes_with_agent_capabilities() {
 
 #[tokio::test]
 async fn harness_negotiates_against_the_default_environment() {
+    let engine = InMemoryEngine::new();
     let harness = Harness::builder("coding")
         .requires_capabilities(ComputeCapabilities {
             native_processes: true,
@@ -171,8 +172,9 @@ async fn harness_negotiates_against_the_default_environment() {
         .build()
         .expect("valid harness");
 
-    let error = InMemoryEngine::new()
-        .create(simulated_agent())
+    let session = engine.create(simulated_agent());
+    let session_id = session.session_id();
+    let error = session
         .harness(harness)
         .start()
         .await
@@ -184,6 +186,12 @@ async fn harness_negotiates_against_the_default_environment() {
         SessionEnvironmentError::HarnessRequirement(HarnessRequirementError::MissingCapability {
             capability: "native_processes",
         })
+    );
+
+    let resumed = engine.resume(session_id).await.expect("session reopens");
+    assert!(
+        resumed.workspace_head().is_none(),
+        "rejected Environment binding must not be persisted"
     );
 }
 
