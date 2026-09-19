@@ -1103,8 +1103,15 @@ export interface VerifyConnectionResponse {
 
 // From legacy budget-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // Budget API types — mirrors `crates/core/src/budget.rs`.
-// Behind the `app_budgets` feature flag for app/channel subjects.
-export type BudgetSubjectType = "session" | "agent" | "user" | "org" | "app" | "app_channel";
+// The management UI is behind the `app_budgets` feature flag.
+export type BudgetSubjectType =
+  | "session"
+  | "agent"
+  | "user"
+  | "org"
+  | "app"
+  | "app_channel"
+  | "agent_endpoint";
 
 export type BudgetStatus = "active" | "paused" | "exhausted" | "disabled";
 

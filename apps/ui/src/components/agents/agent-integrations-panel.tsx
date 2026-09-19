@@ -20,6 +20,7 @@ import { MiniTimeline } from "@/components/apps/mini-timeline";
 import { type StatStripStats } from "@/components/apps/stat-strip";
 import { EndpointUsePanel } from "@/components/agents/endpoint-use-panel";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
+import { BudgetPanel } from "@/components/budgets/budget-panel";
 import {
   PageControlStrip,
   StatCard,
@@ -32,6 +33,7 @@ import {
 import type { Agent } from "@/lib/api/types";
 import type { AgentEndpoint } from "@/hooks/use-agent-endpoints";
 import { pluralize } from "@/lib/formatting";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 function buildStats(
   endpoints: AgentEndpoint[],
@@ -84,6 +86,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const publishEndpoint = usePublishAgentEndpoint(agent.id);
   const triggerEndpoint = useTriggerAgentEndpoint(agent.id);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const budgetsEnabled = useFeatureFlag("app_budgets");
 
   const suspended = agent.exposures_suspended ?? false;
   const canManage = can("agent.manage");
@@ -160,7 +163,21 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     onToggle={() =>
                       setExpandedId((current) => (current === channel.id ? null : channel.id))
                     }
-                    usePanel={<EndpointUsePanel channel={channel} />}
+                    usePanel={
+                      <div className="space-y-4">
+                        <EndpointUsePanel channel={channel} />
+                        {budgetsEnabled && (
+                          <div className="border-t pt-4">
+                            <BudgetPanel
+                              subjectType="agent_endpoint"
+                              subjectId={channel.id}
+                              title="Endpoint budget"
+                              canManage={canManage}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    }
                     configureHref={
                       canManage ? `/agents/${agent.id}/endpoints/${channel.id}` : undefined
                     }
@@ -202,6 +219,16 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     }
                     publishPending={publishEndpoint.isPending}
                     onRunNow={canManage ? () => triggerEndpoint.mutate(channel.id) : undefined}
+                    usePanel={
+                      budgetsEnabled ? (
+                        <BudgetPanel
+                          subjectType="agent_endpoint"
+                          subjectId={channel.id}
+                          title="Endpoint budget"
+                          canManage={canManage}
+                        />
+                      ) : undefined
+                    }
                   />
                 ))}
               </div>
@@ -212,6 +239,11 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
         </PageMain>
 
         <PageRail>
+          {budgetsEnabled && (
+            <RailSection label="Agent budget">
+              <BudgetPanel subjectType="agent" subjectId={agent.id} canManage={canManage} />
+            </RailSection>
+          )}
           <RailSection label="Exposures">
             <div className="flex items-center justify-between gap-3">
               <label htmlFor="exposures-suspended" className="text-sm">

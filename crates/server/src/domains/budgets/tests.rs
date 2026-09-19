@@ -1143,6 +1143,15 @@ async fn test_check_budgets_exhausted_budget_returns_stop() {
             .and_then(|fields| fields.get("currency")),
         Some(&serde_json::json!("tokens"))
     );
+    assert_eq!(
+        result
+            .error_fields
+            .as_ref()
+            .and_then(|fields| fields.get("budget_id")),
+        Some(&serde_json::json!(
+            everruns_provider::typed_id::BudgetId::from_uuid(budget.id).to_string()
+        ))
+    );
 }
 
 #[tokio::test]
