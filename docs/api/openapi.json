@@ -1697,7 +1697,7 @@
         ],
         "responses": {
           "204": {
-            "description": "MCP connection revoked"
+            "description": "MCP connection revoked or already absent"
           },
           "400": {
             "description": "Attachment does not use a connection",
@@ -1720,7 +1720,7 @@
             }
           },
           "404": {
-            "description": "Agent, attachment, preset, or connection not found",
+            "description": "Agent, attachment, or preset not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -8141,6 +8141,46 @@
         }
       }
     },
+    "/v1/mcp-servers/catalog": {
+      "get": {
+        "tags": [
+          "mcp-servers"
+        ],
+        "operationId": "list_mcp_server_catalog",
+        "responses": {
+          "200": {
+            "description": "MCP server catalog with active-agent usage counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_McpServerCatalogEntry"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/mcp-servers/config": {
       "get": {
         "tags": [
@@ -8275,6 +8315,77 @@
           },
           "400": {
             "description": "Invalid server ID or input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mcp-servers/{server_id}/usage": {
+      "get": {
+        "tags": [
+          "mcp-servers"
+        ],
+        "operationId": "get_mcp_server_usage",
+        "parameters": [
+          {
+            "name": "server_id",
+            "in": "path",
+            "description": "MCP server ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded active-agent archive impact",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerUsageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid MCP server ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -15914,6 +16025,32 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/user/mcp-connections": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "operationId": "list_mcp_connections",
+        "responses": {
+          "200": {
+            "description": "Current user's MCP OAuth connections in the selected organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserMcpConnectionResponse"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
           }
         }
       }
@@ -28000,6 +28137,38 @@
           }
         }
       },
+      "ListResponse_McpServerCatalogEntry": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/WithUrls_McpServer"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "used_by_agents"
+                  ],
+                  "properties": {
+                    "used_by_agents": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  }
+                }
+              ]
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_Memory": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -30888,6 +31057,25 @@
         ],
         "example": "api_key"
       },
+      "McpServerCatalogEntry": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/WithUrls_McpServer"
+          },
+          {
+            "type": "object",
+            "required": [
+              "used_by_agents"
+            ],
+            "properties": {
+              "used_by_agents": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          }
+        ]
+      },
       "McpServerPresetRef": {
         "type": "string",
         "description": "Reference to an organization MCP server catalog entry.",
@@ -30912,6 +31100,29 @@
           "stdio"
         ],
         "example": "http"
+      },
+      "McpServerUsageResponse": {
+        "type": "object",
+        "required": [
+          "agent_names",
+          "total_count",
+          "truncated"
+        ],
+        "properties": {
+          "agent_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
       },
       "McpToolAnnotations": {
         "type": "object",
@@ -41084,6 +41295,50 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "UserMcpConnectionResponse": {
+        "type": "object",
+        "required": [
+          "provider",
+          "server_id",
+          "server_name",
+          "server_url",
+          "server_status",
+          "connected_at"
+        ],
+        "properties": {
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "server_id": {
+            "type": "string"
+          },
+          "server_name": {
+            "type": "string"
+          },
+          "server_status": {
+            "type": "string"
+          },
+          "server_url": {
+            "type": "string"
           }
         }
       },

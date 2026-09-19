@@ -472,10 +472,10 @@ pub async fn list_agent_mcp_attachments(
         ("name" = String, Path, description = "Effective MCP attachment name"),
     ),
     responses(
-        (status = 204, description = "MCP connection revoked"),
+        (status = 204, description = "MCP connection revoked or already absent"),
         (status = 400, description = "Attachment does not use a connection", body = ErrorResponse),
         (status = 403, description = "Permission denied", body = ErrorResponse),
-        (status = 404, description = "Agent, attachment, preset, or connection not found", body = ErrorResponse),
+        (status = 404, description = "Agent, attachment, or preset not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse),
     ),
     tag = "agents"
