@@ -1957,6 +1957,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         &self,
         org_id: i64,
         session_id: SessionId,
+        _has_platform_capability: bool,
     ) -> everruns_core::tool_context::ToolContextExtensions {
         self.tool_context_extensions_factory
             .as_ref()

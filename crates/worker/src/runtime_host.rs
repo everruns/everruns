@@ -384,17 +384,21 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Some(self.adapters.connection_resolver())
     }
 
-    fn tool_context_extensions(&self, org_id: i64, session_id: SessionId) -> ToolContextExtensions {
+    fn tool_context_extensions(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        has_platform_capability: bool,
+    ) -> ToolContextExtensions {
         let mut extensions = ToolContextExtensions::default();
         let platform_store = self.adapters.platform_store(org_id, session_id);
-        // The `everruns` command in the session's own shell. Inserted for every
-        // session: the shell only installs the builtin when a source is present,
-        // and a harness without a shell never asks. A shell-surface harness has
-        // no `execute` tool to forward to, so this is how it reaches the catalog
-        // at all.
-        extensions.insert(Arc::new(crate::catalog_cli::CatalogCommandSource::handle(
-            platform_store.clone(),
-        )));
+        // Shell-surface platform harnesses omit the forwarding tools, so install
+        // their catalog directly. Never expose it to a shell-only harness.
+        if has_platform_capability {
+            extensions.insert(Arc::new(crate::catalog_cli::CatalogCommandSource::handle(
+                platform_store.clone(),
+            )));
+        }
         extensions.insert(Arc::new(PlatformStoreExt(platform_store)));
         if let Some(store) = self.adapters.knowledge_store() {
             extensions.insert(Arc::new(KnowledgeStoreExt(store)));

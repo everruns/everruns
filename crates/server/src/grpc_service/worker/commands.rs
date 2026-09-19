@@ -130,6 +130,53 @@ impl WorkerServiceImpl {
                 Status::internal("Failed to load Platform command session")
             })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
+
+        // This RPC is a worker trust boundary, not merely an RBAC boundary.
+        // Independently require the capability that grants the catalog even if
+        // a compromised worker calls the endpoint without going through Bash.
+        let mut agent = if let Some(agent_id) = session.agent_id {
+            crate::domains::agents::queries::get_by_public_id(
+                &self.db,
+                req.org_id,
+                &agent_id.to_string(),
+            )
+            .await
+            .map_err(|error| internal_status("Failed to load Platform command agent", error))?
+        } else {
+            None
+        };
+        if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
+            && let Some(version_row) = self
+                .db
+                .get_agent_version(req.org_id, version_id)
+                .await
+                .map_err(|error| internal_status("Failed to load Platform command agent", error))?
+        {
+            let version = crate::domains::agents::queries::row_to_agent_version(version_row);
+            *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
+        }
+        let harness = crate::domains::harnesses::queries::resolve_effective(
+            &self.db,
+            req.org_id,
+            session.harness_id,
+        )
+        .await
+        .map_err(|error| internal_status("Failed to load Platform command harness", error))?;
+        let has_platform_capability = session
+            .capabilities
+            .iter()
+            .chain(agent.iter().flat_map(|agent| agent.capabilities.iter()))
+            .chain(
+                harness
+                    .iter()
+                    .flat_map(|harness| harness.capabilities.iter()),
+            )
+            .any(|capability| capability.capability_id() == "platform");
+        if !has_platform_capability {
+            return Err(Status::permission_denied(
+                "Platform command execution requires the platform capability",
+            ));
+        }
         let user_id = session.resolved_owner_user_id.ok_or_else(|| {
             Status::permission_denied(
                 "Platform command execution requires a user-owned session with a resolved owner",

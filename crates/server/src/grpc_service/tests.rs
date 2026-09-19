@@ -1038,7 +1038,7 @@ async fn platform_command_surface_uses_session_owner_and_org() {
             locale: None,
             tags: vec![],
             model_id: None,
-            capabilities: serde_json::json!([]),
+            capabilities: serde_json::json!([{ "ref": "platform" }]),
             tools: serde_json::json!([]),
             mcp_servers: serde_json::json!({}),
             system_prompt: None,
@@ -1076,6 +1076,54 @@ async fn platform_command_surface_uses_session_owner_and_org() {
         panic!("expected discover output");
     };
     assert!(output.contains("list_models"));
+
+    let session_without_platform = service
+        .db
+        .create_session(CreateSessionRow {
+            source: everruns_platform::SessionSource::Api,
+            workspace_id: None,
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            app_id: None,
+            endpoint_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(2),
+            resolved_owner_user_id: Some(user.id),
+            title: Some("no platform surface".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .expect("create session without platform");
+    let missing_capability = service
+        .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+            session_id: Some(proto::Uuid {
+                value: session_without_platform.id.uuid().to_string(),
+            }),
+            org_id: session_without_platform.org_id,
+            operation: PlatformCommandSurfaceOperation::Discover as i32,
+            arguments_json: br#"{"query":"models"}"#.to_vec(),
+        }))
+        .await
+        .expect_err("session without platform capability must be denied");
+    assert_eq!(missing_capability.code(), tonic::Code::PermissionDenied);
 
     for (query, expected) in [
         // A tree command advertises its spelling and defers its flags to
