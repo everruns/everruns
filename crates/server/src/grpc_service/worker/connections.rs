@@ -15,27 +15,38 @@ impl WorkerServiceImpl {
         let session_id = parse_uuid(req.session_id.as_ref())?;
         let resolver = self.connection_resolver()?;
 
-        let token = match req.acts_as.as_deref() {
-            None => {
-                resolver
-                    .get_connection_token(session_id.into(), &req.provider)
-                    .await
+        let token = resolver
+            .get_connection_token(session_id.into(), &req.provider)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to resolve connection token: {}", e);
+                Status::internal("Failed to resolve connection token")
+            })?;
+
+        Ok(Response::new(GetConnectionTokenResponse { token }))
+    }
+
+    pub(crate) async fn handle_get_mcp_connection_token(
+        &self,
+        request: Request<GetMcpConnectionTokenRequest>,
+    ) -> Result<Response<GetConnectionTokenResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let resolver = self.connection_resolver()?;
+        let acts_as = match req.acts_as.as_str() {
+            value @ ("none" | "service" | "user") => {
+                everruns_core::McpServerActsAs::from(value)
             }
-            Some(acts_as @ ("none" | "service" | "user")) => {
-                resolver
-                    .get_mcp_connection_token(
-                        session_id.into(),
-                        &req.provider,
-                        everruns_core::McpServerActsAs::from(acts_as),
-                    )
-                    .await
-            }
-            Some(_) => return Err(Status::invalid_argument("Invalid MCP acts_as value")),
-        }
-        .map_err(|e| {
-            tracing::error!("Failed to resolve connection token: {}", e);
-            Status::internal("Failed to resolve connection token")
-        })?;
+            _ => return Err(Status::invalid_argument("Invalid MCP acts_as value")),
+        };
+
+        let token = resolver
+            .get_mcp_connection_token(session_id.into(), &req.provider, acts_as)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to resolve MCP connection token: {}", e);
+                Status::internal("Failed to resolve MCP connection token")
+            })?;
 
         Ok(Response::new(GetConnectionTokenResponse { token }))
     }

@@ -13,17 +13,17 @@
 
 mod capability_wire;
 mod json_wire;
+#[cfg(test)]
+mod rolling_upgrade_tests;
 mod slack_action_wire;
 
 use chrono::{DateTime, TimeZone, Utc};
 use everruns_provider::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 
-// Generated protobuf code
 pub mod proto {
     tonic::include_proto!("everruns.internal");
 }
 
-// Re-export for convenience
 pub use json_wire::{
     json_array_to_proto_list, json_object_to_proto_struct, json_to_proto_list,
     json_to_proto_struct, json_to_proto_value, proto_list_to_json, proto_struct_to_json,
