@@ -76,7 +76,10 @@ closures, local persistence never serializes it. After a process restart, an
 application reconstructs that trusted behavior and explicitly attaches it to a
 new `Engine` before resuming the persisted session. Attachment verifies
 the ID against the Agent-configured local session catalog; canonical events do
-not confer session identity.
+not confer session identity. A session created with an explicit Harness also
+requires the application to deserialize its portable Harness definition and
+attach both reconstructed values through `Engine::attach_with_harness`.
+`Engine::attach` remains the no-Harness restart path.
 
 These APIs adapt into the same in-process host, provider registry, model
 selection, plugin compiler, MCP client, and engine execution that an advanced

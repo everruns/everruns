@@ -121,11 +121,37 @@ impl Engine {
         Ok(session)
     }
 
-    /// Attach a persisted local session to this engine.
+    /// Attach a persisted local session without an explicit Harness.
     ///
     /// Rebuild the Agent from trusted application configuration after a process
     /// restart, attach it to the persisted id, then call [`resume`](Self::resume).
+    /// Use [`attach_with_harness`](Self::attach_with_harness) when the session
+    /// was created with an explicit [`Harness`].
     pub async fn attach(&self, session_id: SessionId, agent: Agent) -> Result<(), ResumeError> {
+        self.attach_reconstructed(session_id, agent, None).await
+    }
+
+    /// Attach a persisted local session with its reconstructed Harness.
+    ///
+    /// After a process restart, rebuild the Agent from trusted application
+    /// configuration and deserialize the session's portable Harness definition.
+    /// Attach both values before calling [`resume`](Self::resume).
+    pub async fn attach_with_harness(
+        &self,
+        session_id: SessionId,
+        agent: Agent,
+        harness: Harness,
+    ) -> Result<(), ResumeError> {
+        self.attach_reconstructed(session_id, agent, Some(harness))
+            .await
+    }
+
+    async fn attach_reconstructed(
+        &self,
+        session_id: SessionId,
+        agent: Agent,
+        harness: Option<Harness>,
+    ) -> Result<(), ResumeError> {
         if self.agent(session_id).is_some() {
             return Ok(());
         }
@@ -150,7 +176,7 @@ impl Engine {
             .entry(session_id)
             .or_insert(EngineSessionEntry {
                 agent,
-                harness: None,
+                harness,
                 state: None,
             });
         Ok(())
