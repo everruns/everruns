@@ -1,8 +1,8 @@
-# everruns-integrations-openrouter-workspace
+# everruns-integrations-openrouter
 
 > OpenRouter workspace policy, model scouting, and server tools for Everruns.
 
-`everruns-integrations-openrouter-workspace` owns the OpenRouter-specific
+`everruns-integrations-openrouter` owns the OpenRouter-specific
 workspace metadata, compatibility checks, and bounded model-scout probes that
 were formerly compiled into the execution kernel. It also owns the opt-in
 provider-executed server-tool capability and its routing-config adapter.
@@ -15,7 +15,7 @@ without coupling provider protocol crates to `everruns-core`.
 
 ```rust
 use everruns_core::capabilities::Capability;
-use everruns_integrations_openrouter_workspace::OpenRouterWorkspaceCapability;
+use everruns_integrations_openrouter::OpenRouterWorkspaceCapability;
 
 assert_eq!(OpenRouterWorkspaceCapability.id(), "openrouter_workspace");
 ```
@@ -31,7 +31,7 @@ assert_eq!(OpenRouterWorkspaceCapability.id(), "openrouter_workspace");
 ## Documentation
 
 - [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [API reference](https://docs.rs/everruns-integrations-openrouter-workspace)
+- [API reference](https://docs.rs/everruns-integrations-openrouter)
 
 ## License
 

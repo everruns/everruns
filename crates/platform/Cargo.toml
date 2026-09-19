@@ -48,7 +48,7 @@ environment-capabilities = [
     "dep:everruns-integrations-filesystem",
     "dep:everruns-integrations-bashkit",
     "dep:everruns-integrations-web-fetch",
-    "dep:everruns-integrations-openrouter-workspace",
+    "dep:everruns-integrations-openrouter",
 ]
 lua = ["dep:everruns-integrations-lua"]
 # Outbound A2A delegation is product-owned and optional for lightweight hosts.
@@ -80,7 +80,7 @@ everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }
 everruns-integrations-web-fetch = { workspace = true, optional = true }
 everruns-integrations-lua = { workspace = true, optional = true }
-everruns-integrations-openrouter-workspace = { workspace = true, optional = true }
+everruns-integrations-openrouter = { workspace = true, optional = true }
 
 serde.workspace = true
 serde_json.workspace = true

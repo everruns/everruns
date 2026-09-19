@@ -14,7 +14,7 @@
 //!
 //! ```
 //! use everruns_core::Capability;
-//! use everruns_integrations_openrouter_workspace::OpenRouterWorkspaceCapability;
+//! use everruns_integrations_openrouter::OpenRouterWorkspaceCapability;
 //!
 //! assert_eq!(OpenRouterWorkspaceCapability.id(), "openrouter_workspace");
 //! ```

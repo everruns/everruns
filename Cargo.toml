@@ -41,7 +41,7 @@ members = [
     "integrations/bashkit",
     "integrations/web-fetch",
     "integrations/lua",
-    "integrations/openrouter-workspace",
+    "integrations/openrouter",
     "integrations/daytona",
     "integrations/deno",
     "integrations/brave-search",
@@ -257,7 +257,7 @@ everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.29
 everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.29.0" }
 everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.29.0" }
 everruns-integrations-lua = { path = "integrations/lua", version = "0.29.0" }
-everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.29.0" }
+everruns-integrations-openrouter = { path = "integrations/openrouter", version = "0.29.0" }
 # `hosted` is opt-in (everruns-integrations-catalog turns it on). It registers the
 # connector into the hosted plugin system and so depends on everruns-platform,
 # which an embedder wanting only the client and framework surface must not carry.

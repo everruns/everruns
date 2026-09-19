@@ -120,9 +120,9 @@ pub fn register_environment_capabilities(
     registry.register(everruns_integrations_filesystem::FileSystemCapability);
     registry.register(everruns_integrations_bashkit::BashkitShellCapability);
     registry.register(everruns_integrations_web_fetch::WebFetchCapability::from_env());
-    registry.register(everruns_integrations_openrouter_workspace::OpenRouterServerToolsCapability);
-    registry.register(everruns_integrations_openrouter_workspace::ModelScoutCapability);
-    registry.register(everruns_integrations_openrouter_workspace::OpenRouterWorkspaceCapability);
+    registry.register(everruns_integrations_openrouter::OpenRouterServerToolsCapability);
+    registry.register(everruns_integrations_openrouter::ModelScoutCapability);
+    registry.register(everruns_integrations_openrouter::OpenRouterWorkspaceCapability);
 
     #[cfg(feature = "lua")]
     if everruns_core::InternalFeatureFlags::from_env().lua {
