@@ -5,6 +5,7 @@
 
 use crate::{SessionMutator, SessionMutatorExt};
 use async_trait::async_trait;
+use everruns_capability::CapabilityRef;
 use everruns_core::capabilities::{
     Capability, SystemPromptContext, collect_capabilities_with_configs,
 };
@@ -242,11 +243,19 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     }
 
     /// Type-erased tool services supplied by layers above the host.
+    ///
+    /// `resolved_capabilities` is the session's effective capability set, after
+    /// dependency expansion and alias canonicalisation — the same list the
+    /// kernel builds tools from. An adapter that gates an extension on a
+    /// capability must read it here rather than re-deriving one, so the
+    /// extension it installs and the tools the session actually has cannot
+    /// disagree. The host stays capability-agnostic: which ids matter is the
+    /// adapter's business, not this crate's.
     fn tool_context_extensions(
         &self,
         _org_id: i64,
         _session_id: SessionId,
-        _has_platform_capability: bool,
+        _resolved_capabilities: &[CapabilityRef],
     ) -> everruns_core::tool_context::ToolContextExtensions {
         Default::default()
     }
@@ -392,12 +401,12 @@ struct RuntimeExecutionCapabilities {
     pre_tool_hooks: Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>>,
     tool_call_hooks: Vec<Arc<dyn everruns_core::ToolCallHook>>,
     subagent_nesting_policy: everruns_core::delegation_services::SubagentNestingPolicy,
-    has_platform_capability: bool,
+    resolved_capabilities: Vec<CapabilityRef>,
 }
 
 struct RuntimeToolCapabilityContext {
     subagent_nesting_policy: everruns_core::delegation_services::SubagentNestingPolicy,
-    has_platform_capability: bool,
+    resolved_capabilities: Vec<CapabilityRef>,
 }
 
 fn subagent_nesting_policy_from_configs(
@@ -552,7 +561,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             tool_call_hooks: Vec::new(),
             subagent_nesting_policy:
                 everruns_core::delegation_services::SubagentNestingPolicy::default(),
-            has_platform_capability: false,
+            resolved_capabilities: Vec::new(),
         });
     }
 
@@ -703,10 +712,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         subagent_nesting_policy: subagent_nesting_policy_from_configs(
             &resolved.resolved_capability_configs,
         ),
-        has_platform_capability: resolved
-            .resolved_capability_configs
-            .iter()
-            .any(|config| config.capability_id() == "platform"),
+        resolved_capabilities: resolved.resolved_capability_configs,
     })
 }
 
@@ -723,7 +729,7 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         let mut extensions = adapter.tool_context_extensions(
             org_id,
             session_id,
-            capability_context.has_platform_capability,
+            &capability_context.resolved_capabilities,
         );
         extensions.insert(Arc::new(SessionMutatorExt(adapter.session_mutator(org_id))));
         extensions
@@ -1430,7 +1436,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         None,
         RuntimeToolCapabilityContext {
             subagent_nesting_policy: validation_capabilities.subagent_nesting_policy,
-            has_platform_capability: validation_capabilities.has_platform_capability,
+            resolved_capabilities: validation_capabilities.resolved_capabilities.clone(),
         },
     );
     validation_capabilities
@@ -1744,7 +1750,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         mcp_invoker,
         RuntimeToolCapabilityContext {
             subagent_nesting_policy: execution_capabilities.subagent_nesting_policy,
-            has_platform_capability: execution_capabilities.has_platform_capability,
+            resolved_capabilities: execution_capabilities.resolved_capabilities.clone(),
         },
     );
     tool_registry.validate_context_services(&context_services)?;
