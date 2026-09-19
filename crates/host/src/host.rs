@@ -3,8 +3,10 @@
 // durable/server-backed hosts reuse the same input/reason/act wiring without
 // depending on the application facade.
 
-use crate::{SessionMutator, SessionMutatorExt};
+use crate::SessionMutator;
+use crate::turn_tool_context::{RuntimeToolCapabilityContext, runtime_tool_context_services};
 use async_trait::async_trait;
+use everruns_capability::CapabilityRef;
 use everruns_core::capabilities::{
     Capability, SystemPromptContext, collect_capabilities_with_configs,
 };
@@ -30,8 +32,7 @@ use everruns_core::{
     provider_resolution::ProviderStore, session_files::SessionFileSystem,
     session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
     session_services::SessionScheduleStore, session_services::SessionStorageStore,
-    tool_context::ToolContextServices, tool_execution::BudgetChecker,
-    tool_execution::PaymentAuthority,
+    tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
 };
 use everruns_engine::{
     ActAtom, ActInput, ActResult, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
@@ -244,8 +245,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     /// Type-erased tool services supplied by layers above the host.
     fn tool_context_extensions(
         &self,
-        _org_id: i64,
-        _session_id: SessionId,
+        _request: ToolContextRequest<'_>,
     ) -> everruns_core::tool_context::ToolContextExtensions {
         Default::default()
     }
@@ -385,12 +385,30 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     }
 }
 
+/// What an adapter needs to build one turn's tool-context extensions.
+///
+/// A struct rather than a widening parameter list: an adapter may gate an
+/// extension on a capability, and the next such gate should not mean another
+/// parameter on a published trait.
+pub struct ToolContextRequest<'a> {
+    pub org_id: i64,
+    pub session_id: SessionId,
+    /// The session's effective capability set, after dependency expansion and
+    /// alias canonicalisation — the same list the kernel builds tools from. An
+    /// adapter gating on a capability reads it here rather than re-deriving
+    /// one, so what it installs and what the session actually has cannot
+    /// disagree. Which ids matter is the adapter's business; the host stays
+    /// capability-agnostic.
+    pub resolved_capabilities: &'a [CapabilityRef],
+}
+
 struct RuntimeExecutionCapabilities {
     tool_registry: ToolRegistry,
     post_tool_hooks: Vec<Arc<dyn everruns_core::tool_hooks::PostToolExecHook>>,
     pre_tool_hooks: Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>>,
     tool_call_hooks: Vec<Arc<dyn everruns_core::ToolCallHook>>,
     subagent_nesting_policy: everruns_core::delegation_services::SubagentNestingPolicy,
+    resolved_capabilities: Vec<CapabilityRef>,
 }
 
 fn subagent_nesting_policy_from_configs(
@@ -545,6 +563,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             tool_call_hooks: Vec::new(),
             subagent_nesting_policy:
                 everruns_core::delegation_services::SubagentNestingPolicy::default(),
+            resolved_capabilities: Vec::new(),
         });
     }
 
@@ -695,58 +714,8 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         subagent_nesting_policy: subagent_nesting_policy_from_configs(
             &resolved.resolved_capability_configs,
         ),
+        resolved_capabilities: resolved.resolved_capability_configs,
     })
-}
-
-fn runtime_tool_context_services<A: RuntimeHostAdapter>(
-    adapter: &A,
-    org_id: i64,
-    session_id: SessionId,
-    agent_id: Option<AgentId>,
-    tool_registry: Option<Arc<ToolRegistry>>,
-    mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>>,
-    subagent_nesting_policy: everruns_core::delegation_services::SubagentNestingPolicy,
-) -> ToolContextServices {
-    let extensions = {
-        let mut extensions = adapter.tool_context_extensions(org_id, session_id);
-        extensions.insert(Arc::new(SessionMutatorExt(adapter.session_mutator(org_id))));
-        extensions
-    };
-    ToolContextServices {
-        file_store: Some(adapter.file_store()),
-        storage_store: adapter.storage_store(org_id),
-        image_store: adapter.image_artifact_store(org_id),
-        provider_credential_store: adapter.provider_credential_store(org_id),
-        utility_llm_service: adapter.utility_llm_service(),
-        classifier: adapter.classifier(),
-        mcp_invoker,
-        egress_service: adapter.egress_service(),
-        message_retriever: Some(adapter.message_store()),
-        session_store: Some(adapter.session_store(org_id)),
-        agent_store: Some(adapter.agent_store(org_id)),
-        connection_resolver: adapter.connection_resolver(),
-        schedule_store: adapter.schedule_store(org_id),
-        subagent_delegate: adapter.subagent_delegate(org_id, session_id),
-        extensions,
-        leased_resource_store: adapter.leased_resource_store(),
-        session_resource_registry: adapter.session_resource_registry(),
-        session_task_registry: adapter.session_task_registry(),
-        event_emitter: Some(adapter.event_emitter()),
-        capability_registry: Some(adapter.capability_registry()),
-        tool_registry,
-        org_id: Some(
-            org_public_id_from_internal(org_id)
-                .parse()
-                .expect("internal org id converts to valid public org id"),
-        ),
-        network_access: None,
-        budget_checker: adapter.budget_checker(org_id, agent_id),
-        payment_authority: adapter.payment_authority(org_id, agent_id),
-        session_creation_authority: adapter.session_creation_authority(org_id, session_id),
-        subagent_spawn_store: adapter.subagent_spawn_store(),
-        subagent_nesting_policy,
-        reasoning_effort_handle: adapter.reasoning_effort_handle(session_id),
-    }
 }
 
 /// Shared lifecycle helper for runtime-backed hosts.
@@ -1412,7 +1381,10 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         input.agent_id,
         Some(Arc::new(validation_capabilities.tool_registry.clone())),
         None,
-        validation_capabilities.subagent_nesting_policy,
+        RuntimeToolCapabilityContext {
+            subagent_nesting_policy: validation_capabilities.subagent_nesting_policy,
+            resolved_capabilities: validation_capabilities.resolved_capabilities.clone(),
+        },
     );
     validation_capabilities
         .tool_registry
@@ -1723,7 +1695,10 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         input.agent_id,
         Some(builtin_tool_registry),
         mcp_invoker,
-        execution_capabilities.subagent_nesting_policy,
+        RuntimeToolCapabilityContext {
+            subagent_nesting_policy: execution_capabilities.subagent_nesting_policy,
+            resolved_capabilities: execution_capabilities.resolved_capabilities.clone(),
+        },
     );
     tool_registry.validate_context_services(&context_services)?;
     let executor: Arc<dyn everruns_core::tool_execution::ToolExecutor> = Arc::new(tool_registry);
