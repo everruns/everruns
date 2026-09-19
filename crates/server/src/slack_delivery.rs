@@ -1063,6 +1063,7 @@ impl SlackDeliveryDispatcher {
                 build_approval_blocks(
                     &request,
                     &ApprovalBinding {
+                        card_id: Uuid::now_v7().to_string(),
                         session_id: SessionId::from_uuid(session_id).to_string(),
                         requester: requester.clone(),
                         turn_id: approval_turn_id(data),
