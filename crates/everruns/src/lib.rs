@@ -119,7 +119,8 @@ pub use everruns_host::containment::{
 };
 pub use everruns_host::{
     Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
-    ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, NetworkPolicy,
+    ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, HostBackends,
+    NetworkPolicy,
 };
 #[cfg(feature = "host-compute")]
 pub use everruns_host::{HostCompute, HostComputeSession};

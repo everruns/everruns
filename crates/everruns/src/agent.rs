@@ -193,6 +193,8 @@ impl fmt::Debug for Model {
 pub enum BuildError {
     /// `instructions` was empty or only whitespace.
     BlankInstructions,
+    /// Both [`AgentBuilder::backends`] and [`AgentBuilder::local`] were set.
+    ConflictingBackends,
     /// No model was selected.
     MissingModel,
     /// A tool name is not a valid model-facing identifier.
@@ -262,6 +264,9 @@ impl fmt::Display for BuildError {
                 write!(f, "agent instructions must not be blank")
             }
             BuildError::MissingModel => write!(f, "agent requires a model"),
+            BuildError::ConflictingBackends => {
+                write!(f, "agent cannot combine `backends(..)` with `local(..)`")
+            }
             BuildError::InvalidToolName { name, reason } => {
                 write!(f, "invalid tool name {name:?}: {reason}")
             }
@@ -324,17 +329,24 @@ pub struct Agent {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
+    /// Caller-provided host backends (event log, session catalog, checkpoints, …).
+    /// Replaces the in-memory defaults; mutually exclusive with `local`.
+    backends: Option<HostBackends>,
     state: Arc<AgentState>,
 }
 
 struct AgentState {
     workspace_backends: Mutex<HashMap<WorkspaceBackendId, Arc<dyn WorkspaceBackend>>>,
+    /// Engine backends for an agent built with [`AgentBuilder::backends`]: owned by the agent
+    /// (shared across its clones) instead of the engine-wide in-memory cell.
+    custom_backends: Arc<tokio::sync::OnceCell<Arc<crate::engine::EngineBackends>>>,
 }
 
 impl AgentState {
     fn new(workspace_backends: HashMap<WorkspaceBackendId, Arc<dyn WorkspaceBackend>>) -> Self {
         Self {
             workspace_backends: Mutex::new(workspace_backends),
+            custom_backends: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 
@@ -535,6 +547,18 @@ impl Agent {
     #[cfg(feature = "local")]
     pub(crate) fn local_config(&self) -> Option<&crate::LocalConfig> {
         self.local.as_ref()
+    }
+
+    /// Host backends supplied through [`AgentBuilder::backends`], if any.
+    pub(crate) fn custom_backends(&self) -> Option<&HostBackends> {
+        self.backends.as_ref()
+    }
+
+    /// Per-agent cell for the engine backends derived from [`Self::custom_backends`].
+    pub(crate) fn custom_backend_cell(
+        &self,
+    ) -> Arc<tokio::sync::OnceCell<Arc<crate::engine::EngineBackends>>> {
+        self.state.custom_backends.clone()
     }
 
     pub(crate) async fn catalog_session(
@@ -785,6 +809,9 @@ pub struct AgentBuilder {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
+    /// Caller-provided host backends (event log, session catalog, checkpoints, …).
+    /// Replaces the in-memory defaults; mutually exclusive with `local`.
+    backends: Option<HostBackends>,
 }
 
 impl AgentBuilder {
@@ -1070,6 +1097,20 @@ impl AgentBuilder {
         Ok(self)
     }
 
+    /// Use caller-provided host backends (event log, session catalog, compaction
+    /// checkpoints, …) instead of the in-memory defaults.
+    ///
+    /// Lets an embedding host persist canonical events in its own store (for
+    /// example Postgres) while keeping the facade's loop and lifecycle hooks.
+    /// The host log stays the sole write path and sequence owner.
+    ///
+    /// Mutually exclusive with [`local`](Self::local): [`build`](Self::build)
+    /// returns [`BuildError::ConflictingBackends`] when both are set.
+    pub fn backends(mut self, backends: HostBackends) -> Self {
+        self.backends = Some(backends);
+        self
+    }
+
     /// Enable restart-survivable local state and a real workspace.
     ///
     /// Task, schedule, and session identity state is stored in SQLite.
@@ -1111,6 +1152,10 @@ impl AgentBuilder {
     ///   capability implementation, including aliases and reference/implementation
     ///   collisions.
     pub fn build(self) -> Result<Agent, BuildError> {
+        #[cfg(feature = "local")]
+        if self.local.is_some() && self.backends.is_some() {
+            return Err(BuildError::ConflictingBackends);
+        }
         let mut workspace_backends = HashMap::new();
         for backend in &self.workspace_backends {
             let id = backend.id();
@@ -1338,6 +1383,7 @@ impl AgentBuilder {
             #[cfg(feature = "local")]
             local: self.local,
             lifecycle_hooks: self.lifecycle_hooks,
+            backends: self.backends,
             state: Arc::new(AgentState::new(workspace_backends)),
         })
     }
