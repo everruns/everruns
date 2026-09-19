@@ -26,7 +26,8 @@ use axum::{
     routing::{get, post},
 };
 use everruns_platform::slack_provisioning::{
-    SlackAppProvisioner, SlackProvisioningError, UnavailableSlackAppProvisioner,
+    ProvisionedSlackApp, SlackAppProvisioner, SlackProvisioningError,
+    UnavailableSlackAppProvisioner,
 };
 use everruns_platform::{ChannelType, SlackChannelConfig};
 use serde::{Deserialize, Serialize};
@@ -65,19 +66,22 @@ impl axum::extract::FromRef<SlackInstallState> for AuthState {
 }
 
 impl SlackInstallState {
-    pub fn new(slack: SlackState, auth: AuthState, ui_base_url: String) -> Self {
+    /// `provisioner` is `None` on any deployment that holds no Slack app
+    /// configuration token, which stands in the absent one so the route answers
+    /// "not configured here" in one shape rather than being absent.
+    pub fn new(
+        slack: SlackState,
+        auth: AuthState,
+        ui_base_url: String,
+        provisioner: Option<Arc<dyn SlackAppProvisioner>>,
+    ) -> Self {
         Self {
             slack,
             auth,
-            provisioner: Arc::new(UnavailableSlackAppProvisioner),
+            provisioner: provisioner.unwrap_or_else(|| Arc::new(UnavailableSlackAppProvisioner)),
             slack_api_base: super::slack_events::SLACK_API_BASE.to_string(),
             ui_base_url,
         }
-    }
-
-    pub fn with_provisioner(mut self, provisioner: Arc<dyn SlackAppProvisioner>) -> Self {
-        self.provisioner = provisioner;
-        self
     }
 }
 
@@ -127,28 +131,35 @@ async fn begin_install(
     // Reuse the app the endpoint already has rather than creating a second one
     // per retry: a click that failed after creation but before consent would
     // otherwise orphan one app per attempt.
-    let credentials_present = config.client_id.is_some() && !config.client_secret.is_empty();
-    if !credentials_present {
-        let manifest =
-            super::slack_events::manifest_yaml_for_endpoint(&state.slack, &app, &endpoint).await?;
-        let created = state
-            .provisioner
-            .create_app(&manifest)
-            .await
-            .map_err(provisioning_error_response)?;
-        config.slack_app_id = Some(created.app_id);
-        config.client_id = Some(created.client_id);
-        config.client_secret = created.client_secret;
-        config.signing_secret = created.signing_secret;
-    }
+    let mut provisioned = match config.provisioned_app.take() {
+        Some(existing) => existing,
+        None => {
+            let manifest =
+                super::slack_events::manifest_yaml_for_endpoint(&state.slack, &app, &endpoint)
+                    .await?;
+            let created = state
+                .provisioner
+                .create_app(&manifest)
+                .await
+                .map_err(provisioning_error_response)?;
+            config.signing_secret = created.signing_secret;
+            ProvisionedSlackApp {
+                app_id: created.app_id,
+                client_id: created.client_id,
+                client_secret: created.client_secret,
+                install_state: None,
+                install_state_issued_at: None,
+            }
+        }
+    };
 
     let install_state = mint_install_state();
-    config.install_state = Some(install_state.clone());
-    config.install_state_issued_at = Some(chrono::Utc::now());
+    let client_id = provisioned.client_id.clone();
+    provisioned.install_state = Some(install_state.clone());
+    provisioned.install_state_issued_at = Some(chrono::Utc::now());
+    config.provisioned_app = Some(provisioned);
 
     persist(&state, endpoint.internal_id, &config).await?;
-
-    let client_id = config.client_id.clone().unwrap_or_default();
     let redirect_uri = super::slack_events::slack_oauth_redirect_url(
         &state.slack.api_base_url,
         &endpoint.public_id.to_string(),
@@ -223,17 +234,23 @@ async fn finish_install_inner(
     .map_err(|_| "endpoint not found")?;
 
     let mut config = parse_config(&endpoint.channel_config);
-    let expected = config.install_state.clone().ok_or("no install in flight")?;
+    let mut provisioned = config.provisioned_app.take().ok_or("no provisioned app")?;
+    let expected = provisioned
+        .install_state
+        .take()
+        .ok_or("no install in flight")?;
     if !constant_time_eq(&expected, &presented) {
         return Err("state mismatch");
     }
-    let issued = config.install_state_issued_at.ok_or("no issue time")?;
+    let issued = provisioned
+        .install_state_issued_at
+        .take()
+        .ok_or("no issue time")?;
     if chrono::Utc::now() - issued > chrono::Duration::minutes(INSTALL_STATE_TTL_MINUTES) {
         return Err("install state expired");
     }
-
-    let client_id = config.client_id.clone().ok_or("no client id")?;
-    if config.client_secret.is_empty() {
+    let client_id = provisioned.client_id.clone();
+    if provisioned.client_secret.is_empty() {
         return Err("no client secret");
     }
     let redirect_uri = super::slack_events::slack_oauth_redirect_url(
@@ -243,16 +260,15 @@ async fn finish_install_inner(
     let exchanged = exchange_code(
         &state.slack_api_base,
         &client_id,
-        &config.client_secret,
+        &provisioned.client_secret,
         &code,
         &redirect_uri,
     )
     .await?;
 
-    // Spend the nonce in the same write that stores the result, so a replay
-    // cannot find it still set.
-    config.install_state = None;
-    config.install_state_issued_at = None;
+    // The nonce was taken above, so storing `provisioned` back spends it in the
+    // same write that records the result and a replay finds nothing to match.
+    config.provisioned_app = Some(provisioned);
     config.bot_token = exchanged.bot_token;
     config.team_id = Some(exchanged.team_id);
 
@@ -405,11 +421,15 @@ mod tests {
 
     fn config_with_state(state: Option<&str>, issued_minutes_ago: i64) -> SlackChannelConfig {
         let mut config = parse_config(&serde_json::json!({}));
-        config.client_id = Some("4567.89".to_string());
-        config.client_secret = "secret".to_string();
-        config.install_state = state.map(str::to_string);
-        config.install_state_issued_at =
-            Some(chrono::Utc::now() - chrono::Duration::minutes(issued_minutes_ago));
+        config.provisioned_app = Some(ProvisionedSlackApp {
+            app_id: "A0123".to_string(),
+            client_id: "4567.89".to_string(),
+            client_secret: "secret".to_string(),
+            install_state: state.map(str::to_string),
+            install_state_issued_at: Some(
+                chrono::Utc::now() - chrono::Duration::minutes(issued_minutes_ago),
+            ),
+        });
         config
     }
 
@@ -437,34 +457,43 @@ mod tests {
     #[test]
     fn an_empty_object_parses_as_an_unconfigured_endpoint() {
         let config = parse_config(&serde_json::json!({}));
-        assert!(config.client_id.is_none());
-        assert!(config.client_secret.is_empty());
-        assert!(config.install_state.is_none());
+        assert!(config.provisioned_app.is_none());
     }
 
     #[test]
     fn an_unparseable_config_does_not_panic() {
         let config = parse_config(&serde_json::json!("not an object"));
-        assert!(config.install_state.is_none());
+        assert!(config.provisioned_app.is_none());
     }
 
     #[test]
     fn credentials_round_trip_through_the_stored_config() {
         let config = config_with_state(Some("abc"), 0);
         let json = serde_json::to_value(&config).expect("serialises");
-        let parsed = parse_config(&json);
-        assert_eq!(parsed.client_id.as_deref(), Some("4567.89"));
-        assert_eq!(parsed.client_secret, "secret");
-        assert_eq!(parsed.install_state.as_deref(), Some("abc"));
+        let provisioned = parse_config(&json).provisioned_app.expect("round-trips");
+        assert_eq!(provisioned.client_id, "4567.89");
+        assert_eq!(provisioned.client_secret, "secret");
+        assert_eq!(provisioned.install_state.as_deref(), Some("abc"));
     }
 
     #[test]
     fn an_expired_install_state_is_outside_the_window() {
-        let fresh = config_with_state(Some("abc"), 0);
-        let stale = config_with_state(Some("abc"), INSTALL_STATE_TTL_MINUTES + 1);
+        let issued_at = |config: SlackChannelConfig| {
+            config
+                .provisioned_app
+                .and_then(|app| app.install_state_issued_at)
+                .expect("issued")
+        };
         let window = chrono::Duration::minutes(INSTALL_STATE_TTL_MINUTES);
-        assert!(chrono::Utc::now() - fresh.install_state_issued_at.unwrap() <= window);
-        assert!(chrono::Utc::now() - stale.install_state_issued_at.unwrap() > window);
+        assert!(chrono::Utc::now() - issued_at(config_with_state(Some("abc"), 0)) <= window);
+        assert!(
+            chrono::Utc::now()
+                - issued_at(config_with_state(
+                    Some("abc"),
+                    INSTALL_STATE_TTL_MINUTES + 1
+                ))
+                > window
+        );
     }
 
     #[tokio::test]

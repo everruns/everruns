@@ -47,6 +47,54 @@ impl std::fmt::Debug for SlackAppCredentials {
     }
 }
 
+/// What a provisioned Slack app leaves on the endpoint.
+///
+/// One struct rather than five loose fields on `SlackChannelConfig`, because
+/// they are one fact — "we created this endpoint's Slack app" — and they are
+/// all-or-nothing. Loose `Option`s let a client id exist without its secret,
+/// a state that nothing can act on and every reader has to defend against.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct ProvisionedSlackApp {
+    /// Slack's id for the app (`A…`), which is what lets an abandoned install
+    /// be reaped rather than orphaned in the deployment's Slack account.
+    pub app_id: String,
+    pub client_id: String,
+    /// Read once, by the callback's `oauth.v2.access` exchange. Stored rather
+    /// than held in memory because that exchange happens on a later request,
+    /// through the operator's browser. `channel_config` is encrypted at rest,
+    /// the same protection `signing_secret` and `bot_token` already rely on.
+    pub client_secret: String,
+    /// Single-use CSRF nonce for an install in flight.
+    ///
+    /// Slack echoes `state` back to the redirect URL unverified, so without
+    /// one the callback is a route an attacker can drive with a code of their
+    /// choosing and bind their own workspace to this endpoint. Cleared the
+    /// moment it is spent, so a replay finds nothing to match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_state: Option<String>,
+    /// When the nonce was minted, so an abandoned install expires.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_state_issued_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// Hand-written for the same reason as `SlackAppCredentials`: the derived one
+/// would print the client secret wherever a config is logged.
+impl std::fmt::Debug for ProvisionedSlackApp {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProvisionedSlackApp")
+            .field("app_id", &self.app_id)
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"<redacted>")
+            .field(
+                "install_state",
+                &self.install_state.as_ref().map(|_| "<set>"),
+            )
+            .field("install_state_issued_at", &self.install_state_issued_at)
+            .finish()
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SlackProvisioningError {
     /// This deployment holds no app configuration token. Not a failure: it is

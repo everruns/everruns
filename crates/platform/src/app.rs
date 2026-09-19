@@ -351,7 +351,7 @@ fn default_true() -> bool {
 impl AppChannel {
     /// Parse channel_config as SlackChannelConfig. Returns None if not a Slack channel
     /// or if the config is invalid.
-    pub fn slack_config(&self) -> Option<SlackChannelConfig> {
+    pub fn slack_config(&self) -> Option<crate::slack_channel::SlackChannelConfig> {
         if self.channel_type != ChannelType::Slack {
             return None;
         }
@@ -537,97 +537,6 @@ impl From<everruns_core::channel::ChannelReplyMode> for SlackReplyMode {
     }
 }
 
-/// Typed Slack channel configuration.
-/// Parsed from the `channel_config` JSON field on App.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct SlackChannelConfig {
-    /// Slack signing secret for verifying webhook requests.
-    ///
-    /// May be empty while the channel is being configured. An empty value
-    /// causes all incoming requests to fail signature verification.
-    #[serde(default)]
-    pub signing_secret: String,
-    /// Slack Bot OAuth token for sending responses.
-    ///
-    /// May be empty while the channel is being configured.
-    #[serde(default)]
-    pub bot_token: String,
-    /// Slack's id (`A…`) for an app this deployment created for the endpoint.
-    ///
-    /// Only set on the one-click path. It is what lets an abandoned install be
-    /// reaped: an app created but never installed is otherwise an orphan in the
-    /// deployment's Slack account that nothing references (EVE-1069).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub slack_app_id: Option<String>,
-    /// OAuth client id of the endpoint's Slack app.
-    ///
-    /// Not a secret, unlike its paired secret below, but it is only meaningful
-    /// with it, so the two live together.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_id: Option<String>,
-    /// OAuth client secret of the endpoint's Slack app.
-    ///
-    /// Read once, by the callback's `oauth.v2.access` exchange. Stored rather
-    /// than held in memory because the exchange happens on a later request,
-    /// through the operator's browser. `channel_config` is encrypted at rest,
-    /// the same protection `signing_secret` and `bot_token` already rely on.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub client_secret: String,
-    /// Slack channel ID to listen on (e.g., "C0123456789").
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub channel_id: Option<String>,
-    /// Slack team/workspace ID.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub team_id: Option<String>,
-    /// What identity keys the session for incoming messages.
-    #[serde(default)]
-    pub session_strategy: SessionBinding,
-    /// How replies are delivered back to Slack.
-    #[serde(default)]
-    pub reply_mode: SlackReplyMode,
-    /// Single-use CSRF nonce for an OAuth install this server started.
-    ///
-    /// Slack echoes `state` back to the redirect URL unverified, so the
-    /// callback is otherwise a route an attacker can drive with a `code` of
-    /// their choosing and bind someone else's workspace to this endpoint.
-    /// Minted when the authorize URL is handed out and cleared the moment it
-    /// is spent, so a replay of the same callback URL finds nothing to match.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub install_state: Option<String>,
-    /// When `install_state` was minted, so an abandoned install expires rather
-    /// than leaving an indefinitely valid nonce.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub install_state_issued_at: Option<DateTime<Utc>>,
-    /// Set when Slack successfully verifies the webhook URL (url_verification challenge).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub webhook_verified_at: Option<DateTime<Utc>>,
-    /// Set when the first real message is received from Slack.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub first_message_received_at: Option<DateTime<Utc>>,
-    /// Whether this app also serves Slack's agent surface (the assistant pane).
-    ///
-    /// One boolean, not a mode: enabling Slack's Agents feature does not replace
-    /// the channel bot, it adds an assistant container alongside it. The same app
-    /// answers `@mentions` in channels *and* messages in the pane, and which
-    /// surface an event belongs to is read from the event at runtime rather than
-    /// from config (EVE-973).
-    #[serde(default)]
-    pub agent_surface_enabled: bool,
-    /// Tool activity visibility for the agent pane's live status line.
-    ///
-    /// The pane is a user-facing surface like a published AG-UI endpoint, so it
-    /// answers to the same policy rather than a second, divergent one (EVE-975).
-    #[serde(default)]
-    pub tool_visibility: PublicToolVisibility,
-    /// Status text shown while a tool runs, when `tool_visibility` is `generic`.
-    #[serde(
-        default = "default_ag_ui_generic_tool_text",
-        skip_serializing_if = "is_default_ag_ui_generic_tool_text"
-    )]
-    pub generic_tool_text: String,
-}
-
 /// Default session expiration for public channel threads (6 hours).
 pub const DEFAULT_SESSION_EXPIRATION_SECONDS: u32 = 6 * 60 * 60;
 
@@ -793,11 +702,11 @@ fn default_session_expiration_seconds() -> u32 {
     DEFAULT_SESSION_EXPIRATION_SECONDS
 }
 
-fn default_ag_ui_generic_tool_text() -> String {
+pub(crate) fn default_ag_ui_generic_tool_text() -> String {
     DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string()
 }
 
-fn is_default_ag_ui_generic_tool_text(value: &str) -> bool {
+pub(crate) fn is_default_ag_ui_generic_tool_text(value: &str) -> bool {
     value == DEFAULT_AG_UI_GENERIC_TOOL_TEXT
 }
 
@@ -1272,115 +1181,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn test_slack_channel_config_full() {
-        let json = r#"{
-            "signing_secret": "sec123",
-            "bot_token": "xoxb-tok",
-            "channel_id": "C123",
-            "team_id": "T123",
-            "session_strategy": "per_channel",
-            "reply_mode": "report_progress_only"
-        }"#;
-        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.signing_secret, "sec123");
-        assert_eq!(config.bot_token, "xoxb-tok");
-        assert_eq!(config.channel_id.as_deref(), Some("C123"));
-        assert_eq!(config.team_id.as_deref(), Some("T123"));
-        assert_eq!(config.session_strategy, SessionBinding::Conversation);
-        assert_eq!(config.reply_mode, SlackReplyMode::ReportProgressOnly);
-    }
-
-    #[test]
-    fn test_slack_channel_config_minimal() {
-        let json = r#"{"signing_secret": "s", "bot_token": "t"}"#;
-        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
-        assert!(config.channel_id.is_none());
-        assert!(config.team_id.is_none());
-        assert_eq!(config.session_strategy, SessionBinding::Thread);
-        assert_eq!(config.reply_mode, SlackReplyMode::AllMessages);
-        assert!(config.webhook_verified_at.is_none());
-        assert!(config.first_message_received_at.is_none());
-    }
-
-    #[test]
-    fn test_slack_channel_config_with_verification_timestamps() {
-        let json = r#"{
-            "signing_secret": "s",
-            "bot_token": "t",
-            "webhook_verified_at": "2025-01-01T00:00:00Z",
-            "first_message_received_at": "2025-01-01T01:00:00Z"
-        }"#;
-        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
-        assert!(config.webhook_verified_at.is_some());
-        assert!(config.first_message_received_at.is_some());
-
-        // Round-trip: timestamps should be preserved
-        let serialized = serde_json::to_value(&config).unwrap();
-        assert!(serialized.get("webhook_verified_at").is_some());
-        assert!(serialized.get("first_message_received_at").is_some());
-    }
-
-    /// Channels stored before the agent surface existed have no such key, and
-    /// must keep parsing with it off (EVE-973).
-    #[test]
-    fn test_slack_channel_config_defaults_agent_surface_off() {
-        let json = r#"{"signing_secret":"s","bot_token":"t"}"#;
-        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
-        assert!(!config.agent_surface_enabled);
-    }
-
-    #[test]
-    fn test_slack_channel_config_timestamps_skipped_when_none() {
-        let config = SlackChannelConfig {
-            signing_secret: "s".into(),
-            bot_token: "t".into(),
-            slack_app_id: None,
-            client_id: None,
-            client_secret: String::new(),
-            install_state: None,
-            install_state_issued_at: None,
-            channel_id: None,
-            team_id: None,
-            session_strategy: SessionBinding::Thread,
-            reply_mode: SlackReplyMode::AllMessages,
-            webhook_verified_at: None,
-            first_message_received_at: None,
-            agent_surface_enabled: false,
-            tool_visibility: PublicToolVisibility::default(),
-            generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
-        };
-        let json = serde_json::to_value(&config).unwrap();
-        assert!(json.get("webhook_verified_at").is_none());
-        // The default text is a knob nobody turned; serialising it into every
-        // stored Slack config would be noise, same as the AG-UI config.
-        assert!(json.get("generic_tool_text").is_none());
-        assert!(json.get("first_message_received_at").is_none());
-        // The one-click fields are absent on a hand-configured endpoint, and an
-        // empty client secret must not serialise as `""` -- a stored config
-        // carrying the key would read as "provisioned, secret lost" (EVE-1069).
-        assert!(json.get("slack_app_id").is_none());
-        assert!(json.get("client_id").is_none());
-        assert!(json.get("client_secret").is_none());
-        assert!(json.get("install_state").is_none());
-        assert!(json.get("install_state_issued_at").is_none());
-    }
-
-    #[test]
-    fn test_slack_reply_mode_serde_roundtrip() {
-        let json = serde_json::to_string(&SlackReplyMode::ReportProgressOnly).unwrap();
-        assert_eq!(json, r#""report_progress_only""#);
-        let parsed: SlackReplyMode = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, SlackReplyMode::ReportProgressOnly);
-    }
-
-    #[test]
-    fn test_slack_channel_config_defaults_omitted_credentials() {
-        let config: SlackChannelConfig = serde_json::from_str("{}").unwrap();
-        assert!(config.signing_secret.is_empty());
-        assert!(config.bot_token.is_empty());
     }
 
     #[test]
