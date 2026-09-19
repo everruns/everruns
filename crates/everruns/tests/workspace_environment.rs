@@ -178,8 +178,7 @@ async fn reconstructed_harness_is_negotiated_before_attach_returns() {
     let error = restarted_engine
         .attach_with_harness(session_id, agent(config), incompatible)
         .await
-        .err()
-        .expect("reconstructed harness must be negotiated");
+        .expect_err("reconstructed harness must be negotiated");
 
     assert_eq!(
         error,
