@@ -58,52 +58,50 @@ untracked paths a diff cannot show, recent session events, verification
 results, and the previous assessment and decision. An unbounded observation
 would make supervision as slow as the work it is watching.
 
-That snapshot goes to the classifier's service on every reading, so on a live
-run a bounded slice of the repository leaves the machine — point `--live` at a
-private repository only if that is acceptable for it. The repository content in
+That snapshot goes to the classifier's service on every reading, so a bounded
+slice of the repository leaves the machine on every run — point `--repo` at a
+private repository only if that is acceptable for it. `demo` works on a fixture
+it materializes itself, so it carries nothing of yours. The repository content in
 an observation is also untrusted input to the classifier, and that it can only
 produce a number is the point: the classifier never names an action, and every
 action the policy can take is in one readable file.
 
 ## Run it
 
-`foreman` is started the way Foreman itself is, on a repository you name, and
-that is all it does:
+Foreman's own two entry points, and they mean the same things here:
 
 ```bash
+cargo run -p everruns-foreman-agent --bin foreman -- demo
 foreman run --repo ./my-project --job "Add rate limiting, and test it."
 ```
 
-The credential-free walkthrough is a separate crate beside it, driving the same
-runtime over a disposable fixture with a scripted worker:
+Both are real runs — same worker, same classifier, same credentials. The only
+difference is who chose the repository and the job:
 
-```bash
-cargo run -p everruns-foreman-demo --bin foreman-demo
-```
-
-Supervision is the cheap half, which is the premise, so the two halves go live
-separately:
-
-| Command | Worker | Foreman | Needs |
+| Command | Repository | Job | Needs |
 | --- | --- | --- | --- |
-| `foreman-demo` | scripted | a stub service, from a table | nothing |
-| `foreman-demo --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
-| `foreman run …` | your choice, below | `jev-latest` | `TYPESAFE_API_KEY` + the worker's |
+| `foreman demo` | a bundled fixture, in a temporary directory | one it ships with | `TYPESAFE_API_KEY` + the worker's |
+| `foreman run …` | yours, named by `--repo` | yours, named by `--job` | the same |
 
-`foreman-demo` writes its fixture into a temporary directory unless `--repo`
-says otherwise, and `foreman run` never writes a fixture at all — `--repo` is
-your project, and the only thing that touches it is the worker. It will be
-modified.
+`demo` exists because a fixed starting state makes the ending checkable: the job
+names a rate schedule, so at the end the repository either prices by weight or
+it does not. Those checks run at the bottom of the run and read the files, not
+the supervisor's opinion of them.
+
+`demo` writes its fixture into a temporary directory unless `--repo` says
+otherwise, and `run` never writes a fixture at all — `--repo` is your project,
+and the only thing that touches it is the worker. It will be modified.
 
 ## One supervisor
 
 There is one, and it is always real: a `Classifier`, a budget, one request, nine
-answers. A run with no credentials is not a second supervisor with fabricated
-numbers — it is the same code over a different `ClassifierService`, the
-Framework's own seam for answering typed questions without a vendor. The stub
-receives the observation as JSON exactly as a vendor's service does, and answers
-from a table keyed by what is on the floor, so the demo exercises the whole
-request path rather than bypassing it.
+answers. There is no offline mode and no second supervisor with fabricated
+numbers — every run asks a vendor the nine questions. CI cannot, so the test
+suite substitutes a different `ClassifierService`, the Framework's own seam for
+answering typed questions without a vendor, rather than adding a branch to the
+supervisor. The stub receives the observation as JSON exactly as a vendor's
+service does and answers from a table keyed by what is on the floor, so the test
+exercises the whole request path rather than bypassing it.
 
 ## The supervisor runs the tests itself
 

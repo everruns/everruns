@@ -220,34 +220,4 @@ mod tests {
         materialize(outer.path()).unwrap();
         assert_eq!(head(outer.path()), before);
     }
-
-    #[test]
-    fn the_demo_edits_leave_a_repository_that_passes_its_own_suite() {
-        // The demo's edits are the same shell a worker runs, so running them
-        // here checks the fixture, the checks, and the scripts at once.
-        let root = tempfile::tempdir().unwrap();
-        materialize(root.path()).unwrap();
-        assert!(tests_pass(root.path()), "the fixture starts green");
-
-        for script in [
-            include_str!("resources/scripted/write_rates.sh"),
-            include_str!("resources/scripted/write_tests.sh"),
-        ] {
-            let status = Command::new("bash")
-                .arg("-c")
-                .arg(script)
-                .current_dir(root.path())
-                .output()
-                .unwrap();
-            assert!(status.status.success(), "demo script failed");
-        }
-
-        assert!(changed(root.path()));
-        for check in verify(root.path()) {
-            assert!(check.passed, "{}", check.label);
-        }
-        // And the suite it left behind still passes — including the boundaries
-        // the job asked for.
-        assert!(tests_pass(root.path()));
-    }
 }

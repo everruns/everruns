@@ -12,7 +12,7 @@ repository: these Cargo packages depend on local workspace crates.
 | [Research](research-agent/) | Search and fetch primary sources | `cargo run -p everruns-research-agent` |
 | [Incident Commander](incident-commander-agent/) | Investigate evidence and persist a safe update | `cargo run -p everruns-incident-commander-agent` |
 | [Bashkit Repo](bashkit-repo-agent/) | Modify and verify a repository through a sandboxed shell | `cargo run -p everruns-bashkit-repo-agent` |
-| [Foreman](foreman-agent/) | Supervise a coding agent — a session, Codex, or yolop — with a classifier | `cargo run -p everruns-foreman-demo --bin foreman-demo` |
+| [Foreman](foreman-agent/) | Supervise a coding agent — a session, Codex, or yolop — with a classifier | `cargo run -p everruns-foreman-agent --bin foreman -- demo` |
 
 Each README lists credentials, contrasting scenarios, expected outcomes, and
 limits. Support Agent, Everruns Support Agent, Bashkit Repo Agent, and Foreman

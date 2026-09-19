@@ -1,9 +1,9 @@
 //! The command line, in Foreman's shape.
 //!
-//! `run` is the original's entry point and means the same thing here: supervise
-//! real work in a repository you name. It stays a subcommand rather than
-//! collapsing into the bare binary so that the invocation from Foreman's own
-//! README keeps working verbatim.
+//! `run` and `demo` are the original's two entry points and mean the same
+//! things here. Both supervise a real worker with a real classifier; they
+//! differ only in who picked the repository and the job. `demo` picked them, so
+//! there is something to run before you have a project in mind.
 
 use std::path::PathBuf;
 
@@ -20,11 +20,13 @@ pub struct Cli {
     pub command: Command,
 }
 
-/// What a factory does.
+/// The two things a factory does.
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Supervise a real coding agent working in a repository.
     Run(Run),
+    /// The same thing over a bundled fixture, on a job it already knows.
+    Demo(Demo),
 }
 
 /// `foreman run --repo ./my-project --job "..."`
@@ -60,6 +62,29 @@ pub struct Run {
     pub worker_command: Option<String>,
 }
 
+/// `foreman demo`
+///
+/// Not a simulation. The worker and the supervisor are the ones `run` uses, on
+/// the same credentials; the only thing this subcommand supplies is a small
+/// repository with a known flaw and a job describing it, so the run has a fixed
+/// starting state instead of a fixed script.
+#[derive(Debug, Parser)]
+pub struct Demo {
+    /// Where to materialize the fixture. A temporary directory by default.
+    ///
+    /// Whatever is here will be overwritten, so this is not your project.
+    #[arg(long, value_name = "PATH")]
+    pub repo: Option<PathBuf>,
+
+    /// Who does the work. The same choice `run` offers.
+    #[arg(long, value_enum, default_value_t = WorkerChoice::Session)]
+    pub worker: WorkerChoice,
+
+    /// An external agent's command line, overriding `--worker`.
+    #[arg(long, value_name = "TEMPLATE")]
+    pub worker_command: Option<String>,
+}
+
 /// Who does the work on a `run`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum WorkerChoice {
@@ -71,20 +96,35 @@ pub enum WorkerChoice {
     Yolop,
 }
 
+/// The external agent an invocation asked for, if it asked for one.
+///
+/// `--worker-command` wins over `--worker`: an operator naming a command line
+/// has said more than an operator picking from a list.
+fn external(
+    worker: WorkerChoice,
+    template: Option<&String>,
+) -> Result<Option<ExternalAgent>, TemplateError> {
+    if let Some(template) = template {
+        return ExternalAgent::from_template(template).map(Some);
+    }
+    Ok(match worker {
+        WorkerChoice::Session => None,
+        WorkerChoice::Codex => Some(ExternalAgent::codex()),
+        WorkerChoice::Yolop => Some(ExternalAgent::yolop()),
+    })
+}
+
 impl Run {
     /// The external agent this run asked for, if it asked for one.
-    ///
-    /// `--worker-command` wins over `--worker`: an operator naming a command
-    /// line has said more than an operator picking from a list.
     pub fn external(&self) -> Result<Option<ExternalAgent>, TemplateError> {
-        if let Some(template) = &self.worker_command {
-            return ExternalAgent::from_template(template).map(Some);
-        }
-        Ok(match self.worker {
-            WorkerChoice::Session => None,
-            WorkerChoice::Codex => Some(ExternalAgent::codex()),
-            WorkerChoice::Yolop => Some(ExternalAgent::yolop()),
-        })
+        external(self.worker, self.worker_command.as_ref())
+    }
+}
+
+impl Demo {
+    /// The external agent this demo asked for, if it asked for one.
+    pub fn external(&self) -> Result<Option<ExternalAgent>, TemplateError> {
+        external(self.worker, self.worker_command.as_ref())
     }
 }
 
@@ -95,8 +135,10 @@ mod tests {
     use crate::observation::WorkerKind;
 
     fn run(arguments: &[&str]) -> Run {
-        let Command::Run(run) = Cli::try_parse_from(arguments).unwrap().command;
-        run
+        match Cli::try_parse_from(arguments).unwrap().command {
+            Command::Run(run) => run,
+            other => panic!("expected a run, got {other:?}"),
+        }
     }
 
     #[test]
@@ -200,5 +242,22 @@ mod tests {
     #[test]
     fn a_run_without_a_job_is_not_a_run() {
         assert!(Cli::try_parse_from(["foreman", "run", "--repo", "."]).is_err());
+    }
+
+    #[test]
+    fn a_demo_needs_nothing_and_takes_the_same_workers() {
+        let Command::Demo(demo) = Cli::try_parse_from(["foreman", "demo"]).unwrap().command else {
+            panic!("expected a demo");
+        };
+        assert_eq!(demo.worker, WorkerChoice::Session);
+        assert!(demo.external().unwrap().is_none());
+
+        let Command::Demo(demo) = Cli::try_parse_from(["foreman", "demo", "--worker", "codex"])
+            .unwrap()
+            .command
+        else {
+            panic!("expected a demo");
+        };
+        assert_eq!(demo.external().unwrap().unwrap().label, "codex");
     }
 }

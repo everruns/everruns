@@ -93,11 +93,12 @@ character diff, 12,000 characters per tail, 30 events, and 10 workers of
 history. An unbounded observation would make supervision as slow as the work it
 is watching.
 
-That snapshot goes to the classifier's service on every reading, so on a live
-run a bounded slice of the repository — the diff, the changed paths, whatever
-the worker printed — leaves the machine. Point `--live` at a private repository
-only if that is acceptable for it, the same judgment any third-party search or
-model call asks for. The offline mode sends nothing anywhere.
+That snapshot goes to the classifier's service on every reading, so a bounded
+slice of the repository — the diff, the changed paths, whatever the worker
+printed — leaves the machine on every run. There is no mode in which it does
+not. Point `--repo` at a private repository only if that is acceptable for it,
+the same judgment any third-party search or model call asks for; `demo` works on
+a fixture it materializes itself, so it carries nothing of yours.
 
 The repository content in an observation is also untrusted input to the
 classifier, so a hostile repository can try to talk it into a number. That it
@@ -108,44 +109,40 @@ already sandboxed.
 
 ## Run it
 
-`foreman` is started the way Foreman itself is, on a repository you name:
+Foreman's own two entry points, and they mean the same things here:
+
+```bash
+git clone https://github.com/everruns/everruns.git
+cd everruns
+cargo run -p everruns-foreman-agent --bin foreman -- demo
+```
 
 ```bash
 foreman run --repo ./my-project --job "Add rate limiting, and test it."
 ```
 
-That is the whole binary. Nothing in this crate is simulated, and `--repo` is
-your project — the only thing that writes to it is the worker, and it will be
-modified.
+Both are real runs. Nothing in this crate is simulated — same worker, same
+classifier, same credentials — and the only difference is who chose the
+repository and the job:
 
-The walkthrough is a separate crate in [`demo/`](demo/), so that the example
-above stays the real thing. It drives this same runtime over a disposable
-fixture, with a scripted worker and a classifier service that answers from a
-table:
-
-```bash
-git clone https://github.com/everruns/everruns.git
-cd everruns
-cargo run -p everruns-foreman-demo --bin foreman-demo
-```
-
-Supervision is the cheap half, which is the premise, so the two halves go live
-separately:
-
-| Command | Worker | Foreman | Needs |
+| Command | Repository | Job | Needs |
 | --- | --- | --- | --- |
-| `foreman-demo` | scripted | a stub service, from a table | nothing |
-| `foreman-demo --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
-| `foreman run …` | your choice, below | `jev-latest` | `TYPESAFE_API_KEY` + the worker's |
+| `foreman demo` | a bundled fixture, in a temporary directory | one it ships with | `TYPESAFE_API_KEY` + the worker's |
+| `foreman run …` | yours, named by `--repo` | yours, named by `--job` | the same |
 
-Pass `--tests "<command>"` so the supervisor can check the work by running it.
+`demo` exists because supervision is only interesting when there is something to
+supervise, and a fixed starting state makes the ending checkable: the job names
+a rate schedule, so at the end the repository either prices by weight or it does
+not, and the suite either passes or it does not. Those checks are at the bottom
+of the run, and they read the files rather than the supervisor's opinion of
+them.
 
-`--live-foreman` puts a vendor's classifier over a deterministic worker, so the
-numbers on screen are a live reading of a run that goes the same way every
-time. That is the mode the recording above captures.
+Pass `--tests "<command>"` on a `run` so the supervisor can check the work by
+running it; `demo` already knows its own.
 
-`foreman-demo` writes its fixture into a temporary directory unless `--repo`
-says otherwise.
+`demo` writes its fixture into a temporary directory unless `--repo` says
+otherwise, and `run` never writes a fixture at all — `--repo` is your project,
+and the only thing that touches it is the worker. It will be modified.
 
 ## Who does the work
 
@@ -229,12 +226,14 @@ reading the tests rather than on one having passed.
 ## One supervisor
 
 There is one, and it is always real: `src/foreman.rs` holds a `Classifier` and
-a budget, builds one request, and parses nine answers. A run with no
-credentials is not a second supervisor with fabricated numbers — it is the same
-code over a different
+a budget, builds one request, and parses nine answers. There is no offline mode
+and no second supervisor with fabricated numbers — every run of this binary asks
+a vendor the nine questions.
+
+CI cannot do that, so the test suite substitutes the seam the Framework provides
+for it,
 [`ClassifierService`](https://docs.rs/everruns/latest/everruns/trait.ClassifierService.html),
-which is the Framework's own seam for answering typed questions without a
-vendor:
+rather than adding a branch to the supervisor:
 
 ```rust
 #[async_trait]
@@ -248,11 +247,11 @@ impl ClassifierService for Readings {
 }
 ```
 
-The stub receives the observation as JSON, exactly as a vendor's service does,
-and answers from `demo/src/resources/scripted/readings.json` — a table keyed by
-what is on the floor, beside the shell scripts the scripted worker runs. So the
-demo exercises the whole request path rather than bypassing it, and the numbers
-it answers with are data you can edit without touching Rust.
+It receives the observation as JSON exactly as a vendor's service does and
+answers from `tests/resources/readings.json`, a table keyed by what is on the
+floor — so the test exercises the whole request path rather than bypassing it.
+That stub lives in `tests/`, not in `src/`, because scaffolding shipped beside
+an example gets read as part of it.
 
 ## Ask the nine questions
 
@@ -270,31 +269,36 @@ to read on its own.
 ## Validate it
 
 ```bash
-cargo test -p everruns-foreman-agent -p everruns-foreman-demo
+cargo test -p everruns-foreman-agent
 bash examples/foreman-agent/demo/record.sh --check
 ```
 
-The suite is offline. It covers every policy branch, the observation bounds,
-the nine-question round trip against a simulated classifier, both worker
-backends' command lines, and six whole runs through the real runtime: readings
-landing mid-turn, a stuck worker stopped and retried once and escalated, a
-supervisor that cannot answer, an external worker watched while it streams, a
-missing external binary failing by name, and an external worker killed when the
-policy stops it. CI does not grade a live model's code, so a live run remains
-the behavioral proof.
+The suite is offline, which is the one thing `foreman` itself is not. It covers
+every policy branch, the observation bounds, the nine-question round trip
+against a simulated classifier, both worker backends' command lines, and seven
+whole runs through the real runtime: readings landing mid-turn, a stuck worker
+stopped and retried once and escalated, a supervisor that cannot answer, an
+external worker watched while it streams, a missing external binary failing by
+name, an external worker killed when the policy stops it, and — in
+`tests/finishes.rs`, over a scripted worker — the finish path itself: coding
+worker, independent verification, FINISH, and a repository that really changed.
+CI does not grade a live model's code, so a live run remains the behavioral
+proof.
 
 ## Demo and recording
 
-With VHS, ffmpeg, a VHS-compatible browser, and a TypeSafe key:
+With VHS, ffmpeg, a VHS-compatible browser, and both keys:
 
 ```bash
 bash examples/foreman-agent/demo/record.sh
 ```
 
-It uses `TYPESAFE_API_KEY` when exported, otherwise Doppler project
-`everruns-dev`, config `dev`, and replaces the checked-in GIF and transcript
-only after a run that actually reached a decision. `demo/transcript.txt` is the
-same run as static text.
+It uses `TYPESAFE_API_KEY` and `OPENROUTER_API_KEY` when exported, otherwise
+Doppler project `everruns-dev`, config `dev`. The recording is a live run, so a
+take can go a way that is not worth publishing: the script replaces the
+checked-in GIF and transcript only after one that actually reached a decision
+and left a passing suite behind. `demo/transcript.txt` is the same run as
+static text.
 
 ## What the Framework changes
 
@@ -333,13 +337,14 @@ sandbox for the shell, not a safe harness for an untrusted repository.
 questions and the classifier call; `src/policy.rs`: thresholds, limits, and the
 decision; `src/observation.rs`: the bounded snapshot; `src/agent.rs`: the two
 agents; `src/run.rs`: one run, rendered; `src/terminal.rs`: layout only, over
-`everruns-example-demo::style`; `src/resources/`: the two prompts.
+`everruns-example-demo::style`; `src/fixture.rs` and
+`src/resources/sample-repo/`: the shell repository `demo` works on;
+`src/resources/*.md`: the two prompts.
 
-Everything simulated is in the crate under `demo/`, which depends on this one:
-`demo/src/scripted.rs`: the scripted worker and the stub classifier service;
-`demo/src/fixture.rs` and `demo/src/resources/`: the shell repository it works
-on and the scripts it writes; `demo/demo.tape` and `demo/record.sh`: the
-recording.
+Nothing above is simulated. The only scripted code in the example is
+`tests/finishes.rs` and `tests/resources/`, which exist so CI can watch the
+finish path without paying for it. `demo/` holds the recording: the tape, the
+script that records it, the GIF, and the transcript.
 
 ## See also
 

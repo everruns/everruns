@@ -4,22 +4,29 @@
 //! supervisor from credentials in the environment, and hand both to
 //! [`everruns_foreman_agent::run::supervise`]. Everything it needs is in the
 //! library beside it.
+//!
+//! `demo` runs exactly the same way over a bundled fixture. Nothing about it is
+//! simulated — it is `run` with the repository and the job already chosen, so a
+//! first run needs a key and nothing else.
 
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 use everruns::{Classifier, Model};
-use everruns_foreman_agent::cli::{Cli, Command, Run};
+use everruns_example_demo::shell as demo;
+use everruns_foreman_agent::cli::{Cli, Command, Demo, Run};
+use everruns_foreman_agent::factory::Status;
 use everruns_foreman_agent::foreman::Foreman;
 use everruns_foreman_agent::policy::Config;
-use everruns_foreman_agent::worker::Crew;
-use everruns_foreman_agent::{agent, run};
+use everruns_foreman_agent::worker::{Crew, ExternalAgent};
+use everruns_foreman_agent::{agent, fixture, run};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Run(options) => start(options).await,
+        Command::Demo(options) => start_demo(options).await,
     }
 }
 
@@ -36,27 +43,82 @@ async fn start(options: Run) -> Result<()> {
         bail!("a job cannot be empty");
     }
 
+    let external = options.external().context("reading --worker-command")?;
+    let outcome = supervise(job, &options.repo, external, options.tests.clone()).await?;
+    run::report(&outcome);
+    run::settle(&outcome)
+}
+
+/// The same run, over a repository the example brought with it.
+async fn start_demo(options: Demo) -> Result<()> {
+    let temporary = options
+        .repo
+        .is_none()
+        .then(tempfile::tempdir)
+        .transpose()
+        .context("creating a temporary workspace")?;
+    let workspace = match (&options.repo, &temporary) {
+        (Some(path), _) => path.clone(),
+        (None, Some(directory)) => directory.path().join("shipkit"),
+        (None, None) => bail!("no workspace"),
+    };
+    std::fs::create_dir_all(&workspace)?;
+    fixture::materialize(&workspace).context("materializing the fixture")?;
+
+    let external = options.external().context("reading --worker-command")?;
+    let outcome = supervise(
+        fixture::JOB,
+        &workspace,
+        external,
+        Some(fixture::TESTS.to_owned()),
+    )
+    .await?;
+    run::report(&outcome);
+
+    // A fixed starting state is what makes the ending checkable: the job named
+    // a rate schedule, so the repository either prices by weight now or does
+    // not. Nothing here reads the supervisor's opinion of the work.
+    demo::section("REPOSITORY ON DISK");
+    for check in fixture::verify(&workspace) {
+        demo::check(check.passed, check.label);
+    }
+    // The last word is not a reading of the tests but a run of them.
+    demo::check(
+        fixture::tests_pass(&workspace),
+        "`bash tests/run.sh` passes",
+    );
+    if outcome.status == Status::Finished && !fixture::changed(&workspace) {
+        bail!("factory finished without changing the repository");
+    }
+    run::settle(&outcome)
+}
+
+/// One supervised run over `workspace`, on real credentials either way.
+async fn supervise(
+    job: &str,
+    workspace: &Path,
+    external: Option<ExternalAgent>,
+    tests: Option<String>,
+) -> Result<everruns_foreman_agent::factory::Outcome> {
     let config = Config::from_env();
-    let crew = match options.external().context("reading --worker-command")? {
+    let crew = match external {
         Some(external) => Crew::External(external),
-        None => sessions(&options.repo)?,
+        None => sessions(workspace)?,
     };
     // TYPESAFE_API_KEY, declared by the TypeSafe integration.
     let classifier = Classifier::new(agent::FOREMAN_MODEL, everruns::TypeSafeAI::from_env()?);
     let foreman = Foreman::new(classifier, config.assessment_budget);
 
-    let outcome = run::supervise(
+    Ok(run::supervise(
         job,
         agent::FOREMAN_MODEL,
-        &options.repo,
+        workspace,
         crew,
         foreman,
         config,
-        options.tests.clone(),
+        tests,
     )
-    .await;
-    run::report(&outcome);
-    run::settle(&outcome)
+    .await)
 }
 
 /// Everruns sessions over `repo`: one that may write, one that may not.

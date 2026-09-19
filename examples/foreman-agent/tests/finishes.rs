@@ -1,12 +1,19 @@
-//! The deterministic demo: the same runtime, with nothing to pay for.
+//! The whole loop reaching a decision, offline.
 //!
-//! A scripted worker really edits the fixture through the same Bashkit
-//! capability a live worker uses, and the supervisor reads the evidence it
-//! leaves behind. Only the two ends are simulated; everything between them —
-//! the event stream, the observation, the policy, the interventions — is the
-//! code a live run executes.
+//! `foreman demo` is a real run, so CI cannot use it: a live worker costs money
+//! and is free to go a different way each time. This is the same run with both
+//! ends replaced — a scripted worker that really edits the fixture through the
+//! same Bashkit capability, and a classifier service that answers from a table.
+//! Everything between them is the code a live run executes, so what this pins
+//! is the finish path: worker, independent verification, FINISH, and a
+//! repository that actually changed.
+//!
+//! It is a test rather than a mode of the binary on purpose. Scaffolding that
+//! ships alongside an example gets read as part of it.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::collections::BTreeMap;
+use std::process::Command;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -16,7 +23,12 @@ use everruns::{
 };
 use serde_json::Value;
 
+use everruns_foreman_agent::factory::{Factory, Status};
+use everruns_foreman_agent::foreman::{DIMENSIONS, Foreman};
+use everruns_foreman_agent::observation::{Observation, VerificationResult};
 use everruns_foreman_agent::policy::Config;
+use everruns_foreman_agent::worker::Crew;
+use everruns_foreman_agent::{agent, fixture};
 
 /// Bounds for a scripted worker, which finishes in seconds rather than minutes.
 ///
@@ -59,12 +71,12 @@ pub fn worker() -> Model {
             ),
             step(
                 "Replacing the flat rate with weight tiers.",
-                include_str!("resources/scripted/write_rates.sh"),
+                include_str!("resources/write_rates.sh"),
                 "call_rates",
             ),
             step(
                 "Covering the tier boundaries, which is where tiered pricing goes wrong.",
-                include_str!("resources/scripted/write_tests.sh"),
+                include_str!("resources/write_tests.sh"),
                 "call_tests",
             ),
             step("Running the suite.", "bash tests/run.sh", "call_run_tests"),
@@ -140,7 +152,7 @@ pub const READINGS_MODEL: &str = "readings.json";
 impl Readings {
     /// Load the readings table.
     pub fn load() -> Result<Self, serde_json::Error> {
-        serde_json::from_str(include_str!("resources/scripted/readings.json"))
+        serde_json::from_str(include_str!("resources/readings.json"))
             .map(|readings| Self { readings })
     }
 
@@ -209,79 +221,136 @@ impl ClassifierService for Readings {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[test]
+fn the_scripted_worker_writes_the_files_the_job_asks_for() {
+    // The demo's edits are real shell, run by the same capability a live
+    // worker uses; keeping them in files means they can be read and run.
+    let rates = include_str!("resources/write_rates.sh");
+    let tests = include_str!("resources/write_tests.sh");
+    assert!(rates.contains("lib/rates.sh"));
+    assert!(tests.contains("tests/run.sh"));
+    assert!(tests.to_lowercase().contains("boundar"));
+}
 
-    use everruns_foreman_agent::foreman::{DIMENSIONS, Foreman};
-    use everruns_foreman_agent::observation::{Observation, VerificationResult};
-
-    #[test]
-    fn the_scripted_worker_writes_the_files_the_job_asks_for() {
-        // The demo's edits are real shell, run by the same capability a live
-        // worker uses; keeping them in files means they can be read and run.
-        let rates = include_str!("resources/scripted/write_rates.sh");
-        let tests = include_str!("resources/scripted/write_tests.sh");
-        assert!(rates.contains("lib/rates.sh"));
-        assert!(tests.contains("tests/run.sh"));
-        assert!(tests.to_lowercase().contains("boundar"));
-    }
-
-    #[test]
-    fn every_reading_answers_every_question() {
-        // A table missing an id would fail a run halfway through; catching it
-        // here costs nothing.
-        let readings = Readings::load().unwrap();
-        for (phase, reading) in &readings.readings {
-            for dimension in &DIMENSIONS {
-                let value = reading
-                    .get(dimension.id)
-                    .unwrap_or_else(|| panic!("{phase} has no {}", dimension.id));
-                assert!((0.0..=1.0).contains(value), "{phase}/{}", dimension.id);
-            }
-            assert_eq!(reading.len(), DIMENSIONS.len(), "{phase}");
+#[test]
+fn every_reading_answers_every_question() {
+    // A table missing an id would fail a run halfway through; catching it
+    // here costs nothing.
+    let readings = Readings::load().unwrap();
+    for (phase, reading) in &readings.readings {
+        for dimension in &DIMENSIONS {
+            let value = reading
+                .get(dimension.id)
+                .unwrap_or_else(|| panic!("{phase} has no {}", dimension.id));
+            assert!((0.0..=1.0).contains(value), "{phase}/{}", dimension.id);
         }
+        assert_eq!(reading.len(), DIMENSIONS.len(), "{phase}");
+    }
+}
+
+#[tokio::test]
+async fn the_readings_service_answers_the_nine_questions() {
+    let foreman = Foreman::new(Readings::classifier().unwrap(), Duration::from_secs(5));
+    let assessment = foreman.assess(&Observation::sample()).await.unwrap();
+    // The sample observation has a worker on the floor and nothing changed
+    // yet, so this is the opening reading.
+    assert_eq!(assessment.implementation_complete, 0.31);
+    assert_eq!(assessment.meaningful_progress, 0.88);
+}
+
+#[test]
+fn the_phase_follows_the_floor_not_the_call_count() {
+    let phase =
+        |observation: &Observation| Readings::phase(&serde_json::to_value(observation).unwrap());
+    let mut observation = Observation::sample();
+    assert!(!observation.active_workers.is_empty());
+    assert_eq!(phase(&observation), "started");
+
+    observation.changed_files.push("src/rates.py".into());
+    assert_eq!(phase(&observation), "editing");
+
+    observation.active_workers.clear();
+    assert_eq!(phase(&observation), "unchecked");
+
+    observation.verification_results.push(VerificationResult {
+        worker_id: "worker-2".into(),
+        passed: true,
+        summary: "checked".into(),
+    });
+    assert_eq!(phase(&observation), "verified");
+}
+
+#[test]
+fn scripted_clocks_are_pinned_but_budgets_are_not() {
+    let config = config();
+    assert_eq!(config.min_assessment_interval, Duration::from_millis(1_000));
+    // Thresholds and budgets stay exactly what a live run uses.
+    assert_eq!(config.finish, Config::default().finish);
+    assert_eq!(config.max_workers, Config::from_env().max_workers);
+}
+
+#[tokio::test]
+async fn the_factory_finishes_after_verifying_its_own_work() {
+    // The one end-to-end proof CI can afford: a coding worker, an independent
+    // verification pass, FINISH, and a repository that really changed.
+    let workspace = tempfile::tempdir().unwrap();
+    let root = workspace.path().join("shipkit");
+    std::fs::create_dir_all(&root).unwrap();
+    fixture::materialize(&root).unwrap();
+
+    let crew = Crew::sessions(
+        WORKER_MODEL,
+        agent::worker(worker(), &root).unwrap(),
+        agent::verifier(verifier(), &root).unwrap(),
+    );
+    let outcome = Factory::new(
+        fixture::JOB,
+        &root,
+        crew,
+        Foreman::new(Readings::classifier().unwrap(), config().assessment_budget),
+        config(),
+    )
+    .run()
+    .await;
+
+    assert_eq!(outcome.status, Status::Finished, "{:?}", outcome.failures);
+    // One coding worker, then one independent verification pass.
+    assert_eq!(outcome.workers.len(), 2);
+    assert_eq!(outcome.verification.len(), 1);
+    assert!(outcome.verification[0].passed);
+    // Not the supervisor's opinion of the work — the work.
+    assert!(fixture::changed(&root));
+    assert!(fixture::verify(&root).iter().all(|check| check.passed));
+    assert!(fixture::tests_pass(&root));
+}
+
+#[test]
+fn the_scripted_edits_leave_a_repository_that_passes_its_own_suite() {
+    // The scripted worker's edits are the same shell a live worker runs, so
+    // running them here checks the fixture, the checks, and the scripts at
+    // once — without starting a factory.
+    let root = tempfile::tempdir().unwrap();
+    fixture::materialize(root.path()).unwrap();
+    assert!(fixture::tests_pass(root.path()), "the fixture starts green");
+
+    for script in [
+        include_str!("resources/write_rates.sh"),
+        include_str!("resources/write_tests.sh"),
+    ] {
+        let status = Command::new("bash")
+            .arg("-c")
+            .arg(script)
+            .current_dir(root.path())
+            .output()
+            .unwrap();
+        assert!(status.status.success(), "scripted edit failed");
     }
 
-    #[tokio::test]
-    async fn the_readings_service_answers_the_nine_questions() {
-        let foreman = Foreman::new(Readings::classifier().unwrap(), Duration::from_secs(5));
-        let assessment = foreman.assess(&Observation::sample()).await.unwrap();
-        // The sample observation has a worker on the floor and nothing changed
-        // yet, so this is the opening reading.
-        assert_eq!(assessment.implementation_complete, 0.31);
-        assert_eq!(assessment.meaningful_progress, 0.88);
+    assert!(fixture::changed(root.path()));
+    for check in fixture::verify(root.path()) {
+        assert!(check.passed, "{}", check.label);
     }
-
-    #[test]
-    fn the_phase_follows_the_floor_not_the_call_count() {
-        let phase = |observation: &Observation| {
-            Readings::phase(&serde_json::to_value(observation).unwrap())
-        };
-        let mut observation = Observation::sample();
-        assert!(!observation.active_workers.is_empty());
-        assert_eq!(phase(&observation), "started");
-
-        observation.changed_files.push("src/rates.py".into());
-        assert_eq!(phase(&observation), "editing");
-
-        observation.active_workers.clear();
-        assert_eq!(phase(&observation), "unchecked");
-
-        observation.verification_results.push(VerificationResult {
-            worker_id: "worker-2".into(),
-            passed: true,
-            summary: "checked".into(),
-        });
-        assert_eq!(phase(&observation), "verified");
-    }
-
-    #[test]
-    fn demo_clocks_are_pinned_but_budgets_are_not() {
-        let config = config();
-        assert_eq!(config.min_assessment_interval, Duration::from_millis(1_000));
-        // Thresholds and budgets stay exactly what a live run uses.
-        assert_eq!(config.finish, Config::default().finish);
-        assert_eq!(config.max_workers, Config::from_env().max_workers);
-    }
+    // And the suite it left behind still passes — including the boundaries
+    // the job asked for.
+    assert!(fixture::tests_pass(root.path()));
 }

@@ -14,7 +14,7 @@ publish = false
 description = "A classifier supervising a coding agent it does not have to stop"
 
 [lib]
-# The runtime, so the demo crate in `demo/` can drive the same loop.
+# The runtime, so `tests/` can drive the same loop with a scripted worker.
 name = "everruns_foreman_agent"
 path = "src/lib.rs"
 
@@ -24,7 +24,7 @@ name = "foreman"
 path = "src/main.rs"
 
 [features]
-# Fixtures the demo crate's tests borrow. Off in a real build.
+# Fixtures `tests/` borrows. Off in a real build.
 testing = []
 
 [dependencies]
@@ -44,3 +44,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "ti
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# This crate again, with the fixtures `tests/` borrows.
+everruns-foreman-agent = { path = ".", features = ["testing"] }
