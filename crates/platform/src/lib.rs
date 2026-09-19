@@ -55,6 +55,7 @@ pub mod app;
 // The seam a Slack-native capability acts through; the Slack endpoint row it
 // resolves against lives in `app` (EVE-1024).
 pub mod slack_action;
+pub mod slack_provisioning;
 
 // Stored Agent/AgentVersion persistence records carved out of `everruns-core`
 // (EVE-877). Execution consumes only `everruns_core::AgentDefinition`, produced

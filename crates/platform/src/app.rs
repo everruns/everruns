@@ -553,6 +553,27 @@ pub struct SlackChannelConfig {
     /// May be empty while the channel is being configured.
     #[serde(default)]
     pub bot_token: String,
+    /// Slack's id (`A…`) for an app this deployment created for the endpoint.
+    ///
+    /// Only set on the one-click path. It is what lets an abandoned install be
+    /// reaped: an app created but never installed is otherwise an orphan in the
+    /// deployment's Slack account that nothing references (EVE-1069).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slack_app_id: Option<String>,
+    /// OAuth client id of the endpoint's Slack app.
+    ///
+    /// Not a secret, unlike its paired secret below, but it is only meaningful
+    /// with it, so the two live together.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// OAuth client secret of the endpoint's Slack app.
+    ///
+    /// Read once, by the callback's `oauth.v2.access` exchange. Stored rather
+    /// than held in memory because the exchange happens on a later request,
+    /// through the operator's browser. `channel_config` is encrypted at rest,
+    /// the same protection `signing_secret` and `bot_token` already rely on.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub client_secret: String,
     /// Slack channel ID to listen on (e.g., "C0123456789").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<String>,
@@ -565,6 +586,19 @@ pub struct SlackChannelConfig {
     /// How replies are delivered back to Slack.
     #[serde(default)]
     pub reply_mode: SlackReplyMode,
+    /// Single-use CSRF nonce for an OAuth install this server started.
+    ///
+    /// Slack echoes `state` back to the redirect URL unverified, so the
+    /// callback is otherwise a route an attacker can drive with a `code` of
+    /// their choosing and bind someone else's workspace to this endpoint.
+    /// Minted when the authorize URL is handed out and cleared the moment it
+    /// is spent, so a replay of the same callback URL finds nothing to match.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub install_state: Option<String>,
+    /// When `install_state` was minted, so an abandoned install expires rather
+    /// than leaving an indefinitely valid nonce.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub install_state_issued_at: Option<DateTime<Utc>>,
     /// Set when Slack successfully verifies the webhook URL (url_verification challenge).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub webhook_verified_at: Option<DateTime<Utc>>,
@@ -1303,6 +1337,11 @@ mod tests {
         let config = SlackChannelConfig {
             signing_secret: "s".into(),
             bot_token: "t".into(),
+            slack_app_id: None,
+            client_id: None,
+            client_secret: String::new(),
+            install_state: None,
+            install_state_issued_at: None,
             channel_id: None,
             team_id: None,
             session_strategy: SessionBinding::Thread,
@@ -1319,6 +1358,14 @@ mod tests {
         // stored Slack config would be noise, same as the AG-UI config.
         assert!(json.get("generic_tool_text").is_none());
         assert!(json.get("first_message_received_at").is_none());
+        // The one-click fields are absent on a hand-configured endpoint, and an
+        // empty client secret must not serialise as `""` -- a stored config
+        // carrying the key would read as "provisioned, secret lost" (EVE-1069).
+        assert!(json.get("slack_app_id").is_none());
+        assert!(json.get("client_id").is_none());
+        assert!(json.get("client_secret").is_none());
+        assert!(json.get("install_state").is_none());
+        assert!(json.get("install_state_issued_at").is_none());
     }
 
     #[test]
