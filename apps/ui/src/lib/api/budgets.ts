@@ -1,5 +1,4 @@
-// Budget API client. App/channel subject types require the `app_budgets`
-// feature flag on the server. The UI gates the management surface accordingly.
+// Budget API client. The UI gates budget management with `app_budgets`.
 
 import { api } from "./client";
 import type { Budget, CreateBudgetRequest, UpdateBudgetRequest } from "./types";
