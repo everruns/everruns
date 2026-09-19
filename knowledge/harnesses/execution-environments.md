@@ -29,7 +29,7 @@ What exists in code today:
   helper process. `HostCompute::contained` wires it in behind
   `everruns-host/native-containment`, so `ContainmentLevel::Native` is a level a
   target can enforce rather than one nothing implements;
-- the model-facing half, `everruns_host::host_shell` (`host_shell`), which is
+- the model-facing half, `everruns_host::capabilities::shell` (`host_shell`), which is
   Yolop's `bash` tool: approval policy, background streaming, output budget, and
   the `command`/`commands` argument alias that lets an agent move between it and
   `bashkit_shell`. Behind `everruns-host/host-shell`, and deliberately absent
@@ -470,6 +470,13 @@ product. `everruns-host` is where an embedder assembles its runtime, and it
 already owns `HostCompute`, the target these commands run on. Keeping the two
 together also removes an inversion the split forced: a compute primitive
 reaching up into a capability crate for its containment options.
+
+`everruns_host::capabilities` is the home for that class, holding both the
+composition entry points and the implementations this crate owns. `session` and
+`session_storage` stay under `session_services` because they are the capability
+face of that seam and share `session_mutator` with it; a capability fronting
+another seam belongs with the seam, and everything else belongs in
+`capabilities`.
 
 The tradeoff accepted: `everruns-host` grows, and a consumer that wants the
 boundary without the runtime cannot have it. Nobody is that consumer today. If

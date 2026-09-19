@@ -91,6 +91,10 @@ pub use everruns_core::classifier::{
 pub use everruns_host::WorkspaceBackend as WorkspaceProvider;
 #[deprecated(note = "use WorkspaceBackendId")]
 pub use everruns_host::WorkspaceBackendId as WorkspaceProviderId;
+#[cfg(feature = "host-shell")]
+pub use everruns_host::capabilities::shell::{
+    ApprovalPolicy, HostShell, HostShellApproval, ShellApprovalGate, ShellApprovalRequest,
+};
 /// The host shell capability, its approval policy, and the seam a host fills to
 /// put a person in front of a command.
 #[cfg(feature = "host-shell")]
@@ -108,10 +112,6 @@ pub use everruns_host::containment::{
     ContainmentMode, SandboxLauncher, SandboxOptions, SandboxProvider,
     configure_stdio as configure_contained_stdio, danger_warning, network_access,
     provider as containment_provider,
-};
-#[cfg(feature = "host-shell")]
-pub use everruns_host::host_shell::{
-    ApprovalPolicy, HostShell, HostShellApproval, ShellApprovalGate, ShellApprovalRequest,
 };
 pub use everruns_host::{
     Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,

@@ -33,7 +33,7 @@
 //!
 //! ```
 //! use everruns_core::capabilities::Capability;
-//! use everruns_host::host_shell::{HostShell, HostShellCapability};
+//! use everruns_host::capabilities::shell::{HostShell, HostShellCapability};
 //!
 //! assert_eq!(HostShellCapability.id(), "host_shell");
 //! assert_eq!(HostShellCapability.tools().len(), 1);
@@ -70,7 +70,7 @@ pub const HOST_SHELL_CAPABILITY_ID: &str = "host_shell";
 ///
 /// ```
 /// use everruns_host::containment::ContainmentMode;
-/// use everruns_host::host_shell::{ApprovalPolicy, HostShell};
+/// use everruns_host::capabilities::shell::{ApprovalPolicy, HostShell};
 ///
 /// let shell = HostShell::new()
 ///     .containment(ContainmentMode::ReadOnly)
@@ -121,7 +121,7 @@ impl HostShell {
     ///
     /// ```no_run
     /// # use everruns_host::containment::SandboxLauncher;
-    /// # use everruns_host::host_shell::HostShell;
+    /// # use everruns_host::capabilities::shell::HostShell;
     /// // In `main`, before anything else runs:
     /// let mut arguments = std::env::args().skip(1);
     /// if arguments.next().as_deref() == Some("__sandbox-exec") {

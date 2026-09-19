@@ -1,12 +1,27 @@
-//! Capability composition for embedded hosts.
+//! Capabilities: the ones this host composes, and the ones it implements.
 //!
-//! `everruns-core` owns only neutral capability contracts and registry algorithms.
-//! This module is the opt-in host composition boundary for environment-backed
-//! implementations.
+//! `everruns-core` owns only neutral capability contracts and registry
+//! algorithms. This module is the opt-in host composition boundary for
+//! environment-backed implementations, and the home for the capability
+//! implementations `everruns-host` owns itself.
+//!
+//! A capability lands here when it is an *embedder* capability: something a CLI
+//! host, a CI runner, or an operator's own box opts into, rather than something
+//! the hosted product offers every tenant. Those go in an integration crate and
+//! are named by `everruns-integrations-catalog`.
+//!
+//! One pair lives elsewhere by design. `session` and `session_storage` are the
+//! capability face of the session-service seam and sit under
+//! [`session_services`](crate::session_services) next to `session_mutator`,
+//! which `session` depends on. A capability that fronts another seam belongs
+//! with that seam; everything else belongs here.
 
 use std::sync::Arc;
 
 use everruns_core::{CapabilityRegistry, EgressService};
+
+#[cfg(feature = "host-shell")]
+pub mod shell;
 
 /// Return the runtime-safe portable bundle and integrations enabled as host Cargo features.
 pub fn runtime_capability_registry() -> CapabilityRegistry {
@@ -85,7 +100,7 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     // stops both features being on at once; the capability an agent enables is
     // what decides which shell it gets.
     #[cfg(feature = "host-shell")]
-    _registry.register(crate::host_shell::HostShellCapability);
+    _registry.register(shell::HostShellCapability);
     #[cfg(feature = "web-fetch")]
     _registry.register(everruns_integrations_web_fetch::WebFetchCapability::from_env());
     #[cfg(feature = "duckduckgo")]

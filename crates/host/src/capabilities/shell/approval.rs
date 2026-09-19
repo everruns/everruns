@@ -9,7 +9,7 @@
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use everruns_host::host_shell::{HostShellApproval, ShellApprovalGate};
+//! use everruns_host::capabilities::shell::{HostShellApproval, ShellApprovalGate};
 //!
 //! # fn install(gate: Arc<dyn ShellApprovalGate>, extensions: &mut everruns_core::tool_context::ToolContextExtensions) {
 //! extensions.insert(Arc::new(HostShellApproval::new(gate)));
