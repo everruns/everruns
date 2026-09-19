@@ -64,6 +64,15 @@ Two decisions in the scanner are load-bearing and non-obvious:
   there invisible to the log scan too, so the examples give up the credential shape instead, guarded
   by a fixture in [`scripts/test-actions-log-secret-scan.sh`](../../scripts/test-actions-log-secret-scan.sh).
 
+- **A prefix rule needs a left boundary.** `sk-` with no boundary matched inside
+  the ordinary word "ask-", so a PR body linking
+  `linear.app/.../EVE-1053/ask-user-capability-contract-schema-and-knowledge-spec`
+  reported as an OpenAI key. Docker Build echoes PR bodies, so that fired on
+  every branch of a nine-issue project. A real credential always begins at a
+  token boundary, so requiring one costs no detection and removes a whole class
+  of alarm whose cause is invisible from the finding — the scanner withholds the
+  value, correctly, which leaves a High finding nobody can act on.
+
 Entropy is deliberately not the discriminator. `debug-ubuntu-latest` scores 3.35, above any
 threshold a hex key could clear, since hex caps at 4.0. The signal is an unbroken alphanumeric run,
 which a credential has and a hyphenated setting name does not.
