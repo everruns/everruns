@@ -35,7 +35,7 @@ pub(crate) trait SessionExecution: Send + Sync + fmt::Debug {
         &self,
         environment: &Environment,
     ) -> Result<(), SessionEnvironmentError>;
-    async fn bind_default_environment(&self) -> Result<Environment, SessionEnvironmentError>;
+    async fn default_environment(&self) -> Result<Environment, SessionEnvironmentError>;
     async fn reopen_environment(&self) -> Result<Option<Environment>, ResumeError>;
 }
 
@@ -479,15 +479,9 @@ impl SessionExecution for EngineSessionExecution {
             .await
     }
 
-    async fn bind_default_environment(&self) -> Result<Environment, SessionEnvironmentError> {
+    async fn default_environment(&self) -> Result<Environment, SessionEnvironmentError> {
         let agent = self.agent_snapshot();
-        let backends = self
-            .backends()
-            .await
-            .map_err(|_| SessionEnvironmentError::Unavailable)?;
-        agent
-            .bind_default_session_environment(backends.binding_store.as_ref(), self.session_id)
-            .await
+        agent.default_session_environment(self.session_id).await
     }
 
     async fn reopen_environment(&self) -> Result<Option<Environment>, ResumeError> {
