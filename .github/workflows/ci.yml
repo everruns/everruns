@@ -812,7 +812,8 @@ jobs:
           # are explicitly ignored; ordinary cargo test never executes them.
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini \
             -p everruns-bedrock -p everruns-fireworks -p everruns-mai \
-            -p everruns-meta -p everruns-openrouter -p everruns-internal-protocol --all-features
+            -p everruns-meta -p everruns-openrouter -p everruns-drivers \
+            -p everruns-internal-protocol --all-features
           # Core and the local embedder: run the WHOLE suite (lib + integration +
           # doctests), not just --lib, so integration tests aren't silently skipped.
           # Both are pure (llmsim-based, no credentials or network).

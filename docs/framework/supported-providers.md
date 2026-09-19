@@ -23,6 +23,8 @@ first-class peer of these, not a lesser one.
 | Microsoft MAI | `everruns-mai` | OpenAI Chat Completions (Azure AI Foundry) | chat | yes |
 | Fireworks AI | `everruns-fireworks` | OpenAI Chat Completions-compatible | chat | yes |
 | Meta Model API | `everruns-meta` | OpenAI Responses-compatible | chat | yes |
+| Cloudflare AI Gateway | `everruns-drivers` | OpenAI Chat Completions-compatible | chat | no |
+| Vercel AI Gateway | `everruns-drivers` | Open Responses | chat | yes |
 | LLM Simulator | `everruns-llmsim` | none — in-process test double | chat | no |
 
 Every chat driver produces an incremental stream — server-sent events for the

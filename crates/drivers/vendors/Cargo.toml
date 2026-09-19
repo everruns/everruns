@@ -1,0 +1,60 @@
+# Everruns drivers that need no bespoke wire protocol.
+#
+# Decision: a vendor whose API is OpenAI-compatible needs a descriptor, a
+# credential schema, auth, and a base URL — not a wire implementation. One
+# crate hosts all of them behind per-vendor features so each new vendor is a
+# module, not a package: a package costs a workspace member, an entry in four
+# isolation guards, a CI `-p` shard, and a publish pin, none of which a module
+# costs. A vendor graduates to its own crate when it needs its own request and
+# response types (anthropic, gemini) or heavy dependencies (bedrock's AWS SDK),
+# because this crate is a single dependency edge and those costs would land on
+# every consumer of it.
+
+[package]
+name = "everruns-drivers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-drivers"
+description = "OpenAI-compatible model vendor drivers for Everruns"
+readme = "README.md"
+
+[features]
+# No vendor is on by default: a consumer names the ones it serves, so nothing
+# ships a driver it never constructs.
+default = []
+cloudflare = []
+vercel = []
+
+[dependencies]
+async-trait.workspace = true
+
+# HTTP client (model discovery)
+reqwest.workspace = true
+
+# Serialization (model-discovery responses)
+serde.workspace = true
+
+# Date/time (model `created` timestamps)
+chrono.workspace = true
+
+# Internal dependencies
+# Provider SPI only (EVE-874): wire-protocol crates never depend on
+# everruns-core. Intentional optional features of everruns-provider (`openapi`
+# schema derives, `sqlx` TypedId codecs) stay off.
+everruns-provider = { version = "0.29.0", path = "../../provider" }
+
+[dev-dependencies]
+# tokio powers `#[tokio::test]`; wiremock captures the wire; futures drains the
+# chat stream.
+tokio = { workspace = true, features = ["full", "test-util"] }
+futures.workspace = true
+serde_json.workspace = true
+wiremock = "0.6"
+
+[lints]
+workspace = true

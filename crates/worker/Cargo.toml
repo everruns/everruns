@@ -42,6 +42,7 @@ everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
 everruns-integrations-typesafe = { path = "../../integrations/typesafe" }
 everruns-openai = { path = "../drivers/openai" }
+everruns-drivers = { workspace = true, features = ["cloudflare", "vercel"] }
 everruns-openrouter = { path = "../drivers/openrouter" }
 everruns-mai = { path = "../drivers/mai" }
 everruns-fireworks = { path = "../drivers/fireworks" }

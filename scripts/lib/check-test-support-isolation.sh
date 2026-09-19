@@ -61,6 +61,7 @@ PROVIDER_CRATES=(
   everruns-mai
   everruns-fireworks
   everruns-meta
+  everruns-drivers
 )
 for crate in "${PROVIDER_CRATES[@]}"; do
   tree=$(cargo tree -p "$crate" --edges normal --prefix none 2>/dev/null)

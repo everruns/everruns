@@ -63,6 +63,15 @@ const DECLARED: &[(DriverId, &[&str])] = &[
             "AZURE_AI_ENDPOINT",
         ],
     ),
+    (
+        DriverId::Cloudflare,
+        &[
+            "CLOUDFLARE_API_TOKEN",
+            "CLOUDFLARE_ACCOUNT_ID",
+            "CLOUDFLARE_AI_GATEWAY_ID",
+        ],
+    ),
+    (DriverId::Vercel, &["AI_GATEWAY_API_KEY"]),
 ];
 
 #[test]

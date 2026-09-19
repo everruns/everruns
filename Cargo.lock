@@ -2409,6 +2409,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-drivers"
+version = "0.29.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-provider",
+ "futures",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "tokio",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-durable"
 version = "0.29.0"
 dependencies = [
@@ -3384,6 +3399,7 @@ dependencies = [
  "everruns-capability",
  "everruns-cli-contract",
  "everruns-core",
+ "everruns-drivers",
  "everruns-durable",
  "everruns-engine",
  "everruns-fireworks",

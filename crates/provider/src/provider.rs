@@ -49,6 +49,10 @@ impl DriverId {
     pub const Fireworks: Self = Self(std::borrow::Cow::Borrowed("fireworks"));
     #[allow(non_upper_case_globals)]
     pub const Meta: Self = Self(std::borrow::Cow::Borrowed("meta"));
+    #[allow(non_upper_case_globals)]
+    pub const Cloudflare: Self = Self(std::borrow::Cow::Borrowed("cloudflare"));
+    #[allow(non_upper_case_globals)]
+    pub const Vercel: Self = Self(std::borrow::Cow::Borrowed("vercel"));
 
     /// Construct an external driver id from its canonical wire id.
     ///
@@ -129,6 +133,15 @@ impl DriverId {
         if matches("fireworks.ai") {
             return Some(DriverId::Fireworks);
         }
+        // Gateways are matched on their gateway host only. `cloudflare.com`
+        // and `vercel.app` serve everything those vendors host, so a broader
+        // match would claim ordinary customer origins as LLM endpoints.
+        if host == "gateway.ai.cloudflare.com" {
+            return Some(DriverId::Cloudflare);
+        }
+        if host == "ai-gateway.vercel.sh" {
+            return Some(DriverId::Vercel);
+        }
         None
     }
 
@@ -143,6 +156,9 @@ impl DriverId {
             "anthropic" => Some("https://api.anthropic.com"),
             "gemini" => Some("https://generativelanguage.googleapis.com"),
             "fireworks" => Some("https://api.fireworks.ai/inference/v1"),
+            // Cloudflare is absent on purpose: its base URL embeds the account
+            // and gateway ids, so there is no vendor-wide default.
+            "vercel" => Some("https://ai-gateway.vercel.sh/v1"),
             _ => None,
         }
     }
@@ -210,6 +226,8 @@ mod tests {
             (DriverId::Mai, "mai"),
             (DriverId::Fireworks, "fireworks"),
             (DriverId::Meta, "meta"),
+            (DriverId::Cloudflare, "cloudflare"),
+            (DriverId::Vercel, "vercel"),
         ] {
             assert_eq!(driver.as_str(), wire);
             assert_eq!(driver.to_string(), wire);

@@ -42,6 +42,7 @@ DRIVER_LAYOUT_NAMES=(
   meta
   openai
   openrouter
+  vendors
 )
 PROVIDER_DIRS=(
   crates/drivers/openai
@@ -52,6 +53,7 @@ PROVIDER_DIRS=(
   crates/drivers/mai
   crates/drivers/fireworks
   crates/drivers/meta
+  crates/drivers/vendors
 )
 PROVIDER_CRATES=(
   everruns-openai
@@ -62,6 +64,7 @@ PROVIDER_CRATES=(
   everruns-mai
   everruns-fireworks
   everruns-meta
+  everruns-drivers
 )
 FORBIDDEN_TREE='^(everruns-core|everruns-host|everruns-platform|everruns-server) '
 HEAVY_TREE='^(sqlx|utoipa|inventory|axum|tonic) '

@@ -52,6 +52,8 @@ let model = Model::new("claude-sonnet-5", everruns_anthropic::from_env("anthropi
 | Meta Model API | `LLAMA_API_KEY`, or `META_API_KEY` | `LLAMA_BASE_URL` |
 | AWS Bedrock | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` (or `AWS_DEFAULT_REGION`), `AWS_SESSION_TOKEN` | — (the region selects it) |
 | Microsoft MAI | `AZURE_AI_API_KEY`, **or** `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET` | `AZURE_AI_ENDPOINT` |
+| Cloudflare AI Gateway | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_GATEWAY_ID` | — (derived from the account and gateway) |
+| Vercel AI Gateway | `AI_GATEWAY_API_KEY` | — (one fixed gateway host) |
 
 A driver is not limited to one key. Bedrock needs four AWS fields; MAI accepts
 either a resource key or a full Entra ID service principal. Alternates listed

@@ -11,3 +11,8 @@ remain outside this directory.
 
 The production-safe `everruns-llmsim` driver lives here as the deterministic,
 offline implementation of the same provider contract.
+
+`vendors/` (`everruns-drivers`) is the exception to one package per vendor: it
+hosts, behind per-vendor features, the drivers that need no bespoke wire
+protocol and so would not earn a package of their own. Its README states the
+membership rule and when a vendor graduates out of it.
