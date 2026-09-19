@@ -128,11 +128,11 @@ separately:
 
 | Command | Worker | Foreman | Needs |
 | --- | --- | --- | --- |
-| `foreman demo` | scripted | deterministic | nothing |
+| `foreman demo` | scripted | a stub service, from a table | nothing |
 | `foreman demo --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
 | `foreman run …` | your choice, below | `jev-latest` | `TYPESAFE_API_KEY` + the worker's |
 
-`--live-foreman` puts a real classifier over a deterministic worker, so the
+`--live-foreman` puts a vendor's classifier over a deterministic worker, so the
 numbers on screen are a live reading of a run that goes the same way every
 time. That is the mode the demo above records.
 
@@ -193,6 +193,34 @@ pub fn worker(model: Model, workspace: &Path) -> Result<Agent, BuildError> {
 ```
 
 The supervisor runs `git` itself rather than asking the worker what it did.
+
+## One supervisor
+
+There is one, and it is always real: `src/foreman.rs` holds a `Classifier` and
+a budget, builds one request, and parses nine answers. A run with no
+credentials is not a second supervisor with fabricated numbers — it is the same
+code over a different
+[`ClassifierService`](https://docs.rs/everruns/latest/everruns/trait.ClassifierService.html),
+which is the Framework's own seam for answering typed questions without a
+vendor:
+
+```rust
+#[async_trait]
+impl ClassifierService for Rehearsed {
+    async fn evaluate(&self, request: ClassificationRequest)
+        -> Result<ClassificationOutcome, AgentLoopError>
+    {
+        let reading = &self.readings[Self::phase(&request.state)];
+        // one Noul per question id
+    }
+}
+```
+
+The stub receives the observation as JSON, exactly as a vendor's service does,
+and answers from `src/resources/demo/readings.json` — a table keyed by what is
+on the floor, beside the shell scripts the scripted worker runs. So the demo
+exercises the whole request path rather than bypassing it, and the numbers it
+answers with are data you can edit without touching Rust.
 
 ## Ask the nine questions
 
@@ -271,7 +299,7 @@ report; `src/factory.rs`: the two loops, the state, and the interventions;
 `src/worker.rs`: both crews and the evidence pumps; `src/foreman.rs`: the nine
 questions and the classifier call; `src/policy.rs`: thresholds, limits, and the
 decision; `src/observation.rs`: the bounded snapshot; `src/agent.rs`: the two
-agents; `src/demo_run.rs`: the scripted worker and the rehearsed reading;
+agents; `src/demo_run.rs`: the scripted worker and the stub classifier service;
 `src/terminal.rs`: layout only, over `everruns-example-demo::style`;
 `src/fixture.rs` and `src/resources/`: the repository and the prompts;
 `demo/`: the recording.

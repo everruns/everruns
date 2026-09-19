@@ -2480,6 +2480,7 @@ name = "everruns-foreman-agent"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "clap",
  "everruns",
  "everruns-example-demo",
