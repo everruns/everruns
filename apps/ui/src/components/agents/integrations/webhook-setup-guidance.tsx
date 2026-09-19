@@ -12,7 +12,7 @@ interface WebhookSetupGuidanceProps {
   sessionMode: InvocationSessionMode;
   message: string;
   tokenConfigured: boolean;
-  isPublished: boolean;
+  isEnabled: boolean;
   onConfigure?: () => void;
 }
 
@@ -21,7 +21,7 @@ export function WebhookSetupGuidance({
   sessionMode,
   message,
   tokenConfigured,
-  isPublished,
+  isEnabled,
   onConfigure,
 }: WebhookSetupGuidanceProps) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -32,9 +32,9 @@ export function WebhookSetupGuidance({
           {tokenConfigured ? "Token Configured" : "Token Missing"}
         </Badge>
         <span className="text-sm text-muted-foreground">
-          {isPublished
+          {isEnabled
             ? "Ready to accept authenticated webhook requests."
-            : "Publish the app to accept webhook requests."}
+            : "Enable the trigger to accept webhook requests."}
         </span>
       </div>
 
@@ -71,12 +71,12 @@ export function WebhookSetupGuidance({
       </div>
 
       <div className="space-y-1 text-sm text-muted-foreground">
-        <p>Templates can reference payload, webhook headers, and app metadata.</p>
-        <p>Each request injects a user message into the app-owned session flow.</p>
+        <p>Templates can reference payload, webhook headers, and agent metadata.</p>
+        <p>Each request injects a user message into the trigger&apos;s session flow.</p>
       </div>
 
       <div>
-        <p className="text-sm font-medium">Call it from your app</p>
+        <p className="text-sm font-medium">Call it from your system</p>
         <div className="mt-2">
           <CodeBlock samples={webhookSamples({ origin, endpointUrl })} />
         </div>

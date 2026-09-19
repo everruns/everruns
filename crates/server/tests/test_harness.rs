@@ -108,6 +108,7 @@ impl TestServer {
             "http://127.0.0.1:0/api".to_string(),
             None,
             false,
+            None,
         )
         .await
     }
@@ -115,6 +116,16 @@ impl TestServer {
     /// Create a new test server in dev mode (in-memory storage)
     pub async fn in_memory() -> Self {
         Self::with_mode_and_url(TestMode::InMemory, "http://127.0.0.1:0/api".to_string()).await
+    }
+    pub async fn in_memory_with_runner(runner: Arc<dyn AgentRunner>) -> Self {
+        Self::build(
+            TestMode::InMemory,
+            "http://127.0.0.1:0/api".to_string(),
+            None,
+            true,
+            Some(runner),
+        )
+        .await
     }
 
     /// In-memory test server with a shrunk ATIF export size cap, so 413
@@ -125,6 +136,7 @@ impl TestServer {
             "http://127.0.0.1:0/api".to_string(),
             Some(max_bytes),
             true,
+            None,
         )
         .await
     }
@@ -465,7 +477,7 @@ impl TestServer {
     }
 
     async fn with_mode_and_url(mode: TestMode, api_base_url: String) -> Self {
-        Self::build(mode, api_base_url, None, true).await
+        Self::build(mode, api_base_url, None, true, None).await
     }
 
     async fn build(
@@ -473,6 +485,7 @@ impl TestServer {
         api_base_url: String,
         atif_export_max_bytes: Option<usize>,
         encryption_enabled: bool,
+        runner_override: Option<Arc<dyn AgentRunner>>,
     ) -> Self {
         // Create storage backend based on mode
         let (db, pool, durable_store) = match mode {
@@ -534,18 +547,23 @@ impl TestServer {
         let auth_state = auth::AuthState::new(auth_config.clone(), Arc::new(auth_backend.clone()))
             .with_db(db.clone());
 
-        // Create runner with PostgreSQL backend
-        let runner = match mode {
-            TestMode::Postgres => create_runner_with_backend(RunnerBackend::Postgres(pool.clone()))
-                .await
-                .expect("Failed to create agent runner"),
-            TestMode::InMemory => {
-                // For in-memory tests, use in-memory runner
-                let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
-                create_runner_with_backend(RunnerBackend::SharedInMemory(shared_store))
-                    .await
-                    .expect("Failed to create agent runner")
-            }
+        // Use the requested test runner or a mode-appropriate default.
+        let runner = match runner_override {
+            Some(runner) => runner,
+            None => match mode {
+                TestMode::Postgres => {
+                    create_runner_with_backend(RunnerBackend::Postgres(pool.clone()))
+                        .await
+                        .expect("Failed to create agent runner")
+                }
+                TestMode::InMemory => {
+                    // For in-memory tests, use in-memory runner
+                    let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
+                    create_runner_with_backend(RunnerBackend::SharedInMemory(shared_store))
+                        .await
+                        .expect("Failed to create agent runner")
+                }
+            },
         };
 
         // Create driver registry

@@ -175,6 +175,8 @@ export const queryKeys = {
   mcpServers: {
     all: ["mcp-servers"] as const,
     list: (includeArchived = false) => ["mcp-servers", { includeArchived }] as const,
+    catalog: (org?: string) => ["mcp-servers", "catalog", org] as const,
+    usage: (serverId: string) => ["mcp-server", serverId, "usage"] as const,
     detail: (serverId: string) => ["mcp-server", serverId] as const,
   },
 
@@ -200,6 +202,7 @@ export const queryKeys = {
   userConnections: {
     all: ["user-connections"] as const,
     list: () => ["user-connections"] as const,
+    mcp: (org?: string) => ["user-connections", "mcp", org] as const,
   },
 
   // User preference (key/value) queries

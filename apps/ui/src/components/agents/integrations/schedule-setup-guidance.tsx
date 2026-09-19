@@ -9,7 +9,7 @@ interface ScheduleSetupGuidanceProps {
   timezone: string;
   sessionMode: InvocationSessionMode;
   message: string;
-  isPublished: boolean;
+  isEnabled: boolean;
   onConfigure?: () => void;
 }
 
@@ -18,19 +18,19 @@ export function ScheduleSetupGuidance({
   timezone,
   sessionMode,
   message,
-  isPublished,
+  isEnabled,
   onConfigure,
 }: ScheduleSetupGuidanceProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Badge variant={isPublished ? "default" : "secondary"}>
-          {isPublished ? "Active When Published" : "Draft"}
+        <Badge variant={isEnabled ? "default" : "secondary"}>
+          {isEnabled ? "Enabled" : "Disabled"}
         </Badge>
         <span className="text-sm text-muted-foreground">
-          {isPublished
-            ? "This schedule will enqueue app invocations on its cron."
-            : "Publish the app to activate this schedule."}
+          {isEnabled
+            ? "This schedule enqueues agent invocations on its cron."
+            : "Enable the trigger to activate this schedule."}
         </span>
       </div>
 
@@ -63,8 +63,8 @@ export function ScheduleSetupGuidance({
       </div>
 
       <div className="space-y-1 text-sm text-muted-foreground">
-        <p>Templates can reference app and invocation fields.</p>
-        <p>This is app-level automation, not the in-session scheduler.</p>
+        <p>Templates can reference agent and invocation fields.</p>
+        <p>This is agent-level automation, not the in-session scheduler.</p>
       </div>
 
       {onConfigure && (

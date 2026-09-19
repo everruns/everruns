@@ -692,6 +692,16 @@ See `crates/core/src/capabilities/mod.rs` for the `RiskLevel` enum and `crates/s
 ### Built-in Capabilities
 
 For the full list of built-in capabilities with their tools, parameters, and system prompts, see `crates/core/src/capabilities/` (each capability has its own module).
+#### Ask User
+
+- **ID**: `ask_user`
+- **Purpose**: Pauses a turn on structured choice questions and resumes through
+  the standard client-side tool-results lifecycle.
+- **Tool**: `ask_user`
+- **Category**: `Core`
+
+The capability is a decision and preference surface, not a consent gate. See
+[Ask User](ask-user.md) for the contract and safety boundary.
 
 #### FileSystem
 

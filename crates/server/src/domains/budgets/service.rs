@@ -705,6 +705,7 @@ impl BudgetService {
 
     fn budget_exhausted_error(&self, budget: &BudgetRow) -> UserFacingError {
         UserFacingError::new(user_facing_error_codes::BUDGET_EXHAUSTED)
+            .with_field("budget_id", BudgetId::from_uuid(budget.id).to_string())
             .with_field("spent", self.spent_amount(budget))
             .with_field("limit", budget.limit)
             .with_field("currency", budget.currency.clone())
@@ -712,6 +713,7 @@ impl BudgetService {
 
     fn budget_paused_error(&self, budget: &BudgetRow) -> UserFacingError {
         UserFacingError::new(user_facing_error_codes::BUDGET_PAUSED)
+            .with_field("budget_id", BudgetId::from_uuid(budget.id).to_string())
             .with_field("spent", self.spent_amount(budget))
             .with_optional_field("soft_limit", budget.soft_limit)
             .with_field("currency", budget.currency.clone())

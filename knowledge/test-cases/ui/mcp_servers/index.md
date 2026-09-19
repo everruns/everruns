@@ -10,3 +10,6 @@
 * [TC008: Create MCP Server - Validation: Empty Name](TC008_validation_empty_name.md) - Verify that the create action remains unavailable while the required name is empty.
 * [TC009: Create MCP Server - Validation: Empty URL](TC009_validation_empty_url.md) - Verify that the create action remains unavailable while the required URL is empty.
 * [TC010: Get Non-existent MCP Server](TC010_get_nonexistent_server.md) - Verify that attempting to get a non-existent MCP server returns 404.
+* [TC011: MCP Catalog Usage and Archive Impact](TC011_catalog_usage_and_archive_impact.md) - Verify active-agent usage counts and archive impact names.
+* [TC012: Personal MCP Connections](TC012_personal_mcp_connections.md) - Verify that users can inspect and revoke only their own MCP connections.
+* [TC013: MCP Catalog View Permission](TC013_mcp_catalog_view_permission.md) - Verify that catalog visibility follows the MCP server view permission.

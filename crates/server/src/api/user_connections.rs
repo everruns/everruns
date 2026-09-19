@@ -44,6 +44,8 @@ use crate::domains::mcp_servers::MCP_SERVER_MANAGE;
 use crate::storage::models::{
     CreateAgentIdentityConnectionRow, CreateUserConnectionRow, UpsertMcpOAuthSessionCredentials,
 };
+pub mod mcp_connections;
+use mcp_connections::list_mcp_connections;
 
 /// App state for user connections routes
 #[derive(Clone)]
@@ -227,6 +229,7 @@ struct OAuthClientRegistration {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/user/connections", get(list_connections))
+        .route("/v1/user/mcp-connections", get(list_mcp_connections))
         .route("/v1/user/connections/providers", get(list_connectors))
         .route(
             "/v1/user/connections/{provider}",
@@ -509,7 +512,7 @@ pub async fn delete_connection(
     auth: AuthUser,
     Path(provider): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let deleted = state
+    state
         .db
         .delete_user_connection(auth.id, &provider)
         .await
@@ -518,11 +521,7 @@ pub async fn delete_connection(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(StatusCode::NOT_FOUND)
-    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Response for connection verification

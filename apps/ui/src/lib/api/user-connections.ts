@@ -1,11 +1,25 @@
 // User Connections API functions
-// User-scoped (not org-scoped) — connections represent user's identity
+// Provider connections are user-scoped; MCP connections are user- and org-scoped.
 
 import { api } from "./client";
-import type { UserConnection, ConnectionProvider, VerifyConnectionResponse } from "./types";
+import type {
+  UserConnection,
+  UserMcpConnectionsResponse,
+  ConnectionProvider,
+  VerifyConnectionResponse,
+} from "./types";
 
 export async function getUserConnections(): Promise<UserConnection[]> {
   const response = await api.get<UserConnection[]>("/v1/user/connections");
+  return response.data;
+}
+
+export async function getUserMcpConnections(cursor?: string): Promise<UserMcpConnectionsResponse> {
+  const params = new URLSearchParams({ limit: "50" });
+  if (cursor) params.set("cursor", cursor);
+  const response = await api.get<UserMcpConnectionsResponse>(
+    `/v1/user/mcp-connections?${params.toString()}`,
+  );
   return response.data;
 }
 
@@ -27,7 +41,7 @@ export async function createApiKeyConnection(
 }
 
 export async function deleteUserConnection(provider: string): Promise<void> {
-  await api.delete(`/v1/user/connections/${provider}`);
+  await api.delete(`/v1/user/connections/${encodeURIComponent(provider)}`);
 }
 
 export async function verifyConnection(provider: string): Promise<VerifyConnectionResponse> {

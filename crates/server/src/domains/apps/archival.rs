@@ -21,6 +21,15 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
     };
     match channel_type {
         ChannelType::Slack => {
+            // The whole object, not selected keys inside it. It carries the
+            // OAuth client secret *and* the single-use install nonce, and
+            // leaking the nonce would hand a reader exactly what the callback's
+            // state check exists to withhold — this redaction runs on keys at
+            // this level only, so a nested secret is not covered by the loop
+            // below (EVE-1069).
+            if map.remove("provisioned_app").is_some() {
+                map.insert("slack_app_provisioned".to_string(), Value::Bool(true));
+            }
             for (key, flag) in [
                 ("signing_secret", "signing_secret_configured"),
                 ("bot_token", "bot_token_configured"),
@@ -227,5 +236,56 @@ impl Command for GetApp {
         .map_err(classify_anyhow)?
         .map(redact_app_for_response)
         .ok_or_else(|| CommandError::not_found("App"))
+    }
+}
+
+#[cfg(test)]
+mod redaction_tests {
+    use super::*;
+
+    /// The one-click install fields are nested, and `redact_channel_config`
+    /// only walks keys at the top level — so a nested secret is not covered by
+    /// the flat loop beside it. This asserts the whole object is dropped.
+    ///
+    /// The nonce matters as much as the secret: it is what the OAuth callback
+    /// compares against, so a reader who could see it could drive the callback
+    /// and bind their own workspace to this endpoint (EVE-1069).
+    #[test]
+    fn slack_redaction_drops_the_provisioned_app_whole() {
+        let mut config = json!({
+            "signing_secret": "shhh",
+            "bot_token": "xoxb-token",
+            "provisioned_app": {
+                "app_id": "A0123",
+                "client_id": "4567.89",
+                "client_secret": "client-secret-value",
+                "install_state": "nonce-value",
+                "install_state_issued_at": "2026-09-19T00:00:00Z",
+            },
+        });
+        redact_channel_config(&ChannelType::Slack, &mut config);
+
+        let rendered = config.to_string();
+        assert!(!rendered.contains("client-secret-value"), "{rendered}");
+        assert!(!rendered.contains("nonce-value"), "{rendered}");
+        assert!(!rendered.contains("4567.89"), "{rendered}");
+        assert!(config.get("provisioned_app").is_none(), "{rendered}");
+        assert_eq!(
+            config.get("slack_app_provisioned"),
+            Some(&Value::Bool(true))
+        );
+        // The flat secrets keep their existing treatment.
+        assert!(!rendered.contains("shhh"), "{rendered}");
+        assert_eq!(
+            config.get("signing_secret_configured"),
+            Some(&Value::Bool(true))
+        );
+    }
+
+    #[test]
+    fn a_hand_configured_endpoint_gains_no_provisioned_flag() {
+        let mut config = json!({ "signing_secret": "shhh" });
+        redact_channel_config(&ChannelType::Slack, &mut config);
+        assert!(config.get("slack_app_provisioned").is_none());
     }
 }
