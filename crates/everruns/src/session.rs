@@ -24,7 +24,7 @@ use crate::events::{EventStream, FacadeEventBus, RunOptions};
 use crate::hooks::{
     AgentStartContext, CompletionContext, HookFailure, HookRunState, TurnStartContext,
 };
-use crate::{Agent, Harness};
+use crate::{Agent, Harness, SessionEnvironmentError};
 
 /// A live, multi-turn conversation with an [`Agent`](crate::Agent).
 ///
@@ -140,10 +140,16 @@ impl Session {
     /// [`workspace_head`](Self::workspace_head) always returns that exact head.
     pub async fn start(&self) -> Result<(), SessionEnvironmentError> {
         let _environment_guard = self.inner.environment_gate.lock().await;
-        if self.inner.environment.get().is_some() {
+        if let Some(environment) = self.inner.environment.get() {
+            if let Some(harness) = self.inner.harness.get() {
+                harness.validate_environment(environment)?;
+            }
             return Ok(());
         }
         let environment = self.inner.execution.bind_default_environment().await?;
+        if let Some(harness) = self.inner.harness.get() {
+            harness.validate_environment(&environment)?;
+        }
         self.inner
             .environment
             .set(environment)
@@ -685,6 +691,9 @@ impl EnvironmentSessionBuilder {
         if self.session.inner.commands.initialized() {
             return Err(SessionEnvironmentError::AlreadyStarted);
         }
+        if let Some(harness) = self.session.inner.harness.get() {
+            harness.validate_environment(&self.environment)?;
+        }
         self.session
             .inner
             .execution
@@ -705,65 +714,6 @@ impl EnvironmentSessionBuilder {
         Ok(self.session)
     }
 }
-
-/// Why an Environment could not be fixed to a Session.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum SessionEnvironmentError {
-    /// The Session already started and its Environment can no longer change.
-    AlreadyStarted,
-    /// The Session is already bound to a different Environment.
-    AlreadyBound,
-    /// The Session is already bound to a different Harness.
-    HarnessAlreadyBound,
-    /// Canonical workspace-backend conflict error name.
-    ///
-    /// Environment binding continues to emit
-    /// [`ProviderConflict`](Self::ProviderConflict) during its deprecation
-    /// window.
-    BackendConflict,
-    /// Compatibility variant emitted during its deprecation window.
-    #[deprecated(note = "use BackendConflict")]
-    ProviderConflict,
-    /// The recorded Environment or workspace head cannot be reopened.
-    Unavailable,
-    /// The workspace backend rejected the requested operation.
-    Workspace(everruns_host::WorkspaceError),
-}
-
-impl From<everruns_host::EnvironmentBindingError> for SessionEnvironmentError {
-    fn from(error: everruns_host::EnvironmentBindingError) -> Self {
-        match error {
-            everruns_host::EnvironmentBindingError::Conflict => Self::AlreadyBound,
-            everruns_host::EnvironmentBindingError::Unavailable
-            | everruns_host::EnvironmentBindingError::Corrupt => Self::Unavailable,
-            _ => Self::Unavailable,
-        }
-    }
-}
-
-impl std::fmt::Display for SessionEnvironmentError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::AlreadyStarted => formatter.write_str("session execution already started"),
-            Self::AlreadyBound => formatter.write_str("session is already bound to another head"),
-            Self::HarnessAlreadyBound => {
-                formatter.write_str("session is already bound to another harness")
-            }
-            Self::BackendConflict => {
-                formatter.write_str("another workspace backend uses the same backend id")
-            }
-            #[allow(deprecated)]
-            Self::ProviderConflict => {
-                formatter.write_str("another workspace backend uses the same backend id")
-            }
-            Self::Unavailable => formatter.write_str("environment binding store is unavailable"),
-            Self::Workspace(error) => write!(formatter, "workspace selection failed: {error}"),
-        }
-    }
-}
-
-impl std::error::Error for SessionEnvironmentError {}
 
 enum HookRun<T> {
     Completed(T),

@@ -64,6 +64,7 @@ mod mcp;
 pub mod models;
 mod plugin;
 mod session;
+mod session_environment;
 /// Stability tiers and the marking convention.
 pub mod stability;
 mod tool;
@@ -111,7 +112,7 @@ pub use everruns_integrations_typesafe::{Jev, TypeSafeAI};
 pub use everruns_integrations_web_fetch::WebFetch;
 pub use harness::{
     Harness, HarnessBuildError, HarnessBuilder, HarnessEnvironmentSessionBuilder,
-    HarnessSessionBuilder,
+    HarnessRequirementError, HarnessSessionBuilder,
 };
 pub use history::{
     HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
@@ -126,9 +127,10 @@ pub use mcp::McpServer;
 pub use models::{CatalogError, ModelInfo};
 pub use plugin::PluginError;
 pub use session::{
-    CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session,
-    SessionEnvironmentError, Turn, TurnHandle,
+    CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session, Turn,
+    TurnHandle,
 };
+pub use session_environment::SessionEnvironmentError;
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 
 #[cfg(feature = "local")]
@@ -298,15 +300,15 @@ pub mod prelude {
         CancellationToken, CapabilityRef, CapabilitySpec, Classification, Classifier,
         ClassifierError, Completion, CompletionContext, CompletionError, Engine, Environment,
         EventStream, EventStreamError, FunctionTool, Harness, HarnessBuildError, HarnessBuilder,
-        HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages,
-        HistoryQuery, HookFailure, HookPoint, InMemoryEngine, InitialFile, IntoCapability,
-        IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model, PluginError,
-        ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session, SessionContext,
-        SessionEnvironmentError, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
-        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle,
-        TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff,
-        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
-        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+        HarnessRequirementError, HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage,
+        HistoryPages, HistoryQuery, HookFailure, HookPoint, InMemoryEngine, InitialFile,
+        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model,
+        PluginError, ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session,
+        SessionContext, SessionEnvironmentError, SessionEvent, SessionEventKind, SessionId,
+        SessionMessage, Tool, ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn,
+        TurnHandle, TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId,
+        WorkspaceDiff, WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId,
+        WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{

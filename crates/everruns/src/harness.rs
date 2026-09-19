@@ -10,7 +10,8 @@ use everruns_host::{
 use everruns_provider::typed_id::HarnessId;
 
 use crate::CapabilityRef;
-use crate::session::{EnvironmentSessionBuilder, Session, SessionEnvironmentError};
+use crate::SessionEnvironmentError;
+use crate::session::{EnvironmentSessionBuilder, Session};
 
 /// A reusable description of what an agent runs on.
 ///
@@ -53,14 +54,14 @@ impl Harness {
 
     /// Compute features an Environment must provide.
     ///
-    /// The declaration is recorded but not negotiated during session creation.
+    /// Session creation rejects an Environment that lacks any declared feature.
     pub fn required_capabilities(&self) -> ComputeCapabilities {
         self.inner.required_capabilities
     }
 
     /// The minimum containment level an Environment must provide.
     ///
-    /// The declaration is recorded but not negotiated during session creation.
+    /// Session creation rejects an Environment below this level.
     pub fn required_containment(&self) -> ContainmentLevel {
         self.inner.required_containment
     }
@@ -80,6 +81,47 @@ impl Harness {
 
     pub(crate) fn is_same_binding(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
+    }
+    pub(crate) fn validate_environment(
+        &self,
+        environment: &everruns_host::Environment,
+    ) -> Result<(), HarnessRequirementError> {
+        let required = self.required_capabilities();
+        let available = environment.capabilities();
+        for (is_required, is_available, capability) in [
+            (
+                required.native_processes,
+                available.native_processes,
+                "native_processes",
+            ),
+            (required.packages, available.packages, "packages"),
+            (required.pty, available.pty, "pty"),
+            (required.ports, available.ports, "ports"),
+            (
+                required.portable_checkpoint,
+                available.portable_checkpoint,
+                "portable_checkpoint",
+            ),
+            (
+                required.network_enforced,
+                available.network_enforced,
+                "network_enforced",
+            ),
+        ] {
+            if is_required && !is_available {
+                return Err(HarnessRequirementError::MissingCapability { capability });
+            }
+        }
+
+        let required = self.required_containment();
+        let available = environment.containment().level;
+        if available < required {
+            return Err(HarnessRequirementError::ContainmentTooWeak {
+                required,
+                available,
+            });
+        }
+        Ok(())
     }
 
     pub(crate) fn seeded(&self) -> everruns_host::SeededHarness {
@@ -295,6 +337,45 @@ impl fmt::Display for HarnessBuildError {
 }
 
 impl std::error::Error for HarnessBuildError {}
+/// Why an Environment cannot satisfy a bound [`Harness`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum HarnessRequirementError {
+    /// A required compute feature is not available.
+    MissingCapability {
+        /// The stable snake-case [`ComputeCapabilities`] field name.
+        capability: &'static str,
+    },
+    /// The Environment provides less containment than the Harness requires.
+    ContainmentTooWeak {
+        /// The minimum level declared by the Harness.
+        required: ContainmentLevel,
+        /// The level provided by the Environment.
+        available: ContainmentLevel,
+    },
+}
+
+impl fmt::Display for HarnessRequirementError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingCapability { capability } => {
+                write!(
+                    formatter,
+                    "environment is missing capability `{capability}`"
+                )
+            }
+            Self::ContainmentTooWeak {
+                required,
+                available,
+            } => write!(
+                formatter,
+                "environment containment `{available}` is weaker than required `{required}`"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for HarnessRequirementError {}
 
 impl Session {
     /// Permanently bind this new session to an explicit Environment.
@@ -389,6 +470,7 @@ pub struct HarnessEnvironmentSessionBuilder {
 impl HarnessEnvironmentSessionBuilder {
     /// Persist and freeze both bindings before execution starts.
     pub async fn start(self) -> Result<Session, SessionEnvironmentError> {
+        self.harness.validate_environment(&self.environment)?;
         self.session.bind_harness(self.harness)?;
         EnvironmentSessionBuilder {
             session: self.session,
