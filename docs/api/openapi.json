@@ -21285,7 +21285,7 @@
               "null"
             ],
             "description": "API key for authentication (optional). Sent with each request; never echoed in responses.",
-            "example": "sk-mcp-redacted-1234567890abcdef"
+            "example": "mcp-api-key-redacted-1234567890abcdef"
           },
           "auth_mode": {
             "oneOf": [
@@ -40273,7 +40273,7 @@
               "null"
             ],
             "description": "API key for authentication. Set to update.",
-            "example": "sk-mcp-redacted-1234567890abcdef"
+            "example": "mcp-api-key-redacted-1234567890abcdef"
           },
           "auth_mode": {
             "oneOf": [
