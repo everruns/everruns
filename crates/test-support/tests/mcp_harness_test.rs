@@ -41,7 +41,10 @@ async fn records_credentials_and_absence_at_the_mcp_boundary() {
     );
     let mut authenticated_connection = connection(&mock, MockMcpProtocolEra::V2026July);
     authenticated_connection.auth_mode = McpServerAuthMode::OAuth;
-    authenticated.discover(&authenticated_connection).await.unwrap();
+    authenticated
+        .discover(&authenticated_connection)
+        .await
+        .unwrap();
     mock.assert_called_as_user("user-token");
 
     let identity = McpClient::new(
@@ -114,8 +117,14 @@ async fn serves_cache_hints_call_results_and_mrtr() {
     let client = McpClient::new(Arc::new(mock.clone()), Arc::new(NoAuthProvider));
     let connection = connection(&mock, MockMcpProtocolEra::V2026July);
 
-    assert_eq!(client.discover(&connection).await.unwrap()[0].name, "search");
-    assert_eq!(client.discover(&connection).await.unwrap()[0].name, "search");
+    assert_eq!(
+        client.discover(&connection).await.unwrap()[0].name,
+        "search"
+    );
+    assert_eq!(
+        client.discover(&connection).await.unwrap()[0].name,
+        "search"
+    );
     assert_eq!(
         mock.mcp_requests()
             .iter()
@@ -282,22 +291,21 @@ async fn refresh_rotates_and_revoke_invalidates_the_latest_token() {
     let second = oauth.refresh(&first).await.unwrap();
     assert_eq!(second.refresh_token.as_deref(), Some("refresh-2"));
 
-    let old_error = oauth.refresh(&first).await.expect_err("old token is rotated");
+    let old_error = oauth
+        .refresh(&first)
+        .await
+        .expect_err("old token is rotated");
     assert!(matches!(old_error, OAuthError::Http { status: 400, .. }));
 
-    let revoke = EgressRequest::new(
-        "POST",
-        mock.revocation_endpoint(),
-        EgressRequestKind::Mcp,
-    )
-    .header("content-type", "application/x-www-form-urlencoded")
-    .body(
-        serde_urlencoded::to_string(BTreeMap::from([(
-            "token",
-            second.refresh_token.as_deref().unwrap(),
-        )]))
-        .unwrap(),
-    );
+    let revoke = EgressRequest::new("POST", mock.revocation_endpoint(), EgressRequestKind::Mcp)
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(
+            serde_urlencoded::to_string(BTreeMap::from([(
+                "token",
+                second.refresh_token.as_deref().unwrap(),
+            )]))
+            .unwrap(),
+        );
     assert_eq!(mock.send(revoke).await.unwrap().status, 200);
 
     let revoked = oauth

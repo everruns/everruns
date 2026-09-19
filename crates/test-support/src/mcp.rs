@@ -9,8 +9,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
 use everruns_core::{
-    EgressError, EgressRequest, EgressResponse, EgressResult, EgressService,
-    EgressStreamResponse,
+    EgressError, EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -392,19 +391,16 @@ impl MockMcpOAuthServer {
             }
             "tools/call" => {
                 let tool = body["params"]["name"].as_str().unwrap_or_default();
-                let response = state
-                    .call_responses
-                    .get(tool)
-                    .cloned()
-                    .unwrap_or_default();
+                let response = state.call_responses.get(tool).cloned().unwrap_or_default();
                 let retried = body["params"].get("requestState").is_some();
-                let accepted = body["params"]["inputResponses"]
-                    .as_object()
-                    .is_some_and(|responses| {
-                        responses
-                            .values()
-                            .any(|response| response["action"] == "accept")
-                    });
+                let accepted =
+                    body["params"]["inputResponses"]
+                        .as_object()
+                        .is_some_and(|responses| {
+                            responses
+                                .values()
+                                .any(|response| response["action"] == "accept")
+                        });
                 let result = match response {
                     MockCallResponse::Complete(result) => result,
                     MockCallResponse::InputRequired { result, .. } if retried => result,
@@ -453,7 +449,10 @@ impl MockMcpOAuthServer {
             body: request.body.clone(),
         });
 
-        let suffix = request.url.strip_prefix(&self.oauth_origin).unwrap_or_default();
+        let suffix = request
+            .url
+            .strip_prefix(&self.oauth_origin)
+            .unwrap_or_default();
         match (request.method.as_str(), suffix) {
             ("GET", path) if path.starts_with("/.well-known/oauth-protected-resource") => {
                 Ok(Self::json_response(
@@ -509,10 +508,7 @@ impl MockMcpOAuthServer {
                             .as_ref()
                             .is_some_and(|scope| state.rejected_scopes.contains(scope))
                         {
-                            return Ok(Self::json_response(
-                                400,
-                                json!({"error": "invalid_scope"}),
-                            ));
+                            return Ok(Self::json_response(400, json!({"error": "invalid_scope"})));
                         }
                         Ok(issue_tokens(&mut state, grant.scope))
                     }

@@ -77,12 +77,12 @@ pub use everruns_llmsim::{
     ToolCallConfig, ToolCallPattern,
 };
 pub use in_memory::{InMemoryEventEmitter, InMemoryMessageRetriever};
-pub use mcp::{
-    MockCallResponse, MockMcpOAuthServer, MockMcpProtocolEra, MockOAuthError,
-    RecordedMcpRequest, RecordedOAuthRequest,
-};
 #[cfg(all(feature = "sim", feature = "host"))]
 pub use in_memory_loop::{InMemoryAgenticLoop, InMemoryAgenticLoopBuilder};
+pub use mcp::{
+    MockCallResponse, MockMcpOAuthServer, MockMcpProtocolEra, MockOAuthError, RecordedMcpRequest,
+    RecordedOAuthRequest,
+};
 
 #[cfg(feature = "fixtures")]
 pub use capabilities::{
