@@ -148,7 +148,9 @@ test.describe("endpoint budget refusal", () => {
     await page.goto(`/agents/${agent.id}?tab=integrations`);
     await page.getByRole("button", { name: "Expand API endpoint details" }).click();
 
-    await expect(page.getByRole("heading", { name: "Endpoint budget" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Endpoint budget", exact: true }),
+    ).toBeVisible();
     await expect(page.getByText(budget.id, { exact: true })).toBeVisible();
     await expect(page.getByText("exhausted", { exact: true })).toBeVisible();
     await expect(page.getByText("0.00 of 25.00 tokens remaining", { exact: true })).toBeVisible();
