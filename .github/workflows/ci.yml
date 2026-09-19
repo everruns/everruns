@@ -2425,27 +2425,38 @@ jobs:
         with:
           name: everruns-server
           path: ./bin
+      - name: Download worker binary
+        uses: actions/download-artifact@v8
+        with:
+          name: everruns-worker
+          path: ./bin
 
-      - name: Start PostgreSQL-backed API server
+      - name: Start PostgreSQL-backed API server and worker
         working-directory: .
         run: |
-          chmod +x ./bin/everruns-server
+          chmod +x ./bin/everruns-server ./bin/everruns-worker
           ./bin/everruns-server > /tmp/everruns-budget-e2e-server.log 2>&1 &
           echo "SERVER_PID=$!" >> "$GITHUB_ENV"
           timeout 60 bash -c 'until curl -fsS http://localhost:9000/health > /dev/null; do sleep 1; done'
+          ./bin/everruns-worker > /tmp/everruns-budget-e2e-worker.log 2>&1 &
+          echo "WORKER_PID=$!" >> "$GITHUB_ENV"
 
       - name: Run endpoint budget full-stack test
         run: pnpm exec playwright test e2e/endpoint-budget-refusal.spec.ts
 
-      - name: Show server log on failure
+      - name: Show server and worker logs on failure
         if: failure()
         working-directory: .
-        run: cat /tmp/everruns-budget-e2e-server.log
+        run: |
+          cat /tmp/everruns-budget-e2e-server.log
+          cat /tmp/everruns-budget-e2e-worker.log
 
-      - name: Stop API server
+      - name: Stop API server and worker
         if: always()
         working-directory: .
-        run: kill "$SERVER_PID" 2>/dev/null || true
+        run: |
+          kill "$WORKER_PID" 2>/dev/null || true
+          kill "$SERVER_PID" 2>/dev/null || true
 
       - name: Upload endpoint budget Playwright evidence
         if: always()
@@ -2661,6 +2672,7 @@ jobs:
           require_if_affected "ci:skip-postgres-integration" "${{ needs.changes.outputs.skip_postgres_integration }}" "${{ needs.changes.outputs.postgres_integration }}" "PostgreSQL integration tests"
           require_if_affected "ci:skip-sdk-compat" "${{ needs.changes.outputs.skip_sdk_compat }}" "${{ needs.changes.outputs.sdk_compat }}" "SDK compatibility checks"
           require_if_affected "ci:skip-ui-e2e" "${{ needs.changes.outputs.skip_ui_e2e }}" "${{ needs.changes.outputs.ui }}" "UI Playwright smoke"
+          require_if_affected "ci:skip-ui-e2e" "${{ needs.changes.outputs.skip_ui_e2e }}" "${{ needs.changes.outputs.budget_e2e }}" "UI endpoint budget full-stack E2E"
           require_if_affected "ci:skip-docs-notebooks" "${{ needs.changes.outputs.skip_docs_notebooks }}" "${{ needs.changes.outputs.docs_notebooks }}" "docs notebook execution"
           require_if_affected "ci:skip-docker" "${{ needs.changes.outputs.skip_docker }}" "${{ needs.changes.outputs.docker }}" "Docker image build validation"
           require_if_affected "ci:skip-integration-workflows" "${{ needs.changes.outputs.skip_integration_workflows }}" "$standalone_integration_affected" "standalone Brave Search, DuckDuckGo, or Parallel MCP integration workflows"
