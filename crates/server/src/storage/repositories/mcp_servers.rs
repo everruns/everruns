@@ -2,6 +2,7 @@
 //
 // Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (detail)
 
+use super::super::mcp_catalog::{McpServerAgentNamesRow, McpServerAgentUsageRow};
 use super::super::mcp_tool_cache::*;
 use super::super::models::*;
 use super::Database;
@@ -196,6 +197,138 @@ impl Database {
             query = query.bind(pat);
         }
         Ok(query.fetch_all(&self.pool).await?)
+    }
+    pub async fn list_mcp_server_catalog_page(
+        &self,
+        org_id: i64,
+        cursor: Option<McpServerId>,
+        limit: i64,
+    ) -> Result<Vec<McpServerRow>> {
+        Ok(sqlx::query_as::<_, McpServerRow>(
+            r#"
+            SELECT id, org_id, name, description, url, transport_type, status,
+                   api_key_encrypted, api_key_set, headers, settings, cached_tools,
+                   tools_cached_at, created_at, updated_at, archived_at, deleted_at
+            FROM mcp_servers
+            WHERE org_id = $1
+              AND status != 'deleted'
+              AND ($2::uuid IS NULL OR id < $2)
+            ORDER BY id DESC
+            LIMIT $3
+            "#,
+        )
+        .bind(org_id)
+        .bind(cursor.map(|id| id.uuid()))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn list_mcp_server_agent_usage(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<McpServerAgentUsageRow>> {
+        Ok(sqlx::query_as::<_, McpServerAgentUsageRow>(
+            r#"
+            SELECT ms.id AS mcp_server_id,
+                   COUNT(DISTINCT a.id) FILTER (WHERE a.id IS NOT NULL) AS used_by_agents
+            FROM mcp_servers ms
+            LEFT JOIN agents a
+              ON a.org_id = ms.org_id
+             AND a.status = 'active'
+             AND a.archived_at IS NULL
+             AND a.deleted_at IS NULL
+             AND EXISTS (
+                 SELECT 1
+                 FROM jsonb_each(COALESCE(a.mcp_servers, '{}'::jsonb)) attachment
+                 WHERE attachment.value->>'use' = 'catalog:' || ms.name
+             )
+            WHERE ms.org_id = $1
+              AND ms.status != 'deleted'
+            GROUP BY ms.id
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+    pub async fn list_mcp_server_agent_usage_for_ids(
+        &self,
+        org_id: i64,
+        server_ids: &[Uuid],
+    ) -> Result<Vec<McpServerAgentUsageRow>> {
+        if server_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(sqlx::query_as::<_, McpServerAgentUsageRow>(
+            r#"
+            SELECT ms.id AS mcp_server_id,
+                   COUNT(DISTINCT a.id) FILTER (WHERE a.id IS NOT NULL) AS used_by_agents
+            FROM mcp_servers ms
+            LEFT JOIN agents a
+              ON a.org_id = ms.org_id
+             AND a.status = 'active'
+             AND a.archived_at IS NULL
+             AND a.deleted_at IS NULL
+             AND EXISTS (
+                 SELECT 1
+                 FROM jsonb_each(COALESCE(a.mcp_servers, '{}'::jsonb)) attachment
+                 WHERE attachment.value->>'use' = 'catalog:' || ms.name
+             )
+            WHERE ms.org_id = $1
+              AND ms.id = ANY($2)
+              AND ms.status != 'deleted'
+            GROUP BY ms.id
+            "#,
+        )
+        .bind(org_id)
+        .bind(server_ids)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn get_mcp_server_agent_names(
+        &self,
+        org_id: i64,
+        server_id: McpServerId,
+        limit: i64,
+    ) -> Result<McpServerAgentNamesRow> {
+        Ok(sqlx::query_as::<_, McpServerAgentNamesRow>(
+            r#"
+            WITH matching AS (
+                SELECT DISTINCT a.id, COALESCE(NULLIF(a.display_name, ''), a.name) AS agent_name
+                FROM mcp_servers ms
+                JOIN agents a
+                  ON a.org_id = ms.org_id
+                 AND a.status = 'active'
+                 AND a.archived_at IS NULL
+                 AND a.deleted_at IS NULL
+                 AND EXISTS (
+                     SELECT 1
+                     FROM jsonb_each(COALESCE(a.mcp_servers, '{}'::jsonb)) attachment
+                     WHERE attachment.value->>'use' = 'catalog:' || ms.name
+                 )
+                WHERE ms.org_id = $1
+                  AND ms.id = $2
+                  AND ms.status != 'deleted'
+            )
+            SELECT COALESCE(
+                       ARRAY(
+                           SELECT agent_name
+                           FROM matching
+                           ORDER BY LOWER(agent_name), agent_name
+                           LIMIT $3
+                       ),
+                       ARRAY[]::text[]
+                   ) AS agent_names,
+                   (SELECT COUNT(*) FROM matching) AS total_count
+            "#,
+        )
+        .bind(org_id)
+        .bind(server_id)
+        .bind(limit)
+        .fetch_one(&self.pool)
+        .await?)
     }
 
     /// List only active MCP servers (for capability listing)

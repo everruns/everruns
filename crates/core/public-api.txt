@@ -643,6 +643,7 @@ everruns_core::file_services::ResolvedFile	struct
 everruns_core::file_services::StoredFile	struct
 everruns_core::file_services::StoredFileInfo	struct
 everruns_core::finalized_tool_calls	module
+everruns_core::finalized_tool_calls::FinalizedToolCallRejection	struct
 everruns_core::finalized_tool_calls::FinalizedToolCallsContext	struct
 everruns_core::finalized_tool_calls::FinalizedToolCallsHook	trait
 everruns_core::guardrail_checks	module
@@ -1196,6 +1197,7 @@ everruns_core::session_file::build_grep_search_result	function
 everruns_core::session_file::merge_grep_search_results	function
 everruns_core::session_files	module
 everruns_core::session_files::SessionFileSystem	trait
+everruns_core::session_files::SessionFileSystem::display_root	function
 everruns_core::session_files::SessionFileSystem::grep_files	function
 everruns_core::session_files::WorkspaceScopedFileSystem	struct
 everruns_core::session_path	module

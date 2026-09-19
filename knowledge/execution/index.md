@@ -14,6 +14,7 @@
 * [Tool narration](tool-narration.md) - Backend-authored, argument-aware narration for common tool families.
 * [Tool Output Distillation](tool-output-distillation.md) - Content-aware distillation of large non-exec tool results at capture time.
 * [Capabilities Specification](capabilities.md) - Agent capabilities system.
+* [Ask User](ask-user.md) - Structured choice questions that pause through the client-side tool-results lifecycle.
 * [Soft Approval](soft-approval.md) - Spoken-consent confirmation before critical actions, as prompt guidance rather than a permission gate.
 * [Guardrails Specification](guardrails.md) - Guardrails (capability-based output/tool-call checks).
 * [Background Execution Capability](background-execution.md) - `background_execution` capability and cross-cutting / auto-activation contract.

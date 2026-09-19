@@ -31,6 +31,7 @@ use everruns_capability::CapabilityError;
 #[cfg(feature = "ui-capabilities")]
 pub mod a2ui;
 pub mod agent_instructions;
+pub mod ask_user;
 pub mod attach_skill;
 pub mod auto_tool_search;
 pub mod btw;
@@ -70,6 +71,13 @@ pub mod usage_limit_auto_continue;
 
 // Compatibility paths used by the collocated implementation tests. These are
 // aliases of core's provider-neutral execution modules, not copied contracts.
+pub use ask_user::{
+    ASK_USER_CAPABILITY_ID, ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy,
+    AskUserCapability, AskUserOption, AskUserQuestion, AskUserQuestionKind, AskUserRequest,
+    AskUserResult, AskUserStatus, DEFAULT_ASK_USER_TIMEOUT_SECONDS, MAX_ASK_USER_HEADER_CHARS,
+    MAX_ASK_USER_OPTIONS, MAX_ASK_USER_QUESTIONS, normalize_ask_user_arguments,
+    validate_ask_user_request,
+};
 pub(crate) use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityRegistry, CapabilityStatus, Fact, FactsContext,
     ModelViewContext, ModelViewProvider, RiskLevel, SystemPromptContext, ToolDefinitionHook,
@@ -286,6 +294,7 @@ fn register_capabilities_atomically(
 fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
     vec![
         Arc::new(HumanIntentCapability),
+        Arc::new(AskUserCapability),
         Arc::new(InfinityContextCapability),
         Arc::new(SkillsCapability),
         Arc::new(AgentInstructionsCapability),
@@ -321,8 +330,9 @@ fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 29] = [
+    const RUNTIME_IDS: [&str; 30] = [
         "human_intent",
+        "ask_user",
         "infinity_context",
         "skills",
         "agent_instructions",

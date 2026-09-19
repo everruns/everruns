@@ -6,6 +6,8 @@ use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
 pub mod queries;
+#[cfg(test)]
+mod refusal_traceability_tests;
 pub mod service;
 #[cfg(test)]
 mod tests;

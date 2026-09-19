@@ -41,6 +41,32 @@ fn test_truncate_display_name_multibyte() {
 }
 
 #[test]
+fn test_manifest_yaml_declares_the_oauth_redirect_url() {
+    // Slack refuses /oauth/v2/authorize with "redirect_uri did not match any
+    // configured URIs" when the app declares none, so an app generated without
+    // this can only ever be installed by copy-paste, never by OAuth.
+    let yaml = build_manifest_yaml(
+        "My Bot",
+        "My Bot",
+        None,
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        false,
+        &[],
+    );
+
+    assert!(
+        yaml.contains(&format!("    - \"{TEST_REDIRECT_URL}\"")),
+        "manifest must declare redirect_urls, got:\n{yaml}"
+    );
+    assert!(
+        yaml.contains("  redirect_urls:"),
+        "redirect_urls must sit under oauth_config, got:\n{yaml}"
+    );
+}
+
+#[test]
 fn test_manifest_yaml_contains_event_subscriptions() {
     let yaml = build_manifest_yaml(
         "My Bot",
@@ -48,6 +74,7 @@ fn test_manifest_yaml_contains_event_subscriptions() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[],
     );
@@ -88,6 +115,7 @@ fn test_manifest_yaml_parses_as_yaml_with_expected_shape() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[],
     );
@@ -126,6 +154,7 @@ fn test_manifest_yaml_agent_view_carries_suggested_prompts() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         true,
         &starters,
     );
@@ -151,6 +180,7 @@ fn test_manifest_yaml_omits_suggested_prompts_when_unauthored() {
             None,
             TEST_REQUEST_URL,
             TEST_INTERACTIVITY_URL,
+            TEST_REDIRECT_URL,
             true,
             &starters,
         );
@@ -178,6 +208,7 @@ fn test_manifest_yaml_caps_suggested_prompts_at_slack_limit() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         true,
         &starters,
     );
@@ -202,6 +233,7 @@ fn test_manifest_yaml_truncates_prompt_title_but_not_message() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         true,
         &[test_starter(&long)],
     );
@@ -225,6 +257,7 @@ fn test_manifest_yaml_escapes_prompt_text() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         true,
         &[test_starter(r#"Say "hi" \ now"#)],
     );
@@ -246,6 +279,7 @@ fn test_manifest_yaml_agent_surface_off_carries_no_prompts() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[test_starter("Triage the newest P1")],
     );
@@ -261,6 +295,7 @@ fn test_manifest_yaml_agent_surface_off_is_unchanged() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[],
     );
@@ -289,6 +324,7 @@ fn test_manifest_yaml_agent_surface_on() {
         Some("Answers questions"),
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         true,
         &[],
     );
@@ -349,6 +385,7 @@ fn test_agent_description_respects_slack_limit() {
         Some(&long),
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         true,
         &[],
     );
@@ -370,6 +407,7 @@ fn test_agent_description_is_char_safe() {
         Some(&long),
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         true,
         &[],
     );
@@ -394,6 +432,7 @@ fn test_manifest_yaml_escapes_request_url() {
         None,
         r#"https://x/"evil"#,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[],
     );
@@ -425,6 +464,7 @@ fn test_manifest_yaml_contains_description_and_long_description() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[],
     );
@@ -441,6 +481,7 @@ fn test_manifest_yaml_with_app_description() {
         Some("A helpful assistant"),
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[],
     );
@@ -459,6 +500,7 @@ fn test_manifest_yaml_description_within_slack_limit() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[],
     );
@@ -483,6 +525,7 @@ fn test_manifest_yaml_escapes_special_chars_in_name() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[],
     );
@@ -1025,6 +1068,7 @@ fn manifest_declares_the_interactivity_request_url() {
         None,
         TEST_REQUEST_URL,
         TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[],
     );

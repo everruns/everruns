@@ -23,6 +23,7 @@ pub const USER_PREFERENCE_LIMIT_EXCEEDED: &str = "user preference limit exceeded
 pub(crate) const FORCED_STORAGE_FAILURE: &str = "error returned from database: relation \
      \"agents\" does not exist at sqlx-postgres-0.8.6/src/connection/mod.rs:666";
 
+use super::mcp_catalog::*;
 use super::mcp_tool_cache::*;
 use super::memory::InMemoryDatabase;
 use super::models::*;

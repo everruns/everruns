@@ -1,5 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { FcpSetupGuidance, formatFcpSessionExpiration } from "@/components/apps/fcp-setup-guidance";
+import {
+  FcpSetupGuidance,
+  formatFcpSessionExpiration,
+} from "@/components/agents/integrations/fcp-setup-guidance";
 
 describe("FcpSetupGuidance", () => {
   it("renders endpoint, anonymous badge, and timeout for a published app", () => {
@@ -63,7 +66,7 @@ describe("FcpSetupGuidance", () => {
 
     expect(screen.getByText("Token Protected")).toBeInTheDocument();
     expect(screen.getByText("Channel token configured")).toBeInTheDocument();
-    expect(screen.getByText("Publish the app to accept requests")).toBeInTheDocument();
+    expect(screen.getByText("Publish the endpoint to accept requests")).toBeInTheDocument();
   });
 
   it("renders 'Restricted' state and warning when anonymous is off without a token", () => {
@@ -105,7 +108,7 @@ describe("FcpSetupGuidance", () => {
       />,
     );
 
-    expect(screen.getByText(/No per-app cap/)).toBeInTheDocument();
+    expect(screen.getByText(/No per-endpoint cap/)).toBeInTheDocument();
   });
 
   it("marks a custom handshake when one is configured", () => {

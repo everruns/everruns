@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Record the terminal demo: a scripted worker editing a real repository while a
-# real classifier watches it. The worker is deterministic so the recording is
-# about the supervision; the nine numbers on screen are a live reading.
+# Record the terminal demo: `foreman demo`, which is a real run. A real worker
+# edits the bundled fixture while a real classifier watches it, so every number
+# on screen is a live reading and the repository at the end is the worker's
+# actual work. The starting state is fixed; the run is not scripted.
 set -euo pipefail
 demo_dir="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$demo_dir/../../.." && pwd)"
@@ -26,7 +27,7 @@ extract_transcript() {
 }
 
 if [[ "${1:-}" == "--check" ]]; then
-  grep -Fq 'cargo run -q -p everruns-foreman-agent --bin foreman -- demo --live-foreman' "$tape"
+  grep -Fq 'cargo run -q -p everruns-foreman-agent --bin foreman -- demo' "$tape"
   grep -Fq 'Wait+Line@180s />$/' "$tape"
   grep -Fq 'Type@35ms' "$tape"
   sample="$(printf '\033[1meverruns · foreman\033[0m\r\n  \xe2\x9c\x93 `bash tests/run.sh` passes\r\n> ' | extract_transcript /dev/stdin)"
@@ -45,11 +46,12 @@ command -v vhs >/dev/null 2>&1 || {
 
 cd "$repo_root"
 trap 'rm -f "$session_tmp" "$transcript_tmp" "$gif_tmp"' EXIT
-if [[ -n "${TYPESAFE_API_KEY:-}" ]]; then
+# The supervisor needs TypeSafe, the worker needs OpenRouter.
+if [[ -n "${TYPESAFE_API_KEY:-}" && -n "${OPENROUTER_API_KEY:-}" ]]; then
   vhs "$tape"
 else
   command -v doppler >/dev/null 2>&1 || {
-    echo "set TYPESAFE_API_KEY or install Doppler to record the live demo" >&2
+    echo "set TYPESAFE_API_KEY and OPENROUTER_API_KEY, or install Doppler" >&2
     exit 1
   }
   doppler run --project everruns-dev --config dev -- vhs "$tape"

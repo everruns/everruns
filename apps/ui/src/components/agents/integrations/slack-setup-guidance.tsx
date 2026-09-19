@@ -16,13 +16,12 @@ interface SlackSetupGuidanceProps {
   isPublished: boolean;
   webhookVerified: boolean;
   firstMessageReceived: boolean;
-  webhookUrl: string;
-  webhookPath: string;
-  isLocalhost: boolean;
+  manifestRequestUrl: string | null;
+  manifestLoading: boolean;
+  canCreateSlackApp: boolean;
   agentSurfaceEnabled: boolean;
   onCreateSlackApp: () => void;
-  creatingSlackApp: boolean;
-  onConfigure: () => void;
+  onConfigure?: () => void;
 }
 
 export function SlackSetupGuidance({
@@ -30,12 +29,11 @@ export function SlackSetupGuidance({
   isPublished,
   webhookVerified,
   firstMessageReceived,
-  webhookUrl,
-  webhookPath,
-  isLocalhost,
+  manifestRequestUrl,
+  manifestLoading,
+  canCreateSlackApp,
   agentSurfaceEnabled,
   onCreateSlackApp,
-  creatingSlackApp,
   onConfigure,
 }: SlackSetupGuidanceProps) {
   return (
@@ -46,12 +44,11 @@ export function SlackSetupGuidance({
         isPublished={isPublished}
         webhookVerified={webhookVerified}
         firstMessageReceived={firstMessageReceived}
-        webhookUrl={webhookUrl}
-        webhookPath={webhookPath}
-        isLocalhost={isLocalhost}
+        manifestRequestUrl={manifestRequestUrl}
+        manifestLoading={manifestLoading}
+        canCreateSlackApp={canCreateSlackApp}
         agentSurfaceEnabled={agentSurfaceEnabled}
         onCreateSlackApp={onCreateSlackApp}
-        creatingSlackApp={creatingSlackApp}
         onConfigure={onConfigure}
       />
       {hasSlackConfig && <AgentSurfaceNotice agentSurfaceEnabled={agentSurfaceEnabled} />}
@@ -113,11 +110,10 @@ function SetupSteps({
   isPublished,
   webhookVerified,
   firstMessageReceived,
-  webhookUrl,
-  webhookPath,
-  isLocalhost,
+  manifestRequestUrl,
+  manifestLoading,
+  canCreateSlackApp,
   onCreateSlackApp,
-  creatingSlackApp,
   onConfigure,
 }: SlackSetupGuidanceProps) {
   const currentStep = !isPublished ? 1 : !hasSlackConfig ? 2 : !firstMessageReceived ? 4 : 4;
@@ -126,7 +122,7 @@ function SetupSteps({
     <div className="space-y-4">
       {!hasSlackConfig && (
         <p className="text-sm text-muted-foreground">
-          Follow these steps to connect a Slack bot to this app.
+          Follow these steps to connect a Slack bot to this endpoint.
         </p>
       )}
 
@@ -136,7 +132,7 @@ function SetupSteps({
           <p
             className={`text-sm font-medium ${isPublished ? "text-muted-foreground line-through" : ""}`}
           >
-            1. Publish the app
+            1. Publish the endpoint
           </p>
           {currentStep === 1 && (
             <p className="text-xs text-muted-foreground">
@@ -153,12 +149,12 @@ function SetupSteps({
           <p
             className={`text-sm font-medium ${hasSlackConfig ? "text-muted-foreground line-through" : ""}`}
           >
-            2. Create a Slack App
+            2. Create a Slack app
           </p>
           {currentStep === 1 && (
             <p className="text-xs text-muted-foreground">
-              Available once the app is published — the manifest points Slack at this app&apos;s
-              webhook, and Slack rejects a URL that does not answer yet.
+              Available once the endpoint is published — the manifest points Slack at this
+              endpoint&apos;s webhook, and Slack rejects a URL that does not answer yet.
             </p>
           )}
           {currentStep === 2 && (
@@ -166,35 +162,33 @@ function SetupSteps({
               <p className="text-xs text-muted-foreground">
                 Opens Slack with a pre-filled manifest. Bot scopes <em>and</em> event subscriptions
                 are already set, so there is nothing to configure by hand. Review and click{" "}
-                <strong>Create</strong>, then install to your workspace.
+                <strong>Create</strong>, then install it to your workspace.
               </p>
-              {isLocalhost ? (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    Slack can&apos;t reach localhost, so the manifest&apos;s Request URL will not
-                    verify. Run{" "}
-                    <code>
-                      ngrok http{" "}
-                      {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}
-                    </code>{" "}
-                    and replace the Request URL under <strong>Event Subscriptions</strong> with your
-                    ngrok URL plus this path:
-                  </p>
-                  <CopyableValue value={webhookPath} />
-                </>
-              ) : (
+              {manifestLoading ? (
+                <p className="text-xs text-muted-foreground">Loading the endpoint manifest…</p>
+              ) : canCreateSlackApp && manifestRequestUrl ? (
                 <>
                   <p className="text-xs text-muted-foreground">
                     The manifest subscribes to <code>app_mention</code>,{" "}
                     <code>message.channels</code>, <code>message.groups</code>,{" "}
                     <code>message.im</code> and <code>message.mpim</code> at this Request URL:
                   </p>
-                  <CopyableValue value={webhookUrl} />
+                  <CopyableValue value={manifestRequestUrl} />
                 </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Slack validates the manifest&apos;s Request URL during app creation. Set{" "}
+                  <code>PUBLIC_APP_URL</code> to a public HTTPS origin, restart Everruns, and reload
+                  this page before creating the Slack app.
+                </p>
               )}
-              <Button size="sm" onClick={onCreateSlackApp} disabled={creatingSlackApp}>
+              <Button
+                size="sm"
+                onClick={onCreateSlackApp}
+                disabled={manifestLoading || !canCreateSlackApp}
+              >
                 <ExternalLink className="w-3 h-3 mr-1" />
-                {creatingSlackApp ? "Opening..." : "Create Slack App"}
+                Create Slack app
               </Button>
             </div>
           )}
@@ -217,7 +211,7 @@ function SetupSteps({
           {currentStep === 2 && (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
-                After creating the Slack app, copy two values back here:
+                After creating the Slack app, open Configure and copy two values into this endpoint:
               </p>
               <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
                 <li>
@@ -229,10 +223,12 @@ function SetupSteps({
                   Permissions
                 </li>
               </ul>
-              <Button size="sm" variant="outline" onClick={onConfigure}>
-                <Pencil className="w-3 h-3 mr-1" />
-                Configure
-              </Button>
+              {onConfigure && (
+                <Button size="sm" variant="outline" onClick={onConfigure}>
+                  <Pencil className="w-3 h-3 mr-1" />
+                  Configure
+                </Button>
+              )}
             </div>
           )}
         </div>

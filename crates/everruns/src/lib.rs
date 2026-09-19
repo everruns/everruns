@@ -64,6 +64,7 @@ mod mcp;
 pub mod models;
 mod plugin;
 mod session;
+mod session_environment;
 /// Stability tiers and the marking convention.
 pub mod stability;
 mod tool;
@@ -91,6 +92,28 @@ pub use everruns_core::classifier::{
 pub use everruns_host::WorkspaceBackend as WorkspaceProvider;
 #[deprecated(note = "use WorkspaceBackendId")]
 pub use everruns_host::WorkspaceBackendId as WorkspaceProviderId;
+#[cfg(feature = "host-shell")]
+pub use everruns_host::capabilities::shell::{
+    ApprovalPolicy, HostShell, HostShellApproval, ShellApprovalGate, ShellApprovalRequest,
+};
+/// The host shell capability, its approval policy, and the seam a host fills to
+/// put a person in front of a command.
+#[cfg(feature = "host-shell")]
+/// Be the containment worker: apply the kernel policy, then become the shell.
+///
+/// A single-binary host calls this from `main` with the arguments following its
+/// own routing flag, and names the same flag through
+/// [`SandboxLauncher::ReexecSelf`]. It never returns on success.
+#[cfg(feature = "host-shell")]
+pub use everruns_host::containment::worker::run_from_args as containment_worker;
+/// Containment for the host shell: what a command may touch, and the boundary
+/// `HostCompute::contained` applies.
+#[cfg(feature = "host-shell")]
+pub use everruns_host::containment::{
+    ContainmentMode, SandboxLauncher, SandboxOptions, SandboxProvider,
+    configure_stdio as configure_contained_stdio, danger_warning, network_access,
+    provider as containment_provider,
+};
 pub use everruns_host::{
     Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
     ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, NetworkPolicy,
@@ -126,9 +149,10 @@ pub use mcp::McpServer;
 pub use models::{CatalogError, ModelInfo};
 pub use plugin::PluginError;
 pub use session::{
-    CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session,
-    SessionEnvironmentError, Turn, TurnHandle,
+    CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session, Turn,
+    TurnHandle,
 };
+pub use session_environment::SessionEnvironmentError;
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 
 #[cfg(feature = "local")]
@@ -314,6 +338,8 @@ pub mod prelude {
         ToolSearch,
     };
     pub use crate::{CatalogError, ModelInfo, ModelProfile};
+    #[cfg(feature = "host-shell")]
+    pub use crate::{ContainmentMode, HostShell};
     pub use crate::{DriverId, EnvCredentialError, EnvCredentialProvider};
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};
