@@ -249,7 +249,7 @@ their effectful owners:
 | `OpenAIProtocolChatDriver`, `openai_protocol` | `everruns_provider::` |
 | `OpenResponsesProtocolChatDriver`, `openresponses_protocol` | `everruns_provider::` |
 | `driver_helpers`, `stream_reconnect` | `everruns_provider::` |
-| `OpenAiUtilityLlmService`, `SystemUtilityLlmConfig`, `UTILITY_OPENAI_API_KEY_ENV` | `everruns_host::` with `features = ["utility-openai"]` |
+| `OpenAiUtilityLlmService` (now `ProviderUtilityLlmService`), `SystemUtilityLlmConfig`, `UTILITY_OPENAI_API_KEY_ENV` | `everruns_host::` with `features = ["utility-llm"]` |
 
 Core no longer initializes Rustls. Provider HTTP clients install the workspace
 crypto provider when they are first constructed, while server, worker, and CLI

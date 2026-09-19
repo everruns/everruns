@@ -375,17 +375,27 @@ platform uses for its own internal work.
 
 | Variable | Powers | Unset means |
 |----------|--------|-------------|
-| `UTILITY_OPENAI_API_KEY` | Agent Analyze/Health checks, and guardrail checks with `engine: "utility_llm"` (the default) | Those checks are skipped; Analyze and Health are unavailable |
+| `UTILITY_OPENAI_API_KEY` | Agent Analyze/Health checks, and guardrail checks with `engine: "utility_llm"` (the default), called directly against OpenAI | Those checks are skipped; Analyze and Health are unavailable |
+| `UTILITY_OPENROUTER_API_KEY` | The same work, routed through OpenRouter instead. Setting it selects OpenRouter; it wins when both keys are set, and the startup log says so | The utility LLM falls back to `UTILITY_OPENAI_API_KEY` |
+| `UTILITY_LLM_MODEL` | The model the utility LLM calls on whichever backend was selected | Defaults to `gpt-5.6-luna` on OpenAI, `openai/gpt-5.6-luna` on OpenRouter |
 | `UTILITY_TYPESAFE_API_KEY` | Guardrail checks with `engine: "jev"` | Those checks are skipped with a warning and the turn proceeds |
 
-Both are read from the process environment at startup. Missing keys **fail
+The keys are read from the process environment at startup. Missing keys **fail
 open**: a guardrail whose engine is not configured never blocks, so a missing
 key weakens policy rather than wedging traffic. Check the startup logs if a
 configured guardrail appears to do nothing.
 
+There is no separate provider variable: the utility LLM's backend is whichever
+key you supply. An OpenRouter model id is namespaced by its upstream provider,
+so override `UTILITY_LLM_MODEL` with an id that backend accepts
+(`anthropic/claude-sonnet-4.5`, not `claude-sonnet-4.5`).
+
 ```bash
 # Control-plane and workers both read these.
 UTILITY_OPENAI_API_KEY=sk-...
+# ...or route the utility LLM through OpenRouter instead:
+UTILITY_OPENROUTER_API_KEY=sk-or-...
+UTILITY_LLM_MODEL=openai/gpt-5.6-luna
 UTILITY_TYPESAFE_API_KEY=ts-...
 ```
 
