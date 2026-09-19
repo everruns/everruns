@@ -3,6 +3,7 @@
 // the neutral everruns-host execution contract.
 
 use async_trait::async_trait;
+use everruns_capability::CapabilityRef;
 use everruns_core::tool_context::ToolContextExtensions;
 use everruns_core::{
     CapabilityRegistry, EgressService, ResolvedExecutionSnapshot, SessionExecutionState,
@@ -21,6 +22,7 @@ use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
 };
 use everruns_platform::SessionMutator;
+use everruns_platform::capabilities::PLATFORM_CAPABILITY_ID;
 use everruns_platform::{
     DurableToolResultStoreExt, KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt,
     PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
@@ -388,12 +390,20 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
         org_id: i64,
         session_id: SessionId,
-        has_platform_capability: bool,
+        resolved_capabilities: &[CapabilityRef],
     ) -> ToolContextExtensions {
         let mut extensions = ToolContextExtensions::default();
         let platform_store = self.adapters.platform_store(org_id, session_id);
         // Shell-surface platform harnesses omit the forwarding tools, so install
-        // their catalog directly. Never expose it to a shell-only harness.
+        // their catalog directly. Never expose it to a shell-only harness: the
+        // `everruns` builtin is the whole platform surface, so a session without
+        // the capability that grants it must not receive a command source.
+        // Read from the resolved set, not the declared one — `platform` can
+        // arrive by dependency expansion or under an alias, and the server-side
+        // gate on InvokePlatformCommandSurface resolves the same way.
+        let has_platform_capability = resolved_capabilities
+            .iter()
+            .any(|capability| capability.capability_id() == PLATFORM_CAPABILITY_ID);
         if has_platform_capability {
             extensions.insert(Arc::new(crate::catalog_cli::CatalogCommandSource::handle(
                 platform_store.clone(),

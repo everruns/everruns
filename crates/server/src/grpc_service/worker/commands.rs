@@ -102,6 +102,57 @@ impl WorkerServiceImpl {
         Ok(Response::new(ListCommandsResponse { commands }))
     }
 
+    /// Whether the session's effective capability set carries `platform`.
+    ///
+    /// Resolves exactly as the worker does when it decides to install the
+    /// catalog command source: fold harness -> agent -> session, then expand
+    /// dependencies and canonicalise aliases. Any cheaper approximation (the
+    /// union of the three declared lists, say) drifts from the worker, and a
+    /// gate that disagrees with the surface it guards is worse than none.
+    async fn session_has_platform_capability(
+        &self,
+        org_id: i64,
+        session: &everruns_platform::Session,
+    ) -> Result<bool, Status> {
+        // The same inheritance fold the worker's harness store runs, so an
+        // inherited `platform` resolves identically on both sides.
+        let harness = crate::harness_chain::resolve_effective_harness(
+            &self.db,
+            org_id,
+            session.harness_id.uuid(),
+        )
+        .await
+        .map_err(|error| internal_status("Failed to load Platform command harness", error))?
+        .ok_or_else(|| Status::not_found("Harness not found"))?;
+
+        let agent = match session.agent_id {
+            Some(agent_id) => crate::domains::agents::queries::get_by_public_id(
+                &self.db,
+                org_id,
+                &agent_id.to_string(),
+            )
+            .await
+            .map_err(|error| internal_status("Failed to load Platform command agent", error))?,
+            None => None,
+        };
+
+        let agent_definition = agent.as_ref().map(|agent| agent.definition());
+        let resolved = everruns_core::runtime_context::resolve_runtime_capabilities(
+            &harness.definition(),
+            agent_definition.as_ref(),
+            &session.execution_session(),
+            self.capability_service.registry(),
+        );
+
+        Ok(resolved
+            .resolved_capability_configs
+            .iter()
+            .any(|capability| {
+                capability.capability_id()
+                    == everruns_platform::capabilities::PLATFORM_CAPABILITY_ID
+            }))
+    }
+
     pub(crate) async fn handle_invoke_platform_command_surface(
         &self,
         request: Request<InvokePlatformCommandSurfaceRequest>,
@@ -131,48 +182,23 @@ impl WorkerServiceImpl {
             })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
-        // This RPC is a worker trust boundary, not merely an RBAC boundary.
-        // Independently require the capability that grants the catalog even if
-        // a compromised worker calls the endpoint without going through Bash.
-        let mut agent = if let Some(agent_id) = session.agent_id {
-            crate::domains::agents::queries::get_by_public_id(
-                &self.db,
-                req.org_id,
-                &agent_id.to_string(),
-            )
-            .await
-            .map_err(|error| internal_status("Failed to load Platform command agent", error))?
-        } else {
-            None
-        };
-        if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
-            && let Some(version_row) = self
-                .db
-                .get_agent_version(req.org_id, version_id)
-                .await
-                .map_err(|error| internal_status("Failed to load Platform command agent", error))?
+        // This RPC is a worker trust boundary, not merely an RBAC boundary: the
+        // worker installs the catalog only for sessions holding `platform`, but
+        // a compromised worker can call this endpoint without going through
+        // Bash at all. Re-derive the capability server-side.
+        //
+        // Resolved, not declared. `resolve_runtime_capabilities` folds
+        // harness -> agent -> session and then expands dependencies and
+        // canonicalises aliases, so `platform` can be present in the effective
+        // set without appearing in any layer's declared list. Testing the
+        // declared lists instead would deny the RPC for a session whose shell
+        // legitimately carries the `everruns` builtin -- the two sides must
+        // answer this question the same way, and this is the function the
+        // worker-side answer comes from too.
+        if !self
+            .session_has_platform_capability(req.org_id, &session)
+            .await?
         {
-            let version = crate::domains::agents::queries::row_to_agent_version(version_row);
-            *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
-        }
-        let harness = crate::domains::harnesses::queries::resolve_effective(
-            &self.db,
-            req.org_id,
-            session.harness_id,
-        )
-        .await
-        .map_err(|error| internal_status("Failed to load Platform command harness", error))?;
-        let has_platform_capability = session
-            .capabilities
-            .iter()
-            .chain(agent.iter().flat_map(|agent| agent.capabilities.iter()))
-            .chain(
-                harness
-                    .iter()
-                    .flat_map(|harness| harness.capabilities.iter()),
-            )
-            .any(|capability| capability.capability_id() == "platform");
-        if !has_platform_capability {
             return Err(Status::permission_denied(
                 "Platform command execution requires the platform capability",
             ));
