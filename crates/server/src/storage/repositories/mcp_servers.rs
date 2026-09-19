@@ -198,6 +198,79 @@ impl Database {
         Ok(query.fetch_all(&self.pool).await?)
     }
 
+    pub async fn list_mcp_server_agent_usage(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<McpServerAgentUsageRow>> {
+        Ok(sqlx::query_as::<_, McpServerAgentUsageRow>(
+            r#"
+            SELECT ms.id AS mcp_server_id,
+                   COUNT(DISTINCT a.id) FILTER (WHERE a.id IS NOT NULL) AS used_by_agents
+            FROM mcp_servers ms
+            LEFT JOIN agents a
+              ON a.org_id = ms.org_id
+             AND a.status = 'active'
+             AND a.archived_at IS NULL
+             AND a.deleted_at IS NULL
+             AND EXISTS (
+                 SELECT 1
+                 FROM jsonb_each(COALESCE(a.mcp_servers, '{}'::jsonb)) attachment
+                 WHERE attachment.value->>'use' = 'catalog:' || ms.name
+             )
+            WHERE ms.org_id = $1
+              AND ms.status != 'deleted'
+            GROUP BY ms.id
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn get_mcp_server_agent_names(
+        &self,
+        org_id: i64,
+        server_id: McpServerId,
+        limit: i64,
+    ) -> Result<McpServerAgentNamesRow> {
+        Ok(sqlx::query_as::<_, McpServerAgentNamesRow>(
+            r#"
+            WITH matching AS (
+                SELECT DISTINCT a.id, COALESCE(NULLIF(a.display_name, ''), a.name) AS agent_name
+                FROM mcp_servers ms
+                JOIN agents a
+                  ON a.org_id = ms.org_id
+                 AND a.status = 'active'
+                 AND a.archived_at IS NULL
+                 AND a.deleted_at IS NULL
+                 AND EXISTS (
+                     SELECT 1
+                     FROM jsonb_each(COALESCE(a.mcp_servers, '{}'::jsonb)) attachment
+                     WHERE attachment.value->>'use' = 'catalog:' || ms.name
+                 )
+                WHERE ms.org_id = $1
+                  AND ms.id = $2
+                  AND ms.status != 'deleted'
+            )
+            SELECT COALESCE(
+                       ARRAY(
+                           SELECT agent_name
+                           FROM matching
+                           ORDER BY LOWER(agent_name), agent_name
+                           LIMIT $3
+                       ),
+                       ARRAY[]::text[]
+                   ) AS agent_names,
+                   (SELECT COUNT(*) FROM matching) AS total_count
+            "#,
+        )
+        .bind(org_id)
+        .bind(server_id)
+        .bind(limit)
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
     /// List only active MCP servers (for capability listing)
     pub async fn list_active_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
         let rows = sqlx::query_as::<_, McpServerRow>(

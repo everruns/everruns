@@ -95,6 +95,20 @@ pub struct ConnectionResponse {
     pub connected_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct UserMcpConnectionResponse {
+    pub provider: String,
+    pub server_id: String,
+    pub server_name: String,
+    pub server_url: String,
+    pub server_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scopes: Option<String>,
+    pub connected_at: DateTime<Utc>,
+}
+
 /// Provider info for the connections UI
 #[derive(Debug, Serialize)]
 pub struct ProviderResponse {
@@ -227,6 +241,7 @@ struct OAuthClientRegistration {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/user/connections", get(list_connections))
+        .route("/v1/user/mcp-connections", get(list_mcp_connections))
         .route("/v1/user/connections/providers", get(list_connectors))
         .route(
             "/v1/user/connections/{provider}",
@@ -282,6 +297,44 @@ pub async fn list_connections(
         .collect();
 
     Ok(Json(connections))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/user/mcp-connections",
+    responses(
+        (status = 200, description = "Current user's MCP OAuth connections in the selected organization", body = Vec<UserMcpConnectionResponse>),
+        (status = 500, description = "Internal server error"),
+    ),
+    tag = "users"
+)]
+pub async fn list_mcp_connections(
+    State(state): State<AppState>,
+    org: ResolvedOrg,
+    auth: AuthUser,
+) -> Result<Json<Vec<UserMcpConnectionResponse>>, StatusCode> {
+    let rows = state
+        .db
+        .list_user_mcp_connections(org.org_id, auth.id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "failed to list user MCP connections");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|row| UserMcpConnectionResponse {
+                provider: row.provider,
+                server_id: row.server_id.to_string(),
+                server_name: row.server_name,
+                server_url: row.server_url,
+                server_status: row.server_status,
+                provider_username: row.provider_username,
+                scopes: row.scopes,
+                connected_at: row.connected_at,
+            })
+            .collect(),
+    ))
 }
 
 /// GET /v1/user/connections/providers — List available connectors
@@ -509,7 +562,7 @@ pub async fn delete_connection(
     auth: AuthUser,
     Path(provider): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let deleted = state
+    state
         .db
         .delete_user_connection(auth.id, &provider)
         .await
@@ -518,11 +571,7 @@ pub async fn delete_connection(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(StatusCode::NOT_FOUND)
-    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Response for connection verification

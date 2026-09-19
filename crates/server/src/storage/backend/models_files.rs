@@ -454,6 +454,22 @@ impl StorageBackend {
         dispatch!(self, list_active_mcp_servers, org_id)
     }
 
+    pub async fn list_mcp_server_agent_usage(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<McpServerAgentUsageRow>> {
+        dispatch!(self, list_mcp_server_agent_usage, org_id)
+    }
+
+    pub async fn get_mcp_server_agent_names(
+        &self,
+        org_id: i64,
+        server_id: everruns_provider::typed_id::McpServerId,
+        limit: i64,
+    ) -> Result<McpServerAgentNamesRow> {
+        dispatch!(self, get_mcp_server_agent_names, org_id, server_id, limit)
+    }
+
     pub async fn update_mcp_server(
         &self,
         org_id: i64,

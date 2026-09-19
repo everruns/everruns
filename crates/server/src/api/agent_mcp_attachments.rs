@@ -541,7 +541,7 @@ pub async fn revoke_agent_mcp_connection(
         .ok_or_else(|| ErrorResponse::not_found("MCP server preset"))?;
     let provider = everruns_core::mcp_oauth_provider_id_for_uuid(preset.id.uuid());
 
-    let deleted = match attachment.acts_as {
+    match attachment.acts_as {
         McpServerActsAs::User => match org.user_id {
             Some(user_id) => state
                 .db
@@ -574,11 +574,7 @@ pub async fn revoke_agent_mcp_connection(
         }
     };
 
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::not_found("MCP connection"))
-    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]

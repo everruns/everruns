@@ -88,6 +88,35 @@ impl Database {
         Ok(rows)
     }
 
+    pub async fn list_user_mcp_connections(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<Vec<UserMcpConnectionRow>> {
+        Ok(sqlx::query_as::<_, UserMcpConnectionRow>(
+            r#"
+            SELECT uc.provider,
+                   uc.provider_username,
+                   uc.scopes,
+                   uc.created_at AS connected_at,
+                   ms.id AS server_id,
+                   ms.name AS server_name,
+                   ms.url AS server_url,
+                   ms.status AS server_status
+            FROM user_connections uc
+            JOIN mcp_servers ms
+              ON uc.provider = 'mcp_oauth_' || ms.id::text
+             AND ms.org_id = $1
+            WHERE uc.user_id = $2
+            ORDER BY LOWER(ms.name), ms.name
+            "#,
+        )
+        .bind(org_id)
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     /// Atomically persist a refreshed OAuth grant, including rotated refresh token.
     pub async fn update_user_connection_oauth_tokens(
         &self,

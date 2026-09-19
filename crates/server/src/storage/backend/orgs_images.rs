@@ -608,6 +608,14 @@ impl StorageBackend {
         dispatch!(self, list_user_connections, user_id)
     }
 
+    pub async fn list_user_mcp_connections(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<Vec<UserMcpConnectionRow>> {
+        dispatch!(self, list_user_mcp_connections, org_id, user_id)
+    }
+
     pub async fn update_user_connection_oauth_tokens(
         &self,
         input: UpdateOAuthConnectionTokens,
