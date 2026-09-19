@@ -339,10 +339,7 @@ async fn start_grpc_server(
     (addr.to_string(), shutdown_tx, server)
 }
 
-async fn invoke(
-    fixture: &ActsAsArrangement,
-    session_id: SessionId,
-) -> ToolResult {
+async fn invoke(fixture: &ActsAsArrangement, session_id: SessionId) -> ToolResult {
     let (addr, shutdown, server) = start_grpc_server(fixture.worker_service()).await;
     let composition = HostComposition::builder()
         .egress_service(Arc::new(fixture.mock.clone()))

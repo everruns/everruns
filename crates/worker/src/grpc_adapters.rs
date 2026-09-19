@@ -2736,6 +2736,25 @@ impl everruns_core::connection_services::UserConnectionResolver for GrpcAdapter 
         let request = proto::GetConnectionTokenRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             provider: provider.to_string(),
+            acts_as: None,
+        };
+        let response = client
+            .get_connection_token(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+        Ok(response.into_inner().token)
+    }
+    async fn get_mcp_connection_token(
+        &self,
+        session_id: everruns_provider::typed_id::SessionId,
+        provider: &str,
+        acts_as: everruns_core::McpServerActsAs,
+    ) -> Result<Option<String>> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::GetConnectionTokenRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            provider: provider.to_string(),
+            acts_as: Some(acts_as.to_string()),
         };
         let response = client
             .get_connection_token(request)

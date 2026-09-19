@@ -15,13 +15,27 @@ impl WorkerServiceImpl {
         let session_id = parse_uuid(req.session_id.as_ref())?;
         let resolver = self.connection_resolver()?;
 
-        let token = resolver
-            .get_connection_token(session_id.into(), &req.provider)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to resolve connection token: {}", e);
-                Status::internal("Failed to resolve connection token")
-            })?;
+        let token = match req.acts_as.as_deref() {
+            None => {
+                resolver
+                    .get_connection_token(session_id.into(), &req.provider)
+                    .await
+            }
+            Some(acts_as @ ("none" | "service" | "user")) => {
+                resolver
+                    .get_mcp_connection_token(
+                        session_id.into(),
+                        &req.provider,
+                        everruns_core::McpServerActsAs::from(acts_as),
+                    )
+                    .await
+            }
+            Some(_) => return Err(Status::invalid_argument("Invalid MCP acts_as value")),
+        }
+        .map_err(|e| {
+            tracing::error!("Failed to resolve connection token: {}", e);
+            Status::internal("Failed to resolve connection token")
+        })?;
 
         Ok(Response::new(GetConnectionTokenResponse { token }))
     }

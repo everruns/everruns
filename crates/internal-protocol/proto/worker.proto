@@ -1392,6 +1392,7 @@ message SessionStorageListSecretsResponse {
 message GetConnectionTokenRequest {
     Uuid session_id = 1;
     string provider = 2;  // e.g. "github", "daytona", "gitlab"
+    optional string acts_as = 3;  // MCP identity policy; absent preserves legacy lookup
 }
 
 message GetConnectionTokenResponse {
