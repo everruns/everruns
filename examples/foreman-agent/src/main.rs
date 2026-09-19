@@ -16,7 +16,7 @@ use clap::Parser;
 use everruns::{Classifier, Model};
 use everruns_example_demo::shell as demo;
 use everruns_foreman_agent::cli::{Cli, Command, Demo, Run};
-use everruns_foreman_agent::factory::Status;
+use everruns_foreman_agent::factory::{Outcome, Status};
 use everruns_foreman_agent::foreman::Foreman;
 use everruns_foreman_agent::policy::Config;
 use everruns_foreman_agent::worker::{Crew, ExternalAgent};
@@ -44,7 +44,7 @@ async fn start(options: Run) -> Result<()> {
     }
 
     let external = options.external().context("reading --worker-command")?;
-    let outcome = supervise(job, &options.repo, external, options.tests.clone()).await?;
+    let outcome = start_factory(job, &options.repo, external, options.tests.clone()).await?;
     run::report(&outcome);
     run::settle(&outcome)
 }
@@ -66,7 +66,7 @@ async fn start_demo(options: Demo) -> Result<()> {
     fixture::materialize(&workspace).context("materializing the fixture")?;
 
     let external = options.external().context("reading --worker-command")?;
-    let outcome = supervise(
+    let outcome = start_factory(
         fixture::JOB,
         &workspace,
         external,
@@ -93,13 +93,16 @@ async fn start_demo(options: Demo) -> Result<()> {
     run::settle(&outcome)
 }
 
-/// One supervised run over `workspace`, on real credentials either way.
-async fn supervise(
+/// Build a factory from the environment and run it, rendered.
+///
+/// Both subcommands land here, because both are the same run: what `run` and
+/// `demo` differ on is already decided by the time they call it.
+async fn start_factory(
     job: &str,
     workspace: &Path,
     external: Option<ExternalAgent>,
     tests: Option<String>,
-) -> Result<everruns_foreman_agent::factory::Outcome> {
+) -> Result<Outcome> {
     let config = Config::from_env();
     let crew = match external {
         Some(external) => Crew::External(external),
