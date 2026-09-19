@@ -16,6 +16,7 @@ import type {
   SlackChannelConfig,
 } from "@/lib/api/types";
 import { getEndpointLifecyclePresentation } from "@/lib/app-channels";
+import { isPublicHttpsUrl } from "@/lib/public-origin";
 type SlackEndpointConfig = SlackChannelConfig & {
   agent_surface_enabled?: boolean;
 };
@@ -29,23 +30,6 @@ export function getSlackManifestRequestUrl(manifestYaml: string): string | null 
     /event_subscriptions:\s*\n\s*request_url:\s*"([^"]+)"/,
   );
   return eventSubscriptions?.[1] ?? null;
-}
-
-export function isPublicHttpsUrl(value: string | null): boolean {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    const hostname = url.hostname.toLowerCase();
-    return (
-      url.protocol === "https:" &&
-      hostname !== "localhost" &&
-      hostname !== "127.0.0.1" &&
-      hostname !== "::1" &&
-      !hostname.endsWith(".localhost")
-    );
-  } catch {
-    return false;
-  }
 }
 
 function SetupHeading() {
