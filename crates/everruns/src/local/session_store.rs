@@ -17,6 +17,7 @@ use everruns_provider::typed_id::{HarnessId, SessionId};
 use rusqlite::{OptionalExtension, params};
 
 use super::SqliteDb;
+use crate::engine::HarnessBindingStore;
 
 /// Durable session identity catalog for local Framework hosts.
 ///
@@ -40,7 +41,8 @@ impl LocalSessionStore {
         db.with_conn(|conn| {
             conn.execute_batch(
                 "CREATE TABLE IF NOT EXISTS framework_sessions (
-                    session_id TEXT PRIMARY KEY NOT NULL
+                    session_id TEXT PRIMARY KEY NOT NULL,
+                    harness_required INTEGER NOT NULL DEFAULT 0 CHECK (harness_required IN (0, 1))
                 );
                  CREATE TABLE IF NOT EXISTS framework_session_environments (
                     session_id TEXT PRIMARY KEY NOT NULL,
@@ -56,7 +58,20 @@ impl LocalSessionStore {
                     PRIMARY KEY(provider_id, workspace_id, head_id),
                     FOREIGN KEY(owner_session_id) REFERENCES framework_sessions(session_id)
                 );",
-            )
+            )?;
+            let has_harness_required = conn
+                .prepare("PRAGMA table_info(framework_sessions)")?
+                .query_map([], |row| row.get::<_, String>(1))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+                .iter()
+                .any(|column| column == "harness_required");
+            if !has_harness_required {
+                conn.execute(
+                    "ALTER TABLE framework_sessions ADD COLUMN harness_required INTEGER NOT NULL DEFAULT 0 CHECK (harness_required IN (0, 1))",
+                    [],
+                )?;
+            }
+            Ok(())
         })
         .map_err(store_error)?;
         Ok(Self {
@@ -104,6 +119,39 @@ impl LocalSessionStore {
             .map_err(|_| AgentLoopError::store("local session catalog lock poisoned"))?
             .insert(session_id, session.clone());
         Ok(session)
+    }
+}
+
+#[async_trait]
+impl HarnessBindingStore for LocalSessionStore {
+    async fn is_required(
+        &self,
+        session_id: SessionId,
+    ) -> std::result::Result<bool, crate::ResumeError> {
+        self.db
+            .with_conn(|conn| {
+                conn.query_row(
+                    "SELECT harness_required FROM framework_sessions WHERE session_id = ?1",
+                    params![session_id.to_string()],
+                    |row| row.get::<_, bool>(0),
+                )
+                .optional()
+            })
+            .map(|required| required.unwrap_or(false))
+            .map_err(|_| crate::ResumeError::Unavailable)
+    }
+
+    async fn require(&self, session_id: SessionId) -> std::result::Result<(), crate::HistoryError> {
+        self.db
+            .with_conn(|conn| {
+                conn.execute(
+                    "INSERT INTO framework_sessions (session_id, harness_required) VALUES (?1, 1)
+                     ON CONFLICT(session_id) DO UPDATE SET harness_required = 1",
+                    params![session_id.to_string()],
+                )?;
+                Ok(())
+            })
+            .map_err(|_| crate::HistoryError::Unavailable)
     }
 }
 
@@ -347,7 +395,7 @@ mod tests {
                     .collect::<rusqlite::Result<Vec<_>>>()
             })
             .unwrap();
-        assert_eq!(columns, vec!["session_id"]);
+        assert_eq!(columns, vec!["session_id", "harness_required"]);
     }
 
     #[tokio::test]

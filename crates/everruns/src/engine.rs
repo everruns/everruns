@@ -20,6 +20,35 @@ use crate::{Agent, Harness, ResumeError, Session, SessionEnvironmentError, Sessi
 pub(crate) struct EngineBackends {
     pub(crate) host: HostBackends,
     binding_store: Arc<dyn EnvironmentBindingStore>,
+    harness_binding_store: Arc<dyn HarnessBindingStore>,
+}
+
+#[async_trait]
+pub(crate) trait HarnessBindingStore: Send + Sync {
+    async fn is_required(&self, session_id: SessionId) -> Result<bool, ResumeError>;
+    async fn require(&self, session_id: SessionId) -> Result<(), crate::HistoryError>;
+}
+
+#[derive(Default)]
+struct InMemoryHarnessBindingStore(Mutex<std::collections::HashSet<SessionId>>);
+
+#[async_trait]
+impl HarnessBindingStore for InMemoryHarnessBindingStore {
+    async fn is_required(&self, session_id: SessionId) -> Result<bool, ResumeError> {
+        Ok(self
+            .0
+            .lock()
+            .map_err(|_| ResumeError::Unavailable)?
+            .contains(&session_id))
+    }
+
+    async fn require(&self, session_id: SessionId) -> Result<(), crate::HistoryError> {
+        self.0
+            .lock()
+            .map_err(|_| crate::HistoryError::Unavailable)?
+            .insert(session_id);
+        Ok(())
+    }
 }
 
 /// Private binding between a [`Session`] and its owning engine.
@@ -31,6 +60,7 @@ pub(crate) trait SessionExecution: Send + Sync + fmt::Debug {
     fn bind_harness(&self, harness: Harness) -> Result<(), SessionEnvironmentError>;
     async fn backends(&self) -> Result<Arc<EngineBackends>, BackendInitError>;
     async fn ensure_cataloged(&self) -> Result<(), crate::HistoryError>;
+    async fn ensure_harness_requirement(&self) -> Result<(), crate::HistoryError>;
     async fn bind_environment(
         &self,
         environment: &Environment,
@@ -126,6 +156,25 @@ impl Engine {
     /// Rebuild the Agent from trusted application configuration after a process
     /// restart, attach it to the persisted id, then call [`resume`](Self::resume).
     pub async fn attach(&self, session_id: SessionId, agent: Agent) -> Result<(), ResumeError> {
+        self.attach_inner(session_id, agent, None).await
+    }
+
+    /// Attach a persisted local session and restore its trusted Harness.
+    pub async fn attach_with_harness(
+        &self,
+        session_id: SessionId,
+        agent: Agent,
+        harness: Harness,
+    ) -> Result<(), ResumeError> {
+        self.attach_inner(session_id, agent, Some(harness)).await
+    }
+
+    async fn attach_inner(
+        &self,
+        session_id: SessionId,
+        agent: Agent,
+        harness: Option<Harness>,
+    ) -> Result<(), ResumeError> {
         if self.agent(session_id).is_some() {
             return Ok(());
         }
@@ -143,6 +192,14 @@ impl Engine {
         if !exists {
             return Err(ResumeError::SessionNotFound { session_id });
         }
+        if backends
+            .harness_binding_store
+            .is_required(session_id)
+            .await?
+            && harness.is_none()
+        {
+            return Err(ResumeError::HarnessRequired);
+        }
         self.inner
             .sessions
             .lock()
@@ -150,7 +207,7 @@ impl Engine {
             .entry(session_id)
             .or_insert(EngineSessionEntry {
                 agent,
-                harness: None,
+                harness,
                 state: None,
             });
         Ok(())
@@ -371,7 +428,8 @@ async fn initialize_backends(agent: &Agent) -> Result<Arc<EngineBackends>, Backe
             host: local
                 .runtime_backends
                 .with_session_store(session_store.clone()),
-            binding_store: session_store,
+            binding_store: session_store.clone(),
+            harness_binding_store: session_store,
         }));
     }
     #[cfg(not(feature = "local"))]
@@ -379,6 +437,7 @@ async fn initialize_backends(agent: &Agent) -> Result<Arc<EngineBackends>, Backe
     Ok(Arc::new(EngineBackends {
         host: backends,
         binding_store: Arc::new(InMemoryEnvironmentBindingStore::default()),
+        harness_binding_store: Arc::new(InMemoryHarnessBindingStore::default()),
     }))
 }
 
@@ -432,7 +491,28 @@ impl SessionExecution for EngineSessionExecution {
             .backends_for(&agent)
             .await
             .map_err(|error| error.history_error())?;
-        agent.catalog_session(&backends.host, self.session_id).await
+        agent
+            .catalog_session(&backends.host, self.session_id)
+            .await?;
+        if self.engine.harness(self.session_id).is_some() {
+            backends
+                .harness_binding_store
+                .require(self.session_id)
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn ensure_harness_requirement(&self) -> Result<(), crate::HistoryError> {
+        if self.engine.harness(self.session_id).is_none() {
+            return Ok(());
+        }
+        self.backends()
+            .await
+            .map_err(|error| error.history_error())?
+            .harness_binding_store
+            .require(self.session_id)
+            .await
     }
 
     async fn bind_environment(

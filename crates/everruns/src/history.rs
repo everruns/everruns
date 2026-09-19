@@ -408,6 +408,8 @@ pub enum ResumeError {
         /// Missing Framework session identity.
         session_id: SessionId,
     },
+    /// The session was permanently bound to a Harness that must be reconstructed.
+    HarnessRequired,
     /// The configured session backend could not be reached or opened.
     Unavailable,
     /// The canonical event history is internally inconsistent or malformed.
@@ -441,6 +443,7 @@ impl fmt::Display for ResumeError {
             Self::SessionNotFound { session_id } => {
                 write!(f, "session {session_id} was not found")
             }
+            Self::HarnessRequired => f.write_str("the persisted session requires a Harness"),
             Self::Unavailable => f.write_str("session history is unavailable"),
             Self::Corrupt => f.write_str("session history is corrupt"),
             Self::WorkspaceBackendUnavailable { provider_id } => {
