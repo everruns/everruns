@@ -201,6 +201,77 @@ pub struct VerificationResult {
     pub summary: String,
 }
 
+/// What the repository's own test command reported, run by the host.
+///
+/// Foreman declares this field and never fills it. It is the one piece of
+/// evidence that settles `tests_sufficient`, and the only honest way to get it
+/// is the way the supervisor already gets a diff: run the command yourself
+/// rather than ask the worker how it went.
+#[derive(Clone, Debug, Serialize)]
+pub struct TestRun {
+    /// The command, as configured.
+    pub command: String,
+    /// Its exit status, or `None` when it could not be started.
+    pub exit_code: Option<i32>,
+    /// Whether it exited zero.
+    pub passed: bool,
+    /// What it printed, bounded.
+    pub output_tail: String,
+    /// How long ago it ran, in seconds.
+    ///
+    /// A suite is slower than a diff, so it is run on a quiet floor and its
+    /// result carried while a worker works. Saying how stale it is keeps that
+    /// from reading as fresh.
+    pub ran_seconds_ago: f64,
+}
+
+/// Run `command` in `repository` and report what happened.
+///
+/// The child is spawned asynchronously and killed when the budget runs out —
+/// a suite that hangs must not outlive the reading that asked for it, or take
+/// the runtime down with it at shutdown.
+pub async fn run_tests(repository: &Path, command: &str, config: &Config) -> TestRun {
+    let spawned = tokio::process::Command::new("bash")
+        .arg("-c")
+        .arg(command)
+        .current_dir(repository)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn();
+
+    let budget = config.test_timeout;
+    let (exit_code, passed, text) = match spawned {
+        Ok(child) => match tokio::time::timeout(budget, child.wait_with_output()).await {
+            Ok(Ok(output)) => {
+                let text = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                (output.status.code(), output.status.success(), text)
+            }
+            Ok(Err(error)) => (None, false, format!("could not run the tests: {error}")),
+            // Dropping the future drops the child, and `kill_on_drop` ends it.
+            Err(_) => (
+                None,
+                false,
+                format!("tests exceeded {:.0}s", budget.as_secs_f64()),
+            ),
+        },
+        Err(error) => (None, false, format!("could not run the tests: {error}")),
+    };
+
+    TestRun {
+        command: command.to_owned(),
+        exit_code,
+        passed,
+        output_tail: tail(&text, config.output_limit),
+        ran_seconds_ago: 0.0,
+    }
+}
+
 /// Git evidence, gathered by the host rather than asked of the worker.
 #[derive(Clone, Debug, Default)]
 pub struct GitEvidence {
@@ -304,6 +375,12 @@ pub struct Observation {
     pub git_diff: String,
     /// Paths changed in the working copy.
     pub changed_files: Vec<String>,
+    /// What the repository's own tests reported, run by the host.
+    ///
+    /// Empty when no test command is configured, which is honest: the
+    /// dimension then rests on someone reading the tests rather than on one
+    /// having passed.
+    pub test_results: Vec<TestRun>,
     /// What verification passes reported.
     pub verification_results: Vec<VerificationResult>,
     /// Recent session events, as one line each.
@@ -346,6 +423,8 @@ pub struct Evidence<'a> {
     pub elapsed: Duration,
     /// Git evidence.
     pub git: GitEvidence,
+    /// The most recent test run, with its age already set.
+    pub tests: Option<TestRun>,
     /// The bounds to apply.
     pub config: &'a Config,
 }
@@ -377,6 +456,7 @@ pub fn build(evidence: Evidence<'_>) -> Observation {
         git_status: evidence.git.status,
         git_diff: evidence.git.diff,
         changed_files: evidence.git.changed_files,
+        test_results: evidence.tests.into_iter().collect(),
         verification_results: evidence.verification.to_vec(),
         recent_events: evidence
             .events
@@ -423,6 +503,7 @@ impl Observation {
             failures: &[],
             elapsed: Duration::from_secs(3),
             git: GitEvidence::default(),
+            tests: None,
             config: &Config::default(),
         })
     }
@@ -475,6 +556,7 @@ mod tests {
             failures: &[],
             elapsed: Duration::from_secs(1),
             git: GitEvidence::default(),
+            tests: None,
             config: &config,
         });
 
@@ -511,12 +593,43 @@ mod tests {
             failures: &[],
             elapsed: Duration::from_secs(1),
             git: GitEvidence::default(),
+            tests: None,
             config: &Config::default(),
         });
 
         assert_eq!(observation.active_workers.len(), 1);
         assert_eq!(observation.active_workers[0].worker_id, "worker-2");
         assert_eq!(observation.worker_history.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_test_run_reports_what_the_command_did() {
+        let root = tempfile::tempdir().unwrap();
+        let config = Config::default();
+
+        let green = run_tests(root.path(), "echo '2 passed, 0 failed'", &config).await;
+        assert!(green.passed);
+        assert_eq!(green.exit_code, Some(0));
+        assert!(green.output_tail.contains("2 passed"));
+
+        let red = run_tests(root.path(), "echo boom >&2; exit 3", &config).await;
+        assert!(!red.passed);
+        assert_eq!(red.exit_code, Some(3));
+        // Both streams are evidence; a failure usually explains itself on stderr.
+        assert!(red.output_tail.contains("boom"));
+    }
+
+    #[tokio::test]
+    async fn a_test_command_that_never_returns_is_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        let config = Config {
+            test_timeout: Duration::from_millis(200),
+            ..Config::default()
+        };
+        let run = run_tests(root.path(), "sleep 30", &config).await;
+        assert!(!run.passed);
+        assert_eq!(run.exit_code, None);
+        assert!(run.output_tail.contains("exceeded"), "{}", run.output_tail);
     }
 
     #[test]

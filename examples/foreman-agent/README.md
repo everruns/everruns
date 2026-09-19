@@ -132,6 +132,8 @@ separately:
 | `foreman demo --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
 | `foreman run …` | your choice, below | `jev-latest` | `TYPESAFE_API_KEY` + the worker's |
 
+Pass `--tests "<command>"` so the supervisor can check the work by running it.
+
 `--live-foreman` puts a vendor's classifier over a deterministic worker, so the
 numbers on screen are a live reading of a run that goes the same way every
 time. That is the mode the demo above records.
@@ -171,9 +173,14 @@ tests drive the same path with a stand-in child process.
 
 ## The floor
 
-`src/resources/sample-repo/` is a small Python project that prices every parcel
+`src/resources/sample-repo/` is a small shell project that prices every parcel
 at one flat rate. The job is to replace that with weight tiers and cover the
-boundaries. The coding worker mounts it read-write through
+boundaries. Shell, deliberately: `bash tests/run.sh` needs no framework, no
+interpreter and no network, so the same suite runs inside the Bashkit sandbox,
+on the host, and inside an external agent — which is what makes
+`tests_sufficient` answerable at all.
+
+On the session crew the coding worker mounts it read-write through
 [Bashkit](https://bashkit.sh); the verifier mounts the same directory under the
 default read-only policy, so "independent check" is a property of the mount
 rather than a request in a prompt:
@@ -192,7 +199,27 @@ pub fn worker(model: Model, workspace: &Path) -> Result<Agent, BuildError> {
 }
 ```
 
-The supervisor runs `git` itself rather than asking the worker what it did.
+## The supervisor runs the tests itself
+
+It already runs `git` rather than asking the worker what changed. The same
+reasoning applies to the suite: a worker reporting its own green tests is a
+claim, and `--tests` turns it into a fact.
+
+```bash
+foreman run --repo . --job "…" --tests "cargo test"
+```
+
+The result lands in the observation as `test_results` — the field Foreman
+declares and never fills — and `tests_sufficient` moves on it. In a demo run
+the dimension sits at 0.28 while the tests are the old ones and jumps to 0.91
+the moment the host's own run comes back `9 passed, 0 failed`.
+
+A suite is slower than a diff, so it runs once before any worker starts (a
+baseline, so an already-red suite is not read as the worker having broken it)
+and then whenever the floor is quiet. Between times the last result is carried
+with `ran_seconds_ago` set, because a stale pass should not read as a fresh
+one. Without `--tests` a run still works; the dimension just rests on someone
+reading the tests rather than on one having passed.
 
 ## One supervisor
 
@@ -288,7 +315,8 @@ This is an architectural experiment, and porting it does not make it a proven
 one. Classifier accuracy for this use is unproven and the thresholds are
 uncalibrated: false positives stop useful workers, false negatives let bad work
 continue. Observations are bounded and therefore incomplete. One coding worker
-runs at a time. A verifier reports evidence, not proof. State lives in memory —
+runs at a time. A verifier reports evidence, not proof, and a green suite is
+evidence the tests that exist pass — not that they are the right tests. State lives in memory —
 the Framework's durable session store is a separate example. Bashkit is a
 sandbox for the shell, not a safe harness for an untrusted repository.
 
@@ -301,7 +329,7 @@ questions and the classifier call; `src/policy.rs`: thresholds, limits, and the
 decision; `src/observation.rs`: the bounded snapshot; `src/agent.rs`: the two
 agents; `src/demo_run.rs`: the scripted worker and the stub classifier service;
 `src/terminal.rs`: layout only, over `everruns-example-demo::style`;
-`src/fixture.rs` and `src/resources/`: the repository and the prompts;
+`src/fixture.rs` and `src/resources/`: the shell repository and the prompts;
 `demo/`: the recording.
 
 ## See also

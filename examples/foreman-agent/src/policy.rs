@@ -23,6 +23,8 @@ pub struct Config {
     pub periodic_assessment: Duration,
     /// Budget for one assessment call.
     pub assessment_budget: Duration,
+    /// Budget for one run of the repository's own tests.
+    pub test_timeout: Duration,
     /// Budget for the whole run.
     pub overall_timeout: Duration,
     /// Total workers, verifier included.
@@ -65,6 +67,7 @@ impl Default for Config {
             min_assessment_interval: Duration::from_secs(5),
             periodic_assessment: Duration::from_secs(30),
             assessment_budget: Duration::from_secs(10),
+            test_timeout: Duration::from_secs(120),
             overall_timeout: Duration::from_secs(1_800),
             max_workers: 3,
             max_retries: 1,
@@ -99,6 +102,9 @@ impl Config {
         }
         if let Some(seconds) = seconds("FOREMAN_ASSESSMENT_TIMEOUT_SECONDS") {
             config.assessment_budget = seconds;
+        }
+        if let Some(seconds) = seconds("FOREMAN_TEST_TIMEOUT_SECONDS") {
+            config.test_timeout = seconds;
         }
         if let Some(seconds) = seconds("FOREMAN_OVERALL_TIMEOUT_SECONDS") {
             config.overall_timeout = seconds;

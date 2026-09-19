@@ -1,10 +1,11 @@
-cat > lib/rates.sh <<'RATES'
 # Shipping rates.
 #
-# Weight tiers, applied per destination zone. A parcel is priced by the first
-# tier whose limit it does not exceed; anything heavier pays the top rate.
+# One flat rate per destination zone, applied to every parcel regardless of
+# weight, which the pricing team has asked us to replace.
 #
 # Weights are whole grams, so every calculation here is integer arithmetic.
+
+FLAT_RATE_CENTS=1200
 
 # Surcharge in cents for a destination zone; fails for an unknown one.
 zone_surcharge_cents() {
@@ -16,19 +17,6 @@ zone_surcharge_cents() {
   esac
 }
 
-# Tier rate in cents for a parcel weight: tier_rate_cents <weight_g>
-tier_rate_cents() {
-  if [ "$1" -le 1000 ]; then
-    echo 700
-  elif [ "$1" -le 5000 ]; then
-    echo 1200
-  elif [ "$1" -le 20000 ]; then
-    echo 2400
-  else
-    echo 4800
-  fi
-}
-
 # Shipping cost in cents: quote <weight_g> <destination>
 quote() {
   case "$1" in
@@ -38,7 +26,5 @@ quote() {
     echo "unknown destination: $2" >&2
     return 1
   }
-  echo $(( $(tier_rate_cents "$1") + surcharge ))
+  echo $((FLAT_RATE_CENTS + surcharge))
 }
-RATES
-echo "wrote lib/rates.sh"

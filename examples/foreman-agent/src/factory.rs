@@ -21,7 +21,7 @@ use tokio::sync::{Notify, mpsc};
 use crate::agent;
 use crate::foreman::{Assessment, Foreman};
 use crate::observation::{
-    self, Evidence, VerificationResult, WorkerKind, WorkerRecord, WorkerStatus,
+    self, Evidence, TestRun, VerificationResult, WorkerKind, WorkerRecord, WorkerStatus,
 };
 use crate::policy::{self, Action, Config, Floor, Intervention};
 use crate::worker::{Crew, Feed, Stop};
@@ -91,6 +91,8 @@ pub trait Watcher: Send + Sync {
     fn assessment_failed(&self, iteration: usize, error: &str) {}
     /// The policy decided.
     fn intervened(&self, intervention: &Intervention) {}
+    /// The supervisor ran the repository's tests.
+    fn tested(&self, run: &TestRun) {}
 }
 
 /// A watcher that renders nothing.
@@ -122,6 +124,7 @@ pub struct Factory {
     crew: Crew,
     workspace: PathBuf,
     job: String,
+    tests: Option<String>,
     run_id: String,
     watcher: Arc<dyn Watcher>,
 }
@@ -141,9 +144,21 @@ impl Factory {
             crew,
             workspace: workspace.into(),
             job: job.into(),
+            tests: None,
             run_id: run_id(),
             watcher: Arc::new(Silent),
         }
+    }
+
+    /// Check the work by running `command` in the repository.
+    ///
+    /// The supervisor runs it itself, the way it runs `git` itself: a worker
+    /// reporting its own green suite is a claim, and this is the fact. Without
+    /// it a run still works — `tests_sufficient` simply rests on someone
+    /// reading the tests rather than on one having passed.
+    pub fn testing(mut self, command: Option<String>) -> Self {
+        self.tests = command;
+        self
     }
 
     /// Render the run through `watcher`.
@@ -167,6 +182,10 @@ impl Factory {
         let started = Instant::now();
         let mut state = State::new();
         let (signals, mut inbox) = mpsc::unbounded_channel();
+
+        // A baseline before anyone touches the repository, so a suite that was
+        // already red is not read as the worker having broken it.
+        self.check_tests(&mut state).await;
 
         // The first worker starts unconditionally: there is nothing to assess
         // about a floor where no work has begun.
@@ -282,9 +301,35 @@ impl Factory {
         true
     }
 
+    /// Run the repository's tests, when a command is configured and the floor
+    /// is quiet enough for the answer to mean anything.
+    ///
+    /// A suite read mid-edit is a torn read, so it runs when no worker is
+    /// active; between times the last result is carried, labelled with its age.
+    async fn check_tests(&self, state: &mut State) {
+        let Some(command) = self.tests.as_deref() else {
+            return;
+        };
+        if active_id(&lock(&state.workers)).is_some() {
+            return;
+        }
+        let run = observation::run_tests(&self.workspace, command, &self.config).await;
+        self.watcher.tested(&run);
+        note(
+            &state.events,
+            format!("tests {}", if run.passed { "passed" } else { "failed" }),
+        );
+        state.tests = Some((run, Instant::now()));
+    }
+
     /// One supervisory iteration: observe, assess, decide.
     async fn assess(&self, state: &mut State) -> Intervention {
         state.iteration += 1;
+        self.check_tests(state).await;
+        let tests = state.tests.as_ref().map(|(run, at)| TestRun {
+            ran_seconds_ago: (at.elapsed().as_secs_f64() * 10.0).round() / 10.0,
+            ..run.clone()
+        });
         let git = observation::git_evidence(&self.workspace, &self.config).await;
         let workers = lock(&state.workers).clone();
         let events = lock(&state.events).clone();
@@ -301,6 +346,7 @@ impl Factory {
             failures: &state.failures,
             elapsed: state.started.elapsed(),
             git,
+            tests,
             config: &self.config,
         });
 
@@ -464,6 +510,7 @@ struct State {
     failures: Vec<String>,
     last_assessment: Option<Assessment>,
     last_intervention: Option<Intervention>,
+    tests: Option<(TestRun, Instant)>,
     workers: Arc<Mutex<Vec<WorkerRecord>>>,
     events: Arc<Mutex<VecDeque<String>>>,
     handles: HashMap<String, Stop>,
@@ -482,6 +529,7 @@ impl State {
             failures: Vec::new(),
             last_assessment: None,
             last_intervention: None,
+            tests: None,
             workers: Arc::new(Mutex::new(Vec::new())),
             events: Arc::new(Mutex::new(VecDeque::new())),
             handles: HashMap::new(),

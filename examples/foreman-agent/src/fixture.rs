@@ -16,20 +16,28 @@ use std::process::Command;
 /// supervisor to find — `needs_human` rises and the run escalates, correctly —
 /// which makes it a bad default for an example about the rest of the loop.
 pub const JOB: &str = "Replace the flat shipping rate in shipkit with weight tiers: 700 cents up \
-                       to 1 kg, 1200 up to 5 kg, 2400 up to 20 kg, and 4800 above that, with the \
-                       existing zone surcharge still added on top. Cover the tier boundaries with \
-                       tests.";
+                       to 1000 g, 1200 up to 5000 g, 2400 up to 20000 g, and 4800 above that, \
+                       with the existing zone surcharge still added on top. Cover the tier \
+                       boundaries with tests, and run the suite.";
+
+/// The command that runs the fixture's suite.
+///
+/// Shell, deliberately. It runs inside the Bashkit sandbox, on the host, and
+/// inside an external agent's own shell alike — so the worker can check its
+/// work and the supervisor can check it independently, neither needing a
+/// toolchain that happens to be installed.
+pub const TESTS: &str = "bash tests/run.sh";
 
 /// The fixture, as repository-relative paths and contents.
 pub const FILES: [(&str, &str); 3] = [
     ("README.md", include_str!("resources/sample-repo/README.md")),
     (
-        "src/rates.py",
-        include_str!("resources/sample-repo/src/rates.py"),
+        "lib/rates.sh",
+        include_str!("resources/sample-repo/lib/rates.sh"),
     ),
     (
-        "tests/test_rates.py",
-        include_str!("resources/sample-repo/tests/test_rates.py"),
+        "tests/run.sh",
+        include_str!("resources/sample-repo/tests/run.sh"),
     ),
 ];
 
@@ -107,31 +115,43 @@ pub struct Check {
 /// These are evidence, not the success condition: the factory's own decision is
 /// what the example is about, and grading a live model's code is not.
 pub fn verify(root: &Path) -> Vec<Check> {
-    let rates = fs::read_to_string(root.join("src/rates.py")).unwrap_or_default();
+    let rates = fs::read_to_string(root.join("lib/rates.sh")).unwrap_or_default();
     let lowercase_rates = rates.to_lowercase();
     let tests = read_tests(root);
     let lowercase_tests = tests.to_lowercase();
 
     vec![
         Check {
-            label: "src/rates.py no longer prices every parcel the same",
-            passed: !rates.contains("return FLAT_RATE_CENTS + ZONE_SURCHARGE_CENTS[destination]"),
+            label: "lib/rates.sh no longer prices every parcel the same",
+            passed: !rates.contains("echo $((FLAT_RATE_CENTS + surcharge))"),
         },
         Check {
-            label: "src/rates.py names weight tiers",
+            label: "lib/rates.sh names weight tiers",
             passed: ["tier", "bracket", "band"]
                 .iter()
                 .any(|word| lowercase_rates.contains(word)),
         },
         Check {
-            label: "the tests mention a tier or a boundary",
+            label: "the tests cover a tier or a boundary",
             passed: lowercase_tests.contains("tier") || lowercase_tests.contains("boundar"),
         },
         Check {
             label: "the existing zone-surcharge test still stands",
-            passed: tests.contains("test_zone_surcharge_is_added"),
+            passed: tests.contains("zone surcharge is added"),
         },
     ]
+}
+
+/// Run the fixture's suite the way anyone would, and say whether it passed.
+///
+/// The example's own last word on a run: the supervisor's reading of the tests
+/// is evidence, and this is the fact.
+pub fn tests_pass(root: &Path) -> bool {
+    Command::new("bash")
+        .arg("tests/run.sh")
+        .current_dir(root)
+        .output()
+        .is_ok_and(|output| output.status.success())
 }
 
 /// Whether the working copy differs from the fixture at all.
@@ -202,26 +222,32 @@ mod tests {
     }
 
     #[test]
-    fn a_tiered_rewrite_satisfies_the_checks() {
+    fn the_demo_edits_leave_a_repository_that_passes_its_own_suite() {
+        // The demo's edits are the same shell a worker runs, so running them
+        // here checks the fixture, the checks, and the scripts at once.
         let root = tempfile::tempdir().unwrap();
         materialize(root.path()).unwrap();
-        fs::write(
-            root.path().join("src/rates.py"),
-            "TIERS = [(1.0, 800), (5.0, 1400)]\n\
-             def quote(weight_kg, destination):\n\
-             \x20   return tier_for(weight_kg) + surcharge(destination)\n\
-             def tier_for(weight_kg):\n\
-             \x20   return next(c for limit, c in TIERS if weight_kg <= limit)\n",
-        )
-        .unwrap();
-        fs::write(
-            root.path().join("tests/test_tiers.py"),
-            "def test_tier_boundary_is_inclusive():\n    assert True\n",
-        )
-        .unwrap();
+        assert!(tests_pass(root.path()), "the fixture starts green");
+
+        for script in [
+            include_str!("resources/demo/write_rates.sh"),
+            include_str!("resources/demo/write_tests.sh"),
+        ] {
+            let status = Command::new("bash")
+                .arg("-c")
+                .arg(script)
+                .current_dir(root.path())
+                .output()
+                .unwrap();
+            assert!(status.status.success(), "demo script failed");
+        }
 
         assert!(changed(root.path()));
-        let checks = verify(root.path());
-        assert!(checks.iter().all(|check| check.passed));
+        for check in verify(root.path()) {
+            assert!(check.passed, "{}", check.label);
+        }
+        // And the suite it left behind still passes — including the boundaries
+        // the job asked for.
+        assert!(tests_pass(root.path()));
     }
 }

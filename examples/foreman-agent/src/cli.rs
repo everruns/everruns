@@ -43,6 +43,15 @@ pub struct Run {
     #[arg(long, value_enum, default_value_t = WorkerChoice::Session)]
     pub worker: WorkerChoice,
 
+    /// The command that runs this repository's tests, e.g. `cargo test` or
+    /// `bash tests/run.sh`.
+    ///
+    /// The supervisor runs it itself, the way it runs `git` itself. Without it
+    /// `tests_sufficient` rests on someone reading the tests rather than on one
+    /// having passed.
+    #[arg(long, value_name = "COMMAND")]
+    pub tests: Option<String>,
+
     /// An external agent's command line, overriding `--worker`.
     ///
     /// `{repo}` and `{mission}` are substituted as whole arguments, so no shell
@@ -128,6 +137,29 @@ mod tests {
         // one flag away.
         assert_eq!(run.worker, WorkerChoice::Session);
         assert!(run.external().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_test_command_is_optional_and_passed_through() {
+        assert_eq!(
+            run(&["foreman", "run", "--repo", ".", "--job", "j"]).tests,
+            None
+        );
+        assert_eq!(
+            run(&[
+                "foreman",
+                "run",
+                "--repo",
+                ".",
+                "--job",
+                "j",
+                "--tests",
+                "cargo test"
+            ])
+            .tests
+            .as_deref(),
+            Some("cargo test")
+        );
     }
 
     #[test]
