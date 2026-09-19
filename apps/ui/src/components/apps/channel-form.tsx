@@ -1,7 +1,9 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import {
   CalendarClock,
+  ChevronDown,
   Globe,
   Hash,
   MessageSquareText,
@@ -51,6 +53,9 @@ import {
   getSlackReplyModeDisplayName,
 } from "@/lib/app-channels";
 import { generateChannelToken } from "@/lib/channel-tokens";
+import { beginSlackInstall } from "@/lib/api/agent-endpoints";
+import { ApiError } from "@/lib/api/client";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { cn } from "@/lib/utils";
 
@@ -534,19 +539,67 @@ function FieldGrid({ children }: { children: React.ReactNode }) {
   return <div className="grid gap-4 md:grid-cols-2">{children}</div>;
 }
 
+/**
+ * Drives the one-click Slack install for an existing endpoint (EVE-1069).
+ *
+ * `unavailable` is not an error state. A deployment holding no Slack app
+ * configuration token answers 501, which is the self-hosted steady state: the
+ * manual fields are that deployment's supported path, not a fallback from a
+ * failure, so the UI opens them rather than reporting something went wrong.
+ */
+function useSlackInstall(endpointId?: string) {
+  const [pending, setPending] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const begin = useCallback(async () => {
+    if (!endpointId) return;
+    setPending(true);
+    setError(null);
+    try {
+      const { authorize_url } = await beginSlackInstall(endpointId);
+      // A full navigation, not a router push: the next hop is Slack's consent
+      // screen, which is outside this app.
+      window.location.href = authorize_url;
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 501) {
+        setUnavailable(true);
+      } else {
+        setError(caught instanceof Error ? caught.message : "Could not start the Slack install.");
+      }
+      setPending(false);
+    }
+  }, [endpointId]);
+
+  return { begin, pending, unavailable, error } as const;
+}
+
 export function ChannelForm({
   state,
   onChange,
   mode,
   section = "all",
+  endpointId,
 }: {
   state: ChannelFormState;
   onChange: (state: ChannelFormState) => void;
   mode: "new" | "edit";
   section?: ChannelFormSection;
+  /**
+   * The endpoint's public id (`appchan_…`), present once it exists. One-click
+   * Slack install needs it because Slack redirects back to this endpoint's own
+   * callback route, so the button appears only after the endpoint is saved.
+   */
+  endpointId?: string;
 }) {
   const update = <K extends keyof ChannelFormState>(key: K, value: ChannelFormState[K]) =>
     onChange({ ...state, [key]: value });
+  const slackInstall = useSlackInstall(endpointId);
+  // An endpoint already carrying credentials opens the manual block, so an
+  // operator who configured it by hand is not hunting for their own values.
+  const slackCredentialsEntered = Boolean(
+    state.slackSigningSecret || state.slackBotToken || state.slackTeamId || state.slackChannelId,
+  );
 
   if (section === "runs") {
     return (
@@ -1052,50 +1105,96 @@ export function ChannelForm({
 
       {state.kind === "slack" && (section === "all" || section === "invocation") && (
         <div className="space-y-4">
-          <FieldGrid>
-            <div className="space-y-2">
-              <Label htmlFor="slack_signing_secret">Signing secret</Label>
-              <Input
-                id="slack_signing_secret"
-                type="password"
-                value={state.slackSigningSecret}
-                onChange={(event) => update("slackSigningSecret", event.target.value)}
-                placeholder={
-                  mode === "edit" ? "Leave blank to keep existing secret" : "Slack signing secret"
-                }
-              />
+          {mode === "edit" && endpointId && !slackInstall.unavailable && (
+            <div className="border p-4 space-y-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Connect to Slack</p>
+                <p className="text-xs text-muted-foreground">
+                  Creates the Slack app for this endpoint and installs it to your workspace. You
+                  approve one consent screen; the signing secret, bot token and workspace ID are
+                  filled in for you.
+                </p>
+              </div>
+              <Button type="button" onClick={slackInstall.begin} disabled={slackInstall.pending}>
+                <Slack className="size-4" />
+                {slackInstall.pending ? "Opening Slack…" : "Connect to Slack"}
+              </Button>
+              {slackInstall.error && (
+                <p className="text-xs text-destructive">{slackInstall.error}</p>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="slack_bot_token">Bot token</Label>
-              <Input
-                id="slack_bot_token"
-                type="password"
-                value={state.slackBotToken}
-                onChange={(event) => update("slackBotToken", event.target.value)}
-                placeholder={mode === "edit" ? "Leave blank to keep existing token" : "xoxb-..."}
-              />
-            </div>
-          </FieldGrid>
-          <FieldGrid>
-            <div className="space-y-2">
-              <Label htmlFor="slack_team_id">Workspace ID</Label>
-              <Input
-                id="slack_team_id"
-                value={state.slackTeamId}
-                onChange={(event) => update("slackTeamId", event.target.value)}
-                placeholder="T0123456789"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="slack_channel_id">Channel ID</Label>
-              <Input
-                id="slack_channel_id"
-                value={state.slackChannelId}
-                onChange={(event) => update("slackChannelId", event.target.value)}
-                placeholder="C0123456789"
-              />
-            </div>
-          </FieldGrid>
+          )}
+          {mode === "new" && (
+            <p className="text-xs text-muted-foreground">
+              Save the endpoint to connect it to Slack in one click, or fill the fields below in now
+              if you already have a Slack app.
+            </p>
+          )}
+          <Collapsible defaultOpen={slackCredentialsEntered || mode === "new"}>
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between text-left text-sm font-medium"
+              >
+                <span>Configure manually</span>
+                <ChevronDown className="size-4 text-muted-foreground" />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4 pt-4">
+              <p className="text-xs text-muted-foreground">
+                Every field here is optional. An endpoint with no signing secret simply rejects
+                Slack requests until one is set, so you can save now and finish later.
+              </p>
+              <FieldGrid>
+                <div className="space-y-2">
+                  <Label htmlFor="slack_signing_secret">Signing secret</Label>
+                  <Input
+                    id="slack_signing_secret"
+                    type="password"
+                    value={state.slackSigningSecret}
+                    onChange={(event) => update("slackSigningSecret", event.target.value)}
+                    placeholder={
+                      mode === "edit"
+                        ? "Leave blank to keep existing secret"
+                        : "Slack signing secret"
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="slack_bot_token">Bot token</Label>
+                  <Input
+                    id="slack_bot_token"
+                    type="password"
+                    value={state.slackBotToken}
+                    onChange={(event) => update("slackBotToken", event.target.value)}
+                    placeholder={
+                      mode === "edit" ? "Leave blank to keep existing token" : "xoxb-..."
+                    }
+                  />
+                </div>
+              </FieldGrid>
+              <FieldGrid>
+                <div className="space-y-2">
+                  <Label htmlFor="slack_team_id">Workspace ID</Label>
+                  <Input
+                    id="slack_team_id"
+                    value={state.slackTeamId}
+                    onChange={(event) => update("slackTeamId", event.target.value)}
+                    placeholder="T0123456789"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="slack_channel_id">Channel ID</Label>
+                  <Input
+                    id="slack_channel_id"
+                    value={state.slackChannelId}
+                    onChange={(event) => update("slackChannelId", event.target.value)}
+                    placeholder="C0123456789"
+                  />
+                </div>
+              </FieldGrid>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
       )}
 

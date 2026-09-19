@@ -55,6 +55,8 @@ pub mod app;
 // The seam a Slack-native capability acts through; the Slack endpoint row it
 // resolves against lives in `app` (EVE-1024).
 pub mod slack_action;
+pub mod slack_channel;
+pub mod slack_provisioning;
 
 // Stored Agent/AgentVersion persistence records carved out of `everruns-core`
 // (EVE-877). Execution consumes only `everruns_core::AgentDefinition`, produced
@@ -231,8 +233,10 @@ pub use app::{
     AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
     AppEndpointAuthRequirements, AppStatus, CaptchaProvider, ChannelType, EndpointStatus,
     FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig, PublicChatChannelConfig,
-    SlackChannelConfig, SlackReplyMode,
+    SlackReplyMode,
 };
+// Carved out of `app` for the size ratchet; the public path is unchanged.
+pub use slack_channel::SlackChannelConfig;
 
 // Payment accounting records (EVE-838). The execution-contract types
 // (PaymentRail/PaymentMethod/MachinePaymentRequest/MachinePaymentResponse) stay

@@ -210,7 +210,12 @@ function AgentEndpointForm({
           <PageMain>
             <Card>
               <CardContent className="py-5">
-                <ChannelForm state={formState} onChange={setFormState} mode="edit" />
+                <ChannelForm
+                  state={formState}
+                  onChange={setFormState}
+                  mode="edit"
+                  endpointId={endpoint.id}
+                />
               </CardContent>
             </Card>
           </PageMain>

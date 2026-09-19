@@ -89,3 +89,23 @@ export async function triggerAgentEndpoint(
   );
   return response.data;
 }
+
+export interface BeginSlackInstallResult {
+  /** Send the operator here; Slack shows one consent screen, then redirects back. */
+  authorize_url: string;
+}
+
+/**
+ * Start the one-click Slack install for an endpoint (EVE-1069).
+ *
+ * Keyed on the endpoint's own public id rather than the agent, because the
+ * route is the same `/v1/e/{endpoint}` family Slack itself calls back into.
+ *
+ * Answers 501 when the deployment holds no Slack app configuration token —
+ * the self-hosted steady state, where the manual fields are the supported
+ * path rather than a fallback from a failure.
+ */
+export async function beginSlackInstall(endpointId: string): Promise<BeginSlackInstallResult> {
+  const response = await api.post<BeginSlackInstallResult>(`/v1/e/${endpointId}/slack/install`);
+  return response.data;
+}
