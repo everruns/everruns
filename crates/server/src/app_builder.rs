@@ -283,25 +283,6 @@ fn apply_personal_access_token_routes_wrap(
 // `form-action` must remain the LAST directive: the MCP OAuth consent page
 // extends it by appending the validated client redirect origin to this string
 // (see `auth::mcp_oauth::oauth_authorize`).
-pub(crate) const BASE_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
-
-fn permissions_policy_header_value(
-    voice_enabled: bool,
-    webmcp_enabled: bool,
-) -> axum::http::HeaderValue {
-    let tools = if webmcp_enabled {
-        "tools=(self)"
-    } else {
-        "tools=()"
-    };
-    let value = format!(
-        "camera=(), {}, geolocation=(), {tools}",
-        api::voice::microphone_permissions_policy_directive(voice_enabled),
-    );
-    axum::http::HeaderValue::from_str(&value)
-        .expect("permissions policy value is assembled from static directives")
-}
-
 // =========================================================================
 // ServerContext
 // =========================================================================
@@ -1886,11 +1867,16 @@ impl ServerAppBuilder {
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("permissions-policy"),
-                permissions_policy_header_value(feature_flags.voice, feature_flags.webmcp),
+                crate::security_headers::permissions_policy_header_value(
+                    feature_flags.voice,
+                    feature_flags.webmcp,
+                ),
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("content-security-policy"),
-                axum::http::HeaderValue::from_static(BASE_CONTENT_SECURITY_POLICY),
+                axum::http::HeaderValue::from_static(
+                    crate::security_headers::BASE_CONTENT_SECURITY_POLICY,
+                ),
             ));
 
         let app = app.layer(TraceLayer::new_for_http().make_span_with(
@@ -1970,6 +1956,7 @@ impl ServerAppBuilder {
             let grpc_connector_registry = connector_registry.clone();
             let grpc_provider_resolver = provider_resolver.clone();
             let grpc_permission_resolver = auth_state.permission_resolver.clone();
+            let grpc_sqldb_store = sqldb_store.clone();
             let grpc_org_rate_limiter = Arc::new(org_rate_limiter.clone());
 
             let grpc_task_broadcaster = task_broadcaster.clone();
@@ -1999,6 +1986,7 @@ impl ServerAppBuilder {
                     let grpc_connector_registry = grpc_connector_registry.clone();
                     let grpc_provider_resolver = grpc_provider_resolver.clone();
                     let grpc_permission_resolver = grpc_permission_resolver.clone();
+                    let grpc_sqldb_store = grpc_sqldb_store.clone();
                     let grpc_org_rate_limiter = grpc_org_rate_limiter.clone();
                     let grpc_task_broadcaster = grpc_task_broadcaster.clone();
                     let grpc_virtual_registry = grpc_virtual_registry.clone();
@@ -2020,6 +2008,8 @@ impl ServerAppBuilder {
                         }
                         grpc_svc.set_connector_registry(grpc_connector_registry);
                         grpc_svc.set_permission_resolver(grpc_permission_resolver);
+                        // EVE-1047: the worker and the HTTP routes share one store.
+                        grpc_svc.set_sqldb_store(grpc_sqldb_store);
                         grpc_svc.set_org_rate_limiter(grpc_org_rate_limiter);
                         // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
                         // Mitigation: Bearer token auth + optional mTLS validated before spawn.
@@ -2710,36 +2700,6 @@ mod tests {
         assert_eq!(config.stream_window, 2 * 1024 * 1024); // falls back to default
         assert_eq!(config.connection_window, 16 * 1024 * 1024); // falls back to default
         assert_eq!(config.max_concurrent_streams, 256); // not set, default
-    }
-
-    #[test]
-    fn permissions_policy_denies_microphone_by_default() {
-        assert_eq!(
-            permissions_policy_header_value(false, false)
-                .to_str()
-                .unwrap(),
-            "camera=(), microphone=(), geolocation=(), tools=()"
-        );
-    }
-
-    #[test]
-    fn permissions_policy_allows_microphone_when_voice_is_enabled() {
-        assert_eq!(
-            permissions_policy_header_value(true, false)
-                .to_str()
-                .unwrap(),
-            "camera=(), microphone=(self), geolocation=(), tools=()"
-        );
-    }
-
-    #[test]
-    fn permissions_policy_allows_same_origin_webmcp_when_enabled() {
-        assert_eq!(
-            permissions_policy_header_value(false, true)
-                .to_str()
-                .unwrap(),
-            "camera=(), microphone=(), geolocation=(), tools=(self)"
-        );
     }
 
     // EVE-401: embedders can layer route-specific middleware on the auto-mounted

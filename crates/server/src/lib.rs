@@ -132,6 +132,7 @@ pub mod slack_task_progress;
 
 // App builder for composable server configurations
 pub mod app_builder;
+mod security_headers;
 pub use app_builder::{ServerAppBuilder, ServerContext};
 
 // Org creation policy extension point (EVE-607) — wrappers gate org creation
