@@ -103,6 +103,7 @@ pub fn routes(state: AppState) -> Router {
             post(submit_tool_results),
         )
         .merge(super::mcp_url_consent::routes())
+        .merge(super::question_answers::routes())
         .with_state(state)
 }
 

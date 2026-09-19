@@ -14295,6 +14295,61 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/question-answers": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/question-answers",
+        "description": "Answers the question set an agent raised with `ask_user`, and resumes the\npaused turn.",
+        "operationId": "submit_question_answers",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionAnswersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Answer recorded and workflow resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionAnswersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID, or answers that do not match what was asked"
+          },
+          "404": {
+            "description": "Session or pending question set not found"
+          },
+          "409": {
+            "description": "Session is not waiting for tool results, or the question set was already answered"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/resolved-model": {
       "get": {
         "tags": [
@@ -34886,6 +34941,66 @@
           }
         }
       },
+      "QuestionAnswersRequest": {
+        "type": "object",
+        "description": "Request to answer a pending `ask_user` question set.",
+        "properties": {
+          "answers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubmittedAnswer"
+            },
+            "description": "One answer per asked question, keyed by question id.",
+            "example": [
+              {
+                "id": "target",
+                "other_text": null,
+                "selected": [
+                  "Staging"
+                ]
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/SubmittedStatus",
+            "description": "What the person did. `answered` carries answers; `declined` is a finished\ndecision the model must not re-ask."
+          },
+          "tool_call_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `ask_user` tool call being answered. Optional: when omitted the one\npending question set on the session is used.",
+            "example": "toolu_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "QuestionAnswersResponse": {
+        "type": "object",
+        "description": "Result of answering a pending question set.",
+        "required": [
+          "status",
+          "answered_by",
+          "session_status"
+        ],
+        "properties": {
+          "answered_by": {
+            "type": "string",
+            "description": "Who the server attributed the outcome to.",
+            "example": "user"
+          },
+          "session_status": {
+            "type": "string",
+            "description": "Session status after the answer.",
+            "example": "active"
+          },
+          "status": {
+            "type": "string",
+            "description": "Outcome recorded against the call.",
+            "example": "answered"
+          }
+        }
+      },
       "ReasonCompletedData": {
         "type": "object",
         "description": "Data for reason.completed event",
@@ -38259,6 +38374,41 @@
             "description": "Session status after submission"
           }
         }
+      },
+      "SubmittedAnswer": {
+        "type": "object",
+        "description": "One submitted answer.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Question id, as carried in the `tool.call_requested` payload."
+          },
+          "other_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free text, accepted only when the question allows it."
+          },
+          "selected": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Chosen option labels. Must be labels that were actually offered."
+          }
+        }
+      },
+      "SubmittedStatus": {
+        "type": "string",
+        "description": "The outcomes a caller may submit.\n\n`cancelled` and `timed_out` are deliberately absent: they are the server's to\ndecide, from a superseding message and from the deadline sweep. A caller that\ncould assert them could claim a person's silence as their answer.",
+        "enum": [
+          "answered",
+          "declined"
+        ]
       },
       "SuccessResponse": {
         "type": "object",
