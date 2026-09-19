@@ -180,6 +180,9 @@ async fn harness_binding_survives_engine_resume() {
 
 #[tokio::test]
 async fn default_environment_negotiation_returns_typed_public_error() {
+    let engine = InMemoryEngine::new();
+    let session = engine.create(simulated_agent());
+    let session_id = session.session_id();
     let harness = Harness::builder("coding")
         .requires_capabilities(ComputeCapabilities {
             native_processes: true,
@@ -188,8 +191,7 @@ async fn default_environment_negotiation_returns_typed_public_error() {
         .build()
         .expect("valid harness");
 
-    let error = InMemoryEngine::new()
-        .create(simulated_agent())
+    let error = session
         .harness(harness)
         .start()
         .await
@@ -201,5 +203,14 @@ async fn default_environment_negotiation_returns_typed_public_error() {
         SessionEnvironmentError::MissingHarnessCapability {
             capability: "native_processes"
         }
+    );
+
+    let resumed = engine
+        .resume(session_id)
+        .await
+        .expect("failed negotiation leaves the session reopenable");
+    assert!(
+        resumed.workspace_head().is_none(),
+        "failed negotiation must not persist an environment binding"
     );
 }

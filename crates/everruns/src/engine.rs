@@ -116,6 +116,13 @@ impl Engine {
         }
         let binding = self.binding(session_id);
         let environment = binding.reopen_environment().await?;
+        if let (Some(harness), Some(environment)) =
+            (binding.harness_snapshot(), environment.as_ref())
+        {
+            harness
+                .negotiate(environment)
+                .map_err(ResumeError::Environment)?;
+        }
         let session = Session::new(binding, environment);
         self.remember_state(session_id, &session);
         Ok(session)
@@ -168,6 +175,15 @@ impl Engine {
             .is_some();
         if !exists {
             return Err(ResumeError::SessionNotFound { session_id });
+        }
+        if let Some(harness) = &harness
+            && let Some(environment) = agent
+                .reopen_session_environment(backends.binding_store.as_ref(), session_id)
+                .await?
+        {
+            harness
+                .negotiate(&environment)
+                .map_err(ResumeError::Environment)?;
         }
         self.inner
             .sessions
