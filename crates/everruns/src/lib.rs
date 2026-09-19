@@ -45,6 +45,7 @@ extern crate self as everruns;
 
 // --- Value-first agent description and execution -------------------------
 mod agent;
+mod agent_state;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;

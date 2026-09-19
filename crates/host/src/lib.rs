@@ -47,6 +47,7 @@ pub mod containment;
 #[cfg(feature = "direct-egress")]
 mod egress;
 pub mod environment_preamble;
+mod event_cursor;
 pub mod events;
 pub mod execution_snapshot;
 mod extensions;

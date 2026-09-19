@@ -13,20 +13,20 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use everruns_core::InitialFile;
 use everruns_host::{
     AgentBuilder as RuntimeAgentBuilder, Environment, EnvironmentBindingError,
     EnvironmentBindingStore, EventLogError, EventSink, HarnessBuilder, HostBackends,
     InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder, WorkspaceBackend,
-    WorkspaceBackendId,
 };
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::runtime_provider::Provider;
 use everruns_provider::typed_id::SessionId;
 
+use crate::agent_state::AgentState;
 use crate::capability_config::{
     framework_capability_registry, validate_registered_capability_config,
 };
@@ -325,10 +325,9 @@ pub struct Agent {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
-    /// Caller-provided host backends (event log, session catalog, checkpoints, …).
-    /// Replaces the in-memory defaults; mutually exclusive with `local`.
-    backends: Option<HostBackends>,
-    state: Arc<AgentState>,
+    /// See [`AgentBuilder::backends`]; mutually exclusive with `local`.
+    pub(crate) backends: Option<HostBackends>,
+    pub(crate) state: Arc<AgentState>,
 }
 
 #[derive(Clone)]
@@ -363,59 +362,6 @@ impl fmt::Debug for CapabilityImplementation {
                 .field(&definition.id())
                 .finish(),
         }
-    }
-}
-
-struct AgentState {
-    workspace_backends: Mutex<HashMap<WorkspaceBackendId, Arc<dyn WorkspaceBackend>>>,
-    /// Engine backends for an agent built with [`AgentBuilder::backends`]: owned by the agent
-    /// (shared across its clones) instead of the engine-wide in-memory cell.
-    custom_backends: Arc<tokio::sync::OnceCell<Arc<crate::engine::EngineBackends>>>,
-}
-
-impl AgentState {
-    fn new(workspace_backends: HashMap<WorkspaceBackendId, Arc<dyn WorkspaceBackend>>) -> Self {
-        Self {
-            workspace_backends: Mutex::new(workspace_backends),
-            custom_backends: Arc::new(tokio::sync::OnceCell::new()),
-        }
-    }
-
-    fn remember_backend(&self, backend: Arc<dyn WorkspaceBackend>) -> bool {
-        let mut backends = self
-            .workspace_backends
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let id = backend.id();
-        match backends.get(&id) {
-            Some(existing) => Arc::ptr_eq(existing, &backend),
-            None => {
-                backends.insert(id, backend);
-                true
-            }
-        }
-    }
-
-    fn backend(&self, id: &WorkspaceBackendId) -> Option<Arc<dyn WorkspaceBackend>> {
-        self.workspace_backends
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get(id)
-            .cloned()
-    }
-}
-
-impl fmt::Debug for AgentState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AgentState")
-            .field(
-                "workspace_backend_count",
-                &self
-                    .workspace_backends
-                    .lock()
-                    .map_or(0, |backends| backends.len()),
-            )
-            .finish()
     }
 }
 
@@ -578,18 +524,6 @@ impl Agent {
     #[cfg(feature = "local")]
     pub(crate) fn local_config(&self) -> Option<&crate::LocalConfig> {
         self.local.as_ref()
-    }
-
-    /// Host backends supplied through [`AgentBuilder::backends`], if any.
-    pub(crate) fn custom_backends(&self) -> Option<&HostBackends> {
-        self.backends.as_ref()
-    }
-
-    /// Per-agent cell for the engine backends derived from [`Self::custom_backends`].
-    pub(crate) fn custom_backend_cell(
-        &self,
-    ) -> Arc<tokio::sync::OnceCell<Arc<crate::engine::EngineBackends>>> {
-        self.state.custom_backends.clone()
     }
 
     pub(crate) async fn catalog_session(
@@ -838,9 +772,8 @@ pub struct AgentBuilder {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
-    /// Caller-provided host backends (event log, session catalog, checkpoints, …).
-    /// Replaces the in-memory defaults; mutually exclusive with `local`.
-    backends: Option<HostBackends>,
+    /// See [`AgentBuilder::backends`]; mutually exclusive with `local`.
+    pub(crate) backends: Option<HostBackends>,
 }
 
 impl AgentBuilder {
@@ -1124,20 +1057,6 @@ impl AgentBuilder {
         self.capabilities.push(loaded.capability);
         self.plugin_warnings.extend(loaded.warnings);
         Ok(self)
-    }
-
-    /// Use caller-provided host backends (event log, session catalog, compaction
-    /// checkpoints, …) instead of the in-memory defaults.
-    ///
-    /// Lets an embedding host persist canonical events in its own store (for
-    /// example Postgres) while keeping the facade's loop and lifecycle hooks.
-    /// The host log stays the sole write path and sequence owner.
-    ///
-    /// Mutually exclusive with [`local`](Self::local): [`build`](Self::build)
-    /// returns [`BuildError::ConflictingBackends`] when both are set.
-    pub fn backends(mut self, backends: HostBackends) -> Self {
-        self.backends = Some(backends);
-        self
     }
 
     /// Enable restart-survivable local state and a real workspace.
