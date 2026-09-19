@@ -2,6 +2,7 @@
 //
 // Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (detail)
 
+use super::super::mcp_catalog::{McpServerAgentNamesRow, McpServerAgentUsageRow};
 use super::super::mcp_tool_cache::*;
 use super::super::models::*;
 use super::InMemoryDatabase;

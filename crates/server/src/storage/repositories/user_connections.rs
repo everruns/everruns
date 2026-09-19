@@ -1,5 +1,6 @@
 // PostgreSQL repository: User Connections
 
+use super::super::mcp_catalog::UserMcpConnectionRow;
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;

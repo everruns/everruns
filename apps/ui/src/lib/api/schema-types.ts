@@ -780,6 +780,7 @@ export type McpErrorCategory = Schemas["McpErrorCategory"];
 export type McpErrorCode = Schemas["McpErrorCode"];
 export type McpExecuteError = Schemas["McpExecuteError"];
 export type McpServerActsAs = Schemas["McpServerActsAs"];
+export type McpServerCatalogEntry = Schemas["McpServerCatalogEntry"];
 export type McpServerPresetRef = Schemas["McpServerPresetRef"];
 export type McpServerUsageResponse = Schemas["McpServerUsageResponse"];
 export type McpToolAnnotations = Schemas["McpToolAnnotations"];

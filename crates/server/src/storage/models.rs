@@ -1929,18 +1929,6 @@ pub struct McpServerRow {
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, FromRow)]
-pub struct McpServerAgentUsageRow {
-    pub mcp_server_id: McpServerId,
-    pub used_by_agents: i64,
-}
-
-#[derive(Debug, Clone, FromRow)]
-pub struct McpServerAgentNamesRow {
-    pub agent_names: Vec<String>,
-    pub total_count: i64,
-}
-
 /// Input for creating an MCP server
 #[derive(Debug, Clone)]
 pub struct CreateMcpServerRow {
@@ -2386,18 +2374,6 @@ pub struct UserConnectionRow {
     pub provider_metadata: Option<sqlx::types::JsonValue>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow)]
-pub struct UserMcpConnectionRow {
-    pub provider: String,
-    pub provider_username: Option<String>,
-    pub scopes: Option<String>,
-    pub connected_at: DateTime<Utc>,
-    pub server_id: McpServerId,
-    pub server_name: String,
-    pub server_url: String,
-    pub server_status: String,
 }
 
 /// Input for creating a user connection

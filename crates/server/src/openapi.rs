@@ -323,7 +323,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::providers::provider_config,
         api::models::model_config,
         api::mcp_servers::mcp_server_config,
-        api::user_connections::list_mcp_connections,
+        api::user_connections::mcp_connections::list_mcp_connections,
         // Users - additional
         api::users::switch_org,
         api::users::update_profile,
