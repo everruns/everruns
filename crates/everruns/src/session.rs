@@ -676,6 +676,12 @@ impl SessionActor {
 
     async fn ensure_runtime(&mut self) -> Result<(), RunError> {
         if self.runtime.is_none() {
+            self.execution
+                .ensure_harness_requirement()
+                .await
+                .map_err(|error| {
+                    everruns_provider::error::AgentLoopError::store(error.to_string())
+                })?;
             self.runtime = Some(
                 self.agent
                     .build_runtime_with_event_sink(
