@@ -152,6 +152,7 @@ service WorkerService {
     // Resolve user connection tokens (e.g. GitHub, Daytona) lazily at tool execution time
     // Server-side decrypts stored tokens or mints fresh GitHub App tokens
     rpc GetConnectionToken(GetConnectionTokenRequest) returns (GetConnectionTokenResponse);
+    rpc GetMcpConnectionToken(GetMcpConnectionTokenRequest) returns (GetConnectionTokenResponse);
     rpc GetConnectionUser(GetConnectionUserRequest) returns (GetConnectionUserResponse);
     rpc GetConnectionTokenForUser(GetConnectionTokenForUserRequest) returns (GetConnectionTokenForUserResponse);
 
@@ -1392,6 +1393,12 @@ message SessionStorageListSecretsResponse {
 message GetConnectionTokenRequest {
     Uuid session_id = 1;
     string provider = 2;  // e.g. "github", "daytona", "gitlab"
+}
+
+message GetMcpConnectionTokenRequest {
+    Uuid session_id = 1;
+    string provider = 2;
+    string acts_as = 3;
 }
 
 message GetConnectionTokenResponse {
