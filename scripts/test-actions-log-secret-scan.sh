@@ -126,6 +126,19 @@ if [ ! -s "$WORK/openapi-examples.log" ]; then
 fi
 expect "documented OpenAPI examples carry no credential shape" quiet "$WORK/openapi-examples.log"
 
+# A credential must begin at a token boundary. `sk-` inside the ordinary word
+# "ask-" is what turned the sweep red on every branch of the nine-issue Ask User
+# project: a PR body linking the Linear issue carries
+# `.../EVE-1053/ask-user-capability-contract-schema-and-knowledge-spec`, whose
+# `sk-user-capability-...` tail is 20+ characters of the OpenAI key alphabet.
+# Docker Build echoes PR bodies, so this reached a public log on every run.
+cat > "$WORK/issue-links.log" <<'LOG'
+2026-09-19T07:52:42Z "body": "## Why\n[EVE-1053](https://linear.app/everruns/issue/EVE-1053/ask-user-capability-contract-schema-and-knowledge-spec) needs a structured decision surface."
+2026-09-19T07:52:42Z branch factory/eve-1053-ask-user-capability-contract-schema-and-knowledge-spec
+2026-09-19T07:52:42Z task-user-facing-configuration-and-rollout-notes
+LOG
+expect "issue links and branch names that merely contain a prefix" quiet "$WORK/issue-links.log"
+
 cat > "$WORK/ordinary-build.log" <<'LOG'
 2026-09-18T04:06:16Z env:
 2026-09-18T04:06:16Z   CACHE_KEY: debug-ubuntu-latest
