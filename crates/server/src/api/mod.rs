@@ -75,6 +75,7 @@ pub mod session_tasks;
 pub mod sessions;
 pub mod skills;
 pub mod slack_events;
+pub mod slack_install;
 pub mod sse;
 pub mod task_webhooks;
 pub mod tool_results;

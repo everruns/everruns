@@ -391,6 +391,8 @@ pub struct ServerAppBuilder {
     built_in_harnesses: Option<Vec<everruns_platform::BuiltInHarnessDefinition>>,
     connector_registry: Option<everruns_platform::connector::ConnectorRegistry>,
     email_sender: Option<Arc<dyn everruns_platform::email::EmailSender>>,
+    slack_app_provisioner:
+        Option<Arc<dyn everruns_platform::slack_provisioning::SlackAppProvisioner>>,
     extra_routes: Vec<Router>,
     event_listeners: Vec<Arc<dyn EventListener>>,
     error_reporter: Option<SharedErrorReporter>,
@@ -411,6 +413,7 @@ impl ServerAppBuilder {
             built_in_harnesses: None,
             connector_registry: None,
             email_sender: None,
+            slack_app_provisioner: None,
             extra_routes: Vec::new(),
             event_listeners: Vec::new(),
             error_reporter: None,
@@ -481,6 +484,20 @@ impl ServerAppBuilder {
     /// the shared `HostComposition` runtime surface.
     pub fn email_sender(mut self, sender: Arc<dyn everruns_platform::email::EmailSender>) -> Self {
         self.email_sender = Some(sender);
+        self
+    }
+
+    /// Supply the Slack app provisioner that backs one-click install (EVE-1069).
+    ///
+    /// Creating an endpoint's Slack app needs an app configuration token, which
+    /// is a company credential rather than something each self-hosted
+    /// deployment holds. Left unset, `POST /v1/e/{channel_id}/slack/install`
+    /// answers `501` and the copy-paste flow is unchanged.
+    pub fn slack_app_provisioner(
+        mut self,
+        provisioner: Arc<dyn everruns_platform::slack_provisioning::SlackAppProvisioner>,
+    ) -> Self {
+        self.slack_app_provisioner = Some(provisioner);
         self
     }
 
@@ -1276,6 +1293,20 @@ impl ServerAppBuilder {
             event_delivery.clone(),
             auth_config.base_url.clone(),
         );
+        // One-click Slack install (EVE-1069). The provisioner is absent unless a
+        // deployment supplied one, in which case the route reports itself
+        // unavailable and the copy-paste flow is what operators use.
+        let slack_install_state = {
+            let base = api::slack_install::SlackInstallState::new(
+                slack_state.clone(),
+                auth_state.clone(),
+                auth_config.frontend_url.clone(),
+            );
+            match self.slack_app_provisioner.clone() {
+                Some(provisioner) => base.with_provisioner(provisioner),
+                None => base,
+            }
+        };
         let webhook_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => {
                 api::channel_rate_limit::ChannelRateLimiter::with_valkey("webhook", client)
@@ -1671,7 +1702,8 @@ impl ServerAppBuilder {
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))
-            .merge(api::slack_events::routes(slack_state))
+            .merge(api::slack_events::routes(slack_state.clone()))
+            .merge(api::slack_install::routes(slack_install_state))
             .merge(api::app_webhooks::routes(app_webhooks_state))
             .merge(api::app_a2a::routes(app_a2a_state))
             .merge(api::app_api::routes(app_api_state))
