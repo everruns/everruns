@@ -175,9 +175,9 @@ test.describe("endpoint budget refusal", () => {
     ).toBe(endpointId);
 
     const exhausted = await pollFor(
-      () =>
+      async () =>
         jsonResponse<{ balance: number; status: string }>(
-          request.get(`${apiBaseUrl}/api/v1/budgets/${budget.id}`),
+          await request.get(`${apiBaseUrl}/api/v1/budgets/${budget.id}`),
         ),
       (current) => current.status === "exhausted",
       "the production budget listener to exhaust the endpoint budget",
