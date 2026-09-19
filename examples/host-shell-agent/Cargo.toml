@@ -1,0 +1,20 @@
+# An agent that fixes a failing test by compiling and running it. Its only
+# dependency on the framework is the public `everruns` facade, with the
+# `host-shell` execution runtime and the `openai` provider turned on.
+
+[package]
+name = "everruns-host-shell-agent"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+description = "Test-fixing agent running on the contained host shell capability"
+
+[dependencies]
+everruns = { path = "../../crates/everruns", features = ["host-shell", "openai"] }
+everruns-example-demo = { path = "../demo-support" }
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

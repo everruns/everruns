@@ -1,0 +1,9 @@
+# A standalone crate, so the fixture compiles wherever it is materialized.
+[workspace]
+
+[package]
+name = "chunker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]

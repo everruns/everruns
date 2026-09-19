@@ -81,6 +81,11 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     _registry.register(everruns_integrations_filesystem::FileSystemCapability);
     #[cfg(feature = "bashkit")]
     _registry.register(everruns_integrations_bashkit::BashkitShellCapability);
+    // Both contribute a tool named `bash`, so an embedder selects one. Nothing
+    // stops both features being on at once; the capability an agent enables is
+    // what decides which shell it gets.
+    #[cfg(feature = "host-shell")]
+    _registry.register(everruns_integrations_host_shell::HostShellCapability);
     #[cfg(feature = "web-fetch")]
     _registry.register(everruns_integrations_web_fetch::WebFetchCapability::from_env());
     #[cfg(feature = "duckduckgo")]
@@ -113,6 +118,7 @@ mod tests {
             cfg!(feature = "filesystem")
         );
         assert_eq!(registry.has("bashkit_shell"), cfg!(feature = "bashkit"));
+        assert_eq!(registry.has("host_shell"), cfg!(feature = "host-shell"));
         assert_eq!(registry.has("web_fetch"), cfg!(feature = "web-fetch"));
         assert_eq!(registry.has("duckduckgo"), cfg!(feature = "duckduckgo"));
         assert!(!registry.has("openui"));

@@ -321,6 +321,8 @@ mod host_compute {
     pub struct HostCompute {
         root: PathBuf,
         default_timeout_secs: u64,
+        #[cfg(feature = "native-containment")]
+        containment: Option<everruns_containment::SandboxOptions>,
     }
 
     impl HostCompute {
@@ -328,12 +330,41 @@ mod host_compute {
             Self {
                 root: root.into(),
                 default_timeout_secs: 120,
+                #[cfg(feature = "native-containment")]
+                containment: None,
             }
         }
 
         pub fn default_timeout_secs(mut self, seconds: u64) -> Self {
             self.default_timeout_secs = seconds;
             self
+        }
+
+        /// Bound commands with a kernel policy: Landlock and seccomp on Linux,
+        /// Seatbelt on macOS.
+        ///
+        /// This is what turns [`ContainmentLevel::Native`] from a level nothing
+        /// implements into one an [`Environment`](crate::Environment) can be
+        /// built with. `enforced_containment` reports `Native` afterwards, so a
+        /// profile claiming less than this target now enforces is refused,
+        /// exactly as it is for an isolated target.
+        ///
+        /// [`everruns_containment::ContainmentMode::FullAccess`] is not
+        /// containment and is rejected here: pass no options instead, and the
+        /// target keeps saying `None` honestly.
+        #[cfg(feature = "native-containment")]
+        pub fn contained(
+            mut self,
+            options: everruns_containment::SandboxOptions,
+        ) -> Result<Self, ComputeError> {
+            if options.mode().is_full_access() {
+                return Err(ComputeError::Unavailable(
+                    "danger-full-access is not containment; leave the target uncontained instead"
+                        .to_string(),
+                ));
+            }
+            self.containment = Some(options);
+            Ok(self)
         }
     }
 
@@ -352,6 +383,10 @@ mod host_compute {
         }
 
         fn enforced_containment(&self) -> ContainmentLevel {
+            #[cfg(feature = "native-containment")]
+            if self.containment.is_some() {
+                return ContainmentLevel::Native;
+            }
             ContainmentLevel::None
         }
 
@@ -372,6 +407,8 @@ mod host_compute {
             Ok(Arc::new(HostComputeSession {
                 root: self.root.clone(),
                 default_timeout_secs: self.default_timeout_secs,
+                #[cfg(feature = "native-containment")]
+                sandbox: self.containment.clone().map(everruns_containment::provider),
             }))
         }
     }
@@ -380,6 +417,8 @@ mod host_compute {
     pub struct HostComputeSession {
         pub(super) root: PathBuf,
         pub(super) default_timeout_secs: u64,
+        #[cfg(feature = "native-containment")]
+        pub(super) sandbox: Option<Arc<dyn everruns_containment::SandboxProvider>>,
     }
 
     #[async_trait]
@@ -389,11 +428,8 @@ mod host_compute {
                 Some(relative) => self.root.join(relative),
                 None => self.root.clone(),
             };
-            let mut command = tokio::process::Command::new("bash");
+            let mut command = self.shell(&cwd, &request.command)?;
             command
-                .arg("-lc")
-                .arg(&request.command)
-                .current_dir(&cwd)
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .kill_on_drop(true);
@@ -419,6 +455,29 @@ mod host_compute {
             })
         }
     }
+
+    impl HostComputeSession {
+        /// The shell for one command: contained when the target was configured
+        /// that way, a plain login shell otherwise.
+        ///
+        /// A containment provider that cannot apply its policy returns an error
+        /// here, which becomes a launch failure rather than an uncontained run.
+        fn shell(
+            &self,
+            cwd: &std::path::Path,
+            command: &str,
+        ) -> Result<tokio::process::Command, ComputeError> {
+            #[cfg(feature = "native-containment")]
+            if let Some(sandbox) = &self.sandbox {
+                return sandbox
+                    .command(cwd, command)
+                    .map_err(|error| ComputeError::Launch(format!("{error:#}")));
+            }
+            let mut shell = tokio::process::Command::new("bash");
+            shell.arg("-lc").arg(command).current_dir(cwd);
+            Ok(shell)
+        }
+    }
 }
 
 #[cfg(all(test, feature = "process"))]
@@ -430,6 +489,8 @@ mod host_compute_tests {
         HostComputeSession {
             root,
             default_timeout_secs: 30,
+            #[cfg(feature = "native-containment")]
+            sandbox: None,
         }
     }
 
@@ -479,9 +540,33 @@ mod host_compute_tests {
     async fn connecting_to_a_missing_root_fails_before_any_command_runs() {
         let compute = HostCompute::new("/nonexistent/everruns/host/compute/root");
         assert_eq!(compute.kind(), ComputeKind::Host);
-        // The honest pair: a real machine contains nothing and recovers nothing.
+        // The honest pair: an uncontained machine contains nothing and recovers
+        // nothing.
         assert_eq!(compute.enforced_containment(), ContainmentLevel::None);
         assert_eq!(compute.durability(), Durability::None);
+    }
+
+    #[cfg(feature = "native-containment")]
+    #[tokio::test]
+    async fn a_contained_host_target_enforces_native_containment() {
+        use everruns_containment::{ContainmentMode, SandboxOptions};
+
+        let directory = tempfile::tempdir().expect("temp dir");
+        let compute = HostCompute::new(directory.path())
+            .contained(SandboxOptions::new(ContainmentMode::WorkspaceWrite))
+            .expect("a contained target");
+
+        assert_eq!(compute.enforced_containment(), ContainmentLevel::Native);
+        // Still not durable: the boundary says what a command may touch, not
+        // what survives losing the machine.
+        assert_eq!(compute.durability(), Durability::None);
+
+        let open = HostCompute::new(directory.path())
+            .contained(SandboxOptions::new(ContainmentMode::FullAccess));
+        assert!(
+            open.is_err(),
+            "full access is the absence of containment, not a level of it"
+        );
     }
 }
 

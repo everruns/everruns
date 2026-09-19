@@ -115,6 +115,11 @@ pub const CATALOG: &[CatalogEntry] = &[
         connectors: &[],
     },
     CatalogEntry {
+        crate_name: "everruns-integrations-host-shell",
+        capabilities: everruns_integrations_host_shell::CAPABILITY_PLUGINS,
+        connectors: &[],
+    },
+    CatalogEntry {
         crate_name: "everruns-integrations-openai-image",
         capabilities: everruns_integrations_openai_image::CAPABILITY_PLUGINS,
         connectors: &[],

@@ -24,6 +24,15 @@ What exists in code today:
   `Environment`'s named `compute` and `containment` members with the validation
   rule below;
 - the `host` target, `HostCompute`, behind `everruns/host-compute`;
+- kernel containment, `crates/containment/` (`everruns-containment`): Yolop's
+  Seatbelt and Landlock providers, the shell policy checks, and the Linux helper
+  process. `HostCompute::contained` wires it in behind
+  `everruns-host/native-containment`, so `ContainmentLevel::Native` is a level a
+  target can enforce rather than one nothing implements;
+- the model-facing half, `integrations/host-shell/` (`host_shell`), which is
+  Yolop's `bash` tool: approval policy, background streaming, output budget, and
+  the `command`/`commands` argument alias that lets an agent move between it and
+  `bashkit_shell`. Experimental, behind `everruns/host-shell`;
 - a read-only control-plane surface, `GET /v1/sessions/{id}/environment` and
   `GET /v1/environment-targets`, derived from a session's effective
   capabilities because profiles are not stored yet, which the response says with
@@ -40,8 +49,8 @@ derived `resolved_from: "capabilities"` answer reaches an org only after a
 platform user enrols it, and the flag comes down once profiles replace the
 derivation. See [Feature Flags](../security/feature-flags.md).
 
-Not yet: environment profiles as agent configuration, the machine target,
-kernel containment, and the provider ports. That concept solved the durable
+Not yet: environment profiles as agent configuration, the machine target, and
+the provider ports. That concept solved the durable
 logical sandbox: one working filesystem, provider-neutral drivers, checkpoints,
 and physical-loss recovery. This proposal adds the two things it left out, then
 folds Yolop into the same contract:
@@ -920,10 +929,14 @@ Bashkit and one on Daytona, read and write the same files.
 **P3, machine target and consolidation.** SSH or daemon transport, then port
 E2B, Deno, Sprites, and container behind the driver contract as already planned.
 
-**Later, kernel containment.** Yolop's Seatbelt and Landlock providers become
-`containment: native` for the host and machine targets, extracted into a crate
-both repositories consume. This is the phase that makes containment a choice
-rather than a description, and nothing before it depends on it.
+**Done, kernel containment.** Yolop's Seatbelt and Landlock providers are
+`everruns-containment`, and `HostCompute::contained` makes them
+`containment: native` for the host target. This is the phase that makes
+containment a choice rather than a description. Open question 2 below is
+answered: its own publishable package, not a module of `everruns-host`, because
+the deciding constraint was that Yolop pin it on its own release train.
+Remaining: the machine target's remote policy, and a network allowlist rather
+than the current deny.
 
 P1 and P2 are independent of the Daytona durability work in
 [Sandbox Abstraction](sandbox-abstraction.md) Phase 2 and can run beside it.
@@ -932,7 +945,11 @@ P1 and P2 are independent of the Daytona durability work in
 
 - Extracting Yolop's containment providers couples two release trains. The crate
   boundary must be small enough that Yolop can pin a published version, as it
-  already does for Tuika and `everruns-host`.
+  already does for Tuika and `everruns-host`. `everruns-containment` is sized
+  for that: OS primitives and a bash grammar, no Everruns dependency, so Yolop
+  can adopt it without taking the runtime's cadence. What it does *not* yet
+  solve is the second direction of the trade, Yolop taking the target layer;
+  until it does, the two repositories still each own a `bash` tool.
 - A machine target invites treating someone's laptop as durable agent
   infrastructure. The `durability: none` declaration must be enforced at
   validation time, not documented as a caveat.
@@ -944,9 +961,14 @@ P1 and P2 are independent of the Daytona durability work in
 
 1. Is `sandbox` the better wire name for the containment field, given that
    `sandbox: none` says the original request literally?
-2. When kernel containment does arrive, where does the shared crate live: inside
-   `everruns-host`, or its own publishable crate that both repositories pin, the
-   way Yolop already pins Tuika?
+2. ~~When kernel containment does arrive, where does the shared crate live:
+   inside `everruns-host`, or its own publishable crate that both repositories
+   pin, the way Yolop already pins Tuika?~~ Its own package,
+   `everruns-containment`. `everruns-host` is a heavy dependency that Yolop
+   already carries, so hosting the layer there would have worked, but it would
+   have tied the containment layer's releases to the runtime's. A package whose
+   only dependencies are the OS primitives and a bash grammar can be pinned
+   alone, which is what the risk below asks for.
 3. Does the Environment row own a workspace head, or reference one the Session
    already bound? The domain model takes the second reading, which is what lets
    a second session on another environment bind the same files.

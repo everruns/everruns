@@ -915,6 +915,13 @@ jobs:
           cargo test -p everruns-integrations-cursor
           cargo test -p everruns-integrations-e2b
           cargo test -p everruns-integrations-github
+          # The host shell and the containment layer under it. The containment
+          # tests spawn the real helper binary and assert the Landlock and
+          # seccomp boundary; on a runner whose kernel cannot enforce Landlock
+          # ABI v3 they assert the fail-closed error and return, so the job stays
+          # honest either way rather than passing vacuously.
+          cargo test -p everruns-containment
+          cargo test -p everruns-integrations-host-shell
           cargo test -p everruns-integrations-sprites
           cargo test -p everruns-integrations-typesafe
           # The lib-only half (client, classifier, framework capability) must keep

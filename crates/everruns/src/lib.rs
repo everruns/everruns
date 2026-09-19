@@ -83,6 +83,14 @@ pub use everruns_builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
 };
+/// Containment for the host shell: what a command may touch, and the boundary
+/// `HostCompute::contained` applies.
+#[cfg(feature = "host-shell")]
+pub use everruns_containment::{
+    ContainmentMode, SandboxLauncher, SandboxOptions, SandboxProvider,
+    configure_stdio as configure_contained_stdio, danger_warning, network_access,
+    provider as containment_provider,
+};
 pub use everruns_core::classifier::{
     ClassificationAnswer, ClassificationOutcome, ClassificationQuestion, ClassificationRequest,
     ClassifierService,
@@ -103,6 +111,12 @@ pub use everruns_integrations_bashkit::BashkitShell;
 pub use everruns_integrations_duckduckgo::DuckDuckGo;
 #[cfg(feature = "filesystem")]
 pub use everruns_integrations_filesystem::FileSystem;
+/// The host shell capability, its approval policy, and the seam a host fills to
+/// put a person in front of a command.
+#[cfg(feature = "host-shell")]
+pub use everruns_integrations_host_shell::{
+    ApprovalPolicy, HostShell, HostShellApproval, ShellApprovalGate, ShellApprovalRequest,
+};
 /// The TypeSafe classifier provider, for [`Classifier::new`], and the
 /// capability that hands the same tool to an agent.
 #[cfg(feature = "typesafe")]
@@ -314,6 +328,8 @@ pub mod prelude {
         ToolSearch,
     };
     pub use crate::{CatalogError, ModelInfo, ModelProfile};
+    #[cfg(feature = "host-shell")]
+    pub use crate::{ContainmentMode, HostShell};
     pub use crate::{DriverId, EnvCredentialError, EnvCredentialProvider};
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};

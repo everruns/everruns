@@ -38,6 +38,7 @@ uuid.workspace = true
 
 everruns-core.workspace = true
 everruns-capability.workspace = true
+everruns-containment = { workspace = true, optional = true }
 everruns-builtins = { workspace = true, optional = true }
 everruns-engine.workspace = true
 everruns-mcp = { workspace = true, optional = true }
@@ -45,6 +46,7 @@ everruns-provider.workspace = true
 everruns-openrouter = { workspace = true, optional = true }
 everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }
+everruns-integrations-host-shell = { workspace = true, optional = true }
 everruns-integrations-web-fetch = { workspace = true, optional = true }
 everruns-integrations-duckduckgo = { workspace = true, optional = true }
 everruns-integrations-lua = { workspace = true, optional = true }
@@ -65,12 +67,19 @@ mcp = ["dep:everruns-mcp", "direct-egress"]
 mcp-stdio = ["mcp", "everruns-mcp/stdio"]
 filesystem = ["dep:everruns-integrations-filesystem"]
 bashkit = ["filesystem", "dep:everruns-integrations-bashkit", "direct-egress"]
+# The `bash` tool over real host processes, contained by the kernel. Separate
+# from `process` because that feature is about spawning at all, while this one
+# is about handing the model a shell.
+host-shell = ["filesystem", "native-containment", "dep:everruns-integrations-host-shell"]
 web-fetch = ["dep:everruns-integrations-web-fetch", "direct-egress"]
 duckduckgo = ["dep:everruns-integrations-duckduckgo", "direct-egress"]
 lua = ["dep:everruns-integrations-lua", "direct-egress"]
 # `compute::HostCompute` and the skill command executor both spawn and time
 # out real processes; unification from other crates is not a contract.
 process = ["tokio/process", "tokio/time"]
+# Kernel containment for `HostCompute`, which is what makes
+# `Containment::native()` something an Environment can actually be built with.
+native-containment = ["process", "dep:everruns-containment"]
 # Deployment-owned utility LLM (OpenAI or the OpenRouter gateway).
 utility-llm = ["everruns-provider/http", "dep:everruns-openrouter"]
 # Kept as the pre-OpenRouter name of the same wiring.

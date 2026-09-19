@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Host Shell** - A new `host_shell` capability runs the `bash` tool as real
+  child processes on the machine hosting the agent, bounded by a kernel policy.
+  Ported from Yolop: `everruns-containment` carries the Seatbelt and Landlock
+  providers, `everruns-integrations-host-shell` the capability and tool, and
+  `HostCompute::contained` makes `ContainmentLevel::Native` a level a target can
+  actually enforce. See `examples/host-shell-agent`.
+
 ## [0.29.0] - 2026-09-18
 
 ### Highlights
