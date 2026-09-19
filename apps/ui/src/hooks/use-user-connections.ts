@@ -10,6 +10,7 @@ import {
   verifyConnection,
 } from "@/lib/api/user-connections";
 import { queryKeys } from "@/lib/query-keys";
+import { useOrg } from "@/providers/org-provider";
 
 export function useUserConnections() {
   return useQuery({
@@ -20,16 +21,20 @@ export function useUserConnections() {
 }
 
 export function useUserMcpConnections() {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
   const query = useInfiniteQuery({
-    queryKey: queryKeys.userConnections.mcp(),
+    queryKey: queryKeys.userConnections.mcp(org),
     queryFn: ({ pageParam }) => getUserMcpConnections(pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
+    enabled: !!org,
     staleTime: 30000,
   });
   return {
     ...query,
     data: query.data?.pages.flatMap((page) => page.data),
+    isLoading: orgLoading || query.isLoading,
   };
 }
 

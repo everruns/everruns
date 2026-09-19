@@ -4,6 +4,7 @@ import { getMcpServerCatalog, getMcpServerUsage, mcpServersCrudApi } from "@/lib
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type { CreateMcpServerRequest, UpdateMcpServerRequest } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
+import { useOrg } from "@/providers/org-provider";
 import { createCrudHooks } from "./create-crud-hooks";
 
 // MCP Server hooks
@@ -25,17 +26,20 @@ export const useDeleteMcpServer = mcpServerCrudHooks.useDelete;
 export const useDestroyMcpServer = mcpServerCrudHooks.useDestroy;
 
 export function useMcpServerCatalog(enabled = true) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
   const query = useInfiniteQuery({
-    queryKey: queryKeys.mcpServers.catalog(),
+    queryKey: queryKeys.mcpServers.catalog(org),
     queryFn: ({ pageParam }) => getMcpServerCatalog(pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
-    enabled,
+    enabled: enabled && !!org,
     staleTime: 30000,
   });
   return {
     ...query,
     data: query.data?.pages.flatMap((page) => page.data),
+    isLoading: orgLoading || query.isLoading,
   };
 }
 
