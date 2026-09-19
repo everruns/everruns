@@ -137,15 +137,14 @@ async fn auto_mode_probes_then_falls_back_for_each_stateful_era() {
 #[tokio::test]
 async fn rejects_protocol_headers_and_session_shapes_outside_the_configured_era() {
     let stateful = MockMcpOAuthServer::new(MockMcpProtocolEra::V2025June);
-    let missing_session =
-        EgressRequest::new("POST", stateful.mcp_url(), EgressRequestKind::Mcp)
-            .header("MCP-Protocol-Version", "2025-06-18")
-            .body(
-                serde_json::to_vec(
-                    &json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}),
-                )
-                .unwrap(),
-            );
+    let missing_session = EgressRequest::new("POST", stateful.mcp_url(), EgressRequestKind::Mcp)
+        .header("MCP-Protocol-Version", "2025-06-18")
+        .body(
+            serde_json::to_vec(
+                &json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}),
+            )
+            .unwrap(),
+        );
     assert_eq!(stateful.send(missing_session).await.unwrap().status, 400);
 
     let stateless = MockMcpOAuthServer::new(MockMcpProtocolEra::V2026July);
@@ -159,7 +158,10 @@ async fn rejects_protocol_headers_and_session_shapes_outside_the_configured_era(
                 )
                 .unwrap(),
             );
-    assert_eq!(stateless.send(unexpected_session).await.unwrap().status, 400);
+    assert_eq!(
+        stateless.send(unexpected_session).await.unwrap().status,
+        400
+    );
 }
 
 #[tokio::test]
@@ -405,11 +407,7 @@ async fn token_exchange_rejects_a_denied_member_of_a_multi_scope_grant() {
     let mock = MockMcpOAuthServer::default();
     let verifier = "multi-scope-verifier";
     let code = mock
-        .authorize(
-            challenge(verifier),
-            None,
-            Some("issues.read admin profile"),
-        )
+        .authorize(challenge(verifier), None, Some("issues.read admin profile"))
         .unwrap();
     mock.reject_scope("admin");
     let oauth = OAuthClient::new(&mock, EgressRequestKind::Mcp);

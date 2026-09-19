@@ -4,14 +4,11 @@ use std::sync::Arc;
 
 use everruns_core::{DEFAULT_ORG_ID, McpServerActsAs, tool_types::ToolCall};
 use everruns_host::{HostComposition, RuntimeHostAdapter};
-use everruns_provider::typed_id::{
-    AgentId, AgentIdentityId, HarnessId, PrincipalId, SessionId,
-};
+use everruns_provider::typed_id::{AgentId, AgentIdentityId, HarnessId, PrincipalId, SessionId};
 use everruns_server::grpc_service::WorkerServiceImpl;
 use everruns_server::storage::models::{
-    CreateAgentIdentityConnectionRow, CreateAgentIdentityRow, CreateAgentRow,
-    CreateMcpServerRow, CreatePrincipalRow, CreateSessionRow, CreateUserConnectionRow,
-    CreateUserRow,
+    CreateAgentIdentityConnectionRow, CreateAgentIdentityRow, CreateAgentRow, CreateMcpServerRow,
+    CreatePrincipalRow, CreateSessionRow, CreateUserConnectionRow, CreateUserRow,
 };
 use everruns_server::storage::{EncryptionService, StorageBackend};
 use everruns_server::{EventDelivery, seed};
@@ -291,9 +288,7 @@ impl ActsAsArrangement {
             self.db.clone(),
             Some(self.encryption.clone()),
             None,
-            everruns_server::oss_host_composition_for_grade(
-                everruns_core::DeploymentGrade::Dev,
-            ),
+            everruns_server::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
         )
     }
 }
@@ -305,9 +300,7 @@ async fn start_grpc_server(
     tokio::sync::oneshot::Sender<()>,
     tokio::task::JoinHandle<()>,
 ) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
     let (incoming_tx, incoming_rx) = tokio::sync::mpsc::channel(8);

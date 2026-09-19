@@ -518,8 +518,7 @@ impl MockMcpOAuthServer {
                         }
                         if grant.scope.as_ref().is_some_and(|scope| {
                             rejected_scope(scope, &state.rejected_scopes).is_some()
-                        })
-                        {
+                        }) {
                             return Ok(Self::json_response(400, json!({"error": "invalid_scope"})));
                         }
                         Ok(issue_tokens(&mut state, grant.scope))
@@ -636,10 +635,7 @@ fn request_matches_era(state: &State, headers: &BTreeMap<String, String>) -> boo
     }
 }
 
-fn rejected_scope<'a>(
-    scope: &'a str,
-    rejected_scopes: &HashSet<String>,
-) -> Option<&'a str> {
+fn rejected_scope<'a>(scope: &'a str, rejected_scopes: &HashSet<String>) -> Option<&'a str> {
     scope
         .split_ascii_whitespace()
         .find(|candidate| rejected_scopes.contains(*candidate))
