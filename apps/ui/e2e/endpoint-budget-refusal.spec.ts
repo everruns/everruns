@@ -148,17 +148,20 @@ test.describe("endpoint budget refusal", () => {
     await page.goto(`/agents/${agent.id}?tab=integrations`);
     await page.getByRole("button", { name: "Expand API endpoint details" }).click();
 
+    const endpointBudgetPanel = page
+      .getByRole("heading", { name: "Endpoint budget", exact: true })
+      .locator("xpath=../..");
+    await expect(endpointBudgetPanel).toBeVisible();
+    await expect(endpointBudgetPanel.getByText(budget.id, { exact: true })).toBeVisible();
+    await expect(endpointBudgetPanel.getByText("exhausted", { exact: true })).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Endpoint budget", exact: true }),
+      endpointBudgetPanel.getByText("0.00 of 25.00 tokens remaining", { exact: true }),
     ).toBeVisible();
-    await expect(page.getByText(budget.id, { exact: true })).toBeVisible();
-    await expect(page.getByText("exhausted", { exact: true })).toBeVisible();
-    await expect(page.getByText("0.00 of 25.00 tokens remaining", { exact: true })).toBeVisible();
-    await expect(page.getByText("1h sliding", { exact: false })).toBeVisible();
-    await expect(page.getByText("Reset due", { exact: false })).toBeVisible();
+    await expect(endpointBudgetPanel.getByText("1h sliding", { exact: false })).toBeVisible();
+    await expect(endpointBudgetPanel.getByText("Reset due", { exact: false })).toBeVisible();
 
     await testInfo.attach("endpoint-budget-cap.png", {
-      body: await page.screenshot({ fullPage: true }),
+      body: await endpointBudgetPanel.screenshot(),
       contentType: "image/png",
     });
   });
