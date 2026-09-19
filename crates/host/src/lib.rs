@@ -22,7 +22,7 @@
 //! [`runtime_egress_service`] supplies the matching direct transport only when
 //! a network-capable integration is selected.
 //! Advanced hosts can select `direct-egress` to construct
-//! [`DirectEgressService`] without enabling an integration bundle.
+//! `DirectEgressService` without enabling an integration bundle.
 //!
 //! # Example
 //!
@@ -38,10 +38,12 @@ pub mod native_async;
 
 mod backends;
 mod builders;
-mod capabilities;
+pub mod capabilities;
 mod command_host;
 mod composition;
 pub mod compute;
+#[cfg(feature = "native-containment")]
+pub mod containment;
 #[cfg(feature = "direct-egress")]
 mod egress;
 pub mod environment_preamble;
