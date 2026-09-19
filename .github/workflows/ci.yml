@@ -57,6 +57,7 @@ jobs:
       shell: ${{ steps.core_filter.outputs.shell }}
       knowledge: ${{ steps.core_filter.outputs.knowledge }}
       ui: ${{ steps.core_filter.outputs.ui }}
+      budget_e2e: ${{ steps.core_filter.outputs.budget_e2e }}
       docs: ${{ steps.core_filter.outputs.docs }}
       docs_notebooks: ${{ steps.core_filter.outputs.docs_notebooks }}
       docker: ${{ steps.core_filter.outputs.docker }}
@@ -237,6 +238,20 @@ jobs:
               # stale. Without it here the UI job is skipped and the drift only
               # surfaces on the next unrelated UI pull request.
               - 'docs/api/openapi.json'
+              - '.github/workflows/ci.yml'
+            budget_e2e:
+              - 'apps/ui/e2e/endpoint-budget-refusal.spec.ts'
+              - 'apps/ui/src/components/agents/agent-integrations-panel.tsx'
+              - 'apps/ui/src/components/budgets/**'
+              - 'apps/ui/src/hooks/use-agent-endpoints.ts'
+              - 'apps/ui/src/lib/api/budgets.ts'
+              - 'crates/server/src/api/budgets.rs'
+              - 'crates/server/src/domains/agent_endpoints/**'
+              - 'crates/server/src/domains/apps/invocation.rs'
+              - 'crates/server/src/domains/budgets/**'
+              - 'crates/server/src/storage/repositories/budgets.rs'
+              - 'crates/server/migrations/027_app_budgets.sql'
+              - 'crates/server/migrations/137_endpoint_attribution.sql'
               - '.github/workflows/ci.yml'
             docs:
               - 'apps/docs/**'
@@ -1709,7 +1724,7 @@ jobs:
     # (e.g. ubuntu-latest-8-core); defaults to standard runners.
     runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
+    if: needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.budget_e2e == 'true') && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 40
 
     env:
@@ -2328,6 +2343,120 @@ jobs:
           path: apps/ui/e2e/playwright-report
           retention-days: 7
 
+  ui-budget-e2e:
+    name: UI Endpoint Budget Full-Stack E2E
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - build-binaries
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.budget_e2e == 'true' && needs.changes.outputs.skip_ui_e2e != 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.build-binaries.result == 'success'
+    timeout-minutes: 35
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: everruns
+          POSTGRES_PASSWORD: everruns
+          POSTGRES_DB: everruns_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+      DEPLOYMENT_GRADE: dev
+      AUTH_MODE: none
+      FEATURE_APP_BUDGETS: "true"
+      RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
+      WORKER_GRPC_AUTH_TOKEN: endpoint-budget-e2e-token
+      PLAYWRIGHT_REAL_API_URL: http://localhost:9000
+
+    defaults:
+      run:
+        working-directory: apps/ui
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: apps/ui/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('apps/ui/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browsers
+        timeout-minutes: 25
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Ensure PostgreSQL client is available
+        timeout-minutes: 5
+        working-directory: .
+        run: |
+          if ! command -v psql > /dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
+
+      - name: Download server binary
+        uses: actions/download-artifact@v8
+        with:
+          name: everruns-server
+          path: ./bin
+
+      - name: Start PostgreSQL-backed API server
+        working-directory: .
+        run: |
+          chmod +x ./bin/everruns-server
+          ./bin/everruns-server > /tmp/everruns-budget-e2e-server.log 2>&1 &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+          timeout 60 bash -c 'until curl -fsS http://localhost:9000/health > /dev/null; do sleep 1; done'
+
+      - name: Run endpoint budget full-stack test
+        run: pnpm exec playwright test e2e/endpoint-budget-refusal.spec.ts
+
+      - name: Show server log on failure
+        if: failure()
+        working-directory: .
+        run: cat /tmp/everruns-budget-e2e-server.log
+
+      - name: Stop API server
+        if: always()
+        working-directory: .
+        run: kill "$SERVER_PID" 2>/dev/null || true
+
+      - name: Upload endpoint budget Playwright evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: endpoint-budget-playwright-evidence
+          path: |
+            apps/ui/e2e/playwright-report
+            apps/ui/e2e/test-results
+          retention-days: 14
+
   docs-build:
     name: Docs Build & Check
     runs-on: ubuntu-latest
@@ -2511,7 +2640,9 @@ jobs:
             fi
           }
 
-          if [ "${{ needs.changes.outputs.rust }}" = "true" ] || [ "${{ needs.changes.outputs.sdk_compat }}" = "true" ]; then
+          if [ "${{ needs.changes.outputs.rust }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.sdk_compat }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.budget_e2e }}" = "true" ]; then
             slow_rust_affected=true
           else
             slow_rust_affected=false
@@ -2574,6 +2705,7 @@ jobs:
       - sdk-compat-test
       - ui-build
       - ui-e2e
+      - ui-budget-e2e
       - docs-build
       - docker-build
       - ci-opt-out-policy
