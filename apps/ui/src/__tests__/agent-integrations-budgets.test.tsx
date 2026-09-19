@@ -3,6 +3,8 @@ import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-p
 import type { Agent, AppChannel } from "@/lib/api/types";
 
 const mockUseFeatureFlag = jest.fn();
+const mockCanAgent = jest.fn();
+const mockCanBudget = jest.fn();
 
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: (flag: string) => mockUseFeatureFlag(flag),
@@ -35,7 +37,9 @@ jest.mock("@/hooks/use-agent-triggers", () => ({
 }));
 
 jest.mock("@/hooks/use-policies", () => ({
-  usePolicies: () => ({ can: () => true }),
+  usePolicies: (resource: string) => ({
+    can: resource === "budgets" ? mockCanBudget : mockCanAgent,
+  }),
 }));
 
 jest.mock("@/hooks/use-agents", () => ({
@@ -56,8 +60,19 @@ jest.mock("@/components/agents/agent-triggers-panel", () => ({
 }));
 
 jest.mock("@/components/budgets/budget-panel", () => ({
-  BudgetPanel: ({ subjectType, subjectId }: { subjectType: string; subjectId: string }) => (
-    <div data-testid={`budget-${subjectType}-${subjectId}`} />
+  BudgetPanel: ({
+    subjectType,
+    subjectId,
+    canManage,
+  }: {
+    subjectType: string;
+    subjectId: string;
+    canManage: boolean;
+  }) => (
+    <div
+      data-testid={`budget-${subjectType}-${subjectId}`}
+      data-can-manage={String(canManage)}
+    />
   ),
 }));
 
@@ -79,18 +94,45 @@ const agent = {
 } as Agent;
 
 describe("AgentIntegrationsPanel budgets", () => {
-  it("mounts Agent and endpoint budgets when app_budgets is enabled", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
     mockUseFeatureFlag.mockReturnValue(true);
+    mockCanAgent.mockReturnValue(true);
+  });
+
+  it.each([
+    { role: "Member", canManage: false },
+    { role: "Admin", canManage: true },
+    { role: "Owner", canManage: true },
+  ])("gives $role the budget controls allowed by policy", ({ canManage }) => {
+    mockCanBudget.mockImplementation((policy: string) =>
+      policy === "budget.view" ? true : canManage,
+    );
 
     render(<AgentIntegrationsPanel agent={agent} />);
 
     expect(mockUseFeatureFlag).toHaveBeenCalledWith("app_budgets");
-    expect(screen.getByTestId("budget-agent-agent_1")).toBeInTheDocument();
-    expect(screen.getByTestId("budget-agent_endpoint-endpoint_1")).toBeInTheDocument();
+    expect(screen.getByTestId("budget-agent-agent_1")).toHaveAttribute(
+      "data-can-manage",
+      String(canManage),
+    );
+    expect(screen.getByTestId("budget-agent_endpoint-endpoint_1")).toHaveAttribute(
+      "data-can-manage",
+      String(canManage),
+    );
+  });
+
+  it("does not fetch or mount budgets without budget.view", () => {
+    mockCanBudget.mockReturnValue(false);
+
+    render(<AgentIntegrationsPanel agent={agent} />);
+
+    expect(screen.queryByTestId(/^budget-/)).not.toBeInTheDocument();
   });
 
   it("does not mount any budget UI when app_budgets is disabled", () => {
     mockUseFeatureFlag.mockReturnValue(false);
+    mockCanBudget.mockReturnValue(true);
 
     render(<AgentIntegrationsPanel agent={agent} />);
 

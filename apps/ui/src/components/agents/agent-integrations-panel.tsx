@@ -80,7 +80,8 @@ function buildStats(
 export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const { endpoints, isLoading } = useAgentEndpoints(agent.id);
   const { data: triggers = [] } = useAgentTriggers(agent.id);
-  const { can } = usePolicies("agents");
+  const { can: canAgent } = usePolicies("agents");
+  const { can: canBudget } = usePolicies("budgets");
   const suspendExposures = useSuspendAgentExposures();
   const resumeExposures = useResumeAgentExposures();
   const publishEndpoint = usePublishAgentEndpoint(agent.id);
@@ -89,8 +90,10 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const budgetsEnabled = useFeatureFlag("app_budgets");
 
   const suspended = agent.exposures_suspended ?? false;
-  const canManage = can("agent.manage");
-  const canDangerous = can("agent.dangerous");
+  const canManage = canAgent("agent.manage");
+  const canDangerous = canAgent("agent.dangerous");
+  const canViewBudgets = canBudget("budget.view");
+  const canManageBudgets = canBudget("budget.manage");
 
   const stats = useMemo(
     () => buildStats(endpoints, triggers.length, suspended),
@@ -166,13 +169,13 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     usePanel={
                       <div className="space-y-4">
                         <EndpointUsePanel channel={channel} />
-                        {budgetsEnabled && (
+                        {budgetsEnabled && canViewBudgets && (
                           <div className="border-t pt-4">
                             <BudgetPanel
                               subjectType="agent_endpoint"
                               subjectId={channel.id}
                               title="Endpoint budget"
-                              canManage={canManage}
+                              canManage={canManageBudgets}
                             />
                           </div>
                         )}
@@ -220,12 +223,12 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     publishPending={publishEndpoint.isPending}
                     onRunNow={canManage ? () => triggerEndpoint.mutate(channel.id) : undefined}
                     usePanel={
-                      budgetsEnabled ? (
+                      budgetsEnabled && canViewBudgets ? (
                         <BudgetPanel
                           subjectType="agent_endpoint"
                           subjectId={channel.id}
                           title="Endpoint budget"
-                          canManage={canManage}
+                          canManage={canManageBudgets}
                         />
                       ) : undefined
                     }
@@ -239,9 +242,9 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
         </PageMain>
 
         <PageRail>
-          {budgetsEnabled && (
+          {budgetsEnabled && canViewBudgets && (
             <RailSection label="Agent budget">
-              <BudgetPanel subjectType="agent" subjectId={agent.id} canManage={canManage} />
+              <BudgetPanel subjectType="agent" subjectId={agent.id} canManage={canManageBudgets} />
             </RailSection>
           )}
           <RailSection label="Exposures">

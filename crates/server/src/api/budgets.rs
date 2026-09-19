@@ -2,10 +2,10 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::budgets::BudgetService;
 use crate::domains::budgets::{
-    CheckBudget, CheckSessionBudgets, CreateBudget, DeleteBudget, GetBudget, ListBudgetLedger,
-    ListBudgets, ListSessionBudgets, ResumeSessionBudgets, TopUpBudget, UpdateBudgetCmd,
+    BUDGET_MANAGE, BUDGET_VIEW, BudgetService, CheckBudget, CheckSessionBudgets, CreateBudget,
+    DeleteBudget, GetBudget, ListBudgetLedger, ListBudgets, ListSessionBudgets,
+    ResumeSessionBudgets, TopUpBudget, UpdateBudgetCmd,
 };
 use crate::domains::common::{Command, Ctx};
 use crate::storage::StorageBackend;
@@ -15,7 +15,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::Caller;
+use everruns_core::{Caller, ResourceConfigResponse, evaluate_policies_with};
 use everruns_core::budget::{BudgetCheckResult, BudgetPeriod};
 use everruns_platform::{Budget, LedgerEntry};
 use serde::Deserialize;
@@ -146,6 +146,7 @@ fn default_limit() -> i64 {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/budgets", post(create_budget).get(list_budgets))
+        .route("/v1/budgets/config", get(budget_config))
         .route(
             "/v1/budgets/{budget_id}",
             get(get_budget).patch(update_budget).delete(delete_budget),
@@ -163,6 +164,19 @@ pub fn routes(state: AppState) -> Router {
         )
         .route("/v1/sessions/{session_id}/resume", post(resume_session))
         .with_state(state)
+}
+
+async fn budget_config(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> Json<ResourceConfigResponse> {
+    let caller = Caller::from(&org);
+    let policies = evaluate_policies_with(
+        state.auth.permission_resolver.as_ref(),
+        &caller,
+        &[&BUDGET_VIEW, &BUDGET_MANAGE],
+    );
+    Json(ResourceConfigResponse { policies })
 }
 
 async fn create_budget(

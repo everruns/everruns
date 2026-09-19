@@ -78,6 +78,18 @@ describe("BudgetPanel", () => {
       subject_id: "endpoint_1",
     });
   });
+  it("keeps the cap visible but hides mutations without budget.manage", async () => {
+    renderPanel({ canManage: false });
+
+    expect(await screen.findByText("bdgt_endpoint")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add budget" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Edit budget bdgt_endpoint" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Delete budget bdgt_endpoint" }),
+    ).not.toBeInTheDocument();
+  });
 
   it("creates an endpoint budget with the fixed endpoint subject", async () => {
     listBudgets.mockResolvedValue([]);

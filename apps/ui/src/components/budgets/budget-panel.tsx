@@ -238,7 +238,7 @@ export function BudgetPanel({
       )}
 
       {budgets.map((budget) =>
-        editingId === budget.id ? (
+        canManage && editingId === budget.id ? (
           <EditBudgetForm
             key={budget.id}
             budget={budget}
@@ -302,7 +302,7 @@ export function BudgetPanel({
         <p className="text-sm text-destructive">{mutationError.message}</p>
       )}
 
-      {adding && (
+      {canManage && adding && (
         <NewBudgetForm
           subjectType={subjectType}
           subjectId={subjectId}
