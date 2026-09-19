@@ -127,4 +127,37 @@ mod tests {
             );
         }
     }
+
+    /// EVE-1041: `generic` is one definition, read by org provisioning here and
+    /// by `everruns::Harness::generic()` in the facade.
+    ///
+    /// Sharing a function already makes divergence impossible; this fails if
+    /// someone re-hardcodes the list locally, which is how it drifted before.
+    #[test]
+    fn shared_generic_capabilities_are_the_platform_ones() {
+        let provisioned: Vec<String> = generic::definition()
+            .capabilities
+            .iter()
+            .map(|capability| capability.capability_id().to_string())
+            .collect();
+        let shared: Vec<String> = everruns_capability::generic_capabilities()
+            .iter()
+            .map(|capability| capability.capability_id().to_string())
+            .collect();
+        assert_eq!(provisioned, shared);
+        assert!(
+            provisioned.len() > 10,
+            "a truncated list would pass a bare equality check against itself"
+        );
+    }
+
+    /// The shared floor carries capability references only. Presentation and
+    /// the base system prompt stay platform-side, per
+    /// `knowledge/framework/harnesses.md`.
+    #[test]
+    fn the_shared_floor_leaves_presentation_to_the_platform() {
+        let definition = generic::definition();
+        assert_eq!(definition.icon.as_deref(), Some("box"));
+        assert!(!definition.system_prompt.is_empty());
+    }
 }
