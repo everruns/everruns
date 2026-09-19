@@ -98,7 +98,7 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] && \
              { [ "${EVENT_ACTION}" = "labeled" ] || [ "${EVENT_ACTION}" = "unlabeled" ]; }; then
             case "${LABEL_NAME}" in
-              ci:skip-docker|ci:skip-slow-rust|ci:skip-postgres-integration|ci:skip-sdk-compat|ci:skip-ui-e2e|ci:skip-docs-notebooks|ci:skip-integration-workflows)
+              factory:foreman|ci:skip-docker|ci:skip-slow-rust|ci:skip-postgres-integration|ci:skip-sdk-compat|ci:skip-ui-e2e|ci:skip-docs-notebooks|ci:skip-integration-workflows)
                 echo "run_ci=true" >> "$GITHUB_OUTPUT"
                 ;;
               *)
