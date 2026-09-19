@@ -45,6 +45,7 @@ extern crate self as everruns;
 
 // --- Value-first agent description and execution -------------------------
 mod agent;
+mod agent_state;
 /// Stability: stable — no breaking change without a major bump; see [`stability`].
 #[cfg(feature = "builtins")]
 pub mod ask_user;
