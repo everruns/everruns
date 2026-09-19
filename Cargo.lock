@@ -3265,6 +3265,7 @@ dependencies = [
  "everruns-platform",
  "everruns-provider",
  "everruns-sdk",
+ "everruns-test-support",
  "everruns-turbopuffer",
  "everruns-worker",
  "flate2",

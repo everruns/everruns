@@ -95,6 +95,74 @@ async fn accepts_and_distinguishes_all_supported_protocol_eras() {
 }
 
 #[tokio::test]
+async fn auto_mode_probes_then_falls_back_for_each_stateful_era() {
+    for era in [
+        MockMcpProtocolEra::V2025March,
+        MockMcpProtocolEra::V2025June,
+    ] {
+        let mock = MockMcpOAuthServer::new(era);
+        let client = McpClient::new(Arc::new(mock.clone()), Arc::new(NoAuthProvider));
+        client
+            .discover(&McpConnection::http("linear", mock.mcp_url()))
+            .await
+            .unwrap();
+
+        let requests = mock.mcp_requests();
+        let methods: Vec<_> = requests
+            .iter()
+            .map(|request| request.method.as_str())
+            .collect();
+        assert_eq!(
+            methods,
+            vec![
+                "tools/list",
+                "initialize",
+                "notifications/initialized",
+                "tools/list"
+            ]
+        );
+        assert_eq!(
+            requests[0].header("MCP-Protocol-Version"),
+            Some("2026-07-28")
+        );
+        assert_eq!(
+            requests[3].header("MCP-Protocol-Version"),
+            Some(era.version())
+        );
+        assert!(requests[0].header("Mcp-Session-Id").is_none());
+        assert!(requests[3].header("Mcp-Session-Id").is_some());
+    }
+}
+
+#[tokio::test]
+async fn rejects_protocol_headers_and_session_shapes_outside_the_configured_era() {
+    let stateful = MockMcpOAuthServer::new(MockMcpProtocolEra::V2025June);
+    let missing_session =
+        EgressRequest::new("POST", stateful.mcp_url(), EgressRequestKind::Mcp)
+            .header("MCP-Protocol-Version", "2025-06-18")
+            .body(
+                serde_json::to_vec(
+                    &json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}),
+                )
+                .unwrap(),
+            );
+    assert_eq!(stateful.send(missing_session).await.unwrap().status, 400);
+
+    let stateless = MockMcpOAuthServer::new(MockMcpProtocolEra::V2026July);
+    let unexpected_session =
+        EgressRequest::new("POST", stateless.mcp_url(), EgressRequestKind::Mcp)
+            .header("MCP-Protocol-Version", "2026-07-28")
+            .header("Mcp-Session-Id", "not-stateless")
+            .body(
+                serde_json::to_vec(
+                    &json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}),
+                )
+                .unwrap(),
+            );
+    assert_eq!(stateless.send(unexpected_session).await.unwrap().status, 400);
+}
+
+#[tokio::test]
 async fn serves_cache_hints_call_results_and_mrtr() {
     let mock = MockMcpOAuthServer::default();
     mock.set_tools(vec![json!({
@@ -327,7 +395,37 @@ fn configurable_actor_and_scope_rejections_are_explicit() {
     let mock = MockMcpOAuthServer::default();
     mock.reject_scope("admin");
     assert_eq!(
-        mock.authorize("challenge", None, Some("admin")),
+        mock.authorize("challenge", None, Some("issues.read admin profile")),
         Err(MockOAuthError::ScopeRejected("admin".to_string()))
     );
+}
+
+#[tokio::test]
+async fn token_exchange_rejects_a_denied_member_of_a_multi_scope_grant() {
+    let mock = MockMcpOAuthServer::default();
+    let verifier = "multi-scope-verifier";
+    let code = mock
+        .authorize(
+            challenge(verifier),
+            None,
+            Some("issues.read admin profile"),
+        )
+        .unwrap();
+    mock.reject_scope("admin");
+    let oauth = OAuthClient::new(&mock, EgressRequestKind::Mcp);
+    let error = oauth
+        .exchange_code(
+            &mock.token_endpoint(),
+            &RegisteredClient {
+                client_id: "test-client".to_string(),
+                client_secret: None,
+            },
+            &code,
+            verifier,
+            "http://127.0.0.1:7777/callback",
+            None,
+        )
+        .await
+        .expect_err("one denied scope must reject the full grant");
+    assert!(matches!(error, OAuthError::Http { status: 400, .. }));
 }

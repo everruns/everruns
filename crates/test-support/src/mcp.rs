@@ -250,10 +250,10 @@ impl MockMcpOAuthServer {
         if state.reject_actor && actor.is_some() {
             return Err(MockOAuthError::ActorRejected);
         }
-        if let Some(scope) = scope
-            && state.rejected_scopes.contains(scope)
+        if let Some(rejected) =
+            scope.and_then(|scope| rejected_scope(scope, &state.rejected_scopes))
         {
-            return Err(MockOAuthError::ScopeRejected(scope.to_string()));
+            return Err(MockOAuthError::ScopeRejected(rejected.to_string()));
         }
         let code = format!("code-{}", Uuid::new_v4());
         state.authorization_codes.insert(
@@ -344,6 +344,14 @@ impl MockMcpOAuthServer {
         });
 
         if method == "initialize" {
+            let requested_version = body["params"]["protocolVersion"].as_str();
+            let protocol_header = header(&request.headers, "MCP-Protocol-Version");
+            if !state.era.is_stateful()
+                || requested_version != protocol_header
+                || !matches!(protocol_header, Some("2025-03-26" | "2025-06-18"))
+            {
+                return Ok(Self::protocol_mismatch(state.era, protocol_header));
+            }
             let mut response = Self::json_response(
                 200,
                 json!({
@@ -361,6 +369,12 @@ impl MockMcpOAuthServer {
             return Ok(response);
         }
         if method == "notifications/initialized" {
+            if !request_matches_era(&state, &request.headers) {
+                return Ok(Self::protocol_mismatch(
+                    state.era,
+                    header(&request.headers, "MCP-Protocol-Version"),
+                ));
+            }
             return Ok(EgressResponse {
                 status: 202,
                 headers: BTreeMap::new(),
@@ -368,12 +382,11 @@ impl MockMcpOAuthServer {
             });
         }
 
-        if state.era.is_stateful() && header(&request.headers, "Mcp-Session-Id").is_none() {
-            return Ok(EgressResponse {
-                status: 400,
-                headers: BTreeMap::new(),
-                body: b"Bad Request: Mcp-Session-Id header is required".to_vec(),
-            });
+        if !request_matches_era(&state, &request.headers) {
+            return Ok(Self::protocol_mismatch(
+                state.era,
+                header(&request.headers, "MCP-Protocol-Version"),
+            ));
         }
 
         match method.as_str() {
@@ -503,10 +516,9 @@ impl MockMcpOAuthServer {
                                 json!({"error": "invalid_request", "error_description": "actor rejected"}),
                             ));
                         }
-                        if grant
-                            .scope
-                            .as_ref()
-                            .is_some_and(|scope| state.rejected_scopes.contains(scope))
+                        if grant.scope.as_ref().is_some_and(|scope| {
+                            rejected_scope(scope, &state.rejected_scopes).is_some()
+                        })
                         {
                             return Ok(Self::json_response(400, json!({"error": "invalid_scope"})));
                         }
@@ -543,6 +555,24 @@ impl MockMcpOAuthServer {
             }
             _ => Ok(Self::json_response(404, json!({"error": "not_found"}))),
         }
+    }
+
+    fn protocol_mismatch(era: MockMcpProtocolEra, actual: Option<&str>) -> EgressResponse {
+        Self::json_response(
+            400,
+            json!({
+                "jsonrpc": "2.0",
+                "id": Value::Null,
+                "error": {
+                    "code": -32600,
+                    "message": format!(
+                        "Unsupported protocol version: {} (expected {})",
+                        actual.unwrap_or("<missing>"),
+                        era.version()
+                    )
+                }
+            }),
+        )
     }
 }
 
@@ -594,6 +624,25 @@ fn header<'a>(headers: &'a BTreeMap<String, String>, name: &str) -> Option<&'a s
         .iter()
         .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
         .map(|(_, value)| value.as_str())
+}
+
+fn request_matches_era(state: &State, headers: &BTreeMap<String, String>) -> bool {
+    let version_matches = header(headers, "MCP-Protocol-Version") == Some(state.era.version());
+    let session = header(headers, "Mcp-Session-Id");
+    if state.era.is_stateful() {
+        version_matches && session == Some(state.session_id.as_str())
+    } else {
+        version_matches && session.is_none()
+    }
+}
+
+fn rejected_scope<'a>(
+    scope: &'a str,
+    rejected_scopes: &HashSet<String>,
+) -> Option<&'a str> {
+    scope
+        .split_ascii_whitespace()
+        .find(|candidate| rejected_scopes.contains(*candidate))
 }
 
 fn pkce_challenge(verifier: &str) -> String {
