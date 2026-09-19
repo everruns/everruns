@@ -22,7 +22,7 @@
 //! [`runtime_egress_service`] supplies the matching direct transport only when
 //! a network-capable integration is selected.
 //! Advanced hosts can select `direct-egress` to construct
-//! [`DirectEgressService`] without enabling an integration bundle.
+//! `DirectEgressService` without enabling an integration bundle.
 //!
 //! # Example
 //!

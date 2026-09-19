@@ -77,7 +77,7 @@ pub enum SandboxLauncher {
     /// Run a helper binary at a known path.
     Helper(PathBuf),
     /// Re-exec the current executable with these leading arguments, which must
-    /// route into [`worker::run`](crate::worker::run). This is how a single-binary
+    /// route into [`worker::run`](crate::containment::worker::run). This is how a single-binary
     /// embedder (Yolop's `__sandbox-exec`) avoids shipping a second file.
     ReexecSelf(Vec<String>),
 }
@@ -271,6 +271,8 @@ impl SandboxProvider for NativeSandbox {
 #[cfg(target_os = "macos")]
 fn native_command(cwd: &Path, script: &str, options: &SandboxOptions) -> Result<Command> {
     let executable = Path::new("/usr/bin/sandbox-exec");
+    // THREAT[TM-BASH-019]: a missing OS primitive is an error, never a silent
+    // fall back to an uncontained host process.
     if !executable.is_file() {
         anyhow::bail!(
             "native containment unavailable: /usr/bin/sandbox-exec is missing; refusing to run \
@@ -342,9 +344,10 @@ fn resolve_launcher(launcher: &SandboxLauncher) -> Result<(PathBuf, Vec<String>)
             if let Some(path) = sibling {
                 return Ok((path, Vec::new()));
             }
-            // A bare name lets the OS search PATH. Checking is_file() here
-            // would race the exec anyway, and the launch error names the
-            // binary clearly enough.
+            // THREAT[TM-BASH-024]: a bare name lets the OS search PATH, which
+            // is the agent process's own PATH rather than model input. Checking
+            // is_file() here would race the exec anyway, and the launch error
+            // names the binary clearly enough.
             Ok((PathBuf::from(HELPER), Vec::new()))
         }
     }
@@ -354,6 +357,8 @@ fn resolve_launcher(launcher: &SandboxLauncher) -> Result<(PathBuf, Vec<String>)
 ///
 /// Landlock needs an existing directory for every rule, and canonicalizing here
 /// means a symlinked root cannot widen the boundary past what was configured.
+///
+/// THREAT[TM-BASH-023]
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn prepared_writable_roots(options: &SandboxOptions) -> Result<Vec<PathBuf>> {
     if options.mode != ContainmentMode::WorkspaceWrite {
@@ -373,7 +378,7 @@ fn prepared_writable_roots(options: &SandboxOptions) -> Result<Vec<PathBuf>> {
 
 #[cfg(target_os = "windows")]
 fn native_command(cwd: &Path, script: &str, _options: &SandboxOptions) -> Result<Command> {
-    // Windows has no containment implementation yet. Rather than refuse to run,
+    // THREAT[TM-BASH-025]: Windows has no containment implementation yet. Rather than refuse to run,
     // execute uncontained: the caller is warned at every mode via
     // `danger_warning`, which is the honest form of fail-closed here.
     Ok(shell_command(cwd, script))
@@ -381,6 +386,7 @@ fn native_command(cwd: &Path, script: &str, _options: &SandboxOptions) -> Result
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 fn native_command(_cwd: &Path, _script: &str, _options: &SandboxOptions) -> Result<Command> {
+    // THREAT[TM-BASH-019]: fail closed rather than run an unbounded command.
     anyhow::bail!(
         "native containment is supported only on macOS and Linux; refusing to run uncontained. \
          Select `danger-full-access` only inside an already isolated environment"

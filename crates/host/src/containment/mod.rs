@@ -4,7 +4,7 @@
 //! answers *what that command may touch*. It is the implementation behind
 //! [`ContainmentLevel::Native`](crate::ContainmentLevel), applied by
 //! [`HostCompute::contained`](crate::HostCompute::contained) and by the
-//! [`host_shell`](crate::host_shell) capability: Seatbelt on macOS, Landlock
+//! [`shell`](crate::capabilities::shell) capability: Seatbelt on macOS, Landlock
 //! plus seccomp on Linux, ported from Yolop's `src/exec/sandbox.rs`.
 //!
 //! Two invariants carry over from Yolop and are why this is a boundary rather

@@ -61,6 +61,8 @@ pub fn requires_destructive_approval(script: &str) -> bool {
 
 /// Whether the script visibly signals the agent process running it.
 ///
+/// THREAT[TM-BASH-021]: defense in depth for a direct mistake, not a boundary.
+///
 /// `host_name` is the binary's own name (`"yolop"`, `"everruns-worker"`), so a
 /// `pkill -f <name>` is caught alongside a literal `kill <pid>`. Process-group
 /// and broadcast targets (`0`, `-1`) count, since both reach the caller.

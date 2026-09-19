@@ -232,6 +232,10 @@ impl BashTool {
 
     /// Run `command` under the approval policy, escalating only where the
     /// policy and a host's gate both allow it.
+    ///
+    /// THREAT[TM-BASH-022]: every path to full access passes a host gate first;
+    /// THREAT[TM-BASH-020]: the model supplies the script only, never the
+    /// executable, the mount set, or the containment mode.
     async fn execute_with_policy(
         &self,
         command: &str,

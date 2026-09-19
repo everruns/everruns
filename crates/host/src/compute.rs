@@ -174,9 +174,15 @@ impl Containment {
         }
     }
 
-    /// A kernel policy bounds the command. No provider implements this yet, so
-    /// building an Environment with it fails; see
-    /// [`EnvironmentError::ContainmentUnavailable`].
+    /// A kernel policy bounds the command: Seatbelt on macOS, Landlock plus
+    /// seccomp on Linux.
+    ///
+    /// [`HostCompute::contained`] enforces this behind the `native-containment`
+    /// feature. Building an Environment with a target that does not enforce it
+    /// still fails; see [`EnvironmentError::ContainmentUnavailable`].
+    ///
+    /// [`HostCompute::contained`]: crate::HostCompute::contained
+    /// [`EnvironmentError::ContainmentUnavailable`]: crate::EnvironmentError::ContainmentUnavailable
     pub fn native() -> Self {
         Self {
             level: ContainmentLevel::Native,
@@ -357,6 +363,8 @@ mod host_compute {
             mut self,
             options: crate::containment::SandboxOptions,
         ) -> Result<Self, ComputeError> {
+            // THREAT[TM-BASH-019]: a target may not advertise `Native` while
+            // enforcing nothing.
             if options.mode().is_full_access() {
                 return Err(ComputeError::Unavailable(
                     "danger-full-access is not containment; leave the target uncontained instead"

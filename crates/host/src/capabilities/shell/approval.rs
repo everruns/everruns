@@ -63,6 +63,9 @@ impl HostShellApproval {
 }
 
 /// A gate that refuses everything, used when a host installed none.
+///
+/// THREAT[TM-BASH-022]: an unattended host has nobody to ask, so the absence of
+/// a gate denies rather than escalates.
 pub(crate) struct DenyAll;
 
 #[async_trait]
