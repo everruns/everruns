@@ -42,7 +42,7 @@ DRIVER_LAYOUT_NAMES=(
   meta
   openai
   openrouter
-  vendors
+  drivers
 )
 PROVIDER_DIRS=(
   crates/drivers/openai
@@ -53,7 +53,7 @@ PROVIDER_DIRS=(
   crates/drivers/mai
   crates/drivers/fireworks
   crates/drivers/meta
-  crates/drivers/vendors
+  crates/drivers/drivers
 )
 PROVIDER_CRATES=(
   everruns-openai
@@ -76,7 +76,9 @@ for driver in "${DRIVER_LAYOUT_NAMES[@]}"; do
     echo "Missing driver package: crates/drivers/$driver/Cargo.toml"
     FAILED=1
   fi
-  if [ -e "crates/$driver" ]; then
+  # `crates/drivers` is the grouping directory itself, so the multi-vendor
+  # package that shares its name has no shadow path to check.
+  if [ "$driver" != "drivers" ] && [ -e "crates/$driver" ]; then
     echo "Driver packages belong under crates/drivers, not crates/$driver"
     FAILED=1
   fi

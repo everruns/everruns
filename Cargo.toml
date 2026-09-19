@@ -29,7 +29,7 @@ members = [
     "crates/drivers/meta",
     "crates/drivers/openai",
     "crates/drivers/openrouter",
-    "crates/drivers/vendors",
+    "crates/drivers/drivers",
     "crates/turbopuffer",
     "crates/internal-protocol",
     "crates/cli",
@@ -249,7 +249,7 @@ everruns-mcp = { path = "crates/mcp", version = "0.29.0" }
 everruns-ard = { path = "crates/ard", version = "0.29.0" }
 everruns-openai = { path = "crates/drivers/openai", version = "0.29.0" }
 everruns-openrouter = { path = "crates/drivers/openrouter", version = "0.29.0" }
-everruns-drivers = { path = "crates/drivers/vendors", version = "0.29.0", default-features = false }
+everruns-drivers = { path = "crates/drivers/drivers", version = "0.29.0", default-features = false }
 everruns = { path = "crates/everruns", version = "0.28.0" }
 everruns-macros = { path = "crates/macros", version = "0.29.0" }
 everruns-integrations-catalog = { path = "crates/integrations-catalog", version = "0.29.0" }
