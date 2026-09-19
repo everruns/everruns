@@ -11,6 +11,8 @@ mod worker_service_impl;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_platform_command_surface;
 
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::session_files::{
