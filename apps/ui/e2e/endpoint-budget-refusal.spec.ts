@@ -94,10 +94,13 @@ test.describe("endpoint budget refusal", () => {
         `session_id=${session.id}`,
         "--set",
         `endpoint_id=${endpoint.id}`,
-        "--command",
-        "UPDATE sessions AS session SET endpoint_id = endpoint.id FROM agent_endpoints AS endpoint WHERE endpoint.public_id = :'endpoint_id' AND replace(session.id::text, '-', '') = substring(:'session_id' from 9);",
+        "--file=-",
       ],
-      { encoding: "utf8" },
+      {
+        encoding: "utf8",
+        input:
+          "UPDATE sessions AS session SET endpoint_id = endpoint.id FROM agent_endpoints AS endpoint WHERE endpoint.public_id = :'endpoint_id' AND replace(session.id::text, '-', '') = substring(:'session_id' from 9);",
+      },
     );
     expect(attributed).toContain("UPDATE 1");
     const exhausted = execFileSync(
@@ -109,10 +112,13 @@ test.describe("endpoint budget refusal", () => {
         "ON_ERROR_STOP=1",
         "--set",
         `endpoint_id=${endpoint.id}`,
-        "--command",
-        "UPDATE budgets SET balance = 0, status = 'exhausted', period_started_at = NOW() WHERE subject_type = 'agent_endpoint' AND subject_id = :'endpoint_id';",
+        "--file=-",
       ],
-      { encoding: "utf8" },
+      {
+        encoding: "utf8",
+        input:
+          "UPDATE budgets SET balance = 0, status = 'exhausted', period_started_at = NOW() WHERE subject_type = 'agent_endpoint' AND subject_id = :'endpoint_id';",
+      },
     );
     expect(exhausted).toContain("UPDATE 1");
 
