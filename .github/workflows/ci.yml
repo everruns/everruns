@@ -2502,11 +2502,12 @@ jobs:
         with:
           shared-key: "mcp-harness-soak"
 
-      - name: Run MCP harness test 100 sequential times
+      - name: Run MCP harness and gRPC tests 100 sequential times
         run: |
           for run in $(seq 1 100); do
-            echo "MCP harness soak run ${run}/100"
+            echo "MCP harness and gRPC soak run ${run}/100"
             cargo test -p everruns-test-support --test mcp_harness_test --all-features
+            cargo test -p everruns-server --test mcp_acts_as_grpc_test
           done
 
   ci-opt-out-policy:
