@@ -6752,7 +6752,7 @@ export interface components {
     CreateMcpServerRequest: {
       /**
        * @description API key for authentication (optional). Sent with each request; never echoed in responses.
-       * @example sk-mcp-redacted-1234567890abcdef
+       * @example mcp-api-key-redacted-1234567890abcdef
        */
       api_key?: string | null;
       auth_mode?: null | components["schemas"]["McpServerAuthMode"];
@@ -17544,7 +17544,7 @@ export interface components {
     UpdateMcpServerRequest: {
       /**
        * @description API key for authentication. Set to update.
-       * @example sk-mcp-redacted-1234567890abcdef
+       * @example mcp-api-key-redacted-1234567890abcdef
        */
       api_key?: string | null;
       auth_mode?: null | components["schemas"]["McpServerAuthMode"];

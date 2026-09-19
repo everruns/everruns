@@ -58,6 +58,12 @@ Two decisions in the scanner are load-bearing and non-obvious:
   rotation. The blind spot this leaves, a real secret committed into a workflow file, belongs to
   GitHub secret scanning on repository content.
 
+- **A false alarm is fixed at the source.** A documented API example lands verbatim in a public log
+  whenever a contract test fails and dumps the catalog, and an `sk-` prefixed placeholder there is
+  indistinguishable from a live key. Allowlisting repository content would make a secret committed
+  there invisible to the log scan too, so the examples give up the credential shape instead, guarded
+  by a fixture in [`scripts/test-actions-log-secret-scan.sh`](../../scripts/test-actions-log-secret-scan.sh).
+
 Entropy is deliberately not the discriminator. `debug-ubuntu-latest` scores 3.35, above any
 threshold a hex key could clear, since hex caps at 4.0. The signal is an unbroken alphanumeric run,
 which a credential has and a hyphenated setting name does not.
@@ -78,3 +84,9 @@ which a credential has and a hyphenated setting name does not.
 On a finding: rotate the named secret first, then delete the affected run logs
 (`DELETE /repos/{owner}/{repo}/actions/runs/{run_id}/logs`). Deleting logs without rotating is not a
 remedy — the value has already been readable.
+
+A finding that turns out to be a placeholder is still work: reshape the placeholder so it stops
+matching, then delete the logs carrying it. Waiting it out is not a response — the sweep reads a
+75-minute window, so the alarm clears itself once the run ages out, and recurs at full severity the
+next time anything dumps that value. A High finding that resolves to nothing and then goes away on
+its own is how a detector stops being read.
