@@ -13,10 +13,19 @@ license.workspace = true
 publish = false
 description = "A classifier supervising a coding agent it does not have to stop"
 
+[lib]
+# The runtime, so `tests/` can drive the same loop with a scripted worker.
+name = "everruns_foreman_agent"
+path = "src/lib.rs"
+
 [[bin]]
 # Started the way Foreman is: `foreman run --repo … --job …`.
 name = "foreman"
 path = "src/main.rs"
+
+[features]
+# Fixtures `tests/` borrows. Off in a real build.
+testing = []
 
 [dependencies]
 anyhow = "1.0"
@@ -35,3 +44,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "ti
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# This crate again, with the fixtures `tests/` borrows.
+everruns-foreman-agent = { path = ".", features = ["testing"] }

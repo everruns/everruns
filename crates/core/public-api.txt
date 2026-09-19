@@ -1196,6 +1196,7 @@ everruns_core::session_file::build_grep_search_result	function
 everruns_core::session_file::merge_grep_search_results	function
 everruns_core::session_files	module
 everruns_core::session_files::SessionFileSystem	trait
+everruns_core::session_files::SessionFileSystem::display_root	function
 everruns_core::session_files::SessionFileSystem::grep_files	function
 everruns_core::session_files::WorkspaceScopedFileSystem	struct
 everruns_core::session_path	module

@@ -40,6 +40,12 @@ pub struct Terminal {
     pending: Mutex<String>,
 }
 
+impl Default for Terminal {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Terminal {
     /// A terminal renderer at the start of a line.
     pub fn new() -> Self {
