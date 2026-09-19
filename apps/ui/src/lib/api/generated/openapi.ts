@@ -2107,6 +2107,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization. */
     get: operations["list_mcp_server_catalog"];
     put?: never;
     post?: never;
@@ -2162,6 +2163,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Get the bounded active-agent impact summary used before archiving an MCP server preset. */
     get: operations["get_mcp_server_usage"];
     put?: never;
     post?: never;
@@ -4084,6 +4086,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description List the current user's cursor-paginated MCP OAuth connections in the selected organization. */
     get: operations["list_mcp_connections"];
     put?: never;
     post?: never;
@@ -12208,12 +12211,33 @@ export interface components {
      * @enum {string}
      */
     McpServerAuthMode: "none" | "api_key" | "oauth";
+    /** @description MCP server preset with its active-agent usage count. */
     McpServerCatalogEntry: components["schemas"]["WithUrls_McpServer"] & {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Number of active agents that use this preset.
+       * @example 2
+       */
       used_by_agents: number;
     };
+    /** @description One page of MCP server catalog entries for the selected organization. */
     McpServerCatalogResponse: {
+      /**
+       * @description MCP server presets in this page.
+       * @example [
+       *       {
+       *         "id": "mcp_01933b5a00007000800000000000001",
+       *         "name": "microsoft_learn",
+       *         "url": "https://learn.microsoft.com/api/mcp",
+       *         "used_by_agents": 2
+       *       }
+       *     ]
+       */
       data: components["schemas"]["McpServerCatalogEntry"][];
+      /**
+       * @description Cursor for the next page, or null when this is the final page.
+       * @example mcp_01933b5a00007000800000000000001
+       */
       next_cursor?: string | null;
     };
     /**
@@ -12237,10 +12261,26 @@ export interface components {
      * @enum {string}
      */
     McpServerTransportType: "http" | "stdio";
+    /** @description Bounded archive-impact summary for an MCP server preset. */
     McpServerUsageResponse: {
+      /**
+       * @description Names of active agents that use the preset, up to the response limit.
+       * @example [
+       *       "Docs agent",
+       *       "Research agent"
+       *     ]
+       */
       agent_names: string[];
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Total number of active agents that use the preset.
+       * @example 2
+       */
       total_count: number;
+      /**
+       * @description Whether additional agent names were omitted from the bounded list.
+       * @example false
+       */
       truncated: boolean;
     };
     /**
@@ -17998,19 +18038,72 @@ export interface components {
       name: string;
       roles: string[];
     };
+    /** @description Current user's MCP OAuth connection to a preset in the selected organization. */
     UserMcpConnectionResponse: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time when the user authorized the connection.
+       * @example 2026-09-19T12:00:00Z
+       */
       connected_at: string;
+      /**
+       * @description Stored connection provider key used to revoke the grant.
+       * @example mcp_oauth_01933b5a-0000-7000-8000-000000000001
+       */
       provider: string;
+      /**
+       * @description Account name reported by the MCP OAuth provider, when available.
+       * @example alex@example.com
+       */
       provider_username?: string | null;
+      /**
+       * @description Space-delimited OAuth scopes granted to this connection, when available.
+       * @example tools:read tools:execute
+       */
       scopes?: string | null;
+      /**
+       * @description UUID of the MCP server preset associated with the connection.
+       * @example 01933b5a-0000-7000-8000-000000000001
+       */
       server_id: string;
+      /**
+       * @description Display name of the MCP server preset.
+       * @example microsoft_learn
+       */
       server_name: string;
+      /**
+       * @description Current lifecycle status of the MCP server preset.
+       * @example active
+       */
       server_status: string;
+      /**
+       * @description MCP server endpoint URL.
+       * @example https://learn.microsoft.com/api/mcp
+       */
       server_url: string;
     };
+    /** @description One page of the current user's MCP connections in the selected organization. */
     UserMcpConnectionsResponse: {
+      /**
+       * @description MCP connections in this page.
+       * @example [
+       *       {
+       *         "connected_at": "2026-09-19T12:00:00Z",
+       *         "provider": "mcp_oauth_01933b5a-0000-7000-8000-000000000001",
+       *         "provider_username": "alex@example.com",
+       *         "scopes": "tools:read tools:execute",
+       *         "server_id": "01933b5a-0000-7000-8000-000000000001",
+       *         "server_name": "microsoft_learn",
+       *         "server_status": "active",
+       *         "server_url": "https://learn.microsoft.com/api/mcp"
+       *       }
+       *     ]
+       */
       data: components["schemas"]["UserMcpConnectionResponse"][];
+      /**
+       * @description Cursor for the next page, or null when this is the final page.
+       * @example 01933b5a-0000-7000-8000-000000000002
+       */
       next_cursor?: string | null;
     };
     /** @description Request to validate a SKILL.md */

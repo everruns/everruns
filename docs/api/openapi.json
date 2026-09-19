@@ -8146,6 +8146,7 @@
         "tags": [
           "mcp-servers"
         ],
+        "description": "List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization.",
         "operationId": "list_mcp_server_catalog",
         "parameters": [
           {
@@ -8389,6 +8390,7 @@
         "tags": [
           "mcp-servers"
         ],
+        "description": "Get the bounded active-agent impact summary used before archiving an MCP server preset.",
         "operationId": "get_mcp_server_usage",
         "parameters": [
           {
@@ -16072,6 +16074,7 @@
         "tags": [
           "users"
         ],
+        "description": "List the current user's cursor-paginated MCP OAuth connections in the selected organization.",
         "operationId": "list_mcp_connections",
         "parameters": [
           {
@@ -31108,7 +31111,8 @@
       "McpServerCatalogEntry": {
         "allOf": [
           {
-            "$ref": "#/components/schemas/WithUrls_McpServer"
+            "$ref": "#/components/schemas/WithUrls_McpServer",
+            "description": "MCP server preset and its resource URLs."
           },
           {
             "type": "object",
@@ -31118,14 +31122,18 @@
             "properties": {
               "used_by_agents": {
                 "type": "integer",
-                "format": "int64"
+                "format": "int64",
+                "description": "Number of active agents that use this preset.",
+                "example": 2
               }
             }
           }
-        ]
+        ],
+        "description": "MCP server preset with its active-agent usage count."
       },
       "McpServerCatalogResponse": {
         "type": "object",
+        "description": "One page of MCP server catalog entries for the selected organization.",
         "required": [
           "data"
         ],
@@ -31134,13 +31142,24 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/McpServerCatalogEntry"
-            }
+            },
+            "description": "MCP server presets in this page.",
+            "example": [
+              {
+                "id": "mcp_01933b5a00007000800000000000001",
+                "name": "microsoft_learn",
+                "url": "https://learn.microsoft.com/api/mcp",
+                "used_by_agents": 2
+              }
+            ]
           },
           "next_cursor": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Cursor for the next page, or null when this is the final page.",
+            "example": "mcp_01933b5a00007000800000000000001"
           }
         }
       },
@@ -31171,6 +31190,7 @@
       },
       "McpServerUsageResponse": {
         "type": "object",
+        "description": "Bounded archive-impact summary for an MCP server preset.",
         "required": [
           "agent_names",
           "total_count",
@@ -31181,14 +31201,23 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Names of active agents that use the preset, up to the response limit.",
+            "example": [
+              "Docs agent",
+              "Research agent"
+            ]
           },
           "total_count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Total number of active agents that use the preset.",
+            "example": 2
           },
           "truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether additional agent names were omitted from the bounded list.",
+            "example": false
           }
         }
       },
@@ -41368,6 +41397,7 @@
       },
       "UserMcpConnectionResponse": {
         "type": "object",
+        "description": "Current user's MCP OAuth connection to a preset in the selected organization.",
         "required": [
           "provider",
           "server_id",
@@ -41379,39 +41409,56 @@
         "properties": {
           "connected_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Time when the user authorized the connection.",
+            "example": "2026-09-19T12:00:00Z"
           },
           "provider": {
-            "type": "string"
+            "type": "string",
+            "description": "Stored connection provider key used to revoke the grant.",
+            "example": "mcp_oauth_01933b5a-0000-7000-8000-000000000001"
           },
           "provider_username": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Account name reported by the MCP OAuth provider, when available.",
+            "example": "alex@example.com"
           },
           "scopes": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Space-delimited OAuth scopes granted to this connection, when available.",
+            "example": "tools:read tools:execute"
           },
           "server_id": {
-            "type": "string"
+            "type": "string",
+            "description": "UUID of the MCP server preset associated with the connection.",
+            "example": "01933b5a-0000-7000-8000-000000000001"
           },
           "server_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name of the MCP server preset.",
+            "example": "microsoft_learn"
           },
           "server_status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current lifecycle status of the MCP server preset.",
+            "example": "active"
           },
           "server_url": {
-            "type": "string"
+            "type": "string",
+            "description": "MCP server endpoint URL.",
+            "example": "https://learn.microsoft.com/api/mcp"
           }
         }
       },
       "UserMcpConnectionsResponse": {
         "type": "object",
+        "description": "One page of the current user's MCP connections in the selected organization.",
         "required": [
           "data"
         ],
@@ -41420,13 +41467,28 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/UserMcpConnectionResponse"
-            }
+            },
+            "description": "MCP connections in this page.",
+            "example": [
+              {
+                "connected_at": "2026-09-19T12:00:00Z",
+                "provider": "mcp_oauth_01933b5a-0000-7000-8000-000000000001",
+                "provider_username": "alex@example.com",
+                "scopes": "tools:read tools:execute",
+                "server_id": "01933b5a-0000-7000-8000-000000000001",
+                "server_name": "microsoft_learn",
+                "server_status": "active",
+                "server_url": "https://learn.microsoft.com/api/mcp"
+              }
+            ]
           },
           "next_cursor": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Cursor for the next page, or null when this is the final page.",
+            "example": "01933b5a-0000-7000-8000-000000000002"
           }
         }
       },

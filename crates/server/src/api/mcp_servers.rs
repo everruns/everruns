@@ -38,9 +38,15 @@ pub struct ListMcpServersQuery {
     /// Include archived MCP servers. Deleted MCP servers never appear in lists.
     pub include_archived: Option<bool>,
 }
+
+/// One page of MCP server catalog entries for the selected organization.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct McpServerCatalogResponse {
+    /// MCP server presets in this page.
+    #[schema(example = json!([{"id": "mcp_01933b5a00007000800000000000001", "name": "microsoft_learn", "url": "https://learn.microsoft.com/api/mcp", "used_by_agents": 2}]))]
     pub data: Vec<McpServerCatalogEntry>,
+    /// Cursor for the next page, or null when this is the final page.
+    #[schema(example = "mcp_01933b5a00007000800000000000001")]
     pub next_cursor: Option<String>,
 }
 
@@ -51,17 +57,29 @@ pub struct ListMcpServerCatalogQuery {
     /// Page size (default: 50, max: 100).
     pub limit: Option<u32>,
 }
+
+/// MCP server preset with its active-agent usage count.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct McpServerCatalogEntry {
+    /// MCP server preset and its resource URLs.
     #[serde(flatten)]
     pub server: WithUrls<McpServer>,
+    /// Number of active agents that use this preset.
+    #[schema(example = 2)]
     pub used_by_agents: i64,
 }
 
+/// Bounded archive-impact summary for an MCP server preset.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct McpServerUsageResponse {
+    /// Names of active agents that use the preset, up to the response limit.
+    #[schema(example = json!(["Docs agent", "Research agent"]))]
     pub agent_names: Vec<String>,
+    /// Total number of active agents that use the preset.
+    #[schema(example = 2)]
     pub total_count: i64,
+    /// Whether additional agent names were omitted from the bounded list.
+    #[schema(example = false)]
     pub truncated: bool,
 }
 
@@ -213,6 +231,7 @@ pub async fn list_mcp_servers(
 }
 
 #[utoipa::path(
+    description = "List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization.",
     get,
     path = "/v1/mcp-servers/catalog",
     params(ListMcpServerCatalogQuery),
@@ -290,6 +309,7 @@ pub async fn list_mcp_server_catalog(
 }
 
 #[utoipa::path(
+    description = "Get the bounded active-agent impact summary used before archiving an MCP server preset.",
     get,
     path = "/v1/mcp-servers/{server_id}/usage",
     params(("server_id" = String, Path, description = "MCP server ID")),

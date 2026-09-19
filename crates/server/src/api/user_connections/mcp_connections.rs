@@ -24,26 +24,50 @@ pub struct ListUserMcpConnectionsQuery {
     pub limit: Option<u32>,
 }
 
+/// Current user's MCP OAuth connection to a preset in the selected organization.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UserMcpConnectionResponse {
+    /// Stored connection provider key used to revoke the grant.
+    #[schema(example = "mcp_oauth_01933b5a-0000-7000-8000-000000000001")]
     pub provider: String,
+    /// UUID of the MCP server preset associated with the connection.
+    #[schema(example = "01933b5a-0000-7000-8000-000000000001")]
     pub server_id: String,
+    /// Display name of the MCP server preset.
+    #[schema(example = "microsoft_learn")]
     pub server_name: String,
+    /// MCP server endpoint URL.
+    #[schema(example = "https://learn.microsoft.com/api/mcp")]
     pub server_url: String,
+    /// Current lifecycle status of the MCP server preset.
+    #[schema(example = "active")]
     pub server_status: String,
+    /// Account name reported by the MCP OAuth provider, when available.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "alex@example.com")]
     pub provider_username: Option<String>,
+    /// Space-delimited OAuth scopes granted to this connection, when available.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "tools:read tools:execute")]
     pub scopes: Option<String>,
+    /// Time when the user authorized the connection.
+    #[schema(example = "2026-09-19T12:00:00Z")]
     pub connected_at: DateTime<Utc>,
 }
+
+/// One page of the current user's MCP connections in the selected organization.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UserMcpConnectionsResponse {
+    /// MCP connections in this page.
+    #[schema(example = json!([{"provider": "mcp_oauth_01933b5a-0000-7000-8000-000000000001", "server_id": "01933b5a-0000-7000-8000-000000000001", "server_name": "microsoft_learn", "server_url": "https://learn.microsoft.com/api/mcp", "server_status": "active", "provider_username": "alex@example.com", "scopes": "tools:read tools:execute", "connected_at": "2026-09-19T12:00:00Z"}]))]
     pub data: Vec<UserMcpConnectionResponse>,
+    /// Cursor for the next page, or null when this is the final page.
+    #[schema(example = "01933b5a-0000-7000-8000-000000000002")]
     pub next_cursor: Option<String>,
 }
 
 #[utoipa::path(
+    description = "List the current user's cursor-paginated MCP OAuth connections in the selected organization.",
     get,
     path = "/v1/user/mcp-connections",
     params(ListUserMcpConnectionsQuery),
