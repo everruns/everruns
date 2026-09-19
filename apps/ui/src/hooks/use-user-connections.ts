@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getUserConnections,
   getConnectionProviders,
@@ -20,11 +20,17 @@ export function useUserConnections() {
 }
 
 export function useUserMcpConnections() {
-  return useQuery({
+  const query = useInfiniteQuery({
     queryKey: queryKeys.userConnections.mcp(),
-    queryFn: getUserMcpConnections,
+    queryFn: ({ pageParam }) => getUserMcpConnections(pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.next_cursor ?? undefined,
     staleTime: 30000,
   });
+  return {
+    ...query,
+    data: query.data?.pages.flatMap((page) => page.data),
+  };
 }
 
 export function useConnectionProviders() {

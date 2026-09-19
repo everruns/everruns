@@ -4,6 +4,7 @@ import McpServersPage from "@/app/(main)/mcp-servers/page";
 const mockUseMcpServerCatalog = jest.fn();
 const mockUseMcpServerUsage = jest.fn();
 const mockUseCreateMcpServer = jest.fn();
+const mockUseDeleteMcpServer = jest.fn();
 const mockUseUpdateMcpServer = jest.fn();
 const mockUseDestroyMcpServer = jest.fn();
 const mockUseUserMcpConnections = jest.fn();
@@ -14,6 +15,7 @@ jest.mock("@/hooks/use-mcp-servers", () => ({
   useMcpServerCatalog: () => mockUseMcpServerCatalog(),
   useMcpServerUsage: () => mockUseMcpServerUsage(),
   useCreateMcpServer: () => mockUseCreateMcpServer(),
+  useDeleteMcpServer: () => mockUseDeleteMcpServer(),
   useUpdateMcpServer: () => mockUseUpdateMcpServer(),
   useDestroyMcpServer: () => mockUseDestroyMcpServer(),
 }));
@@ -75,6 +77,11 @@ describe("McpServersPage", () => {
     });
 
     mockUseCreateMcpServer.mockReturnValue({
+      mutateAsync: jest.fn(),
+      isPending: false,
+    });
+
+    mockUseDeleteMcpServer.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
     });
@@ -167,7 +174,7 @@ describe("McpServersPage", () => {
 
   it("does not archive when cancel is clicked in the confirmation dialog", () => {
     const mockMutateAsync = jest.fn();
-    mockUseUpdateMcpServer.mockReturnValue({
+    mockUseDeleteMcpServer.mockReturnValue({
       mutateAsync: mockMutateAsync,
       isPending: false,
     });
@@ -185,7 +192,7 @@ describe("McpServersPage", () => {
 
   it("archives server when confirmed in the dialog", async () => {
     const mockMutateAsync = jest.fn().mockResolvedValue({});
-    mockUseUpdateMcpServer.mockReturnValue({
+    mockUseDeleteMcpServer.mockReturnValue({
       mutateAsync: mockMutateAsync,
       isPending: false,
     });
@@ -198,8 +205,52 @@ describe("McpServersPage", () => {
     const archiveButton = within(dialog).getByRole("button", { name: "Archive" });
     fireEvent.click(archiveButton);
 
-    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith({ status: "archived" }));
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith("mcp-1"));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("loads the next catalog page through the continuation control", () => {
+    const fetchNextPage = jest.fn();
+    mockUseMcpServerCatalog.mockReturnValue({
+      ...mockUseMcpServerCatalog(),
+      hasNextPage: true,
+      isFetchingNextPage: false,
+      fetchNextPage,
+    });
+
+    render(<McpServersPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Load more presets" }));
+
+    expect(fetchNextPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads the next personal-connections page through the continuation control", () => {
+    const fetchNextPage = jest.fn();
+    mockUseUserMcpConnections.mockReturnValue({
+      data: [
+        {
+          provider: "mcp_oauth_11111111-1111-1111-1111-111111111111",
+          server_id: "11111111-1111-1111-1111-111111111111",
+          server_name: "linear",
+          server_url: "https://mcp.linear.app/mcp",
+          server_status: "active",
+          provider_username: "person@example.com",
+          scopes: "read write",
+          connected_at: "2024-01-02T00:00:00Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+      hasNextPage: true,
+      isFetchingNextPage: false,
+      fetchNextPage,
+    });
+
+    render(<McpServersPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "My connections" }));
+    fireEvent.click(screen.getByRole("button", { name: "Load more connections" }));
+
+    expect(fetchNextPage).toHaveBeenCalledTimes(1);
   });
 
   it("shows a validation error for invalid MCP server URLs", async () => {

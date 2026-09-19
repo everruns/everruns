@@ -15,6 +15,22 @@ use test_harness::get_database_url;
 
 const TEST_ORG_ID: i64 = 1;
 
+#[test]
+fn mcp_page_limits_enforce_lower_and_upper_bounds() {
+    use everruns_server::api::pagination::bounded_page_limit;
+
+    assert_eq!(bounded_page_limit(None, 50, 100), Ok(50));
+    assert_eq!(bounded_page_limit(Some(100), 50, 100), Ok(100));
+    assert_eq!(
+        bounded_page_limit(Some(0), 50, 100),
+        Err("limit must be between 1 and 100".to_string())
+    );
+    assert_eq!(
+        bounded_page_limit(Some(101), 50, 100),
+        Err("limit must be between 1 and 100".to_string())
+    );
+}
+
 async fn create_test_pool() -> PgPool {
     PgPool::connect(&get_database_url())
         .await
@@ -264,6 +280,98 @@ async fn mcp_catalog_usage_counts_active_agents_once_and_stays_org_scoped() {
 }
 
 #[tokio::test]
+async fn mcp_catalog_pages_are_bounded_and_usage_is_scoped_to_page_ids() {
+    let backend = create_test_backend().await;
+    let mut created = Vec::new();
+    for label in ["first", "second", "third"] {
+        created.push(
+            backend
+                .create_mcp_server(
+                    TEST_ORG_ID,
+                    CreateMcpServerRow {
+                        name: format!("{label}-{}", Uuid::now_v7().simple()),
+                        description: None,
+                        url: format!("https://{label}.example/mcp"),
+                        transport_type: "http".to_string(),
+                        api_key_encrypted: None,
+                        headers: None,
+                        settings: None,
+                    },
+                )
+                .await
+                .expect("create catalog page server"),
+        );
+    }
+
+    let first_page = backend
+        .list_mcp_server_catalog_page(TEST_ORG_ID, None, 2)
+        .await
+        .expect("list first catalog page");
+    assert_eq!(first_page.len(), 2);
+    assert!(first_page[0].id.uuid() > first_page[1].id.uuid());
+
+    let second_page = backend
+        .list_mcp_server_catalog_page(TEST_ORG_ID, Some(first_page[1].id), 2)
+        .await
+        .expect("list second catalog page");
+    assert!(!second_page.is_empty());
+    assert!(
+        second_page
+            .iter()
+            .all(|row| row.id.uuid() < first_page[1].id.uuid())
+    );
+
+    let selected_id = first_page[0].id.uuid();
+    let usage = backend
+        .list_mcp_server_agent_usage_for_ids(TEST_ORG_ID, &[selected_id])
+        .await
+        .expect("list scoped catalog usage");
+    assert_eq!(usage.len(), 1);
+    assert_eq!(usage[0].mcp_server_id.uuid(), selected_id);
+    assert!(
+        created
+            .iter()
+            .filter(|server| server.id.uuid() != selected_id)
+            .all(|server| usage.iter().all(|row| row.mcp_server_id != server.id))
+    );
+}
+
+#[tokio::test]
+async fn dedicated_mcp_archive_sets_archive_timestamp_without_deleting() {
+    let backend = create_test_backend().await;
+    let server = backend
+        .create_mcp_server(
+            TEST_ORG_ID,
+            CreateMcpServerRow {
+                name: format!("archive-{}", Uuid::now_v7().simple()),
+                description: None,
+                url: "https://archive.example/mcp".to_string(),
+                transport_type: "http".to_string(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("create archive server");
+
+    assert!(
+        backend
+            .delete_mcp_server(TEST_ORG_ID, server.id.uuid())
+            .await
+            .expect("archive server")
+    );
+    let archived = backend
+        .get_mcp_server(TEST_ORG_ID, server.id.uuid())
+        .await
+        .expect("load archived server")
+        .expect("archived server remains");
+    assert_eq!(archived.status, "archived");
+    assert!(archived.archived_at.is_some());
+    assert!(archived.deleted_at.is_none());
+}
+
+#[tokio::test]
 async fn user_mcp_connections_are_user_and_org_scoped_and_include_tombstones() {
     let backend = create_test_backend().await;
     let other_org = create_test_org(&backend, "MCP connection isolation").await;
@@ -369,6 +477,24 @@ async fn user_mcp_connections_are_user_and_org_scoped_and_include_tombstones() {
         row.server_id != other_org_server.id
             && row.provider_username.as_deref() != Some("other-user")
     }));
+
+    let first_page = backend
+        .list_user_mcp_connections_page(TEST_ORG_ID, current_user.id, None, 1)
+        .await
+        .expect("list first connection page");
+    assert_eq!(first_page.len(), 1);
+    let second_page = backend
+        .list_user_mcp_connections_page(
+            TEST_ORG_ID,
+            current_user.id,
+            Some(first_page[0].connection_id),
+            1,
+        )
+        .await
+        .expect("list second connection page");
+    assert_eq!(second_page.len(), 1);
+    assert!(second_page[0].connection_id < first_page[0].connection_id);
+    assert_ne!(second_page[0].provider, first_page[0].provider);
 
     assert!(
         backend

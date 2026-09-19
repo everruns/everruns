@@ -36,6 +36,7 @@ import {
   useMcpServerCatalog,
   useMcpServerUsage,
   useCreateMcpServer,
+  useDeleteMcpServer,
   useUpdateMcpServer,
   useDestroyMcpServer,
 } from "@/hooks/use-mcp-servers";
@@ -926,12 +927,12 @@ function ArchiveConfirmDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const updateServer = useUpdateMcpServer(server?.id || "");
+  const archiveServer = useDeleteMcpServer();
   const usage = useMcpServerUsage(open ? server?.id : undefined);
 
   const handleArchive = async () => {
     if (!server) return;
-    await updateServer.mutateAsync({ status: "archived" });
+    await archiveServer.mutateAsync(server.id);
     onOpenChange(false);
   };
 
@@ -979,9 +980,9 @@ function ArchiveConfirmDialog({
           </Button>
           <Button
             onClick={handleArchive}
-            disabled={updateServer.isPending || usage.isLoading || !!usage.error}
+            disabled={archiveServer.isPending || usage.isLoading || !!usage.error}
           >
-            {updateServer.isPending ? "Archiving..." : "Archive"}
+            {archiveServer.isPending ? "Archiving..." : "Archive"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1182,39 +1183,52 @@ export default function McpServersPage() {
               }
             >
               {(items) => (
-                <div className="border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Host</TableHead>
-                        <TableHead>Transport / era</TableHead>
-                        <TableHead>Auth</TableHead>
-                        <TableHead>
-                          <span title="Active agents only. Archived agents are excluded.">
-                            Used by
-                          </span>
-                        </TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {items.map((server) => (
-                        <McpServerRow
-                          key={server.id}
-                          server={server}
-                          canManage={canManage}
-                          canDestroy={canDestroy}
-                          onEdit={setEditServer}
-                          onDelete={setPendingDeleteServer}
-                          onArchive={setPendingArchiveServer}
-                          onSetApiKey={setApiKeyServer}
-                          onManageHeaders={setHeadersServer}
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
+                <div className="space-y-3">
+                  <div className="border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Host</TableHead>
+                          <TableHead>Transport / era</TableHead>
+                          <TableHead>Auth</TableHead>
+                          <TableHead>
+                            <span title="Active agents only. Archived agents are excluded.">
+                              Used by
+                            </span>
+                          </TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {items.map((server) => (
+                          <McpServerRow
+                            key={server.id}
+                            server={server}
+                            canManage={canManage}
+                            canDestroy={canDestroy}
+                            onEdit={setEditServer}
+                            onDelete={setPendingDeleteServer}
+                            onArchive={setPendingArchiveServer}
+                            onSetApiKey={setApiKeyServer}
+                            onManageHeaders={setHeadersServer}
+                          />
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {catalog.hasNextPage && (
+                    <div className="flex justify-center">
+                      <Button
+                        variant="outline"
+                        disabled={catalog.isFetchingNextPage}
+                        onClick={() => catalog.fetchNextPage()}
+                      >
+                        {catalog.isFetchingNextPage ? "Loading…" : "Load more presets"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </QueryStateWrapper>
@@ -1234,57 +1248,70 @@ export default function McpServersPage() {
               }
             >
               {(items) => (
-                <div className="border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Server</TableHead>
-                        <TableHead>Host</TableHead>
-                        <TableHead>Account</TableHead>
-                        <TableHead>Scopes</TableHead>
-                        <TableHead>Connected</TableHead>
-                        <TableHead>State</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {items.map((connection) => {
-                        let host = connection.server_url;
-                        try {
-                          host = new URL(connection.server_url).host;
-                        } catch {}
-                        const unavailable = connection.server_status === "deleted";
-                        return (
-                          <TableRow key={connection.provider}>
-                            <TableCell className="font-medium">
-                              {unavailable ? "Preset unavailable" : connection.server_name}
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">{host}</TableCell>
-                            <TableCell>{connection.provider_username || "—"}</TableCell>
-                            <TableCell>{connection.scopes || "—"}</TableCell>
-                            <TableCell>
-                              {new Date(connection.connected_at).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={unavailable ? "secondary" : "outline"}>
-                                {unavailable ? "unavailable" : "connected"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={revokeConnection.isPending}
-                                onClick={() => revokeConnection.mutate(connection.provider)}
-                              >
-                                Revoke
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                <div className="space-y-3">
+                  <div className="border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Server</TableHead>
+                          <TableHead>Host</TableHead>
+                          <TableHead>Account</TableHead>
+                          <TableHead>Scopes</TableHead>
+                          <TableHead>Connected</TableHead>
+                          <TableHead>State</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {items.map((connection) => {
+                          let host = connection.server_url;
+                          try {
+                            host = new URL(connection.server_url).host;
+                          } catch {}
+                          const unavailable = connection.server_status === "deleted";
+                          return (
+                            <TableRow key={connection.provider}>
+                              <TableCell className="font-medium">
+                                {unavailable ? "Preset unavailable" : connection.server_name}
+                              </TableCell>
+                              <TableCell className="font-mono text-xs">{host}</TableCell>
+                              <TableCell>{connection.provider_username || "—"}</TableCell>
+                              <TableCell>{connection.scopes || "—"}</TableCell>
+                              <TableCell>
+                                {new Date(connection.connected_at).toLocaleDateString()}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={unavailable ? "secondary" : "outline"}>
+                                  {unavailable ? "unavailable" : "connected"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={revokeConnection.isPending}
+                                  onClick={() => revokeConnection.mutate(connection.provider)}
+                                >
+                                  Revoke
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {connections.hasNextPage && (
+                    <div className="flex justify-center">
+                      <Button
+                        variant="outline"
+                        disabled={connections.isFetchingNextPage}
+                        onClick={() => connections.fetchNextPage()}
+                      >
+                        {connections.isFetchingNextPage ? "Loading…" : "Load more connections"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </QueryStateWrapper>

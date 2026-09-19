@@ -243,6 +243,64 @@ impl InMemoryDatabase {
         usage.sort_by_key(|row| row.mcp_server_id.to_string());
         Ok(usage)
     }
+    pub async fn list_mcp_server_catalog_page(
+        &self,
+        org_id: i64,
+        cursor: Option<McpServerId>,
+        limit: i64,
+    ) -> Result<Vec<McpServerRow>> {
+        let mut servers = self
+            .mcp_servers
+            .read()
+            .values()
+            .filter(|server| server.org_id == org_id && server.status != "deleted")
+            .filter(|server| cursor.is_none_or(|cursor| server.id.uuid() < cursor.uuid()))
+            .cloned()
+            .collect::<Vec<_>>();
+        servers.sort_by_key(|server| std::cmp::Reverse(server.id.uuid()));
+        servers.truncate(limit.max(0) as usize);
+        Ok(servers)
+    }
+
+    pub async fn list_mcp_server_agent_usage_for_ids(
+        &self,
+        org_id: i64,
+        server_ids: &[Uuid],
+    ) -> Result<Vec<McpServerAgentUsageRow>> {
+        let selected = server_ids.iter().copied().collect::<HashSet<_>>();
+        let servers = self.mcp_servers.read();
+        let agents = self.agents.read();
+        Ok(servers
+            .values()
+            .filter(|server| {
+                server.org_id == org_id
+                    && server.status != "deleted"
+                    && selected.contains(&server.id.uuid())
+            })
+            .map(|server| {
+                let reference = format!("catalog:{}", server.name);
+                let used_by_agents = agents
+                    .values()
+                    .filter(|agent| {
+                        agent.org_id == org_id
+                            && agent.status == "active"
+                            && agent.archived_at.is_none()
+                            && agent.deleted_at.is_none()
+                            && agent.mcp_servers.as_object().is_some_and(|attachments| {
+                                attachments.values().any(|attachment| {
+                                    attachment.get("use").and_then(|value| value.as_str())
+                                        == Some(reference.as_str())
+                                })
+                            })
+                    })
+                    .count() as i64;
+                McpServerAgentUsageRow {
+                    mcp_server_id: server.id,
+                    used_by_agents,
+                }
+            })
+            .collect())
+    }
 
     pub async fn get_mcp_server_agent_names(
         &self,

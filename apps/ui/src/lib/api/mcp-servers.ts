@@ -7,6 +7,7 @@ import type {
   CreateMcpServerRequest,
   McpServer,
   McpServerCatalogEntry,
+  McpServerCatalogResponse,
   McpServerUsage,
   UpdateMcpServerRequest,
 } from "./types";
@@ -24,9 +25,18 @@ export const updateMcpServer = mcpServersCrudApi.update;
 export const deleteMcpServer = mcpServersCrudApi.delete;
 export const destroyMcpServer = mcpServersCrudApi.destroy;
 
-export async function getMcpServerCatalog(): Promise<McpServerCatalogEntry[]> {
-  const response = await api.get<{ data: McpServerCatalogEntry[] }>("/v1/mcp-servers/catalog");
-  return response.data.data;
+export async function getMcpServerCatalog(
+  cursor?: string,
+): Promise<{ data: McpServerCatalogEntry[]; next_cursor?: string | null }> {
+  const params = new URLSearchParams({ limit: "50" });
+  if (cursor) params.set("cursor", cursor);
+  const response = await api.get<McpServerCatalogResponse>(
+    `/v1/mcp-servers/catalog?${params.toString()}`,
+  );
+  return {
+    data: response.data.data as McpServerCatalogEntry[],
+    next_cursor: response.data.next_cursor,
+  };
 }
 
 export async function getMcpServerUsage(serverId: string): Promise<McpServerUsage> {

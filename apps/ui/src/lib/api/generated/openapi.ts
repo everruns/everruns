@@ -10678,17 +10678,6 @@ export interface components {
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
      */
-    ListResponse_McpServerCatalogEntry: {
-      /** @description Array of items returned by the list operation. */
-      data: (components["schemas"]["WithUrls_McpServer"] & {
-        /** Format: int64 */
-        used_by_agents: number;
-      })[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
     ListResponse_Memory: {
       /** @description Array of items returned by the list operation. */
       data: {
@@ -12222,6 +12211,10 @@ export interface components {
     McpServerCatalogEntry: components["schemas"]["WithUrls_McpServer"] & {
       /** Format: int64 */
       used_by_agents: number;
+    };
+    McpServerCatalogResponse: {
+      data: components["schemas"]["McpServerCatalogEntry"][];
+      next_cursor?: string | null;
     };
     /**
      * @description Reference to an organization MCP server catalog entry.
@@ -18015,6 +18008,10 @@ export interface components {
       server_name: string;
       server_status: string;
       server_url: string;
+    };
+    UserMcpConnectionsResponse: {
+      data: components["schemas"]["UserMcpConnectionResponse"][];
+      next_cursor?: string | null;
     };
     /** @description Request to validate a SKILL.md */
     ValidateSkillRequest: {
@@ -26403,20 +26400,34 @@ export interface operations {
   };
   list_mcp_server_catalog: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Continue after this MCP server ID. */
+        cursor?: string | null;
+        /** @description Page size (default: 50, max: 100). */
+        limit?: number | null;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description MCP server catalog with active-agent usage counts */
+      /** @description Cursor-paginated MCP server catalog with active-agent usage counts */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_McpServerCatalogEntry"];
+          "application/json": components["schemas"]["McpServerCatalogResponse"];
+        };
+      };
+      /** @description Invalid cursor or limit */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
       /** @description Permission denied */
@@ -32706,20 +32717,34 @@ export interface operations {
   };
   list_mcp_connections: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Continue after this opaque connection cursor. */
+        cursor?: string | null;
+        /** @description Page size (default: 50, max: 100). */
+        limit?: number | null;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Current user's MCP OAuth connections in the selected organization */
+      /** @description Cursor-paginated current user's MCP OAuth connections in the selected organization */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["UserMcpConnectionResponse"][];
+          "application/json": components["schemas"]["UserMcpConnectionsResponse"];
+        };
+      };
+      /** @description Invalid cursor or limit */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
       /** @description Internal server error */
@@ -32727,7 +32752,9 @@ export interface operations {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
       };
     };
   };

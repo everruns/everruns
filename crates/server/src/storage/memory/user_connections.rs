@@ -88,6 +88,7 @@ impl InMemoryDatabase {
                                 == everruns_core::mcp_oauth_provider_id_for_uuid(server.id.uuid())
                     })
                     .map(|server| UserMcpConnectionRow {
+                        connection_id: connection.id,
                         provider: connection.provider.clone(),
                         provider_username: connection.provider_username.clone(),
                         scopes: connection.scopes.clone(),
@@ -100,6 +101,23 @@ impl InMemoryDatabase {
             })
             .collect::<Vec<_>>();
         rows.sort_by_key(|row| row.server_name.to_lowercase());
+        Ok(rows)
+    }
+    pub async fn list_user_mcp_connections_page(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        cursor: Option<Uuid>,
+        limit: i64,
+    ) -> Result<Vec<UserMcpConnectionRow>> {
+        let mut rows = self
+            .list_user_mcp_connections(org_id, user_id)
+            .await?
+            .into_iter()
+            .filter(|row| cursor.is_none_or(|cursor| row.connection_id < cursor))
+            .collect::<Vec<_>>();
+        rows.sort_by_key(|row| std::cmp::Reverse(row.connection_id));
+        rows.truncate(limit.max(0) as usize);
         Ok(rows)
     }
 

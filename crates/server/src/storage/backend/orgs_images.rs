@@ -615,6 +615,22 @@ impl StorageBackend {
     ) -> Result<Vec<UserMcpConnectionRow>> {
         dispatch!(self, list_user_mcp_connections, org_id, user_id)
     }
+    pub async fn list_user_mcp_connections_page(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+        cursor: Option<Uuid>,
+        limit: i64,
+    ) -> Result<Vec<UserMcpConnectionRow>> {
+        dispatch!(
+            self,
+            list_user_mcp_connections_page,
+            org_id,
+            user_id,
+            cursor,
+            limit
+        )
+    }
 
     pub async fn update_user_connection_oauth_tokens(
         &self,

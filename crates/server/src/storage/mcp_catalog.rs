@@ -16,6 +16,7 @@ pub struct McpServerAgentNamesRow {
 
 #[derive(Debug, Clone, FromRow)]
 pub struct UserMcpConnectionRow {
+    pub connection_id: uuid::Uuid,
     pub provider: String,
     pub provider_username: Option<String>,
     pub scopes: Option<String>,

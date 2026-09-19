@@ -45,7 +45,7 @@ use crate::storage::models::{
     CreateAgentIdentityConnectionRow, CreateUserConnectionRow, UpsertMcpOAuthSessionCredentials,
 };
 pub mod mcp_connections;
-pub use mcp_connections::{UserMcpConnectionResponse, list_mcp_connections};
+use mcp_connections::list_mcp_connections;
 
 /// App state for user connections routes
 #[derive(Clone)]

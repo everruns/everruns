@@ -4,7 +4,7 @@
 import { api } from "./client";
 import type {
   UserConnection,
-  UserMcpConnection,
+  UserMcpConnectionsResponse,
   ConnectionProvider,
   VerifyConnectionResponse,
 } from "./types";
@@ -14,8 +14,12 @@ export async function getUserConnections(): Promise<UserConnection[]> {
   return response.data;
 }
 
-export async function getUserMcpConnections(): Promise<UserMcpConnection[]> {
-  const response = await api.get<UserMcpConnection[]>("/v1/user/mcp-connections");
+export async function getUserMcpConnections(cursor?: string): Promise<UserMcpConnectionsResponse> {
+  const params = new URLSearchParams({ limit: "50" });
+  if (cursor) params.set("cursor", cursor);
+  const response = await api.get<UserMcpConnectionsResponse>(
+    `/v1/user/mcp-connections?${params.toString()}`,
+  );
   return response.data;
 }
 

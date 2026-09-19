@@ -198,6 +198,31 @@ impl Database {
         }
         Ok(query.fetch_all(&self.pool).await?)
     }
+    pub async fn list_mcp_server_catalog_page(
+        &self,
+        org_id: i64,
+        cursor: Option<McpServerId>,
+        limit: i64,
+    ) -> Result<Vec<McpServerRow>> {
+        Ok(sqlx::query_as::<_, McpServerRow>(
+            r#"
+            SELECT id, org_id, name, description, url, transport_type, status,
+                   api_key_encrypted, api_key_set, headers, settings, cached_tools,
+                   tools_cached_at, created_at, updated_at, archived_at, deleted_at
+            FROM mcp_servers
+            WHERE org_id = $1
+              AND status != 'deleted'
+              AND ($2::uuid IS NULL OR id < $2)
+            ORDER BY id DESC
+            LIMIT $3
+            "#,
+        )
+        .bind(org_id)
+        .bind(cursor.map(|id| id.uuid()))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?)
+    }
 
     pub async fn list_mcp_server_agent_usage(
         &self,
@@ -224,6 +249,40 @@ impl Database {
             "#,
         )
         .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+    pub async fn list_mcp_server_agent_usage_for_ids(
+        &self,
+        org_id: i64,
+        server_ids: &[Uuid],
+    ) -> Result<Vec<McpServerAgentUsageRow>> {
+        if server_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(sqlx::query_as::<_, McpServerAgentUsageRow>(
+            r#"
+            SELECT ms.id AS mcp_server_id,
+                   COUNT(DISTINCT a.id) FILTER (WHERE a.id IS NOT NULL) AS used_by_agents
+            FROM mcp_servers ms
+            LEFT JOIN agents a
+              ON a.org_id = ms.org_id
+             AND a.status = 'active'
+             AND a.archived_at IS NULL
+             AND a.deleted_at IS NULL
+             AND EXISTS (
+                 SELECT 1
+                 FROM jsonb_each(COALESCE(a.mcp_servers, '{}'::jsonb)) attachment
+                 WHERE attachment.value->>'use' = 'catalog:' || ms.name
+             )
+            WHERE ms.org_id = $1
+              AND ms.id = ANY($2)
+              AND ms.status != 'deleted'
+            GROUP BY ms.id
+            "#,
+        )
+        .bind(org_id)
+        .bind(server_ids)
         .fetch_all(&self.pool)
         .await?)
     }

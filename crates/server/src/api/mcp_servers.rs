@@ -21,11 +21,14 @@ use super::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 use super::dispatch::{Dispatchable, impl_dispatchable};
+use super::pagination::bounded_page_limit;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 const USAGE_AGENT_NAME_LIMIT: i64 = 25;
+const CATALOG_DEFAULT_LIMIT: u32 = 50;
+const CATALOG_MAX_LIMIT: u32 = 100;
 
 /// Query parameters for listing MCP servers.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
@@ -35,7 +38,19 @@ pub struct ListMcpServersQuery {
     /// Include archived MCP servers. Deleted MCP servers never appear in lists.
     pub include_archived: Option<bool>,
 }
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct McpServerCatalogResponse {
+    pub data: Vec<McpServerCatalogEntry>,
+    pub next_cursor: Option<String>,
+}
 
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+pub struct ListMcpServerCatalogQuery {
+    /// Continue after this MCP server ID.
+    pub cursor: Option<String>,
+    /// Page size (default: 50, max: 100).
+    pub limit: Option<u32>,
+}
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct McpServerCatalogEntry {
     #[serde(flatten)]
@@ -200,8 +215,10 @@ pub async fn list_mcp_servers(
 #[utoipa::path(
     get,
     path = "/v1/mcp-servers/catalog",
+    params(ListMcpServerCatalogQuery),
     responses(
-        (status = 200, description = "MCP server catalog with active-agent usage counts", body = ListResponse<McpServerCatalogEntry>),
+        (status = 200, description = "Cursor-paginated MCP server catalog with active-agent usage counts", body = McpServerCatalogResponse),
+        (status = 400, description = "Invalid cursor or limit", body = ErrorResponse),
         (status = 403, description = "Permission denied", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse),
     ),
@@ -210,22 +227,44 @@ pub async fn list_mcp_servers(
 pub async fn list_mcp_server_catalog(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> Result<Json<ListResponse<McpServerCatalogEntry>>, (StatusCode, Json<ErrorResponse>)> {
+    Query(query): Query<ListMcpServerCatalogQuery>,
+) -> Result<Json<McpServerCatalogResponse>, (StatusCode, Json<ErrorResponse>)> {
     let caller = Caller::from(&org);
     MCP_SERVER_VIEW
         .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
         .map_err(|error| ErrorResponse::new(error.message).into_response(StatusCode::FORBIDDEN))?;
-    let servers = state
+    let limit = bounded_page_limit(query.limit, CATALOG_DEFAULT_LIMIT, CATALOG_MAX_LIMIT)
+        .map_err(|message| ErrorResponse::new(message).into_response(StatusCode::BAD_REQUEST))?;
+    let cursor = query
+        .cursor
+        .map(|cursor| {
+            cursor.parse::<McpServerId>().map_err(|_| {
+                ErrorResponse::new("Invalid catalog cursor").into_response(StatusCode::BAD_REQUEST)
+            })
+        })
+        .transpose()?;
+    let mut servers = state
         .db
-        .list_mcp_servers(org.org_id, None, true)
+        .list_mcp_server_catalog_page(org.org_id, cursor, i64::from(limit) + 1)
         .await
         .map_err(|error| {
             tracing::error!(%error, "failed to list MCP catalog");
             ErrorResponse::internal_error()
         })?;
+    let has_more = servers.len() > limit as usize;
+    if has_more {
+        servers.truncate(limit as usize);
+    }
+    let next_cursor = has_more
+        .then(|| servers.last().map(|server| server.id.to_string()))
+        .flatten();
+    let server_ids = servers
+        .iter()
+        .map(|server| server.id.uuid())
+        .collect::<Vec<_>>();
     let usage = state
         .db
-        .list_mcp_server_agent_usage(org.org_id)
+        .list_mcp_server_agent_usage_for_ids(org.org_id, &server_ids)
         .await
         .map_err(|error| {
             tracing::error!(%error, "failed to load MCP catalog usage");
@@ -247,7 +286,7 @@ pub async fn list_mcp_server_catalog(
             }
         })
         .collect();
-    Ok(Json(ListResponse::new(data)))
+    Ok(Json(McpServerCatalogResponse { data, next_cursor }))
 }
 
 #[utoipa::path(

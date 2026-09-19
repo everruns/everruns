@@ -8147,13 +8147,51 @@
           "mcp-servers"
         ],
         "operationId": "list_mcp_server_catalog",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Continue after this MCP server ID.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (default: 50, max: 100).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "MCP server catalog with active-agent usage counts",
+            "description": "Cursor-paginated MCP server catalog with active-agent usage counts",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_McpServerCatalogEntry"
+                  "$ref": "#/components/schemas/McpServerCatalogResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -16035,22 +16073,64 @@
           "users"
         ],
         "operationId": "list_mcp_connections",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Continue after this opaque connection cursor.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (default: 50, max: 100).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Current user's MCP OAuth connections in the selected organization",
+            "description": "Cursor-paginated current user's MCP OAuth connections in the selected organization",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/UserMcpConnectionResponse"
-                  }
+                  "$ref": "#/components/schemas/UserMcpConnectionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
           "500": {
-            "description": "Internal server error"
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -28137,38 +28217,6 @@
           }
         }
       },
-      "ListResponse_McpServerCatalogEntry": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "allOf": [
-                {
-                  "$ref": "#/components/schemas/WithUrls_McpServer"
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "used_by_agents"
-                  ],
-                  "properties": {
-                    "used_by_agents": {
-                      "type": "integer",
-                      "format": "int64"
-                    }
-                  }
-                }
-              ]
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
       "ListResponse_Memory": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -31075,6 +31123,26 @@
             }
           }
         ]
+      },
+      "McpServerCatalogResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpServerCatalogEntry"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "McpServerPresetRef": {
         "type": "string",
@@ -41339,6 +41407,26 @@
           },
           "server_url": {
             "type": "string"
+          }
+        }
+      },
+      "UserMcpConnectionsResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserMcpConnectionResponse"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
