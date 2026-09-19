@@ -9,8 +9,18 @@
 //! No database required.
 //!
 //! Run with: cargo test -p everruns-server --test client_side_tools_test
+mod test_harness;
+use std::{sync::Arc, time::Duration};
 
+use async_trait::async_trait;
+
+use axum::http::StatusCode;
+use everruns_builtins::normalize_ask_user_arguments;
+use everruns_platform::{Agent, Session};
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_worker::AgentRunner;
 use serde_json::json;
+use test_harness::TestServer;
 
 // ============================================
 // Agent with Client-Side Tools
@@ -380,4 +390,156 @@ fn test_tool_call_and_result_correlation() {
     let parsed_result: ToolResult = serde_json::from_str(&result_json).unwrap();
 
     assert_eq!(parsed_call.id, parsed_result.tool_call_id);
+}
+struct RecordingRunner {
+    resumed_sessions: tokio::sync::mpsc::UnboundedSender<SessionId>,
+}
+
+#[async_trait]
+impl AgentRunner for RecordingRunner {
+    async fn start_run(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+        _harness_id: HarnessId,
+        _agent_id: Option<AgentId>,
+        _input_message_id: MessageId,
+        _request_id: Option<String>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn resume_after_tool_results(&self, session_id: SessionId) -> anyhow::Result<()> {
+        self.resumed_sessions
+            .send(session_id)
+            .map_err(|_| anyhow::anyhow!("resume observer dropped"))
+    }
+
+    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self, _run_id: SessionId) -> bool {
+        false
+    }
+
+    async fn active_count(&self) -> usize {
+        0
+    }
+}
+
+#[tokio::test]
+async fn omitted_ask_user_question_ids_resume_through_tool_results() {
+    let (resume_tx, mut resume_rx) = tokio::sync::mpsc::unbounded_channel();
+    let server = TestServer::in_memory_with_runner(Arc::new(RecordingRunner {
+        resumed_sessions: resume_tx,
+    }))
+    .await;
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "ask-user-test-agent",
+                "display_name": "Ask User Test",
+                "description": "Agent for ask_user integration coverage",
+                "system_prompt": "Ask structured questions."
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let session: Session = server
+        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    server
+        .db
+        .update_session(
+            1,
+            session.id,
+            everruns_server::storage::models::UpdateSession {
+                status: Some("waiting_for_tool_results".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update session status")
+        .expect("session exists");
+
+    let normalized = normalize_ask_user_arguments(&json!({
+        "questions": [{
+            "header": "Target",
+            "question": "Where should I deploy?",
+            "options": [
+                {"label": "Staging", "description": "Safe and reversible."},
+                {"label": "Production", "description": "Serves live traffic."}
+            ]
+        }]
+    }))
+    .expect("valid ask_user arguments");
+    assert_eq!(normalized["questions"][0]["id"], "question_1");
+    server
+        .db
+        .create_event(everruns_server::storage::models::CreateEventRow {
+            session_id: session.id,
+            event_type: "tool.call_requested".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({
+                "tool_calls": [{
+                    "id": "call_ask_user",
+                    "name": "ask_user",
+                    "arguments": normalized
+                }]
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("emit normalized ask_user call");
+
+    let response = server
+        .post(
+            &format!("/v1/sessions/{}/tool-results", session.id),
+            json!({
+                "tool_results": [{
+                    "tool_call_id": "call_ask_user",
+                    "result": {
+                        "status": "answered",
+                        "answered_by": "user",
+                        "answers": [{
+                            "id": "question_1",
+                            "selected": ["Staging"],
+                            "other_text": null
+                        }]
+                    }
+                }]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json_value();
+    assert_eq!(response["status"], "active");
+
+    let events = server
+        .db
+        .list_events(
+            session.id,
+            None,
+            None,
+            &["tool.completed".to_string()],
+            &[],
+            None,
+            Some(10),
+        )
+        .await
+        .expect("list tool completion events");
+    let completed = events.last().expect("tool result persisted");
+    assert_eq!(completed.data["tool_call_id"], "call_ask_user");
+    let resumed_session = tokio::time::timeout(Duration::from_secs(1), resume_rx.recv())
+        .await
+        .expect("resume signal timeout")
+        .expect("resume signal");
+    assert_eq!(resumed_session, session.id);
 }
