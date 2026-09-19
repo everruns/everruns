@@ -233,7 +233,7 @@ vendor:
 
 ```rust
 #[async_trait]
-impl ClassifierService for Rehearsed {
+impl ClassifierService for Readings {
     async fn evaluate(&self, request: ClassificationRequest)
         -> Result<ClassificationOutcome, AgentLoopError>
     {

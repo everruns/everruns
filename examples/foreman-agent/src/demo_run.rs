@@ -33,6 +33,13 @@ pub fn config() -> Config {
     }
 }
 
+/// What the demo's worker is, named as plainly as the header can say it.
+///
+/// The header is the one place a reader learns whether they are watching a
+/// model or a script, so it says "scripted" rather than borrowing the live
+/// run's model name for a run that never contacts a provider.
+pub const WORKER_MODEL: &str = "scripted";
+
 /// A worker that implements the tiers, then checks its own work.
 pub fn worker() -> Model {
     let step = |text: &str, commands: &str, id: &str| SimTurn::Mixed {
@@ -108,8 +115,7 @@ pub fn verifier() -> Model {
     )
 }
 
-/// The supervisor the demo runs against, as a service rather than a fork in
-/// the code.
+/// The demo's answers, as a service rather than a fork in the code.
 ///
 /// [`ClassifierService`] is the Framework's seam for "answer these questions
 /// without asking a vendor", so the demo uses it instead of teaching
@@ -121,14 +127,17 @@ pub fn verifier() -> Model {
 /// is on the floor rather than by how many times it has been asked — so the
 /// demo walks the same CONTINUE → START_VERIFIER → FINISH path whether the
 /// worker takes one second or ten.
-pub struct Rehearsed {
+pub struct Readings {
     readings: BTreeMap<String, BTreeMap<String, f64>>,
 }
 
-/// The model name the demo reports, since nothing resolves one for it.
-pub const REHEARSED_MODEL: &str = "rehearsed";
+/// What the demo reports as the model that answered.
+///
+/// The file, because that is the honest answer: nothing resolves a model for a
+/// table, and naming it says where a reader can go to change the numbers.
+pub const READINGS_MODEL: &str = "readings.json";
 
-impl Rehearsed {
+impl Readings {
     /// Load the readings table.
     pub fn load() -> Result<Self, serde_json::Error> {
         serde_json::from_str(include_str!("resources/demo/readings.json"))
@@ -137,7 +146,7 @@ impl Rehearsed {
 
     /// A classifier backed by this service, ready for a `Foreman`.
     pub fn classifier() -> Result<Classifier, serde_json::Error> {
-        Ok(Classifier::new(REHEARSED_MODEL, Self::load()?))
+        Ok(Classifier::new(READINGS_MODEL, Self::load()?))
     }
 
     /// Which reading the floor calls for.
@@ -165,13 +174,13 @@ impl Rehearsed {
 }
 
 #[async_trait]
-impl ClassifierService for Rehearsed {
+impl ClassifierService for Readings {
     fn is_configured(&self) -> bool {
         true
     }
 
     fn name(&self) -> &'static str {
-        REHEARSED_MODEL
+        READINGS_MODEL
     }
 
     async fn evaluate(
@@ -193,7 +202,7 @@ impl ClassifierService for Rehearsed {
             })
             .collect::<Result<BTreeMap<_, _>, AgentLoopError>>()?;
         Ok(ClassificationOutcome {
-            model: REHEARSED_MODEL.to_owned(),
+            model: READINGS_MODEL.to_owned(),
             answers,
             ..ClassificationOutcome::default()
         })
@@ -221,7 +230,7 @@ mod tests {
     fn every_reading_answers_every_question() {
         // A table missing an id would fail a run halfway through; catching it
         // here costs nothing.
-        let readings = Rehearsed::load().unwrap();
+        let readings = Readings::load().unwrap();
         for (phase, reading) in &readings.readings {
             for dimension in &crate::foreman::DIMENSIONS {
                 let value = reading
@@ -234,9 +243,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_rehearsed_service_answers_the_nine_questions() {
+    async fn the_readings_service_answers_the_nine_questions() {
         let foreman =
-            crate::foreman::Foreman::new(Rehearsed::classifier().unwrap(), Duration::from_secs(5));
+            crate::foreman::Foreman::new(Readings::classifier().unwrap(), Duration::from_secs(5));
         let assessment = foreman.assess(&Observation::sample()).await.unwrap();
         // The sample observation has a worker on the floor and nothing changed
         // yet, so this is the opening reading.
@@ -247,7 +256,7 @@ mod tests {
     #[test]
     fn the_phase_follows_the_floor_not_the_call_count() {
         let phase = |observation: &Observation| {
-            Rehearsed::phase(&serde_json::to_value(observation).unwrap())
+            Readings::phase(&serde_json::to_value(observation).unwrap())
         };
         let mut observation = Observation::sample();
         assert!(!observation.active_workers.is_empty());

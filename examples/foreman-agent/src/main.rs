@@ -41,7 +41,7 @@ use worker::Crew;
 async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Run(run) => start(run).await,
-        Command::Demo(demo) => rehearse(demo).await,
+        Command::Demo(demo) => run_demo(demo).await,
     }
 }
 
@@ -82,7 +82,7 @@ async fn start(run: Run) -> Result<()> {
 }
 
 /// Walk the same runtime over a disposable fixture.
-async fn rehearse(options: Demo) -> Result<()> {
+async fn run_demo(options: Demo) -> Result<()> {
     let temporary = options
         .repo
         .is_none()
@@ -115,12 +115,13 @@ async fn rehearse(options: Demo) -> Result<()> {
         // The same supervisor over a service that answers from a table, which
         // is the Framework's own way to run one without a vendor.
         (
-            demo_run::REHEARSED_MODEL,
-            demo_run::Rehearsed::classifier().context("reading the demo readings")?,
+            demo_run::READINGS_MODEL,
+            demo_run::Readings::classifier().context("reading the demo readings")?,
         )
     };
     let foreman = Foreman::new(classifier, config.assessment_budget);
     let crew = Crew::sessions(
+        demo_run::WORKER_MODEL,
         agent::worker(demo_run::worker(), &workspace)?,
         agent::verifier(demo_run::verifier(), &workspace)?,
     );
@@ -162,6 +163,7 @@ fn sessions(repo: &Path) -> Result<Crew> {
         ))
     };
     Ok(Crew::sessions(
+        agent::WORKER_MODEL,
         agent::worker(model()?, repo)?,
         agent::verifier(model()?, repo)?,
     ))
@@ -273,6 +275,7 @@ mod tests {
         fixture::materialize(&root).unwrap();
 
         let crew = Crew::sessions(
+            demo_run::WORKER_MODEL,
             agent::worker(demo_run::worker(), &root).unwrap(),
             agent::verifier(demo_run::verifier(), &root).unwrap(),
         );
@@ -281,7 +284,7 @@ mod tests {
             &root,
             crew,
             Foreman::new(
-                demo_run::Rehearsed::classifier().unwrap(),
+                demo_run::Readings::classifier().unwrap(),
                 demo_run::config().assessment_budget,
             ),
             demo_run::config(),
