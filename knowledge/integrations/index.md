@@ -17,5 +17,6 @@
 * [Messaging Integrations](messaging-integrations.md) - Messaging integrations.
 * [Slack Integration Modernization](slack-modernization.md) - Gap analysis of the Slack channel against the current Slack agent platform, with a prioritized set of improvements.
 * [Slack Agent Actions](slack-agent-actions.md) - Why Slack approvals, task progress, and the second-identity problem are one missing capability.
+* [Slack One-Click Install](slack-one-click-install.md) - What a live PoC established about creating per-agent Slack apps programmatically.
 * [Plugins](plugins.md) - Plugin host: marketplaces and cross-host plugin packages installed as capabilities.
 * [Model Router Specification](model-router.md) - Model Routers.

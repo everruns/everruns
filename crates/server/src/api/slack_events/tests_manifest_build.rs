@@ -35,6 +35,7 @@ fn test_manifest_includes_history_scopes_for_thread_context() {
         None,
         "https://example.com/api/v1/apps/app_x/slack/events",
         "https://example.com/api/v1/apps/app_x/slack/interactivity",
+        "https://example.com/api/v1/apps/app_x/slack/oauth/callback",
         false,
         &[],
     );
