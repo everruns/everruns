@@ -13,10 +13,19 @@ license.workspace = true
 publish = false
 description = "A classifier supervising a coding agent it does not have to stop"
 
+[lib]
+# The runtime, so the demo crate in `demo/` can drive the same loop.
+name = "everruns_foreman_agent"
+path = "src/lib.rs"
+
 [[bin]]
 # Started the way Foreman is: `foreman run --repo … --job …`.
 name = "foreman"
 path = "src/main.rs"
+
+[features]
+# Fixtures the demo crate's tests borrow. Off in a real build.
+testing = []
 
 [dependencies]
 anyhow = "1.0"

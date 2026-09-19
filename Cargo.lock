@@ -2492,6 +2492,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-foreman-demo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "clap",
+ "everruns",
+ "everruns-example-demo",
+ "everruns-foreman-agent",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-framework-cli-host"
 version = "0.1.0"
 dependencies = [

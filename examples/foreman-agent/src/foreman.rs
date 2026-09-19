@@ -181,7 +181,7 @@ impl std::error::Error for ForemanError {}
 /// There is one of these, and it is always real. A run with no credentials is
 /// not a different supervisor — it is the same code over a different
 /// [`ClassifierService`](everruns::ClassifierService), which is the
-/// Framework's own seam for that. See `src/demo_run.rs`.
+/// Framework's own seam for that. See `demo/src/scripted.rs`.
 pub struct Foreman {
     classifier: Classifier,
     budget: Duration,

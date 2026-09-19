@@ -1,8 +1,9 @@
 //! The command line, in Foreman's shape.
 //!
-//! `run` and `demo` are the original's two entry points and mean the same
-//! things here: `run` supervises real work in a repository you name, `demo`
-//! walks the same runtime over a disposable fixture with nothing to pay for.
+//! `run` is the original's entry point and means the same thing here: supervise
+//! real work in a repository you name. It stays a subcommand rather than
+//! collapsing into the bare binary so that the invocation from Foreman's own
+//! README keeps working verbatim.
 
 use std::path::PathBuf;
 
@@ -19,13 +20,11 @@ pub struct Cli {
     pub command: Command,
 }
 
-/// The two things a factory does.
+/// What a factory does.
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Supervise a real coding agent working in a repository.
     Run(Run),
-    /// Walk the same runtime over a disposable fixture, with no credentials.
-    Demo(Demo),
 }
 
 /// `foreman run --repo ./my-project --job "..."`
@@ -59,23 +58,6 @@ pub struct Run {
     /// `--worker-command "mycli --cd {repo} --task {mission}"`.
     #[arg(long, value_name = "TEMPLATE")]
     pub worker_command: Option<String>,
-}
-
-/// `foreman demo`
-#[derive(Debug, Parser)]
-pub struct Demo {
-    /// Where to materialize the fixture. A temporary directory by default.
-    ///
-    /// Whatever is here will be overwritten, so this is not your project.
-    #[arg(long, value_name = "PATH")]
-    pub repo: Option<PathBuf>,
-
-    /// Supervise the scripted worker with a real classifier.
-    ///
-    /// Supervision is the cheap half, so the numbers can be live even when the
-    /// worker is not. Needs `TYPESAFE_API_KEY`.
-    #[arg(long)]
-    pub live_foreman: bool,
 }
 
 /// Who does the work on a `run`.
@@ -113,11 +95,8 @@ mod tests {
     use crate::observation::WorkerKind;
 
     fn run(arguments: &[&str]) -> Run {
-        let cli = Cli::try_parse_from(arguments).unwrap();
-        match cli.command {
-            Command::Run(run) => run,
-            other => panic!("expected a run, got {other:?}"),
-        }
+        let Command::Run(run) = Cli::try_parse_from(arguments).unwrap().command;
+        run
     }
 
     #[test]
@@ -219,10 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn demo_needs_nothing_and_run_needs_a_job() {
-        let cli = Cli::try_parse_from(["foreman", "demo"]).unwrap();
-        assert!(matches!(cli.command, Command::Demo(_)));
-        // A run without a job is not a run.
+    fn a_run_without_a_job_is_not_a_run() {
         assert!(Cli::try_parse_from(["foreman", "run", "--repo", "."]).is_err());
     }
 }

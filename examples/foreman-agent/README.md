@@ -108,19 +108,25 @@ already sandboxed.
 
 ## Run it
 
-Foreman's own two entry points, and they mean the same things here:
+`foreman` is started the way Foreman itself is, on a repository you name:
+
+```bash
+foreman run --repo ./my-project --job "Add rate limiting, and test it."
+```
+
+That is the whole binary. Nothing in this crate is simulated, and `--repo` is
+your project — the only thing that writes to it is the worker, and it will be
+modified.
+
+The walkthrough is a separate crate in [`demo/`](demo/), so that the example
+above stays the real thing. It drives this same runtime over a disposable
+fixture, with a scripted worker and a classifier service that answers from a
+table:
 
 ```bash
 git clone https://github.com/everruns/everruns.git
 cd everruns
-cargo run -p everruns-foreman-agent --bin foreman -- demo
-```
-
-`demo` walks the whole runtime over a disposable fixture with nothing to pay
-for. `run` supervises real work in a repository you name:
-
-```bash
-foreman run --repo ./my-project --job "Add rate limiting, and test it."
+cargo run -p everruns-foreman-demo --bin foreman-demo
 ```
 
 Supervision is the cheap half, which is the premise, so the two halves go live
@@ -128,19 +134,18 @@ separately:
 
 | Command | Worker | Foreman | Needs |
 | --- | --- | --- | --- |
-| `foreman demo` | scripted | a stub service, from a table | nothing |
-| `foreman demo --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
+| `foreman-demo` | scripted | a stub service, from a table | nothing |
+| `foreman-demo --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
 | `foreman run …` | your choice, below | `jev-latest` | `TYPESAFE_API_KEY` + the worker's |
 
 Pass `--tests "<command>"` so the supervisor can check the work by running it.
 
 `--live-foreman` puts a vendor's classifier over a deterministic worker, so the
 numbers on screen are a live reading of a run that goes the same way every
-time. That is the mode the demo above records.
+time. That is the mode the recording above captures.
 
-`demo` writes its fixture into a temporary directory unless `--repo` says
-otherwise, and `run` never writes a fixture at all — `--repo` is your project,
-and the only thing that touches it is the worker. It will be modified.
+`foreman-demo` writes its fixture into a temporary directory unless `--repo`
+says otherwise.
 
 ## Who does the work
 
@@ -244,10 +249,10 @@ impl ClassifierService for Readings {
 ```
 
 The stub receives the observation as JSON, exactly as a vendor's service does,
-and answers from `src/resources/demo/readings.json` — a table keyed by what is
-on the floor, beside the shell scripts the scripted worker runs. So the demo
-exercises the whole request path rather than bypassing it, and the numbers it
-answers with are data you can edit without touching Rust.
+and answers from `demo/src/resources/scripted/readings.json` — a table keyed by
+what is on the floor, beside the shell scripts the scripted worker runs. So the
+demo exercises the whole request path rather than bypassing it, and the numbers
+it answers with are data you can edit without touching Rust.
 
 ## Ask the nine questions
 
@@ -265,7 +270,7 @@ to read on its own.
 ## Validate it
 
 ```bash
-cargo test -p everruns-foreman-agent
+cargo test -p everruns-foreman-agent -p everruns-foreman-demo
 bash examples/foreman-agent/demo/record.sh --check
 ```
 
@@ -322,15 +327,19 @@ sandbox for the shell, not a safe harness for an untrusted repository.
 
 ## Source map
 
-`src/cli.rs`: the command line; `src/main.rs`: wiring and the host's own
-report; `src/factory.rs`: the two loops, the state, and the interventions;
+`src/cli.rs`: the command line; `src/main.rs`: wiring, and nothing else;
+`src/factory.rs`: the two loops, the state, and the interventions;
 `src/worker.rs`: both crews and the evidence pumps; `src/foreman.rs`: the nine
 questions and the classifier call; `src/policy.rs`: thresholds, limits, and the
 decision; `src/observation.rs`: the bounded snapshot; `src/agent.rs`: the two
-agents; `src/demo_run.rs`: the scripted worker and the stub classifier service;
-`src/terminal.rs`: layout only, over `everruns-example-demo::style`;
-`src/fixture.rs` and `src/resources/`: the shell repository and the prompts;
-`demo/`: the recording.
+agents; `src/run.rs`: one run, rendered; `src/terminal.rs`: layout only, over
+`everruns-example-demo::style`; `src/resources/`: the two prompts.
+
+Everything simulated is in the crate under `demo/`, which depends on this one:
+`demo/src/scripted.rs`: the scripted worker and the stub classifier service;
+`demo/src/fixture.rs` and `demo/src/resources/`: the shell repository it works
+on and the scripts it writes; `demo/demo.tape` and `demo/record.sh`: the
+recording.
 
 ## See also
 

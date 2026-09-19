@@ -230,8 +230,8 @@ mod tests {
         assert!(tests_pass(root.path()), "the fixture starts green");
 
         for script in [
-            include_str!("resources/demo/write_rates.sh"),
-            include_str!("resources/demo/write_tests.sh"),
+            include_str!("resources/scripted/write_rates.sh"),
+            include_str!("resources/scripted/write_tests.sh"),
         ] {
             let status = Command::new("bash")
                 .arg("-c")

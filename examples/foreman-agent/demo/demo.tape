@@ -13,14 +13,14 @@ Hide
 Type "exec > >(tee examples/foreman-agent/demo/.session.tmp) 2>&1"
 Enter
 Wait
-Type "cargo build -q -p everruns-foreman-agent --bin foreman"
+Type "cargo build -q -p everruns-foreman-demo --bin foreman-demo"
 Enter
 Wait
 Type "clear"
 Enter
 
 Show
-Type@35ms "cargo run -q -p everruns-foreman-agent --bin foreman -- demo --live-foreman"
+Type@35ms "cargo run -q -p everruns-foreman-demo --bin foreman-demo -- --live-foreman"
 Sleep 700ms
 Enter
 Sleep 2s

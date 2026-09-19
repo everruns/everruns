@@ -63,6 +63,7 @@ members = [
     "examples/framework-cli-host",
     "examples/bashkit-repo-agent",
     "examples/foreman-agent",
+    "examples/foreman-agent/demo",
     "examples/demo-support",
 ]
 

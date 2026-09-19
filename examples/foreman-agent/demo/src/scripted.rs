@@ -16,7 +16,7 @@ use everruns::{
 };
 use serde_json::Value;
 
-use crate::policy::Config;
+use everruns_foreman_agent::policy::Config;
 
 /// Bounds for a scripted worker, which finishes in seconds rather than minutes.
 ///
@@ -59,12 +59,12 @@ pub fn worker() -> Model {
             ),
             step(
                 "Replacing the flat rate with weight tiers.",
-                include_str!("resources/demo/write_rates.sh"),
+                include_str!("resources/scripted/write_rates.sh"),
                 "call_rates",
             ),
             step(
                 "Covering the tier boundaries, which is where tiered pricing goes wrong.",
-                include_str!("resources/demo/write_tests.sh"),
+                include_str!("resources/scripted/write_tests.sh"),
                 "call_tests",
             ),
             step("Running the suite.", "bash tests/run.sh", "call_run_tests"),
@@ -123,7 +123,7 @@ pub fn verifier() -> Model {
 /// code under test is then exactly the code a live run executes: the same nine
 /// questions, the same request, the same parsing of the answers.
 ///
-/// What it answers is a table in `resources/demo/readings.json`, keyed by what
+/// What it answers is a table in `resources/scripted/readings.json`, keyed by what
 /// is on the floor rather than by how many times it has been asked — so the
 /// demo walks the same CONTINUE → START_VERIFIER → FINISH path whether the
 /// worker takes one second or ten.
@@ -140,7 +140,7 @@ pub const READINGS_MODEL: &str = "readings.json";
 impl Readings {
     /// Load the readings table.
     pub fn load() -> Result<Self, serde_json::Error> {
-        serde_json::from_str(include_str!("resources/demo/readings.json"))
+        serde_json::from_str(include_str!("resources/scripted/readings.json"))
             .map(|readings| Self { readings })
     }
 
@@ -213,14 +213,15 @@ impl ClassifierService for Readings {
 mod tests {
     use super::*;
 
-    use crate::observation::Observation;
+    use everruns_foreman_agent::foreman::{DIMENSIONS, Foreman};
+    use everruns_foreman_agent::observation::{Observation, VerificationResult};
 
     #[test]
     fn the_scripted_worker_writes_the_files_the_job_asks_for() {
         // The demo's edits are real shell, run by the same capability a live
         // worker uses; keeping them in files means they can be read and run.
-        let rates = include_str!("resources/demo/write_rates.sh");
-        let tests = include_str!("resources/demo/write_tests.sh");
+        let rates = include_str!("resources/scripted/write_rates.sh");
+        let tests = include_str!("resources/scripted/write_tests.sh");
         assert!(rates.contains("lib/rates.sh"));
         assert!(tests.contains("tests/run.sh"));
         assert!(tests.to_lowercase().contains("boundar"));
@@ -232,20 +233,19 @@ mod tests {
         // here costs nothing.
         let readings = Readings::load().unwrap();
         for (phase, reading) in &readings.readings {
-            for dimension in &crate::foreman::DIMENSIONS {
+            for dimension in &DIMENSIONS {
                 let value = reading
                     .get(dimension.id)
                     .unwrap_or_else(|| panic!("{phase} has no {}", dimension.id));
                 assert!((0.0..=1.0).contains(value), "{phase}/{}", dimension.id);
             }
-            assert_eq!(reading.len(), crate::foreman::DIMENSIONS.len(), "{phase}");
+            assert_eq!(reading.len(), DIMENSIONS.len(), "{phase}");
         }
     }
 
     #[tokio::test]
     async fn the_readings_service_answers_the_nine_questions() {
-        let foreman =
-            crate::foreman::Foreman::new(Readings::classifier().unwrap(), Duration::from_secs(5));
+        let foreman = Foreman::new(Readings::classifier().unwrap(), Duration::from_secs(5));
         let assessment = foreman.assess(&Observation::sample()).await.unwrap();
         // The sample observation has a worker on the floor and nothing changed
         // yet, so this is the opening reading.
@@ -268,13 +268,11 @@ mod tests {
         observation.active_workers.clear();
         assert_eq!(phase(&observation), "unchecked");
 
-        observation
-            .verification_results
-            .push(crate::observation::VerificationResult {
-                worker_id: "worker-2".into(),
-                passed: true,
-                summary: "checked".into(),
-            });
+        observation.verification_results.push(VerificationResult {
+            worker_id: "worker-2".into(),
+            passed: true,
+            summary: "checked".into(),
+        });
         assert_eq!(phase(&observation), "verified");
     }
 

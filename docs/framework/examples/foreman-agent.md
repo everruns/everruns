@@ -67,26 +67,33 @@ action the policy can take is in one readable file.
 
 ## Run it
 
-Foreman's own two entry points, and they mean the same things here:
+`foreman` is started the way Foreman itself is, on a repository you name, and
+that is all it does:
 
 ```bash
-cargo run -p everruns-foreman-agent --bin foreman -- demo
 foreman run --repo ./my-project --job "Add rate limiting, and test it."
 ```
 
-`demo` walks the whole runtime over a disposable fixture with nothing to pay
-for; `run` supervises real work in a repository you name. Supervision is the
-cheap half, which is the premise, so the two halves go live separately:
+The credential-free walkthrough is a separate crate beside it, driving the same
+runtime over a disposable fixture with a scripted worker:
+
+```bash
+cargo run -p everruns-foreman-demo --bin foreman-demo
+```
+
+Supervision is the cheap half, which is the premise, so the two halves go live
+separately:
 
 | Command | Worker | Foreman | Needs |
 | --- | --- | --- | --- |
-| `foreman demo` | scripted | a stub service, from a table | nothing |
-| `foreman demo --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
+| `foreman-demo` | scripted | a stub service, from a table | nothing |
+| `foreman-demo --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
 | `foreman run …` | your choice, below | `jev-latest` | `TYPESAFE_API_KEY` + the worker's |
 
-`demo` writes its fixture into a temporary directory unless `--repo` says
-otherwise, and `run` never writes a fixture at all — `--repo` is your project,
-and the only thing that touches it is the worker. It will be modified.
+`foreman-demo` writes its fixture into a temporary directory unless `--repo`
+says otherwise, and `foreman run` never writes a fixture at all — `--repo` is
+your project, and the only thing that touches it is the worker. It will be
+modified.
 
 ## One supervisor
 
