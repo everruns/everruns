@@ -40,7 +40,9 @@ describe("EndpointDetailsPanel", () => {
 
   it("shows setup before use and opens the endpoint-scoped Slack manifest", async () => {
     (getSlackEndpointManifest as jest.Mock).mockResolvedValue({
-      manifest_yaml: "display_information:",
+      manifest_yaml: `settings:
+  event_subscriptions:
+    request_url: "https://everruns.example/api/v1/e/appchan_123/slack/events"`,
       create_url: "https://api.slack.com/apps?new_app=1&manifest_yaml=encoded",
     });
 
@@ -56,14 +58,31 @@ describe("EndpointDetailsPanel", () => {
     const use = screen.getByText("Use it");
     expect(setup.compareDocumentPosition(use) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "Create Slack app" }));
-
     await waitFor(() => expect(getSlackEndpointManifest).toHaveBeenCalledWith("appchan_123"));
+    const createButton = screen.getByRole("button", { name: "Create Slack app" });
+    await waitFor(() => expect(createButton).toBeEnabled());
+    fireEvent.click(createButton);
     expect(window.open).toHaveBeenCalledWith(
       "https://api.slack.com/apps?new_app=1&manifest_yaml=encoded",
       "_blank",
       "noopener,noreferrer",
     );
+  });
+  it("keeps Slack app creation disabled when the manifest uses localhost", async () => {
+    (getSlackEndpointManifest as jest.Mock).mockResolvedValue({
+      manifest_yaml: `settings:
+  event_subscriptions:
+    request_url: "http://localhost:9300/api/v1/e/appchan_123/slack/events"`,
+      create_url: "https://api.slack.com/apps?new_app=1&manifest_yaml=encoded",
+    });
+
+    render(<EndpointDetailsPanel agentName="Support Agent" channel={channel({})} />);
+
+    const createButton = screen.getByRole("button", { name: "Create Slack app" });
+    await waitFor(() => expect(screen.getByText(/PUBLIC_APP_URL/)).toBeInTheDocument());
+    expect(createButton).toBeDisabled();
+    fireEvent.click(createButton);
+    expect(window.open).not.toHaveBeenCalled();
   });
 
   it("mounts the A2A Agent Card setup path in the expanded endpoint details", () => {

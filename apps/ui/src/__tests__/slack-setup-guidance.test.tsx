@@ -7,12 +7,11 @@ describe("SlackSetupGuidance", () => {
     isPublished: false,
     webhookVerified: false,
     firstMessageReceived: false,
-    webhookUrl: "https://example.com/api/v1/apps/app-123/slack/events",
-    webhookPath: "/api/v1/apps/app-123/slack/events",
-    isLocalhost: false,
+    manifestRequestUrl: "https://example.com/api/v1/e/appchan-123/slack/events",
+    manifestLoading: false,
+    canCreateSlackApp: true,
     agentSurfaceEnabled: false,
     onCreateSlackApp: jest.fn(),
-    creatingSlackApp: false,
     onConfigure: jest.fn(),
   };
 
@@ -35,7 +34,7 @@ describe("SlackSetupGuidance", () => {
     expect(screen.queryByText(/Configure Event Subscriptions/)).not.toBeInTheDocument();
     // The manifest carries the subscriptions, so the URL is shown as information
     // rather than as something to paste into Slack.
-    expect(screen.getByText(baseProps.webhookUrl)).toBeInTheDocument();
+    expect(screen.getByText(baseProps.manifestRequestUrl)).toBeInTheDocument();
   });
 
   it("publishes before offering the manifest, and says why", () => {
@@ -73,17 +72,19 @@ describe("SlackSetupGuidance", () => {
     expect(screen.queryByText(/Agent surface/)).not.toBeInTheDocument();
   });
 
-  it("keeps the manual Request URL path for localhost, which Slack cannot reach", () => {
+  it("disables app creation until PUBLIC_APP_URL is public and the server restarts", () => {
     render(
       <SlackSetupGuidance
         {...baseProps}
         isPublished={true}
         hasSlackConfig={false}
-        isLocalhost={true}
+        manifestRequestUrl="http://localhost:9300/api/v1/e/appchan-123/slack/events"
+        canCreateSlackApp={false}
       />,
     );
 
-    expect(screen.getByText(/ngrok http/)).toBeInTheDocument();
-    expect(screen.getByText(baseProps.webhookPath)).toBeInTheDocument();
+    expect(screen.getByText(/PUBLIC_APP_URL/)).toBeInTheDocument();
+    expect(screen.getByText(/restart Everruns/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create Slack app" })).toBeDisabled();
   });
 });

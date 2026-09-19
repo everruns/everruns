@@ -16,12 +16,11 @@ interface SlackSetupGuidanceProps {
   isPublished: boolean;
   webhookVerified: boolean;
   firstMessageReceived: boolean;
-  webhookUrl: string;
-  webhookPath: string;
-  isLocalhost: boolean;
+  manifestRequestUrl: string | null;
+  manifestLoading: boolean;
+  canCreateSlackApp: boolean;
   agentSurfaceEnabled: boolean;
   onCreateSlackApp: () => void;
-  creatingSlackApp: boolean;
   onConfigure?: () => void;
 }
 
@@ -30,12 +29,11 @@ export function SlackSetupGuidance({
   isPublished,
   webhookVerified,
   firstMessageReceived,
-  webhookUrl,
-  webhookPath,
-  isLocalhost,
+  manifestRequestUrl,
+  manifestLoading,
+  canCreateSlackApp,
   agentSurfaceEnabled,
   onCreateSlackApp,
-  creatingSlackApp,
   onConfigure,
 }: SlackSetupGuidanceProps) {
   return (
@@ -46,12 +44,11 @@ export function SlackSetupGuidance({
         isPublished={isPublished}
         webhookVerified={webhookVerified}
         firstMessageReceived={firstMessageReceived}
-        webhookUrl={webhookUrl}
-        webhookPath={webhookPath}
-        isLocalhost={isLocalhost}
+        manifestRequestUrl={manifestRequestUrl}
+        manifestLoading={manifestLoading}
+        canCreateSlackApp={canCreateSlackApp}
         agentSurfaceEnabled={agentSurfaceEnabled}
         onCreateSlackApp={onCreateSlackApp}
-        creatingSlackApp={creatingSlackApp}
         onConfigure={onConfigure}
       />
       {hasSlackConfig && <AgentSurfaceNotice agentSurfaceEnabled={agentSurfaceEnabled} />}
@@ -113,11 +110,10 @@ function SetupSteps({
   isPublished,
   webhookVerified,
   firstMessageReceived,
-  webhookUrl,
-  webhookPath,
-  isLocalhost,
+  manifestRequestUrl,
+  manifestLoading,
+  canCreateSlackApp,
   onCreateSlackApp,
-  creatingSlackApp,
   onConfigure,
 }: SlackSetupGuidanceProps) {
   const currentStep = !isPublished ? 1 : !hasSlackConfig ? 2 : !firstMessageReceived ? 4 : 4;
@@ -168,33 +164,31 @@ function SetupSteps({
                 are already set, so there is nothing to configure by hand. Review and click{" "}
                 <strong>Create</strong>, then install it to your workspace.
               </p>
-              {isLocalhost ? (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    Slack can&apos;t reach localhost, so the manifest&apos;s Request URL will not
-                    verify. Run{" "}
-                    <code>
-                      ngrok http{" "}
-                      {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}
-                    </code>{" "}
-                    and replace the Request URL under <strong>Event Subscriptions</strong> with your
-                    ngrok URL plus this path:
-                  </p>
-                  <CopyableValue value={webhookPath} />
-                </>
-              ) : (
+              {manifestLoading ? (
+                <p className="text-xs text-muted-foreground">Loading the endpoint manifest…</p>
+              ) : canCreateSlackApp && manifestRequestUrl ? (
                 <>
                   <p className="text-xs text-muted-foreground">
                     The manifest subscribes to <code>app_mention</code>,{" "}
                     <code>message.channels</code>, <code>message.groups</code>,{" "}
                     <code>message.im</code> and <code>message.mpim</code> at this Request URL:
                   </p>
-                  <CopyableValue value={webhookUrl} />
+                  <CopyableValue value={manifestRequestUrl} />
                 </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Slack validates the manifest&apos;s Request URL during app creation. Set{" "}
+                  <code>PUBLIC_APP_URL</code> to a public HTTPS origin, restart Everruns, and reload
+                  this page before creating the Slack app.
+                </p>
               )}
-              <Button size="sm" onClick={onCreateSlackApp} disabled={creatingSlackApp}>
+              <Button
+                size="sm"
+                onClick={onCreateSlackApp}
+                disabled={manifestLoading || !canCreateSlackApp}
+              >
                 <ExternalLink className="w-3 h-3 mr-1" />
-                {creatingSlackApp ? "Opening..." : "Create Slack app"}
+                Create Slack app
               </Button>
             </div>
           )}
