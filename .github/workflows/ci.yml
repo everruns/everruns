@@ -2486,6 +2486,28 @@ jobs:
           target: worker
           push: false
           tags: everruns-worker:ci
+  mcp-harness-soak:
+    name: MCP Harness 100-Run Soak
+    runs-on: ubuntu-latest
+    if: github.head_ref == 'factory/eve-1036-mcp-oauth-harness'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "mcp-harness-soak"
+
+      - name: Run MCP harness test 100 sequential times
+        run: |
+          for run in $(seq 1 100); do
+            echo "MCP harness soak run ${run}/100"
+            cargo test -p everruns-test-support --test mcp_harness_test --all-features
+          done
 
   ci-opt-out-policy:
     name: CI Opt-Out Policy
@@ -2577,6 +2599,7 @@ jobs:
       - ui-e2e
       - docs-build
       - docker-build
+      - mcp-harness-soak
       - ci-opt-out-policy
       - browserless-live-test
       - daytona-live-test
