@@ -1320,6 +1320,7 @@ jobs:
             --test observers_integration_test \
             --test prometheus_metrics_test \
             --test llm_model_default_test \
+            --test mcp_acts_as_grpc_test \
             --test mcp_oauth_user_switch_test \
             --test service_mcp_oauth_lifecycle_test \
             --test org_creation_test \

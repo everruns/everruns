@@ -127,6 +127,7 @@ futures.workspace = true
 http-body-util = "0.1"
 serde_html_form = "0.4"  # Same deserializer axum-extra::extract::Query uses
 everruns-sdk.workspace = true
+everruns-test-support = { path = "../test-support", default-features = false }
 wiremock = "0.6"
 flate2.workspace = true
 tar.workspace = true

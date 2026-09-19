@@ -10,6 +10,7 @@
 //! - [`in_memory`] — deterministic message and event fixtures for isolated
 //!   tests; hosted loops use canonical event history instead
 //! - [`doubles`] — mock/echo/failing tool executors and a mock chat driver
+//! - [`mcp`] — a stateful mock MCP resource and OAuth authorization server
 //! - [`capabilities`] — fake AWS/CRM/financial/warehouse demo capabilities
 //!   and the test math/weather, sample-data, and noop fixtures
 //!   (`fixtures` feature)
@@ -57,6 +58,8 @@ pub mod in_memory;
 
 // Test doubles for the core execution traits.
 pub mod doubles;
+/// Shared MCP and OAuth test harness.
+pub mod mcp;
 
 // Demo/test fixture capabilities (behind the `fixtures` feature).
 #[cfg(feature = "fixtures")]
@@ -76,6 +79,10 @@ pub use everruns_llmsim::{
 pub use in_memory::{InMemoryEventEmitter, InMemoryMessageRetriever};
 #[cfg(all(feature = "sim", feature = "host"))]
 pub use in_memory_loop::{InMemoryAgenticLoop, InMemoryAgenticLoopBuilder};
+pub use mcp::{
+    MockCallResponse, MockMcpOAuthServer, MockMcpProtocolEra, MockOAuthError, RecordedMcpRequest,
+    RecordedOAuthRequest,
+};
 
 #[cfg(feature = "fixtures")]
 pub use capabilities::{
