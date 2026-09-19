@@ -10,10 +10,15 @@
 //!
 //! Run with: cargo test -p everruns-server --test client_side_tools_test
 mod test_harness;
+use std::{sync::Arc, time::Duration};
+
+use async_trait::async_trait;
 
 use axum::http::StatusCode;
 use everruns_builtins::normalize_ask_user_arguments;
 use everruns_platform::{Agent, Session};
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_worker::AgentRunner;
 use serde_json::json;
 use test_harness::TestServer;
 
@@ -386,10 +391,50 @@ fn test_tool_call_and_result_correlation() {
 
     assert_eq!(parsed_call.id, parsed_result.tool_call_id);
 }
+struct RecordingRunner {
+    resumed_sessions: tokio::sync::mpsc::UnboundedSender<SessionId>,
+}
+
+#[async_trait]
+impl AgentRunner for RecordingRunner {
+    async fn start_run(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+        _harness_id: HarnessId,
+        _agent_id: Option<AgentId>,
+        _input_message_id: MessageId,
+        _request_id: Option<String>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn resume_after_tool_results(&self, session_id: SessionId) -> anyhow::Result<()> {
+        self.resumed_sessions
+            .send(session_id)
+            .map_err(|_| anyhow::anyhow!("resume observer dropped"))
+    }
+
+    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self, _run_id: SessionId) -> bool {
+        false
+    }
+
+    async fn active_count(&self) -> usize {
+        0
+    }
+}
 
 #[tokio::test]
 async fn omitted_ask_user_question_ids_resume_through_tool_results() {
-    let server = TestServer::in_memory().await;
+    let (resume_tx, mut resume_rx) = tokio::sync::mpsc::unbounded_channel();
+    let server = TestServer::in_memory_with_runner(Arc::new(RecordingRunner {
+        resumed_sessions: resume_tx,
+    }))
+    .await;
     let agent: Agent = server
         .post(
             "/v1/agents",
@@ -492,4 +537,9 @@ async fn omitted_ask_user_question_ids_resume_through_tool_results() {
         .expect("list tool completion events");
     let completed = events.last().expect("tool result persisted");
     assert_eq!(completed.data["tool_call_id"], "call_ask_user");
+    let resumed_session = tokio::time::timeout(Duration::from_secs(1), resume_rx.recv())
+        .await
+        .expect("resume signal timeout")
+        .expect("resume signal");
+    assert_eq!(resumed_session, session.id);
 }
