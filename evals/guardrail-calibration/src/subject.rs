@@ -21,7 +21,7 @@ use everruns_builtins::GuardrailsCapability;
 use everruns_core::capabilities::Capability;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PreToolUseDecision;
-use everruns_host::OpenAiUtilityLlmService;
+use everruns_host::SystemUtilityLlmConfig;
 use everruns_integrations_typesafe::TypeSafeAI;
 use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy,
@@ -38,17 +38,20 @@ pub const SKIPPED_KEY: &str = "skipped";
 pub const DEFAULT_ENGINE: &str = "jev";
 pub const DEFAULT_THRESHOLD: &str = "50";
 
-/// Env var holding each engine's credential.
+/// Env var holding each engine's credential. The utility-LLM engine reads
+/// whichever deployment key is set, so the study runs on either backend.
 fn credential(engine: &str) -> Option<(&'static str, String)> {
-    let var = match engine {
-        "jev" => "UTILITY_TYPESAFE_API_KEY",
-        "utility_llm" => "UTILITY_OPENAI_API_KEY",
+    let vars: &[&'static str] = match engine {
+        "jev" => &["UTILITY_TYPESAFE_API_KEY"],
+        "utility_llm" => &["UTILITY_OPENROUTER_API_KEY", "UTILITY_OPENAI_API_KEY"],
         _ => return None,
     };
-    std::env::var(var)
-        .ok()
-        .filter(|key| !key.trim().is_empty())
-        .map(|key| (var, key))
+    vars.iter().find_map(|var| {
+        std::env::var(var)
+            .ok()
+            .filter(|key| !key.trim().is_empty())
+            .map(|key| (*var, key))
+    })
 }
 
 pub struct GuardrailCalibrationSubject;
@@ -123,8 +126,10 @@ impl Subject for GuardrailCalibrationSubject {
         let context = match engine.as_str() {
             "jev" => ToolContext::new(SessionId::new())
                 .with_classifier(Arc::new(TypeSafeAI::new(key))),
+            // The utility service resolves its own backend, model, and key
+            // from the environment; `key` only proved one is configured.
             _ => ToolContext::new(SessionId::new())
-                .with_utility_llm_service(Arc::new(OpenAiUtilityLlmService::new(key))),
+                .with_utility_llm_service(SystemUtilityLlmConfig::from_env().into_service()),
         };
 
         let call = ToolCall {

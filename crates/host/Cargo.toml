@@ -42,6 +42,7 @@ everruns-builtins = { workspace = true, optional = true }
 everruns-engine.workspace = true
 everruns-mcp = { workspace = true, optional = true }
 everruns-provider.workspace = true
+everruns-openrouter = { workspace = true, optional = true }
 everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }
 everruns-integrations-web-fetch = { workspace = true, optional = true }
@@ -70,7 +71,10 @@ lua = ["dep:everruns-integrations-lua", "direct-egress"]
 # `compute::HostCompute` and the skill command executor both spawn and time
 # out real processes; unification from other crates is not a contract.
 process = ["tokio/process", "tokio/time"]
-utility-openai = ["everruns-provider/http"]
+# Deployment-owned utility LLM (OpenAI or the OpenRouter gateway).
+utility-llm = ["everruns-provider/http", "dep:everruns-openrouter"]
+# Kept as the pre-OpenRouter name of the same wiring.
+utility-openai = ["utility-llm"]
 observability = [
     "direct-egress",
     "tokio/time",

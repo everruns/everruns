@@ -21,6 +21,8 @@ dataset.jsonl ──► Eval ──► GuardrailCalibrationSubject ──► sco
 ## Running it
 
 ```sh
+# The utility_llm arm takes UTILITY_OPENROUTER_API_KEY instead when the
+# deployment routes the utility LLM through OpenRouter.
 UTILITY_TYPESAFE_API_KEY=... UTILITY_OPENAI_API_KEY=... \
   EVERRUNS_GUARDRAIL_ENGINES=jev,utility_llm \
   EVERRUNS_GUARDRAIL_THRESHOLDS=30,50,70 \

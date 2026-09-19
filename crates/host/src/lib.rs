@@ -67,10 +67,10 @@ mod runtime_context;
 mod session_file_system_factory;
 pub mod session_services;
 mod turn_strategy;
-// The OpenAI utility client needs `everruns-provider/http`, which only the
-// `utility-openai` feature turns on. Leaving the module ungated made the crate
+// The utility LLM client needs `everruns-provider/http`, which only the
+// `utility-llm` feature turns on. Leaving the module ungated made the crate
 // fail to compile under any feature selection without it.
-#[cfg(feature = "utility-openai")]
+#[cfg(feature = "utility-llm")]
 mod utility_llm;
 mod workspace;
 
@@ -148,9 +148,11 @@ pub use session_services::{
     update_session_title_with_event,
 };
 pub use turn_strategy::advance_host_execution;
-#[cfg(feature = "utility-openai")]
+#[cfg(feature = "utility-llm")]
 pub use utility_llm::{
-    OpenAiUtilityLlmService, SystemUtilityLlmConfig, UTILITY_OPENAI_API_KEY_ENV,
+    ProviderUtilityLlmService, SystemUtilityLlmConfig, UTILITY_LLM_MODEL_ENV,
+    UTILITY_OPENAI_API_KEY_ENV, UTILITY_OPENROUTER_API_KEY_ENV, UTILITY_OPENROUTER_LLM_MODEL,
+    UtilityLlmBackend,
 };
 #[deprecated(note = "use WorkspaceBackend")]
 pub use workspace::WorkspaceBackend as WorkspaceProvider;

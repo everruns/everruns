@@ -1,5 +1,22 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-19
+
+* **The utility LLM picks its backend from which key you set, and the model is
+  now an env var.** `UTILITY_OPENROUTER_API_KEY` routes internal model work
+  (Analyze, Health, `llm_judge` guardrails) through OpenRouter,
+  `UTILITY_OPENAI_API_KEY` keeps calling OpenAI directly, and
+  `UTILITY_LLM_MODEL` overrides the model on whichever backend was selected. A
+  separate `UTILITY_LLM_PROVIDER` variable would have been a second thing to
+  keep in sync with the secret that has to be rotated anyway, so presence of
+  the key *is* the selection; OpenRouter wins when both are set, with a startup
+  warning, because the key an operator just added is the deliberate one.
+  Defaults stay one model named two ways: `gpt-5.6-luna` on OpenAI,
+  `openai/gpt-5.6-luna` on OpenRouter. The deployment-owned contract is
+  unchanged — `UtilityLlmRequest` still carries no model and no credential, so
+  the new knob is unreachable from agent, session, or API input (TM-LLM-021).
+  See [Utility LLM Service](operations/utility-llm.md).
+
 ## 2026-09-18
 
 * **Platform Chat v2 measured against v1, and the shell surface holds: 48/63 to
