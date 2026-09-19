@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { A2aSetupGuidance } from "@/components/apps/a2a-setup-guidance";
+import { A2aSetupGuidance } from "@/components/agents/integrations/a2a-setup-guidance";
 
 const agentCard = {
   name: "Published A2A Agent",
@@ -28,7 +28,7 @@ function renderGuidance(overrides: Partial<React.ComponentProps<typeof A2aSetupG
       apiKeyPrefix="evra2a_12345678..."
       sessionMode="session_per_invocation"
       message="A2A request: {{a2a.text}}"
-      appName="A2A App"
+      agentName="A2A Agent"
       isPublished={true}
       channelEnabled={true}
       {...overrides}
@@ -81,7 +81,7 @@ describe("A2aSetupGuidance", () => {
   it("does not fetch while unpublished or disabled", () => {
     renderGuidance({ isPublished: false });
     expect(global.fetch).not.toHaveBeenCalled();
-    expect(screen.getByText(/Publish the app and enable this channel/)).toBeInTheDocument();
+    expect(screen.getByText(/Publish and enable this endpoint/)).toBeInTheDocument();
   });
 
   it("keeps the raw URL copy fallback when fetch fails", async () => {

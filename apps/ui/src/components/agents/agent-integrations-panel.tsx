@@ -18,7 +18,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { ChannelRow } from "@/components/apps/channel-row";
 import { MiniTimeline } from "@/components/apps/mini-timeline";
 import { type StatStripStats } from "@/components/apps/stat-strip";
-import { EndpointUsePanel } from "@/components/agents/endpoint-use-panel";
+import { EndpointDetailsPanel } from "@/components/agents/integrations/endpoint-details-panel";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import {
   PageControlStrip,
@@ -160,7 +160,16 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     onToggle={() =>
                       setExpandedId((current) => (current === channel.id ? null : channel.id))
                     }
-                    usePanel={<EndpointUsePanel channel={channel} />}
+                    usePanel={
+                      <EndpointDetailsPanel
+                        agentName={agent.display_name ?? agent.name}
+                        agentDescription={agent.description}
+                        channel={channel}
+                        configureHref={
+                          canManage ? `/agents/${agent.id}/endpoints/${channel.id}` : undefined
+                        }
+                      />
+                    }
                     configureHref={
                       canManage ? `/agents/${agent.id}/endpoints/${channel.id}` : undefined
                     }
