@@ -246,6 +246,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         &self,
         _org_id: i64,
         _session_id: SessionId,
+        _has_platform_capability: bool,
     ) -> everruns_core::tool_context::ToolContextExtensions {
         Default::default()
     }
@@ -391,6 +392,12 @@ struct RuntimeExecutionCapabilities {
     pre_tool_hooks: Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>>,
     tool_call_hooks: Vec<Arc<dyn everruns_core::ToolCallHook>>,
     subagent_nesting_policy: everruns_core::delegation_services::SubagentNestingPolicy,
+    has_platform_capability: bool,
+}
+
+struct RuntimeToolCapabilityContext {
+    subagent_nesting_policy: everruns_core::delegation_services::SubagentNestingPolicy,
+    has_platform_capability: bool,
 }
 
 fn subagent_nesting_policy_from_configs(
@@ -545,6 +552,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             tool_call_hooks: Vec::new(),
             subagent_nesting_policy:
                 everruns_core::delegation_services::SubagentNestingPolicy::default(),
+            has_platform_capability: false,
         });
     }
 
@@ -695,6 +703,10 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         subagent_nesting_policy: subagent_nesting_policy_from_configs(
             &resolved.resolved_capability_configs,
         ),
+        has_platform_capability: resolved
+            .resolved_capability_configs
+            .iter()
+            .any(|config| config.capability_id() == "platform"),
     })
 }
 
@@ -705,10 +717,14 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
     agent_id: Option<AgentId>,
     tool_registry: Option<Arc<ToolRegistry>>,
     mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>>,
-    subagent_nesting_policy: everruns_core::delegation_services::SubagentNestingPolicy,
+    capability_context: RuntimeToolCapabilityContext,
 ) -> ToolContextServices {
     let extensions = {
-        let mut extensions = adapter.tool_context_extensions(org_id, session_id);
+        let mut extensions = adapter.tool_context_extensions(
+            org_id,
+            session_id,
+            capability_context.has_platform_capability,
+        );
         extensions.insert(Arc::new(SessionMutatorExt(adapter.session_mutator(org_id))));
         extensions
     };
@@ -744,7 +760,7 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         payment_authority: adapter.payment_authority(org_id, agent_id),
         session_creation_authority: adapter.session_creation_authority(org_id, session_id),
         subagent_spawn_store: adapter.subagent_spawn_store(),
-        subagent_nesting_policy,
+        subagent_nesting_policy: capability_context.subagent_nesting_policy,
         reasoning_effort_handle: adapter.reasoning_effort_handle(session_id),
     }
 }
@@ -1412,7 +1428,10 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         input.agent_id,
         Some(Arc::new(validation_capabilities.tool_registry.clone())),
         None,
-        validation_capabilities.subagent_nesting_policy,
+        RuntimeToolCapabilityContext {
+            subagent_nesting_policy: validation_capabilities.subagent_nesting_policy,
+            has_platform_capability: validation_capabilities.has_platform_capability,
+        },
     );
     validation_capabilities
         .tool_registry
@@ -1723,7 +1742,10 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         input.agent_id,
         Some(builtin_tool_registry),
         mcp_invoker,
-        execution_capabilities.subagent_nesting_policy,
+        RuntimeToolCapabilityContext {
+            subagent_nesting_policy: execution_capabilities.subagent_nesting_policy,
+            has_platform_capability: execution_capabilities.has_platform_capability,
+        },
     );
     tool_registry.validate_context_services(&context_services)?;
     let executor: Arc<dyn everruns_core::tool_execution::ToolExecutor> = Arc::new(tool_registry);
