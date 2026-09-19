@@ -3006,9 +3006,11 @@ dependencies = [
  "protox",
  "serde",
  "serde_json",
+ "tokio",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "tower",
  "tracing",
  "uuid",
 ]

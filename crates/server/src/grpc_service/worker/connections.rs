@@ -34,9 +34,7 @@ impl WorkerServiceImpl {
         let session_id = parse_uuid(req.session_id.as_ref())?;
         let resolver = self.connection_resolver()?;
         let acts_as = match req.acts_as.as_str() {
-            value @ ("none" | "service" | "user") => {
-                everruns_core::McpServerActsAs::from(value)
-            }
+            value @ ("none" | "service" | "user") => everruns_core::McpServerActsAs::from(value),
             _ => return Err(Status::invalid_argument("Invalid MCP acts_as value")),
         };
 
