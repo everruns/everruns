@@ -98,6 +98,16 @@ receives the observation as JSON exactly as a vendor's service does, and answers
 from a table keyed by what is on the floor, so the demo exercises the whole
 request path rather than bypassing it.
 
+## The supervisor runs the tests itself
+
+It already runs `git` rather than asking the worker what changed, and `--tests`
+applies the same reasoning to the suite: a worker reporting its own green tests
+is a claim, and a host-run result is a fact. It lands in the observation as
+`test_results` — the field Foreman declares and never fills — and
+`tests_sufficient` moves on it. The suite runs once as a baseline before any
+worker starts, then whenever the floor is quiet; between times the last result
+is carried with its age, because a stale pass should not read as a fresh one.
+
 ## Who does the work
 
 `--worker` picks the crew. All three are watched identically, because what the
@@ -121,9 +131,11 @@ a step.
 
 ## The floor
 
-The bundled fixture is a small Python project that prices every parcel at one
+The bundled fixture is a small shell project that prices every parcel at one
 flat rate; the job is to replace that with weight tiers and cover the
-boundaries. On the session crew the coding worker mounts it read-write and the
+boundaries. Shell, deliberately: `bash tests/run.sh` needs no framework, no
+interpreter and no network, so the same suite runs inside the Bashkit sandbox,
+on the host, and inside an external agent. On the session crew the coding worker mounts it read-write and the
 verifier mounts the same directory under the default read-only policy, so
 "independent check" is a property of the mount rather than a request in a
 prompt. The supervisor runs `git` itself rather than asking the worker what it

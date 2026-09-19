@@ -67,7 +67,16 @@ async fn start(run: Run) -> Result<()> {
     let classifier = Classifier::new(agent::FOREMAN_MODEL, everruns::TypeSafeAI::from_env()?);
     let foreman = Foreman::new(classifier, config.assessment_budget);
 
-    let outcome = supervise(job, agent::FOREMAN_MODEL, &run.repo, crew, foreman, config).await;
+    let outcome = supervise(
+        job,
+        agent::FOREMAN_MODEL,
+        &run.repo,
+        crew,
+        foreman,
+        config,
+        run.tests.clone(),
+    )
+    .await;
     report(&outcome);
     settle(&outcome)
 }
@@ -116,13 +125,27 @@ async fn rehearse(options: Demo) -> Result<()> {
         agent::verifier(demo_run::verifier(), &workspace)?,
     );
 
-    let outcome = supervise(fixture::JOB, model, &workspace, crew, foreman, config).await;
+    let outcome = supervise(
+        fixture::JOB,
+        model,
+        &workspace,
+        crew,
+        foreman,
+        config,
+        Some(fixture::TESTS.to_owned()),
+    )
+    .await;
     report(&outcome);
 
     demo::section("REPOSITORY ON DISK");
     for check in fixture::verify(&workspace) {
         demo::check(check.passed, check.label);
     }
+    // The example's last word is not a reading of the tests but a run of them.
+    demo::check(
+        fixture::tests_pass(&workspace),
+        "`bash tests/run.sh` passes",
+    );
     if outcome.status == Status::Finished && !fixture::changed(&workspace) {
         bail!("factory finished without changing the repository");
     }
@@ -145,6 +168,7 @@ fn sessions(repo: &Path) -> Result<Crew> {
 }
 
 /// Run one factory, rendered.
+#[allow(clippy::too_many_arguments)]
 async fn supervise(
     job: &str,
     model: &str,
@@ -152,14 +176,17 @@ async fn supervise(
     crew: Crew,
     foreman: Foreman,
     config: Config,
+    tests: Option<String>,
 ) -> Outcome {
     let factory = Factory::new(job, workspace, crew, foreman, config)
+        .testing(tests.clone())
         .watched_by(Arc::new(terminal::Terminal::new()));
 
     demo::banner("everruns · foreman");
     demo::field("worker", &factory.crew_label());
     demo::field("foreman", &format!("{model} — nine questions, one request"));
     demo::field("repository", &workspace.display().to_string());
+    demo::field("tests", tests.as_deref().unwrap_or("none configured"));
     demo::field("run", factory.run_id());
     demo::field("job", &headline(job));
 

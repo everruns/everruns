@@ -16,7 +16,7 @@ use everruns_example_demo::style::{
 
 use crate::factory::Watcher;
 use crate::foreman::{Assessment, DIMENSIONS, Lens};
-use crate::observation::{WorkerKind, WorkerRecord, WorkerStatus};
+use crate::observation::{TestRun, WorkerKind, WorkerRecord, WorkerStatus};
 use crate::policy::{Action, Intervention};
 
 /// Lines shown from one shell script.
@@ -190,6 +190,27 @@ impl Watcher for Terminal {
                 &format!("foreman · reading {iteration} failed")
             ),
             paint(DIM, error),
+        );
+    }
+
+    fn tested(&self, run: &TestRun) {
+        self.break_line();
+        let (code, label) = if run.passed {
+            (GREEN, "tests passed")
+        } else {
+            (RED, "tests failed")
+        };
+        let headline = run
+            .output_tail
+            .lines()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or_default();
+        println!(
+            "  {} {} {}",
+            paint(DIM, "·"),
+            paint(code, label),
+            paint(DIM, &clip(headline)),
         );
     }
 

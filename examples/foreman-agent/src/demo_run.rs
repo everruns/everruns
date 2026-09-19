@@ -46,8 +46,8 @@ pub fn worker() -> Model {
     Model::simulated_with_config(
         LlmSimConfig::scripted(vec![
             step(
-                "Reading the rate table and the tests that cover it.",
-                "cat src/rates.py; ls tests",
+                "Reading the rate table, and running the suite to see what green looks like.",
+                "cat lib/rates.sh; bash tests/run.sh",
                 "call_read",
             ),
             step(
@@ -60,17 +60,18 @@ pub fn worker() -> Model {
                 include_str!("resources/demo/write_tests.sh"),
                 "call_tests",
             ),
+            step("Running the suite.", "bash tests/run.sh", "call_run_tests"),
             SimTurn::Assistant(
-                "Weight tiers replace the flat rate, and the boundary at each tier edge is \
-                 covered by a test. The zone surcharge is unchanged."
+                "Weight tiers replace the flat rate, and every tier edge is covered by a \
+                 test. The suite passes: 9 passed, 0 failed."
                     .to_owned(),
             ),
             // A second coding pass, for the run where the policy asks for one
             // after verification. A worker started on a finished repository
             // should read it and say so, not repeat its own summary.
             step(
-                "Re-reading what the last pass left behind.",
-                "sed -n '1,20p' src/rates.py; sed -n '1,14p' tests/test_tiers.py",
+                "Re-reading what the last pass left behind, and re-running its suite.",
+                "sed -n '1,30p' lib/rates.sh; bash tests/run.sh",
                 "call_reread",
             ),
             SimTurn::Assistant(
@@ -92,14 +93,14 @@ pub fn verifier() -> Model {
                 tool_calls: vec![SimToolCall {
                     name: "bash".to_owned(),
                     arguments: serde_json::json!({
-                        "commands": "cat src/rates.py; cat tests/test_tiers.py"
+                        "commands": "cat lib/rates.sh; bash tests/run.sh"
                     }),
                     id: Some("call_verify".to_owned()),
                 }],
             },
             SimTurn::Assistant(
-                "src/rates.py prices by weight and tests/test_tiers.py pins both tier edges. \
-                 The job is satisfied."
+                "lib/rates.sh prices by weight, tests/run.sh pins every tier edge, and the \
+                 suite reports 9 passed, 0 failed. The job is satisfied."
                     .to_owned(),
             ),
         ])
@@ -211,8 +212,8 @@ mod tests {
         // worker uses; keeping them in files means they can be read and run.
         let rates = include_str!("resources/demo/write_rates.sh");
         let tests = include_str!("resources/demo/write_tests.sh");
-        assert!(rates.contains("src/rates.py"));
-        assert!(tests.contains("tests/test_tiers.py"));
+        assert!(rates.contains("lib/rates.sh"));
+        assert!(tests.contains("tests/run.sh"));
         assert!(tests.to_lowercase().contains("boundar"));
     }
 

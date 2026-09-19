@@ -2,129 +2,125 @@ everruns · foreman
 ────────────────────────────────────────────────────────────────────────────────────────────────────────
       worker meta/muse-spark-1.3-contributor on the bashkit shell
      foreman jev-latest — nine questions, one request
-  repository /tmp/.tmpgZw9OE/shipkit
-         run 88199210bc4f
-         job Replace the flat shipping rate in shipkit with weight tiers: 700 cents up to 1 kg, 1200…
+  repository /tmp/.tmpAj0UCS/shipkit
+       tests bash tests/run.sh
+         run 98ce935aadbd
+         job Replace the flat shipping rate in shipkit with weight tiers: 700 cents up to 1000 g, 12…
+  · tests passed 3 passed, 0 failed
 
 ▸ worker-1 coding worker, attempt 1
 
   foreman · reading 1 ──────────────────────────────────────────────────────────────────────────────────
   the job
-    implementation_complete  ·············· 0.02
-    tests_sufficient         █············· 0.05
-    requirements_satisfied   █············· 0.04
-    needs_verification       ██████········ 0.42
-    ready_to_finish          ·············· 0.02
+    implementation_complete  ██············ 0.12
+    tests_sufficient         ███··········· 0.21
+    requirements_satisfied   ██············ 0.14
+    needs_verification       ██████████···· 0.69
+    ready_to_finish          ██············ 0.12
   the floor
-    meaningful_progress      ██············ 0.13
-    worker_stuck             ██············ 0.17
-    work_off_track           █············· 0.07
-    needs_human              ██············ 0.15
+    meaningful_progress      ████·········· 0.32
+    worker_stuck             ████·········· 0.30
+    work_off_track           ████·········· 0.32
+    needs_human              █████········· 0.33
   → CONTINUE  active worker may continue
-  Reading the rate table and the tests that cover it.
+  Reading the rate table, and running the suite to see what green looks like.
   ❯ bash
-    cat src/rates.py; ls tests
+    cat lib/rates.sh; bash tests/run.sh
   Replacing the flat rate with weight tiers.
   ❯ bash
-    cat > src/rates.py <<'PY'
-    """Shipping rates.
-    Weight tiers, applied per destination zone. A parcel is priced by the first
-    … 28 more line(s)
-  Covering the tier boundaries, which is where tiered pricing goes wrong.
-  ❯ bash
-    cat > tests/test_tiers.py <<'PY'
-    import pytest
-    from src.rates import quote, tier_rate_cents
-    … 15 more line(s)
+    cat > lib/rates.sh <<'RATES'
+    # Shipping rates.
+    #
+    … 38 more line(s)
 
   foreman · reading 2 ──────────────────────────────────────────────────────────────────────────────────
   the job
-    implementation_complete  ██············ 0.17
-    tests_sufficient         █············· 0.07
-    requirements_satisfied   ██············ 0.12
-    needs_verification       ████████████·· 0.88
-    ready_to_finish          █············· 0.07
+    implementation_complete  ███··········· 0.19
+    tests_sufficient         ██············ 0.14
+    requirements_satisfied   ██············ 0.16
+    needs_verification       ████████████·· 0.89
+    ready_to_finish          ██············ 0.11
   the floor
-    meaningful_progress      ███████████··· 0.77
-    worker_stuck             ██············ 0.13
-    work_off_track           ██············ 0.14
-    needs_human              ███··········· 0.19
+    meaningful_progress      ███████████··· 0.79
+    worker_stuck             ██············ 0.15
+    work_off_track           ███··········· 0.24
+    needs_human              ██████········ 0.40
   → CONTINUE  active worker may continue
-  Weight tiers replace the flat rate, and the boundary at each tier edge is covered by a test. The
-  zone surcharge is unchanged.
-  └ completed after 4s, 3 tool call(s)
+  Covering the tier boundaries, which is where tiered pricing goes wrong.
+  ❯ bash
+    cat > tests/run.sh <<'TESTS'
+    #!/usr/bin/env bash
+    # The whole suite. No framework, no interpreter, no network: `bash tests/run.sh`
+    … 36 more line(s)
+  Running the suite.
+  ❯ bash
+    bash tests/run.sh
+  Weight tiers replace the flat rate, and every tier edge is covered by a test. The suite passes: 9
+  passed, 0 failed.
 
   foreman · reading 3 ──────────────────────────────────────────────────────────────────────────────────
   the job
-    implementation_complete  ███████████··· 0.80
-    tests_sufficient         ██████········ 0.41
-    requirements_satisfied   ██████████···· 0.74
-    needs_verification       ████████████·· 0.83
-    ready_to_finish          ███████······· 0.52
+    implementation_complete  ████████████·· 0.89
+    tests_sufficient         ███████████··· 0.75
+    requirements_satisfied   ████████████·· 0.87
+    needs_verification       █████████····· 0.61
+    ready_to_finish          ███████████··· 0.80
   the floor
-    meaningful_progress      █████████████· 0.92
-    worker_stuck             █············· 0.05
-    work_off_track           █············· 0.08
-    needs_human              ██············ 0.17
-  → START_VERIFIER  independent verification is warranted
+    meaningful_progress      █████████████· 0.94
+    worker_stuck             █············· 0.06
+    work_off_track           █············· 0.07
+    needs_human              ██············ 0.14
+  → START_WORKER  meaningful implementation work remains
 
-▸ worker-2 independent verifier, attempt 1
-  Checking the tier table and the boundary tests against the job.
-  ❯ bash
-    cat src/rates.py; cat tests/test_tiers.py
-  src/rates.py prices by weight and tests/test_tiers.py pins both tier edges. The job is satisfied.
-  └ completed after 2s, 1 tool call(s)
+▸ worker-2 coding worker, attempt 1
+  └ completed after 5s, 4 tool call(s)
 
   foreman · reading 4 ──────────────────────────────────────────────────────────────────────────────────
   the job
-    implementation_complete  █████████████· 0.92
-    tests_sufficient         ████████████·· 0.85
-    requirements_satisfied   ████████████·· 0.89
-    needs_verification       ██████········ 0.46
-    ready_to_finish          ████████████·· 0.84
+    implementation_complete  ████████████·· 0.89
+    tests_sufficient         ███████████··· 0.81
+    requirements_satisfied   ████████████·· 0.84
+    needs_verification       ████████······ 0.58
+    ready_to_finish          ███████████··· 0.80
   the floor
-    meaningful_progress      ███████████··· 0.81
-    worker_stuck             ·············· 0.03
-    work_off_track           █············· 0.05
-    needs_human              █············· 0.10
-  → START_WORKER  meaningful implementation work remains
-
-▸ worker-3 coding worker, attempt 1
-  Re-reading what the last pass left behind.
+    meaningful_progress      ███████······· 0.52
+    worker_stuck             █············· 0.09
+    work_off_track           █············· 0.06
+    needs_human              ██············ 0.12
+  → CONTINUE  active worker may continue
+  Re-reading what the last pass left behind, and re-running its suite.
   ❯ bash
-    sed -n '1,20p' src/rates.py; sed -n '1,14p' tests/test_tiers.py
+    sed -n '1,30p' lib/rates.sh; bash tests/run.sh
   Nothing left to change: the tier table and the boundary tests are already in place, and the zone
   surcharge still rides on top.
   └ completed after 2s, 1 tool call(s)
+  · tests passed 9 passed, 0 failed
 
   foreman · reading 5 ──────────────────────────────────────────────────────────────────────────────────
   the job
-    implementation_complete  █████████████· 0.93
-    tests_sufficient         ████████████·· 0.89
-    requirements_satisfied   ████████████·· 0.89
-    needs_verification       ███████······· 0.53
-    ready_to_finish          ████████████·· 0.85
+    implementation_complete  █████████████· 0.96
+    tests_sufficient         █████████████· 0.91
+    requirements_satisfied   █████████████· 0.95
+    needs_verification       ████·········· 0.32
+    ready_to_finish          █████████████· 0.94
   the floor
-    meaningful_progress      ███··········· 0.19
-    worker_stuck             ██············ 0.11
-    work_off_track           █············· 0.06
-    needs_human              █············· 0.10
+    meaningful_progress      ██████········ 0.40
+    worker_stuck             █············· 0.05
+    work_off_track           █············· 0.05
+    needs_human              █············· 0.06
   → FINISH  completion thresholds satisfied
 
 FACTORY
       status finished
     readings 5
-     workers 3
-     elapsed 9s
+     workers 2
+     elapsed 7s
     decision FINISH — completion thresholds satisfied
-final reading ready_to_finish 0.85 · requirements_satisfied 0.89 · tests_sufficient 0.89
-
-INDEPENDENT VERIFICATION
-  ✓ worker-2
-  src/rates.py prices by weight and tests/test_tiers.py pins both tier edges. The job is satisfied.
+final reading ready_to_finish 0.94 · requirements_satisfied 0.95 · tests_sufficient 0.91
 
 REPOSITORY ON DISK
-  ✓ src/rates.py no longer prices every parcel the same
-  ✓ src/rates.py names weight tiers
-  ✓ the tests mention a tier or a boundary
+  ✓ lib/rates.sh no longer prices every parcel the same
+  ✓ lib/rates.sh names weight tiers
+  ✓ the tests cover a tier or a boundary
   ✓ the existing zone-surcharge test still stands
+  ✓ `bash tests/run.sh` passes
