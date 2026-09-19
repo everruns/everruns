@@ -1,5 +1,5 @@
 // User Connections API functions
-// User-scoped (not org-scoped) — connections represent user's identity
+// Provider connections are user-scoped; MCP connections are user- and org-scoped.
 
 import { api } from "./client";
 import type {
