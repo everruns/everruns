@@ -2,9 +2,12 @@
 
 use std::sync::Arc;
 
-use everruns_core::{DEFAULT_ORG_ID, McpServerActsAs, tool_types::ToolCall};
+use everruns_core::{DEFAULT_ORG_ID, McpServerActsAs};
 use everruns_host::{HostComposition, RuntimeHostAdapter};
-use everruns_provider::typed_id::{AgentId, AgentIdentityId, HarnessId, PrincipalId, SessionId};
+use everruns_provider::{
+    ToolCall, ToolResult,
+    typed_id::{AgentId, AgentIdentityId, HarnessId, PrincipalId, SessionId},
+};
 use everruns_server::grpc_service::WorkerServiceImpl;
 use everruns_server::storage::models::{
     CreateAgentIdentityConnectionRow, CreateAgentIdentityRow, CreateAgentRow, CreateMcpServerRow,
@@ -339,7 +342,7 @@ async fn start_grpc_server(
 async fn invoke(
     fixture: &ActsAsArrangement,
     session_id: SessionId,
-) -> everruns_core::tool_types::ToolResult {
+) -> ToolResult {
     let (addr, shutdown, server) = start_grpc_server(fixture.worker_service()).await;
     let composition = HostComposition::builder()
         .egress_service(Arc::new(fixture.mock.clone()))
