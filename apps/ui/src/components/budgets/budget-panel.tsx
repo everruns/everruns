@@ -163,7 +163,12 @@ function PeriodState({ budget }: { budget: Budget }) {
 }
 
 function isMigratedAppBudget(budget: Budget): boolean {
-  return budget.metadata?.converted_from === "app";
+  return (
+    typeof budget.metadata === "object" &&
+    budget.metadata !== null &&
+    "converted_from" in budget.metadata &&
+    budget.metadata.converted_from === "app"
+  );
 }
 
 export function BudgetPanel({
