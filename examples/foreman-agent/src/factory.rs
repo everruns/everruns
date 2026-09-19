@@ -152,11 +152,6 @@ impl Factory {
         self
     }
 
-    /// The model doing the supervising, for display.
-    pub fn foreman_model(&self) -> &str {
-        self.foreman.model()
-    }
-
     /// Who is doing the work, for display.
     pub fn crew_label(&self) -> String {
         self.crew.label()
@@ -599,12 +594,73 @@ fn run_id() -> String {
 mod tests {
     use super::*;
 
+    use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use everruns::{LlmSimConfig, Model};
+    use everruns::{
+        AgentLoopError, ClassificationAnswer, ClassificationOutcome, ClassificationRequest,
+        Classifier, ClassifierService, LlmSimConfig, Model,
+    };
+    use serde_json::Value;
 
-    use crate::foreman::ForemanError;
+    use crate::foreman::DIMENSIONS;
     use crate::worker::ExternalAgent;
+
+    /// A classifier service that answers from a closure over the observation.
+    ///
+    /// The stub receives the state as JSON, exactly as a vendor's service does,
+    /// so a test drives the run through the same request and parsing a live
+    /// reading uses.
+    /// How a test answers one reading.
+    type Reply = Box<dyn Fn(&Value) -> Result<Assessment, AgentLoopError> + Send + Sync>;
+
+    struct Answering(Reply);
+
+    #[async_trait::async_trait]
+    impl ClassifierService for Answering {
+        fn is_configured(&self) -> bool {
+            true
+        }
+
+        async fn evaluate(
+            &self,
+            request: ClassificationRequest,
+        ) -> Result<ClassificationOutcome, AgentLoopError> {
+            let assessment = (self.0)(&request.state)?;
+            Ok(ClassificationOutcome {
+                model: "test".to_owned(),
+                answers: DIMENSIONS
+                    .iter()
+                    .map(|dimension| {
+                        (
+                            dimension.id.to_owned(),
+                            ClassificationAnswer::Noul {
+                                probability: assessment.value(dimension.id),
+                            },
+                        )
+                    })
+                    .collect::<BTreeMap<_, _>>(),
+                ..ClassificationOutcome::default()
+            })
+        }
+    }
+
+    fn answering(
+        answer: impl Fn(&Value) -> Result<Assessment, AgentLoopError> + Send + Sync + 'static,
+    ) -> Foreman {
+        Foreman::new(
+            Classifier::new("test", Answering(Box::new(answer))),
+            Duration::from_secs(5),
+        )
+    }
+
+    /// Whether a worker was still on the floor when this reading was taken.
+    fn working(state: &Value) -> bool {
+        state
+            .get("active_workers")
+            .and_then(Value::as_array)
+            .is_some_and(|workers| !workers.is_empty())
+    }
 
     /// A worker that takes long enough that "during" is unambiguous.
     fn slow_worker() -> Model {
@@ -646,8 +702,8 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let live = Arc::new(AtomicUsize::new(0));
         let counter = Arc::clone(&live);
-        let foreman = Foreman::answering("counting", move |observation| {
-            if !observation.active_workers.is_empty() {
+        let foreman = answering(move |state| {
+            if working(state) {
                 counter.fetch_add(1, Ordering::SeqCst);
             }
             Ok(healthy())
@@ -678,7 +734,7 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         // One reading, held for the whole run: the worker is stuck. The policy
         // still has to walk stop → retry → escalate rather than repeat itself.
-        let foreman = Foreman::answering("stuck", |_| {
+        let foreman = answering(|_| {
             Ok(Assessment {
                 worker_stuck: 0.95,
                 meaningful_progress: 0.05,
@@ -726,9 +782,7 @@ mod tests {
             "Anything.",
             workspace.path(),
             sessions(workspace.path(), slow_worker),
-            Foreman::answering("down", |_| {
-                Err(ForemanError::TimedOut(Duration::from_secs(10)))
-            }),
+            answering(|_| Err(AgentLoopError::llm("classifier service is down"))),
             brisk(),
         )
         .run()
@@ -759,8 +813,8 @@ mod tests {
         let workspace = tempfile::tempdir().unwrap();
         let live = Arc::new(AtomicUsize::new(0));
         let counter = Arc::clone(&live);
-        let foreman = Foreman::answering("counting", move |observation| {
-            if !observation.active_workers.is_empty() {
+        let foreman = answering(move |state| {
+            if working(state) {
                 counter.fetch_add(1, Ordering::SeqCst);
             }
             Ok(healthy())
@@ -802,7 +856,7 @@ mod tests {
             "Do the thing.",
             workspace.path(),
             Crew::External(agent),
-            Foreman::answering("healthy", |_| Ok(healthy())),
+            answering(|_| Ok(healthy())),
             brisk(),
         )
         .run()
@@ -824,7 +878,7 @@ mod tests {
             workspace.path(),
             // Nothing about this process ends on its own.
             Crew::External(stand_in("while true; do sleep 1; done")),
-            Foreman::answering("stuck", |_| {
+            answering(|_| {
                 Ok(Assessment {
                     worker_stuck: 0.95,
                     ..Assessment::default()

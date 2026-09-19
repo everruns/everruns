@@ -80,13 +80,23 @@ cheap half, which is the premise, so the two halves go live separately:
 
 | Command | Worker | Foreman | Needs |
 | --- | --- | --- | --- |
-| `foreman demo` | scripted | deterministic | nothing |
+| `foreman demo` | scripted | a stub service, from a table | nothing |
 | `foreman demo --live-foreman` | scripted | `jev-latest` | `TYPESAFE_API_KEY` |
 | `foreman run …` | your choice, below | `jev-latest` | `TYPESAFE_API_KEY` + the worker's |
 
 `demo` writes its fixture into a temporary directory unless `--repo` says
 otherwise, and `run` never writes a fixture at all — `--repo` is your project,
 and the only thing that touches it is the worker. It will be modified.
+
+## One supervisor
+
+There is one, and it is always real: a `Classifier`, a budget, one request, nine
+answers. A run with no credentials is not a second supervisor with fabricated
+numbers — it is the same code over a different `ClassifierService`, the
+Framework's own seam for answering typed questions without a vendor. The stub
+receives the observation as JSON exactly as a vendor's service does, and answers
+from a table keyed by what is on the floor, so the demo exercises the whole
+request path rather than bypassing it.
 
 ## Who does the work
 

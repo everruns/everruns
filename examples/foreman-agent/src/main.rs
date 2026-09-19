@@ -65,9 +65,9 @@ async fn start(run: Run) -> Result<()> {
     };
     // TYPESAFE_API_KEY, declared by the TypeSafe integration.
     let classifier = Classifier::new(agent::FOREMAN_MODEL, everruns::TypeSafeAI::from_env()?);
-    let foreman = Foreman::jev(classifier, config.assessment_budget);
+    let foreman = Foreman::new(classifier, config.assessment_budget);
 
-    let outcome = supervise(job, &run.repo, crew, foreman, config).await;
+    let outcome = supervise(job, agent::FOREMAN_MODEL, &run.repo, crew, foreman, config).await;
     report(&outcome);
     settle(&outcome)
 }
@@ -89,8 +89,7 @@ async fn rehearse(options: Demo) -> Result<()> {
     fixture::materialize(&workspace).context("materializing the fixture")?;
 
     let mut config = demo_run::config();
-    let foreman = if options.live_foreman {
-        let classifier = Classifier::new(agent::FOREMAN_MODEL, everruns::TypeSafeAI::from_env()?);
+    let (model, classifier) = if options.live_foreman {
         // A real classifier needs room to answer, and a scripted worker does
         // not wait around for it, so the floor between readings goes up too.
         config.assessment_budget = config
@@ -99,18 +98,25 @@ async fn rehearse(options: Demo) -> Result<()> {
         config.min_assessment_interval = config
             .min_assessment_interval
             .max(std::time::Duration::from_secs(2));
-        Foreman::jev(classifier, config.assessment_budget)
+        (
+            agent::FOREMAN_MODEL,
+            Classifier::new(agent::FOREMAN_MODEL, everruns::TypeSafeAI::from_env()?),
+        )
     } else {
-        Foreman::answering("rehearsed", |observation| {
-            Ok(demo_run::reading(observation))
-        })
+        // The same supervisor over a service that answers from a table, which
+        // is the Framework's own way to run one without a vendor.
+        (
+            demo_run::REHEARSED_MODEL,
+            demo_run::Rehearsed::classifier().context("reading the demo readings")?,
+        )
     };
+    let foreman = Foreman::new(classifier, config.assessment_budget);
     let crew = Crew::sessions(
         agent::worker(demo_run::worker(), &workspace)?,
         agent::verifier(demo_run::verifier(), &workspace)?,
     );
 
-    let outcome = supervise(fixture::JOB, &workspace, crew, foreman, config).await;
+    let outcome = supervise(fixture::JOB, model, &workspace, crew, foreman, config).await;
     report(&outcome);
 
     demo::section("REPOSITORY ON DISK");
@@ -141,6 +147,7 @@ fn sessions(repo: &Path) -> Result<Crew> {
 /// Run one factory, rendered.
 async fn supervise(
     job: &str,
+    model: &str,
     workspace: &Path,
     crew: Crew,
     foreman: Foreman,
@@ -151,10 +158,7 @@ async fn supervise(
 
     demo::banner("everruns · foreman");
     demo::field("worker", &factory.crew_label());
-    demo::field(
-        "foreman",
-        &format!("{} — nine questions, one request", factory.foreman_model()),
-    );
+    demo::field("foreman", &format!("{model} — nine questions, one request"));
     demo::field("repository", &workspace.display().to_string());
     demo::field("run", factory.run_id());
     demo::field("job", &headline(job));
@@ -249,7 +253,10 @@ mod tests {
             fixture::JOB,
             &root,
             crew,
-            Foreman::answering("rehearsed", |o| Ok(demo_run::reading(o))),
+            Foreman::new(
+                demo_run::Rehearsed::classifier().unwrap(),
+                demo_run::config().assessment_budget,
+            ),
             demo_run::config(),
         )
         .run()
