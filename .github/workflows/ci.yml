@@ -99,7 +99,7 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] && \
              { [ "${EVENT_ACTION}" = "labeled" ] || [ "${EVENT_ACTION}" = "unlabeled" ]; }; then
             case "${LABEL_NAME}" in
-              factory:foreman|ci:skip-docker|ci:skip-slow-rust|ci:skip-postgres-integration|ci:skip-sdk-compat|ci:skip-ui-e2e|ci:skip-docs-notebooks|ci:skip-integration-workflows)
+              ci:skip-docker|ci:skip-slow-rust|ci:skip-postgres-integration|ci:skip-sdk-compat|ci:skip-ui-e2e|ci:skip-docs-notebooks|ci:skip-integration-workflows)
                 echo "run_ci=true" >> "$GITHUB_OUTPUT"
                 ;;
               *)
@@ -2630,41 +2630,6 @@ jobs:
           target: worker
           push: false
           tags: everruns-worker:ci
-  mcp-harness-soak:
-    name: MCP Harness 100-Run Soak
-    runs-on: ubuntu-latest
-    if: github.head_ref == 'factory/eve-1036-mcp-oauth-harness'
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "mcp-harness-soak"
-
-      - name: Run MCP harness and gRPC tests 100 sequential times
-        run: |
-          harness_binary="$(
-            cargo test -p everruns-test-support --test mcp_harness_test --all-features \
-              --no-run --message-format=json |
-              jq -r 'select(.reason == "compiler-artifact" and .target.name == "mcp_harness_test" and .executable != null) | .executable'
-          )"
-          grpc_binary="$(
-            cargo test -p everruns-server --test mcp_acts_as_grpc_test \
-              --no-run --message-format=json |
-              jq -r 'select(.reason == "compiler-artifact" and .target.name == "mcp_acts_as_grpc_test" and .executable != null) | .executable'
-          )"
-          test -x "$harness_binary"
-          test -x "$grpc_binary"
-          for run in $(seq 1 100); do
-            echo "MCP harness and gRPC soak run ${run}/100"
-            "$harness_binary"
-            "$grpc_binary"
-          done
 
   ci-opt-out-policy:
     name: CI Opt-Out Policy
@@ -2760,7 +2725,6 @@ jobs:
       - ui-budget-e2e
       - docs-build
       - docker-build
-      - mcp-harness-soak
       - ci-opt-out-policy
       - browserless-live-test
       - daytona-live-test
