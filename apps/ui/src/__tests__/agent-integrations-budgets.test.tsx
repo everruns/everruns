@@ -51,8 +51,10 @@ jest.mock("@/components/apps/channel-row", () => ({
   ChannelRow: ({ usePanel }: { usePanel?: React.ReactNode }) => <div>{usePanel}</div>,
 }));
 
-jest.mock("@/components/agents/endpoint-use-panel", () => ({
-  EndpointUsePanel: () => <div>Endpoint use</div>,
+jest.mock("@/components/agents/integrations/endpoint-details-panel", () => ({
+  EndpointDetailsPanel: ({ channel }: { channel: AppChannel }) => (
+    <div data-testid={`endpoint-details-${channel.id}`} />
+  ),
 }));
 
 jest.mock("@/components/agents/agent-triggers-panel", () => ({
@@ -109,6 +111,7 @@ describe("AgentIntegrationsPanel budgets", () => {
     render(<AgentIntegrationsPanel agent={agent} />);
 
     expect(mockUseFeatureFlag).toHaveBeenCalledWith("app_budgets");
+    expect(screen.getByTestId("endpoint-details-endpoint_1")).toBeInTheDocument();
     expect(screen.getByTestId("budget-agent-agent_1")).toHaveAttribute(
       "data-can-manage",
       String(canManage),

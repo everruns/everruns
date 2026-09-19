@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Clock3, ExternalLink, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Clock3, ExternalLink, Pencil, Play, Plus, Trash2, Webhook } from "lucide-react";
 import {
   useAgentTriggerRuns,
   useAgentTriggers,
@@ -10,15 +10,19 @@ import {
   useRunAgentTrigger,
   useUpdateAgentTrigger,
 } from "@/hooks/use-agent-triggers";
-import type { AgentTrigger, InvocationSessionMode } from "@/lib/api/types";
+import type { AgentTrigger } from "@/lib/api/types";
 import { CronLabel } from "@/components/apps/cron-label";
 import {
   EMPTY_TRIGGER_FORM,
   isTriggerFormValid,
   TriggerFormFields,
-  type TriggerConfig,
   type TriggerFormState,
 } from "@/components/agents/trigger-form";
+import {
+  getScheduleTriggerConfig,
+  getWebhookTriggerConfig,
+  TriggerSetupGuidance,
+} from "@/components/agents/integrations/trigger-setup-guidance";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,21 +34,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { formatDistanceToNow } from "@/lib/formatting";
-
-function configOf(trigger: AgentTrigger): TriggerConfig {
-  return trigger.config as TriggerConfig;
-}
 
 function TriggerRuns({ agentId, triggerId }: { agentId: string; triggerId: string }) {
   const { data: runs = [], isLoading } = useAgentTriggerRuns(agentId, triggerId);
@@ -75,7 +66,7 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const openEdit = (trigger: AgentTrigger) => {
-    const config = configOf(trigger);
+    const config = getScheduleTriggerConfig(trigger);
     setEditing(trigger);
     setForm({
       cron_expression: config.cron_expression,
@@ -125,14 +116,28 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
           </div>
         ) : (
           triggers.map((trigger) => {
-            const config = configOf(trigger);
+            const isSchedule = trigger.trigger_type === "schedule";
+            const config = isSchedule
+              ? getScheduleTriggerConfig(trigger)
+              : getWebhookTriggerConfig(trigger);
             return (
               <div key={trigger.id} className="space-y-3 border p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <Clock3 className="size-4 text-muted-foreground" />
-                      <CronLabel expr={config.cron_expression} tz={config.timezone} />
+                      {isSchedule ? (
+                        <Clock3 className="size-4 text-muted-foreground" />
+                      ) : (
+                        <Webhook className="size-4 text-muted-foreground" />
+                      )}
+                      {isSchedule ? (
+                        <CronLabel
+                          expr={getScheduleTriggerConfig(trigger).cron_expression}
+                          tz={getScheduleTriggerConfig(trigger).timezone}
+                        />
+                      ) : (
+                        <span className="font-medium">Webhook</span>
+                      )}
                       <Badge variant={trigger.enabled ? "default" : "outline"}>
                         {trigger.enabled ? "Enabled" : "Disabled"}
                       </Badge>
@@ -152,25 +157,29 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                         updateTrigger.mutate({ triggerId: trigger.id, request: { enabled } })
                       }
                     />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => runTrigger.mutate(trigger.id)}
-                      disabled={!trigger.enabled || runTrigger.isPending}
-                    >
-                      <Play className="size-4" /> Run now
-                    </Button>
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(trigger)}>
-                      <Pencil className="size-4" />
-                      <span className="sr-only">Quick edit trigger</span>
-                    </Button>
-                    <Link
-                      href={`/agents/${agentId}/triggers/${trigger.id}`}
-                      className={buttonVariants({ variant: "ghost", size: "icon" })}
-                      aria-label="Open trigger editor"
-                    >
-                      <ExternalLink className="size-4" />
-                    </Link>
+                    {isSchedule && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => runTrigger.mutate(trigger.id)}
+                          disabled={!trigger.enabled || runTrigger.isPending}
+                        >
+                          <Play className="size-4" /> Run now
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(trigger)}>
+                          <Pencil className="size-4" />
+                          <span className="sr-only">Quick edit trigger</span>
+                        </Button>
+                        <Link
+                          href={`/agents/${agentId}/triggers/${trigger.id}`}
+                          className={buttonVariants({ variant: "ghost", size: "icon" })}
+                          aria-label="Open trigger editor"
+                        >
+                          <ExternalLink className="size-4" />
+                        </Link>
+                      </>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -181,7 +190,11 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                     </Button>
                   </div>
                 </div>
-                <TriggerRuns agentId={agentId} triggerId={trigger.id} />
+                {isSchedule && <TriggerRuns agentId={agentId} triggerId={trigger.id} />}
+                <div className="border-t pt-4">
+                  <p className="mb-3 text-xs font-medium uppercase text-muted-foreground">Set up</p>
+                  <TriggerSetupGuidance trigger={trigger} />
+                </div>
               </div>
             );
           })

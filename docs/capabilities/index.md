@@ -23,6 +23,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 |---|---|---|
 | [File System](/capabilities/file-system/) | `session_file_system` | 6 |
 | [Bashkit Shell](/capabilities/bashkit-shell/) | `bashkit_shell` | 1 |
+| [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 |
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
@@ -225,6 +226,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | Capability | Depends On |
 |---|---|
 | [Bashkit Shell](/capabilities/bashkit-shell/) | [File System](/capabilities/file-system/) |
+| [Host Shell](/capabilities/host-shell/) | [File System](/capabilities/file-system/) |
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
 | [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
 | [E2B](/capabilities/e2b/) | [Storage](/capabilities/session-storage/) |
@@ -235,7 +237,7 @@ Capabilities declare UI features they contribute. The session aggregates feature
 
 | Feature | UI Element | Contributed By |
 |---|---|---|
-| `file_system` | Workspace tab | [File System](/capabilities/file-system/), [Bashkit Shell](/capabilities/bashkit-shell/) |
+| `file_system` | Workspace tab | [File System](/capabilities/file-system/), [Bashkit Shell](/capabilities/bashkit-shell/), [Host Shell](/capabilities/host-shell/) |
 | `secrets` | Storage tab | [Storage](/capabilities/session-storage/) |
 | `key_value` | Storage tab | [Storage](/capabilities/session-storage/) |
 | `schedules` | Schedules tab | [Schedules](/capabilities/session-schedules/) |

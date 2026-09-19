@@ -1697,7 +1697,7 @@
         ],
         "responses": {
           "204": {
-            "description": "MCP connection revoked"
+            "description": "MCP connection revoked or already absent"
           },
           "400": {
             "description": "Attachment does not use a connection",
@@ -1720,7 +1720,7 @@
             }
           },
           "404": {
-            "description": "Agent, attachment, preset, or connection not found",
+            "description": "Agent, attachment, or preset not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -8141,6 +8141,85 @@
         }
       }
     },
+    "/v1/mcp-servers/catalog": {
+      "get": {
+        "tags": [
+          "mcp-servers"
+        ],
+        "description": "List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization.",
+        "operationId": "list_mcp_server_catalog",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Continue after this MCP server ID.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (default: 50, max: 100).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cursor-paginated MCP server catalog with active-agent usage counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerCatalogResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/mcp-servers/config": {
       "get": {
         "tags": [
@@ -8275,6 +8354,78 @@
           },
           "400": {
             "description": "Invalid server ID or input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mcp-servers/{server_id}/usage": {
+      "get": {
+        "tags": [
+          "mcp-servers"
+        ],
+        "description": "Get the bounded active-agent impact summary used before archiving an MCP server preset.",
+        "operationId": "get_mcp_server_usage",
+        "parameters": [
+          {
+            "name": "server_id",
+            "in": "path",
+            "description": "MCP server ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded active-agent archive impact",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerUsageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid MCP server ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -15911,6 +16062,75 @@
                   "items": {
                     "$ref": "#/components/schemas/SessionTask"
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/user/mcp-connections": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "description": "List the current user's cursor-paginated MCP OAuth connections in the selected organization.",
+        "operationId": "list_mcp_connections",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Continue after this opaque connection cursor.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (default: 50, max: 100).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cursor-paginated current user's MCP OAuth connections in the selected organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpConnectionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -30888,6 +31108,61 @@
         ],
         "example": "api_key"
       },
+      "McpServerCatalogEntry": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/WithUrls_McpServer",
+            "description": "MCP server preset and its resource URLs."
+          },
+          {
+            "type": "object",
+            "required": [
+              "used_by_agents"
+            ],
+            "properties": {
+              "used_by_agents": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Number of active agents that use this preset.",
+                "example": 2
+              }
+            }
+          }
+        ],
+        "description": "MCP server preset with its active-agent usage count."
+      },
+      "McpServerCatalogResponse": {
+        "type": "object",
+        "description": "One page of MCP server catalog entries for the selected organization.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpServerCatalogEntry"
+            },
+            "description": "MCP server presets in this page.",
+            "example": [
+              {
+                "id": "mcp_01933b5a00007000800000000000001",
+                "name": "microsoft_learn",
+                "url": "https://learn.microsoft.com/api/mcp",
+                "used_by_agents": 2
+              }
+            ]
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cursor for the next page, or null when this is the final page.",
+            "example": "mcp_01933b5a00007000800000000000001"
+          }
+        }
+      },
       "McpServerPresetRef": {
         "type": "string",
         "description": "Reference to an organization MCP server catalog entry.",
@@ -30912,6 +31187,39 @@
           "stdio"
         ],
         "example": "http"
+      },
+      "McpServerUsageResponse": {
+        "type": "object",
+        "description": "Bounded archive-impact summary for an MCP server preset.",
+        "required": [
+          "agent_names",
+          "total_count",
+          "truncated"
+        ],
+        "properties": {
+          "agent_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of active agents that use the preset, up to the response limit.",
+            "example": [
+              "Docs agent",
+              "Research agent"
+            ]
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total number of active agents that use the preset.",
+            "example": 2
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether additional agent names were omitted from the bounded list.",
+            "example": false
+          }
+        }
       },
       "McpToolAnnotations": {
         "type": "object",
@@ -41084,6 +41392,103 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "UserMcpConnectionResponse": {
+        "type": "object",
+        "description": "Current user's MCP OAuth connection to a preset in the selected organization.",
+        "required": [
+          "provider",
+          "server_id",
+          "server_name",
+          "server_url",
+          "server_status",
+          "connected_at"
+        ],
+        "properties": {
+          "connected_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time when the user authorized the connection.",
+            "example": "2026-09-19T12:00:00Z"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Stored connection provider key used to revoke the grant.",
+            "example": "mcp_oauth_01933b5a-0000-7000-8000-000000000001"
+          },
+          "provider_username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Account name reported by the MCP OAuth provider, when available.",
+            "example": "alex@example.com"
+          },
+          "scopes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Space-delimited OAuth scopes granted to this connection, when available.",
+            "example": "tools:read tools:execute"
+          },
+          "server_id": {
+            "type": "string",
+            "description": "UUID of the MCP server preset associated with the connection.",
+            "example": "01933b5a-0000-7000-8000-000000000001"
+          },
+          "server_name": {
+            "type": "string",
+            "description": "Display name of the MCP server preset.",
+            "example": "microsoft_learn"
+          },
+          "server_status": {
+            "type": "string",
+            "description": "Current lifecycle status of the MCP server preset.",
+            "example": "active"
+          },
+          "server_url": {
+            "type": "string",
+            "description": "MCP server endpoint URL.",
+            "example": "https://learn.microsoft.com/api/mcp"
+          }
+        }
+      },
+      "UserMcpConnectionsResponse": {
+        "type": "object",
+        "description": "One page of the current user's MCP connections in the selected organization.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserMcpConnectionResponse"
+            },
+            "description": "MCP connections in this page.",
+            "example": [
+              {
+                "connected_at": "2026-09-19T12:00:00Z",
+                "provider": "mcp_oauth_01933b5a-0000-7000-8000-000000000001",
+                "provider_username": "alex@example.com",
+                "scopes": "tools:read tools:execute",
+                "server_id": "01933b5a-0000-7000-8000-000000000001",
+                "server_name": "microsoft_learn",
+                "server_status": "active",
+                "server_url": "https://learn.microsoft.com/api/mcp"
+              }
+            ]
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cursor for the next page, or null when this is the final page.",
+            "example": "01933b5a-0000-7000-8000-000000000002"
           }
         }
       },

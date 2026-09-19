@@ -719,6 +719,7 @@ mod tests {
 
     fn sessions(root: &std::path::Path, model: impl Fn() -> Model) -> Crew {
         Crew::sessions(
+            "simulated",
             crate::agent::worker(model(), root).unwrap(),
             crate::agent::verifier(model(), root).unwrap(),
         )

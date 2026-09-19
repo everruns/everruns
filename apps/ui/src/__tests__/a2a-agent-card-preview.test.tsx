@@ -4,13 +4,13 @@ import {
   A2A_AGENT_CARD_VERSION,
   A2aAgentCardPreview,
   buildA2aAgentCardPreview,
-} from "@/components/apps/a2a-agent-card-preview";
+} from "@/components/agents/integrations/a2a-agent-card-preview";
 
 describe("A2aAgentCardPreview", () => {
   it("builds the public Agent Card shape without secret material", () => {
     const card = buildA2aAgentCardPreview({
-      appName: "Support Bot",
-      appDescription: "Routes support requests",
+      agentName: "Support Bot",
+      agentDescription: "Routes support requests",
       endpointUrl: "https://example.com/api/v1/apps/app-123/a2a/appchan-123",
       agentCardName: "Support A2A",
       agentCardDescription: "Answers external agents",
@@ -51,7 +51,7 @@ describe("A2aAgentCardPreview", () => {
   it("redacts secret-shaped fields before rendering", () => {
     render(
       <A2aAgentCardPreview
-        appName="Inbox Triage"
+        agentName="Inbox Triage"
         sessionMode="shared_session"
         card={{
           name: "Inbox Triage",
@@ -80,8 +80,8 @@ describe("A2aAgentCardPreview", () => {
   it("renders the inline JSON preview", () => {
     render(
       <A2aAgentCardPreview
-        appName="Inbox Triage"
-        appDescription="Reviews inbox items"
+        agentName="Inbox Triage"
+        agentDescription="Reviews inbox items"
         endpointUrl="https://example.com/api/v1/apps/app-123/a2a/appchan-123"
         sessionMode="shared_session"
       />,

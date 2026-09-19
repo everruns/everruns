@@ -1,25 +1,22 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
-import { getAgUiToolVisibilityDisplayName } from "@/lib/app-channels";
-import type { AgUiToolVisibility } from "@/lib/api/types";
 import { Globe } from "lucide-react";
 
-interface AgUiSetupGuidanceProps {
+interface FcpSetupGuidanceProps {
   endpointUrl: string;
-  imageUploadUrl?: string;
   isPublished: boolean;
   anonymousEnabled: boolean;
   sessionExpirationSeconds: number;
   rateLimitPerMinute?: number;
+  responseTimeoutSeconds?: number;
   token?: string;
   tokenConfigured?: boolean;
-  toolVisibility?: AgUiToolVisibility;
-  genericToolText?: string;
+  hasCustomHandshake?: boolean;
   onConfigure?: () => void;
 }
 
-export function formatSessionExpiration(seconds: number): string {
+export function formatFcpSessionExpiration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) {
     return "Never";
   }
@@ -37,28 +34,31 @@ export function formatSessionExpiration(seconds: number): string {
   return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
 }
 
-export function AgUiSetupGuidance({
+export function FcpSetupGuidance({
   endpointUrl,
-  imageUploadUrl,
   isPublished,
   anonymousEnabled,
   sessionExpirationSeconds,
   rateLimitPerMinute,
+  responseTimeoutSeconds,
   token,
   tokenConfigured,
-  toolVisibility = "generic",
-  genericToolText,
+  hasCustomHandshake,
   onConfigure,
-}: AgUiSetupGuidanceProps) {
+}: FcpSetupGuidanceProps) {
   const hasRateLimit = !!rateLimitPerMinute && rateLimitPerMinute > 0;
   const hasToken = !!token || !!tokenConfigured;
   const accessBadge = hasToken ? "Token Protected" : anonymousEnabled ? "Anonymous" : "Restricted";
+  const timeoutSeconds =
+    responseTimeoutSeconds && responseTimeoutSeconds > 0 ? responseTimeoutSeconds : 120;
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Badge variant={anonymousEnabled ? "default" : "secondary"}>{accessBadge}</Badge>
+        <Badge variant={anonymousEnabled && !hasToken ? "default" : "secondary"}>
+          {accessBadge}
+        </Badge>
         <span className="text-sm text-muted-foreground">
-          {isPublished ? "Ready for AG-UI clients" : "Publish the app to accept requests"}
+          {isPublished ? "Ready for FCP clients" : "Publish the endpoint to accept requests"}
         </span>
       </div>
 
@@ -69,18 +69,11 @@ export function AgUiSetupGuidance({
           <code className="flex-1 truncate text-sm">{endpointUrl}</code>
           <CopyButton value={endpointUrl} />
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          GET this URL for the Markdown handshake. POST plain text (or JSON{" "}
+          <code>&#123;&quot;message&quot;: &quot;...&quot;&#125;</code>) for a reply.
+        </p>
       </div>
-
-      {imageUploadUrl && (
-        <div>
-          <p className="text-sm font-medium">Image upload</p>
-          <div className="mt-2 flex items-center gap-2 bg-muted p-3">
-            <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <code className="flex-1 truncate text-sm">{imageUploadUrl}</code>
-            <CopyButton value={imageUploadUrl} />
-          </div>
-        </div>
-      )}
 
       <div>
         <p className="text-sm font-medium">Token</p>
@@ -91,18 +84,32 @@ export function AgUiSetupGuidance({
           </div>
         ) : hasToken ? (
           <p className="text-sm text-muted-foreground">Channel token configured</p>
-        ) : (
+        ) : anonymousEnabled ? (
           <p className="text-sm text-muted-foreground">No channel token required</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Anonymous access is off — configure a token, otherwise every request will be rejected
+            with 401.
+          </p>
         )}
       </div>
 
       <div>
-        <p className="text-sm font-medium">Thread expiration</p>
+        <p className="text-sm font-medium">Handshake (GET body)</p>
         <p className="text-sm text-muted-foreground">
-          {formatSessionExpiration(sessionExpirationSeconds)}
+          {hasCustomHandshake
+            ? "Custom Markdown configured."
+            : "Auto-generated from the agent name and description."}
+        </p>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium">Session expiration</p>
+        <p className="text-sm text-muted-foreground">
+          {formatFcpSessionExpiration(sessionExpirationSeconds)}
           {sessionExpirationSeconds > 0
-            ? " — after this, requests reusing the same threadId are rejected with 410 Gone and the client must start a new thread"
-            : " — threads can be resumed indefinitely"}
+            ? " — after this the fcp_session cookie can no longer resume the same conversation; the next request starts a fresh one."
+            : " — sessions can be resumed indefinitely."}
         </p>
       </div>
 
@@ -110,30 +117,35 @@ export function AgUiSetupGuidance({
         <p className="text-sm font-medium">Rate limit</p>
         <p className="text-sm text-muted-foreground">
           {hasRateLimit
-            ? `${rateLimitPerMinute} requests per minute, per IP`
-            : "No per-app cap (global API limit applies)"}
+            ? `${rateLimitPerMinute} requests per minute, per client IP`
+            : "No per-endpoint cap (global API limit applies)"}
+          {" — counted in an FCP-only limiter namespace."}
         </p>
       </div>
 
       <div>
-        <p className="text-sm font-medium">Tool activity</p>
+        <p className="text-sm font-medium">Response timeout</p>
         <p className="text-sm text-muted-foreground">
-          {getAgUiToolVisibilityDisplayName(toolVisibility)}
-          {toolVisibility === "generic" && genericToolText ? ` — ${genericToolText}` : ""}
+          {timeoutSeconds} seconds — after which the endpoint returns 504 with the same{" "}
+          <code>fcp_session</code> cookie so the client can retry.
         </p>
       </div>
 
       <div className="space-y-1 text-sm text-muted-foreground">
-        <p>Send AG-UI `RunAgentInput` JSON to this endpoint.</p>
-        {imageUploadUrl && (
+        <p>
+          Body: plain UTF-8 text, or <code>application/json</code> of shape{" "}
+          <code>&#123;&quot;message&quot;: &quot;...&quot;&#125;</code>. Maximum 256 KiB.
+        </p>
+        {hasToken && (
           <p>
-            Upload images as multipart `file`, then pass returned IDs in `forwardedProps.imageIds`.
+            Include <code>Authorization: Bearer &lt;token&gt;</code> or{" "}
+            <code>X-Everruns-FCP-Token: &lt;token&gt;</code>.
           </p>
         )}
-        {hasToken && (
-          <p>Include `Authorization: Bearer &lt;token&gt;` or `X-Everruns-AG-UI-Token`.</p>
-        )}
-        <p>Responses stream back as AG-UI SSE events.</p>
+        <p>
+          Responses are <code>text/markdown</code>. Errors are also Markdown and contain the next
+          step the caller should take.
+        </p>
       </div>
 
       {onConfigure && (

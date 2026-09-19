@@ -485,7 +485,9 @@ fn round(seconds: f64) -> f64 {
     (seconds * 10.0).round() / 10.0
 }
 
-#[cfg(test)]
+/// Test fixtures, compiled only for tests and for the `testing` feature the
+/// demo crate turns on for its own.
+#[cfg(any(test, feature = "testing"))]
 impl Observation {
     /// A minimal observation, for tests that need one but do not read it.
     pub fn sample() -> Self {

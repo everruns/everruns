@@ -485,6 +485,15 @@ impl SessionFileSystem for MountFs {
         true
     }
 
+    fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {
+        // Route first: a named mount may be a host directory while the primary
+        // is not, or the other way round, so the answer belongs to whichever
+        // backend actually owns the path.
+        let virtual_path = normalize_virtual(path, &self.cwd());
+        let resolved = self.resolve(&virtual_path).ok()?;
+        resolved.backend.host_path(&resolved.backend_path)
+    }
+
     fn resolve_path(&self, input: &str) -> String {
         // Resolve the raw input through the mount table, then present the
         // resolved backend key per the display policy. Presenting the resolved

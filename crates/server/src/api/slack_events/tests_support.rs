@@ -155,6 +155,8 @@ pub(crate) const TEST_INTERACTIVITY_URL: &str =
     "https://api.example.com/v1/e/appchan_test/slack/interactivity";
 pub(crate) const TEST_REQUEST_URL: &str =
     "https://example.com/api/v1/apps/app_test123/slack/events";
+pub(crate) const TEST_REDIRECT_URL: &str =
+    "https://api.example.com/v1/e/appchan_test/slack/oauth/callback";
 
 pub(crate) fn test_starter(text: &str) -> ConversationStarter {
     ConversationStarter {

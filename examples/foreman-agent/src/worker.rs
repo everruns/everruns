@@ -41,6 +41,8 @@ pub enum Crew {
 /// read-only policy, so "independent check" is a property of the mount rather
 /// than a request in a prompt a model may decline to honor.
 pub struct Sessions {
+    /// What the sessions are running on, for display.
+    pub model: String,
     /// Edits the repository.
     pub worker: Agent,
     /// Reads it.
@@ -50,9 +52,10 @@ pub struct Sessions {
 }
 
 impl Crew {
-    /// A crew of Everruns sessions.
-    pub fn sessions(worker: Agent, verifier: Agent) -> Self {
+    /// A crew of Everruns sessions on `model`.
+    pub fn sessions(model: impl Into<String>, worker: Agent, verifier: Agent) -> Self {
         Self::Sessions(Box::new(Sessions {
+            model: model.into(),
             worker,
             verifier,
             engine: Engine::new(),
@@ -62,7 +65,7 @@ impl Crew {
     /// What to call this crew in the run's header.
     pub fn label(&self) -> String {
         match self {
-            Self::Sessions(_) => format!("{} on the bashkit shell", crate::agent::WORKER_MODEL),
+            Self::Sessions(sessions) => format!("{} on the bashkit shell", sessions.model),
             Self::External(agent) => format!("{} (external CLI)", agent.label),
         }
     }

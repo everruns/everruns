@@ -16,6 +16,10 @@ export interface TriggerAgentEndpointResult {
   session_id: string;
   created_session: boolean;
 }
+export interface SlackManifest {
+  manifest_yaml: string;
+  create_url: string;
+}
 
 export async function listAgentEndpoints(agentId: string): Promise<AppChannel[]> {
   const response = await api.get<AppChannel[]>(`/v1/agents/${agentId}/endpoints`);
@@ -44,6 +48,11 @@ export async function updateAgentEndpoint(
     `/v1/agents/${agentId}/endpoints/${endpointId}`,
     request,
   );
+  return response.data;
+}
+
+export async function getSlackEndpointManifest(endpointId: string): Promise<SlackManifest> {
+  const response = await api.get<SlackManifest>(`/v1/e/${endpointId}/slack/manifest`);
   return response.data;
 }
 

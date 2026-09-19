@@ -33,7 +33,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-WEB | Web Security | XSS, CSRF, CORS misconfiguration |
 | TM-AGENT | AI Agent | Prompt injection, jailbreak, capability abuse, cost runaway |
 | TM-VOICE | Voice Sessions | Microphone capture, Realtime client secrets, sideband tool control |
-| TM-BASH | Bash Sandbox | Bashkit sandbox escape, resource exhaustion, VFS boundary |
+| TM-BASH | Bash Sandbox | Bashkit sandbox escape, resource exhaustion, VFS boundary; host-shell kernel containment bypass and escalation |
 | TM-DOS | Denial of Service | Resource exhaustion, large payloads |
 | TM-CLIENT | Client-Side Tools | Tool ID spoofing, timeout abuse |
 | TM-MCP | MCP Server | First-party `/mcp` endpoint, MCP OAuth, external MCP clients, MCP server tool discovery/execution |
@@ -1018,7 +1018,11 @@ See [voice.md](../operations/voice.md) for the feature contract.
 
 ## 15. Bash Sandbox (TM-BASH)
 
-Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandboxed bash interpreter for the `bashkit_shell` capability. Bashkit provides WASM-like isolation: no real filesystem, no network, no system calls. The session file store is bridged via the `SessionFileSystemAdapter`.
+This category covers two different shells, isolated by different means.
+
+Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandboxed bash interpreter for the `bashkit_shell` capability, which is what the control plane runs. Bashkit provides WASM-like isolation: no real filesystem, no network, no system calls. The session file store is bridged via the `SessionFileSystemAdapter`. TM-BASH-001 through TM-BASH-017 are about that interpreter.
+
+`everruns-host` additionally offers a real-process shell to embedders, behind Cargo features the server does not enable: `HostCompute` (TM-BASH-018) and the `host_shell` capability. There the isolation is the kernel's, Seatbelt on macOS and Landlock plus seccomp on Linux, and the relevant questions are whether that boundary can fail open, be widened by the model, or be escalated past without a person. TM-BASH-019 through TM-BASH-025 are about that path.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
@@ -1039,7 +1043,14 @@ Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandb
 | TM-BASH-015 | Host information disclosure | Low | `hostname` → "everruns"; `whoami` → "everruns"; `uname` returns sandboxed values; mounted real-disk workspaces keep bash cwd/WORKSPACE in `/workspace` rather than the host checkout path | MITIGATED |
 | TM-BASH-016 | Write amplification via bash | Medium | Per-session and per-file byte quotas enforced in `DirectWorkerAdapters::write_file` (see TM-FS-008) | MITIGATED |
 | TM-BASH-017 | Timestamp spoofing via `touch -t` | Low | `SessionFileSystemAdapter.set_modified_time()` is a no-op, mirroring `chmod` (TM-BASH-014); the session store persists no mtimes and `stat` synthesizes them, so bash cannot backdate a file to influence anything that reads timestamps | **BY DESIGN** |
-| TM-BASH-018 | Real host process execution via `HostCompute` | Critical | `everruns-host`'s `compute::HostCompute` runs `bash -lc` as a real child process on the machine hosting the process, which is the point of the `host` environment target and the one case TM-BASH-004's "no real process execution" does not cover. It is not reachable from the control plane: it compiles only behind the `everruns-host/process` Cargo feature (surfaced as `everruns/host-compute`), which the server does not enable, nothing in the server constructs it, and no HTTP route or capability exposes it. An embedder that opts in is choosing an uncontained target on hardware it owns; the type says so rather than implying otherwise, reporting `ContainmentLevel::None` and `Durability::None`, and `Environment::build` refuses a profile that claims stronger containment than a target enforces. Kernel containment (Seatbelt, Landlock) is deliberately later work, see `knowledge/harnesses/execution-environments.md`. | **BY DESIGN** |
+| TM-BASH-018 | Real host process execution via `HostCompute` | Critical | `everruns-host`'s `compute::HostCompute` runs a real child process on the machine hosting the process, which is the point of the `host` environment target and the one case TM-BASH-004's "no real process execution" does not cover. It is not reachable from the control plane: it compiles only behind the `everruns-host/process` Cargo feature (surfaced as `everruns/host-compute`), which the server does not enable, nothing in the server constructs it, and no HTTP route or capability exposes it. Uncontained by default, and the type says so rather than implying otherwise, reporting `ContainmentLevel::None` and `Durability::None`; `Environment::build` refuses a profile that claims stronger containment than a target enforces. An embedder opting in on hardware it owns may now bound the target with `HostCompute::contained` (TM-BASH-019), which is what makes `ContainmentLevel::Native` a level something implements. See `knowledge/harnesses/execution-environments.md`. | **BY DESIGN** |
+| TM-BASH-019 | Native containment silently degrading to an uncontained host process | Critical | `containment::SandboxProvider::command` returns an error when the OS primitive a mode needs is absent (`/usr/bin/sandbox-exec` missing on macOS, Landlock unavailable on Linux, an unsupported platform) instead of spawning a plain shell; `HostComputeSession::shell` turns that into a launch failure, so a command either runs contained or does not run. `HostCompute::contained` rejects `ContainmentMode::FullAccess` so a target cannot advertise `Native` while enforcing nothing, and `enforced_containment` reports `Native` only once options are attached. Windows is the one documented exception (TM-BASH-025). | MITIGATED |
+| TM-BASH-020 | Model input selecting a host executable, mount set, or containment mode | Critical | The tool schema accepts a script, a cwd, a timeout, and an enum-valued `sandbox_permissions`; `SandboxOptions` (mode, writable roots, network) is caller configuration fixed before the model runs. The script reaches the shell as a single `-c` argument, never interpolated into the launcher argv. `require_escalated` is a request for approval, not a mode the model can set: it is refused outright unless the configured `ApprovalPolicy` permits escalation, and even then a host gate must say yes (TM-BASH-022). | MITIGATED |
+| TM-BASH-021 | Agent signalling or killing its own host process | Medium | `containment::policy::can_signal_host` parses the script with tree-sitter and refuses before spawn when a process-control program (`kill`, `killall`, `pkill`, including through exec wrappers such as `xargs`/`env`) targets the host PID, the host binary name, or a broadcast target (`0`, `-1`). Parsing, not substring matching, so `echo kill` runs and `xargs kill < pids` does not. This is defense in depth for a direct mistake: a deliberately obscured command (`k$(echo ill) "$PID"`) is the kernel policy's problem, and containment does not confine signals within the caller's own session. | **PARTIAL** |
+| TM-BASH-022 | Escalation past containment without a human | Critical | Every path to `ContainmentMode::FullAccess` runs through `ShellApprovalGate::approve`. A host installs a gate through the tool-context extension seam; with none installed the gate is `DenyAll`, so an unattended worker refuses rather than escalating quietly. `ApprovalPolicy::OnRequest` additionally requires a non-empty justification, `OnFailure` escalates only after a first contained run failed in a way containment explains, and every other policy refuses `require_escalated` with an error. The request carries a `full_access` flag so a host can prompt differently for "run this" and "run this with the boundary removed". | MITIGATED |
+| TM-BASH-023 | Writable-root widening via a symlinked configured root | High | `prepared_writable_roots` creates and canonicalizes every configured extra writable root before building Landlock rules, so a symlinked root cannot grant write access to a directory outside what was configured. Roots are caller configuration, not model input (TM-BASH-020). | MITIGATED |
+| TM-BASH-024 | Sandbox helper binary resolved from `PATH` | Low | `SandboxLauncher::Discover` prefers `everruns-sandbox-exec` next to the current executable and falls back to a bare name the OS resolves through `PATH`. An attacker who controls the agent process's `PATH` already controls that process's environment, so this crosses no privilege boundary; it is called out because the fallback binary is what installs the boundary. Embedders wanting no `PATH` dependence pass `SandboxLauncher::Helper(path)` with an absolute path, or `SandboxLauncher::ReexecSelf` to re-exec their own binary. | **ACCEPTED** |
+| TM-BASH-025 | No containment implementation on Windows | High | `native_command` on Windows spawns an uncontained shell rather than refusing, and `containment::danger_warning` returns a warning at *every* mode there (not only `danger-full-access`) so a host cannot present the run as contained; `network_access` likewise reports `enabled` at every mode. Unsupported non-Windows platforms fail closed instead (TM-BASH-019). | **ACCEPTED** |
 
 ### Mitigation Details
 
@@ -1076,6 +1087,32 @@ BashkitTool::builder()
     .build()
 ```
 No host environment variables leaked. Username and hostname are hardcoded sandbox values.
+
+**TM-BASH-019 / TM-BASH-022, Host-Shell Fail-Closed Path:**
+```text
+model ──> script only ──────────────> tool
+                                       │
+caller config (mode, roots, network) ──┤
+                                       ▼
+                            SandboxProvider::command
+                       ┌───────────────┴───────────────┐
+              primitive present                 primitive missing
+                       │                               │
+              contained child                   Err ──> launch failure
+                                                        (never a plain shell)
+
+escalation to full access:
+  policy allows? ──no──> refuse
+       │yes
+  host gate installed? ──no──> DenyAll ──> refuse
+       │yes
+  gate.approve(request{full_access}) ──false──> refuse
+       │true
+  run uncontained, once
+```
+The two questions are answered in different places on purpose. Containment says what a command may
+touch and is enforced by the kernel; approval says whether it runs at all and can only be answered
+by a person. An unattended worker has no person, so the absence of a gate is a refusal.
 
 **TM-BASH-013, Sandboxed Re-invocation:**
 When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its own sandboxed interpreter rather than spawning a real shell process. All execution limits and filesystem isolation are preserved across re-invocations.
@@ -1654,7 +1691,7 @@ Frozen execution-only API keys (`evr_app_...`) authenticate endpoint-owned nativ
 | Input validation | TM-API | Size limits, path validation, regex constraints |
 | SQL injection prevention | TM-API | sqlx prepared statements (parameterized queries) |
 | SQLite sandboxing | TM-SQL | Authorizer callback, VFS isolation, resource limits |
-| Bash sandboxing | TM-BASH | Bashkit WASM-like isolation, VFS adapter, resource limits |
+| Bash sandboxing | TM-BASH | Bashkit WASM-like isolation, VFS adapter, resource limits; host-shell Seatbelt/Landlock containment, fail-closed launch, approval gate |
 | Session isolation | TM-FS, TM-SQL | FK constraints, session-scoped storage |
 | Agent loop controls | TM-AGENT | Max iterations, tool registry, session-scoped tools, no self-modification |
 | Error sanitization | TM-API, TM-OBS | Generic error messages, server-side logging only |

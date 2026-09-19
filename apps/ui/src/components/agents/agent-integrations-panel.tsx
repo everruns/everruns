@@ -18,7 +18,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { ChannelRow } from "@/components/apps/channel-row";
 import { MiniTimeline } from "@/components/apps/mini-timeline";
 import { type StatStripStats } from "@/components/apps/stat-strip";
-import { EndpointUsePanel } from "@/components/agents/endpoint-use-panel";
+import { EndpointDetailsPanel } from "@/components/agents/integrations/endpoint-details-panel";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import { BudgetPanel } from "@/components/budgets/budget-panel";
 import {
@@ -168,7 +168,14 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     }
                     usePanel={
                       <div className="space-y-4">
-                        <EndpointUsePanel channel={channel} />
+                        <EndpointDetailsPanel
+                          agentName={agent.display_name ?? agent.name}
+                          agentDescription={agent.description}
+                          channel={channel}
+                          configureHref={
+                            canManage ? `/agents/${agent.id}/endpoints/${channel.id}` : undefined
+                          }
+                        />
                         {budgetsEnabled && canViewBudgets && (
                           <div className="border-t pt-4">
                             <BudgetPanel
