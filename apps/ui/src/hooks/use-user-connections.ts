@@ -6,6 +6,7 @@ import {
   getConnectionProviders,
   createApiKeyConnection,
   deleteUserConnection,
+  getUserMcpConnections,
   verifyConnection,
 } from "@/lib/api/user-connections";
 import { queryKeys } from "@/lib/query-keys";
@@ -14,6 +15,14 @@ export function useUserConnections() {
   return useQuery({
     queryKey: queryKeys.userConnections.list(),
     queryFn: () => getUserConnections(),
+    staleTime: 30000,
+  });
+}
+
+export function useUserMcpConnections() {
+  return useQuery({
+    queryKey: queryKeys.userConnections.mcp(),
+    queryFn: getUserMcpConnections,
     staleTime: 30000,
   });
 }

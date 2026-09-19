@@ -1,6 +1,7 @@
 "use client";
 
-import { mcpServersCrudApi } from "@/lib/api/mcp-servers";
+import { getMcpServerCatalog, getMcpServerUsage, mcpServersCrudApi } from "@/lib/api/mcp-servers";
+import { useQuery } from "@tanstack/react-query";
 import type { CreateMcpServerRequest, UpdateMcpServerRequest } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 import { createCrudHooks } from "./create-crud-hooks";
@@ -22,6 +23,24 @@ export const useMcpServer = mcpServerCrudHooks.useDetail;
 export const useCreateMcpServer = mcpServerCrudHooks.useCreate;
 export const useDeleteMcpServer = mcpServerCrudHooks.useDelete;
 export const useDestroyMcpServer = mcpServerCrudHooks.useDestroy;
+
+export function useMcpServerCatalog(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.mcpServers.catalog(),
+    queryFn: getMcpServerCatalog,
+    enabled,
+    staleTime: 30000,
+  });
+}
+
+export function useMcpServerUsage(serverId?: string) {
+  return useQuery({
+    queryKey: queryKeys.mcpServers.usage(serverId ?? ""),
+    queryFn: () => getMcpServerUsage(serverId!),
+    enabled: !!serverId,
+    staleTime: 0,
+  });
+}
 
 export function useUpdateMcpServer(serverId: string) {
   const mutation = mcpServerCrudHooks.useUpdate();

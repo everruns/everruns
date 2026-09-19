@@ -1,29 +1,39 @@
 import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import McpServersPage from "@/app/(main)/mcp-servers/page";
 
-const mockUseMcpServers = jest.fn();
+const mockUseMcpServerCatalog = jest.fn();
+const mockUseMcpServerUsage = jest.fn();
 const mockUseCreateMcpServer = jest.fn();
 const mockUseUpdateMcpServer = jest.fn();
-const mockUseDeleteMcpServer = jest.fn();
 const mockUseDestroyMcpServer = jest.fn();
+const mockUseUserMcpConnections = jest.fn();
+const mockUseDeleteUserConnection = jest.fn();
+const mockUsePolicies = jest.fn();
 
 jest.mock("@/hooks/use-mcp-servers", () => ({
-  useMcpServers: () => mockUseMcpServers(),
+  useMcpServerCatalog: () => mockUseMcpServerCatalog(),
+  useMcpServerUsage: () => mockUseMcpServerUsage(),
   useCreateMcpServer: () => mockUseCreateMcpServer(),
   useUpdateMcpServer: () => mockUseUpdateMcpServer(),
-  useDeleteMcpServer: () => mockUseDeleteMcpServer(),
   useDestroyMcpServer: () => mockUseDestroyMcpServer(),
+}));
+jest.mock("@/hooks/use-user-connections", () => ({
+  useUserMcpConnections: () => mockUseUserMcpConnections(),
+  useDeleteUserConnection: () => mockUseDeleteUserConnection(),
 }));
 
 jest.mock("@/hooks/use-policies", () => ({
-  usePolicies: () => ({
-    can: () => true,
-  }),
+  usePolicies: () => mockUsePolicies(),
 }));
 
 describe("McpServersPage", () => {
   beforeEach(() => {
-    mockUseMcpServers.mockReturnValue({
+    mockUsePolicies.mockReturnValue({
+      isLoading: false,
+      can: () => true,
+    });
+
+    mockUseMcpServerCatalog.mockReturnValue({
       data: [
         {
           id: "mcp-1",
@@ -35,12 +45,33 @@ describe("McpServersPage", () => {
           auth_mode: "api_key",
           api_key_set: false,
           headers: {},
+          used_by_agents: 2,
           created_at: "2024-01-01T00:00:00Z",
           updated_at: "2024-01-01T00:00:00Z",
         },
       ],
       isLoading: false,
       error: null,
+    });
+    mockUseMcpServerUsage.mockReturnValue({
+      data: {
+        total_count: 2,
+        agent_names: ["Docs agent", "Research agent"],
+        truncated: false,
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    mockUseUserMcpConnections.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+    });
+
+    mockUseDeleteUserConnection.mockReturnValue({
+      mutate: jest.fn(),
+      isPending: false,
     });
 
     mockUseCreateMcpServer.mockReturnValue({
@@ -55,22 +86,33 @@ describe("McpServersPage", () => {
       error: null,
     });
 
-    mockUseDeleteMcpServer.mockReturnValue({
-      mutateAsync: jest.fn(),
-      isPending: false,
-    });
-
     mockUseDestroyMcpServer.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
     });
   });
 
+  it("blocks archiving when agent usage cannot be loaded", () => {
+    mockUseMcpServerUsage.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("Network error"),
+    });
+
+    render(<McpServersPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/Archiving is blocked/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Archive" })).toBeDisabled();
+  });
+
   it("uses the standard main-page shell", () => {
     render(<McpServersPage />);
 
     const pageShell = screen
-      .getByRole("heading", { level: 1, name: "MCP Servers" })
+      .getByRole("heading", { level: 1, name: "MCP" })
       .closest("div.container");
 
     expect(pageShell).toHaveClass("container", "mx-auto", "max-w-full", "p-4", "sm:p-6");
@@ -82,10 +124,13 @@ describe("McpServersPage", () => {
     expect(screen.getByText("microsoft_learn")).toBeInTheDocument();
     expect(screen.getByText("Microsoft Learn documentation MCP server")).toBeInTheDocument();
     expect(screen.getByText("Set Key")).toBeInTheDocument();
+    expect(screen.getByText("2 agents")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Host" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Used by" })).toBeInTheDocument();
   });
 
   it("renders the empty state when no servers exist", () => {
-    mockUseMcpServers.mockReturnValue({
+    mockUseMcpServerCatalog.mockReturnValue({
       data: [],
       isLoading: false,
       error: null,
@@ -93,11 +138,11 @@ describe("McpServersPage", () => {
 
     render(<McpServersPage />);
 
-    expect(screen.getByText("No MCP servers configured")).toBeInTheDocument();
+    expect(screen.getByText("No MCP presets")).toBeInTheDocument();
   });
 
   it("renders the load error", () => {
-    mockUseMcpServers.mockReturnValue({
+    mockUseMcpServerCatalog.mockReturnValue({
       data: [],
       isLoading: false,
       error: new Error("Network error"),
@@ -105,7 +150,7 @@ describe("McpServersPage", () => {
 
     render(<McpServersPage />);
 
-    expect(screen.getByText(/Failed to load MCP servers/)).toBeInTheDocument();
+    expect(screen.getByText(/Failed to load MCP catalog/)).toBeInTheDocument();
   });
 
   it("shows confirmation dialog when clicking Archive", () => {
@@ -115,6 +160,9 @@ describe("McpServersPage", () => {
 
     expect(screen.getByText("Archive MCP Server")).toBeInTheDocument();
     expect(screen.getByText(/Are you sure you want to archive the MCP server/)).toBeInTheDocument();
+    expect(screen.getByText(/used by 2 active agents/)).toBeInTheDocument();
+    expect(screen.getByText("Docs agent")).toBeInTheDocument();
+    expect(screen.getByText("Research agent")).toBeInTheDocument();
   });
 
   it("does not archive when cancel is clicked in the confirmation dialog", () => {
@@ -135,7 +183,7 @@ describe("McpServersPage", () => {
     expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
-  it("archives server when confirmed in the dialog", () => {
+  it("archives server when confirmed in the dialog", async () => {
     const mockMutateAsync = jest.fn().mockResolvedValue({});
     mockUseUpdateMcpServer.mockReturnValue({
       mutateAsync: mockMutateAsync,
@@ -150,7 +198,8 @@ describe("McpServersPage", () => {
     const archiveButton = within(dialog).getByRole("button", { name: "Archive" });
     fireEvent.click(archiveButton);
 
-    expect(mockMutateAsync).toHaveBeenCalledWith({ status: "archived" });
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith({ status: "archived" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("shows a validation error for invalid MCP server URLs", async () => {
@@ -211,6 +260,91 @@ describe("McpServersPage", () => {
     expect(within(dialog).getByLabelText("Description (optional)")).toHaveValue(
       "Microsoft Learn documentation MCP server",
     );
+  });
+
+  it("opens the edit dialog from the catalog row keyboard action", () => {
+    render(<McpServersPage />);
+
+    const row = screen.getByText("microsoft_learn").closest("tr");
+    expect(row).not.toBeNull();
+    fireEvent.keyDown(row!, { key: "Enter" });
+
+    expect(screen.getByRole("dialog")).toHaveTextContent("Edit MCP Server");
+  });
+
+  it("shows and revokes the current user's MCP connections", async () => {
+    const revoke = jest.fn().mockResolvedValue({});
+    mockUseUserMcpConnections.mockReturnValue({
+      data: [
+        {
+          provider: "mcp_oauth_11111111-1111-1111-1111-111111111111",
+          server_id: "11111111-1111-1111-1111-111111111111",
+          server_name: "linear",
+          server_url: "https://mcp.linear.app/mcp",
+          server_status: "active",
+          provider_username: "person@example.com",
+          scopes: "read write",
+          connected_at: "2024-01-02T00:00:00Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    mockUseDeleteUserConnection.mockReturnValue({
+      mutate: revoke,
+      isPending: false,
+    });
+
+    render(<McpServersPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "My connections" }));
+
+    expect(screen.getByText("linear")).toBeInTheDocument();
+    expect(screen.getByText("mcp.linear.app")).toBeInTheDocument();
+    expect(screen.getByText("person@example.com")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    await waitFor(() =>
+      expect(revoke).toHaveBeenCalledWith("mcp_oauth_11111111-1111-1111-1111-111111111111"),
+    );
+  });
+
+  it("keeps deleted presets visible and revocable", () => {
+    mockUseUserMcpConnections.mockReturnValue({
+      data: [
+        {
+          provider: "mcp_oauth_22222222-2222-2222-2222-222222222222",
+          server_id: "22222222-2222-2222-2222-222222222222",
+          server_name: "deleted-server",
+          server_url: "https://deleted.example/mcp",
+          server_status: "deleted",
+          provider_username: null,
+          scopes: null,
+          connected_at: "2024-01-02T00:00:00Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<McpServersPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "My connections" }));
+
+    expect(screen.getByText("Preset unavailable")).toBeInTheDocument();
+    expect(screen.getByText("unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Revoke" })).toBeEnabled();
+  });
+
+  it("hides the catalog and its controls without view permission", () => {
+    mockUsePolicies.mockReturnValue({
+      isLoading: false,
+      can: () => false,
+    });
+
+    render(<McpServersPage />);
+
+    expect(screen.getByRole("tab", { name: "My connections" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Catalog" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add Server" })).not.toBeInTheDocument();
+    expect(screen.queryByText("microsoft_learn")).not.toBeInTheDocument();
   });
 
   it("submits updated name, description, and URL through the update hook", async () => {

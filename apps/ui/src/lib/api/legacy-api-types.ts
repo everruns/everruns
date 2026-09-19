@@ -7,6 +7,27 @@ import type { EndpointStatus, LlmRetryInfo, SessionActivity, SessionSource } fro
 // Agent Identity types
 export type AgentIdentityStatus = "active" | "archived" | "deleted";
 
+export interface McpServerCatalogEntry extends McpServer {
+  used_by_agents: number;
+}
+
+export interface McpServerUsage {
+  agent_names: string[];
+  total_count: number;
+  truncated: boolean;
+}
+
+export interface UserMcpConnection {
+  provider: string;
+  server_id: string;
+  server_name: string;
+  server_url: string;
+  server_status: string;
+  provider_username?: string | null;
+  scopes?: string | null;
+  connected_at: string;
+}
+
 export interface AgentIdentity {
   id: string;
   name: string;
