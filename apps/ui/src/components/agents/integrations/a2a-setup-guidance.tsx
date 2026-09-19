@@ -5,7 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { CodeBlock } from "@/components/ui/code-block";
-import { A2aAgentCard, A2aAgentCardPreview } from "@/components/apps/a2a-agent-card-preview";
+import {
+  A2aAgentCard,
+  A2aAgentCardPreview,
+} from "@/components/agents/integrations/a2a-agent-card-preview";
 import { getInvocationSessionModeDisplayName } from "@/lib/app-channels";
 import { a2aSamples, codingAgentPrompt } from "@/lib/integration/snippets";
 import type { InvocationSessionMode } from "@/lib/api/types";
@@ -17,7 +20,7 @@ interface A2aSetupGuidanceProps {
   apiKeyPrefix: string;
   sessionMode: InvocationSessionMode;
   message: string;
-  appName: string;
+  agentName: string;
   agentCardName?: string;
   agentCardDescription?: string;
   isPublished: boolean;
@@ -33,7 +36,7 @@ export function A2aSetupGuidance({
   apiKeyPrefix,
   sessionMode,
   message,
-  appName,
+  agentName,
   agentCardName,
   agentCardDescription,
   isPublished,
@@ -50,6 +53,7 @@ export function A2aSetupGuidance({
 
   const fetchAgentCard = useCallback(async () => {
     if (!canFetchAgentCard) return;
+    setAgentCard(null);
     setAgentCardLoading(true);
     setAgentCardError(null);
     try {
@@ -70,13 +74,7 @@ export function A2aSetupGuidance({
   }, [agentCardUrl, canFetchAgentCard]);
 
   useEffect(() => {
-    if (!canFetchAgentCard) {
-      setAgentCard(null);
-      setAgentCardError(null);
-      setAgentCardLoading(false);
-      return;
-    }
-    fetchAgentCard();
+    if (canFetchAgentCard) fetchAgentCard();
   }, [canFetchAgentCard, fetchAgentCard]);
 
   return (
@@ -86,7 +84,7 @@ export function A2aSetupGuidance({
         <span className="text-sm text-muted-foreground">
           {isPublished
             ? "Ready to accept authenticated A2A JSON-RPC requests."
-            : "Publish the app to accept A2A requests."}
+            : "Publish the endpoint to accept A2A requests."}
         </span>
       </div>
 
@@ -111,8 +109,8 @@ export function A2aSetupGuidance({
           <CopyButton value={agentCardUrl} />
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Public discovery document for A2A clients. Returns 404 unless the app is published and the
-          channel is enabled.
+          Public discovery document for A2A clients. Returns 404 unless the endpoint is published
+          and enabled.
         </p>
       </div>
 
@@ -178,11 +176,11 @@ export function A2aSetupGuidance({
         </div>
         {!canFetchAgentCard ? (
           <div className="rounded-md border p-3 text-sm text-muted-foreground">
-            Publish the app and enable this channel to fetch the public Agent Card. Until then,
-            discovery returns 404.
+            Publish and enable this endpoint to fetch the public Agent Card. Until then, discovery
+            returns 404.
           </div>
         ) : agentCard ? (
-          <A2aAgentCardPreview card={agentCard} appName={appName} sessionMode={sessionMode} />
+          <A2aAgentCardPreview card={agentCard} agentName={agentName} sessionMode={sessionMode} />
         ) : (
           <div className="rounded-md border p-3 text-sm text-muted-foreground">
             {agentCardLoading ? "Loading Agent Card..." : "Could not load Agent Card."}
@@ -202,12 +200,12 @@ export function A2aSetupGuidance({
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
           Templates can reference <code>{"{{a2a.text}}"}</code>, <code>{"{{payload}}"}</code>, and
-          app metadata.
+          agent metadata.
         </p>
       </div>
 
       <div>
-        <p className="text-sm font-medium">Call it from your app</p>
+        <p className="text-sm font-medium">Call it from your client</p>
         <div className="mt-2">
           <CodeBlock samples={a2aSamples({ origin, endpointUrl })} />
         </div>

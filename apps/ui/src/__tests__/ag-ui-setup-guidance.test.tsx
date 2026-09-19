@@ -1,5 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { AgUiSetupGuidance, formatSessionExpiration } from "@/components/apps/ag-ui-setup-guidance";
+import {
+  AgUiSetupGuidance,
+  formatSessionExpiration,
+} from "@/components/agents/integrations/ag-ui-setup-guidance";
 
 describe("AgUiSetupGuidance", () => {
   it("renders the endpoint and anonymous status", () => {
@@ -90,7 +93,7 @@ describe("formatSessionExpiration", () => {
       />,
     );
 
-    expect(screen.getByText("No per-app cap (global API limit applies)")).toBeInTheDocument();
+    expect(screen.getByText("No per-endpoint cap (global API limit applies)")).toBeInTheDocument();
   });
 
   it("renders configured token guidance", () => {

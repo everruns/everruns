@@ -29,8 +29,8 @@ export interface A2aAgentCard {
 
 interface A2aAgentCardPreviewProps {
   card?: A2aAgentCard;
-  appName: string;
-  appDescription?: string | null;
+  agentName: string;
+  agentDescription?: string | null;
   endpointUrl?: string;
   agentCardName?: string | null;
   agentCardDescription?: string | null;
@@ -64,17 +64,17 @@ export function sanitizeA2aAgentCardForDisplay(card: A2aAgentCard): A2aAgentCard
 }
 
 export function buildA2aAgentCardPreview({
-  appName,
-  appDescription,
+  agentName,
+  agentDescription,
   endpointUrl,
   agentCardName,
   agentCardDescription,
   sessionMode,
 }: Omit<A2aAgentCardPreviewProps, "card">): A2aAgentCard {
-  const description = agentCardDescription?.trim() || appDescription?.trim() || "";
+  const description = agentCardDescription?.trim() || agentDescription?.trim() || "";
 
   return {
-    name: agentCardName?.trim() || appName,
+    name: agentCardName?.trim() || agentName,
     description,
     url: endpointUrl || "(generated after save)",
     protocolVersion: A2A_AGENT_CARD_PROTOCOL_VERSION,
@@ -90,7 +90,7 @@ export function buildA2aAgentCardPreview({
     skills: [
       {
         id: "default",
-        name: appName,
+        name: agentName,
         description,
         tags: ["everruns", "a2a"],
       },
