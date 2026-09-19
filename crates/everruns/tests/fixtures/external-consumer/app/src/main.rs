@@ -19,9 +19,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .model(Model::simulated("4"))
         .build()?;
     let engine = InMemoryEngine::new();
-    let harness = Harness::builder("generic")
-        .capability("session_file_system")
-        .build()?;
+    // EVE-1041: the shared `generic` floor, not a hand-rolled approximation of
+    // it. Using it here is what proves the acceptance bar — an application can
+    // adopt the platform's default capability set without `everruns-platform`
+    // entering the default facade graph, which is the whole point of this
+    // fixture.
+    let harness = Harness::generic();
     let session = engine.create(agent).harness(harness).start().await?;
     let context = session.inspect().await?;
     assert!(

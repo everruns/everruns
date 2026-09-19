@@ -45,6 +45,32 @@ impl Harness {
         }
     }
 
+    /// The `generic` Harness: the same capability floor a hosted org is
+    /// provisioned with.
+    ///
+    /// One definition, not a copy. Both this and `crates/server/src/harnesses/`
+    /// read `everruns_capability::generic_capabilities`, so an application
+    /// stops approximating the platform default with a builder chain that
+    /// silently drifts from it (EVE-1041).
+    ///
+    /// What it does *not* carry is the platform's base system prompt or its
+    /// presentation fields — a Harness holds neither, by design. Compose
+    /// instructions on the Agent and code-defined capabilities on top; the
+    /// harness is the floor, not a ceiling.
+    ///
+    /// Capabilities the built binary did not compile in are inert rather than
+    /// fatal, the same as any other reference to an unregistered capability,
+    /// so this is usable from a facade built with a narrower feature set.
+    pub fn generic() -> Self {
+        let mut builder = Harness::builder(everruns_capability::GENERIC_HARNESS_NAME);
+        for capability in everruns_capability::generic_capabilities() {
+            builder = builder.capability(capability);
+        }
+        builder
+            .build()
+            .expect("the shared generic capability list is a valid Harness")
+    }
+
     /// The application-defined Harness name.
     pub fn name(&self) -> &str {
         &self.inner.name
@@ -520,6 +546,53 @@ mod tests {
             }))
             .build()
             .expect("valid test environment")
+    }
+
+    #[test]
+    fn generic_is_the_shared_platform_floor() {
+        let harness = Harness::generic();
+        assert_eq!(harness.name(), "generic");
+
+        let ids: Vec<&str> = harness
+            .capabilities()
+            .iter()
+            .map(|capability| capability.capability_id())
+            .collect();
+        let shared = everruns_capability::generic_capabilities();
+        assert_eq!(ids.len(), shared.len());
+        for capability in &shared {
+            assert!(
+                ids.contains(&capability.capability_id()),
+                "{} missing from the Framework generic harness",
+                capability.capability_id()
+            );
+        }
+    }
+
+    #[test]
+    fn generic_carries_capability_config_through() {
+        // The floor is references *plus config*; dropping the config half
+        // would make the two surfaces agree on names while behaving
+        // differently, which is the drift this is meant to end.
+        let harness = Harness::generic();
+        let web_fetch = harness
+            .capabilities()
+            .iter()
+            .find(|capability| capability.capability_id() == "web_fetch")
+            .expect("web_fetch is part of generic");
+        assert_eq!(
+            web_fetch.config_value().get("enable_file_download"),
+            Some(&everruns_capability::serde_json::json!(true))
+        );
+    }
+
+    #[test]
+    fn generic_declares_no_environment_requirement() {
+        // `generic` is the portable floor: it must bind to a session with no
+        // Environment, which is what `engine.create(agent).harness(..)` does
+        // without `.environment(..)`.
+        let harness = Harness::generic();
+        assert_eq!(harness.required_containment(), ContainmentLevel::None);
     }
 
     #[test]
