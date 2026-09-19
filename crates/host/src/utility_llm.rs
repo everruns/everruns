@@ -23,6 +23,10 @@ pub const UTILITY_OPENROUTER_API_KEY_ENV: &str = "UTILITY_OPENROUTER_API_KEY";
 /// Environment variable overriding the utility model for the selected backend.
 pub const UTILITY_LLM_MODEL_ENV: &str = "UTILITY_LLM_MODEL";
 
+/// Base URL of the OpenAI API. OpenRouter's own default stays owned by
+/// `everruns-openrouter`, so it is not duplicated here.
+const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+
 /// Default utility model when OpenRouter is the backend. OpenRouter model ids
 /// are namespaced by upstream provider, so the OpenAI default does not carry
 /// over unchanged.
@@ -31,7 +35,9 @@ pub const UTILITY_OPENROUTER_LLM_MODEL: &str = "openai/gpt-5.6-luna";
 /// Which deployment-owned backend serves utility model calls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UtilityLlmBackend {
+    /// Called directly against the OpenAI API.
     OpenAi,
+    /// Routed through the OpenRouter gateway.
     OpenRouter,
 }
 
@@ -74,23 +80,45 @@ impl std::fmt::Debug for ProviderUtilityLlmService {
 impl ProviderUtilityLlmService {
     /// Construct the OpenAI-backed service with a deployment-owned key.
     pub fn openai(api_key: impl Into<String>, model: impl Into<String>) -> Self {
+        Self::openai_at(api_key, model, None)
+    }
+
+    /// Construct the OpenRouter-backed service with a deployment-owned key.
+    pub fn openrouter(api_key: impl Into<String>, model: impl Into<String>) -> Self {
+        Self::openrouter_at(api_key, model, None)
+    }
+
+    /// `base_url` overrides the backend's endpoint; only tests pass one, so
+    /// the shipped construction is the one they exercise.
+    fn openai_at(
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+        base_url: Option<&str>,
+    ) -> Self {
         // THREAT[TM-LLM-021]: Utility LLM credentials remain deployment-owned
         // and never become agent- or session-configurable.
         Self {
             provider: Provider::new("utility-openai", OpenResponsesProtocolChatDriver::new())
-                .base_url("https://api.openai.com/v1")
+                .base_url(base_url.unwrap_or(OPENAI_BASE_URL))
                 .auth(BearerAuth::new(api_key)),
             backend: UtilityLlmBackend::OpenAi,
             model: model.into(),
         }
     }
 
-    /// Construct the OpenRouter-backed service with a deployment-owned key.
-    pub fn openrouter(api_key: impl Into<String>, model: impl Into<String>) -> Self {
+    fn openrouter_at(
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+        base_url: Option<&str>,
+    ) -> Self {
         // THREAT[TM-LLM-021]: same deployment-owned credential contract as the
         // OpenAI backend; only the gateway in front of the model changes.
+        let mut provider = everruns_openrouter::provider("utility-openrouter", api_key);
+        if let Some(base_url) = base_url {
+            provider = provider.base_url(base_url);
+        }
         Self {
-            provider: everruns_openrouter::provider("utility-openrouter", api_key),
+            provider,
             backend: UtilityLlmBackend::OpenRouter,
             model: model.into(),
         }
@@ -295,6 +323,87 @@ mod tests {
                 panic!("a configured key must enable the service");
             };
             assert_eq!(model, "custom-model");
+        }
+    }
+
+    /// One SSE body both backends can answer with: the Open Responses shape
+    /// the shipped driver parses.
+    fn completed_sse_body(model: &str) -> String {
+        format!(
+            "data: {{\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}}\n\n\
+             data: {{\"type\":\"response.completed\",\"sequence_number\":2,\"response\":\
+             {{\"id\":\"resp-utility\",\"object\":\"response\",\"created_at\":0,\
+             \"model\":\"{model}\",\"status\":\"completed\",\"output\":[],\
+             \"usage\":{{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}}}}\n\n"
+        )
+    }
+
+    /// The deployment's model has to reach the wire, on whichever backend the
+    /// keys selected — the whole point of `UTILITY_LLM_MODEL`.
+    #[tokio::test]
+    async fn each_backend_sends_the_deployment_model_with_its_own_credential() {
+        use everruns_core::UtilityLlmRequest;
+        use serde_json::Value;
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        for (backend, model, mock_path) in [
+            (
+                UtilityLlmBackend::OpenAi,
+                "custom-openai-model",
+                "/responses",
+            ),
+            (
+                UtilityLlmBackend::OpenRouter,
+                "vendor/custom-model",
+                "/api/v1/responses",
+            ),
+        ] {
+            let server = MockServer::builder().start().await;
+            Mock::given(method("POST"))
+                .and(path(mock_path))
+                .and(header("authorization", "Bearer sk-deployment-owned"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .insert_header("content-type", "text/event-stream")
+                        .set_body_string(completed_sse_body(model)),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+
+            let service = match backend {
+                UtilityLlmBackend::OpenAi => ProviderUtilityLlmService::openai_at(
+                    "sk-deployment-owned",
+                    model,
+                    Some(&server.uri()),
+                ),
+                UtilityLlmBackend::OpenRouter => ProviderUtilityLlmService::openrouter_at(
+                    "sk-deployment-owned",
+                    model,
+                    Some(&format!("{}/api/v1", server.uri())),
+                ),
+            };
+
+            let response = service
+                .chat_completion(UtilityLlmRequest::user_text("summarize"))
+                .await
+                .expect("the mocked backend answers a completed response");
+            assert_eq!(response.text, "ok");
+
+            let requests = server.received_requests().await.unwrap();
+            assert_eq!(requests.len(), 1);
+            let body = requests[0].body_json::<Value>().unwrap();
+            assert_eq!(body["model"], model);
+            // No tools, no tool search, no previous response id: a utility
+            // request stays the bounded internal call TM-LLM-021 describes.
+            assert!(body.get("tools").is_none());
+            assert!(body.get("previous_response_id").is_none());
+            if backend == UtilityLlmBackend::OpenRouter {
+                // Proof the OpenRouter driver is in the path rather than a
+                // bare base-URL swap: only it excludes provider reasoning.
+                assert_eq!(body["reasoning"]["exclude"], Value::Bool(true));
+            }
         }
     }
 
