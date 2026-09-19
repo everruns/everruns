@@ -424,6 +424,22 @@ impl StorageBackend {
         dispatch!(self, has_event_with_slack_ts, session_id, slack_ts)
     }
 
+    /// Atomically consume a still-current Slack approval card.
+    pub async fn claim_slack_approval_card(
+        &self,
+        session_id: SessionId,
+        card_id: &str,
+        turn_id: &str,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            claim_slack_approval_card,
+            session_id,
+            card_id,
+            turn_id
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn list_events(
         &self,

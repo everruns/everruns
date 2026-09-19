@@ -16,6 +16,7 @@ impl InMemoryDatabase {
     // ============================================
 
     pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
+        let _event_write = self.event_write_lock.lock().await;
         let now = Self::now();
         let id = EventId::new();
 
@@ -77,6 +78,65 @@ impl InMemoryDatabase {
             .await?;
         }
         Ok(row)
+    }
+
+    pub async fn claim_slack_approval_card(
+        &self,
+        session_id: SessionId,
+        card_id: &str,
+        turn_id: &str,
+    ) -> Result<bool> {
+        let _event_write = self.event_write_lock.lock().await;
+        let mut events = self.events.write();
+        let approval_sequence = events
+            .values()
+            .filter(|event| {
+                event.session_id == session_id
+                    && event.event_type == "tool.completed"
+                    && event.data.get("tool_name").and_then(|v| v.as_str())
+                        == Some(crate::slack_approvals::REQUEST_APPROVAL_TOOL)
+                    && event.context.get("turn_id").and_then(|v| v.as_str()) == Some(turn_id)
+            })
+            .map(|event| event.sequence)
+            .max();
+        let Some(approval_sequence) = approval_sequence else {
+            return Ok(false);
+        };
+        let blocked = events.values().any(|event| {
+            event.session_id == session_id
+                && event.sequence > approval_sequence
+                && (event.event_type == "input.message"
+                    || (event.event_type == "tool.completed"
+                        && event.data.get("tool_name").and_then(|v| v.as_str())
+                            == Some(crate::slack_approvals::REQUEST_APPROVAL_TOOL))
+                    || (event.event_type == "slack.approval.consumed"
+                        && event.data.get("card_id").and_then(|v| v.as_str()) == Some(card_id)))
+        });
+        if blocked {
+            return Ok(false);
+        }
+
+        let sequence = {
+            let mut sequences = self.event_sequences.write();
+            let next = sequences.entry(session_id).or_insert(0);
+            *next += 1;
+            *next
+        };
+        let now = Self::now();
+        let row = EventRow {
+            id: EventId::new(),
+            session_id,
+            sequence,
+            event_type: "slack.approval.consumed".to_string(),
+            ts: now,
+            context: serde_json::json!({ "turn_id": turn_id }),
+            data: serde_json::json!({ "card_id": card_id }),
+            metadata: None,
+            tags: None,
+            created_at: now,
+        };
+        events.insert(row.id, row);
+        Ok(true)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -667,5 +727,58 @@ impl InMemoryDatabase {
         }
 
         Ok(previews)
+    }
+}
+
+#[cfg(test)]
+mod slack_approval_tests {
+    use super::*;
+    use chrono::Utc;
+
+    async fn append(db: &InMemoryDatabase, session_id: SessionId, kind: &str, turn: &str) {
+        db.create_event(CreateEventRow {
+            session_id,
+            event_type: kind.to_string(),
+            ts: Utc::now(),
+            context: serde_json::json!({ "turn_id": turn }),
+            data: if kind == "tool.completed" {
+                serde_json::json!({ "tool_name": "request_approval" })
+            } else {
+                serde_json::json!({})
+            },
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn approval_card_is_single_use_under_concurrent_clicks() {
+        let db = InMemoryDatabase::default();
+        let session_id = SessionId::new();
+        append(&db, session_id, "tool.completed", "turn_1").await;
+
+        let (first, second) = tokio::join!(
+            db.claim_slack_approval_card(session_id, "card_1", "turn_1"),
+            db.claim_slack_approval_card(session_id, "card_1", "turn_1")
+        );
+        assert_ne!(first.unwrap(), second.unwrap());
+    }
+
+    #[tokio::test]
+    async fn prose_reply_or_later_approval_makes_card_stale() {
+        for later_kind in ["input.message", "tool.completed"] {
+            let db = InMemoryDatabase::default();
+            let session_id = SessionId::new();
+            append(&db, session_id, "tool.completed", "turn_1").await;
+            append(&db, session_id, later_kind, "turn_2").await;
+
+            assert!(
+                !db.claim_slack_approval_card(session_id, "card_1", "turn_1")
+                    .await
+                    .unwrap()
+            );
+        }
     }
 }

@@ -257,6 +257,29 @@ async fn handle_block_action(
         return Ok(ack());
     }
 
+    let Some(turn_id) = binding.turn_id.as_deref() else {
+        tracing::warn!(app_id = %app_id, %session_id, "Slack approval click had no originating turn");
+        return Ok(ack());
+    };
+
+    // THREAT[TM-SLACK-004]: claim the exact pending card before creating the
+    // consent message. Storage serializes this with event creation, so retries,
+    // concurrent clicks, prose replies, and superseding asks all fail closed.
+    let claimed = state
+        .db
+        .claim_slack_approval_card(session.id, &binding.card_id, turn_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(app_id = %app_id, %session_id, %error, "Failed to claim Slack approval card");
+            ErrorResponse::new("Internal server error")
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+    if !claimed {
+        tracing::info!(app_id = %app_id, %session_id, card_id = %binding.card_id, "Ignored stale or already answered Slack approval card");
+        respond_ephemeral(&payload, "This approval request is no longer pending.").await;
+        return Ok(ack());
+    }
+
     let action_text = binding.action.clone();
 
     // Post the decision as the next user message. That is what `soft_approval`
@@ -278,9 +301,8 @@ async fn handle_block_action(
             .into_response(StatusCode::INTERNAL_SERVER_ERROR));
     }
 
-    // Rewrite the card so the buttons are gone. A second click then has nothing
-    // to hit, which is how double clicks and stale cards stop being a problem
-    // rather than needing their own bookkeeping.
+    // Rewrite the card for clarity. Single-use enforcement is server-side, so
+    // a failed update cannot make the already-consumed card actionable again.
     if let (Some(channel), Some(message)) = (payload.channel.as_ref(), payload.message.as_ref()) {
         let request = ApprovalRequest {
             action: action_text.clone(),
@@ -296,8 +318,8 @@ async fn handle_block_action(
         )
         .await
         .unwrap_or_else(|error| {
-            // The decision is already recorded; a card left showing its buttons
-            // is cosmetic, and a second click posts a duplicate answer at worst.
+            // The decision is already recorded and the card is consumed; a
+            // card left showing its buttons is cosmetic.
             tracing::warn!(app_id = %app_id, %error, "Failed to resolve the Slack approval card");
         });
     }
@@ -429,8 +451,10 @@ mod tests {
 
     fn binding_value(requester: &str) -> String {
         serde_json::json!({
+            "i": "0199-card-id",
             "s": "session_01a0277cffc07f42805458ce29db93a7",
             "u": requester,
+            "t": "0199-turn-id",
             "a": "delete the staging database",
         })
         .to_string()

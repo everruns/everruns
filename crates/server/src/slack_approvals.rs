@@ -79,6 +79,9 @@ pub(crate) struct ApprovalRequest {
 /// runs on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ApprovalBinding {
+    /// Unpredictable, single-use identity for this rendered card.
+    #[serde(rename = "i")]
+    pub card_id: String,
     /// Session the pending request belongs to.
     #[serde(rename = "s")]
     pub session_id: String,
@@ -415,6 +418,7 @@ mod tests {
 
     fn binding() -> ApprovalBinding {
         ApprovalBinding {
+            card_id: "0199-card-id".to_string(),
             session_id: "session_1".to_string(),
             requester: "U_REQUESTER".to_string(),
             turn_id: Some("turn_1".to_string()),

@@ -142,6 +142,73 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn claim_slack_approval_card(
+        &self,
+        session_id: SessionId,
+        card_id: &str,
+        turn_id: &str,
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        // Event sequence allocation serializes the claim with every message
+        // insertion for this session, giving freshness checks a total order.
+        let sequence: i32 = sqlx::query_scalar("SELECT allocate_event_sequence($1)")
+            .bind(session_id.uuid())
+            .fetch_one(&mut *tx)
+            .await?;
+        let approval_sequence: Option<i32> = sqlx::query_scalar(
+            r#"
+            SELECT MAX(sequence) FROM events
+            WHERE session_id = $1 AND event_type = 'tool.completed'
+              AND data->>'tool_name' = 'request_approval'
+              AND context->>'turn_id' = $2 AND sequence < $3
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(turn_id)
+        .bind(sequence)
+        .fetch_one(&mut *tx)
+        .await?;
+        let Some(approval_sequence) = approval_sequence else {
+            tx.rollback().await?;
+            return Ok(false);
+        };
+        let blocked: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+                SELECT 1 FROM events
+                WHERE session_id = $1 AND sequence > $2 AND sequence < $3
+                  AND (event_type = 'input.message'
+                    OR (event_type = 'tool.completed' AND data->>'tool_name' = 'request_approval')
+                    OR (event_type = 'slack.approval.consumed' AND data->>'card_id' = $4))
+            )
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(approval_sequence)
+        .bind(sequence)
+        .bind(card_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if blocked {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+        sqlx::query(
+            r#"
+            INSERT INTO events (session_id, sequence, event_type, ts, context, data, metadata, tags)
+            VALUES ($1, $2, 'slack.approval.consumed', NOW(), $3, $4, NULL, '{}')
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(sequence)
+        .bind(serde_json::json!({ "turn_id": turn_id }))
+        .bind(serde_json::json!({ "card_id": card_id }))
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
     /// Check if an input.message event with a given slack_ts already exists in a session.
     /// Used for dedup when Slack sends duplicate events (app_mention + message).
     pub async fn has_event_with_slack_ts(
