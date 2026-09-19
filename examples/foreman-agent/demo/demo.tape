@@ -20,7 +20,7 @@ Type "clear"
 Enter
 
 Show
-Type@35ms "cargo run -q -p everruns-foreman-agent --bin foreman -- demo --live-foreman"
+Type@35ms "cargo run -q -p everruns-foreman-agent --bin foreman -- demo"
 Sleep 700ms
 Enter
 Sleep 2s

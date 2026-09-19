@@ -2484,6 +2484,7 @@ dependencies = [
  "clap",
  "everruns",
  "everruns-example-demo",
+ "everruns-foreman-agent",
  "everruns-openrouter",
  "serde",
  "serde_json",
