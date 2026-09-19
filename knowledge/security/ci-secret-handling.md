@@ -86,5 +86,7 @@ On a finding: rotate the named secret first, then delete the affected run logs
 remedy — the value has already been readable.
 
 A finding that turns out to be a placeholder is still work: reshape the placeholder so it stops
-matching, then delete the logs carrying it. Left alone it fails the sweep every hour, which is how a
-detector stops being read.
+matching, then delete the logs carrying it. Waiting it out is not a response — the sweep reads a
+75-minute window, so the alarm clears itself once the run ages out, and recurs at full severity the
+next time anything dumps that value. A High finding that resolves to nothing and then goes away on
+its own is how a detector stops being read.
