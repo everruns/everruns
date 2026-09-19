@@ -19,6 +19,7 @@ pub mod encryption;
 pub mod harness_store;
 mod ingress;
 pub mod leased_resource_store;
+pub mod mcp_catalog;
 pub mod mcp_tool_cache;
 pub mod memory;
 mod message_history_timing;
@@ -57,6 +58,7 @@ pub use ingress::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpoin
 pub use leased_resource_store::{
     DbLeasedResourceStore, row_to_domain as leased_resource_row_to_domain,
 };
+pub use mcp_catalog::*;
 pub use mcp_tool_cache::*;
 pub use memory::InMemoryDatabase;
 pub use message_store::{DbMessageRetriever, create_db_message_retriever};

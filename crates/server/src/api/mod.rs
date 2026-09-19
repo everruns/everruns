@@ -54,6 +54,7 @@ pub mod observers;
 pub mod org_feature_flags;
 pub mod org_invitations;
 pub mod organizations;
+pub mod pagination;
 pub mod payments;
 pub mod plugins;
 pub mod prometheus;

@@ -1275,7 +1275,7 @@ jobs:
 
       - name: Run server integration tests (API + repository)
         if: ${{ matrix.shard == 'server' }}
-        run: cargo test -p everruns-server --test api_integration_test --test repository_integration_test --test repository_conformance_test -- --test-threads=1
+        run: cargo test -p everruns-server --test api_integration_test --test mcp_catalog_integration_test --test repository_integration_test --test repository_conformance_test -- --test-threads=1
 
       # Domain suite: the blob-offload contracts against the in-memory
       # object_store backend, the domain-focused integration tests, and the
