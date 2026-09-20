@@ -58,5 +58,5 @@ async fn soft_approval_prompt_within_budget() {
 
 #[tokio::test]
 async fn ask_user_prompt_within_budget() {
-    assert_contribution_under(&AskUserCapability, 550).await;
+    assert_contribution_under(&AskUserCapability::client_side(), 550).await;
 }

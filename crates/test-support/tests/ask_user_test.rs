@@ -57,7 +57,7 @@ async fn malformed_ask_user_calls_fail_without_parking() {
         SimTurn::Assistant("Recovered after validation errors.".to_string()),
     ]);
     let agent = InMemoryAgenticLoop::builder()
-        .capability(AskUserCapability)
+        .capability(AskUserCapability::client_side())
         .with_llm_sim(config)
         .build()
         .await
@@ -97,7 +97,7 @@ async fn valid_ask_user_call_emits_generated_question_id() {
         SimTurn::Assistant("Question handled.".to_string()),
     ]);
     let agent = InMemoryAgenticLoop::builder()
-        .capability(AskUserCapability)
+        .capability(AskUserCapability::client_side())
         .with_llm_sim(config)
         .build()
         .await

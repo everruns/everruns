@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Ask User"
-description: "Structured choice questions that pause through the client-side tool-results lifecycle."
+description: "Structured choice questions resolved by client-side or in-process hosts."
 tags:
   - everruns
   - execution
@@ -11,9 +11,9 @@ tags:
 ## Purpose
 
 `ask_user` lets a model collect one small batch of structured decisions without
-ending the conversation turn in prose. The call uses the existing client-side
-tool lifecycle: the engine emits a request, parks the session, and resumes after
-the client submits the correlated result.
+ending the conversation turn in prose. Hosted clients use the existing
+client-side tool lifecycle. An in-process Framework host resolves the same
+contract inside the tool call.
 
 This capability is for decisions and preferences. It is never a consent gate.
 Permission for a destructive, irreversible, or outward-facing action uses
@@ -23,7 +23,10 @@ Permission for a destructive, irreversible, or outward-facing action uses
 
 - [`crates/builtins/src/ask_user.rs`](../../crates/builtins/src/ask_user.rs)
   owns the request and result types, exact input schema, validation, default
-  materialization, prompt guidance, and client-side tool definition.
+  materialization, prompt guidance, host responder trait, and both execution
+  strategies.
+- [`crates/everruns/src/ask_user.rs`](../../crates/everruns/src/ask_user.rs)
+  projects the responder contract at its stable Framework path.
 - [`crates/provider/src/tool_types.rs`](../../crates/provider/src/tool_types.rs)
   owns the client-side tool-definition wire contract.
 - [`crates/engine/src/execution/act.rs`](../../crates/engine/src/execution/act.rs)
@@ -40,9 +43,9 @@ being copied here.
 
 ## Contract decisions
 
-One call batches the related questions so the session pauses once. EVE-1053
-supports choice questions only; secret collection is a separate capability
-extension.
+One call batches related questions into one host interaction. The client-side
+strategy pauses once. EVE-1053 supports choice questions only; secret
+collection is a separate capability extension.
 
 Question identifiers are stable result-correlation keys. The runtime preserves
 an identifier supplied by the model and generates a collision-free identifier
@@ -59,11 +62,25 @@ decisions. A decline is final and must not be re-asked. The result also says
 whether a user, timeout, or unattended policy supplied the answer; it does not
 carry user identity. Authenticated server-side handling owns attribution.
 
-## Pause and resume
+## Execution strategies
 
-The capability contributes a `ClientSide` definition and no server-side tool.
-Its definition is never deferred behind tool search. When the model calls it,
-the act atom follows the standard client-side path:
+`AskUserCapability::client_side()` contributes a client-side definition. The
+hosted product uses this strategy so a browser can answer after the current
+worker turn parks.
+
+`AskUserCapability::new(responder)` contributes a built-in tool. The tool
+awaits the host responder in-process and returns its outcome directly to the
+model without entering `waiting_for_tool_results`.
+
+The default in-process capability uses `DefaultsResponder`. It selects marked
+defaults, or the first option when no default is marked, and reports
+`answered_by: "unattended"`. This keeps tests and headless runs from hanging.
+
+## Client-side pause and resume
+
+The client-side strategy contributes no server-side tool. Its definition is
+never deferred behind tool search. When the model calls it, the act atom follows
+the standard client-side path:
 
 1. preserve the model-authored call in the assistant transcript;
 2. normalize omitted contract defaults and question identifiers;
