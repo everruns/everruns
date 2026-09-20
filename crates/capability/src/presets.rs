@@ -75,6 +75,10 @@ pub fn generic_capabilities() -> Vec<CapabilityRef> {
         // and adds no model call.
         CapabilityRef::new("citation_retrieval"),
         CapabilityRef::new("citation_verification"),
+        // Enabled on the default chat harnesses by #3737, which landed while
+        // this list was being extracted. Kept in that PR's position so the two
+        // sides stay diffable by eye.
+        CapabilityRef::new("ask_user"),
         // Soft approval, at the default `normal` level: this harness has a
         // shell, a file system, and the network, so an unattended agent can
         // delete or publish for real. The gate is guidance rather than a

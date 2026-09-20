@@ -31,6 +31,10 @@ use crate::capability_config::{
     framework_capability_registry, validate_registered_capability_config,
 };
 use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_tool_schema};
+#[cfg(feature = "builtins")]
+mod ask_user;
+mod capability_implementation;
+use capability_implementation::CapabilityImplementation;
 
 /// A model selected for an [`Agent`].
 ///
@@ -321,41 +325,6 @@ pub struct Agent {
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
     state: Arc<AgentState>,
-}
-
-#[derive(Clone)]
-enum CapabilityImplementation {
-    Function(FunctionTool),
-    #[cfg(feature = "capabilities")]
-    Definition(crate::capability::Definition),
-}
-
-impl CapabilityImplementation {
-    fn register(&self, builder: InProcessRuntimeBuilder) -> InProcessRuntimeBuilder {
-        match self {
-            Self::Function(tool) => builder.capability(tool.clone().into_capability()),
-            #[cfg(feature = "capabilities")]
-            Self::Definition(definition) => {
-                builder.capability(crate::capability::runtime_adapter(definition))
-            }
-        }
-    }
-}
-
-impl fmt::Debug for CapabilityImplementation {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Function(tool) => formatter
-                .debug_tuple("Function")
-                .field(&tool.name())
-                .finish(),
-            #[cfg(feature = "capabilities")]
-            Self::Definition(definition) => formatter
-                .debug_tuple("Definition")
-                .field(&definition.id())
-                .finish(),
-        }
-    }
 }
 
 struct AgentState {
@@ -811,6 +780,8 @@ pub struct AgentBuilder {
     workspace_backends: Vec<Arc<dyn WorkspaceBackend>>,
     mcp_servers: Vec<crate::McpServer>,
     plugin_warnings: Vec<String>,
+    #[cfg(feature = "builtins")]
+    ask_user: Option<everruns_builtins::AskUserCapability>,
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
@@ -1343,6 +1314,10 @@ impl AgentBuilder {
             }
             capabilities.push(everruns_capability::CapabilityRef::new(id.as_str()));
             capability_implementations.push(CapabilityImplementation::Function(function_tool));
+        }
+        #[cfg(feature = "builtins")]
+        if let Some(ask_user) = self.ask_user {
+            capability_implementations.push(CapabilityImplementation::AskUser(ask_user));
         }
 
         Ok(Agent {

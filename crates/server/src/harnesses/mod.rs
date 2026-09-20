@@ -160,4 +160,54 @@ mod tests {
         assert_eq!(definition.icon.as_deref(), Some("box"));
         assert!(!definition.system_prompt.is_empty());
     }
+
+    #[test]
+    fn interactive_harnesses_expose_ask_user_and_describe_it() {
+        for definition in [
+            generic::definition(),
+            platform_chat::definition(),
+            platform_chat_v2::definition(),
+        ] {
+            assert!(
+                definition
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability.capability_id() == "ask_user"),
+                "{} must expose ask_user",
+                definition.name
+            );
+            assert!(
+                definition.description.contains("structured user questions"),
+                "{} must describe structured user questions",
+                definition.name
+            );
+        }
+
+        assert!(
+            base::definition()
+                .capabilities
+                .iter()
+                .all(|capability| capability.capability_id() != "ask_user")
+        );
+    }
+
+    #[test]
+    fn ask_user_harnesses_also_expose_request_approval() {
+        for definition in [
+            generic::definition(),
+            platform_chat::definition(),
+            platform_chat_v2::definition(),
+        ] {
+            let capabilities = definition
+                .capabilities
+                .iter()
+                .map(|capability| capability.capability_id())
+                .collect::<Vec<_>>();
+            assert!(
+                capabilities.contains(&"soft_approval"),
+                "{} must keep request_approval available alongside ask_user",
+                definition.name
+            );
+        }
+    }
 }

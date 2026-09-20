@@ -18,7 +18,7 @@
 
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
@@ -41,7 +41,7 @@ use crate::events::{
     LlmRetryInfo, OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
     OutputMessageStartedData, ReasonCompletedData, ReasonItemData, ReasonRecoveredData,
     ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolDefinitionSummary,
+    ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolCompletedData, ToolDefinitionSummary,
 };
 use crate::llm_retry::{
     LlmRetryConfig, RetryMetadata, is_transient_error_message, remaining_retry_time,
@@ -62,7 +62,6 @@ use crate::{
     durability::DurableToolResultStore,
     durability::PartialStreamState,
     durability::PartialStreamStore,
-    event_emitter::EventEmitter,
     file_services::{FileResolver, ResolvedFile},
     image_services::ImageResolver,
     image_services::ResolvedImage,
@@ -71,6 +70,7 @@ use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 
 mod compaction;
 mod error_policy;
+mod finalized_calls;
 mod observability;
 mod output_hooks;
 mod reasoning_updates;
@@ -124,36 +124,6 @@ fn client_visible_guardrail_text(
     }
     guarded.push_str(&prose);
     guarded
-}
-
-/// Apply capability-owned transforms to the finalized model tool-call batch.
-/// The reason atom owns timing and context; each implementation owns its policy.
-#[allow(clippy::too_many_arguments)]
-async fn apply_finalized_tool_calls_hooks(
-    capability_registry: &CapabilityRegistry,
-    event_emitter: &dyn EventEmitter,
-    session_id: SessionId,
-    context: &ExecutionContext,
-    resolved_capability_configs: &[crate::CapabilityRef],
-    tool_definitions: &[ToolDefinition],
-    tool_calls: &mut [ToolCall],
-    iteration: u32,
-) {
-    let hook_context = crate::finalized_tool_calls::FinalizedToolCallsContext {
-        event_emitter,
-        session_id,
-        execution_context: context,
-        tool_definitions,
-        iteration,
-    };
-    for config in resolved_capability_configs {
-        let Some(capability) = capability_registry.get(config.capability_id()) else {
-            continue;
-        };
-        if let Some(hook) = capability.finalized_tool_calls_hook(config.config_value()) {
-            hook.apply(&hook_context, tool_calls).await;
-        }
-    }
 }
 
 fn unix_now_secs() -> u64 {
@@ -561,8 +531,8 @@ impl ReasonAtom {
         tool_definitions: &[ToolDefinition],
         tool_calls: &mut [ToolCall],
         iteration: u32,
-    ) {
-        apply_finalized_tool_calls_hooks(
+    ) -> Vec<crate::finalized_tool_calls::FinalizedToolCallRejection> {
+        finalized_calls::apply_finalized_tool_calls_hooks(
             &self.capability_registry,
             self.event_emitter.as_ref(),
             session_id,
@@ -572,7 +542,7 @@ impl ReasonAtom {
             tool_calls,
             iteration,
         )
-        .await;
+        .await
     }
 
     async fn execute_inner(
@@ -2342,7 +2312,9 @@ impl ReasonAtom {
         // Finalized tool-call policy seam. This is the smallest provider-neutral
         // point where configured capabilities can normalize a complete call
         // batch before the assistant message and downstream events are built.
-        if !tool_calls.is_empty() {
+        let rejected_tool_calls = if tool_calls.is_empty() {
+            Vec::new()
+        } else {
             self.apply_finalized_tool_call_hooks(
                 session_id,
                 context,
@@ -2351,8 +2323,14 @@ impl ReasonAtom {
                 &mut tool_calls,
                 iteration,
             )
-            .await;
-        }
+            .await
+        };
+        let finalized_tool_calls = tool_calls.clone();
+        let rejected_tool_call_ids: HashSet<_> = rejected_tool_calls
+            .iter()
+            .map(|rejection| rejection.tool_call_id.clone())
+            .collect();
+        tool_calls.retain(|call| !rejected_tool_call_ids.contains(&call.id));
 
         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
 
@@ -2406,7 +2384,7 @@ impl ReasonAtom {
         let tools_summary: Vec<ToolDefinitionSummary> =
             runtime_agent.tools.iter().map(|t| t.into()).collect();
         let finish_reasons = Some(vec![finish_reason.clone().unwrap_or_else(|| {
-            if tool_calls.is_empty() {
+            if finalized_tool_calls.is_empty() {
                 "stop".to_string()
             } else {
                 "tool_calls".to_string()
@@ -2426,7 +2404,7 @@ impl ReasonAtom {
             messages_for_event.clone(),
             tools_summary,
             Some(text.clone()).filter(|s| !s.is_empty()),
-            tool_calls.clone(),
+            finalized_tool_calls.clone(),
             runtime_agent.model.clone(),
             Some(model_with_provider.provider_type.to_string()),
             usage.clone(),
@@ -2538,9 +2516,9 @@ impl ReasonAtom {
             &resolved_capability_configs,
             text,
         );
-        let has_tool_calls = !tool_calls.is_empty();
+        let has_tool_calls = !finalized_tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
-            RuntimeMessage::assistant_with_tools(&text, tool_calls.clone())
+            RuntimeMessage::assistant_with_tools(&text, finalized_tool_calls.clone())
         } else {
             RuntimeMessage::assistant(&text)
         }
@@ -2658,6 +2636,27 @@ impl ReasonAtom {
                 .lock()
                 .await
                 .transcript_committed(&output_message_id.to_string())
+                .await?;
+        }
+        for rejection in rejected_tool_calls {
+            let Some(call) = finalized_tool_calls
+                .iter()
+                .find(|call| call.id == rejection.tool_call_id)
+            else {
+                continue;
+            };
+            self.event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    EventContext::from_execution_context(context),
+                    ToolCompletedData::failure(
+                        call.id.clone(),
+                        call.name.clone(),
+                        "error".to_string(),
+                        rejection.error,
+                        None,
+                    ),
+                ))
                 .await?;
         }
         tracing::info!(

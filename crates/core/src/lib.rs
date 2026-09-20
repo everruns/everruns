@@ -464,7 +464,9 @@ pub use events::{
     ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
     TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
 };
-pub use finalized_tool_calls::{FinalizedToolCallsContext, FinalizedToolCallsHook};
+pub use finalized_tool_calls::{
+    FinalizedToolCallRejection, FinalizedToolCallsContext, FinalizedToolCallsHook,
+};
 pub use guardrail_checks::{
     CompiledJudgeCheck, GuardrailAction, GuardrailEngine, GuardrailHit, GuardrailMode,
     GuardrailOnFail, GuardrailRule, GuardrailStage, GuardrailsConfig, MAX_JUDGE_PROMPT_LEN,

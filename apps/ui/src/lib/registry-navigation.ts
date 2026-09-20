@@ -24,7 +24,7 @@ export const registryNavigationByHref = {
     keywords: ["llm", "openai", "anthropic", "default model"],
   },
   "/mcp-servers": {
-    name: "MCP servers",
+    name: "MCP",
     href: "/mcp-servers",
     icon: registryDomainIcons.mcpServers,
     keywords: ["mcp", "tool", "integration"],

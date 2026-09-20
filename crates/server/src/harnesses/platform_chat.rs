@@ -10,7 +10,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "platform-chat",
         "Platform Chat",
-        "Conversational harness for the Everruns Platform chat.",
+        "Conversational harness for the Everruns Platform chat with structured user questions and soft approval for destructive actions.",
         system_prompt(),
     )
     .with_icon("everruns")
@@ -73,6 +73,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
                 "budget_percent": 0.85
             }),
         ),
+        BuiltInCapabilityDefinition::new("ask_user"),
         // The platform tools here create, mutate, and delete org-wide entities
         // for a whole organization, so this surface gets soft approval at the
         // default `normal` level. It supersedes the prose "Confirmation
@@ -200,6 +201,7 @@ mod tests {
                 "loop_detection",
                 "error_disclosure",
                 "compaction",
+                "ask_user",
                 "soft_approval"
             ]
         );

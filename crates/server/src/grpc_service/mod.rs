@@ -112,6 +112,7 @@ use everruns_internal_protocol::proto::{
     GetImageArtifactInfoResponse,
     GetImageArtifactRequest,
     GetImageArtifactResponse,
+    GetMcpConnectionTokenRequest,
     GetMcpServerByPrefixRequest,
     GetMcpServerByPrefixResponse,
     GetMessageRequest,

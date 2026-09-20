@@ -2100,6 +2100,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/mcp-servers/catalog": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization. */
+    get: operations["list_mcp_server_catalog"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/mcp-servers/config": {
     parameters: {
       query?: never;
@@ -2137,6 +2154,23 @@ export interface paths {
     head?: never;
     /** PATCH /v1/mcp-servers/{server_id} - Update MCP server */
     patch: operations["update_mcp_server"];
+    trace?: never;
+  };
+  "/v1/mcp-servers/{server_id}/usage": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get the bounded active-agent impact summary used before archiving an MCP server preset. */
+    get: operations["get_mcp_server_usage"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/v1/me/invitations": {
@@ -4037,6 +4071,23 @@ export interface paths {
     };
     /** List background tasks across every session in the caller's org. */
     get: operations["list_org_tasks"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/user/mcp-connections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List the current user's cursor-paginated MCP OAuth connections in the selected organization. */
+    get: operations["list_mcp_connections"];
     put?: never;
     post?: never;
     delete?: never;
@@ -12160,6 +12211,35 @@ export interface components {
      * @enum {string}
      */
     McpServerAuthMode: "none" | "api_key" | "oauth";
+    /** @description MCP server preset with its active-agent usage count. */
+    McpServerCatalogEntry: components["schemas"]["WithUrls_McpServer"] & {
+      /**
+       * Format: int64
+       * @description Number of active agents that use this preset.
+       * @example 2
+       */
+      used_by_agents: number;
+    };
+    /** @description One page of MCP server catalog entries for the selected organization. */
+    McpServerCatalogResponse: {
+      /**
+       * @description MCP server presets in this page.
+       * @example [
+       *       {
+       *         "id": "mcp_01933b5a00007000800000000000001",
+       *         "name": "microsoft_learn",
+       *         "url": "https://learn.microsoft.com/api/mcp",
+       *         "used_by_agents": 2
+       *       }
+       *     ]
+       */
+      data: components["schemas"]["McpServerCatalogEntry"][];
+      /**
+       * @description Cursor for the next page, or null when this is the final page.
+       * @example mcp_01933b5a00007000800000000000001
+       */
+      next_cursor?: string | null;
+    };
     /**
      * @description Reference to an organization MCP server catalog entry.
      * @example catalog:linear
@@ -12181,6 +12261,28 @@ export interface components {
      * @enum {string}
      */
     McpServerTransportType: "http" | "stdio";
+    /** @description Bounded archive-impact summary for an MCP server preset. */
+    McpServerUsageResponse: {
+      /**
+       * @description Names of active agents that use the preset, up to the response limit.
+       * @example [
+       *       "Docs agent",
+       *       "Research agent"
+       *     ]
+       */
+      agent_names: string[];
+      /**
+       * Format: int64
+       * @description Total number of active agents that use the preset.
+       * @example 2
+       */
+      total_count: number;
+      /**
+       * @description Whether additional agent names were omitted from the bounded list.
+       * @example false
+       */
+      truncated: boolean;
+    };
     /**
      * @description MCP tool annotations as defined by the MCP specification.
      *     All fields are optional booleans following the MCP convention.
@@ -17936,6 +18038,74 @@ export interface components {
       name: string;
       roles: string[];
     };
+    /** @description Current user's MCP OAuth connection to a preset in the selected organization. */
+    UserMcpConnectionResponse: {
+      /**
+       * Format: date-time
+       * @description Time when the user authorized the connection.
+       * @example 2026-09-19T12:00:00Z
+       */
+      connected_at: string;
+      /**
+       * @description Stored connection provider key used to revoke the grant.
+       * @example mcp_oauth_01933b5a-0000-7000-8000-000000000001
+       */
+      provider: string;
+      /**
+       * @description Account name reported by the MCP OAuth provider, when available.
+       * @example alex@example.com
+       */
+      provider_username?: string | null;
+      /**
+       * @description Space-delimited OAuth scopes granted to this connection, when available.
+       * @example tools:read tools:execute
+       */
+      scopes?: string | null;
+      /**
+       * @description UUID of the MCP server preset associated with the connection.
+       * @example 01933b5a-0000-7000-8000-000000000001
+       */
+      server_id: string;
+      /**
+       * @description Display name of the MCP server preset.
+       * @example microsoft_learn
+       */
+      server_name: string;
+      /**
+       * @description Current lifecycle status of the MCP server preset.
+       * @example active
+       */
+      server_status: string;
+      /**
+       * @description MCP server endpoint URL.
+       * @example https://learn.microsoft.com/api/mcp
+       */
+      server_url: string;
+    };
+    /** @description One page of the current user's MCP connections in the selected organization. */
+    UserMcpConnectionsResponse: {
+      /**
+       * @description MCP connections in this page.
+       * @example [
+       *       {
+       *         "connected_at": "2026-09-19T12:00:00Z",
+       *         "provider": "mcp_oauth_01933b5a-0000-7000-8000-000000000001",
+       *         "provider_username": "alex@example.com",
+       *         "scopes": "tools:read tools:execute",
+       *         "server_id": "01933b5a-0000-7000-8000-000000000001",
+       *         "server_name": "microsoft_learn",
+       *         "server_status": "active",
+       *         "server_url": "https://learn.microsoft.com/api/mcp"
+       *       }
+       *     ]
+       */
+      data: components["schemas"]["UserMcpConnectionResponse"][];
+      /**
+       * @description Cursor for the next page, or null when this is the final page.
+       * @example 01933b5a-0000-7000-8000-000000000002
+       */
+      next_cursor?: string | null;
+    };
     /** @description Request to validate a SKILL.md */
     ValidateSkillRequest: {
       /**
@@ -21280,7 +21450,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description MCP connection revoked */
+      /** @description MCP connection revoked or already absent */
       204: {
         headers: {
           [name: string]: unknown;
@@ -21305,7 +21475,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Agent, attachment, preset, or connection not found */
+      /** @description Agent, attachment, or preset not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -26321,6 +26491,58 @@ export interface operations {
       };
     };
   };
+  list_mcp_server_catalog: {
+    parameters: {
+      query?: {
+        /** @description Continue after this MCP server ID. */
+        cursor?: string | null;
+        /** @description Page size (default: 50, max: 100). */
+        limit?: number | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cursor-paginated MCP server catalog with active-agent usage counts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerCatalogResponse"];
+        };
+      };
+      /** @description Invalid cursor or limit */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   mcp_server_config: {
     parameters: {
       query?: never;
@@ -26454,6 +26676,65 @@ export interface operations {
       };
       /** @description Invalid server ID or input */
       400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_mcp_server_usage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description MCP server ID */
+        server_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Bounded active-agent archive impact */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerUsageResponse"];
+        };
+      };
+      /** @description Invalid MCP server ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Permission denied */
+      403: {
         headers: {
           [name: string]: unknown;
         };
@@ -32523,6 +32804,49 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SessionTask"][];
+        };
+      };
+    };
+  };
+  list_mcp_connections: {
+    parameters: {
+      query?: {
+        /** @description Continue after this opaque connection cursor. */
+        cursor?: string | null;
+        /** @description Page size (default: 50, max: 100). */
+        limit?: number | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cursor-paginated current user's MCP OAuth connections in the selected organization */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserMcpConnectionsResponse"];
+        };
+      };
+      /** @description Invalid cursor or limit */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
     };
