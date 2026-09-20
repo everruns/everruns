@@ -85,6 +85,13 @@ describe("AskUserToolCall", () => {
     expect(screen.getByText("Continuing with Staging in 0:47")).toBeInTheDocument();
   });
 
+  it("keeps the timeout choice hidden before the nudge deadline", () => {
+    jest.mocked(Date.now).mockReturnValue(Date.parse("2026-09-20T05:03:59Z"));
+    renderCard();
+
+    expect(screen.queryByText(/Continuing with/)).not.toBeInTheDocument();
+  });
+
   it("reveals Other and submits its free text through the typed answer endpoint", async () => {
     renderCard();
 
@@ -108,6 +115,21 @@ describe("AskUserToolCall", () => {
       }),
     );
     expect(screen.getByText("Answered: A canary environment")).toBeInTheDocument();
+  });
+
+  it("records a decline without sending answers", async () => {
+    renderCard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+
+    await waitFor(() =>
+      expect(submitQuestionAnswers).toHaveBeenCalledWith("session_1", {
+        tool_call_id: "ask_1",
+        status: "declined",
+        answers: [],
+      }),
+    );
+    expect(screen.getByText("Questions declined")).toBeInTheDocument();
   });
 
   it("submits one payload for stacked single-select and multi-select questions", async () => {
