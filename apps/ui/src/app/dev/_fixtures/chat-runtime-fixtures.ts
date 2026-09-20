@@ -201,7 +201,200 @@ export function makePendingImages(): PendingImage[] {
   ];
 }
 
-export function getDevChatFixture(kind: "tool-activity" | "chat-components"): DevChatFixture {
+export function getDevChatFixture(
+  kind: "tool-activity" | "chat-components" | "ask-user",
+): DevChatFixture {
+  if (kind === "ask-user") {
+    const sessionId = "session-dev-ask-user";
+    const now = Date.now();
+    const iso = (offsetMs: number) => new Date(now + offsetMs).toISOString();
+    const question = (
+      id: string,
+      header: string,
+      text: string,
+      options: Array<{ label: string; description: string; default?: boolean }>,
+      extra: Record<string, unknown> = {},
+    ) => ({
+      id,
+      header,
+      question: text,
+      options,
+      allow_other: true,
+      ...extra,
+    });
+    const askEvent = (
+      id: string,
+      title: string,
+      questions: Record<string, unknown>[],
+      askedAt: string,
+      nudgeAt: string,
+      expiresAt: string,
+    ): Event => ({
+      id,
+      type: "tool.call_requested",
+      ts: askedAt,
+      session_id: sessionId,
+      context: {},
+      data: {
+        headline: title,
+        tool_calls: [
+          {
+            id,
+            name: "ask_user",
+            arguments: {
+              questions,
+              timeout_seconds: 300,
+              asked_at: askedAt,
+              nudge_at: nudgeAt,
+              expires_at: expiresAt,
+            },
+          },
+        ],
+        tool_summaries: [{ id, name: "ask_user", display_name: "Ask User" }],
+      },
+    });
+    const targetQuestion = question("target", "Target", "Which environment should I deploy to?", [
+      { label: "Staging", description: "Safe and reversible.", default: true },
+      { label: "Production", description: "Serves live customer traffic." },
+    ]);
+    const checksQuestion = question(
+      "checks",
+      "Checks",
+      "Which checks should run before deployment?",
+      [
+        { label: "Unit", description: "Run the focused unit test suite.", default: true },
+        { label: "UI", description: "Exercise the rendered browser flow.", default: true },
+        { label: "Full", description: "Run every pre-push validation." },
+      ],
+      { multi_select: true, allow_other: false },
+    );
+    const regionQuestion = question("region", "Region", "Where should the release start?", [
+      { label: "US East", description: "Closest to most current traffic.", default: true },
+      { label: "EU West", description: "Keeps the first wave in the EU." },
+    ]);
+    const strategyQuestion = question(
+      "strategy",
+      "Strategy",
+      "How should traffic move?",
+      [
+        { label: "Canary", description: "Start with five percent.", default: true },
+        { label: "Immediate", description: "Move all traffic at once." },
+      ],
+      { allow_other: false },
+    );
+    const terminalQuestion = question(
+      "target",
+      "Target",
+      "Which environment should I deploy to?",
+      [
+        { label: "Staging", description: "Safe and reversible.", default: true },
+        { label: "Production", description: "Serves live customer traffic." },
+      ],
+      { allow_other: false },
+    );
+    const events: Event[] = [
+      makeInputEvent({
+        id: "ask-user-intro",
+        sequence: 1,
+        sessionId,
+        text: "Show every Ask User card state.",
+        ts: iso(-360_000),
+      }),
+      askEvent(
+        "ask-single",
+        "Single select with Other",
+        [targetQuestion],
+        iso(0),
+        iso(240_000),
+        iso(300_000),
+      ),
+      askEvent(
+        "ask-multi",
+        "Multi select after nudge",
+        [checksQuestion],
+        iso(-270_000),
+        iso(-30_000),
+        iso(30_000),
+      ),
+      askEvent(
+        "ask-stacked",
+        "Multiple questions",
+        [regionQuestion, strategyQuestion],
+        iso(10_000),
+        iso(250_000),
+        iso(310_000),
+      ),
+      askEvent(
+        "ask-answered",
+        "Answered",
+        [terminalQuestion],
+        iso(-400_000),
+        iso(-160_000),
+        iso(-100_000),
+      ),
+      askEvent(
+        "ask-declined",
+        "Declined",
+        [terminalQuestion],
+        iso(-400_000),
+        iso(-160_000),
+        iso(-100_000),
+      ),
+      askEvent(
+        "ask-timeout",
+        "Timed out",
+        [terminalQuestion],
+        iso(-400_000),
+        iso(-160_000),
+        iso(-100_000),
+      ),
+      askEvent(
+        "ask-cancelled",
+        "Cancelled",
+        [terminalQuestion],
+        iso(-400_000),
+        iso(-160_000),
+        iso(-100_000),
+      ),
+    ];
+    const result = (
+      toolCallId: string,
+      status: "answered" | "declined" | "timed_out" | "cancelled",
+      answeredBy: "user" | "timeout" | "unattended",
+    ) =>
+      toolResult(toolCallId, "ask_user", [
+        {
+          type: "text",
+          text: JSON.stringify({
+            status,
+            answered_by: answeredBy,
+            answers:
+              status === "answered" || status === "timed_out"
+                ? [{ id: "target", selected: ["Staging"], other_text: null }]
+                : [],
+          }),
+        },
+      ]);
+
+    return {
+      sessionId,
+      events,
+      toolResultsMap: new Map([
+        ["ask-answered", result("ask-answered", "answered", "user")],
+        ["ask-declined", result("ask-declined", "declined", "user")],
+        ["ask-timeout", result("ask-timeout", "timed_out", "timeout")],
+        ["ask-cancelled", result("ask-cancelled", "cancelled", "unattended")],
+      ]),
+      toolProgressMap: new Map(),
+      toolOutputMap: new Map(),
+      pendingImages: [],
+      commands: devCommands,
+      models: devModels,
+      initialInputValue: "",
+      initialModelId: "model-kimi-k2.5",
+      initialReasoningEffort: "medium",
+    };
+  }
   if (kind === "tool-activity") {
     const sessionId = "session-dev-tool-activity";
     const events: Event[] = [
