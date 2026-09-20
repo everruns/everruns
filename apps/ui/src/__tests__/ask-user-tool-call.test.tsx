@@ -78,6 +78,9 @@ describe("AskUserToolCall", () => {
     renderCard();
 
     expect(screen.getByText("Which environment should I deploy to?")).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "Which environment should I deploy to?" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Safe and reversible.")).toBeInTheDocument();
     expect(screen.getByText("Serves live traffic.")).toBeInTheDocument();
     expect(screen.getByText("Recommended")).toBeInTheDocument();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Check, CircleQuestionMark, Clock3, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -171,6 +171,7 @@ export function AskUserToolCall({
   const [submittedResult, setSubmittedResult] = useState<AskUserResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const labelPrefix = useId();
   const { nudgeAt, expiresAt } = useMemo(
     () => deadlines(request, requestedAt),
     [request, requestedAt],
@@ -289,19 +290,22 @@ export function AskUserToolCall({
       </div>
 
       <div className="divide-y divide-border">
-        {request.questions.map((question) => {
+        {request.questions.map((question, questionIndex) => {
           const selection = selections[question.id];
           const inputType = question.multi_select ? "checkbox" : "radio";
           const inputName = `ask-user-${toolCallId}-${question.id}`;
+          const labelId = `${labelPrefix}-question-${questionIndex}`;
           return (
-            <fieldset key={question.id} className="space-y-3 px-4 py-4">
-              <legend className="flex w-full items-center gap-2">
+            <fieldset key={question.id} aria-labelledby={labelId} className="space-y-3 px-4 py-4">
+              <div className="flex w-full items-center gap-2">
                 <Badge variant="outline">{question.header}</Badge>
                 {question.multi_select && (
                   <span className="text-[11px] text-muted-foreground">Select all that apply</span>
                 )}
-              </legend>
-              <p className="text-sm font-medium text-foreground">{question.question}</p>
+              </div>
+              <p id={labelId} className="text-sm font-medium text-foreground">
+                {question.question}
+              </p>
               <div className="space-y-2">
                 {question.options.map((option) => {
                   const checked = selection.selected.includes(option.label);
