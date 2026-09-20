@@ -72,11 +72,11 @@ pub mod usage_limit_auto_continue;
 // Compatibility paths used by the collocated implementation tests. These are
 // aliases of core's provider-neutral execution modules, not copied contracts.
 pub use ask_user::{
-    ASK_USER_CAPABILITY_ID, ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy,
+    ASK_USER_CAPABILITY_ID, ASK_USER_TOOL_NAME, AskUser, AskUserAnswer, AskUserAnsweredBy,
     AskUserCapability, AskUserOption, AskUserQuestion, AskUserQuestionKind, AskUserRequest,
-    AskUserResult, AskUserStatus, DEFAULT_ASK_USER_TIMEOUT_SECONDS, MAX_ASK_USER_HEADER_CHARS,
-    MAX_ASK_USER_OPTIONS, MAX_ASK_USER_QUESTIONS, normalize_ask_user_arguments,
-    validate_ask_user_request,
+    AskUserResult, AskUserStatus, DEFAULT_ASK_USER_TIMEOUT_SECONDS, DefaultsResponder,
+    MAX_ASK_USER_HEADER_CHARS, MAX_ASK_USER_OPTIONS, MAX_ASK_USER_QUESTIONS,
+    normalize_ask_user_arguments, validate_ask_user_request,
 };
 pub(crate) use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityRegistry, CapabilityStatus, Fact, FactsContext,
@@ -269,7 +269,7 @@ pub fn register_monitor_tools(registry: &mut everruns_core::ToolRegistry) {
 }
 
 fn portable_capabilities() -> Vec<Arc<dyn Capability>> {
-    let mut capabilities = runtime_capabilities();
+    let mut capabilities = capabilities_with_ask_user(AskUserCapability::client_side());
     capabilities.push(Arc::new(UsageLimitAutoContinueCapability));
     #[cfg(feature = "ui-capabilities")]
     {
@@ -292,9 +292,13 @@ fn register_capabilities_atomically(
 }
 
 fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
+    capabilities_with_ask_user(AskUserCapability::default())
+}
+
+fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capability>> {
     vec![
         Arc::new(HumanIntentCapability),
-        Arc::new(AskUserCapability),
+        Arc::new(ask_user),
         Arc::new(InfinityContextCapability),
         Arc::new(SkillsCapability),
         Arc::new(AgentInstructionsCapability),
@@ -391,6 +395,28 @@ mod bundle_tests {
 
         assert_eq!(registry.len(), RUNTIME_IDS.len());
         assert!(!registry.has(USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID));
+    }
+
+    #[test]
+    fn ask_user_strategy_follows_host_composition() {
+        let mut runtime = CapabilityRegistry::new();
+        register_runtime_capabilities(&mut runtime).unwrap();
+        assert!(matches!(
+            runtime
+                .get(ASK_USER_CAPABILITY_ID)
+                .unwrap()
+                .tool_definitions()[..],
+            [crate::tool_types::ToolDefinition::Builtin(_)]
+        ));
+
+        let portable = portable_capability_registry().unwrap();
+        assert!(matches!(
+            portable
+                .get(ASK_USER_CAPABILITY_ID)
+                .unwrap()
+                .tool_definitions()[..],
+            [crate::tool_types::ToolDefinition::ClientSide(_)]
+        ));
     }
 
     #[test]

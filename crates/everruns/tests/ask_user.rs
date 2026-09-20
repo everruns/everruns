@@ -1,9 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
-use everruns::ask_user::{
-    Answer, AnsweredBy, AskUser, Outcome, Question, Status,
-};
+use everruns::ask_user::{Answer, AnsweredBy, AskUser, Outcome, Question, Status, async_trait};
 use everruns::{Agent, InMemoryEngine, LlmSimConfig, Model, ToolCall};
 use serde_json::json;
 
@@ -27,12 +24,8 @@ impl AskUser for RecordingResponder {
         }
     }
 }
-
-#[tokio::test]
-async fn builder_responder_answers_in_process() {
-    let responder = RecordingResponder::default();
-    let questions = responder.questions.clone();
-    let model = Model::simulated_with_config(
+fn asking_model() -> Model {
+    Model::simulated_with_config(
         LlmSimConfig::fixed("Deploying to production.").with_tool_call_sequence(vec![
             vec![ToolCall {
                 id: "call_target".to_string(),
@@ -42,7 +35,7 @@ async fn builder_responder_answers_in_process() {
                         "header": "Target",
                         "question": "Where should I deploy?",
                         "options": [
-                            {"label": "Staging", "description": "Safe"},
+                            {"label": "Staging", "description": "Safe", "default": true},
                             {"label": "Production", "description": "Live"}
                         ]
                     }]
@@ -50,10 +43,16 @@ async fn builder_responder_answers_in_process() {
             }],
             vec![],
         ]),
-    );
+    )
+}
+
+#[tokio::test]
+async fn builder_responder_answers_in_process() {
+    let responder = RecordingResponder::default();
+    let questions = responder.questions.clone();
     let agent = Agent::builder()
         .instructions("Ask before choosing a deployment target.")
-        .model(model)
+        .model(asking_model())
         .ask_user(responder)
         .build()
         .expect("valid agent");
@@ -69,4 +68,23 @@ async fn builder_responder_answers_in_process() {
     let questions = questions.lock().unwrap();
     assert_eq!(questions.len(), 1);
     assert_eq!(questions[0].id.as_deref(), Some("question_1"));
+}
+
+#[tokio::test]
+async fn capability_without_responder_uses_unattended_defaults() {
+    let agent = Agent::builder()
+        .instructions("Ask before choosing a deployment target.")
+        .model(asking_model())
+        .capability("ask_user")
+        .build()
+        .expect("valid agent");
+
+    let turn = InMemoryEngine::new()
+        .create(agent)
+        .run("Deploy the service.")
+        .await
+        .expect("turn runs");
+
+    assert!(turn.success);
+    assert_eq!(turn.tool_calls, 1);
 }
