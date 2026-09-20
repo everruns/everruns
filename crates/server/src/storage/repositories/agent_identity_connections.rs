@@ -119,9 +119,10 @@ impl Database {
     // THREAT[TM-TENANT-012]: the connection accessors and mutators below
     // (`get_agent_identity_connection`, `list_agent_identity_connections`,
     // `update_agent_identity_connection_oauth_tokens`,
-    // `delete_all_agent_identity_connections`, and
-    // `delete_agent_identity_connection`) are scoped only by
-    // `agent_identity_id` and return/mutate `access_token_encrypted` /
+    // `delete_all_agent_identity_connections`,
+    // `delete_agent_identity_connection`, and
+    // `invalidate_mcp_service_connection_if_access_token_matches`) are scoped
+    // only by `agent_identity_id` and return/mutate `access_token_encrypted` /
     // `refresh_token_encrypted` (OAuth secrets). `agent_identity_connections`
     // has no `org_id` column, so these methods cannot self-enforce tenant
     // isolation. Every caller MUST derive the identity or connection from an
@@ -225,5 +226,47 @@ impl Database {
         .await?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn invalidate_mcp_service_connection_if_access_token_matches(
+        &self,
+        identity_id: AgentIdentityId,
+        provider: &str,
+        expected_access_token_encrypted: &[u8],
+        org_id: i64,
+        mcp_server_id: uuid::Uuid,
+        agent_id: uuid::Uuid,
+    ) -> Result<bool> {
+        let mut transaction = self.pool.begin().await?;
+        let result = sqlx::query(
+            r#"
+            DELETE FROM agent_identity_connections
+            WHERE agent_identity_id = $1
+              AND provider = $2
+              AND access_token_encrypted = $3
+            "#,
+        )
+        .bind(identity_id)
+        .bind(provider)
+        .bind(expected_access_token_encrypted)
+        .execute(&mut *transaction)
+        .await?;
+        let deleted = result.rows_affected() > 0;
+        if deleted {
+            sqlx::query(
+                r#"
+                DELETE FROM mcp_service_tool_caches
+                WHERE org_id = $1 AND mcp_server_id = $2 AND agent_id = $3
+                "#,
+            )
+            .bind(org_id)
+            .bind(mcp_server_id)
+            .bind(agent_id)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        transaction.commit().await?;
+
+        Ok(deleted)
     }
 }

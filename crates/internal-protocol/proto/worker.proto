@@ -1409,6 +1409,7 @@ message InvalidateMcpConnectionRequest {
     Uuid session_id = 1;
     string provider = 2;
     string acts_as = 3;
+    string rejected_credential_fingerprint = 4;
 }
 
 message InvalidateMcpConnectionResponse {}

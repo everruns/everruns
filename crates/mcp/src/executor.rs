@@ -87,8 +87,11 @@ fn redact_tool_result(result: &mut ToolResult, secrets: &[String]) {
 #[async_trait]
 pub trait McpConnectionResolver: Send + Sync {
     async fn resolve(&self, server_prefix: &str) -> Result<Option<McpConnection>>;
-
-    async fn invalidate(&self, _server_prefix: &str) -> Result<()> {
+    async fn invalidate(
+        &self,
+        _server_prefix: &str,
+        _rejected_connection: &McpConnection,
+    ) -> Result<()> {
         Ok(())
     }
 }
@@ -241,7 +244,9 @@ impl McpExecutor {
             .await;
         let result = match result {
             Err(error) if is_unauthorized(&error) => {
-                self.resolver.invalidate(&server_prefix).await?;
+                self.resolver
+                    .invalidate(&server_prefix, &connection)
+                    .await?;
                 if let Some(connection) = self.resolver.resolve(&server_prefix).await?
                     && let Some(required) = &connection.pending_oauth_provider
                 {

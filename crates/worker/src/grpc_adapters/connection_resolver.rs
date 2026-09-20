@@ -68,6 +68,7 @@ impl UserConnectionResolver for GrpcAdapter {
         session_id: SessionId,
         provider: &str,
         acts_as: everruns_core::McpServerActsAs,
+        rejected_credential_fingerprint: &str,
     ) -> Result<()> {
         let mut client = self.client.inner.lock().await;
         client
@@ -75,6 +76,7 @@ impl UserConnectionResolver for GrpcAdapter {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
                 provider: provider.to_string(),
                 acts_as: acts_as.to_string(),
+                rejected_credential_fingerprint: rejected_credential_fingerprint.to_string(),
             })
             .await
             .map_err(grpc_status_to_error)?;

@@ -73,12 +73,14 @@ pub trait UserConnectionResolver: Send + Sync {
     ///
     /// Implementations that own persistent grants can remove the credential
     /// selected by `acts_as` and its credential-scoped tool cache. The default
-    /// is a no-op.
+    /// is a no-op. Implementations must preserve a replacement grant when its
+    /// fingerprint differs from the credential the remote server rejected.
     async fn invalidate_mcp_connection(
         &self,
         _session_id: SessionId,
         _provider: &str,
         _acts_as: crate::mcp_server::McpServerActsAs,
+        _rejected_credential_fingerprint: &str,
     ) -> Result<()> {
         Ok(())
     }

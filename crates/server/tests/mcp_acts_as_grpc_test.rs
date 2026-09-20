@@ -537,6 +537,92 @@ async fn remote_service_revocation_evicts_the_grant_and_cache_before_the_next_ca
 }
 
 #[tokio::test]
+async fn late_old_token_rejection_preserves_a_reauthorized_grant_and_cache() {
+    let fixture = ActsAsArrangement::new(true).await;
+    fixture.mock.require_valid_access_tokens();
+    fixture.identity_grant("old-access").await;
+    fixture
+        .mock
+        .delay_next_mcp_request(Duration::from_millis(250));
+    let session_id = fixture.attended_session(McpServerActsAs::Service).await;
+    let (addr, shutdown, server) = start_grpc_server(fixture.worker_service()).await;
+    let executor = connect_executor(&fixture, &addr, session_id).await;
+    let delayed_executor = executor.clone();
+    let rejected = tokio::spawn(async move {
+        delayed_executor
+            .invoke(&ToolCall {
+                id: "old-request".to_string(),
+                name: everruns_core::mcp_tool_name("linear", "echo"),
+                arguments: json!({"value": "old"}),
+            })
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while fixture.mock.mcp_requests_started() == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("old-token request must enter the MCP boundary");
+
+    fixture.mock.seed_oauth_grant(
+        "fresh-access",
+        "fresh-refresh",
+        Some(fixture.mock.mcp_url()),
+    );
+    fixture.identity_grant("fresh-access").await;
+    fixture
+        .db
+        .upsert_mcp_service_tool_cache(UpsertMcpServiceToolCache {
+            org_id: DEFAULT_ORG_ID,
+            mcp_server_id: fixture.server_id,
+            agent_id: fixture.agent_id.uuid(),
+            cache_scope: "private".to_string(),
+            credential_hash: "fresh-credential-hash".to_string(),
+            cached_tools: json!([{"name": "echo"}]),
+            ttl_ms: 60_000,
+        })
+        .await
+        .unwrap();
+
+    assert!(rejected.await.unwrap().is_err());
+    let current = fixture
+        .db
+        .get_agent_identity_connection(fixture.identity_id, &fixture.provider)
+        .await
+        .unwrap()
+        .expect("reauthorized grant must survive the stale rejection");
+    assert_eq!(
+        fixture
+            .encryption
+            .decrypt_to_string(current.access_token_encrypted.as_deref().unwrap())
+            .unwrap(),
+        "fresh-access"
+    );
+    assert!(
+        fixture
+            .db
+            .get_mcp_service_tool_cache(
+                DEFAULT_ORG_ID,
+                fixture.server_id,
+                fixture.agent_id.uuid(),
+                "private",
+                "fresh-credential-hash",
+            )
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    let next = invoke_executor(&executor, "fresh-request").await;
+    assert!(next.error.is_none());
+    fixture.mock.assert_called_as_identity("fresh-access");
+
+    let _ = shutdown.send(());
+    server.await.unwrap();
+}
+
+#[tokio::test]
 async fn unattended_user_attachment_fails_closed_before_mcp_over_grpc() {
     let fixture = ActsAsArrangement::new(true).await;
     fixture.user_grant("user-token").await;

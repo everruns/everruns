@@ -144,6 +144,8 @@ struct State {
     active_refresh_tokens: HashMap<String, Option<String>>,
     enforce_access_tokens: bool,
     refresh_delay: Option<Duration>,
+    next_mcp_delay: Option<Duration>,
+    mcp_requests_started: usize,
     token_counter: u64,
     reject_actor: bool,
     rejected_scopes: HashSet<String>,
@@ -192,6 +194,8 @@ impl MockMcpOAuthServer {
                 active_refresh_tokens: HashMap::new(),
                 enforce_access_tokens: false,
                 refresh_delay: None,
+                next_mcp_delay: None,
+                mcp_requests_started: 0,
                 token_counter: 0,
                 reject_actor: false,
                 rejected_scopes: HashSet::new(),
@@ -275,6 +279,16 @@ impl MockMcpOAuthServer {
     /// Delay refresh exchanges so concurrent callers overlap at the resolver.
     pub fn set_refresh_delay(&self, delay: Duration) {
         self.lock().refresh_delay = Some(delay);
+    }
+
+    /// Delay the next MCP request after it enters the egress boundary.
+    pub fn delay_next_mcp_request(&self, delay: Duration) {
+        self.lock().next_mcp_delay = Some(delay);
+    }
+
+    /// Count MCP requests that entered the egress boundary.
+    pub fn mcp_requests_started(&self) -> usize {
+        self.lock().mcp_requests_started
     }
 
     /// Count refresh-token exchanges observed by the OAuth endpoint.
@@ -671,6 +685,14 @@ impl MockMcpOAuthServer {
 impl EgressService for MockMcpOAuthServer {
     async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
         if request.url == self.mcp_url() {
+            let delay = {
+                let mut state = self.lock();
+                state.mcp_requests_started += 1;
+                state.next_mcp_delay.take()
+            };
+            if let Some(delay) = delay {
+                tokio::time::sleep(delay).await;
+            }
             self.handle_mcp(request)
         } else if request.url.starts_with(&format!(
             "https://{MCP_HOST}/.well-known/oauth-protected-resource"

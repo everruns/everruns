@@ -85,7 +85,12 @@ impl WorkerServiceImpl {
         };
 
         resolver
-            .invalidate_mcp_connection(session_id.into(), &req.provider, acts_as)
+            .invalidate_mcp_connection(
+                session_id.into(),
+                &req.provider,
+                acts_as,
+                &req.rejected_credential_fingerprint,
+            )
             .await
             .map_err(|e| {
                 tracing::error!("Failed to invalidate MCP connection: {}", e);

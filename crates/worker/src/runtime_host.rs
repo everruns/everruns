@@ -174,7 +174,11 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
         }))
     }
 
-    async fn invalidate(&self, server_prefix: &str) -> anyhow::Result<()> {
+    async fn invalidate(
+        &self,
+        server_prefix: &str,
+        rejected_connection: &McpConnection,
+    ) -> anyhow::Result<()> {
         let info = self
             .adapters
             .get_mcp_server_by_prefix(self.org_id, Some(self.session_id), server_prefix)
@@ -188,9 +192,29 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
         let Some(provider) = info.oauth_provider_id.as_deref() else {
             return Ok(());
         };
+        let rejected_credential_fingerprint = match &rejected_connection.endpoint {
+            McpEndpoint::Http { headers, .. } => headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("authorization"))
+                .and_then(|(_, value)| value.split_once(' '))
+                .filter(|(scheme, token)| {
+                    scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()
+                })
+                .map(|(_, token)| everruns_internal_protocol::credential_fingerprint(token)),
+            #[allow(unreachable_patterns)]
+            _ => None,
+        };
+        let Some(rejected_credential_fingerprint) = rejected_credential_fingerprint else {
+            return Ok(());
+        };
         self.adapters
             .connection_resolver()
-            .invalidate_mcp_connection(self.session_id.into(), provider, info.acts_as)
+            .invalidate_mcp_connection(
+                self.session_id.into(),
+                provider,
+                info.acts_as,
+                &rejected_credential_fingerprint,
+            )
             .await
             .map_err(|e| anyhow::anyhow!(e.to_string()))
     }

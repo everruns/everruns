@@ -688,6 +688,7 @@ impl UserConnectionResolver for DbConnectionResolver {
         session_id: SessionId,
         provider: &str,
         acts_as: everruns_core::McpServerActsAs,
+        rejected_credential_fingerprint: &str,
     ) -> Result<()> {
         if acts_as != everruns_core::McpServerActsAs::Service {
             return Ok(());
@@ -723,18 +724,28 @@ impl UserConnectionResolver for DbConnectionResolver {
         let Some(row) = row else {
             return Ok(());
         };
+        let Some(access_token_encrypted) = row.access_token_encrypted.as_deref() else {
+            return Ok(());
+        };
+        let access_token = self.decrypt(access_token_encrypted, "OAuth access token")?;
+        if everruns_internal_protocol::credential_fingerprint(&access_token)
+            != rejected_credential_fingerprint
+        {
+            return Ok(());
+        }
 
         self.db
-            .delete_agent_identity_connection(row.agent_identity_id, provider)
+            .invalidate_mcp_service_connection_if_access_token_matches(
+                row.agent_identity_id,
+                provider,
+                access_token_encrypted,
+                session.org_id,
+                server_id,
+                agent_id.uuid(),
+            )
             .await
             .map_err(|e| {
-                AgentLoopError::store(format!("Failed to invalidate identity OAuth grant: {e}"))
-            })?;
-        self.db
-            .delete_mcp_service_tool_caches(session.org_id, server_id, agent_id.uuid())
-            .await
-            .map_err(|e| {
-                AgentLoopError::store(format!("Failed to invalidate MCP service tool cache: {e}"))
+                AgentLoopError::store(format!("Failed to invalidate MCP service connection: {e}"))
             })?;
         Ok(())
     }
