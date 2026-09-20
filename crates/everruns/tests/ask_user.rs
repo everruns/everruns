@@ -87,4 +87,5 @@ async fn capability_without_responder_uses_unattended_defaults() {
 
     assert!(turn.success);
     assert_eq!(turn.tool_calls, 1);
+    assert_eq!(turn.response, "Deploying to production.");
 }
