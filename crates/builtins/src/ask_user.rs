@@ -243,7 +243,7 @@ impl Capability for AskUserCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "Use `ask_user` for decisions and preferences. Only ask when genuinely blocked on a decision that is the user's to make. Batch related questions into one pause. Never ask what the code or conversation already answers. Order options most-applicable-first; a timeout uses the marked default or the first option, and `answered_by` says whether a person answered. Do not re-ask a declined question. Never use `ask_user` as a consent gate: permission for destructive, irreversible, or outward-facing actions requires `request_approval`, which does not auto-resolve. When an A2A delegated agent returns `input_required` and you do not know the answer, ask the user and relay their answer with `message_task`. Never answer on the user's behalf.",
+            "`ask_user` handles decisions/preferences. Ask only when blocked; batch questions, and never ask what code or context answers. Put likely options first; timeout uses default/first, and `answered_by` names its source. Do not re-ask a declined question. Never use `ask_user` as a consent gate: destructive, irreversible, or outward-facing actions require `request_approval`, which does not auto-resolve. For A2A `input_required` unanswered, ask the user and relay with `message_task`; never answer for them.",
         )
     }
 
@@ -535,11 +535,11 @@ mod tests {
         assert!(prompt.contains("request_approval"));
         assert!(prompt.contains("Never use `ask_user` as a consent gate"));
         assert!(prompt.contains("Do not re-ask a declined question"));
-        assert!(prompt.contains("Only ask when genuinely blocked"));
-        assert!(prompt.contains("Never ask what the code or conversation already answers"));
+        assert!(prompt.contains("Ask only when blocked"));
+        assert!(prompt.contains("never ask what code or context answers"));
         assert!(prompt.contains("`input_required`"));
         assert!(prompt.contains("`message_task`"));
-        assert!(prompt.contains("Never answer on the user's behalf"));
+        assert!(prompt.contains("never answer for them"));
         assert_eq!(
             capability.localized_name(Some("uk-UA")),
             "Запитати користувача"
