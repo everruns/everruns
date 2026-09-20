@@ -11920,6 +11920,22 @@ export interface components {
        * @example msg_01ABCDef0123456789
        */
       response_id?: string | null;
+      /**
+       * @description Model the provider reported actually serving the request.
+       *
+       *     `model` is what was *asked for*, which is routinely an alias that
+       *     resolves at request time — `claude-sonnet-4-5` served by
+       *     `claude-sonnet-4-5-20250929`, or an OpenRouter route landing on one
+       *     upstream of several. Collapsing the two loses the only record of which
+       *     weights produced the answer, which is what a regression in output
+       *     quality has to be correlated against.
+       *
+       *     `None` when the provider reported no model, which is the honest answer:
+       *     consumers fall back to `model` rather than being told the alias was
+       *     confirmed.
+       * @example claude-sonnet-4-5-20250929
+       */
+      response_model?: string | null;
       retry?: null | components["schemas"]["LlmRetryInfo"];
       /**
        * @description Whether the generation was successful

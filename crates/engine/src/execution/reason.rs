@@ -2390,7 +2390,7 @@ impl ReasonAtom {
                 "tool_calls".to_string()
             }
         })]);
-        // Extract retry info from completion metadata (if retries occurred)
+        let served_model = completion_metadata.as_ref().and_then(|m| m.model.clone());
         let retry_info = completion_metadata
             .as_ref()
             .and_then(|meta| meta.retry_metadata.as_ref())
@@ -2399,7 +2399,6 @@ impl ReasonAtom {
                 attempts: rm.attempts,
                 total_wait_ms: rm.total_retry_wait.as_millis() as u64,
             });
-        // Build LlmGenerationData with retry and compaction info
         let mut generation_data = LlmGenerationData::success_with_retry(
             messages_for_event.clone(),
             tools_summary,
@@ -2413,7 +2412,8 @@ impl ReasonAtom {
             finish_reasons,
             response_id.clone(),
             retry_info,
-        );
+        )
+        .with_response_model(served_model);
 
         // Add compaction info if compaction was performed. Compaction is a
         // separate billable model call on the same turn. Preserve whether the
