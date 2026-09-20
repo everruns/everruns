@@ -63,14 +63,14 @@
   <!-- ═══════════════════════════════════════════════ -->
 
   <!-- Harness -->
-  <rect x="350" y="160" width="90" height="42" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="395" y="178" class="label" text-anchor="middle">Harness</text>
-  <text x="395" y="193" class="sublabel" text-anchor="middle">Environment</text>
+  <rect x="350" y="150" width="90" height="42" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="395" y="168" class="label" text-anchor="middle">Harness</text>
+  <text x="395" y="183" class="sublabel" text-anchor="middle">Environment</text>
 
   <!-- Agent -->
-  <rect x="350" y="215" width="90" height="42" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="395" y="233" class="label" text-anchor="middle">Agent</text>
-  <text x="395" y="248" class="sublabel" text-anchor="middle">Prompt + tools</text>
+  <rect x="350" y="230" width="90" height="42" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="395" y="248" class="label" text-anchor="middle">Agent</text>
+  <text x="395" y="263" class="sublabel" text-anchor="middle">Prompt + tools</text>
 
   <!-- ═══════════════════════════════════════════════ -->
   <!-- ANNOTATION BOX — Slack Config (below Webhook)   -->
@@ -138,18 +138,18 @@
   <text x="375" y="319" class="arrow-label">chat.postMessage</text>
 
   <!-- ═══════════════════════════════════════════════ -->
-  <!-- DASHED: Endpoint → Harness ("inherits")         -->
+  <!-- DASHED: Agent → Harness ("runs on")              -->
   <!-- ═══════════════════════════════════════════════ -->
-  <line x1="415" y1="110" x2="400" y2="152" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
-  <polygon points="395,150 400,160 405,150" fill="#A0A0A0"/>
-  <text x="420" y="140" class="arrow-label">inherits</text>
+  <line x1="370" y1="230" x2="370" y2="200" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <polygon points="365,202 370,192 375,202" fill="#A0A0A0"/>
+  <text x="400" y="215" class="arrow-label" text-anchor="middle">runs on</text>
 
   <!-- ═══════════════════════════════════════════════ -->
   <!-- DASHED: Endpoint → Agent ("belongs to")         -->
   <!-- ═══════════════════════════════════════════════ -->
-  <line x1="430" y1="110" x2="410" y2="207" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
-  <polygon points="405,205 410,215 415,205" fill="#A0A0A0"/>
-  <text x="435" y="175" class="arrow-label">belongs to</text>
+  <path d="M 450 110 L 460 110 L 460 251 L 448 251" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3" fill="none"/>
+  <polygon points="448,246 438,251 448,256" fill="#A0A0A0"/>
+  <text x="465" y="215" class="arrow-label">belongs to</text>
 
   <!-- ═══════════════════════════════════════════════ -->
   <!-- DASHED: Endpoint → Slack Config annotation      -->

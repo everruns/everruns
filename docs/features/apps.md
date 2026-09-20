@@ -32,12 +32,15 @@ New integrations use endpoint-scoped canonical paths:
 Each endpoint has its own lifecycle:
 
 ```text
-draft → live → draft
+Draft ⇄ Live
+Draft → Disabled
+Live → Disabled
+Disabled → Draft
 ```
 
 - **Draft**: Configured but does not accept ingress traffic.
 - **Live**: Published and able to accept traffic while its Agent is active and exposures are not suspended.
-- **Disabled**: Kept for configuration but does not invoke the Agent.
+- **Disabled**: Kept for configuration but rejects ingress traffic and does not invoke the Agent.
 
 Publishing or unpublishing one endpoint does not change another endpoint on the same Agent.
 
