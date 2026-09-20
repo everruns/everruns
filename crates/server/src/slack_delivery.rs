@@ -1062,13 +1062,12 @@ impl SlackDeliveryDispatcher {
             ctx.recipient_user_id.as_ref().and_then(|requester| {
                 build_approval_blocks(
                     &request,
-                    &ApprovalBinding {
-                        card_id: Uuid::now_v7().to_string(),
-                        session_id: SessionId::from_uuid(session_id).to_string(),
-                        requester: requester.clone(),
-                        turn_id: approval_turn_id(data),
-                        action: request.action.clone(),
-                    },
+                    &ApprovalBinding::for_new_card(
+                        session_id,
+                        requester,
+                        approval_turn_id(data),
+                        request.action.clone(),
+                    ),
                 )
             })
         } else {

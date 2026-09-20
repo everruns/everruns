@@ -40,8 +40,10 @@
 //! never surprising. [`ApprovalPolicy`] is where an allowlist or any-member
 //! setting attaches.
 
+use everruns_provider::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use uuid::Uuid;
 
 /// Tool whose completion raises a Slack approval card.
 pub(crate) const REQUEST_APPROVAL_TOOL: &str = "request_approval";
@@ -101,6 +103,30 @@ pub(crate) struct ApprovalBinding {
     /// session could answer a *different* pause than the one clicked.
     #[serde(rename = "a")]
     pub action: String,
+}
+
+impl ApprovalBinding {
+    /// Bind a freshly rendered card to its session, requester and turn.
+    ///
+    /// The card id is minted here rather than at the call site so that every
+    /// rendered card is unpredictable and single-use *by construction*. It is
+    /// the claim token `claim_slack_approval_card` consumes, so a second render
+    /// path that forgot to mint a fresh one would hand two cards the same
+    /// claim — which is the bug this whole binding exists to prevent.
+    pub fn for_new_card(
+        session_id: Uuid,
+        requester: &str,
+        turn_id: Option<String>,
+        action: String,
+    ) -> Self {
+        Self {
+            card_id: Uuid::now_v7().to_string(),
+            session_id: SessionId::from_uuid(session_id).to_string(),
+            requester: requester.to_string(),
+            turn_id,
+            action,
+        }
+    }
 }
 
 /// Who may answer an approval card.
