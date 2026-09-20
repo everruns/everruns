@@ -23,7 +23,7 @@ use everruns_core::{
 };
 use everruns_host::DirectEgressService;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tokio::sync::Mutex as AsyncMutex;
@@ -108,6 +108,16 @@ pub struct McpServerOAuthSettings {
     pub registration_endpoint: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes_supported: Vec<String>,
+    /// Exact scope value requested by this preset. Providers do not all use
+    /// the same delimiter, so this is not derived from `scopes_supported`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// RFC 8707 protected-resource identifier discovered for the MCP server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource: Option<String>,
+    /// Extra authorization parameters used only for service-owned grants.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub service_authorization_params: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

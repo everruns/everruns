@@ -11,8 +11,8 @@ use crate::org_init;
 use crate::storage::{
     EncryptionService, StorageBackend,
     models::{
-        CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreateProviderRow,
-        CreateUserRow, ModelRow, UpdateModel, UpdateProvider,
+        CreateModelRow, CreateOrganizationRow, CreateProviderRow, CreateUserRow, ModelRow,
+        UpdateModel, UpdateProvider,
     },
     password::hash_password,
 };
@@ -24,6 +24,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
+mod mcp_servers;
+use mcp_servers::seed_mcp_servers;
 
 /// Well-known UUIDs for seed data
 /// Format: 01933b5a-0000-7000-8000-0000000001xx
@@ -80,6 +82,7 @@ mod seed_ids {
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
+    pub const LINEAR_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000502);
 
     // Harnesses (0x600-0x6FF) — now managed by org_init module
 
@@ -2225,78 +2228,6 @@ async fn seed_models_with_host_composition(
 }
 
 // ============================================
-// MCP Server Seeder
-// ============================================
-
-/// Seed MCP server definition
-struct SeedMcpServer {
-    id: Uuid,
-    name: &'static str,
-    description: &'static str,
-    url: &'static str,
-}
-
-/// Built-in seed MCP servers
-const SEED_MCP_SERVERS: &[SeedMcpServer] = &[SeedMcpServer {
-    id: seed_ids::MS_LEARN_MCP,
-    name: "microsoft_learn",
-    description: "Microsoft Learn documentation MCP server - search and retrieve Microsoft documentation",
-    url: "https://learn.microsoft.com/api/mcp",
-}];
-
-/// Seed MCP servers into the database (upserts, only when changed)
-async fn seed_mcp_servers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
-    let mut result = SeedResult::default();
-
-    for seed in SEED_MCP_SERVERS {
-        let input = CreateMcpServerRow {
-            name: seed.name.to_string(),
-            description: Some(seed.description.to_string()),
-            url: seed.url.to_string(),
-            transport_type: "http".to_string(),
-            api_key_encrypted: None, // No API key needed for public endpoint
-            headers: None,
-            settings: None,
-        };
-
-        match db
-            .create_mcp_server_with_id(DEFAULT_ORG_ID, seed.id, input)
-            .await?
-        {
-            Some(row) => {
-                if row.created_at == row.updated_at {
-                    tracing::info!(
-                        name = seed.name,
-                        id = %seed.id,
-                        url = seed.url,
-                        "Created seed MCP server"
-                    );
-                    result.created += 1;
-                } else {
-                    tracing::info!(
-                        name = seed.name,
-                        id = %seed.id,
-                        url = seed.url,
-                        "Updated seed MCP server"
-                    );
-                    result.updated += 1;
-                }
-            }
-            None => {
-                tracing::debug!(
-                    name = seed.name,
-                    id = %seed.id,
-                    "MCP server up to date"
-                );
-                result.unchanged += 1;
-            }
-        }
-    }
-
-    Ok(result)
-}
-
-// ============================================
 // Seeding Orchestration
 // ============================================
 
@@ -3705,6 +3636,38 @@ mod tests {
     }
 
     // --- MCP Server upsert ---
+
+    #[tokio::test]
+    async fn linear_mcp_seed_uses_application_actor_oauth() {
+        let db = make_db();
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+
+        let row = db
+            .get_mcp_server(DEFAULT_ORG_ID, seed_ids::LINEAR_MCP)
+            .await
+            .unwrap()
+            .expect("Linear MCP preset should be seeded");
+        let settings = crate::domains::mcp_servers::McpServerService::settings_from_row(&row);
+        let oauth = settings
+            .oauth
+            .as_ref()
+            .expect("Linear MCP preset should use OAuth");
+
+        assert_eq!(row.name, "linear");
+        assert_eq!(row.url, "https://mcp.linear.app/mcp");
+        assert_eq!(settings.auth_mode, everruns_core::McpServerAuthMode::OAuth);
+        assert_eq!(settings.protocol_mode, everruns_core::McpProtocolMode::Auto);
+        assert_eq!(oauth.scope.as_deref(), Some("read,write"));
+        assert_eq!(
+            oauth
+                .service_authorization_params
+                .get("actor")
+                .map(String::as_str),
+            Some("app")
+        );
+    }
 
     #[tokio::test]
     async fn test_mcp_server_seed_detects_url_change() {

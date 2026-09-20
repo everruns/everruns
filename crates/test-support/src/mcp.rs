@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 const MCP_HOST: &str = "8.8.8.8";
+const OAUTH_HOST: &str = "8.8.4.4";
 
 /// MCP protocol era emulated by the resource server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,6 +126,7 @@ struct AuthorizationCode {
     challenge: String,
     actor: Option<String>,
     scope: Option<String>,
+    resource: Option<String>,
 }
 
 #[derive(Debug)]
@@ -137,7 +139,7 @@ struct State {
     mcp_requests: Vec<RecordedMcpRequest>,
     oauth_requests: Vec<RecordedOAuthRequest>,
     authorization_codes: HashMap<String, AuthorizationCode>,
-    active_refresh_tokens: HashSet<String>,
+    active_refresh_tokens: HashMap<String, Option<String>>,
     token_counter: u64,
     reject_actor: bool,
     rejected_scopes: HashSet<String>,
@@ -167,7 +169,7 @@ impl MockMcpOAuthServer {
         let id = uuid.simple().to_string();
         let port = 10_000 + (uuid.as_u128() % 50_000) as u16;
         Self {
-            oauth_origin: format!("http://127.0.0.1:{port}"),
+            oauth_origin: format!("https://{OAUTH_HOST}:{port}"),
             id,
             state: Arc::new(Mutex::new(State {
                 era,
@@ -182,7 +184,7 @@ impl MockMcpOAuthServer {
                 mcp_requests: Vec::new(),
                 oauth_requests: Vec::new(),
                 authorization_codes: HashMap::new(),
-                active_refresh_tokens: HashSet::new(),
+                active_refresh_tokens: HashMap::new(),
                 token_counter: 0,
                 reject_actor: false,
                 rejected_scopes: HashSet::new(),
@@ -246,6 +248,17 @@ impl MockMcpOAuthServer {
         actor: Option<&str>,
         scope: Option<&str>,
     ) -> Result<String, MockOAuthError> {
+        self.authorize_with_resource(code_challenge, actor, scope, None)
+    }
+
+    /// Mint a one-time code bound to PKCE and an RFC 8707 resource.
+    pub fn authorize_with_resource(
+        &self,
+        code_challenge: impl Into<String>,
+        actor: Option<&str>,
+        scope: Option<&str>,
+        resource: Option<&str>,
+    ) -> Result<String, MockOAuthError> {
         let mut state = self.lock();
         if state.reject_actor && actor.is_some() {
             return Err(MockOAuthError::ActorRejected);
@@ -262,6 +275,7 @@ impl MockMcpOAuthServer {
                 challenge: code_challenge.into(),
                 actor: actor.map(str::to_string),
                 scope: scope.map(str::to_string),
+                resource: resource.map(str::to_string),
             },
         );
         Ok(code)
@@ -510,6 +524,12 @@ impl MockMcpOAuthServer {
                         if pkce_challenge(verifier) != grant.challenge {
                             return Ok(Self::invalid_grant());
                         }
+                        if form.get("resource") != grant.resource.as_ref() {
+                            return Ok(Self::json_response(
+                                400,
+                                json!({"error": "invalid_target", "error_description": "resource mismatch"}),
+                            ));
+                        }
                         if state.reject_actor && grant.actor.is_some() {
                             return Ok(Self::json_response(
                                 400,
@@ -521,16 +541,23 @@ impl MockMcpOAuthServer {
                         }) {
                             return Ok(Self::json_response(400, json!({"error": "invalid_scope"})));
                         }
-                        Ok(issue_tokens(&mut state, grant.scope))
+                        Ok(issue_tokens(&mut state, grant.scope, grant.resource))
                     }
                     Some("refresh_token") => {
                         let Some(refresh_token) = form.get("refresh_token") else {
                             return Ok(Self::invalid_grant());
                         };
-                        if !state.active_refresh_tokens.remove(refresh_token) {
+                        let Some(resource) = state.active_refresh_tokens.remove(refresh_token)
+                        else {
                             return Ok(Self::invalid_grant());
+                        };
+                        if form.get("resource") != resource.as_ref() {
+                            return Ok(Self::json_response(
+                                400,
+                                json!({"error": "invalid_target", "error_description": "resource mismatch"}),
+                            ));
                         }
-                        Ok(issue_tokens(&mut state, None))
+                        Ok(issue_tokens(&mut state, None, resource))
                     }
                     _ => Ok(Self::json_response(
                         400,
@@ -581,7 +608,7 @@ impl EgressService for MockMcpOAuthServer {
         if request.url == self.mcp_url() {
             self.handle_mcp(request)
         } else if request.url.starts_with(&format!(
-            "https://{MCP_HOST}/.well-known/oauth-protected-resource/"
+            "https://{MCP_HOST}/.well-known/oauth-protected-resource"
         )) {
             let mut state = self.lock();
             state.oauth_requests.push(RecordedOAuthRequest {
@@ -637,7 +664,8 @@ fn request_matches_era(state: &State, headers: &BTreeMap<String, String>) -> boo
 
 fn rejected_scope<'a>(scope: &'a str, rejected_scopes: &HashSet<String>) -> Option<&'a str> {
     scope
-        .split_ascii_whitespace()
+        .split(|character: char| character == ',' || character.is_ascii_whitespace())
+        .filter(|candidate| !candidate.is_empty())
         .find(|candidate| rejected_scopes.contains(*candidate))
 }
 
@@ -648,11 +676,17 @@ fn pkce_challenge(verifier: &str) -> String {
         .encode(Sha256::digest(verifier.as_bytes()).as_slice())
 }
 
-fn issue_tokens(state: &mut State, scope: Option<String>) -> EgressResponse {
+fn issue_tokens(
+    state: &mut State,
+    scope: Option<String>,
+    resource: Option<String>,
+) -> EgressResponse {
     state.token_counter += 1;
     let access_token = format!("access-{}", state.token_counter);
     let refresh_token = format!("refresh-{}", state.token_counter);
-    state.active_refresh_tokens.insert(refresh_token.clone());
+    state
+        .active_refresh_tokens
+        .insert(refresh_token.clone(), resource);
     MockMcpOAuthServer::json_response(
         200,
         json!({

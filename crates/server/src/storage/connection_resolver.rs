@@ -66,6 +66,7 @@ struct OAuthClientConfig {
     token_endpoint: String,
     client_id: String,
     client_secret: Option<String>,
+    resource: Option<String>,
 }
 
 /// Handles GitHub App JWT signing and installation token minting.
@@ -218,6 +219,7 @@ impl DbConnectionResolver {
             token_endpoint,
             client_id,
             client_secret,
+            resource: oauth.resource.clone(),
         }))
     }
 
@@ -233,6 +235,7 @@ impl DbConnectionResolver {
                 client_id: config.client_id,
                 client_secret: config.client_secret,
                 refresh_token,
+                resource: config.resource,
             })
             .await
         {
