@@ -17,7 +17,7 @@
   <!-- ═══════════════════════════════════════════════ -->
   <text x="75" y="45" class="header-text" text-anchor="middle">SLACK</text>
   <text x="255" y="45" class="header-text" text-anchor="middle">INGESTION</text>
-  <text x="430" y="45" class="header-text" text-anchor="middle">APP</text>
+  <text x="430" y="45" class="header-text" text-anchor="middle">ENDPOINT</text>
   <text x="625" y="45" class="header-text" text-anchor="middle">RUNTIME</text>
 
   <!-- ═══════════════════════════════════════════════ -->
@@ -34,10 +34,10 @@
   <text x="255" y="78" class="label" text-anchor="middle">Webhook</text>
   <text x="255" y="96" class="sublabel" text-anchor="middle">Verify HMAC-SHA256</text>
 
-  <!-- App -->
+  <!-- Endpoint -->
   <rect x="380" y="55" width="100" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="430" y="78" class="label" text-anchor="middle">App</text>
-  <text x="430" y="96" class="sublabel" text-anchor="middle">Route + config</text>
+  <text x="430" y="78" class="label" text-anchor="middle">Endpoint</text>
+  <text x="430" y="96" class="sublabel" text-anchor="middle">Owns ingress</text>
 
   <!-- Session -->
   <rect x="560" y="55" width="130" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
@@ -59,7 +59,7 @@
   <text x="625" y="282" class="sublabel" text-anchor="middle">chat.postMessage</text>
 
   <!-- ═══════════════════════════════════════════════ -->
-  <!-- CONFIG — below App (x=350)                      -->
+  <!-- CONFIG — below Endpoint (x=350)                 -->
   <!-- ═══════════════════════════════════════════════ -->
 
   <!-- Harness -->
@@ -88,10 +88,10 @@
   <polygon points="182,77 192,82 182,87" fill="#0A1636"/>
   <rect x="147" y="62" width="18" height="18" fill="#0A1636"/>
   <text x="156" y="75" class="step-num" text-anchor="middle">1</text>
-  <text x="156" y="56" class="arrow-label" text-anchor="middle">POST /slack/events</text>
+  <text x="156" y="132" class="arrow-label" text-anchor="middle">POST /v1/e/{id}/slack/events</text>
 
   <!-- ═══════════════════════════════════════════════ -->
-  <!-- STEP 2: Webhook → App                           -->
+  <!-- STEP 2: Webhook → Endpoint                      -->
   <!-- ═══════════════════════════════════════════════ -->
   <line x1="320" y1="82" x2="372" y2="82" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="372,77 382,82 372,87" fill="#0A1636"/>
@@ -100,7 +100,7 @@
   <text x="346" y="56" class="arrow-label" text-anchor="middle">verified request</text>
 
   <!-- ═══════════════════════════════════════════════ -->
-  <!-- STEP 3: App → Session                           -->
+  <!-- STEP 3: Endpoint → Session                      -->
   <!-- ═══════════════════════════════════════════════ -->
   <line x1="480" y1="82" x2="552" y2="82" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="552,77 562,82 552,87" fill="#0A1636"/>
@@ -138,21 +138,21 @@
   <text x="375" y="319" class="arrow-label">chat.postMessage</text>
 
   <!-- ═══════════════════════════════════════════════ -->
-  <!-- DASHED: App → Harness ("references")            -->
+  <!-- DASHED: Endpoint → Harness ("inherits")         -->
   <!-- ═══════════════════════════════════════════════ -->
   <line x1="415" y1="110" x2="400" y2="152" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
   <polygon points="395,150 400,160 405,150" fill="#A0A0A0"/>
-  <text x="420" y="140" class="arrow-label">references</text>
+  <text x="420" y="140" class="arrow-label">inherits</text>
 
   <!-- ═══════════════════════════════════════════════ -->
-  <!-- DASHED: App → Agent ("references")              -->
+  <!-- DASHED: Endpoint → Agent ("belongs to")         -->
   <!-- ═══════════════════════════════════════════════ -->
   <line x1="430" y1="110" x2="410" y2="207" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
   <polygon points="405,205 410,215 415,205" fill="#A0A0A0"/>
-  <text x="435" y="175" class="arrow-label">references</text>
+  <text x="435" y="175" class="arrow-label">belongs to</text>
 
   <!-- ═══════════════════════════════════════════════ -->
-  <!-- DASHED: App → Slack Config annotation           -->
+  <!-- DASHED: Endpoint → Slack Config annotation      -->
   <!-- ═══════════════════════════════════════════════ -->
   <line x1="400" y1="110" x2="300" y2="165" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
 

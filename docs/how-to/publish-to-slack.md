@@ -1,34 +1,22 @@
 ---
-title: Publish an agent as a Slack app
-description: Bind an agent to a Slack workspace via the Apps system, configure session routing, and publish it so Slack messages reach your agent.
+title: Publish an Agent to Slack
+description: Add a Slack endpoint to an Agent, publish it, connect a Slack workspace, and verify the first message.
 ---
 
-An **App** binds a Harness + Agent pair to an external channel and exposes a publish/unpublish lifecycle. This guide deploys an agent as a Slack bot. For the full Slack integration setup (manifest, OAuth, signing secret), see [Slack Integration](/integrations/slack/).
+This guide deploys an Agent as a Slack bot through an Agent-owned endpoint. For Slack scopes, manual setup, and troubleshooting, see [Slack Integration](/integrations/slack/).
 
 ## Prerequisites
 
-- An agent ID (`agent_...`) and harness ID (`harness_...`).
-- A Slack app created in the Slack admin console with a signing secret and bot token. See [Slack Integration](/integrations/slack/) for the manifest and OAuth flow.
+- An active Agent.
+- A public HTTPS Everruns origin configured through `PUBLIC_APP_URL`.
+- Permission to install an app in a Slack workspace.
 
-## Create the app
+## Add the Endpoint
 
-```bash
-curl -X POST http://localhost:9300/api/v1/apps \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Support Bot",
-    "harness_id": "harness_...",
-    "agent_id": "agent_...",
-    "channel_type": "slack",
-    "channel_config": {
-      "signing_secret": "your-slack-signing-secret",
-      "bot_token": "xoxb-your-bot-token",
-      "session_strategy": "per_thread"
-    }
-  }'
-```
-
-The app starts in `draft` state. It does not accept incoming messages until you publish it.
+1. Open the Agent and select **Integrations**.
+2. Select **Add endpoint**, then select **Slack**.
+3. Choose a session strategy and reply mode.
+4. Leave the Slack credentials empty and select **Save endpoint**.
 
 ## Choose a session strategy
 
@@ -40,35 +28,25 @@ The app starts in `draft` state. It does not accept incoming messages until you 
 | `per_channel` | One session per channel | Persistent channel assistant, context shared across the channel |
 | `per_user` | One session per user | Personal assistant, each user has their own ongoing chat |
 
-## Publish
+## Publish and Connect
 
-```bash
-curl -X POST http://localhost:9300/api/v1/apps/$APP_ID/publish
-```
+1. Select **Publish** in the endpoint editor.
+2. Select **Connect to Slack**.
+3. Approve Slack's consent screen and choose a workspace.
+4. If one-click setup is unavailable, return to **Integrations**, expand the endpoint, and select **Create Slack app**. Copy the resulting signing secret and bot token back through **Configure**.
 
-After publishing, Slack webhooks are accepted at the app's endpoint. Configure your Slack app manifest with `https://your-host/api/v1/apps/{app_id}/slack/events` (verify the current path in the [API reference](/api/) under the Slack events endpoint before updating Slack, if the platform's URL shape changes, the API reference is authoritative).
+Publish first because Slack verifies the manifest's endpoint Request URL when it creates the Slack app. New installs use `/v1/e/{endpoint_id}/slack/events`.
 
-## Unpublish and rollback
+## Verify
 
-To stop accepting new messages without deleting the app:
+1. In Slack, enter `/invite @botname` in a channel.
+2. Mention the bot.
+3. Return to the Agent's **Integrations** tab and expand the Slack endpoint.
+4. Confirm that the checklist records the first message.
 
-```bash
-curl -X POST http://localhost:9300/api/v1/apps/$APP_ID/unpublish
-```
-
-Existing sessions remain accessible via the API. The app moves back to `draft` and you can edit it before republishing.
-
-## Pin an agent version
-
-If you've enabled [Agent Versions](/features/agent-versions/), pick which version the app uses:
-
-- `default`, follow the agent's default version.
-- `latest`, always use the newest saved version.
-- `pinned`, use a specific version until you change it.
-
-Set this on the app's `agent_version_mode` field.
+To stop new Slack messages without deleting the configuration, select **Unpublish** on this endpoint. Existing sessions remain available.
 
 ## See also
 
-- [Apps feature](/features/apps/)
-- [Slack Integration](/integrations/slack/), the prerequisite Slack-side configuration.
+- [Slack Integration](/integrations/slack/), including scopes, manual setup, and troubleshooting.
+- [Agent Versions](/features/agent-versions/), including endpoint version selection.
