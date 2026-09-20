@@ -427,6 +427,39 @@ export async function submitToolResults(
 }
 
 // ============================================
+// Ask User Answers
+// ============================================
+
+export interface SubmittedQuestionAnswer {
+  id: string;
+  selected: string[];
+  other_text: string | null;
+}
+
+export interface QuestionAnswersRequest {
+  tool_call_id: string;
+  status: "answered" | "declined";
+  answers: SubmittedQuestionAnswer[];
+}
+
+export interface QuestionAnswersResponse {
+  answered_by: string;
+  session_status: string;
+  status: string;
+}
+
+export async function submitQuestionAnswers(
+  sessionId: string,
+  request: QuestionAnswersRequest,
+): Promise<QuestionAnswersResponse> {
+  const response = await api.post<QuestionAnswersResponse>(
+    `/v1/sessions/${sessionId}/question-answers`,
+    request,
+  );
+  return response.data;
+}
+
+// ============================================
 // URL Mode Elicitation Consent
 // ============================================
 
