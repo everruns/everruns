@@ -128,6 +128,8 @@ use everruns_internal_protocol::proto::{
     HeartbeatDurableTaskResponse,
     HeartbeatDurableWorkerRequest,
     HeartbeatDurableWorkerResponse,
+    InvalidateMcpConnectionRequest,
+    InvalidateMcpConnectionResponse,
     InvokeAgentTriggerRequest,
     InvokeAgentTriggerResponse,
     InvokePlatformCommandSurfaceRequest,

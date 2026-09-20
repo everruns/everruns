@@ -63,6 +63,24 @@ impl UserConnectionResolver for GrpcAdapter {
         }
     }
 
+    async fn invalidate_mcp_connection(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        acts_as: everruns_core::McpServerActsAs,
+    ) -> Result<()> {
+        let mut client = self.client.inner.lock().await;
+        client
+            .invalidate_mcp_connection(proto::InvalidateMcpConnectionRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                provider: provider.to_string(),
+                acts_as: acts_as.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        Ok(())
+    }
+
     async fn get_connection_token_for_user(
         &self,
         user_id: Uuid,

@@ -683,6 +683,62 @@ impl UserConnectionResolver for DbConnectionResolver {
         }
     }
 
+    async fn invalidate_mcp_connection(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        acts_as: everruns_core::McpServerActsAs,
+    ) -> Result<()> {
+        if acts_as != everruns_core::McpServerActsAs::Service {
+            return Ok(());
+        }
+        let Some(server_id) = Self::parse_mcp_oauth_provider(provider) else {
+            return Ok(());
+        };
+        let session = self
+            .db
+            .get_session_unscoped(session_id)
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to resolve OAuth session: {e}")))?;
+        let Some(session) = session else {
+            return Ok(());
+        };
+        if self
+            .db
+            .get_mcp_server(session.org_id, server_id)
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to resolve OAuth server: {e}")))?
+            .is_none()
+        {
+            return Ok(());
+        }
+        let Some(agent_id) = session.agent_id else {
+            return Ok(());
+        };
+        let row = self
+            .db
+            .get_agent_identity_connection_row_for_session(session_id, provider)
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to resolve identity grant: {e}")))?;
+        let Some(row) = row else {
+            return Ok(());
+        };
+
+        self.db
+            .delete_agent_identity_connection(row.agent_identity_id, provider)
+            .await
+            .map_err(|e| {
+                AgentLoopError::store(format!("Failed to invalidate identity OAuth grant: {e}"))
+            })?;
+        self.db
+            .delete_mcp_service_tool_caches(session.org_id, server_id, agent_id.uuid())
+            .await
+            .map_err(|e| {
+                AgentLoopError::store(format!("Failed to invalidate MCP service tool cache: {e}"))
+            })?;
+        Ok(())
+    }
+
     async fn get_connection_user(
         &self,
         session_id: SessionId,

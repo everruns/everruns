@@ -173,6 +173,27 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             secret_bindings: info.secret_bindings,
         }))
     }
+
+    async fn invalidate(&self, server_prefix: &str) -> anyhow::Result<()> {
+        let info = self
+            .adapters
+            .get_mcp_server_by_prefix(self.org_id, Some(self.session_id), server_prefix)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        if info.auth_mode != everruns_core::McpServerAuthMode::OAuth
+            || info.acts_as == everruns_core::McpServerActsAs::None
+        {
+            return Ok(());
+        }
+        let Some(provider) = info.oauth_provider_id.as_deref() else {
+            return Ok(());
+        };
+        self.adapters
+            .connection_resolver()
+            .invalidate_mcp_connection(self.session_id.into(), provider, info.acts_as)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
+    }
 }
 
 /// First-party adapter from worker backends into `everruns-host` execution.

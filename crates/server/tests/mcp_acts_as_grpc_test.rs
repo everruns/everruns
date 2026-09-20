@@ -1,7 +1,9 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::sync::Arc;
+use std::time::Duration;
 
+use chrono::Utc;
 use everruns_core::{DEFAULT_ORG_ID, McpServerActsAs};
 use everruns_host::{HostComposition, RuntimeHostAdapter};
 use everruns_provider::{
@@ -13,7 +15,7 @@ use everruns_server::storage::models::{
     CreateAgentIdentityConnectionRow, CreateAgentIdentityRow, CreateAgentRow, CreateMcpServerRow,
     CreatePrincipalRow, CreateSessionRow, CreateUserConnectionRow, CreateUserRow,
 };
-use everruns_server::storage::{EncryptionService, StorageBackend};
+use everruns_server::storage::{EncryptionService, StorageBackend, UpsertMcpServiceToolCache};
 use everruns_server::{EventDelivery, seed};
 use everruns_test_support::{MockMcpOAuthServer, MockMcpProtocolEra};
 use everruns_worker::{GrpcWorkerAdapters, WorkerRuntimeHost};
@@ -27,6 +29,7 @@ struct ActsAsArrangement {
     db: Arc<StorageBackend>,
     encryption: Arc<EncryptionService>,
     mock: MockMcpOAuthServer,
+    server_id: Uuid,
     catalog_name: String,
     provider: String,
     harness_id: HarnessId,
@@ -54,7 +57,11 @@ impl ActsAsArrangement {
             json!({
                 "auth_mode": "oauth",
                 "protocol_mode": "2026-07-28",
-                "oauth": {}
+                "oauth": {
+                    "token_endpoint": mock.token_endpoint(),
+                    "client_id": "grpc-test-client",
+                    "resource": mock.mcp_url()
+                }
             })
         } else {
             json!({
@@ -172,6 +179,7 @@ impl ActsAsArrangement {
             db,
             encryption,
             mock,
+            server_id: server.id.uuid(),
             catalog_name,
             provider,
             harness_id,
@@ -223,6 +231,29 @@ impl ActsAsArrangement {
                 refresh_token_encrypted: None,
                 scopes: None,
                 expires_at: None,
+                installation_id: None,
+                provider_metadata: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    async fn expired_identity_grant(&self, access_token: &str, refresh_token: &str) {
+        self.mock
+            .seed_oauth_grant(access_token, refresh_token, Some(self.mock.mcp_url()));
+        self.db
+            .upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
+                agent_identity_id: self.identity_id,
+                provider: self.provider.clone(),
+                connection_type: "oauth".to_string(),
+                provider_user_id: None,
+                provider_username: Some("acts-as-identity".to_string()),
+                access_token_encrypted: Some(self.encryption.encrypt_string(access_token).unwrap()),
+                refresh_token_encrypted: Some(
+                    self.encryption.encrypt_string(refresh_token).unwrap(),
+                ),
+                scopes: Some("read,write".to_string()),
+                expires_at: Some(Utc::now() - chrono::Duration::minutes(5)),
                 installation_id: None,
                 provider_metadata: None,
             })
@@ -286,12 +317,15 @@ impl ActsAsArrangement {
             EventDelivery::in_memory(),
             vec![],
         );
+        let composition = HostComposition::builder()
+            .egress_service(Arc::new(self.mock.clone()))
+            .build();
         WorkerServiceImpl::new(
             event_service,
             self.db.clone(),
             Some(self.encryption.clone()),
             None,
-            everruns_server::oss_host_composition_for_grade(everruns_core::DeploymentGrade::Dev),
+            composition,
         )
     }
 }
@@ -341,28 +375,42 @@ async fn start_grpc_server(
 
 async fn invoke(fixture: &ActsAsArrangement, session_id: SessionId) -> ToolResult {
     let (addr, shutdown, server) = start_grpc_server(fixture.worker_service()).await;
+    let executor = connect_executor(fixture, &addr, session_id).await;
+    let result = invoke_executor(&executor, "call-1").await;
+    let _ = shutdown.send(());
+    server.await.unwrap();
+    result
+}
+
+async fn connect_executor(
+    fixture: &ActsAsArrangement,
+    addr: &str,
+    session_id: SessionId,
+) -> Arc<dyn everruns_core::McpToolInvoker> {
     let composition = HostComposition::builder()
         .egress_service(Arc::new(fixture.mock.clone()))
         .build();
-    let adapters = GrpcWorkerAdapters::connect_with_host_composition(&addr, composition)
+    let adapters = GrpcWorkerAdapters::connect_with_host_composition(addr, composition)
         .await
         .unwrap();
     let host = WorkerRuntimeHost::new(adapters);
-    let executor = host
-        .mcp_executor(DEFAULT_ORG_ID, session_id, Some(fixture.agent_id))
+    host.mcp_executor(DEFAULT_ORG_ID, session_id, Some(fixture.agent_id))
         .await
-        .expect("worker host must expose MCP execution");
-    let result = executor
+        .expect("worker host must expose MCP execution")
+}
+
+async fn invoke_executor(
+    executor: &Arc<dyn everruns_core::McpToolInvoker>,
+    call_id: &str,
+) -> ToolResult {
+    executor
         .invoke(&ToolCall {
-            id: "call-1".to_string(),
+            id: call_id.to_string(),
             name: everruns_core::mcp_tool_name("linear", "echo"),
             arguments: json!({"value": "hello"}),
         })
         .await
-        .unwrap();
-    let _ = shutdown.send(());
-    server.await.unwrap();
-    result
+        .unwrap()
 }
 
 #[tokio::test]
@@ -389,6 +437,103 @@ async fn service_attachment_reaches_mcp_with_the_identity_grant_over_grpc() {
 
     assert!(result.error.is_none());
     fixture.mock.assert_called_as_identity("identity-token");
+}
+
+#[tokio::test]
+async fn concurrent_service_calls_share_one_refresh_over_the_public_grpc_path() {
+    let fixture = ActsAsArrangement::new(true).await;
+    fixture.mock.require_valid_access_tokens();
+    fixture.mock.set_refresh_delay(Duration::from_millis(100));
+    fixture
+        .expired_identity_grant("expired-access", "seed-refresh")
+        .await;
+    let session_id = fixture.attended_session(McpServerActsAs::Service).await;
+    let (addr, shutdown, server) = start_grpc_server(fixture.worker_service()).await;
+    let first = connect_executor(&fixture, &addr, session_id).await;
+    let second = connect_executor(&fixture, &addr, session_id).await;
+
+    let (first_result, second_result) = tokio::join!(
+        invoke_executor(&first, "refresh-1"),
+        invoke_executor(&second, "refresh-2")
+    );
+
+    assert!(first_result.error.is_none());
+    assert!(second_result.error.is_none());
+    assert_eq!(fixture.mock.refresh_request_count(), 1);
+    let headers = fixture.mock.authorization_headers();
+    assert_eq!(headers.len(), 2);
+    assert!(
+        headers
+            .iter()
+            .all(|header| header.as_deref() == Some("Bearer access-1"))
+    );
+    let _ = shutdown.send(());
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn remote_service_revocation_evicts_the_grant_and_cache_before_the_next_call() {
+    let fixture = ActsAsArrangement::new(true).await;
+    fixture.mock.require_valid_access_tokens();
+    fixture.mock.seed_oauth_grant(
+        "revoked-access",
+        "unused-refresh",
+        Some(fixture.mock.mcp_url()),
+    );
+    fixture.identity_grant("revoked-access").await;
+    fixture
+        .db
+        .upsert_mcp_service_tool_cache(UpsertMcpServiceToolCache {
+            org_id: DEFAULT_ORG_ID,
+            mcp_server_id: fixture.server_id,
+            agent_id: fixture.agent_id.uuid(),
+            cache_scope: "private".to_string(),
+            credential_hash: "revoked-credential-hash".to_string(),
+            cached_tools: json!([{"name": "echo"}]),
+            ttl_ms: 60_000,
+        })
+        .await
+        .unwrap();
+    let session_id = fixture.attended_session(McpServerActsAs::Service).await;
+    let (addr, shutdown, server) = start_grpc_server(fixture.worker_service()).await;
+    let executor = connect_executor(&fixture, &addr, session_id).await;
+
+    let initial = invoke_executor(&executor, "before-revoke").await;
+    assert!(initial.error.is_none());
+    fixture.mock.revoke_access_token("revoked-access");
+
+    let rejected = invoke_executor(&executor, "revoked").await;
+    assert!(rejected.connection_required.is_some());
+    assert!(
+        fixture
+            .db
+            .get_agent_identity_connection(fixture.identity_id, &fixture.provider)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        fixture
+            .db
+            .get_mcp_service_tool_cache(
+                DEFAULT_ORG_ID,
+                fixture.server_id,
+                fixture.agent_id.uuid(),
+                "private",
+                "revoked-credential-hash",
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let requests_after_rejection = fixture.mock.mcp_requests().len();
+    let next = invoke_executor(&executor, "after-revoke").await;
+    assert!(next.connection_required.is_some());
+    assert_eq!(fixture.mock.mcp_requests().len(), requests_after_rejection);
+
+    let _ = shutdown.send(());
+    server.await.unwrap();
 }
 
 #[tokio::test]

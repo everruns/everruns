@@ -6,6 +6,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_core::{
@@ -139,7 +140,10 @@ struct State {
     mcp_requests: Vec<RecordedMcpRequest>,
     oauth_requests: Vec<RecordedOAuthRequest>,
     authorization_codes: HashMap<String, AuthorizationCode>,
+    active_access_tokens: HashSet<String>,
     active_refresh_tokens: HashMap<String, Option<String>>,
+    enforce_access_tokens: bool,
+    refresh_delay: Option<Duration>,
     token_counter: u64,
     reject_actor: bool,
     rejected_scopes: HashSet<String>,
@@ -184,7 +188,10 @@ impl MockMcpOAuthServer {
                 mcp_requests: Vec::new(),
                 oauth_requests: Vec::new(),
                 authorization_codes: HashMap::new(),
+                active_access_tokens: HashSet::new(),
                 active_refresh_tokens: HashMap::new(),
+                enforce_access_tokens: false,
+                refresh_delay: None,
                 token_counter: 0,
                 reject_actor: false,
                 rejected_scopes: HashSet::new(),
@@ -239,6 +246,51 @@ impl MockMcpOAuthServer {
     /// Reject one OAuth scope.
     pub fn reject_scope(&self, scope: impl Into<String>) {
         self.lock().rejected_scopes.insert(scope.into());
+    }
+
+    /// Require MCP requests to carry an access token issued or seeded here.
+    pub fn require_valid_access_tokens(&self) {
+        self.lock().enforce_access_tokens = true;
+    }
+
+    /// Seed an access/refresh pair that represents an existing OAuth grant.
+    pub fn seed_oauth_grant(
+        &self,
+        access_token: impl Into<String>,
+        refresh_token: impl Into<String>,
+        resource: Option<String>,
+    ) {
+        let mut state = self.lock();
+        state.active_access_tokens.insert(access_token.into());
+        state
+            .active_refresh_tokens
+            .insert(refresh_token.into(), resource);
+    }
+
+    /// Revoke an access token at the remote resource server.
+    pub fn revoke_access_token(&self, access_token: &str) {
+        self.lock().active_access_tokens.remove(access_token);
+    }
+
+    /// Delay refresh exchanges so concurrent callers overlap at the resolver.
+    pub fn set_refresh_delay(&self, delay: Duration) {
+        self.lock().refresh_delay = Some(delay);
+    }
+
+    /// Count refresh-token exchanges observed by the OAuth endpoint.
+    pub fn refresh_request_count(&self) -> usize {
+        self.lock()
+            .oauth_requests
+            .iter()
+            .filter(|request| {
+                request.url == self.token_endpoint()
+                    && serde_urlencoded::from_bytes::<BTreeMap<String, String>>(&request.body)
+                        .ok()
+                        .and_then(|form| form.get("grant_type").cloned())
+                        .as_deref()
+                        == Some("refresh_token")
+            })
+            .count()
     }
 
     /// Mint a one-time authorization code bound to a PKCE S256 challenge.
@@ -356,6 +408,18 @@ impl MockMcpOAuthServer {
             headers: request.headers.clone(),
             body: body.clone(),
         });
+        if state.enforce_access_tokens {
+            let token = header(&request.headers, "authorization")
+                .and_then(|value| value.strip_prefix("Bearer "));
+            if token.is_none_or(|token| !state.active_access_tokens.contains(token)) {
+                let mut response = Self::json_response(401, json!({"error": "invalid_token"}));
+                response.headers.insert(
+                    "WWW-Authenticate".to_string(),
+                    "Bearer error=\"invalid_token\"".to_string(),
+                );
+                return Ok(response);
+            }
+        }
 
         if method == "initialize" {
             let requested_version = body["params"]["protocolVersion"].as_str();
@@ -572,6 +636,7 @@ impl MockMcpOAuthServer {
                     })?;
                 if let Some(token) = form.get("token") {
                     state.active_refresh_tokens.remove(token);
+                    state.active_access_tokens.remove(token);
                 }
                 Ok(EgressResponse {
                     status: 200,
@@ -625,6 +690,16 @@ impl EgressService for MockMcpOAuthServer {
                 }),
             ))
         } else if request.url.starts_with(&self.oauth_origin) {
+            let refresh_delay = if request.url == self.token_endpoint()
+                && String::from_utf8_lossy(&request.body).contains("grant_type=refresh_token")
+            {
+                self.lock().refresh_delay
+            } else {
+                None
+            };
+            if let Some(delay) = refresh_delay {
+                tokio::time::sleep(delay).await;
+            }
             self.handle_oauth(request)
         } else {
             Err(EgressError::Transport(format!(
@@ -684,6 +759,7 @@ fn issue_tokens(
     state.token_counter += 1;
     let access_token = format!("access-{}", state.token_counter);
     let refresh_token = format!("refresh-{}", state.token_counter);
+    state.active_access_tokens.insert(access_token.clone());
     state
         .active_refresh_tokens
         .insert(refresh_token.clone(), resource);

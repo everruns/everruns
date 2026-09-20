@@ -450,6 +450,12 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetConnectionTokenResponse>, Status> {
         self.handle_get_mcp_connection_token(request).await
     }
+    async fn invalidate_mcp_connection(
+        &self,
+        request: Request<InvalidateMcpConnectionRequest>,
+    ) -> Result<Response<InvalidateMcpConnectionResponse>, Status> {
+        self.handle_invalidate_mcp_connection(request).await
+    }
 
     async fn get_connection_user(
         &self,
