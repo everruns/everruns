@@ -6,7 +6,11 @@ import { getEventData } from "@/lib/api/types";
  * They get their own inline card, so the generic activity timeline leaves them
  * alone rather than listing them as anonymous pending tool calls.
  */
-export const INTERACTIVE_TOOL_CALLS = new Set(["setup_connection", "confirm_url_elicitation"]);
+export const INTERACTIVE_TOOL_CALLS = new Set([
+  "setup_connection",
+  "confirm_url_elicitation",
+  "ask_user",
+]);
 
 export interface TimelineToolRow {
   id: string;
