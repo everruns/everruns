@@ -396,7 +396,7 @@ mod tests {
 
     #[test]
     fn definition_is_an_undeferrable_read_only_client_tool() {
-        let capability = AskUserCapability;
+        let capability = AskUserCapability::client_side();
         assert_eq!(capability.category(), Some("Core"));
         assert!(capability.tools().is_empty());
         let definitions = capability.tool_definitions();
@@ -413,7 +413,9 @@ mod tests {
 
     #[test]
     fn definition_schema_carries_the_contract_limits() {
-        let definition = AskUserCapability.tool_definitions().remove(0);
+        let definition = AskUserCapability::client_side()
+            .tool_definitions()
+            .remove(0);
         let schema = definition.parameters();
         let questions = &schema["properties"]["questions"];
         assert_eq!(questions["minItems"], 1);
@@ -530,7 +532,7 @@ mod tests {
 
     #[test]
     fn prompt_and_localization_preserve_the_safety_boundary() {
-        let capability = AskUserCapability;
+        let capability = AskUserCapability::client_side();
         let prompt = capability.system_prompt_addition().unwrap();
         assert!(prompt.contains("request_approval"));
         assert!(prompt.contains("Never use `ask_user` as a consent gate"));
@@ -538,6 +540,54 @@ mod tests {
         assert_eq!(
             capability.localized_name(Some("uk-UA")),
             "Запитати користувача"
+        );
+    }
+
+    #[tokio::test]
+    async fn defaults_responder_returns_declared_defaults_without_waiting() {
+        let capability = AskUserCapability::default();
+        let [tool] = capability.tools().as_slice() else {
+            panic!("default ask_user strategy must contribute one tool");
+        };
+
+        let ToolExecutionResult::Success(result) = tool
+            .execute(json!({
+                "questions": [
+                    {
+                        "header": "Target",
+                        "question": "Where should I deploy?",
+                        "options": [option("Staging", true), option("Production", false)]
+                    },
+                    {
+                        "header": "Regions",
+                        "question": "Which regions?",
+                        "multi_select": true,
+                        "options": [option("US", true), option("EU", true)]
+                    }
+                ]
+            }))
+            .await
+        else {
+            panic!("default responder must return a successful tool result");
+        };
+        let outcome: AskUserResult = serde_json::from_value(result).unwrap();
+
+        assert_eq!(outcome.status, AskUserStatus::Answered);
+        assert_eq!(outcome.answered_by, AskUserAnsweredBy::Unattended);
+        assert_eq!(
+            outcome.answers,
+            vec![
+                AskUserAnswer {
+                    id: "question_1".to_string(),
+                    selected: vec!["Staging".to_string()],
+                    other_text: None,
+                },
+                AskUserAnswer {
+                    id: "question_2".to_string(),
+                    selected: vec!["US".to_string(), "EU".to_string()],
+                    other_text: None,
+                },
+            ]
         );
     }
 }
