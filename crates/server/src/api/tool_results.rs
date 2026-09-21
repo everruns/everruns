@@ -24,7 +24,8 @@ use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use everruns_worker::AgentRunner;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
-use crate::storage::models::ClaimWaitingTurnResult;
+use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use everruns_core::Caller;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -152,34 +153,14 @@ pub async fn submit_tool_results(
         .await
         .log_internal_error_json("get session")?
         .ok_or_not_found_json("Session")?;
-    match state
-        .db
-        .claim_waiting_turn(org.org_id, session_id)
-        .await
-        .log_internal_error_json("claim waiting turn")?
-    {
-        ClaimWaitingTurnResult::Claimed => {}
-        ClaimWaitingTurnResult::Conflict { current_status } => {
-            return Err(ErrorResponse::new(format!(
-                "Session is not waiting for tool results (current status: {current_status})"
-            ))
-            .into_response(StatusCode::CONFLICT));
-        }
-        ClaimWaitingTurnResult::SessionNotFound => {
-            return Err(ErrorResponse::not_found("Session"));
-        }
-    }
-
-    // Use session_id as turn_id (matches how DurableRunner uses workflow_id = session_id)
     let turn_id = TurnId::from_uuid(session_id.uuid());
-    // Use a deterministic MessageId for event context only (not passed to InputAtom).
     let event_message_id = MessageId::from_uuid(session_id.uuid());
 
     let accepted = req.tool_results.len();
-
-    let mut durable_resume_enqueued = false;
-    let result: anyhow::Result<SubmitToolResultsResponse> = async {
-        for client_result in &req.tool_results {
+    let events = req
+        .tool_results
+        .iter()
+        .map(|client_result| {
             let tool_result = if let Some(ref error) = client_result.error {
                 ToolCompletedData::failure(
                     client_result.tool_call_id.clone(),
@@ -192,7 +173,7 @@ pub async fn submit_tool_results(
                 let result_content = client_result
                     .result
                     .as_ref()
-                    .map(|r| vec![ContentPart::tool_result_text(r)])
+                    .map(|result| vec![ContentPart::tool_result_text(result)])
                     .unwrap_or_default();
                 ToolCompletedData::success(
                     client_result.tool_call_id.clone(),
@@ -201,40 +182,52 @@ pub async fn submit_tool_results(
                     None,
                 )
             };
-            state
-                .event_service
-                .emit(EventRequest::new(
-                    session_id,
-                    EventContext::turn(turn_id, event_message_id),
-                    tool_result,
-                ))
-                .await?;
-        }
-        state.runner.resume_after_tool_results(session_id).await?;
-        durable_resume_enqueued = true;
-        anyhow::ensure!(
-            state
-                .db
-                .complete_waiting_turn_claim(org.org_id, session_id)
-                .await?,
-            "waiting-turn claim was lost before activation"
-        );
-        Ok(SubmitToolResultsResponse {
-            accepted,
-            status: "active".to_string(),
+            EventRequest::new(
+                session_id,
+                EventContext::turn(turn_id, event_message_id),
+                tool_result,
+            )
         })
-    }
-    .await;
-
-    if result.is_err()
-        && !durable_resume_enqueued
-        && let Err(error) = state
-            .db
-            .release_waiting_turn_claim(org.org_id, session_id)
-            .await
+        .collect();
+    let plan = WaitingTurnResolutionPlan {
+        kind: "tool_results".to_string(),
+        events,
+        session_values: Vec::new(),
+        response: serde_json::json!({ "accepted": accepted }),
+    };
+    let claim = match state
+        .db
+        .claim_waiting_turn(org.org_id, session_id, plan)
+        .await
+        .log_internal_error_json("claim waiting turn")?
     {
-        tracing::warn!(session_id = %session_id, error = %error, "Failed to release waiting-turn claim");
-    }
+        ClaimWaitingTurnResult::Claimed(claim) => claim,
+        ClaimWaitingTurnResult::Conflict { current_status } => {
+            return Err(ErrorResponse::new(format!(
+                "Session is not waiting for tool results (current status: {current_status})"
+            ))
+            .into_response(StatusCode::CONFLICT));
+        }
+        ClaimWaitingTurnResult::SessionNotFound => {
+            return Err(ErrorResponse::not_found("Session"));
+        }
+    };
+    let accepted = claim.plan.response["accepted"]
+        .as_u64()
+        .unwrap_or(accepted as u64) as usize;
+    let result = execute_waiting_turn_resolution(
+        &state.db,
+        &state.event_service,
+        &state.runner,
+        org.org_id,
+        session_id,
+        &claim,
+    )
+    .await
+    .map(|_| SubmitToolResultsResponse {
+        accepted,
+        status: "active".to_string(),
+    });
     Ok(Json(
         result.log_internal_error_json("resolve client tool results")?,
     ))
@@ -243,8 +236,6 @@ pub async fn submit_tool_results(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_submit_tool_results_request_with_error() {

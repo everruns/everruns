@@ -95,10 +95,10 @@ impl everruns_worker::AgentRunner for CompletingTestRunner {
     async fn resume_after_tool_results(
         &self,
         _session_id: everruns_provider::typed_id::SessionId,
+        _resolution_id: uuid::Uuid,
     ) -> anyhow::Result<()> {
         Ok(())
     }
-
     async fn cancel_run(
         &self,
         _run_id: everruns_provider::typed_id::SessionId,

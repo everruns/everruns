@@ -1,7 +1,8 @@
 use super::queries as q;
 use super::types::{ClientToolResult, SubmitToolResultsResponse};
 use crate::domains::common::*;
-use crate::storage::models::ClaimWaitingTurnResult;
+use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_core::message::ContentPart;
 use everruns_provider::typed_id::{MessageId, TurnId};
@@ -47,30 +48,14 @@ impl Command for SubmitToolResults {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
-        match ctx
-            .db
-            .claim_waiting_turn(ctx.org_id(), session_id)
-            .await
-            .map_err(classify_anyhow)?
-        {
-            ClaimWaitingTurnResult::Claimed => {}
-            ClaimWaitingTurnResult::Conflict { current_status } => {
-                return Err(CommandError::conflict(format!(
-                    "Session is not waiting for tool results (current status: {current_status})"
-                )));
-            }
-            ClaimWaitingTurnResult::SessionNotFound => {
-                return Err(CommandError::not_found("Session"));
-            }
-        }
 
         let turn_id = TurnId::from_uuid(session_id.uuid());
         let event_message_id = MessageId::from_uuid(session_id.uuid());
         let accepted = self.tool_results.len();
-
-        let mut durable_resume_enqueued = false;
-        let result: Result<SubmitToolResultsResponse, CommandError> = async {
-            for client_result in &self.tool_results {
+        let events = self
+            .tool_results
+            .iter()
+            .map(|client_result| {
                 let tool_result = if let Some(error) = &client_result.error {
                     ToolCompletedData::failure(
                         client_result.tool_call_id.clone(),
@@ -92,47 +77,52 @@ impl Command for SubmitToolResults {
                         None,
                     )
                 };
-                q::event_service(ctx)?
-                    .emit(EventRequest::new(
-                        session_id,
-                        EventContext::turn(turn_id, event_message_id),
-                        tool_result,
-                    ))
-                    .await
-                    .map_err(classify_anyhow)?;
-            }
-            q::runner(ctx)?
-                .resume_after_tool_results(session_id)
-                .await
-                .map_err(classify_anyhow)?;
-            durable_resume_enqueued = true;
-            let completed = ctx
-                .db
-                .complete_waiting_turn_claim(ctx.org_id(), session_id)
-                .await
-                .map_err(classify_anyhow)?;
-            if !completed {
-                return Err(CommandError::internal(anyhow::anyhow!(
-                    "waiting-turn claim was lost before activation"
+                EventRequest::new(
+                    session_id,
+                    EventContext::turn(turn_id, event_message_id),
+                    tool_result,
+                )
+            })
+            .collect();
+        let plan = WaitingTurnResolutionPlan {
+            kind: "tool_results".to_string(),
+            events,
+            session_values: Vec::new(),
+            response: serde_json::json!({ "accepted": accepted }),
+        };
+        let claim = match ctx
+            .db
+            .claim_waiting_turn(ctx.org_id(), session_id, plan)
+            .await
+            .map_err(classify_anyhow)?
+        {
+            ClaimWaitingTurnResult::Claimed(claim) => claim,
+            ClaimWaitingTurnResult::Conflict { current_status } => {
+                return Err(CommandError::conflict(format!(
+                    "Session is not waiting for tool results (current status: {current_status})"
                 )));
             }
-            Ok(SubmitToolResultsResponse {
-                accepted,
-                status: "active".to_string(),
-            })
-        }
-        .await;
-
-        if result.is_err()
-            && !durable_resume_enqueued
-            && let Err(error) = ctx
-                .db
-                .release_waiting_turn_claim(ctx.org_id(), session_id)
-                .await
-        {
-            tracing::warn!(session_id = %session_id, error = %error, "Failed to release waiting-turn claim");
-        }
-        result
+            ClaimWaitingTurnResult::SessionNotFound => {
+                return Err(CommandError::not_found("Session"));
+            }
+        };
+        let accepted = claim.plan.response["accepted"]
+            .as_u64()
+            .unwrap_or(accepted as u64) as usize;
+        execute_waiting_turn_resolution(
+            &ctx.db,
+            q::event_service(ctx)?,
+            &q::runner(ctx)?,
+            ctx.org_id(),
+            session_id,
+            &claim,
+        )
+        .await
+        .map_err(classify_anyhow)?;
+        Ok(SubmitToolResultsResponse {
+            accepted,
+            status: "active".to_string(),
+        })
     }
 }
 

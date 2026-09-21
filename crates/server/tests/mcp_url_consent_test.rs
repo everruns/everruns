@@ -37,7 +37,11 @@ impl AgentRunner for ConsentRunner {
         Ok(())
     }
 
-    async fn resume_after_tool_results(&self, _session_id: SessionId) -> anyhow::Result<()> {
+    async fn resume_after_tool_results(
+        &self,
+        _session_id: SessionId,
+        _resolution_id: uuid::Uuid,
+    ) -> anyhow::Result<()> {
         Ok(())
     }
 

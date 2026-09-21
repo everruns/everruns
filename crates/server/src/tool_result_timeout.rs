@@ -3,8 +3,9 @@
 // Decision: timeout is 5 minutes per knowledge/execution/client-side-tools.md, configurable via env var.
 
 use crate::services::EventService;
+use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::StorageBackend;
-use crate::storage::models::ClaimWaitingTurnResult;
+use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use chrono::Utc;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, ToolCompletedData, deserialize_event_data,
@@ -94,61 +95,50 @@ async fn timeout_session(
     session_id: SessionId,
     org_id: i64,
 ) -> anyhow::Result<()> {
-    match db.claim_waiting_turn(org_id, session_id).await? {
-        ClaimWaitingTurnResult::Claimed => {}
+    let tool_call_ids = find_pending_tool_call_ids(db, session_id).await?;
+    if tool_call_ids.is_empty() {
+        tracing::warn!(
+            session_id = %session_id,
+            "No tool.call_requested event found for timed-out session"
+        );
+    }
+    let turn_id = TurnId::from_uuid(session_id.uuid());
+    let message_id = MessageId::from_uuid(session_id.uuid());
+    let events = tool_call_ids
+        .into_iter()
+        .map(|tool_call_id| {
+            EventRequest::new(
+                session_id,
+                EventContext::turn(turn_id, message_id),
+                ToolCompletedData::failure(
+                    tool_call_id,
+                    String::new(),
+                    "timeout".to_string(),
+                    "Timed out waiting for client tool results".to_string(),
+                    None,
+                ),
+            )
+        })
+        .collect();
+    let plan = WaitingTurnResolutionPlan {
+        kind: "timeout".to_string(),
+        events,
+        session_values: Vec::new(),
+        response: serde_json::Value::Null,
+    };
+    let claim = match db.claim_waiting_turn(org_id, session_id, plan).await? {
+        ClaimWaitingTurnResult::Claimed(claim) => claim,
         ClaimWaitingTurnResult::Conflict { .. } | ClaimWaitingTurnResult::SessionNotFound => {
             return Ok(());
         }
-    }
-    let mut durable_resume_enqueued = false;
-    let result: anyhow::Result<()> = async {
-        let tool_call_ids = find_pending_tool_call_ids(db, session_id).await?;
-        if tool_call_ids.is_empty() {
-            tracing::warn!(
-                session_id = %session_id,
-                "No tool.call_requested event found for timed-out session, resetting status"
-            );
-        }
-
-        let turn_id = TurnId::from_uuid(session_id.uuid());
-        let message_id = MessageId::from_uuid(session_id.uuid());
-        for tool_call_id in &tool_call_ids {
-            event_service
-                .emit(EventRequest::new(
-                    session_id,
-                    EventContext::turn(turn_id, message_id),
-                    ToolCompletedData::failure(
-                        tool_call_id.clone(),
-                        String::new(),
-                        "timeout".to_string(),
-                        "Timed out waiting for client tool results".to_string(),
-                        None,
-                    ),
-                ))
-                .await?;
-        }
-
-        runner.resume_after_tool_results(session_id).await?;
-        durable_resume_enqueued = true;
-        anyhow::ensure!(
-            db.complete_waiting_turn_claim(org_id, session_id).await?,
-            "waiting-turn claim was lost before activation"
-        );
-        tracing::info!(
-            session_id = %session_id,
-            "Workflow resumed after tool result timeout"
-        );
-        Ok(())
-    }
-    .await;
-
-    if result.is_err()
-        && !durable_resume_enqueued
-        && let Err(error) = db.release_waiting_turn_claim(org_id, session_id).await
-    {
-        tracing::warn!(session_id = %session_id, error = %error, "Failed to release waiting-turn claim");
-    }
-    result
+    };
+    execute_waiting_turn_resolution(db, event_service, runner, org_id, session_id, &claim).await?;
+    tracing::info!(
+        session_id = %session_id,
+        resolution_kind = %claim.plan.kind,
+        "Workflow resumed after parked-turn recovery"
+    );
+    Ok(())
 }
 
 /// Find pending tool call IDs from the most recent tool.call_requested event.

@@ -415,7 +415,11 @@ impl AgentRunner for BlockingRunner {
         Ok(())
     }
 
-    async fn resume_after_tool_results(&self, session_id: SessionId) -> anyhow::Result<()> {
+    async fn resume_after_tool_results(
+        &self,
+        session_id: SessionId,
+        _resolution_id: uuid::Uuid,
+    ) -> anyhow::Result<()> {
         self.entered
             .send(session_id)
             .map_err(|_| anyhow::anyhow!("resume observer dropped"))?;
@@ -589,7 +593,11 @@ impl AgentRunner for RecordingRunner {
         Ok(())
     }
 
-    async fn resume_after_tool_results(&self, session_id: SessionId) -> anyhow::Result<()> {
+    async fn resume_after_tool_results(
+        &self,
+        session_id: SessionId,
+        _resolution_id: uuid::Uuid,
+    ) -> anyhow::Result<()> {
         self.resumed_sessions
             .send(session_id)
             .map_err(|_| anyhow::anyhow!("resume observer dropped"))

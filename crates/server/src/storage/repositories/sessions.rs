@@ -49,6 +49,13 @@ struct SessionFilterSql {
     next_param_idx: usize,
 }
 
+type WaitingTurnResolutionRow = (
+    String,
+    Option<Uuid>,
+    Option<DateTime<Utc>>,
+    Option<serde_json::Value>,
+);
+
 /// Binds the filter values in the exact order `SessionFilterSql::build`
 /// assigned their positional parameters. `$1` (org_id) is bound by the caller.
 macro_rules! bind_session_filters {
@@ -758,6 +765,7 @@ impl Database {
         org_id: i64,
         session_id: SessionId,
         max_active_turns: i64,
+        resolution_plan: WaitingTurnResolutionPlan,
     ) -> Result<ReserveActiveTurnSlotResult> {
         let mut tx = self.pool.begin().await?;
 
@@ -768,44 +776,78 @@ impl Database {
             .execute(&mut *tx)
             .await?;
 
-        // Verify the session exists and belongs to the org before the capacity
-        // check. Parked turns resume without consuming new-turn capacity.
-        let existing: Option<(String,)> =
-            sqlx::query_as("SELECT status FROM sessions WHERE org_id = $1 AND id = $2")
-                .bind(org_id)
-                .bind(session_id)
-                .fetch_optional(&mut *tx)
-                .await?;
-        let Some((previous_status,)) = existing else {
+        let existing: Option<WaitingTurnResolutionRow> = sqlx::query_as(
+            "SELECT status, turn_resolution_id, turn_resolution_lease_expires_at, \
+             turn_resolution_plan FROM sessions WHERE org_id = $1 AND id = $2 FOR UPDATE",
+        )
+        .bind(org_id)
+        .bind(session_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((previous_status, existing_resolution_id, lease_expires_at, existing_plan)) =
+            existing
+        else {
             tx.commit().await?;
             return Ok(ReserveActiveTurnSlotResult::SessionNotFound);
         };
         if previous_status == "waiting_for_tool_results" {
-            let claimed = sqlx::query(
-                "UPDATE sessions SET status = $3, updated_at = NOW() \
-                 WHERE org_id = $1 AND id = $2 AND status = 'waiting_for_tool_results'",
+            let resolution_id = Uuid::now_v7();
+            let claim_token = Uuid::now_v7();
+            sqlx::query(
+                "UPDATE sessions SET status = $3, turn_resolution_id = $4, \
+                 turn_resolution_claim_token = $5, turn_resolution_lease_expires_at = $6, \
+                 turn_resolution_plan = $7, updated_at = NOW() \
+                 WHERE org_id = $1 AND id = $2",
             )
             .bind(org_id)
             .bind(session_id)
             .bind(RESOLVING_TOOL_RESULTS_STATUS)
+            .bind(resolution_id)
+            .bind(claim_token)
+            .bind(waiting_turn_claim_lease_expires_at())
+            .bind(serde_json::to_value(&resolution_plan)?)
             .execute(&mut *tx)
             .await?;
-            if claimed.rows_affected() == 0 {
-                let current_status: (String,) =
-                    sqlx::query_as("SELECT status FROM sessions WHERE org_id = $1 AND id = $2")
-                        .bind(org_id)
-                        .bind(session_id)
-                        .fetch_one(&mut *tx)
-                        .await?;
-                tx.commit().await?;
-                return Ok(ReserveActiveTurnSlotResult::Conflict {
-                    current_status: current_status.0,
-                });
-            }
             tx.commit().await?;
-            return Ok(ReserveActiveTurnSlotResult::Accepted { previous_status });
+            return Ok(ReserveActiveTurnSlotResult::Accepted {
+                previous_status,
+                resolution_claim: Some(WaitingTurnResolutionClaim {
+                    resolution_id,
+                    claim_token,
+                    plan: resolution_plan,
+                    recovered: false,
+                }),
+            });
         }
         if previous_status == RESOLVING_TOOL_RESULTS_STATUS {
+            if lease_expires_at.is_some_and(|expires_at| expires_at <= Utc::now())
+                && let (Some(resolution_id), Some(plan_json)) =
+                    (existing_resolution_id, existing_plan)
+            {
+                let claim_token = Uuid::now_v7();
+                let plan = serde_json::from_value(plan_json)?;
+                sqlx::query(
+                    "UPDATE sessions SET turn_resolution_claim_token = $3, \
+                     turn_resolution_lease_expires_at = $4, updated_at = NOW() \
+                     WHERE org_id = $1 AND id = $2",
+                )
+                .bind(org_id)
+                .bind(session_id)
+                .bind(claim_token)
+                .bind(waiting_turn_claim_lease_expires_at())
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                return Ok(ReserveActiveTurnSlotResult::Accepted {
+                    previous_status: "waiting_for_tool_results".to_string(),
+                    resolution_claim: Some(WaitingTurnResolutionClaim {
+                        resolution_id,
+                        claim_token,
+                        plan,
+                        recovered: true,
+                    }),
+                });
+            }
             tx.commit().await?;
             return Ok(ReserveActiveTurnSlotResult::Conflict {
                 current_status: previous_status,
@@ -834,36 +876,91 @@ impl Database {
 
         tx.commit().await?;
 
-        Ok(ReserveActiveTurnSlotResult::Accepted { previous_status })
+        Ok(ReserveActiveTurnSlotResult::Accepted {
+            previous_status,
+            resolution_claim: None,
+        })
     }
 
     pub async fn claim_waiting_turn(
         &self,
         org_id: i64,
         session_id: SessionId,
+        resolution_plan: WaitingTurnResolutionPlan,
     ) -> Result<ClaimWaitingTurnResult> {
-        let claimed = sqlx::query(
-            "UPDATE sessions SET status = $3, updated_at = NOW() \
-             WHERE org_id = $1 AND id = $2 AND status = 'waiting_for_tool_results'",
+        let mut tx = self.pool.begin().await?;
+        let row: Option<WaitingTurnResolutionRow> = sqlx::query_as(
+            "SELECT status, turn_resolution_id, turn_resolution_lease_expires_at, \
+             turn_resolution_plan FROM sessions WHERE org_id = $1 AND id = $2 FOR UPDATE",
         )
         .bind(org_id)
         .bind(session_id)
-        .bind(RESOLVING_TOOL_RESULTS_STATUS)
-        .execute(&self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
-        if claimed.rows_affected() == 1 {
-            return Ok(ClaimWaitingTurnResult::Claimed);
+        let Some((status, existing_resolution_id, lease_expires_at, existing_plan)) = row else {
+            tx.commit().await?;
+            return Ok(ClaimWaitingTurnResult::SessionNotFound);
+        };
+
+        if status == "waiting_for_tool_results" {
+            let resolution_id = Uuid::now_v7();
+            let claim_token = Uuid::now_v7();
+            sqlx::query(
+                "UPDATE sessions SET status = $3, turn_resolution_id = $4, \
+                 turn_resolution_claim_token = $5, turn_resolution_lease_expires_at = $6, \
+                 turn_resolution_plan = $7, updated_at = NOW() WHERE org_id = $1 AND id = $2",
+            )
+            .bind(org_id)
+            .bind(session_id)
+            .bind(RESOLVING_TOOL_RESULTS_STATUS)
+            .bind(resolution_id)
+            .bind(claim_token)
+            .bind(waiting_turn_claim_lease_expires_at())
+            .bind(serde_json::to_value(&resolution_plan)?)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Ok(ClaimWaitingTurnResult::Claimed(
+                WaitingTurnResolutionClaim {
+                    resolution_id,
+                    claim_token,
+                    plan: resolution_plan,
+                    recovered: false,
+                },
+            ));
         }
 
-        let current_status: Option<(String,)> =
-            sqlx::query_as("SELECT status FROM sessions WHERE org_id = $1 AND id = $2")
-                .bind(org_id)
-                .bind(session_id)
-                .fetch_optional(&self.pool)
-                .await?;
-        Ok(match current_status {
-            Some((current_status,)) => ClaimWaitingTurnResult::Conflict { current_status },
-            None => ClaimWaitingTurnResult::SessionNotFound,
+        if status == RESOLVING_TOOL_RESULTS_STATUS
+            && lease_expires_at.is_some_and(|expires_at| expires_at <= Utc::now())
+            && let (Some(resolution_id), Some(plan_json)) = (existing_resolution_id, existing_plan)
+        {
+            let claim_token = Uuid::now_v7();
+            let plan = serde_json::from_value(plan_json)?;
+            sqlx::query(
+                "UPDATE sessions SET turn_resolution_claim_token = $3, \
+                 turn_resolution_lease_expires_at = $4, updated_at = NOW() \
+                 WHERE org_id = $1 AND id = $2",
+            )
+            .bind(org_id)
+            .bind(session_id)
+            .bind(claim_token)
+            .bind(waiting_turn_claim_lease_expires_at())
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Ok(ClaimWaitingTurnResult::Claimed(
+                WaitingTurnResolutionClaim {
+                    resolution_id,
+                    claim_token,
+                    plan,
+                    recovered: true,
+                },
+            ));
+        }
+
+        tx.commit().await?;
+        Ok(ClaimWaitingTurnResult::Conflict {
+            current_status: status,
         })
     }
 
@@ -871,31 +968,44 @@ impl Database {
         &self,
         org_id: i64,
         session_id: SessionId,
+        resolution_id: Uuid,
+        claim_token: Uuid,
     ) -> Result<bool> {
         let completed = sqlx::query(
-            "UPDATE sessions SET status = 'active', updated_at = NOW() \
-             WHERE org_id = $1 AND id = $2 AND status = $3",
+            "UPDATE sessions SET status = 'active', turn_resolution_id = NULL, \
+             turn_resolution_claim_token = NULL, turn_resolution_lease_expires_at = NULL, \
+             turn_resolution_plan = NULL, updated_at = NOW() \
+             WHERE org_id = $1 AND id = $2 AND status = $3 \
+               AND turn_resolution_id = $4 AND turn_resolution_claim_token = $5 \
+               AND turn_resolution_lease_expires_at > NOW()",
         )
         .bind(org_id)
         .bind(session_id)
         .bind(RESOLVING_TOOL_RESULTS_STATUS)
+        .bind(resolution_id)
+        .bind(claim_token)
         .execute(&self.pool)
         .await?;
         Ok(completed.rows_affected() == 1)
     }
 
-    pub async fn release_waiting_turn_claim(
+    pub async fn abandon_waiting_turn_claim(
         &self,
         org_id: i64,
         session_id: SessionId,
+        resolution_id: Uuid,
+        claim_token: Uuid,
     ) -> Result<()> {
         sqlx::query(
-            "UPDATE sessions SET status = 'waiting_for_tool_results', updated_at = NOW() \
-             WHERE org_id = $1 AND id = $2 AND status = $3",
+            "UPDATE sessions SET turn_resolution_lease_expires_at = NOW(), updated_at = NOW() \
+             WHERE org_id = $1 AND id = $2 AND status = $3 \
+               AND turn_resolution_id = $4 AND turn_resolution_claim_token = $5",
         )
         .bind(org_id)
         .bind(session_id)
         .bind(RESOLVING_TOOL_RESULTS_STATUS)
+        .bind(resolution_id)
+        .bind(claim_token)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -1117,8 +1227,7 @@ impl Database {
         Ok(rows)
     }
 
-    /// Find sessions in `waiting_for_tool_results` with updated_at before the
-    /// given cutoff. Returns lightweight `(session_id, org_id)` pairs.
+    /// Find timed-out parked turns and expired in-progress resolution leases.
     pub async fn list_sessions_waiting_tool_results_before(
         &self,
         cutoff: DateTime<Utc>,
@@ -1127,8 +1236,11 @@ impl Database {
             r#"
             SELECT id, org_id
             FROM sessions
-            WHERE status = 'waiting_for_tool_results'
-              AND updated_at < $1
+            WHERE (status = 'waiting_for_tool_results' AND updated_at < $1)
+               OR (
+                    status = 'resolving_tool_results'
+                    AND turn_resolution_lease_expires_at <= NOW()
+               )
             "#,
         )
         .bind(cutoff)

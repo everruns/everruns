@@ -10,9 +10,12 @@ use crate::domains::notifications::NotificationService;
 use crate::domains::sessions::limits::OrgCaps;
 use crate::errors::{BadRequestError, ConflictError, ResourceNotFoundError};
 use crate::execution_metadata;
+use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::services::{EventService, PrincipalService};
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateSessionParticipantRow, ReserveActiveTurnSlotResult};
+use crate::storage::models::{
+    CreateSessionParticipantRow, ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan,
+};
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::Event;
@@ -123,19 +126,71 @@ impl MessageService {
             "Creating user message"
         );
 
-        let (previous_status, resumes_waiting_turn) = match self
+        let content: Vec<ContentPart> = req
+            .message
+            .content
+            .into_iter()
+            .map(ContentPart::from)
+            .collect();
+        let message_id = Uuid::now_v7();
+        let now = Utc::now();
+        let session_id = SessionId::from_uuid(ctx.session_id);
+        let message_id_typed = MessageId::from_uuid(message_id);
+        let core_message = everruns_core::RuntimeMessage {
+            id: message_id_typed,
+            role: everruns_core::RuntimeMessageRole::User,
+            content: content.clone(),
+            phase: None,
+            phase_source: None,
+            controls: req.controls.clone(),
+            metadata: req.metadata.clone(),
+            external_actor: req.external_actor.clone(),
+            created_at: now,
+        };
+        let event_metadata = if let Some(metadata) = ctx.event_metadata.clone() {
+            Some(metadata)
+        } else if let Some(user_id) = ctx.user_id {
+            let principal_id = self
+                .ensure_active_user_participant(ctx.org_id, session_id, user_id)
+                .await?;
+            execution_metadata::interactive_user_metadata(Some(user_id), Some(principal_id))
+        } else {
+            self.session_owner_message_metadata(ctx.org_id, session_id)
+                .await
+        };
+        let mut input_event = EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(core_message),
+        );
+        if let Some(metadata) = event_metadata {
+            input_event = input_event.with_metadata(metadata);
+        }
+        let mut resolution_events = self
+            .pending_client_tool_cancellation_events(session_id)
+            .await?;
+        resolution_events.push(input_event.clone());
+        let resolution_plan = WaitingTurnResolutionPlan {
+            kind: "user_message".to_string(),
+            events: resolution_events,
+            session_values: Vec::new(),
+            response: serde_json::json!({ "input_message_id": message_id }),
+        };
+
+        let (previous_status, resolution_claim) = match self
             .db
             .reserve_active_turn_slot_for_org(
                 ctx.org_id,
-                SessionId::from_uuid(ctx.session_id),
+                session_id,
                 self.caps.max_active_turns as i64,
+                resolution_plan,
             )
             .await?
         {
-            ReserveActiveTurnSlotResult::Accepted { previous_status } => {
-                let resumes_waiting_turn = previous_status == "waiting_for_tool_results";
-                (previous_status, resumes_waiting_turn)
-            }
+            ReserveActiveTurnSlotResult::Accepted {
+                previous_status,
+                resolution_claim,
+            } => (previous_status, resolution_claim),
             ReserveActiveTurnSlotResult::Conflict { current_status } => {
                 return Err(ConflictError::new(format!(
                     "Session already has a turn resolution in progress (current status: {current_status})"
@@ -154,165 +209,109 @@ impl MessageService {
             }
         };
 
-        // A new turn has reserved capacity; a parked turn has not. Release only
-        // the new-turn reservation if the remaining work fails.
-        let reservation_org_id = ctx.org_id;
-        let reservation_session_id = SessionId::from_uuid(ctx.session_id);
-        let mut durable_resume_enqueued = false;
+        let reserved_new_turn = resolution_claim.is_none();
         let result: Result<Message> = async {
-            // Convert InputContentPart array to ContentPart array
-            let content: Vec<ContentPart> = req
-                .message
-                .content
-                .into_iter()
-                .map(ContentPart::from)
-                .collect();
-
-            // Generate a new message ID
-            let message_id = Uuid::now_v7();
-            let now = Utc::now();
-
-            // Build the core message
-            let core_message = everruns_core::RuntimeMessage {
-                id: message_id.into(),
-                role: everruns_core::RuntimeMessageRole::User,
-                content: content.clone(),
-                phase: None,
-                phase_source: None,
-                controls: req.controls.clone(),
-                metadata: req.metadata.clone(),
-                external_actor: req.external_actor.clone(),
-                created_at: now,
-            };
-
-            // Convert to typed IDs for emit/runner
-            let session_id_typed = SessionId::from_uuid(ctx.session_id);
-            let harness_id_typed = HarnessId::from_uuid(ctx.harness_id);
-            let agent_id_typed = ctx.agent_id.map(AgentId::from_uuid);
-            let message_id_typed = MessageId::from_uuid(message_id);
-            if resumes_waiting_turn {
-                self.cancel_pending_client_tool_calls(session_id_typed)
-                    .await?;
-            }
-
-            // Emit as typed event using EventService
-            let event_metadata = if let Some(metadata) = ctx.event_metadata {
-                Some(metadata)
-            } else if let Some(user_id) = ctx.user_id {
-                let principal_id = self
-                    .ensure_active_user_participant(ctx.org_id, session_id_typed, user_id)
-                    .await?;
-                execution_metadata::interactive_user_metadata(Some(user_id), Some(principal_id))
-            } else {
-                self.session_owner_message_metadata(ctx.org_id, session_id_typed)
-                    .await
-            };
-            let mut event_request = EventRequest::new(
-                session_id_typed,
-                EventContext::empty(),
-                InputMessageData::new(core_message),
-            );
-            if let Some(metadata) = event_metadata {
-                event_request = event_request.with_metadata(metadata);
-            }
-            let stored_event = self.event_service.emit(event_request).await?;
-
-            // Construct API Message
-            let message = Message {
-                id: message_id_typed,
-                session_id: session_id_typed,
-                sequence: stored_event.sequence.unwrap_or(0),
-                role: MessageRole::User,
-                content,
-                // User messages are never phase-classified.
-                phase: None,
-                phase_source: None,
-                controls: req.controls,
-                metadata: req.metadata,
-                external_actor: req.external_actor,
-                created_at: now,
-            };
-
-            if self.notifications_enabled
-                && let Some(user_id) = ctx.user_id
-            {
-                self.notification_service
-                    .create_turn_request(ctx.org_id, user_id, session_id_typed, message_id_typed)
-                    .await?;
-            }
-
-            if resumes_waiting_turn {
-                self.runner
-                    .resume_after_tool_results(session_id_typed)
-                    .await?;
-                durable_resume_enqueued = true;
-                anyhow::ensure!(
-                    self.db
-                        .complete_waiting_turn_claim(ctx.org_id, session_id_typed)
-                        .await?,
-                    "parked-turn claim was lost before activation"
-                );
+            let (runtime_message, sequence) = if let Some(claim) = &resolution_claim {
+                let stored_events = execute_waiting_turn_resolution(
+                    &self.db,
+                    &self.event_service,
+                    &self.runner,
+                    ctx.org_id,
+                    session_id,
+                    claim,
+                )
+                .await?;
+                let runtime_message = claim
+                    .plan
+                    .events
+                    .iter()
+                    .find_map(|request| match &request.data {
+                        EventData::InputMessage(data) => Some(data.message.clone()),
+                        _ => None,
+                    })
+                    .ok_or_else(|| anyhow::anyhow!("resolution plan has no input message"))?;
+                let sequence = stored_events
+                    .iter()
+                    .find(|event| event.event_type == "input.message")
+                    .and_then(|event| event.sequence)
+                    .unwrap_or(0);
                 tracing::info!(
                     session_id = %ctx.session_id,
-                    input_message_id = %message_id,
+                    input_message_id = %runtime_message.id,
+                    recovered = claim.recovered,
                     "Parked turn resumed after user message"
                 );
+                (runtime_message, sequence)
             } else {
+                let stored_event = self.event_service.emit(input_event).await?;
                 let runner = self.runner.clone();
-                let session_id_str = ctx.session_id.to_string();
-                let message_id_str = message_id.to_string();
-                // Start workflow for user message in background (don't block the response)
-                // The message is already persisted, so we can return immediately
+                let org_id = ctx.org_id;
+                let harness_id = HarnessId::from_uuid(ctx.harness_id);
+                let agent_id = ctx.agent_id.map(AgentId::from_uuid);
                 let request_id = ctx.request_id.clone();
-                let request_id_str = request_id.as_deref().unwrap_or("").to_string();
+                let request_id_log = request_id.as_deref().unwrap_or("").to_string();
                 tokio::spawn(async move {
-                    if let Err(e) = runner
+                    if let Err(error) = runner
                         .start_run(
-                            ctx.org_id,
-                            session_id_typed,
-                            harness_id_typed,
-                            agent_id_typed,
+                            org_id,
+                            session_id,
+                            harness_id,
+                            agent_id,
                             message_id_typed,
                             request_id,
                         )
                         .await
                     {
                         tracing::error!(
-                            session_id = %session_id_str,
-                            input_message_id = %message_id_str,
-                            request_id = %request_id_str,
-                            error = %e,
+                            session_id = %session_id,
+                            input_message_id = %message_id_typed,
+                            request_id = %request_id_log,
+                            error = %error,
                             "Failed to start turn workflow"
-                        );
-                    } else {
-                        tracing::info!(
-                            session_id = %session_id_str,
-                            input_message_id = %message_id_str,
-                            request_id = %request_id_str,
-                            "Turn workflow started"
                         );
                     }
                 });
-            }
+                let runtime_message = match stored_event.data {
+                    EventData::InputMessage(data) => data.message,
+                    _ => return Err(anyhow::anyhow!("stored input event changed type")),
+                };
+                (runtime_message, stored_event.sequence.unwrap_or(0))
+            };
 
+            let message = Message {
+                id: runtime_message.id,
+                session_id,
+                sequence,
+                role: MessageRole::User,
+                content: runtime_message.content,
+                phase: None,
+                phase_source: None,
+                controls: runtime_message.controls,
+                metadata: runtime_message.metadata,
+                external_actor: runtime_message.external_actor,
+                created_at: runtime_message.created_at,
+            };
+            if self.notifications_enabled
+                && let Some(user_id) = ctx.user_id
+            {
+                self.notification_service
+                    .create_turn_request(ctx.org_id, user_id, session_id, message.id)
+                    .await?;
+            }
             Ok(message)
         }
         .await;
 
         if result.is_err()
-            && !durable_resume_enqueued
+            && reserved_new_turn
             && let Err(release_err) = self
                 .db
-                .release_active_turn_slot_for_org(
-                    reservation_org_id,
-                    reservation_session_id,
-                    &previous_status,
-                )
+                .release_active_turn_slot_for_org(ctx.org_id, session_id, &previous_status)
                 .await
         {
             tracing::warn!(
-                org_id = reservation_org_id,
-                session_id = %reservation_session_id,
+                org_id = ctx.org_id,
+                session_id = %session_id,
                 error = %release_err,
                 "Failed to release active-turn slot after message-create failure"
             );
@@ -320,7 +319,10 @@ impl MessageService {
         result
     }
 
-    async fn cancel_pending_client_tool_calls(&self, session_id: SessionId) -> Result<()> {
+    async fn pending_client_tool_cancellation_events(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Vec<EventRequest>> {
         let events = self
             .db
             .list_events(
@@ -334,19 +336,21 @@ impl MessageService {
             )
             .await?;
         let Some(event) = events.last() else {
-            return Ok(());
+            return Ok(Vec::new());
         };
         let EventData::ToolCallRequested(requested) =
             deserialize_event_data(&event.event_type, event.data.clone())
         else {
-            return Ok(());
+            return Ok(Vec::new());
         };
         let turn_id = everruns_provider::typed_id::TurnId::from_uuid(session_id.uuid());
         let event_message_id = MessageId::from_uuid(session_id.uuid());
 
-        for tool_call in requested.tool_calls {
-            self.event_service
-                .emit(EventRequest::new(
+        Ok(requested
+            .tool_calls
+            .into_iter()
+            .map(|tool_call| {
+                EventRequest::new(
                     session_id,
                     EventContext::turn(turn_id, event_message_id),
                     ToolCompletedData::failure(
@@ -356,11 +360,9 @@ impl MessageService {
                         "Cancelled because the user sent a message instead".to_string(),
                         None,
                     ),
-                ))
-                .await?;
-        }
-
-        Ok(())
+                )
+            })
+            .collect())
     }
 
     /// Access the registered durable runner. Used by sibling callers that
@@ -565,11 +567,12 @@ mod tests {
     use crate::domains::sessions::limits::OrgCaps;
     use crate::errors::BadRequestError;
     use crate::storage::{
-        StorageBackend,
+        RESOLVING_TOOL_RESULTS_STATUS, StorageBackend,
         models::{CreateUserRow, UpdateSession},
     };
     use async_trait::async_trait;
     use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct NoopRunner;
 
@@ -587,7 +590,11 @@ mod tests {
             Ok(())
         }
 
-        async fn resume_after_tool_results(&self, _session_id: SessionId) -> anyhow::Result<()> {
+        async fn resume_after_tool_results(
+            &self,
+            _session_id: SessionId,
+            _resolution_id: uuid::Uuid,
+        ) -> anyhow::Result<()> {
             Ok(())
         }
 
@@ -604,10 +611,12 @@ mod tests {
         }
     }
 
-    struct FailingResumeRunner;
+    struct FailOnceResumeRunner {
+        calls: AtomicUsize,
+    }
 
     #[async_trait]
-    impl AgentRunner for FailingResumeRunner {
+    impl AgentRunner for FailOnceResumeRunner {
         async fn start_run(
             &self,
             _org_id: i64,
@@ -620,8 +629,15 @@ mod tests {
             Ok(())
         }
 
-        async fn resume_after_tool_results(&self, _session_id: SessionId) -> anyhow::Result<()> {
-            anyhow::bail!("durable resume enqueue failed")
+        async fn resume_after_tool_results(
+            &self,
+            _session_id: SessionId,
+            _resolution_id: uuid::Uuid,
+        ) -> anyhow::Result<()> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                anyhow::bail!("durable resume enqueue failed");
+            }
+            Ok(())
         }
 
         async fn cancel_run(&self, _session_id: SessionId) -> anyhow::Result<()> {
@@ -704,6 +720,65 @@ mod tests {
         })
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn expired_waiting_turn_claim_recovers_persisted_plan_and_fences_old_owner() {
+        let db = StorageBackend::in_memory();
+        let session = create_test_session(&db, 1).await;
+        park_test_session(&db, &session).await;
+        let original_plan = WaitingTurnResolutionPlan {
+            kind: "original".to_string(),
+            events: Vec::new(),
+            session_values: Vec::new(),
+            response: serde_json::json!({ "winner": "original" }),
+        };
+        let first = match db
+            .claim_waiting_turn(1, session.id, original_plan.clone())
+            .await
+            .unwrap()
+        {
+            crate::storage::models::ClaimWaitingTurnResult::Claimed(claim) => claim,
+            other => panic!("expected initial claim, got {other:?}"),
+        };
+        db.abandon_waiting_turn_claim(1, session.id, first.resolution_id, first.claim_token)
+            .await
+            .unwrap();
+
+        let replacement_plan = WaitingTurnResolutionPlan {
+            kind: "replacement".to_string(),
+            events: Vec::new(),
+            session_values: Vec::new(),
+            response: serde_json::json!({ "winner": "replacement" }),
+        };
+        let recovered = match db
+            .claim_waiting_turn(1, session.id, replacement_plan)
+            .await
+            .unwrap()
+        {
+            crate::storage::models::ClaimWaitingTurnResult::Claimed(claim) => claim,
+            other => panic!("expected recovered claim, got {other:?}"),
+        };
+
+        assert!(recovered.recovered);
+        assert_eq!(recovered.resolution_id, first.resolution_id);
+        assert_ne!(recovered.claim_token, first.claim_token);
+        assert_eq!(recovered.plan, original_plan);
+        assert!(
+            !db.complete_waiting_turn_claim(1, session.id, first.resolution_id, first.claim_token,)
+                .await
+                .unwrap()
+        );
+        assert!(
+            db.complete_waiting_turn_claim(
+                1,
+                session.id,
+                recovered.resolution_id,
+                recovered.claim_token,
+            )
+            .await
+            .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -802,7 +877,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn parked_turn_event_write_failure_restores_waiting_status() {
+    async fn parked_turn_event_write_failure_preserves_plan_for_retry() {
         let db = Arc::new(StorageBackend::in_memory());
         let svc = MessageService::new(
             db.clone(),
@@ -833,16 +908,59 @@ mod tests {
         assert!(error.to_string().contains("relation"));
         assert_eq!(
             db.get_session(1, session.id).await.unwrap().unwrap().status,
-            "waiting_for_tool_results"
+            RESOLVING_TOOL_RESULTS_STATUS
+        );
+
+        let recovered = svc
+            .create(
+                CreateMessageContext {
+                    org_id: 1,
+                    user_id: None,
+                    harness_id: session.id.uuid(),
+                    agent_id: None,
+                    session_id: session.id.uuid(),
+                    event_metadata: None,
+                    request_id: None,
+                },
+                CreateMessageRequest::user("replacement must not win"),
+            )
+            .await
+            .expect("expired resolution claim should recover");
+        assert_eq!(
+            db.get_session(1, session.id).await.unwrap().unwrap().status,
+            "active"
+        );
+        let input_events = db
+            .list_events(
+                session.id,
+                None,
+                None,
+                &["input.message".to_string()],
+                &[],
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(input_events.len(), 1);
+        assert_eq!(
+            input_events[0].data["message"]["content"][0]["text"],
+            "typed answer"
+        );
+        assert_eq!(
+            recovered.id.to_string(),
+            input_events[0].data["message"]["id"]
         );
     }
 
     #[tokio::test]
-    async fn parked_turn_resume_failure_restores_waiting_status() {
+    async fn parked_turn_partial_commit_retry_is_idempotent() {
         let db = Arc::new(StorageBackend::in_memory());
         let svc = MessageService::new(
             db.clone(),
-            Arc::new(FailingResumeRunner),
+            Arc::new(FailOnceResumeRunner {
+                calls: AtomicUsize::new(0),
+            }),
             false,
             crate::event_delivery::EventDelivery::in_memory(),
         );
@@ -868,7 +986,49 @@ mod tests {
         assert_eq!(error.to_string(), "durable resume enqueue failed");
         assert_eq!(
             db.get_session(1, session.id).await.unwrap().unwrap().status,
-            "waiting_for_tool_results"
+            RESOLVING_TOOL_RESULTS_STATUS
+        );
+
+        svc.create(
+            CreateMessageContext {
+                org_id: 1,
+                user_id: None,
+                harness_id: session.id.uuid(),
+                agent_id: None,
+                session_id: session.id.uuid(),
+                event_metadata: None,
+                request_id: None,
+            },
+            CreateMessageRequest::user("replacement must not duplicate"),
+        )
+        .await
+        .expect("retry should finish the persisted plan");
+
+        let events = db
+            .list_events(session.id, None, None, &[], &[], None, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == "tool.completed")
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == "input.message")
+                .count(),
+            1
+        );
+        assert!(events.iter().any(|event| {
+            event.event_type == "input.message"
+                && event.data["message"]["content"][0]["text"] == "typed answer"
+        }));
+        assert_eq!(
+            db.get_session(1, session.id).await.unwrap().unwrap().status,
+            "active"
         );
     }
 

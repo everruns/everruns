@@ -371,13 +371,15 @@ impl StorageBackend {
         org_id: i64,
         session_id: SessionId,
         max_active_turns: i64,
+        resolution_plan: WaitingTurnResolutionPlan,
     ) -> Result<ReserveActiveTurnSlotResult> {
         dispatch!(
             self,
             reserve_active_turn_slot_for_org,
             org_id,
             session_id,
-            max_active_turns
+            max_active_turns,
+            resolution_plan
         )
     }
 
@@ -385,24 +387,49 @@ impl StorageBackend {
         &self,
         org_id: i64,
         session_id: SessionId,
+        resolution_plan: WaitingTurnResolutionPlan,
     ) -> Result<ClaimWaitingTurnResult> {
-        dispatch!(self, claim_waiting_turn, org_id, session_id)
+        dispatch!(
+            self,
+            claim_waiting_turn,
+            org_id,
+            session_id,
+            resolution_plan
+        )
     }
 
     pub async fn complete_waiting_turn_claim(
         &self,
         org_id: i64,
         session_id: SessionId,
+        resolution_id: Uuid,
+        claim_token: Uuid,
     ) -> Result<bool> {
-        dispatch!(self, complete_waiting_turn_claim, org_id, session_id)
+        dispatch!(
+            self,
+            complete_waiting_turn_claim,
+            org_id,
+            session_id,
+            resolution_id,
+            claim_token
+        )
     }
 
-    pub async fn release_waiting_turn_claim(
+    pub async fn abandon_waiting_turn_claim(
         &self,
         org_id: i64,
         session_id: SessionId,
+        resolution_id: Uuid,
+        claim_token: Uuid,
     ) -> Result<()> {
-        dispatch!(self, release_waiting_turn_claim, org_id, session_id)
+        dispatch!(
+            self,
+            abandon_waiting_turn_claim,
+            org_id,
+            session_id,
+            resolution_id,
+            claim_token
+        )
     }
 
     /// Release a turn reservation or parked-turn claim, restoring the status

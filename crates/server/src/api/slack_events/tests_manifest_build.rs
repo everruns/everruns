@@ -74,6 +74,7 @@ impl AgentRunner for NoopRunner {
     async fn resume_after_tool_results(
         &self,
         _session_id: everruns_provider::typed_id::SessionId,
+        _resolution_id: uuid::Uuid,
     ) -> anyhow::Result<()> {
         Ok(())
     }
