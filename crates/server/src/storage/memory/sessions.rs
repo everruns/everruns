@@ -516,8 +516,8 @@ impl InMemoryDatabase {
         Ok(count as i64)
     }
 
-    /// Atomically reserve active-turn capacity by marking the accepted
-    /// session active before the user message is persisted.
+    /// Atomically reserve active-turn capacity for a new turn, or identify a
+    /// parked turn that the caller must resume without a new reservation.
     pub async fn reserve_active_turn_slot_for_org(
         &self,
         org_id: i64,
@@ -526,13 +526,15 @@ impl InMemoryDatabase {
     ) -> Result<ReserveActiveTurnSlotResult> {
         let mut sessions = self.sessions.write();
 
-        // Existence/ownership before capacity (mirror Postgres): capture the
-        // prior status for release, and report a missing/foreign session as
-        // SessionNotFound rather than AtCapacity.
+        // Existence and ownership are checked before capacity, matching
+        // Postgres. Parked turns resume without consuming new-turn capacity.
         let previous_status = match sessions.get(&session_id) {
             Some(session) if session.org_id == org_id => session.status.clone(),
             _ => return Ok(ReserveActiveTurnSlotResult::SessionNotFound),
         };
+        if previous_status == "waiting_for_tool_results" {
+            return Ok(ReserveActiveTurnSlotResult::Accepted { previous_status });
+        }
 
         let active_turns = sessions
             .values()
@@ -548,7 +550,7 @@ impl InMemoryDatabase {
             .expect("session presence checked above");
         session.status = "active".to_string();
         session.updated_at = Self::now();
-        Ok(ReserveActiveTurnSlotResult::Reserved { previous_status })
+        Ok(ReserveActiveTurnSlotResult::Accepted { previous_status })
     }
 
     /// Release a previously reserved active-turn slot by restoring the prior

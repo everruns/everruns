@@ -746,8 +746,8 @@ impl Database {
         Ok(row.0)
     }
 
-    /// Atomically reserve active-turn capacity by marking the accepted
-    /// session active before the user message is persisted.
+    /// Atomically reserve active-turn capacity for a new turn, or identify a
+    /// parked turn that the caller must resume without a new reservation.
     pub async fn reserve_active_turn_slot_for_org(
         &self,
         org_id: i64,
@@ -763,10 +763,8 @@ impl Database {
             .execute(&mut *tx)
             .await?;
 
-        // Verify the session exists and belongs to the org *before* the capacity
-        // check, so a missing/foreign session returns SessionNotFound rather
-        // than a misleading AtCapacity, and capture its prior status so the
-        // reservation can be released on a later failure.
+        // Verify the session exists and belongs to the org before the capacity
+        // check. Parked turns resume without consuming new-turn capacity.
         let existing: Option<(String,)> =
             sqlx::query_as("SELECT status FROM sessions WHERE org_id = $1 AND id = $2")
                 .bind(org_id)
@@ -777,6 +775,10 @@ impl Database {
             tx.commit().await?;
             return Ok(ReserveActiveTurnSlotResult::SessionNotFound);
         };
+        if previous_status == "waiting_for_tool_results" {
+            tx.commit().await?;
+            return Ok(ReserveActiveTurnSlotResult::Accepted { previous_status });
+        }
 
         let active_turns: (i64,) = sqlx::query_as(
             "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status = 'active'",
@@ -800,7 +802,7 @@ impl Database {
 
         tx.commit().await?;
 
-        Ok(ReserveActiveTurnSlotResult::Reserved { previous_status })
+        Ok(ReserveActiveTurnSlotResult::Accepted { previous_status })
     }
 
     /// Release a previously reserved active-turn slot by restoring the session's

@@ -12,12 +12,15 @@ use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::execution_metadata;
 use crate::services::{EventService, PrincipalService};
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateSessionParticipantRow, ReserveActiveTurnSlotResult};
+use crate::storage::models::{
+    CreateSessionParticipantRow, ReserveActiveTurnSlotResult, UpdateSession,
+};
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::Event;
 use everruns_core::events::{
-    EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
+    EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
+    ToolCompletedData, deserialize_event_data,
 };
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, PrincipalId, SessionId};
@@ -122,7 +125,7 @@ impl MessageService {
             "Creating user message"
         );
 
-        let previous_status = match self
+        let (previous_status, resumes_waiting_turn) = match self
             .db
             .reserve_active_turn_slot_for_org(
                 ctx.org_id,
@@ -131,7 +134,13 @@ impl MessageService {
             )
             .await?
         {
-            ReserveActiveTurnSlotResult::Reserved { previous_status } => previous_status,
+            ReserveActiveTurnSlotResult::Accepted { previous_status } => {
+                let resumes_waiting_turn = previous_status == "waiting_for_tool_results";
+                (
+                    (!resumes_waiting_turn).then_some(previous_status),
+                    resumes_waiting_turn,
+                )
+            }
             ReserveActiveTurnSlotResult::AtCapacity { active_turns } => {
                 return Err(BadRequestError::new(format!(
                     "Too many active turns: org has {} turns executing (limit {}); retry later",
@@ -144,9 +153,8 @@ impl MessageService {
             }
         };
 
-        // The slot is now reserved (session marked `active`). Run the remaining
-        // work under a guard that releases the reservation if anything fails, so
-        // a rejected turn never leaks active-turn capacity.
+        // A new turn has reserved capacity; a parked turn has not. Release only
+        // the new-turn reservation if the remaining work fails.
         let reservation_org_id = ctx.org_id;
         let reservation_session_id = SessionId::from_uuid(ctx.session_id);
         let result: Result<Message> = async {
@@ -180,6 +188,10 @@ impl MessageService {
             let harness_id_typed = HarnessId::from_uuid(ctx.harness_id);
             let agent_id_typed = ctx.agent_id.map(AgentId::from_uuid);
             let message_id_typed = MessageId::from_uuid(message_id);
+            if resumes_waiting_turn {
+                self.cancel_pending_client_tool_calls(session_id_typed)
+                    .await?;
+            }
 
             // Emit as typed event using EventService
             let event_metadata = if let Some(metadata) = ctx.event_metadata {
@@ -227,47 +239,78 @@ impl MessageService {
                     .await?;
             }
 
-            // Start workflow for user message in background (don't block the response)
-            // The message is already persisted, so we can return immediately
             let runner = self.runner.clone();
-            let request_id = ctx.request_id.clone();
-            let request_id_str = request_id.as_deref().unwrap_or("").to_string();
             let session_id_str = ctx.session_id.to_string();
             let message_id_str = message_id.to_string();
-            tokio::spawn(async move {
-                if let Err(e) = runner
-                    .start_run(
+            if resumes_waiting_turn {
+                self.db
+                    .update_session(
                         ctx.org_id,
                         session_id_typed,
-                        harness_id_typed,
-                        agent_id_typed,
-                        message_id_typed,
-                        request_id,
+                        UpdateSession {
+                            status: Some("active".to_string()),
+                            ..Default::default()
+                        },
                     )
-                    .await
-                {
-                    tracing::error!(
-                        session_id = %session_id_str,
-                        input_message_id = %message_id_str,
-                        request_id = %request_id_str,
-                        error = %e,
-                        "Failed to start turn workflow"
-                    );
-                } else {
-                    tracing::info!(
-                        session_id = %session_id_str,
-                        input_message_id = %message_id_str,
-                        request_id = %request_id_str,
-                        "Turn workflow started"
-                    );
-                }
-            });
+                    .await?
+                    .ok_or_else(|| ResourceNotFoundError::new("Session"))?;
+                tokio::spawn(async move {
+                    if let Err(e) = runner.resume_after_tool_results(session_id_typed).await {
+                        tracing::error!(
+                            session_id = %session_id_str,
+                            input_message_id = %message_id_str,
+                            error = %e,
+                            "Failed to resume parked turn after user message"
+                        );
+                    } else {
+                        tracing::info!(
+                            session_id = %session_id_str,
+                            input_message_id = %message_id_str,
+                            "Parked turn resumed after user message"
+                        );
+                    }
+                });
+            } else {
+                // Start workflow for user message in background (don't block the response)
+                // The message is already persisted, so we can return immediately
+                let request_id = ctx.request_id.clone();
+                let request_id_str = request_id.as_deref().unwrap_or("").to_string();
+                tokio::spawn(async move {
+                    if let Err(e) = runner
+                        .start_run(
+                            ctx.org_id,
+                            session_id_typed,
+                            harness_id_typed,
+                            agent_id_typed,
+                            message_id_typed,
+                            request_id,
+                        )
+                        .await
+                    {
+                        tracing::error!(
+                            session_id = %session_id_str,
+                            input_message_id = %message_id_str,
+                            request_id = %request_id_str,
+                            error = %e,
+                            "Failed to start turn workflow"
+                        );
+                    } else {
+                        tracing::info!(
+                            session_id = %session_id_str,
+                            input_message_id = %message_id_str,
+                            request_id = %request_id_str,
+                            "Turn workflow started"
+                        );
+                    }
+                });
+            }
 
             Ok(message)
         }
         .await;
 
         if result.is_err()
+            && let Some(previous_status) = previous_status
             && let Err(release_err) = self
                 .db
                 .release_active_turn_slot_for_org(
@@ -285,6 +328,49 @@ impl MessageService {
             );
         }
         result
+    }
+
+    async fn cancel_pending_client_tool_calls(&self, session_id: SessionId) -> Result<()> {
+        let events = self
+            .db
+            .list_events(
+                session_id,
+                None,
+                None,
+                &["tool.call_requested".to_string()],
+                &[],
+                None,
+                Some(1),
+            )
+            .await?;
+        let Some(event) = events.last() else {
+            return Ok(());
+        };
+        let EventData::ToolCallRequested(requested) =
+            deserialize_event_data(&event.event_type, event.data.clone())
+        else {
+            return Ok(());
+        };
+        let turn_id = everruns_provider::typed_id::TurnId::from_uuid(session_id.uuid());
+        let event_message_id = MessageId::from_uuid(session_id.uuid());
+
+        for tool_call in requested.tool_calls {
+            self.event_service
+                .emit(EventRequest::new(
+                    session_id,
+                    EventContext::turn(turn_id, event_message_id),
+                    ToolCompletedData::failure(
+                        tool_call.id,
+                        tool_call.name,
+                        "cancelled".to_string(),
+                        "Cancelled because the user sent a message instead".to_string(),
+                        None,
+                    ),
+                ))
+                .await?;
+        }
+
+        Ok(())
     }
 
     /// Access the registered durable runner. Used by sibling callers that
@@ -613,6 +699,78 @@ mod tests {
         assert!(
             err.to_string().contains("Too many active turns"),
             "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn parked_turn_resumes_at_new_turn_capacity() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let delivery = crate::event_delivery::EventDelivery::in_memory();
+        let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+            max_concurrent_sessions: 10_000,
+            max_active_turns: 1,
+        });
+        let active = create_test_session(&db, 1).await;
+        db.update_session(
+            1,
+            active.id,
+            UpdateSession {
+                status: Some("active".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let parked = create_test_session(&db, 1).await;
+        db.update_session(
+            1,
+            parked.id,
+            UpdateSession {
+                status: Some("waiting_for_tool_results".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        db.create_event(crate::storage::models::CreateEventRow {
+            session_id: parked.id,
+            event_type: "tool.call_requested".to_string(),
+            ts: Utc::now(),
+            context: serde_json::json!({}),
+            data: serde_json::json!({
+                "tool_calls": [{
+                    "id": "call_parked",
+                    "name": "ask_user",
+                    "arguments": {}
+                }]
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+
+        let message = svc
+            .create(
+                CreateMessageContext {
+                    org_id: 1,
+                    user_id: None,
+                    harness_id: parked.id.uuid(),
+                    agent_id: None,
+                    session_id: parked.id.uuid(),
+                    event_metadata: None,
+                    request_id: None,
+                },
+                CreateMessageRequest::user("typed answer"),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(message.session_id, parked.id);
+        assert_eq!(
+            db.get_session(1, parked.id).await.unwrap().unwrap().status,
+            "active"
         );
     }
 

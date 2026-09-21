@@ -543,3 +543,120 @@ async fn omitted_ask_user_question_ids_resume_through_tool_results() {
         .expect("resume signal");
     assert_eq!(resumed_session, session.id);
 }
+
+#[tokio::test]
+async fn user_message_cancels_pending_client_tool_and_resumes_existing_turn() {
+    let (resume_tx, mut resume_rx) = tokio::sync::mpsc::unbounded_channel();
+    let server = TestServer::in_memory_with_runner(Arc::new(RecordingRunner {
+        resumed_sessions: resume_tx,
+    }))
+    .await;
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "parked-turn-message-agent",
+                "display_name": "Parked Turn Message",
+                "description": "Agent for parked client-side tool coverage",
+                "system_prompt": "Use client-side tools."
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    for tool_name in ["ask_user", "confirm_url_elicitation", "setup_connection"] {
+        let session: Session = server
+            .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+            .await
+            .assert_status(StatusCode::CREATED)
+            .json();
+        server
+            .db
+            .update_session(
+                1,
+                session.id,
+                everruns_server::storage::models::UpdateSession {
+                    status: Some("waiting_for_tool_results".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("update session status")
+            .expect("session exists");
+        let tool_call_id = format!("call_{tool_name}");
+        server
+            .db
+            .create_event(everruns_server::storage::models::CreateEventRow {
+                session_id: session.id,
+                event_type: "tool.call_requested".to_string(),
+                ts: chrono::Utc::now(),
+                context: json!({}),
+                data: json!({
+                    "tool_calls": [{
+                        "id": tool_call_id,
+                        "name": tool_name,
+                        "arguments": {}
+                    }]
+                }),
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .expect("emit pending client tool call");
+
+        server
+            .post(
+                &format!("/v1/sessions/{}/messages", session.id),
+                json!({
+                    "message": {
+                        "role": "user",
+                        "content": [{
+                            "type": "text",
+                            "text": format!("typed answer for {tool_name}")
+                        }]
+                    }
+                }),
+            )
+            .await
+            .assert_status(StatusCode::CREATED);
+
+        let events = server
+            .db
+            .list_events(session.id, None, None, &[], &[], None, Some(20))
+            .await
+            .expect("list session events");
+        let cancellation = events
+            .iter()
+            .find(|event| {
+                event.event_type == "tool.completed" && event.data["tool_call_id"] == tool_call_id
+            })
+            .expect("pending client tool call is cancelled");
+        assert_eq!(cancellation.data["status"], "cancelled");
+        assert_eq!(cancellation.data["tool_name"], tool_name);
+        assert!(events.iter().any(|event| {
+            event.event_type == "input.message"
+                && event.data["message"]["content"][0]["text"]
+                    == format!("typed answer for {tool_name}")
+        }));
+
+        let resumed_session = tokio::time::timeout(Duration::from_secs(1), resume_rx.recv())
+            .await
+            .expect("resume signal timeout")
+            .expect("resume signal");
+        assert_eq!(resumed_session, session.id);
+
+        server
+            .post(
+                &format!("/v1/sessions/{}/tool-results", session.id),
+                json!({
+                    "tool_results": [{
+                        "tool_call_id": tool_call_id,
+                        "result": {"status": "answered"}
+                    }]
+                }),
+            )
+            .await
+            .assert_status(StatusCode::CONFLICT);
+    }
+}

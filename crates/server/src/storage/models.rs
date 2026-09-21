@@ -1196,10 +1196,9 @@ pub struct UpdateSession {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReserveActiveTurnSlotResult {
-    /// Slot reserved (session marked `active`). Carries the status the session
-    /// held beforehand so a caller can release the reservation on a later
-    /// failure by restoring it.
-    Reserved {
+    /// Message accepted. New turns are marked active; parked turns remain
+    /// waiting so the caller can resolve their pending tool calls first.
+    Accepted {
         previous_status: String,
     },
     AtCapacity {
