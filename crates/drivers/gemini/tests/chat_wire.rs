@@ -140,35 +140,34 @@ async fn mount_sse(server: &MockServer, body: String) {
 }
 
 #[tokio::test]
-async fn provider_reported_model_is_separate_from_the_requested_alias() {
-    let server = MockServer::start().await;
-    mount_sse(
-        &server,
-        [
-            r#"data: {"modelVersion":"gemini-2.5-flash-2026-09-01","candidates":[{"content":{"parts":[{"text":"Hello"}]},"finishReason":"STOP"}]}"#,
-            "",
-            "",
-        ]
-        .join("\n"),
-    )
-    .await;
+async fn provider_reported_model_is_distinct_and_optional() {
+    for reported in [Some("gemini-2.5-flash-2026-09-01"), None] {
+        let server = MockServer::start().await;
+        let mut chunk = serde_json::json!({
+            "candidates": [{
+                "content": {"parts": [{"text": "Hello"}]},
+                "finishReason": "STOP"
+            }]
+        });
+        if let Some(model) = reported {
+            chunk["modelVersion"] = serde_json::json!(model);
+        }
+        mount_sse(&server, format!("data: {chunk}\n\n")).await;
 
-    let response = provider(&server)
-        .chat_completion(
-            vec![Message::text(MessageRole::User, "hi")],
-            &config("gemini-2.5-flash-latest"),
-        )
-        .await
-        .expect("completion should succeed");
+        let response = provider(&server)
+            .chat_completion(
+                vec![Message::text(MessageRole::User, "hi")],
+                &config("gemini-2.5-flash-latest"),
+            )
+            .await
+            .expect("completion should succeed");
 
-    assert_eq!(
-        response.metadata.model.as_deref(),
-        Some("gemini-2.5-flash-latest")
-    );
-    assert_eq!(
-        response.metadata.response_model.as_deref(),
-        Some("gemini-2.5-flash-2026-09-01")
-    );
+        assert_eq!(
+            response.metadata.model.as_deref(),
+            Some("gemini-2.5-flash-latest")
+        );
+        assert_eq!(response.metadata.response_model.as_deref(), reported);
+    }
 }
 
 /// A text-only completion: two content deltas, a STOP finish, and usage. The
