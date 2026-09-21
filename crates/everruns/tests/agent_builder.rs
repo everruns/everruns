@@ -148,18 +148,52 @@ mod custom_backends {
     #[tokio::test]
     async fn separate_backends_stay_isolated_within_one_engine() {
         let engine = Engine::new();
-        let alpha = engine.create(agent(HostBackends::in_memory()));
-        let beta = engine.create(agent(HostBackends::in_memory()));
-        alpha.send_and_wait("hello").await.unwrap();
-        let id = alpha.session_id();
-        drop(alpha);
-        drop(beta);
-        // `beta`'s backends never saw `alpha`'s session.
-        let other = Engine::new();
-        assert!(matches!(
-            other.attach(id, agent(HostBackends::in_memory())).await,
-            Err(everruns::ResumeError::SessionNotFound { .. })
+        let alpha_log = Arc::new(InMemoryEventLog::new());
+        let beta_log = Arc::new(InMemoryEventLog::new());
+        let alpha = engine.create(agent(
+            HostBackends::in_memory().with_event_log(alpha_log.clone()),
         ));
+        let beta = engine.create(agent(
+            HostBackends::in_memory().with_event_log(beta_log.clone()),
+        ));
+        alpha.send_and_wait("hello").await.unwrap();
+        beta.send_and_wait("world").await.unwrap();
+
+        let limit = EventReadLimit::new(100).unwrap();
+        let alpha_id = alpha.session_id();
+        let beta_id = beta.session_id();
+        assert!(
+            !alpha_log
+                .read_page(EventReadRequest::new(alpha_id, limit))
+                .await
+                .unwrap()
+                .events
+                .is_empty()
+        );
+        assert!(
+            alpha_log
+                .read_page(EventReadRequest::new(beta_id, limit))
+                .await
+                .unwrap()
+                .events
+                .is_empty()
+        );
+        assert!(
+            !beta_log
+                .read_page(EventReadRequest::new(beta_id, limit))
+                .await
+                .unwrap()
+                .events
+                .is_empty()
+        );
+        assert!(
+            beta_log
+                .read_page(EventReadRequest::new(alpha_id, limit))
+                .await
+                .unwrap()
+                .events
+                .is_empty()
+        );
     }
 
     #[cfg(feature = "local")]

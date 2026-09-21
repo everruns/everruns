@@ -20,7 +20,7 @@ function createNoopCancelMutation(): SessionContextValue["cancelCurrentTurn"] {
 export function DevChatRuntimeScene({
   scenario,
 }: {
-  scenario: "tool-activity" | "chat-components";
+  scenario: "tool-activity" | "chat-components" | "ask-user";
 }) {
   const fixture = useMemo(() => getDevChatFixture(scenario), [scenario]);
   const { locale } = useLocale();
@@ -83,12 +83,21 @@ export function DevChatRuntimeScene({
     agent_id: agent.id,
     owner_principal_id: "user_dev_preview",
     title:
-      scenario === "tool-activity" ? "Daytona sandbox tool activity" : "Runtime chat components",
+      scenario === "tool-activity"
+        ? "Daytona sandbox tool activity"
+        : scenario === "ask-user"
+          ? "Ask User inline card"
+          : "Runtime chat components",
     preview: null,
     output_preview: null,
     tags: [],
     model_id: models[0].id,
-    status: scenario === "tool-activity" ? "active" : "idle",
+    status:
+      scenario === "tool-activity"
+        ? "active"
+        : scenario === "ask-user"
+          ? "waiting_for_tool_results"
+          : "idle",
     created_at: "2026-03-07T21:20:00Z",
     updated_at: "2026-03-07T21:22:00Z",
     started_at: "2026-03-07T21:20:00Z",

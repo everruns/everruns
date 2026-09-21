@@ -47,6 +47,12 @@ const devPages = [
     icon: MessageSquare,
   },
   {
+    title: "Ask User",
+    description: "Structured decision cards, deadline nudges, and completed outcomes",
+    href: "/dev/ask-user",
+    icon: MessageSquare,
+  },
+  {
     title: "Session Components",
     description: "Real session headers, badges, navigation, and session cards",
     href: "/dev/session-components",

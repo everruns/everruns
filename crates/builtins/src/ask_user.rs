@@ -12,6 +12,7 @@ use crate::capabilities::{Capability, CapabilityLocalization};
 use crate::tool_types::{
     ClientSideTool, DeferrablePolicy, HUMAN_INTENT_ARGUMENT, ToolCall, ToolDefinition, ToolHints,
 };
+use crate::tools::{Tool, ToolExecutionResult};
 
 pub const ASK_USER_CAPABILITY_ID: &str = "ask_user";
 pub const ASK_USER_TOOL_NAME: &str = "ask_user";
@@ -99,6 +100,52 @@ pub struct AskUserResult {
     pub status: AskUserStatus,
     pub answered_by: AskUserAnsweredBy,
     pub answers: Vec<AskUserAnswer>,
+}
+/// A host that can answer structured questions while a tool call is in flight.
+#[async_trait]
+pub trait AskUser: Send + Sync {
+    /// Ask the host to answer one normalized batch of questions.
+    async fn ask(&self, questions: &[AskUserQuestion]) -> AskUserResult;
+}
+#[async_trait]
+impl<T: AskUser + ?Sized> AskUser for Arc<T> {
+    async fn ask(&self, questions: &[AskUserQuestion]) -> AskUserResult {
+        self.as_ref().ask(questions).await
+    }
+}
+
+/// An unattended responder that applies declared defaults or the first option.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DefaultsResponder;
+
+#[async_trait]
+impl AskUser for DefaultsResponder {
+    async fn ask(&self, questions: &[AskUserQuestion]) -> AskUserResult {
+        let answers = questions
+            .iter()
+            .map(|question| {
+                let mut selected = question
+                    .options
+                    .iter()
+                    .filter(|option| option.is_default)
+                    .map(|option| option.label.clone())
+                    .collect::<Vec<_>>();
+                if selected.is_empty() {
+                    selected.extend(question.options.first().map(|option| option.label.clone()));
+                }
+                AskUserAnswer {
+                    id: question.id.clone().unwrap_or_default(),
+                    selected,
+                    other_text: None,
+                }
+            })
+            .collect();
+        AskUserResult {
+            status: AskUserStatus::Answered,
+            answered_by: AskUserAnsweredBy::Unattended,
+            answers,
+        }
+    }
 }
 
 pub fn validate_ask_user_request(request: &AskUserRequest) -> Result<(), String> {
@@ -210,7 +257,39 @@ pub fn normalize_ask_user_arguments(arguments: &Value) -> Result<Value, String> 
     Ok(normalized)
 }
 
-pub struct AskUserCapability;
+#[derive(Clone)]
+enum AskUserStrategy {
+    ClientSide,
+    InProcess(Arc<dyn AskUser>),
+}
+
+/// Structured questions executed by either a client or an in-process host.
+#[derive(Clone)]
+pub struct AskUserCapability {
+    strategy: AskUserStrategy,
+}
+
+impl AskUserCapability {
+    /// Execute questions inside the current process with `responder`.
+    pub fn new(responder: impl AskUser + 'static) -> Self {
+        Self {
+            strategy: AskUserStrategy::InProcess(Arc::new(responder)),
+        }
+    }
+
+    /// Park the turn until a client submits a correlated tool result.
+    pub fn client_side() -> Self {
+        Self {
+            strategy: AskUserStrategy::ClientSide,
+        }
+    }
+}
+
+impl Default for AskUserCapability {
+    fn default() -> Self {
+        Self::new(DefaultsResponder)
+    }
+}
 
 impl Capability for AskUserCapability {
     fn id(&self) -> &str {
@@ -222,14 +301,14 @@ impl Capability for AskUserCapability {
     }
 
     fn description(&self) -> &str {
-        "Lets an agent ask structured choice questions and pause until the client submits an answer."
+        "Lets an agent ask structured choice questions through its host."
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {
         vec![CapabilityLocalization::text(
             "uk",
             "Запитати користувача",
-            "Дає агенту змогу поставити структуровані запитання з варіантами відповіді та призупинити роботу, доки клієнт не надішле відповідь.",
+            "Дає агенту змогу поставити структуровані запитання з варіантами відповіді через хост.",
         )]
     }
 
@@ -243,27 +322,44 @@ impl Capability for AskUserCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "Use `ask_user` for decisions and preferences, batching related questions into one pause. Order options most-applicable-first; a timeout uses the marked default or the first option, and `answered_by` says whether a person answered. Do not re-ask a declined question. Never use `ask_user` as a consent gate: permission for destructive, irreversible, or outward-facing actions requires `request_approval`, which does not auto-resolve.",
+            "`ask_user` handles decisions/preferences. Ask only when blocked; batch questions, and never ask what code or context answers. Put likely options first; timeout uses default/first, and `answered_by` names its source. Do not re-ask a declined question. Never use `ask_user` as a consent gate: destructive, irreversible, or outward-facing actions require `request_approval`, which does not auto-resolve. For A2A `input_required` unanswered, ask the user and relay with `message_task`; never answer for them.",
         )
     }
 
     fn tool_definitions(&self) -> Vec<ToolDefinition> {
-        vec![ToolDefinition::ClientSide(
-            ClientSideTool::new(
-                ASK_USER_TOOL_NAME,
-                "Ask the user 1–4 structured choice questions, then wait for the answer. Use for decisions and preferences, never for consent to destructive, irreversible, or outward-facing actions.",
-                ask_user_parameters_schema(),
-            )
-            .with_display_name("Ask User")
-            .with_category("Core")
-            .with_deferrable(DeferrablePolicy::Never)
-            .with_hints(
-                ToolHints::default()
-                    .with_readonly(true)
-                    .with_destructive(false)
-                    .with_open_world(false),
-            ),
-        )]
+        match &self.strategy {
+            AskUserStrategy::ClientSide => vec![ToolDefinition::ClientSide(
+                ClientSideTool::new(
+                    ASK_USER_TOOL_NAME,
+                    "Ask the user 1–4 structured choice questions, then wait for the answer. Use for decisions and preferences, never for consent to destructive, irreversible, or outward-facing actions.",
+                    ask_user_parameters_schema(),
+                )
+                .with_display_name("Ask User")
+                .with_category("Core")
+                .with_deferrable(DeferrablePolicy::Never)
+                .with_hints(ask_user_tool_hints()),
+            )],
+            AskUserStrategy::InProcess(_) => self
+                .tools()
+                .iter()
+                .map(|tool| {
+                    let mut definition = tool.to_definition();
+                    if let ToolDefinition::Builtin(tool) = &mut definition {
+                        tool.category = Some("Core".to_string());
+                    }
+                    definition
+                })
+                .collect(),
+        }
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        match &self.strategy {
+            AskUserStrategy::ClientSide => vec![],
+            AskUserStrategy::InProcess(responder) => vec![Box::new(AskUserTool {
+                responder: responder.clone(),
+            })],
+        }
     }
 
     fn finalized_tool_calls_hook(
@@ -274,6 +370,68 @@ impl Capability for AskUserCapability {
     }
 }
 
+fn ask_user_tool_hints() -> ToolHints {
+    ToolHints::default()
+        .with_readonly(true)
+        .with_destructive(false)
+        .with_open_world(false)
+}
+
+struct AskUserTool {
+    responder: Arc<dyn AskUser>,
+}
+
+#[async_trait]
+impl Tool for AskUserTool {
+    fn name(&self) -> &str {
+        ASK_USER_TOOL_NAME
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Ask User")
+    }
+
+    fn description(&self) -> &str {
+        "Ask the user 1–4 structured choice questions. Use for decisions and preferences, never for consent to destructive, irreversible, or outward-facing actions."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        ask_user_parameters_schema()
+    }
+
+    fn hints(&self) -> ToolHints {
+        ask_user_tool_hints()
+    }
+
+    fn deferrable_policy(&self) -> DeferrablePolicy {
+        DeferrablePolicy::Never
+    }
+
+    async fn execute(&self, arguments: Value) -> ToolExecutionResult {
+        let normalized = match normalize_ask_user_arguments(&arguments) {
+            Ok(arguments) => arguments,
+            Err(error) => return ToolExecutionResult::tool_error(error),
+        };
+        let mut contract_arguments = normalized;
+        if let Value::Object(object) = &mut contract_arguments {
+            object.remove(HUMAN_INTENT_ARGUMENT);
+        }
+        let request = match serde_json::from_value::<AskUserRequest>(contract_arguments) {
+            Ok(request) => request,
+            Err(error) => {
+                return ToolExecutionResult::internal_error_msg(format!(
+                    "normalized ask_user arguments were invalid: {error}"
+                ));
+            }
+        };
+        match serde_json::to_value(self.responder.ask(&request.questions).await) {
+            Ok(outcome) => ToolExecutionResult::success(outcome),
+            Err(error) => ToolExecutionResult::internal_error_msg(format!(
+                "ask_user responder returned an invalid outcome: {error}"
+            )),
+        }
+    }
+}
 struct AskUserFinalizedToolCallsHook;
 
 #[async_trait]
@@ -396,7 +554,7 @@ mod tests {
 
     #[test]
     fn definition_is_an_undeferrable_read_only_client_tool() {
-        let capability = AskUserCapability;
+        let capability = AskUserCapability::client_side();
         assert_eq!(capability.category(), Some("Core"));
         assert!(capability.tools().is_empty());
         let definitions = capability.tool_definitions();
@@ -413,7 +571,9 @@ mod tests {
 
     #[test]
     fn definition_schema_carries_the_contract_limits() {
-        let definition = AskUserCapability.tool_definitions().remove(0);
+        let definition = AskUserCapability::client_side()
+            .tool_definitions()
+            .remove(0);
         let schema = definition.parameters();
         let questions = &schema["properties"]["questions"];
         assert_eq!(questions["minItems"], 1);
@@ -530,14 +690,78 @@ mod tests {
 
     #[test]
     fn prompt_and_localization_preserve_the_safety_boundary() {
-        let capability = AskUserCapability;
+        let capability = AskUserCapability::client_side();
         let prompt = capability.system_prompt_addition().unwrap();
         assert!(prompt.contains("request_approval"));
         assert!(prompt.contains("Never use `ask_user` as a consent gate"));
         assert!(prompt.contains("Do not re-ask a declined question"));
+        assert!(prompt.contains("Ask only when blocked"));
+        assert!(prompt.contains("never ask what code or context answers"));
+        assert!(prompt.contains("`input_required`"));
+        assert!(prompt.contains("`message_task`"));
+        assert!(prompt.contains("never answer for them"));
         assert_eq!(
             capability.localized_name(Some("uk-UA")),
             "Запитати користувача"
+        );
+    }
+
+    #[tokio::test]
+    async fn defaults_responder_returns_declared_defaults_without_waiting() {
+        let capability = AskUserCapability::default();
+        let tools = capability.tools();
+        let [tool] = tools.as_slice() else {
+            panic!("default ask_user strategy must contribute one tool");
+        };
+
+        let ToolExecutionResult::Success(result) = tool
+            .execute(json!({
+                "questions": [
+                    {
+                        "header": "Target",
+                        "question": "Where should I deploy?",
+                        "options": [option("Staging", true), option("Production", false)]
+                    },
+                    {
+                        "header": "Regions",
+                        "question": "Which regions?",
+                        "multi_select": true,
+                        "options": [option("US", true), option("EU", true)]
+                    },
+                    {
+                        "header": "Format",
+                        "question": "Which format?",
+                        "options": [option("JSON", false), option("YAML", false)]
+                    }
+                ]
+            }))
+            .await
+        else {
+            panic!("default responder must return a successful tool result");
+        };
+        let outcome: AskUserResult = serde_json::from_value(result).unwrap();
+
+        assert_eq!(outcome.status, AskUserStatus::Answered);
+        assert_eq!(outcome.answered_by, AskUserAnsweredBy::Unattended);
+        assert_eq!(
+            outcome.answers,
+            vec![
+                AskUserAnswer {
+                    id: "question_1".to_string(),
+                    selected: vec!["Staging".to_string()],
+                    other_text: None,
+                },
+                AskUserAnswer {
+                    id: "question_2".to_string(),
+                    selected: vec!["US".to_string(), "EU".to_string()],
+                    other_text: None,
+                },
+                AskUserAnswer {
+                    id: "question_3".to_string(),
+                    selected: vec!["JSON".to_string()],
+                    other_text: None,
+                },
+            ]
         );
     }
 }
