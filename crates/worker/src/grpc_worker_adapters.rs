@@ -11,7 +11,8 @@ use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
 use everruns_core::{
-    EgressService, ExecutionSession, Message, MessageHistory, MessageQuery, UtilityLlmService,
+    EgressService, ExecutionSession, MessageHistory, MessageQuery, RuntimeMessage,
+    UtilityLlmService,
 };
 use everruns_core::{
     connection_services::ProviderCredentialStore, image_services::ImageArtifactStore,
@@ -156,7 +157,11 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // Message Operations
     // =========================================================================
 
-    async fn get_message(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
+    async fn get_message(
+        &self,
+        session_id: Uuid,
+        message_id: Uuid,
+    ) -> Result<Option<RuntimeMessage>> {
         let retriever = GrpcAdapter::new(self.client.clone());
         everruns_core::MessageRetriever::get(
             &retriever,
@@ -166,7 +171,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         .await
     }
 
-    async fn load_messages(&self, session_id: Uuid) -> Result<Vec<Message>> {
+    async fn load_messages(&self, session_id: Uuid) -> Result<Vec<RuntimeMessage>> {
         let retriever = GrpcAdapter::new(self.client.clone());
         everruns_core::MessageRetriever::load(&retriever, SessionId::from_uuid(session_id)).await
     }
@@ -422,8 +427,9 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn sqldb_store(
         &self,
+        org_id: i64,
     ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
-        Arc::new(GrpcAdapter::new(self.client.clone()))
+        Arc::new(GrpcAdapter::new_org_scoped(self.client.clone(), org_id))
     }
 
     fn native_async_store(
@@ -438,7 +444,16 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Some(Arc::new(GrpcAdapter::new(self.client.clone())))
     }
 
-    fn storage_store(&self) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+    fn storage_store(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+        Arc::new(GrpcAdapter::new_org_scoped(self.client.clone(), org_id))
+    }
+
+    fn storage_store_unscoped(
+        &self,
+    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
         Arc::new(GrpcAdapter::new(self.client.clone()))
     }
 
@@ -522,6 +537,20 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Some(Arc::new(
             GrpcBudgetChecker::new(self.client.clone(), org_id)
                 .with_agent_id(agent_id.map(|id| id.to_string())),
+        ))
+    }
+
+    fn slack_action_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_provider::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
+        Some(Arc::new(
+            crate::grpc_slack_actions::GrpcSlackActionInvoker::new(
+                self.client.clone(),
+                org_id,
+                session_id,
+            ),
         ))
     }
 

@@ -32,7 +32,7 @@ use everruns_core::events::{
 };
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::lifecycle_hooks::UserPromptDecision;
-use everruns_core::message::{ContentPart, Message};
+use everruns_core::message::{ContentPart, RuntimeMessage};
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
 #[cfg(feature = "mcp")]
 use everruns_core::resolve_runtime_capabilities;
@@ -163,7 +163,7 @@ impl AcceptedTurnInput {
         &self.input
     }
 
-    fn into_message(self) -> Message {
+    fn into_message(self) -> RuntimeMessage {
         message_from_input_with_id(self.message_id, self.input)
     }
 }
@@ -1571,7 +1571,7 @@ impl InProcessRuntime {
     }
 
     /// Load the current message history for a session.
-    pub async fn messages(&self, session_id: SessionId) -> Result<Vec<Message>> {
+    pub async fn messages(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
         self.event_history.load(session_id).await
     }
 
@@ -1833,8 +1833,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         let snapshot = ResolvedExecutionSnapshot::project(&harness, agent.as_ref(), &session)?;
         let messages = self.event_history.load(session_id).await?;
 
-        // Discover tools from the session's scoped MCP servers so they appear
-        // to the LLM alongside built-in tools (knowledge/integrations/runtime-mcp.md D4).
+        // Discover session MCP tools for the LLM (knowledge/integrations/runtime-mcp.md D4).
         #[cfg(feature = "mcp")]
         let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
         #[cfg(feature = "mcp")]
@@ -1864,6 +1863,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         &self,
         _org_id: i64,
         session_id: SessionId,
+        _agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         let session = self.session_store.get_session(session_id).await.ok()??;
         let agent = match session.agent_id {
@@ -1929,7 +1929,8 @@ impl RuntimeHostAdapter for InProcessRuntime {
         self.file_store.clone()
     }
 
-    fn storage_store(&self) -> Option<Arc<dyn SessionStorageStore>> {
+    fn storage_store(&self, _org_id: i64) -> Option<Arc<dyn SessionStorageStore>> {
+        // In-process runtime: the store is already bound to this runtime's org.
         Some(self.storage_store.clone())
     }
 
@@ -2078,12 +2079,12 @@ async fn seed_runtime_initial_files(
     Ok(())
 }
 
-fn message_from_input(input: InputMessage) -> Message {
+fn message_from_input(input: InputMessage) -> RuntimeMessage {
     message_from_input_with_id(MessageId::new(), input)
 }
 
-fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> Message {
-    Message {
+fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> RuntimeMessage {
+    RuntimeMessage {
         id: message_id,
         role: input.role,
         content: input.content,

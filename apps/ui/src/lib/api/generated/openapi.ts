@@ -220,6 +220,94 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/endpoints": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List ingress endpoints owned by an Agent. */
+    get: operations["list_agent_endpoints"];
+    put?: never;
+    /** @description Create an ingress endpoint owned by an Agent. */
+    post: operations["create_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/endpoints/{endpoint_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get one ingress endpoint owned by an Agent. */
+    get: operations["get_agent_endpoint"];
+    put?: never;
+    post?: never;
+    /** @description Delete an ingress endpoint owned by an Agent. */
+    delete: operations["delete_agent_endpoint"];
+    options?: never;
+    head?: never;
+    /** @description Update an ingress endpoint owned by an Agent. */
+    patch: operations["update_agent_endpoint"];
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Publish an Agent endpoint so it can accept ingress traffic. */
+    post: operations["publish_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Run a published Agent schedule endpoint now. */
+    post: operations["trigger_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Unpublish an Agent endpoint so it no longer accepts ingress traffic. */
+    post: operations["unpublish_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/export": {
     parameters: {
       query?: never;
@@ -318,6 +406,40 @@ export interface paths {
     put?: never;
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/mcp-attachments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state and permitted actions are resolved for the current caller. */
+    get: operations["list_agent_mcp_attachments"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/mcp-attachments/{name}/connection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** @description Revokes the current caller's user connection or the agent identity's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged. */
+    delete: operations["revoke_agent_mcp_connection"];
     options?: never;
     head?: never;
     patch?: never;
@@ -521,26 +643,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/apps - List all non-archived apps */
+    /**
+     * @deprecated
+     * @description List archival App records. This endpoint is read-only and deprecated.
+     */
     get: operations["list_apps"];
-    put?: never;
-    /** POST /v1/apps - Create a new app */
-    post: operations["create_app"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/config": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** GET /v1/apps/config */
-    get: operations["app_config"];
     put?: never;
     post?: never;
     delete?: never;
@@ -556,46 +663,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/apps/{app_id} - Get app by ID */
+    /**
+     * @deprecated
+     * @description Get an archival App record. This endpoint is read-only and deprecated.
+     */
     get: operations["get_app"];
     put?: never;
     post?: never;
-    /** DELETE /v1/apps/{app_id} - Archive app */
-    delete: operations["delete_app"];
-    options?: never;
-    head?: never;
-    /** PATCH /v1/apps/{app_id} - Update app */
-    patch: operations["update_app"];
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/a2a-channels": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/a2a-channels - Add an A2A channel (returns plaintext key once). */
-    post: operations["add_a2a_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/a2a-channels/{channel_id}/regenerate-key": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Regenerate an A2A channel API key. Returns the new plaintext key exactly once and invalidates the previous key. */
-    post: operations["regenerate_a2a_key"];
     delete?: never;
     options?: never;
     head?: never;
@@ -630,40 +704,6 @@ export interface paths {
     get: operations["agent_card_legacy"];
     put?: never;
     post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/api-endpoint-channels": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/api-endpoint-channels - Add an api_endpoint channel (returns plaintext key once). */
-    post: operations["add_api_endpoint_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/api-endpoint-channels/{channel_id}/regenerate-key": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Regenerate an api_endpoint channel API key. Returns the new plaintext key exactly once and invalidates the previous key. */
-    post: operations["regenerate_api_endpoint_key"];
     delete?: never;
     options?: never;
     head?: never;
@@ -738,43 +778,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/apps/{app_id}/channels/{channel_id}/publish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * PATCH /v1/apps/{app_id}/channels/{channel_id} - Update a channel
-     *     POST /v1/apps/{app_id}/channels/{channel_id}/publish - Publish one endpoint
-     */
-    post: operations["publish_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/channels/{channel_id}/unpublish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/channels/{channel_id}/unpublish - Unpublish one endpoint */
-    post: operations["unpublish_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/apps/{app_id}/fcp": {
     parameters: {
       query?: never;
@@ -791,57 +794,6 @@ export interface paths {
     put?: never;
     /** `POST /v1/apps/{app_id}/fcp` — text-in, text-out. */
     post: operations["message_legacy"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/publish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/publish - Publish app (start accepting requests) */
-    post: operations["publish_app"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/runs": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** GET /v1/apps/{app_id}/runs - Recent app invocation runs */
-    get: operations["list_app_runs"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/unpublish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/apps/{app_id}/unpublish - Unpublish app (stop accepting requests) */
-    post: operations["unpublish_app"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2148,6 +2100,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/mcp-servers/catalog": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization. */
+    get: operations["list_mcp_server_catalog"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/mcp-servers/config": {
     parameters: {
       query?: never;
@@ -2185,6 +2154,23 @@ export interface paths {
     head?: never;
     /** PATCH /v1/mcp-servers/{server_id} - Update MCP server */
     patch: operations["update_mcp_server"];
+    trace?: never;
+  };
+  "/v1/mcp-servers/{server_id}/usage": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get the bounded active-agent impact summary used before archiving an MCP server preset. */
+    get: operations["get_mcp_server_usage"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/v1/me/invitations": {
@@ -4093,6 +4079,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/user/mcp-connections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List the current user's cursor-paginated MCP OAuth connections in the selected organization. */
+    get: operations["list_mcp_connections"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/users": {
     parameters: {
       query?: never;
@@ -4399,66 +4402,6 @@ export interface components {
       /** @description Tool calls to be executed */
       tool_calls: components["schemas"]["ToolCallSummary"][];
     };
-    /** @description Request body for the `add_a2a_channel_http` operation. */
-    AddA2aChannelHttpRequest: {
-      /**
-       * @description Public agent card description advertised by the A2A endpoint. Defaults to the app description when omitted.
-       * @example Triages incoming support tickets and routes to the right team
-       */
-      agent_card_description?: string | null;
-      /**
-       * @description Public agent card name advertised by the A2A endpoint. Defaults to the app name when omitted.
-       * @example Support Triage Agent
-       */
-      agent_card_name?: string | null;
-      auth?: null | components["schemas"]["AppEndpointAuthConfig"];
-      /**
-       * @description Whether this resource is enabled.
-       * @example true
-       */
-      enabled?: boolean | null;
-      /**
-       * @description First user message sent to the agent on each invocation; can reference incoming A2A payload via templating.
-       * @example Process incoming A2A request and return a structured response.
-       */
-      message: string;
-      /** @description How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `SessionBinding`. */
-      session_mode?: components["schemas"]["SessionBinding"];
-    };
-    /**
-     * @description Output of [`AddA2aChannelCmd`] — includes the plaintext API key (returned
-     *     **once**, never persisted) plus the resulting [`AppChannel`].
-     */
-    AddA2aChannelOutput: {
-      /** @description Plaintext API key. Persist this — it cannot be recovered later. */
-      api_key: string;
-      /** @description The created A2A channel. */
-      channel: components["schemas"]["AppChannel"];
-    };
-    /** @description Request body for the `add_api_endpoint_channel_http` operation. */
-    AddApiEndpointChannelHttpRequest: {
-      auth?: null | components["schemas"]["AppEndpointAuthConfig"];
-      /**
-       * @description Whether this resource is enabled.
-       * @example true
-       */
-      enabled?: boolean | null;
-      /**
-       * @description How invocations route into sessions (`shared_session` to reuse one
-       *     durable session, or `session_per_invocation` for a fresh session).
-       */
-      session_mode?: components["schemas"]["SessionBinding"];
-    };
-    /**
-     * @description Output of [`AddApiEndpointChannelCmd`] — includes the plaintext API key
-     *     (returned **once**, never persisted) plus the resulting [`AppChannel`].
-     */
-    AddApiEndpointChannelOutput: {
-      /** @description Plaintext API key. Persist this — it cannot be recovered later. */
-      api_key: string;
-      /** @description The created api_endpoint channel. */
-      channel: components["schemas"]["AppChannel"];
-    };
     /** @description Request to add a participant to a session. */
     AddSessionParticipantRequest: {
       /**
@@ -4723,6 +4666,75 @@ export interface components {
       source: components["schemas"]["AgentHarnessSource"];
       status: components["schemas"]["AgentHarnessStatus"];
     };
+    /** @description Effective MCP attachment projected for an agent and the current caller. */
+    AgentMcpAttachment: {
+      /** @description Connection action available to the current caller. */
+      action: components["schemas"]["AgentMcpAttachmentAction"];
+      /** @description Identity whose connection is used when the attachment calls the MCP server. */
+      acts_as: components["schemas"]["McpServerActsAs"];
+      /** @description Whether the current caller can revoke the active connection. */
+      can_revoke: boolean;
+      /** @description Connected account name, or the preset name when the provider did not supply one. */
+      connected_as?: string | null;
+      /** @description OAuth provider key used to create or revoke the attachment connection. */
+      connection_provider?: string | null;
+      contributor?: null | components["schemas"]["AgentMcpAttachmentContributor"];
+      /** @description Whether the attachment is defined directly on the agent and can be removed there. */
+      editable: boolean;
+      /** @description Header names configured for the endpoint; secret header values are omitted. */
+      header_names: string[];
+      /** @description Logical attachment name used in the agent's MCP configuration. */
+      name: string;
+      /** @description Lower-precedence configuration layers overridden by this attachment. */
+      overridden_sources: components["schemas"]["AgentMcpAttachmentSourceInfo"][];
+      /** @description ID of the active catalog preset when the reference resolves. */
+      preset_id?: string | null;
+      /** @description Catalog preset name referenced by the attachment, including a missing preset. */
+      preset_name?: string | null;
+      /** @description Highest-precedence configuration layer that supplied this attachment. */
+      source: components["schemas"]["AgentMcpAttachmentSource"];
+      /** @description Human-readable name of the winning capability, harness, or agent layer. */
+      source_label: string;
+      /** @description Current preset and connection availability. */
+      state: components["schemas"]["AgentMcpAttachmentState"];
+      /** @description Cached names of tools exposed by the MCP server. */
+      tools: string[];
+      /** @description Whether at least one cached tool name is available. */
+      tools_available: boolean;
+      /** @description Effective MCP endpoint URL from the catalog preset or inline configuration. */
+      url?: string | null;
+    };
+    /**
+     * @description Action the current caller can take to make an MCP attachment usable.
+     * @enum {string}
+     */
+    AgentMcpAttachmentAction: "none" | "connect" | "authorize" | "ask_admin";
+    /** @description Capability that contributed an effective MCP attachment. */
+    AgentMcpAttachmentContributor: {
+      /** @description UI path for the capability detail page. */
+      href: string;
+      /** @description Canonical capability ID. */
+      id: string;
+      /** @description Human-readable capability name. */
+      name: string;
+    };
+    /**
+     * @description Configuration layer that supplied an effective MCP attachment.
+     * @enum {string}
+     */
+    AgentMcpAttachmentSource: "capability" | "harness" | "agent";
+    /** @description Configuration layer that was overridden by the effective MCP attachment. */
+    AgentMcpAttachmentSourceInfo: {
+      /** @description Overridden configuration layer. */
+      source: components["schemas"]["AgentMcpAttachmentSource"];
+      /** @description Human-readable name of the overridden capability, harness, or agent layer. */
+      source_label: string;
+    };
+    /**
+     * @description Availability state of an effective MCP attachment.
+     * @enum {string}
+     */
+    AgentMcpAttachmentState: "ready" | "connection_missing" | "preset_missing";
     AgentMessage: {
       role: string;
       text: string;
@@ -5217,61 +5229,6 @@ export interface components {
       scopes?: string[];
       /** @description Allowlist of `sub` claim values. Empty list disables subject filtering. */
       subjects?: string[];
-    };
-    /** @description One bucket of the run-history histogram (per-hour aggregate). */
-    AppRunBucket: {
-      /**
-       * Format: int32
-       * @description Count of runs that failed in this bucket.
-       */
-      err: number;
-      /**
-       * Format: date-time
-       * @description Bucket start (top of the hour, RFC 3339).
-       */
-      hour: string;
-      /**
-       * Format: int32
-       * @description Count of runs that completed successfully in this bucket.
-       */
-      ok: number;
-      /**
-       * Format: int32
-       * @description Count of runs still running when the bucket was queried.
-       */
-      running?: number | null;
-    };
-    /** @description Single app-channel invocation record (one run = one channel-side event). */
-    AppRunEvent: {
-      /** @description App that received the invocation. */
-      app_id: string;
-      /** @description Channel that originated the invocation. */
-      channel_id: string;
-      /** @description Human-readable channel name when set. */
-      channel_name?: string | null;
-      /** @description Channel kind (slack, ag_ui, webhook, a2a, fcp, public_chat). */
-      channel_type: components["schemas"]["ChannelType"];
-      /**
-       * Format: date-time
-       * @description Timestamp the run finished, if any (RFC 3339).
-       */
-      completed_at?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp the run started (RFC 3339).
-       */
-      created_at: string;
-      /** @description Prefixed public identifier of this run event. */
-      id: string;
-      /** @description Terminal status (`ok`, `err`, `running`). */
-      status: string;
-    };
-    /** @description Paged response for the app run history endpoint, optionally including a per-hour histogram. */
-    AppRunListResponse: {
-      /** @description Per-hour aggregate buckets when the caller asked for them. */
-      buckets?: components["schemas"]["AppRunBucket"][] | null;
-      /** @description Page of run events ordered newest first. */
-      data: components["schemas"]["AppRunEvent"][];
     };
     /**
      * @description App lifecycle status.
@@ -6410,6 +6367,15 @@ export interface components {
        */
       tool_name: string;
     };
+    /** @description Request to create an ingress endpoint owned by an Agent. */
+    CreateAgentEndpointRequest: {
+      /** @description Transport-specific endpoint configuration. */
+      channel_config?: unknown;
+      /** @description Transport used by the endpoint. */
+      channel_type: components["schemas"]["ChannelType"];
+      /** @description Whether the endpoint can accept ingress traffic. */
+      enabled?: boolean;
+    };
     /** @description Request to create a new agent */
     CreateAgentRequest: {
       /**
@@ -6591,50 +6557,6 @@ export interface components {
        * @example Tightened the refund-window check and added a regression test.
        */
       summary?: string | null;
-    };
-    /** @description Request to create a new app */
-    CreateAppRequest: {
-      /**
-       * @description ID of the agent to use. The command validation requires this field even
-       *     though it remains optional in the wire shape for a clear domain error.
-       * @example agent_01933b5a00007000800000000000001
-       */
-      agent_id?: string | null;
-      /**
-       * @description Optional resident agent identity for unattended/channel execution.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      agent_identity_id?: string | null;
-      /** @example agentver_01933b5a00007000800000000000001 */
-      agent_version_id?: string | null;
-      /**
-       * @description How an App resolves the Agent version it runs.
-       *     Example shape is defined on `AgentVersionPolicy`.
-       */
-      agent_version_policy?: components["schemas"]["AgentVersionPolicy"];
-      /**
-       * @description Initial channel configuration. Shape depends on `channel_type`, for
-       *     example `{"token": "whk_redacted", "message": "Run support triage"}`
-       *     for `webhook`. New schedule and webhook channels are rejected; use agent
-       *     triggers.
-       */
-      channel_config?: Record<string, unknown> | null;
-      channel_type?: null | components["schemas"]["ChannelType"];
-      /**
-       * @description Description of what the app does.
-       * @example Customer support bot connected to Slack
-       */
-      description?: string | null;
-      /**
-       * @description ID of the harness to use.
-       * @example harness_01933b5a00007000800000000000001
-       */
-      harness_id: string;
-      /**
-       * @description Display name of the app.
-       * @example Support Bot
-       */
-      name: string;
     };
     /** @description Request to create a branch */
     CreateBranchRequest: {
@@ -6881,7 +6803,7 @@ export interface components {
     CreateMcpServerRequest: {
       /**
        * @description API key for authentication (optional). Sent with each request; never echoed in responses.
-       * @example sk-mcp-redacted-1234567890abcdef
+       * @example mcp-api-key-redacted-1234567890abcdef
        */
       api_key?: string | null;
       auth_mode?: null | components["schemas"]["McpServerAuthMode"];
@@ -9757,16 +9679,6 @@ export interface components {
       session_id?: string | null;
     };
     /**
-     * @description Query parameters for listing recent app invocation runs — a relative
-     *     time window and an optional bucketing hint for the dashboard.
-     */
-    ListAppRunsQuery: {
-      /** @description Optional grouping. Currently only `hour` is supported. */
-      groupBy?: string | null;
-      /** @description Time window to include, such as 24h, 60m, or 7d. */
-      window?: string | null;
-    };
-    /**
      * @description Query parameters for listing executions of a schedule — optional status
      *     filter plus offset/limit paging.
      */
@@ -12299,6 +12211,35 @@ export interface components {
      * @enum {string}
      */
     McpServerAuthMode: "none" | "api_key" | "oauth";
+    /** @description MCP server preset with its active-agent usage count. */
+    McpServerCatalogEntry: components["schemas"]["WithUrls_McpServer"] & {
+      /**
+       * Format: int64
+       * @description Number of active agents that use this preset.
+       * @example 2
+       */
+      used_by_agents: number;
+    };
+    /** @description One page of MCP server catalog entries for the selected organization. */
+    McpServerCatalogResponse: {
+      /**
+       * @description MCP server presets in this page.
+       * @example [
+       *       {
+       *         "id": "mcp_01933b5a00007000800000000000001",
+       *         "name": "microsoft_learn",
+       *         "url": "https://learn.microsoft.com/api/mcp",
+       *         "used_by_agents": 2
+       *       }
+       *     ]
+       */
+      data: components["schemas"]["McpServerCatalogEntry"][];
+      /**
+       * @description Cursor for the next page, or null when this is the final page.
+       * @example mcp_01933b5a00007000800000000000001
+       */
+      next_cursor?: string | null;
+    };
     /**
      * @description Reference to an organization MCP server catalog entry.
      * @example catalog:linear
@@ -12320,6 +12261,28 @@ export interface components {
      * @enum {string}
      */
     McpServerTransportType: "http" | "stdio";
+    /** @description Bounded archive-impact summary for an MCP server preset. */
+    McpServerUsageResponse: {
+      /**
+       * @description Names of active agents that use the preset, up to the response limit.
+       * @example [
+       *       "Docs agent",
+       *       "Research agent"
+       *     ]
+       */
+      agent_names: string[];
+      /**
+       * Format: int64
+       * @description Total number of active agents that use the preset.
+       * @example 2
+       */
+      total_count: number;
+      /**
+       * @description Whether additional agent names were omitted from the bounded list.
+       * @example false
+       */
+      truncated: boolean;
+    };
     /**
      * @description MCP tool annotations as defined by the MCP specification.
      *     All fields are optional booleans following the MCP convention.
@@ -13120,7 +13083,7 @@ export interface components {
       guardrail_id: string;
       /**
        * @description Stable public ID for the assistant message whose streamed text is replaced.
-       *     This is the same identifier as the subsequent completed `Message.id`.
+       *     This is the same identifier as the subsequent completed `RuntimeMessage.id`.
        * @example message_550e8400e29b41d4a716446655440000
        */
       message_id: string;
@@ -14708,34 +14671,6 @@ export interface components {
      * @enum {string}
      */
     RecoveryMode: "finalize" | "restart";
-    /**
-     * @description Output of [`RegenerateA2aApiKeyCmd`] — includes the newly generated
-     *     plaintext API key (returned **once**, never persisted) plus the updated
-     *     [`AppChannel`].
-     */
-    RegenerateA2aApiKeyOutput: {
-      /**
-       * @description New plaintext API key. Persist this — it cannot be recovered later.
-       *     The previous key is invalidated immediately.
-       */
-      api_key: string;
-      /** @description The updated A2A channel. */
-      channel: components["schemas"]["AppChannel"];
-    };
-    /**
-     * @description Output of [`RegenerateApiEndpointApiKeyCmd`] — includes the newly generated
-     *     plaintext API key (returned **once**, never persisted) plus the updated
-     *     [`AppChannel`].
-     */
-    RegenerateApiEndpointApiKeyOutput: {
-      /**
-       * @description New plaintext API key. Persist this — it cannot be recovered later.
-       *     The previous key is invalidated immediately.
-       */
-      api_key: string;
-      /** @description The updated api_endpoint channel. */
-      channel: components["schemas"]["AppChannel"];
-    };
     /**
      * @description One column header in a `ReportResult`. The ordered `columns` list
      *     declares the key set of each row in `rows`.
@@ -17181,6 +17116,13 @@ export interface components {
       /** @description The tool name, if known. */
       tool_name?: string | null;
     };
+    /** @description Result of running an Agent schedule endpoint immediately. */
+    TriggerAgentEndpointOutput: {
+      /** @description Whether the invocation created a new session. */
+      created_session: boolean;
+      /** @description Session started or reused by the invocation. */
+      session_id: components["schemas"]["sessionId"];
+    };
     TriggerAgentTriggerOutput: {
       created_session: boolean;
       /** @description Session's prefixed public identifier. */
@@ -17348,6 +17290,13 @@ export interface components {
      * @enum {string}
      */
     TurnWaitStatus: "completed" | "failed" | "timeout";
+    /** @description Request to update an ingress endpoint owned by an Agent. */
+    UpdateAgentEndpointRequest: {
+      /** @description Replacement transport-specific endpoint configuration. */
+      channel_config?: unknown;
+      /** @description Whether the endpoint can accept ingress traffic. */
+      enabled?: boolean | null;
+    };
     /** @description Request to update an agent. Only provided fields will be updated. */
     UpdateAgentRequest: {
       /**
@@ -17497,34 +17446,6 @@ export interface components {
       timezone?: string | null;
       /** @description Replacement webhook token. */
       token?: string | null;
-    };
-    /** @description Request to update an app. Only provided fields will be updated. */
-    UpdateAppRequest: {
-      /**
-       * @description ID of the agent to use.
-       * @example agent_01933b5a00007000800000000000001
-       */
-      agent_id?: string | null;
-      /** @description Optional resident agent identity for unattended/channel execution. */
-      agent_identity_id?: string | null;
-      agent_version_id?: string | null;
-      agent_version_policy?: null | components["schemas"]["AgentVersionPolicy"];
-      /**
-       * @description Description of what the app does.
-       * @example Customer support bot connected to Slack
-       */
-      description?: string | null;
-      /**
-       * @description ID of the harness to use.
-       * @example harness_01933b5a00007000800000000000001
-       */
-      harness_id?: string | null;
-      /**
-       * @description Display name of the app.
-       * @example Support Bot
-       */
-      name?: string | null;
-      status?: null | components["schemas"]["AppStatus"];
     };
     /** @description Request body for changing a spending budget. */
     UpdateBudgetRequest: {
@@ -17725,7 +17646,7 @@ export interface components {
     UpdateMcpServerRequest: {
       /**
        * @description API key for authentication. Set to update.
-       * @example sk-mcp-redacted-1234567890abcdef
+       * @example mcp-api-key-redacted-1234567890abcdef
        */
       api_key?: string | null;
       auth_mode?: null | components["schemas"]["McpServerAuthMode"];
@@ -18116,6 +18037,74 @@ export interface components {
       /** @description Human-readable name. Safe to render in user-facing messages. */
       name: string;
       roles: string[];
+    };
+    /** @description Current user's MCP OAuth connection to a preset in the selected organization. */
+    UserMcpConnectionResponse: {
+      /**
+       * Format: date-time
+       * @description Time when the user authorized the connection.
+       * @example 2026-09-19T12:00:00Z
+       */
+      connected_at: string;
+      /**
+       * @description Stored connection provider key used to revoke the grant.
+       * @example mcp_oauth_01933b5a-0000-7000-8000-000000000001
+       */
+      provider: string;
+      /**
+       * @description Account name reported by the MCP OAuth provider, when available.
+       * @example alex@example.com
+       */
+      provider_username?: string | null;
+      /**
+       * @description Space-delimited OAuth scopes granted to this connection, when available.
+       * @example tools:read tools:execute
+       */
+      scopes?: string | null;
+      /**
+       * @description UUID of the MCP server preset associated with the connection.
+       * @example 01933b5a-0000-7000-8000-000000000001
+       */
+      server_id: string;
+      /**
+       * @description Display name of the MCP server preset.
+       * @example microsoft_learn
+       */
+      server_name: string;
+      /**
+       * @description Current lifecycle status of the MCP server preset.
+       * @example active
+       */
+      server_status: string;
+      /**
+       * @description MCP server endpoint URL.
+       * @example https://learn.microsoft.com/api/mcp
+       */
+      server_url: string;
+    };
+    /** @description One page of the current user's MCP connections in the selected organization. */
+    UserMcpConnectionsResponse: {
+      /**
+       * @description MCP connections in this page.
+       * @example [
+       *       {
+       *         "connected_at": "2026-09-19T12:00:00Z",
+       *         "provider": "mcp_oauth_01933b5a-0000-7000-8000-000000000001",
+       *         "provider_username": "alex@example.com",
+       *         "scopes": "tools:read tools:execute",
+       *         "server_id": "01933b5a-0000-7000-8000-000000000001",
+       *         "server_name": "microsoft_learn",
+       *         "server_status": "active",
+       *         "server_url": "https://learn.microsoft.com/api/mcp"
+       *       }
+       *     ]
+       */
+      data: components["schemas"]["UserMcpConnectionResponse"][];
+      /**
+       * @description Cursor for the next page, or null when this is the final page.
+       * @example 01933b5a-0000-7000-8000-000000000002
+       */
+      next_cursor?: string | null;
     };
     /** @description Request to validate a SKILL.md */
     ValidateSkillRequest: {
@@ -20858,6 +20847,307 @@ export interface operations {
       };
     };
   };
+  list_agent_endpoints: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent endpoints */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"][];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  create_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAgentEndpointRequest"];
+      };
+    };
+    responses: {
+      /** @description Endpoint created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Invalid endpoint */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent endpoint */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  delete_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint deleted */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateAgentEndpointRequest"];
+      };
+    };
+    responses: {
+      /** @description Endpoint updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Invalid endpoint */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  publish_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint published */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  trigger_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint triggered */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TriggerAgentEndpointOutput"];
+        };
+      };
+      /** @description Endpoint cannot run */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  unpublish_agent_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Endpoint ID */
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Endpoint unpublished */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Endpoint not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   export_agent: {
     parameters: {
       query?: never;
@@ -21096,6 +21386,106 @@ export interface operations {
       };
       /** @description Run not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_mcp_attachments: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Effective MCP attachments for the agent */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentMcpAttachment"][];
+        };
+      };
+      /** @description Agent or harness not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  revoke_agent_mcp_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) or name */
+        agent_id: string;
+        /** @description Effective MCP attachment name */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description MCP connection revoked or already absent */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Attachment does not use a connection */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent, attachment, or preset not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
         headers: {
           [name: string]: unknown;
         };
@@ -21697,7 +22087,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description List of apps */
+      /** @description Archival list of Apps */
       200: {
         headers: {
           [name: string]: unknown;
@@ -21715,68 +22105,6 @@ export interface operations {
       };
     };
   };
-  create_app: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateAppRequest"];
-      };
-    };
-    responses: {
-      /** @description App created successfully */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_App"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  app_config: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Resource config for apps */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ResourceConfigResponse"];
-        };
-      };
-    };
-  };
   get_app: {
     parameters: {
       query?: never;
@@ -21789,7 +22117,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description App found */
+      /** @description Archival App record */
       200: {
         headers: {
           [name: string]: unknown;
@@ -21798,7 +22126,7 @@ export interface operations {
           "application/json": components["schemas"]["WithUrls_App"];
         };
       };
-      /** @description Invalid app ID */
+      /** @description Invalid App ID */
       400: {
         headers: {
           [name: string]: unknown;
@@ -21818,226 +22146,6 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
-      };
-    };
-  };
-  delete_app: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description App archived successfully */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Invalid app ID */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  update_app: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UpdateAppRequest"];
-      };
-    };
-    responses: {
-      /** @description App updated successfully */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_App"];
-        };
-      };
-      /** @description Invalid app ID or input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  add_a2a_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["AddA2aChannelHttpRequest"];
-      };
-    };
-    responses: {
-      /** @description A2A channel created. The `api_key` field is the plaintext key returned exactly once and never recoverable later. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AddA2aChannelOutput"];
-        };
-      };
-      /** @description Validation error */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  regenerate_a2a_key: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description A2A channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description API key rotated. The `api_key` field is the new plaintext key returned exactly once; the previous key is invalidated immediately. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["RegenerateA2aApiKeyOutput"];
-        };
-      };
-      /** @description Invalid app/channel ID or channel is not an A2A channel */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or A2A channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
       };
     };
   };
@@ -22117,130 +22225,6 @@ export interface operations {
         content?: never;
       };
       /** @description App or channel not found / unpublished / disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  add_api_endpoint_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["AddApiEndpointChannelHttpRequest"];
-      };
-    };
-    responses: {
-      /** @description api_endpoint channel created. The `api_key` field is the plaintext key returned exactly once and never recoverable later. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AddApiEndpointChannelOutput"];
-        };
-      };
-      /** @description Validation error */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  regenerate_api_endpoint_key: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description api_endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description API key rotated. The `api_key` field is the new plaintext key returned exactly once; the previous key is invalidated immediately. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["RegenerateApiEndpointApiKeyOutput"];
-        };
-      };
-      /** @description Invalid app/channel ID or channel is not an api_endpoint channel */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or api_endpoint channel not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -22509,92 +22493,6 @@ export interface operations {
       };
     };
   };
-  publish_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID (prefixed) */
-        app_id: string;
-        /** @description Channel ID (prefixed) */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Endpoint published */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppChannel"];
-        };
-      };
-      /** @description Invalid request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  unpublish_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID (prefixed) */
-        app_id: string;
-        /** @description Channel ID (prefixed) */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Endpoint unpublished */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppChannel"];
-        };
-      };
-      /** @description Invalid request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
   handshake: {
     parameters: {
       query?: never;
@@ -22724,167 +22622,6 @@ export interface operations {
         content: {
           "text/markdown": unknown;
         };
-      };
-    };
-  };
-  publish_app: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description App published */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_App"];
-        };
-      };
-      /** @description Invalid app ID */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  list_app_runs: {
-    parameters: {
-      query?: {
-        /** @description Time window to include, such as 24h, 60m, or 7d. */
-        window?: string | null;
-        /** @description Optional grouping. Currently only `hour` is supported. */
-        groupBy?: string | null;
-      };
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Recent app invocation runs */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppRunListResponse"];
-        };
-      };
-      /** @description Invalid app ID or query */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Unauthorized */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  unpublish_app: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description App unpublished */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WithUrls_App"];
-        };
-      };
-      /** @description Invalid app ID */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description App not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
       };
     };
   };
@@ -26754,6 +26491,58 @@ export interface operations {
       };
     };
   };
+  list_mcp_server_catalog: {
+    parameters: {
+      query?: {
+        /** @description Continue after this MCP server ID. */
+        cursor?: string | null;
+        /** @description Page size (default: 50, max: 100). */
+        limit?: number | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cursor-paginated MCP server catalog with active-agent usage counts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerCatalogResponse"];
+        };
+      };
+      /** @description Invalid cursor or limit */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   mcp_server_config: {
     parameters: {
       query?: never;
@@ -26887,6 +26676,65 @@ export interface operations {
       };
       /** @description Invalid server ID or input */
       400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description MCP server not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_mcp_server_usage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description MCP server ID */
+        server_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Bounded active-agent archive impact */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["McpServerUsageResponse"];
+        };
+      };
+      /** @description Invalid MCP server ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Permission denied */
+      403: {
         headers: {
           [name: string]: unknown;
         };
@@ -32956,6 +32804,49 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SessionTask"][];
+        };
+      };
+    };
+  };
+  list_mcp_connections: {
+    parameters: {
+      query?: {
+        /** @description Continue after this opaque connection cursor. */
+        cursor?: string | null;
+        /** @description Page size (default: 50, max: 100). */
+        limit?: number | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cursor-paginated current user's MCP OAuth connections in the selected organization */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserMcpConnectionsResponse"];
+        };
+      };
+      /** @description Invalid cursor or limit */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
     };

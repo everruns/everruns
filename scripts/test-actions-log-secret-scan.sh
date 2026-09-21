@@ -108,6 +108,24 @@ fi
 } > "$WORK/repo-ci-values.log"
 expect "env-block: this repo's committed CI values" quiet "$WORK/repo-ci-values.log"
 
+# Documented API examples are the other way a credential shape reaches a public
+# log: a contract test that fails dumps the whole catalog into its assertion
+# output, examples and all, as run 35396473086 did with an `sk-` prefixed MCP
+# placeholder. Catching that here -- by running the real scanner over the
+# committed examples -- fixes it at the source instead of leaving an hourly
+# alarm nobody can act on. The reported line number indexes the sorted example
+# list, so `jq -r '[.. | objects | select(has("example")) | .example
+# | select(type == "string")] | unique[]' docs/api/openapi.json | sed -n '<n>p'`
+# names the offending placeholder.
+jq -r '[.. | objects | select(has("example")) | .example | select(type == "string")]
+       | unique[]' docs/api/openapi.json \
+  | sed "s/^/$stamp /" > "$WORK/openapi-examples.log"
+if [ ! -s "$WORK/openapi-examples.log" ]; then
+  echo "FAIL: no string examples found in docs/api/openapi.json to build the fixture from"
+  exit 1
+fi
+expect "documented OpenAPI examples carry no credential shape" quiet "$WORK/openapi-examples.log"
+
 cat > "$WORK/ordinary-build.log" <<'LOG'
 2026-09-18T04:06:16Z env:
 2026-09-18T04:06:16Z   CACHE_KEY: debug-ubuntu-latest

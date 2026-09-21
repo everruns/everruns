@@ -35,7 +35,7 @@ pub(crate) trait SessionExecution: Send + Sync + fmt::Debug {
         &self,
         environment: &Environment,
     ) -> Result<(), SessionEnvironmentError>;
-    async fn bind_default_environment(&self) -> Result<Environment, SessionEnvironmentError>;
+    async fn default_environment(&self) -> Result<Environment, SessionEnvironmentError>;
     async fn reopen_environment(&self) -> Result<Option<Environment>, ResumeError>;
 }
 
@@ -116,16 +116,49 @@ impl Engine {
         }
         let binding = self.binding(session_id);
         let environment = binding.reopen_environment().await?;
+        if let (Some(harness), Some(environment)) =
+            (binding.harness_snapshot(), environment.as_ref())
+        {
+            harness
+                .negotiate(environment)
+                .map_err(ResumeError::Environment)?;
+        }
         let session = Session::new(binding, environment);
         self.remember_state(session_id, &session);
         Ok(session)
     }
 
-    /// Attach a persisted local session to this engine.
+    /// Attach a persisted local session without an explicit Harness.
     ///
     /// Rebuild the Agent from trusted application configuration after a process
     /// restart, attach it to the persisted id, then call [`resume`](Self::resume).
+    /// Use [`attach_with_harness`](Self::attach_with_harness) when the session
+    /// was created with an explicit [`Harness`].
     pub async fn attach(&self, session_id: SessionId, agent: Agent) -> Result<(), ResumeError> {
+        self.attach_reconstructed(session_id, agent, None).await
+    }
+
+    /// Attach a persisted local session with its reconstructed Harness.
+    ///
+    /// After a process restart, rebuild the Agent from trusted application
+    /// configuration and deserialize the session's portable Harness definition.
+    /// Attach both values before calling [`resume`](Self::resume).
+    pub async fn attach_with_harness(
+        &self,
+        session_id: SessionId,
+        agent: Agent,
+        harness: Harness,
+    ) -> Result<(), ResumeError> {
+        self.attach_reconstructed(session_id, agent, Some(harness))
+            .await
+    }
+
+    async fn attach_reconstructed(
+        &self,
+        session_id: SessionId,
+        agent: Agent,
+        harness: Option<Harness>,
+    ) -> Result<(), ResumeError> {
         if self.agent(session_id).is_some() {
             return Ok(());
         }
@@ -143,6 +176,15 @@ impl Engine {
         if !exists {
             return Err(ResumeError::SessionNotFound { session_id });
         }
+        if let Some(harness) = &harness
+            && let Some(environment) = agent
+                .reopen_session_environment(backends.binding_store.as_ref(), session_id)
+                .await?
+        {
+            harness
+                .negotiate(&environment)
+                .map_err(ResumeError::Environment)?;
+        }
         self.inner
             .sessions
             .lock()
@@ -150,7 +192,7 @@ impl Engine {
             .entry(session_id)
             .or_insert(EngineSessionEntry {
                 agent,
-                harness: None,
+                harness,
                 state: None,
             });
         Ok(())
@@ -453,15 +495,9 @@ impl SessionExecution for EngineSessionExecution {
             .await
     }
 
-    async fn bind_default_environment(&self) -> Result<Environment, SessionEnvironmentError> {
+    async fn default_environment(&self) -> Result<Environment, SessionEnvironmentError> {
         let agent = self.agent_snapshot();
-        let backends = self
-            .backends()
-            .await
-            .map_err(|_| SessionEnvironmentError::Unavailable)?;
-        agent
-            .bind_default_session_environment(backends.binding_store.as_ref(), self.session_id)
-            .await
+        agent.default_session_environment(self.session_id).await
     }
 
     async fn reopen_environment(&self) -> Result<Option<Environment>, ResumeError> {

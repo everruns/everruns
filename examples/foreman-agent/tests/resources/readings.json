@@ -1,0 +1,46 @@
+{
+  "started": {
+    "implementation_complete": 0.31,
+    "tests_sufficient": 0.10,
+    "requirements_satisfied": 0.22,
+    "needs_verification": 0.11,
+    "ready_to_finish": 0.02,
+    "meaningful_progress": 0.88,
+    "worker_stuck": 0.03,
+    "work_off_track": 0.02,
+    "needs_human": 0.01
+  },
+  "editing": {
+    "implementation_complete": 0.72,
+    "tests_sufficient": 0.28,
+    "requirements_satisfied": 0.61,
+    "needs_verification": 0.44,
+    "ready_to_finish": 0.18,
+    "meaningful_progress": 0.94,
+    "worker_stuck": 0.03,
+    "work_off_track": 0.02,
+    "needs_human": 0.01
+  },
+  "unchecked": {
+    "implementation_complete": 0.96,
+    "tests_sufficient": 0.91,
+    "requirements_satisfied": 0.92,
+    "needs_verification": 0.93,
+    "ready_to_finish": 0.68,
+    "meaningful_progress": 0.95,
+    "worker_stuck": 0.01,
+    "work_off_track": 0.01,
+    "needs_human": 0.01
+  },
+  "verified": {
+    "implementation_complete": 0.98,
+    "tests_sufficient": 0.96,
+    "requirements_satisfied": 0.97,
+    "needs_verification": 0.04,
+    "ready_to_finish": 0.98,
+    "meaningful_progress": 0.98,
+    "worker_stuck": 0.00,
+    "work_off_track": 0.01,
+    "needs_human": 0.01
+  }
+}

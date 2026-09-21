@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
 
-use crate::message::Message;
+use crate::message::RuntimeMessage;
 use crate::typed_id::{EventId, SessionId};
 
 // ============================================================================
@@ -75,7 +75,7 @@ pub enum MessageFilter {
     ///
     /// Use sparingly - this filter cannot be pushed to the database.
     /// For complex filtering that can't be expressed in SQL.
-    Custom(Arc<dyn Fn(&Message) -> bool + Send + Sync>),
+    Custom(Arc<dyn Fn(&RuntimeMessage) -> bool + Send + Sync>),
 }
 
 impl fmt::Debug for MessageFilter {
@@ -123,12 +123,12 @@ pub struct InjectedMessage {
     /// Where to insert this message
     pub position: InjectionPosition,
     /// The message to inject
-    pub message: Message,
+    pub message: RuntimeMessage,
 }
 
 impl InjectedMessage {
     /// Create an injection at the start of the message list
-    pub fn at_start(message: Message) -> Self {
+    pub fn at_start(message: RuntimeMessage) -> Self {
         Self {
             position: InjectionPosition::Start,
             message,
@@ -136,7 +136,7 @@ impl InjectedMessage {
     }
 
     /// Create an injection at the end of the message list
-    pub fn at_end(message: Message) -> Self {
+    pub fn at_end(message: RuntimeMessage) -> Self {
         Self {
             position: InjectionPosition::End,
             message,
@@ -144,7 +144,7 @@ impl InjectedMessage {
     }
 
     /// Create an injection before a specific index
-    pub fn before_index(index: usize, message: Message) -> Self {
+    pub fn before_index(index: usize, message: RuntimeMessage) -> Self {
         Self {
             position: InjectionPosition::BeforeIndex(index),
             message,
@@ -152,7 +152,7 @@ impl InjectedMessage {
     }
 
     /// Create an injection after a specific index
-    pub fn after_index(index: usize, message: Message) -> Self {
+    pub fn after_index(index: usize, message: RuntimeMessage) -> Self {
         Self {
             position: InjectionPosition::AfterIndex(index),
             message,
@@ -183,7 +183,7 @@ pub trait PrependTransform: Send + Sync {
     /// Optionally generate a message to prepend based on filter context.
     ///
     /// Return `Some(message)` to prepend, or `None` to skip.
-    fn transform(&self, ctx: &FilterContext) -> Option<Message>;
+    fn transform(&self, ctx: &FilterContext) -> Option<RuntimeMessage>;
 }
 
 /// Simple implementation that prepends a message when messages were excluded
@@ -213,10 +213,10 @@ you MUST call the `query_history` tool to search for the relevant information.]"
 }
 
 impl PrependTransform for ExcludedNoticeTransform {
-    fn transform(&self, ctx: &FilterContext) -> Option<Message> {
+    fn transform(&self, ctx: &FilterContext) -> Option<RuntimeMessage> {
         if ctx.excluded_count > 0 {
             let text = self.format.replace("{}", &ctx.excluded_count.to_string());
-            Some(Message::system(&text))
+            Some(RuntimeMessage::system(&text))
         } else {
             None
         }
@@ -410,7 +410,7 @@ impl MessageQuery {
     ///
     /// Injections are applied in order. Note that indices may shift
     /// as messages are inserted.
-    pub fn apply_injections(&self, messages: &mut Vec<Message>) {
+    pub fn apply_injections(&self, messages: &mut Vec<RuntimeMessage>) {
         // Sort injections by position to handle index shifts correctly
         // Process End injections last, Start first, then indices in reverse order
         let mut start_injections = Vec::new();
@@ -462,7 +462,7 @@ impl MessageQuery {
     /// with the middle dropped, de-duplicated when the two windows overlap. This
     /// mirrors the head+tail load performed by the storage backends so the
     /// original task/goal survives in histories longer than the tail window.
-    pub fn apply_window_bounds(&self, messages: &mut Vec<Message>) {
+    pub fn apply_window_bounds(&self, messages: &mut Vec<RuntimeMessage>) {
         if let Some(offset) = self.offset {
             let offset = offset.max(0) as usize;
             if offset < messages.len() {
@@ -486,7 +486,11 @@ impl MessageQuery {
     }
 
     /// Prepend the dynamic hidden-history notice, if configured.
-    pub fn prepend_excluded_notice(&self, messages: &mut Vec<Message>, count_before_limit: usize) {
+    pub fn prepend_excluded_notice(
+        &self,
+        messages: &mut Vec<RuntimeMessage>,
+        count_before_limit: usize,
+    ) {
         if let Some(ref transform) = self.prepend_transform {
             let ctx = FilterContext {
                 total_count: count_before_limit,
@@ -500,7 +504,7 @@ impl MessageQuery {
     }
 
     /// Apply offset, latest-message limiting, and optional prepend notice.
-    pub fn apply_windowing(&self, messages: &mut Vec<Message>) {
+    pub fn apply_windowing(&self, messages: &mut Vec<RuntimeMessage>) {
         let count_before_limit = messages.len();
         self.apply_window_bounds(messages);
         self.prepend_excluded_notice(messages, count_before_limit);
@@ -642,7 +646,7 @@ pub trait MessageFilterProvider: Send + Sync {
     /// Post-load transform: inspect and optionally modify loaded messages.
     /// Called after messages are loaded and query filters/injections applied.
     /// Default is no-op.
-    fn post_load(&self, messages: &mut Vec<Message>, config: &serde_json::Value) {
+    fn post_load(&self, messages: &mut Vec<RuntimeMessage>, config: &serde_json::Value) {
         let _ = (messages, config);
     }
 
@@ -662,16 +666,16 @@ pub trait MessageFilterProvider: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::MessageRole;
+    use crate::message::RuntimeMessageRole;
 
-    fn messages() -> Vec<Message> {
+    fn messages() -> Vec<RuntimeMessage> {
         ["goal", "first", "second", "third", "latest"]
             .into_iter()
-            .map(Message::user)
+            .map(RuntimeMessage::user)
             .collect()
     }
 
-    fn assert_messages(actual: &[Message], expected: &[Message]) {
+    fn assert_messages(actual: &[RuntimeMessage], expected: &[RuntimeMessage]) {
         assert_eq!(
             serde_json::to_value(actual).unwrap(),
             serde_json::to_value(expected).unwrap()
@@ -710,7 +714,7 @@ mod tests {
         let empty = MessageQuery::new(session);
         assert!(!empty.has_db_filters());
         assert!(!empty.has_custom_filters());
-        let custom = MessageFilter::Custom(Arc::new(|m| m.role == MessageRole::User));
+        let custom = MessageFilter::Custom(Arc::new(|m| m.role == RuntimeMessageRole::User));
         let query = empty.clone().with_filter(custom.clone());
         assert!(!query.has_db_filters());
         assert!(query.has_custom_filters());
@@ -748,7 +752,7 @@ mod tests {
                 (InjectionPosition::BeforeIndex(usize::MAX), len),
                 (InjectionPosition::AfterIndex(usize::MAX), len),
             ] {
-                let inserted = Message::system("injected");
+                let inserted = RuntimeMessage::system("injected");
                 let query = MessageQuery::new(SessionId::new()).with_injection(InjectedMessage {
                     position,
                     message: inserted.clone(),
@@ -767,7 +771,7 @@ mod tests {
     fn start_and_end_injections_preserve_declared_order() {
         let injected: Vec<_> = ["start one", "start two", "end one", "end two"]
             .into_iter()
-            .map(Message::system)
+            .map(RuntimeMessage::system)
             .collect();
         let query = MessageQuery::new(SessionId::new())
             .with_injection(InjectedMessage::at_start(injected[0].clone()))
@@ -792,8 +796,8 @@ mod tests {
     #[test]
     fn indexed_injections_do_not_shift_other_original_targets() {
         let original = messages();
-        let before = Message::system("before first");
-        let after = Message::system("after third");
+        let before = RuntimeMessage::system("before first");
+        let after = RuntimeMessage::system("after third");
         for injections in [
             vec![
                 InjectedMessage::before_index(1, before.clone()),
@@ -871,7 +875,7 @@ mod tests {
             .with_prepend_transform(Arc::new(ExcludedNoticeTransform::new("{} hidden")));
         let mut actual = original.clone();
         query.apply_windowing(&mut actual);
-        assert_eq!(actual[0].role, MessageRole::System);
+        assert_eq!(actual[0].role, RuntimeMessageRole::System);
         assert_eq!(actual[0].text(), Some("3 hidden"));
         assert_messages(&actual[1..], &original[3..]);
         let no_exclusion = MessageQuery::new(SessionId::new())

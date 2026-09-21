@@ -8,7 +8,7 @@ use crate::kernel_imports::{
 use anyhow::Result;
 use uuid::Uuid;
 
-const COLUMNS: &str = "id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, status, created_at, updated_at, archived_at, deleted_at";
+const COLUMNS: &str = "id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, execution_app_public_id, execution_app_name, execution_agent_version_policy, execution_agent_version_id, status, created_at, updated_at, archived_at, deleted_at";
 
 impl Database {
     // ============================================
@@ -21,9 +21,9 @@ impl Database {
     ) -> Result<AgentTriggerRow> {
         let row = sqlx::query_as::<_, AgentTriggerRow>(
             r#"
-            INSERT INTO agent_triggers (org_id, id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'active')
-            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, status, created_at, updated_at, archived_at, deleted_at
+            INSERT INTO agent_triggers (org_id, id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, execution_app_public_id, execution_app_name, execution_agent_version_policy, execution_agent_version_id, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'active')
+            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, execution_app_public_id, execution_app_name, execution_agent_version_policy, execution_agent_version_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(input.org_id)
@@ -40,6 +40,10 @@ impl Database {
         .bind(input.execution_resolved_owner_user_id)
         .bind(input.execution_agent_identity_id)
         .bind(input.execution_app_id)
+        .bind(&input.execution_app_public_id)
+        .bind(&input.execution_app_name)
+        .bind(&input.execution_agent_version_policy)
+        .bind(input.execution_agent_version_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -121,7 +125,7 @@ impl Database {
                 status = COALESCE($9, status),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, execution_app_public_id, execution_app_name, execution_agent_version_policy, execution_agent_version_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -152,7 +156,7 @@ impl Database {
             UPDATE agent_triggers
             SET durable_schedule_id = $3, updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, execution_app_public_id, execution_app_name, execution_agent_version_policy, execution_agent_version_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)

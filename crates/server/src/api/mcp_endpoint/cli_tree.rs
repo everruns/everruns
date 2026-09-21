@@ -807,19 +807,13 @@ mod tests {
         let text = render_help(tree(), "", None).expect("root help");
         let nouns = listed_commands(&text);
 
-        for expected in [
-            "agents",
-            "mcp-servers",
-            "sessions",
-            "skills",
-            "harnesses",
-            "apps",
-        ] {
+        for expected in ["agents", "mcp-servers", "sessions", "skills", "harnesses"] {
             assert!(
                 nouns.iter().any(|n| n == expected),
                 "{expected} missing:\n{text}"
             );
         }
+        assert!(!nouns.iter().any(|noun| noun == "apps"), "{text}");
         assert!(
             nouns.len() < 60,
             "the root listed {} entries; it is supposed to be nouns, not commands:\n{text}",

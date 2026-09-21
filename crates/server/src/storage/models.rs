@@ -2,15 +2,15 @@
 
 use crate::kernel_imports::{
     everruns_provider::driver_registry::ServiceKind, everruns_provider::typed_id::AgentId,
-    everruns_provider::typed_id::AgentIdentityId, everruns_provider::typed_id::EventId,
-    everruns_provider::typed_id::FileId, everruns_provider::typed_id::HarnessId,
-    everruns_provider::typed_id::ImageId, everruns_provider::typed_id::LeasedResourceId,
-    everruns_provider::typed_id::McpServerId, everruns_provider::typed_id::MessageId,
-    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::NotificationId,
-    everruns_provider::typed_id::PrincipalId, everruns_provider::typed_id::ProviderId,
-    everruns_provider::typed_id::ScheduleId, everruns_provider::typed_id::SessionId,
-    everruns_provider::typed_id::SessionParticipantId, everruns_provider::typed_id::SkillId,
-    everruns_provider::typed_id::TriggerId,
+    everruns_provider::typed_id::AgentIdentityId, everruns_provider::typed_id::AgentVersionId,
+    everruns_provider::typed_id::EventId, everruns_provider::typed_id::FileId,
+    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::ImageId,
+    everruns_provider::typed_id::LeasedResourceId, everruns_provider::typed_id::McpServerId,
+    everruns_provider::typed_id::MessageId, everruns_provider::typed_id::ModelId,
+    everruns_provider::typed_id::NotificationId, everruns_provider::typed_id::PrincipalId,
+    everruns_provider::typed_id::ProviderId, everruns_provider::typed_id::ScheduleId,
+    everruns_provider::typed_id::SessionId, everruns_provider::typed_id::SessionParticipantId,
+    everruns_provider::typed_id::SkillId, everruns_provider::typed_id::TriggerId,
 };
 use chrono::{DateTime, Utc};
 use everruns_durable::UpdateField;
@@ -2808,6 +2808,10 @@ pub struct AgentTriggerRow {
     pub execution_resolved_owner_user_id: Option<Uuid>,
     pub execution_agent_identity_id: Option<AgentIdentityId>,
     pub execution_app_id: Option<Uuid>,
+    pub execution_app_public_id: Option<String>,
+    pub execution_app_name: Option<String>,
+    pub execution_agent_version_policy: Option<String>,
+    pub execution_agent_version_id: Option<AgentVersionId>,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -2831,6 +2835,10 @@ pub struct CreateAgentTriggerRow {
     pub execution_resolved_owner_user_id: Option<Uuid>,
     pub execution_agent_identity_id: Option<AgentIdentityId>,
     pub execution_app_id: Option<Uuid>,
+    pub execution_app_public_id: Option<String>,
+    pub execution_app_name: Option<String>,
+    pub execution_agent_version_policy: Option<String>,
+    pub execution_agent_version_id: Option<AgentVersionId>,
 }
 
 #[derive(Debug, Clone, Default)]

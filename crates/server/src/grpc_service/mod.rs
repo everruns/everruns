@@ -6,10 +6,9 @@
 // Decision: Remaining top-level services are cross-cutting infra helpers only
 // Decision: Split into submodules for maintainability (EVE-101).
 
+mod worker;
 mod worker_service_impl;
 
-#[cfg(test)]
-mod connection_token_tests;
 #[cfg(test)]
 mod tests;
 
@@ -135,6 +134,8 @@ use everruns_internal_protocol::proto::{
     InvokePlatformCommandSurfaceResponse,
     InvokeScheduledAppChannelRequest,
     InvokeScheduledAppChannelResponse,
+    InvokeSlackActionRequest,
+    InvokeSlackActionResponse,
     ListCommandsRequest,
     ListCommandsResponse,
     ListOrphanedSessionTasksRequest,
@@ -159,42 +160,7 @@ use everruns_internal_protocol::proto::{
     McpToolDef,
     OptionalSessionTaskResponse,
     OrphanedSessionTaskEntry, // orphan-scan entry for ListOrphanedSessionTasks
-    PlatformCapabilityInfo,
     PlatformCommandSurfaceOperation,
-    PlatformCopyHarnessRequest,
-    PlatformCopyHarnessResponse,
-    PlatformCreateAgentRequest,
-    PlatformCreateAgentResponse,
-    PlatformCreateHarnessRequest,
-    PlatformCreateHarnessResponse,
-    PlatformCreateSessionRequest,
-    PlatformCreateSessionResponse,
-    PlatformDeleteAgentRequest,
-    PlatformDeleteAgentResponse,
-    PlatformDeleteHarnessRequest,
-    PlatformDeleteHarnessResponse,
-    PlatformDeleteSessionRequest,
-    PlatformDeleteSessionResponse,
-    PlatformGetBaseUrlRequest,
-    PlatformGetBaseUrlResponse,
-    PlatformGetMessagesRequest,
-    PlatformGetMessagesResponse,
-    PlatformListAgentsRequest,
-    PlatformListAgentsResponse,
-    PlatformListCapabilitiesRequest,
-    PlatformListCapabilitiesResponse,
-    PlatformListHarnessesRequest,
-    PlatformListHarnessesResponse,
-    PlatformListSessionsRequest,
-    PlatformListSessionsResponse,
-    PlatformSendMessageRequest,
-    PlatformSendMessageResponse,
-    PlatformUpdateAgentRequest,
-    PlatformUpdateAgentResponse,
-    PlatformUpdateHarnessRequest,
-    PlatformUpdateHarnessResponse,
-    PlatformWaitForIdleRequest,
-    PlatformWaitForIdleResponse,
     // Platform management types
     PruneTerminalSessionTasksRequest,
     PruneTerminalSessionTasksResponse,
@@ -230,20 +196,10 @@ use everruns_internal_protocol::proto::{
     SessionListDirectoryResponse,
     SessionReadFileRequest,
     SessionReadFileResponse,
-    SessionSqlDbCreateDatabaseRequest,
-    SessionSqlDbCreateDatabaseResponse,
-    SessionSqlDbDeleteDatabaseRequest,
-    SessionSqlDbDeleteDatabaseResponse,
     SessionSqlDbExecuteRequest,
     SessionSqlDbExecuteResponse,
-    SessionSqlDbGetDatabaseRequest,
-    SessionSqlDbGetDatabaseResponse,
-    SessionSqlDbListDatabasesRequest,
-    SessionSqlDbListDatabasesResponse,
     SessionSqlDbQueryRequest,
     SessionSqlDbQueryResponse,
-    SessionSqlDbSchemaRequest,
-    SessionSqlDbSchemaResponse,
     SessionStatFileRequest,
     SessionStatFileResponse,
     SessionStorageDeleteSecretRequest,
@@ -286,7 +242,7 @@ use everruns_internal_protocol::proto::{
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer,
     datetime_to_proto_timestamp as ip_datetime_to_proto_timestamp, proto_event_request_to_schema,
-    schema_agent_to_proto, schema_event_to_proto, schema_harness_to_proto, schema_session_to_proto,
+    schema_agent_to_proto, schema_event_to_proto, schema_harness_to_proto,
 };
 use std::pin::Pin;
 use std::sync::Arc;
@@ -459,9 +415,9 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
 
         let message_id = everruns_provider::typed_id::MessageId::new();
         let now = chrono::Utc::now();
-        let core_message = everruns_core::Message {
+        let core_message = everruns_core::RuntimeMessage {
             id: message_id,
-            role: everruns_core::MessageRole::User,
+            role: everruns_core::RuntimeMessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
             phase_source: None,
@@ -499,68 +455,6 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
 
         Ok(())
     }
-}
-
-#[allow(clippy::result_large_err)]
-async fn resolve_legacy_connection_token(
-    resolver: &Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
-    session_id: everruns_provider::typed_id::SessionId,
-    provider: &str,
-) -> Result<Option<String>, Status> {
-    resolver
-        .get_connection_token(session_id, provider)
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Failed to resolve connection token");
-            Status::internal("Failed to resolve connection token")
-        })
-}
-
-async fn handle_legacy_connection_token_request(
-    resolver: &Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
-    request: GetConnectionTokenRequest,
-) -> Result<Response<GetConnectionTokenResponse>, Status> {
-    let session_id = parse_uuid(request.session_id.as_ref())?;
-    let token =
-        resolve_legacy_connection_token(resolver, session_id.into(), &request.provider).await?;
-    Ok(Response::new(GetConnectionTokenResponse { token }))
-}
-
-async fn handle_mcp_connection_token_request(
-    resolver: &Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
-    request: GetMcpConnectionTokenRequest,
-) -> Result<Response<GetConnectionTokenResponse>, Status> {
-    let session_id = parse_uuid(request.session_id.as_ref())?;
-    let token = resolve_mcp_connection_token(
-        resolver,
-        session_id.into(),
-        &request.provider,
-        &request.acts_as,
-    )
-    .await?;
-    Ok(Response::new(GetConnectionTokenResponse { token }))
-}
-
-#[allow(clippy::result_large_err)]
-async fn resolve_mcp_connection_token(
-    resolver: &Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
-    session_id: everruns_provider::typed_id::SessionId,
-    provider: &str,
-    acts_as: &str,
-) -> Result<Option<String>, Status> {
-    let acts_as = match acts_as {
-        "none" => everruns_core::McpServerActsAs::None,
-        "service" => everruns_core::McpServerActsAs::Service,
-        "user" => everruns_core::McpServerActsAs::User,
-        _ => return Err(Status::invalid_argument("Invalid acts_as value")),
-    };
-    resolver
-        .get_mcp_connection_token(session_id, provider, acts_as)
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Failed to resolve connection token");
-            Status::internal("Failed to resolve connection token")
-        })
 }
 
 /// gRPC service implementation for worker communication
@@ -808,6 +702,13 @@ impl WorkerServiceImpl {
         // gRPC worker dispatch, not just the in-process direct path.
         .with_event_service(Arc::new(self.event_service.clone()));
 
+        // The session-database commands are the worker's only path to sqldb since
+        // the bespoke RPCs went away, so a Ctx without this store fails every one
+        // of them with "not configured".
+        if let Some(store) = &self.sqldb_store {
+            ctx = ctx.with_sqldb_store(store.clone());
+        }
+
         if let Some(runner) = &self.runner {
             let message_service = Arc::new(crate::domains::messages::MessageService::new(
                 self.db.clone(),
@@ -829,7 +730,7 @@ impl WorkerServiceImpl {
         caller: everruns_core::Caller,
     ) -> Result<crate::domains::common::Ctx, Status> {
         let org_id = caller.org_id;
-        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags_cached(
             &self.db,
             org_id,
             &everruns_platform::FeatureFlags::current(),
@@ -843,11 +744,6 @@ impl WorkerServiceImpl {
         Ok(self
             .domain_ctx_for_caller(caller)
             .with_feature_flags(feature_flags))
-    }
-
-    async fn org_domain_ctx(&self, org_id: i64) -> Result<crate::domains::common::Ctx, Status> {
-        self.org_domain_ctx_for_caller(everruns_core::Caller::internal(org_id))
-            .await
     }
 
     /// Get durable store or return unavailable error
@@ -1215,20 +1111,6 @@ fn sqldb_error_to_status(e: everruns_platform::session_sqldb::SessionSqlDbError)
     }
 }
 
-/// Convert a DatabaseInfo to its proto representation.
-fn db_info_to_proto(
-    db: everruns_platform::session_sqldb::DatabaseInfo,
-) -> proto::SessionSqlDbDatabaseInfo {
-    use everruns_internal_protocol::datetime_to_proto_timestamp;
-    proto::SessionSqlDbDatabaseInfo {
-        name: db.name,
-        size_bytes: db.size_bytes,
-        page_count: db.page_count,
-        created_at: Some(datetime_to_proto_timestamp(db.created_at)),
-        updated_at: Some(datetime_to_proto_timestamp(db.updated_at)),
-    }
-}
-
 /// Convert a serde_json::Value to a proto Value for query result rows.
 fn json_value_to_proto(value: serde_json::Value) -> prost_types::Value {
     let kind = match value {
@@ -1255,8 +1137,8 @@ fn json_value_to_proto(value: serde_json::Value) -> prost_types::Value {
     prost_types::Value { kind }
 }
 
-/// Convert a domain Message to a proto Message.
-fn message_to_proto(message: &everruns_core::Message) -> proto::Message {
+/// Convert a domain `RuntimeMessage` to a proto `Message`.
+fn message_to_proto(message: &everruns_core::RuntimeMessage) -> proto::Message {
     use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
     let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
@@ -1296,11 +1178,11 @@ fn message_to_proto(message: &everruns_core::Message) -> proto::Message {
     }
 }
 
-/// Extract a Message from an Event's data field
+/// Extract a RuntimeMessage from an Event's data field
 ///
 /// Events returned from EventService already have data parsed into EventData.
-fn event_to_message(event: &everruns_core::Event) -> Option<everruns_core::Message> {
-    use everruns_core::{ContentPart, EventData, Message};
+fn event_to_message(event: &everruns_core::Event) -> Option<everruns_core::RuntimeMessage> {
+    use everruns_core::{ContentPart, EventData, RuntimeMessage};
 
     match &event.data {
         EventData::InputMessage(d) => Some(d.message.clone()),
@@ -1315,7 +1197,7 @@ fn event_to_message(event: &everruns_core::Event) -> Option<everruns_core::Messa
                     }
                     serde_json::to_value(parts).unwrap_or_default()
                 });
-            Some(Message::tool_result(
+            Some(RuntimeMessage::tool_result(
                 &d.tool_call_id,
                 result,
                 d.error.clone(),

@@ -10,7 +10,7 @@
 
 use everruns_core::MessageRetriever;
 use everruns_core::events::{EventData, InputMessageData, OutputMessageCompletedData};
-use everruns_core::message::{Message, MessageRole};
+use everruns_core::message::{RuntimeMessage, RuntimeMessageRole};
 use everruns_llmsim::LlmSimConfig;
 use everruns_test_support::InMemoryAgenticLoop;
 
@@ -24,10 +24,12 @@ async fn seeded_events_project_into_history_before_the_next_turn() {
 
     agent_loop
         .seed_events([
-            EventData::InputMessage(InputMessageData::new(Message::user("first question"))),
-            EventData::OutputMessageCompleted(OutputMessageCompletedData::new(Message::assistant(
-                "first answer",
+            EventData::InputMessage(InputMessageData::new(RuntimeMessage::user(
+                "first question",
             ))),
+            EventData::OutputMessageCompleted(OutputMessageCompletedData::new(
+                RuntimeMessage::assistant("first answer"),
+            )),
         ])
         .await
         .expect("seed events append");
@@ -62,7 +64,7 @@ async fn seeded_events_project_into_history_before_the_next_turn() {
     );
     assert_eq!(
         after.first().map(|m| &m.role),
-        Some(&MessageRole::User),
+        Some(&RuntimeMessageRole::User),
         "seeded roles survive projection"
     );
 }

@@ -9,7 +9,7 @@
 
 use everruns_builtins::MessageMetadataCapability;
 use everruns_core::MessageRetriever;
-use everruns_core::message::MessageRole;
+use everruns_core::message::RuntimeMessageRole;
 use everruns_llmsim::LlmSimConfig;
 use everruns_test_support::InMemoryAgenticLoop;
 
@@ -38,7 +38,7 @@ async fn message_metadata_annotates_llm_view_not_storage() {
         .expect("messages load");
     let stored_user = messages
         .iter()
-        .find(|m| m.role == MessageRole::User)
+        .find(|m| m.role == RuntimeMessageRole::User)
         .expect("user message stored");
     assert_eq!(stored_user.text(), Some("hello there"));
 }

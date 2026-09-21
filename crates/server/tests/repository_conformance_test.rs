@@ -360,6 +360,10 @@ async fn run_agent_trigger_conformance(
             execution_resolved_owner_user_id: None,
             execution_agent_identity_id: None,
             execution_app_id: None,
+            execution_app_public_id: None,
+            execution_app_name: None,
+            execution_agent_version_policy: None,
+            execution_agent_version_id: None,
         })
         .await
         .expect("create agent trigger");

@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::kernel_imports::{
-    Caller, ContentPart, ExternalActor, MessageRole, everruns_provider::typed_id::MessageId,
+    Caller, ContentPart, ExternalActor, RuntimeMessageRole, everruns_provider::typed_id::MessageId,
 };
 use ag_ui_core::event::{
     BaseEvent as AgUiBaseEvent, Event as AgUiEvent,
@@ -56,7 +56,7 @@ use everruns_core::events::{
 };
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use everruns_platform::exposure::{PublicToolVisibility, public_tool_activity_text};
-use everruns_platform::{AgUiChannelConfig, App, ChannelType};
+use everruns_platform::{AgUiChannelConfig, ChannelType};
 use everruns_provider::execution_phase::ExecutionPhase;
 use everruns_provider::typed_id::ImageId;
 #[cfg(test)]
@@ -108,6 +108,7 @@ pub struct AgUiState {
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub rate_limiter: ChannelRateLimiter,
     pub auth_verifier: AppEndpointAuthVerifier,
+    pub public_chat_enabled: bool,
 }
 
 impl AgUiState {
@@ -132,9 +133,15 @@ impl AgUiState {
             sse_tracker,
             rate_limiter,
             auth_verifier: AppEndpointAuthVerifier::new(),
+            public_chat_enabled: false,
             encryption,
             db,
         }
+    }
+
+    pub fn with_public_chat_enabled(mut self, enabled: bool) -> Self {
+        self.public_chat_enabled = enabled;
+        self
     }
 }
 
@@ -162,7 +169,7 @@ enum AgUiTarget {
 }
 
 struct AuthorizedAgUiRequest {
-    app: App,
+    context: crate::api::app_ingress::IngressContext,
     channel_id: String,
     /// Internal id of the endpoint this request arrived through, recorded on
     /// any session it creates (EVE-1004).
@@ -176,29 +183,36 @@ async fn authorize_ag_ui_request(
     headers: &HeaderMap,
     peer_addr: Option<std::net::SocketAddr>,
 ) -> Result<AuthorizedAgUiRequest, Response> {
-    let (app, endpoint_channel) = match target {
+    let (context, channel) = match target {
         AgUiTarget::LegacyApp(app_id) => {
-            let app = crate::domains::apps::queries::get_by_public_id_unscoped(
+            match crate::api::app_ingress::resolve_legacy_endpoint(
                 &state.db,
                 state.encryption.as_ref(),
                 &app_id,
+                ChannelType::AgUi,
             )
             .await
             .map_err(internal_error)?
-            .ok_or_else(not_found)?;
-            (app, None)
+            {
+                crate::api::app_ingress::LegacyEndpointMatch::One(endpoint) => *endpoint,
+                crate::api::app_ingress::LegacyEndpointMatch::NotFound => {
+                    return Err(not_found());
+                }
+                crate::api::app_ingress::LegacyEndpointMatch::Ambiguous => {
+                    return Err(conflict(
+                        "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/e/{channel_id}/ag-ui URL",
+                    ));
+                }
+            }
         }
-        AgUiTarget::Endpoint(channel_id) => {
-            let (app, channel) = crate::api::app_ingress::resolve_endpoint(
-                &state.db,
-                state.encryption.as_ref(),
-                &channel_id,
-            )
-            .await
-            .map_err(internal_error)?
-            .ok_or_else(not_found)?;
-            (app, Some(channel))
-        }
+        AgUiTarget::Endpoint(channel_id) => crate::api::app_ingress::resolve_endpoint(
+            &state.db,
+            state.encryption.as_ref(),
+            &channel_id,
+        )
+        .await
+        .map_err(internal_error)?
+        .ok_or_else(not_found)?,
     };
 
     // THREAT[TM-AUTHZ-005]: Anonymous AG-UI requests must not reach draft or
@@ -211,32 +225,12 @@ async fn authorize_ag_ui_request(
     // AG-UI channel / is misconfigured". Every such case collapses to a single
     // generic 404 (matching the FCP channel in `api/fcp.rs`); the real reason is
     // logged server-side only.
-    let channel = match endpoint_channel {
-        Some(channel) => {
-            if channel.channel_type != ChannelType::AgUi {
-                return Err(not_found());
-            }
-            channel
-        }
-        None => match crate::api::app_ingress::resolve_legacy_channel(&app, ChannelType::AgUi) {
-            crate::api::app_ingress::LegacyChannelMatch::One(channel) => channel,
-            crate::api::app_ingress::LegacyChannelMatch::NotFound => {
-                tracing::debug!(app_id = %app.public_id, "AG-UI request rejected: no enabled AG-UI channel");
-                return Err(not_found());
-            }
-            crate::api::app_ingress::LegacyChannelMatch::Ambiguous => {
-                return Err(conflict(
-                    "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/e/{channel_id}/ag-ui URL",
-                ));
-            }
-        },
-    };
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&state.db, &app, &channel)
-        .await
-        .map_err(internal_error)?
-    {
+    if channel.channel_type != ChannelType::AgUi {
+        return Err(not_found());
+    }
+    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&context, &channel) {
         tracing::debug!(
-            app_id = %app.public_id,
+            app_id = %context.public_id,
             endpoint_id = %channel.public_id,
             reason = reason.as_str(),
             "AG-UI request rejected: endpoint not live"
@@ -245,7 +239,7 @@ async fn authorize_ag_ui_request(
     }
 
     let Some(channel_config) = channel.ag_ui_config() else {
-        tracing::error!(app_id = %app.public_id, "AG-UI channel config did not deserialize");
+        tracing::error!(app_id = %context.public_id, "AG-UI channel config did not deserialize");
         return Err(not_found());
     };
     if let Some(auth) = channel.auth.as_ref() {
@@ -266,7 +260,7 @@ async fn authorize_ag_ui_request(
             // No auth provider configured and anonymous access disabled: the
             // channel is not reachable. Collapse to a generic 404 rather than a
             // 403 so callers cannot confirm the app exists (TM-TENANT-002).
-            tracing::debug!(app_id = %app.public_id, "AG-UI request rejected: anonymous access disabled with no auth provider");
+            tracing::debug!(app_id = %context.public_id, "AG-UI request rejected: anonymous access disabled with no auth provider");
             return Err(not_found());
         }
         if let Some(expected_token) = channel_config.token.as_deref()
@@ -289,7 +283,7 @@ async fn authorize_ag_ui_request(
         if state
             .rate_limiter
             .check(
-                &format!("{}:{}", app.public_id, channel.public_id),
+                &format!("{}:{}", context.public_id, channel.public_id),
                 client_ip,
                 limit,
             )
@@ -303,7 +297,7 @@ async fn authorize_ag_ui_request(
     Ok(AuthorizedAgUiRequest {
         channel_id: channel.public_id.to_string(),
         endpoint_internal_id: channel.internal_id,
-        app,
+        context,
         channel_config,
     })
 }
@@ -350,7 +344,7 @@ async fn upload_image(
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<ImageUploadResponse>), Response> {
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
-    let AuthorizedAgUiRequest { app, .. } =
+    let AuthorizedAgUiRequest { context, .. } =
         authorize_ag_ui_request(&state, target, &headers, peer_addr).await?;
 
     // THREAT[TM-DOS-010]: Public AG-UI image uploads are anonymous ingress.
@@ -401,16 +395,16 @@ async fn upload_image(
     let row = state
         .db
         .create_image(
-            app.org_id,
+            context.org_id,
             CreateImageRow {
-                org_id: app.org_id,
+                org_id: context.org_id,
                 filename,
                 content_type,
                 size_bytes,
                 data,
                 thumbnail_data,
                 thumbnail_content_type,
-                metadata: ag_ui_image_metadata(&app),
+                metadata: ag_ui_image_metadata(&context),
             },
         )
         .await
@@ -477,7 +471,7 @@ async fn run_agent(
     let request_id = req_id.map(|Extension(r)| r.0);
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let AuthorizedAgUiRequest {
-        app,
+        context: app,
         channel_id,
         endpoint_internal_id,
         channel_config,
@@ -505,7 +499,7 @@ async fn run_agent(
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_app_agent_stream(
     state: AgUiState,
-    app: App,
+    app: crate::api::app_ingress::IngressContext,
     endpoint_internal_id: uuid::Uuid,
     channel_config: AgUiChannelConfig,
     tag_prefix: &str,
@@ -579,7 +573,7 @@ pub(crate) async fn run_app_agent_stream(
     let sse_guard = state
         .sse_tracker
         .try_acquire(app.org_id, session.session.id.uuid())
-        .map_err(|rejection| too_many_requests(&rejection.to_string()))?;
+        .map_err(|r| too_many_requests(&r.report("ag_ui", app.org_id, &session.session.id)))?;
 
     // Seed prior history only on first use of the thread so a new AG-UI client can
     // carry conversation context into the durable session without triggering old runs.
@@ -614,7 +608,7 @@ pub(crate) async fn run_app_agent_stream(
                 org_id: app.org_id,
                 user_id: None,
                 harness_id: app.harness_id.uuid(),
-                agent_id: app.agent_id.map(|agent_id| agent_id.uuid()),
+                agent_id: Some(app.agent_internal_id),
                 session_id: session.session.id.uuid(),
                 event_metadata: Some(execution_metadata::app_message_metadata(
                     app.public_id,
@@ -758,7 +752,7 @@ pub(crate) async fn run_app_agent_stream(
 }
 
 fn ag_ui_message_metadata(
-    app: &App,
+    app: &crate::api::app_ingress::IngressContext,
     thread_tag: String,
     run_tag: String,
 ) -> HashMap<String, Value> {
@@ -774,7 +768,7 @@ fn ag_ui_message_metadata(
     .collect()
 }
 
-fn ag_ui_image_metadata(app: &App) -> Value {
+fn ag_ui_image_metadata(app: &crate::api::app_ingress::IngressContext) -> Value {
     serde_json::json!({
         "_app_id": app.public_id.to_string(),
         "source": "ag_ui",
@@ -791,7 +785,7 @@ fn is_ag_ui_app_image(metadata: &Value, app_public_id: &str) -> bool {
 
 async fn ag_ui_image_content_parts(
     state: &AgUiState,
-    app: &App,
+    app: &crate::api::app_ingress::IngressContext,
     forwarded_props: &Value,
 ) -> Result<Vec<InputContentPart>, Box<Response>> {
     let image_ids = forwarded_ag_ui_image_ids(forwarded_props)?;
@@ -887,7 +881,7 @@ impl From<anyhow::Error> for SessionError {
 
 async fn find_or_create_session(
     state: &AgUiState,
-    app: &App,
+    app: &crate::api::app_ingress::IngressContext,
     endpoint_internal_id: uuid::Uuid,
     config: &AgUiChannelConfig,
     routing_tags: &[String],
@@ -945,9 +939,11 @@ async fn find_or_create_session(
                 .create_from_app(
                     &Caller::internal(app.org_id),
                     app.harness_id.uuid(),
-                    app.agent_id.map(|agent_id| agent_id.uuid()),
+                    Some(app.agent_internal_id),
                     app.agent_id,
-                    app.internal_id,
+                    app.historical_app_id,
+                    app.agent_version_policy.clone(),
+                    app.agent_version_id,
                     Some(endpoint_internal_id),
                     app.owner_principal_id,
                     app.resolved_owner_user_id,
@@ -1018,7 +1014,7 @@ async fn seed_history(
 fn to_stored_history_message(message: &AgUiMessage) -> Option<StoredInputMessage> {
     let (role, content, name) = match message {
         AgUiMessage::User { content, name, .. } => {
-            (MessageRole::User, content.clone(), name.clone())
+            (RuntimeMessageRole::User, content.clone(), name.clone())
         }
         AgUiMessage::Assistant {
             content,
@@ -1026,7 +1022,7 @@ fn to_stored_history_message(message: &AgUiMessage) -> Option<StoredInputMessage
             tool_calls,
             ..
         } => (
-            MessageRole::Agent,
+            RuntimeMessageRole::Agent,
             content
                 .clone()
                 .or_else(|| {
@@ -1043,7 +1039,7 @@ fn to_stored_history_message(message: &AgUiMessage) -> Option<StoredInputMessage
             tool_call_id,
             ..
         } => (
-            MessageRole::Agent,
+            RuntimeMessageRole::Agent,
             match error {
                 Some(error) => format!("[Tool {} error: {}]\n{}", &**tool_call_id, error, content),
                 None => format!("[Tool {} result]\n{}", &**tool_call_id, content),
@@ -1052,7 +1048,7 @@ fn to_stored_history_message(message: &AgUiMessage) -> Option<StoredInputMessage
         ),
         AgUiMessage::System { content, name, .. }
         | AgUiMessage::Developer { content, name, .. } => {
-            (MessageRole::System, content.clone(), name.clone())
+            (RuntimeMessageRole::System, content.clone(), name.clone())
         }
     };
 
@@ -1147,7 +1143,7 @@ fn public_content_part_to_string(part: &ContentPart) -> Option<String> {
 }
 
 fn is_terminal_public_output_message(
-    message: &everruns_core::Message,
+    message: &everruns_core::RuntimeMessage,
     assistant_emitted_delta: bool,
 ) -> bool {
     if matches!(message.phase, Some(ExecutionPhase::Commentary)) {
@@ -1695,8 +1691,8 @@ fn too_many_requests(message: &str) -> Response {
 mod tests {
     use super::*;
     use crate::kernel_imports::{
-        Event, EventContext, Message, MessageId, OutputMessageCompletedData,
-        OutputMessageDeltaData, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
+        Event, EventContext, MessageId, OutputMessageCompletedData, OutputMessageDeltaData,
+        RuntimeMessage, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
     };
     use ag_ui_core::event::EventType as AgUiEventType;
     use chrono::Duration as ChronoDuration;
@@ -1757,33 +1753,8 @@ mod tests {
         }
     }
 
-    fn test_app() -> App {
-        use everruns_provider::typed_id::{AppId, HarnessId, PrincipalId};
-
-        let now = chrono::Utc::now();
-        App {
-            public_id: AppId::from_seed(1),
-            internal_id: Uuid::nil(),
-            org_id: 1,
-            name: "Test App".to_string(),
-            description: None,
-            harness_id: HarnessId::from_seed(2),
-            agent_id: None,
-            agent_version_policy: everruns_platform::AgentVersionPolicy::Default,
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: PrincipalId::from_seed(3),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
-            channels: vec![],
-            status: everruns_platform::AppStatus::Published,
-            published_at: None,
-            created_at: now,
-            updated_at: now,
-            archived_at: None,
-            deleted_at: None,
-        }
+    fn test_app() -> crate::api::app_ingress::IngressContext {
+        crate::api::app_ingress::IngressContext::for_test("Test App", None)
     }
 
     #[test]
@@ -1838,7 +1809,7 @@ mod tests {
             SessionId::from_uuid(state.session_id),
             EventContext::turn(turn_id, input_message_id),
             OutputMessageCompletedData::new(
-                Message::assistant("Hello from AG-UI").with_id(output_message_id),
+                RuntimeMessage::assistant("Hello from AG-UI").with_id(output_message_id),
             ),
         );
 
@@ -1891,7 +1862,7 @@ mod tests {
             session_id,
             context,
             OutputMessageCompletedData::new(
-                Message::assistant("Hello from AG-UI").with_id(streamed_message_id),
+                RuntimeMessage::assistant("Hello from AG-UI").with_id(streamed_message_id),
             ),
         );
         translate_event(&mut state, &completed_event);
@@ -1947,7 +1918,7 @@ mod tests {
             session_id,
             context.clone(),
             OutputMessageCompletedData::new(
-                Message::assistant_with_tools(
+                RuntimeMessage::assistant_with_tools(
                     "",
                     vec![ToolCall {
                         id: "call_lookup".to_string(),
@@ -1977,7 +1948,7 @@ mod tests {
             session_id,
             context,
             OutputMessageCompletedData::new(
-                Message::assistant("The Base harness is the default execution wrapper.")
+                RuntimeMessage::assistant("The Base harness is the default execution wrapper.")
                     .with_id(final_message_id)
                     .with_phase(ExecutionPhase::FinalAnswer),
             ),
@@ -2289,7 +2260,7 @@ mod tests {
             session_id,
             context.clone(),
             OutputMessageCompletedData::new(
-                Message::assistant_with_tools(
+                RuntimeMessage::assistant_with_tools(
                     "",
                     vec![ToolCall {
                         id: "call_list_skills".to_string(),
@@ -2346,7 +2317,7 @@ mod tests {
             session_id,
             context,
             OutputMessageCompletedData::new(
-                Message::assistant("The Base harness is the default execution wrapper.")
+                RuntimeMessage::assistant("The Base harness is the default execution wrapper.")
                     .with_phase(ExecutionPhase::FinalAnswer),
             ),
         );
@@ -2460,7 +2431,7 @@ mod tests {
         let output_completed = Event::new(
             session_id,
             context,
-            OutputMessageCompletedData::new(Message::assistant("Hello after tool")),
+            OutputMessageCompletedData::new(RuntimeMessage::assistant("Hello after tool")),
         );
         translate_event(&mut state, &output_completed);
 

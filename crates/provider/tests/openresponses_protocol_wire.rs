@@ -13,8 +13,8 @@
 
 use everruns_provider::OpenResponsesProtocolChatDriver;
 use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
-    LlmStreamEvent, ProviderOpaqueContext,
+    LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
+    ProviderOpaqueContext,
 };
 use everruns_provider::error::LlmErrorKind;
 use everruns_provider::user_facing_error::UserFacingErrorContext;
@@ -143,7 +143,7 @@ async fn text_stream_golden_events() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("gpt-5-mini"),
         )
         .await
@@ -192,7 +192,7 @@ async fn fragmented_function_call_golden_events() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
+            vec![Message::text(MessageRole::User, "weather?")],
             &config("gpt-5-mini"),
         )
         .await
@@ -262,8 +262,8 @@ async fn native_compact_context_is_the_exact_ordered_responses_input() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![
-                LlmMessage::text(LlmMessageRole::System, "instructions"),
-                LlmMessage::text(LlmMessageRole::User, "reconstructed transcript"),
+                Message::text(MessageRole::System, "instructions"),
+                Message::text(MessageRole::User, "reconstructed transcript"),
             ],
             &call_config,
         )
@@ -306,10 +306,7 @@ async fn reasoning_request_opts_into_encrypted_content() {
     let mut call_config = config("gpt-5.2");
     call_config.reasoning_effort = Some(everruns_provider::model::ReasoningEffort::High);
     let stream = driver(&server)
-        .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
-            &call_config,
-        )
+        .chat_completion_stream(vec![Message::text(MessageRole::User, "hi")], &call_config)
         .await
         .expect("stream should start");
     let _ = drain_golden(stream).await;
@@ -338,7 +335,7 @@ async fn non_reasoning_request_omits_include() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("gpt-5.2"),
         )
         .await
@@ -364,7 +361,7 @@ async fn reasoning_items_replay_under_their_provider_ids() {
     )
     .await;
 
-    let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "working on it");
+    let mut assistant = Message::text(MessageRole::Assistant, "working on it");
     assistant.reasoning = vec![
         everruns_provider::reasoning::ReasoningContentPart::opaque("openai")
             .with_item_id("rs_first")
@@ -380,9 +377,9 @@ async fn reasoning_items_replay_under_their_provider_ids() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![
-                LlmMessage::text(LlmMessageRole::User, "go"),
+                Message::text(MessageRole::User, "go"),
                 assistant,
-                LlmMessage::text(LlmMessageRole::User, "continue"),
+                Message::text(MessageRole::User, "continue"),
             ],
             &config("gpt-5.2"),
         )
@@ -478,14 +475,14 @@ async fn astra_update_keeps_baseline_and_replays_after_response_id_rejection() {
         .respond_with(ResponseTemplate::new(200).set_body_raw(sse_event(
             r#"{"type":"response.completed","response":{"id":"fresh","output":[],"usage":{"input_tokens":10,"output_tokens":1}}}"#
         ), "text/event-stream")).expect(1).mount(&server).await;
-        let mut second = LlmMessage::text(LlmMessageRole::User, "second");
+        let mut second = Message::text(MessageRole::User, "second");
         second.configuration_update = Some(High);
         let messages = vec![
-            LlmMessage::text(LlmMessageRole::User, "first"),
-            LlmMessage::text(LlmMessageRole::Assistant, "first answer"),
+            Message::text(MessageRole::User, "first"),
+            Message::text(MessageRole::Assistant, "first answer"),
             second,
-            LlmMessage::text(LlmMessageRole::Assistant, "second answer"),
-            LlmMessage::text(LlmMessageRole::User, "third"),
+            Message::text(MessageRole::Assistant, "second answer"),
+            Message::text(MessageRole::User, "third"),
         ];
         let mut cfg = config("gpt-6-astra");
         cfg.reasoning_effort = Some(Low);
@@ -577,10 +574,7 @@ async fn astra_explicit_compaction_preserves_output_and_reasserts_effort() {
     // checkpoint's high and pending max updates, never send adjacent updates.
     drain_golden(
         astra_driver(&server)
-            .chat_completion_stream(
-                vec![LlmMessage::text(LlmMessageRole::User, "continue")],
-                &cfg,
-            )
+            .chat_completion_stream(vec![Message::text(MessageRole::User, "continue")], &cfg)
             .await
             .unwrap(),
     )
@@ -671,7 +665,7 @@ async fn function_call_without_output_item_added_still_emits_the_tool_call() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
+            vec![Message::text(MessageRole::User, "weather?")],
             &config("gpt-5-mini"),
         )
         .await
@@ -716,7 +710,7 @@ async fn function_call_only_in_the_completed_response_is_recovered() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "merge it")],
+            vec![Message::text(MessageRole::User, "merge it")],
             &config("gpt-5-mini"),
         )
         .await
@@ -766,7 +760,7 @@ async fn completed_response_does_not_re_emit_an_already_streamed_call() {
 
     let stream = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
+            vec![Message::text(MessageRole::User, "weather?")],
             &config("gpt-5-mini"),
         )
         .await
@@ -818,7 +812,7 @@ async fn attestation_gate_403_is_classified_at_the_driver_boundary() {
     // `LlmResponseStream` is not `Debug`, so unwrap the error by hand.
     let Err(error) = driver(&server)
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("meta/muse-spark-1.3-contributor"),
         )
         .await
@@ -921,8 +915,8 @@ async fn astra_cache_wire_and_usage_buckets() {
         let response = provider
             .chat_completion(
                 vec![
-                    LlmMessage::text(LlmMessageRole::System, "Stable policy"),
-                    LlmMessage::text(LlmMessageRole::User, "Current question"),
+                    Message::text(MessageRole::System, "Stable policy"),
+                    Message::text(MessageRole::User, "Current question"),
                 ],
                 &cfg,
             )

@@ -640,6 +640,239 @@
     ]
   },
   {
+    "wire_name": "create_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "create",
+    "description": "Create an ingress endpoint for an agent.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/endpoints",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "channel_config",
+        "long": "channel-config",
+        "kind": "json",
+        "required": false,
+        "help": "Transport-specific endpoint configuration."
+      },
+      {
+        "field": "channel_type",
+        "long": "channel-type",
+        "kind": "string",
+        "required": true,
+        "help": "Supported channel types for app distribution.",
+        "choices": [
+          "slack",
+          "ag_ui",
+          "schedule",
+          "webhook",
+          "a2a",
+          "fcp",
+          "api_endpoint",
+          "public_chat"
+        ]
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether the endpoint can accept ingress traffic."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "delete",
+    "description": "Delete an agent ingress endpoint.",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "get",
+    "description": "Get an agent ingress endpoint.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_endpoints",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "list",
+    "description": "List an agent's ingress endpoints.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/endpoints",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "publish_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "publish",
+    "description": "Publish an agent ingress endpoint.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "trigger_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "trigger",
+    "description": "Run an agent schedule endpoint now.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "unpublish_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "unpublish",
+    "description": "Unpublish an agent ingress endpoint.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "update_agent_endpoint",
+    "path": [
+      "agents",
+      "endpoints"
+    ],
+    "verb": "update",
+    "description": "Update an agent ingress endpoint.",
+    "method": "PATCH",
+    "http_path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "channel_config",
+        "long": "channel-config",
+        "kind": "json",
+        "required": false,
+        "help": "Replacement transport-specific endpoint configuration."
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "help": "Whether the endpoint can accept ingress traffic."
+      },
+      {
+        "field": "endpoint_id",
+        "long": "endpoint-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
     "wire_name": "export_agent",
     "path": [
       "agents"
@@ -1907,859 +2140,6 @@
       {
         "intent": "Point new sessions at a different version",
         "command": "everruns agents versions set-default --agent agt_01h9 --version-id ver_01h9"
-      }
-    ]
-  },
-  {
-    "wire_name": "add_a2a_app_channel",
-    "path": [
-      "apps",
-      "a2a-channels"
-    ],
-    "verb": "add",
-    "description": "Add an A2A (Agent2Agent) invocation channel to an app. Returns the plaintext API key exactly once.",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/a2a-channels",
-    "args": [
-      {
-        "field": "agent_card_description",
-        "long": "agent-card-description",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "agent_card_name",
-        "long": "agent-card-name",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "auth",
-        "long": "auth",
-        "kind": "json",
-        "required": false
-      },
-      {
-        "field": "enabled",
-        "long": "enabled",
-        "kind": "boolean",
-        "required": false,
-        "help": "Whether this resource is enabled."
-      },
-      {
-        "field": "message",
-        "long": "message",
-        "kind": "string",
-        "required": true
-      },
-      {
-        "field": "session_mode",
-        "long": "session-mode",
-        "kind": "string",
-        "required": false,
-        "help": "What identity keys a session, for every exposure and every transport.  One enum replaces the ...",
-        "choices": [
-          "per_thread",
-          "per_channel",
-          "per_user",
-          "shared_session",
-          "session_per_invocation"
-        ]
-      }
-    ]
-  },
-  {
-    "wire_name": "regenerate_a2a_app_channel_key",
-    "path": [
-      "apps",
-      "a2a-channels",
-      "regenerate-key"
-    ],
-    "verb": "regenerate",
-    "description": "Regenerate the A2A channel API key. Returns the new plaintext exactly once and invalidates the previous key.",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/a2a-channels/{channel_id}/regenerate-key",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "channel_id",
-        "long": "channel-id",
-        "kind": "string",
-        "required": true,
-        "help": "Channel's prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "add_api_endpoint_app_channel",
-    "path": [
-      "apps",
-      "api-endpoint-channels"
-    ],
-    "verb": "add",
-    "description": "Add an api_endpoint (execution-only API key) channel to an app. Returns the plaintext API key exactly once.",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/api-endpoint-channels",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "auth",
-        "long": "auth",
-        "kind": "json",
-        "required": false
-      },
-      {
-        "field": "enabled",
-        "long": "enabled",
-        "kind": "boolean",
-        "required": false,
-        "help": "Whether this resource is enabled."
-      },
-      {
-        "field": "session_mode",
-        "long": "session-mode",
-        "kind": "string",
-        "required": false,
-        "help": "What identity keys a session, for every exposure and every transport.  One enum replaces the ...",
-        "choices": [
-          "per_thread",
-          "per_channel",
-          "per_user",
-          "shared_session",
-          "session_per_invocation"
-        ]
-      }
-    ]
-  },
-  {
-    "wire_name": "regenerate_api_endpoint_app_channel_key",
-    "path": [
-      "apps",
-      "api-endpoint-channels",
-      "regenerate-key"
-    ],
-    "verb": "regenerate",
-    "description": "Regenerate the api_endpoint channel API key. Returns the new plaintext exactly once and invalidates the previous key.",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/api-endpoint-channels/{channel_id}/regenerate-key",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "channel_id",
-        "long": "channel-id",
-        "kind": "string",
-        "required": true,
-        "help": "Channel's prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "list_app_budgets",
-    "path": [
-      "apps",
-      "budgets"
-    ],
-    "verb": "list",
-    "description": "List budgets attached to an app and (optionally) its channels.",
-    "method": "GET",
-    "http_path": "/v1/apps/{app_id}/budgets",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "include_channels",
-        "long": "include-channels",
-        "kind": "boolean",
-        "required": false,
-        "help": "When true include budgets attached to any of the app's channels (`app_channel:<id>`) in addit..."
-      }
-    ]
-  },
-  {
-    "wire_name": "add_app_channel",
-    "path": [
-      "apps",
-      "channels"
-    ],
-    "verb": "add",
-    "description": "Add a channel to an app.",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/channels",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "channel_config",
-        "long": "channel-config",
-        "kind": "json",
-        "required": false,
-        "help": "Channel-specific configuration."
-      },
-      {
-        "field": "channel_type",
-        "long": "channel-type",
-        "kind": "string",
-        "required": true,
-        "help": "Supported channel types for app distribution.",
-        "choices": [
-          "slack",
-          "ag_ui",
-          "schedule",
-          "webhook",
-          "a2a",
-          "fcp",
-          "api_endpoint",
-          "public_chat"
-        ]
-      },
-      {
-        "field": "enabled",
-        "long": "enabled",
-        "kind": "boolean",
-        "required": false,
-        "help": "Whether the channel is enabled (default: true)."
-      }
-    ]
-  },
-  {
-    "wire_name": "add_schedule_app_channel",
-    "path": [
-      "apps",
-      "channels"
-    ],
-    "verb": "add-schedule",
-    "description": "Add a schedule invocation channel to an app using flat args. cron_expression accepts 5-field or 7-field cron; 5-field input is normalized to 7-field cron.",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/channels",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "cron_expression",
-        "long": "cron-expression",
-        "kind": "string",
-        "required": true,
-        "help": "Cron expression."
-      },
-      {
-        "field": "enabled",
-        "long": "enabled",
-        "kind": "boolean",
-        "required": false,
-        "help": "Whether this resource is enabled."
-      },
-      {
-        "field": "message",
-        "long": "message",
-        "kind": "string",
-        "required": true
-      },
-      {
-        "field": "session_mode",
-        "long": "session-mode",
-        "kind": "string",
-        "required": false,
-        "help": "What identity keys a session, for every exposure and every transport.  One enum replaces the ...",
-        "choices": [
-          "per_thread",
-          "per_channel",
-          "per_user",
-          "shared_session",
-          "session_per_invocation"
-        ]
-      },
-      {
-        "field": "timezone",
-        "long": "timezone",
-        "kind": "string",
-        "required": false
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Attach a schedule that wakes an app on a cadence",
-        "command": "everruns apps channels add-schedule --app-id app_01h9 --cron-expression '0 * * * *' --message 'Daily digest'"
-      }
-    ]
-  },
-  {
-    "wire_name": "add_webhook_app_channel",
-    "path": [
-      "apps",
-      "channels"
-    ],
-    "verb": "add-webhook",
-    "description": "Add a webhook invocation channel to an app using flat args.",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/channels",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "enabled",
-        "long": "enabled",
-        "kind": "boolean",
-        "required": false,
-        "help": "Whether this resource is enabled."
-      },
-      {
-        "field": "message",
-        "long": "message",
-        "kind": "string",
-        "required": true
-      },
-      {
-        "field": "session_mode",
-        "long": "session-mode",
-        "kind": "string",
-        "required": false,
-        "help": "What identity keys a session, for every exposure and every transport.  One enum replaces the ...",
-        "choices": [
-          "per_thread",
-          "per_channel",
-          "per_user",
-          "shared_session",
-          "session_per_invocation"
-        ]
-      },
-      {
-        "field": "token",
-        "long": "token",
-        "kind": "string",
-        "required": true
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Attach a webhook so an external service can trigger an app",
-        "command": "everruns apps channels add-webhook --app-id app_01h9 --message 'Incoming webhook' --token wht_01h9"
-      }
-    ]
-  },
-  {
-    "wire_name": "delete_app_channel",
-    "path": [
-      "apps",
-      "channels"
-    ],
-    "verb": "delete",
-    "description": "Remove a channel from an app.",
-    "method": "DELETE",
-    "http_path": "/v1/apps/{id}/channels/{channel_id}",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "channel_id",
-        "long": "channel-id",
-        "kind": "string",
-        "required": true,
-        "help": "Channel's prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "list_app_channels",
-    "path": [
-      "apps",
-      "channels"
-    ],
-    "verb": "list",
-    "description": "List channels attached to an app. Secret fields are redacted.",
-    "method": "GET",
-    "http_path": "/v1/apps/{id}/channels",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "channel_type",
-        "long": "channel-type",
-        "kind": "string",
-        "required": false
-      }
-    ]
-  },
-  {
-    "wire_name": "publish_app_channel",
-    "path": [
-      "apps",
-      "channels"
-    ],
-    "verb": "publish",
-    "description": "Publish one endpoint, leaving its siblings unchanged.",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/channels/{channel_id}/publish",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "channel_id",
-        "long": "channel-id",
-        "kind": "string",
-        "required": true,
-        "help": "Channel's prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "trigger_app_schedule_channel",
-    "path": [
-      "apps",
-      "channels"
-    ],
-    "verb": "trigger",
-    "description": "Manually trigger an app schedule channel. Use app_id and channel_id from list_app_channels.",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/channels/{channel_id}/trigger",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "channel_id",
-        "long": "channel-id",
-        "kind": "string",
-        "required": true,
-        "help": "Channel's prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "unpublish_app_channel",
-    "path": [
-      "apps",
-      "channels"
-    ],
-    "verb": "unpublish",
-    "description": "Stop one endpoint accepting traffic, leaving its siblings unchanged.",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/channels/{channel_id}/unpublish",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "channel_id",
-        "long": "channel-id",
-        "kind": "string",
-        "required": true,
-        "help": "Channel's prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "update_app_channel",
-    "path": [
-      "apps",
-      "channels"
-    ],
-    "verb": "update",
-    "description": "Update a channel on an app.",
-    "method": "PATCH",
-    "http_path": "/v1/apps/{id}/channels/{channel_id}",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true,
-        "help": "App's prefixed public identifier."
-      },
-      {
-        "field": "channel_config",
-        "long": "channel-config",
-        "kind": "json",
-        "required": false,
-        "help": "Channel-specific configuration."
-      },
-      {
-        "field": "channel_id",
-        "long": "channel-id",
-        "kind": "string",
-        "required": true,
-        "help": "Channel's prefixed public identifier."
-      },
-      {
-        "field": "channel_type",
-        "long": "channel-type",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "enabled",
-        "long": "enabled",
-        "kind": "boolean",
-        "required": false,
-        "help": "Whether the channel is enabled."
-      }
-    ]
-  },
-  {
-    "wire_name": "create_app",
-    "path": [
-      "apps"
-    ],
-    "verb": "create",
-    "description": "Create a new app with a harness, agent, and optional channel.",
-    "method": "POST",
-    "http_path": "/v1/apps",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent-id",
-        "kind": "string",
-        "required": false,
-        "help": "ID of the agent to use."
-      },
-      {
-        "field": "agent_identity_id",
-        "long": "agent-identity-id",
-        "kind": "string",
-        "required": false,
-        "help": "Optional resident agent identity for unattended/channel execution."
-      },
-      {
-        "field": "agent_version_id",
-        "long": "agent-version-id",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "agent_version_policy",
-        "long": "agent-version-policy",
-        "kind": "string",
-        "required": false,
-        "help": "How an App resolves the Agent version it runs.",
-        "choices": [
-          "default",
-          "latest",
-          "pinned"
-        ]
-      },
-      {
-        "field": "channel_config",
-        "long": "channel-config",
-        "kind": "json",
-        "required": false,
-        "help": "Initial channel configuration."
-      },
-      {
-        "field": "channel_type",
-        "long": "channel-type",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "description",
-        "long": "description",
-        "kind": "string",
-        "required": false,
-        "help": "Description of what the app does."
-      },
-      {
-        "field": "harness_id",
-        "long": "harness-id",
-        "kind": "string",
-        "required": true,
-        "help": "ID of the harness to use."
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": true,
-        "help": "Display name of the app."
-      }
-    ]
-  },
-  {
-    "wire_name": "delete_app",
-    "path": [
-      "apps"
-    ],
-    "verb": "delete",
-    "description": "Archive an app (soft delete). Can be restored.",
-    "method": "DELETE",
-    "http_path": "/v1/apps/{id}",
-    "args": [
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "destroy_app",
-    "path": [
-      "apps",
-      "delete"
-    ],
-    "verb": "destroy",
-    "description": "Permanently delete an archived app.",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/delete",
-    "args": [
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "get_app",
-    "path": [
-      "apps"
-    ],
-    "verb": "get",
-    "description": "Get a single app by ID.",
-    "method": "GET",
-    "http_path": "/v1/apps/{id}",
-    "args": [
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "list_apps",
-    "path": [
-      "apps"
-    ],
-    "verb": "list",
-    "description": "List all apps. Use search for name search, include_archived=true to include archived.",
-    "method": "GET",
-    "http_path": "/v1/apps",
-    "args": [
-      {
-        "field": "include_archived",
-        "long": "include-archived",
-        "kind": "boolean",
-        "required": false
-      },
-      {
-        "field": "search",
-        "long": "search",
-        "kind": "string",
-        "required": false
-      }
-    ]
-  },
-  {
-    "wire_name": "publish_app",
-    "path": [
-      "apps"
-    ],
-    "verb": "publish",
-    "description": "Publish an app (start accepting requests).",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/publish",
-    "args": [
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "list_app_runs",
-    "path": [
-      "apps",
-      "runs"
-    ],
-    "verb": "list",
-    "description": "List recent app channel invocation runs.",
-    "method": "GET",
-    "http_path": "/v1/apps/{id}/runs",
-    "args": [
-      {
-        "field": "app_id",
-        "long": "app-id",
-        "kind": "string",
-        "required": true
-      },
-      {
-        "field": "groupBy",
-        "long": "groupBy",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "window",
-        "long": "window",
-        "kind": "string",
-        "required": false
-      }
-    ]
-  },
-  {
-    "wire_name": "unpublish_app",
-    "path": [
-      "apps"
-    ],
-    "verb": "unpublish",
-    "description": "Unpublish an app (stop accepting requests).",
-    "method": "POST",
-    "http_path": "/v1/apps/{id}/unpublish",
-    "args": [
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
-      }
-    ]
-  },
-  {
-    "wire_name": "update_app",
-    "path": [
-      "apps"
-    ],
-    "verb": "update",
-    "description": "Update an app. Only provided fields are changed.",
-    "method": "PATCH",
-    "http_path": "/v1/apps/{id}",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent-id",
-        "kind": "string",
-        "required": false,
-        "help": "ID of the agent to use."
-      },
-      {
-        "field": "agent_identity_id",
-        "long": "agent-identity-id",
-        "kind": "string",
-        "required": false,
-        "help": "Optional resident agent identity for unattended/channel execution."
-      },
-      {
-        "field": "agent_version_id",
-        "long": "agent-version-id",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "agent_version_policy",
-        "long": "agent-version-policy",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "description",
-        "long": "description",
-        "kind": "string",
-        "required": false,
-        "help": "Description of what the app does."
-      },
-      {
-        "field": "harness_id",
-        "long": "harness-id",
-        "kind": "string",
-        "required": false,
-        "help": "ID of the harness to use."
-      },
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": false,
-        "help": "Display name of the app."
-      },
-      {
-        "field": "status",
-        "long": "status",
-        "kind": "string",
-        "required": false
       }
     ]
   },

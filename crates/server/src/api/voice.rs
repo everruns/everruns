@@ -1734,7 +1734,7 @@ mod tests {
         let input_message_id = MessageId::new();
         let event = output_completed_event(
             input_message_id,
-            everruns_core::Message::assistant("The tool result is 42.")
+            everruns_core::RuntimeMessage::assistant("The tool result is 42.")
                 .with_phase(ExecutionPhase::FinalAnswer),
         );
 
@@ -1749,7 +1749,7 @@ mod tests {
         let input_message_id = MessageId::new();
         let commentary = output_completed_event(
             input_message_id,
-            everruns_core::Message::assistant_with_tools(
+            everruns_core::RuntimeMessage::assistant_with_tools(
                 "Checking.",
                 vec![ToolCall {
                     id: "call_1".to_string(),
@@ -1761,7 +1761,7 @@ mod tests {
         );
         let other_turn = output_completed_event(
             MessageId::new(),
-            everruns_core::Message::assistant("Other answer.")
+            everruns_core::RuntimeMessage::assistant("Other answer.")
                 .with_phase(ExecutionPhase::FinalAnswer),
         );
 
@@ -1824,7 +1824,7 @@ mod tests {
 
     fn output_completed_event(
         input_message_id: MessageId,
-        message: everruns_core::Message,
+        message: everruns_core::RuntimeMessage,
     ) -> Event {
         Event {
             id: everruns_provider::typed_id::EventId::new(),

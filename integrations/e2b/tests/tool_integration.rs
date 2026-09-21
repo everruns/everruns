@@ -467,7 +467,7 @@ async fn test_exec_tool_missing_api_key() {
         .await;
 
     match result {
-        ToolExecutionResult::ConnectionRequired { provider } => {
+        ToolExecutionResult::ConnectionRequired { provider, .. } => {
             assert_eq!(provider, "e2b");
         }
         other => panic!("Expected ConnectionRequired, got: {other:?}"),
@@ -720,7 +720,7 @@ async fn test_create_sandbox_tool_no_connection() {
     let result = tool.execute_with_context(json!({}), &context).await;
 
     match result {
-        ToolExecutionResult::ConnectionRequired { provider } => {
+        ToolExecutionResult::ConnectionRequired { provider, .. } => {
             assert_eq!(provider, "e2b");
         }
         other => panic!("Expected ConnectionRequired, got: {other:?}"),
@@ -747,7 +747,7 @@ async fn test_api_key_resolved_from_connection_resolver() {
         )
         .await;
     match &result {
-        ToolExecutionResult::ConnectionRequired { provider } => {
+        ToolExecutionResult::ConnectionRequired { provider, .. } => {
             assert_eq!(provider, "e2b");
         }
         other => panic!("Expected ConnectionRequired, got: {other:?}"),

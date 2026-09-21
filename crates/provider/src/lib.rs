@@ -31,8 +31,8 @@ pub mod driver_registry;
 pub mod error;
 pub mod execution_phase;
 pub mod llm_error;
-pub mod llm_message;
 pub mod llm_retry;
+pub mod message;
 pub mod model;
 pub mod model_discovery;
 pub mod model_profiles;
@@ -79,8 +79,8 @@ pub use driver_registry::{
     BoxedChatDriver, BoxedEmbeddingsDriver, ChatDriver, DiscoveredModel, DriverDescriptor,
     DriverFactory, DriverId, DriverOAuthConfig, DriverOAuthFlow, DriverRegistry, EmbedRequest,
     EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig,
-    LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamError, LlmStreamEvent, ProviderConfig,
+    LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmResponse, LlmResponseStream,
+    LlmStreamError, LlmStreamEvent, Message, MessageContent, MessageRole, ProviderConfig,
     ProviderMetadata, ProviderOpaqueContext, ServiceKind, fold_system_messages,
 };
 pub use error::{
@@ -115,9 +115,10 @@ pub use runtime_provider::{
     StaticHeaderAuth,
 };
 pub use tool_types::{
-    BuiltinTool, CONFIRM_URL_ELICITATION_TOOL, ClientSideTool, DeferrablePolicy, SideEffectClass,
-    ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult, ToolResultImage,
-    URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired,
+    BuiltinTool, CONFIRM_URL_ELICITATION_TOOL, ClientSideTool, ConnectionRequired,
+    ConnectionRequiredSubject, DeferrablePolicy, SideEffectClass, ToolCall, ToolDefinition,
+    ToolHints, ToolPolicy, ToolResult, ToolResultImage, URL_ELICITATION_REQUIRED_CODE,
+    UrlElicitationRequired,
 };
 pub use turn_collector::{CollectedTurn, TurnLimits, TurnTiming, collect_turn, limit_stream};
 pub use url_validation::{

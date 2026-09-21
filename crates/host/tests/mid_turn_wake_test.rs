@@ -22,7 +22,7 @@ use everruns_core::session_task::{
 };
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::{CapabilityRegistry, MessageRole};
+use everruns_core::{CapabilityRegistry, RuntimeMessageRole};
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_provider::driver_registry::DriverRegistry;
@@ -341,7 +341,7 @@ fn tool_call(name: &str) -> SimTurn {
     }])
 }
 
-fn wake_message_count(messages: &[everruns_core::Message], needle: &str) -> usize {
+fn wake_message_count(messages: &[everruns_core::RuntimeMessage], needle: &str) -> usize {
     messages
         .iter()
         .filter(|m| {
@@ -428,7 +428,7 @@ async fn query_history_reads_automatic_background_wake_message() {
         .unwrap()
         .into_iter()
         .find(|message| {
-            message.role == MessageRole::ToolResult
+            message.role == RuntimeMessageRole::ToolResult
                 && message.tool_call_id() == Some("call_wake_history")
         })
         .expect("query_history result");

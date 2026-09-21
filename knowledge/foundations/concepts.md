@@ -265,19 +265,16 @@ A remote server that exposes tools via the Model Context Protocol. Integrated as
 
 ### App
 
-A deployable unit that binds a Harness and Agent to one or more channels. Some channels are interactive ingress points (Slack, AG-UI). Others are unattended invocation channels (`schedule`, `webhook`) that inject a configured user message into an app-owned session when triggered.
+A frozen archival compatibility record. Apps and their historical channel relationship remain in
+storage, but App management, publishing, command discovery, and UI are retired.
 
-- Many apps in the system
-- Each app references exactly one Harness (required) and one Agent (required)
-- Each app has zero or more channels with channel-specific config (JSONB)
-- Lifecycle: `draft` → `published` → `draft` (or `archived`)
-- Only published apps accept incoming requests
-- Channel types today: `slack`, `ag_ui`, `schedule`, `webhook`
-- Session routing is channel-specific:
-  - Slack chooses thread/channel/user routing
-  - App invocation channels choose shared-session vs per-invocation routing
-- App invocation channels are distinct from session-local scheduling; see [app-invocation-channels.md](../integrations/app-invocation-channels.md)
-- See [apps.md](../integrations/apps.md) for full specification
+- Only deprecated archival reads remain.
+- `agent_endpoints` owns live ingress identity and liveness.
+- Permanent App-shaped route aliases resolve from endpoint-owned legacy identity without reading
+  `apps` or `app_channels`.
+- Existing session attribution, budget subject values, owner semantics, and reserved routing tags
+  remain compatible.
+- See [apps.md](../integrations/apps.md) for the full freeze contract.
 
 ### User Connection
 

@@ -8,17 +8,10 @@ use everruns_platform::{Budget, LedgerEntry};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-fn validate_subject_type(ctx: &Ctx, subject_type: &str) -> Result<(), CommandError> {
-    const ALWAYS_ON: &[&str] = &["session", "agent", "user", "org"];
-    const APP_BUDGET_TYPES: &[&str] = &["app", "app_channel", "agent_endpoint"];
-    if ALWAYS_ON.contains(&subject_type) {
+fn validate_subject_type(subject_type: &str) -> Result<(), CommandError> {
+    const SUPPORTED: &[&str] = &["session", "agent", "user", "org", "agent_endpoint"];
+    if SUPPORTED.contains(&subject_type) {
         return Ok(());
-    }
-    if APP_BUDGET_TYPES.contains(&subject_type) {
-        if ctx.feature_flags.app_budgets {
-            return Ok(());
-        }
-        return Err(CommandError::feature_not_enabled("app_budgets"));
     }
     Err(CommandError::bad_request("Invalid subject_type"))
 }
@@ -83,7 +76,7 @@ impl Command for CreateBudget {
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
         require_budget_manage(ctx)?;
         let req = self.0;
-        validate_subject_type(ctx, &req.subject_type)?;
+        validate_subject_type(&req.subject_type)?;
         validate_limit(req.limit, req.soft_limit)?;
 
         let input = CreateBudgetRow {
@@ -220,6 +213,13 @@ impl Command for UpdateBudgetCmd {
         }
 
         let budget_id = q::parse_budget_id(&self.budget_id)?;
+        let existing = ctx
+            .db
+            .get_budget(ctx.org_id(), budget_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Budget"))?;
+        validate_subject_type(&existing.subject_type)?;
         let row = ctx
             .db
             .update_budget(
@@ -270,6 +270,13 @@ impl Command for DeleteBudget {
     async fn execute(self, ctx: &Ctx) -> Result<BudgetDeleteResult, CommandError> {
         require_budget_manage(ctx)?;
         let budget_id = q::parse_budget_id(&self.budget_id)?;
+        let existing = ctx
+            .db
+            .get_budget(ctx.org_id(), budget_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Budget"))?;
+        validate_subject_type(&existing.subject_type)?;
         let deleted = ctx
             .db
             .delete_budget(ctx.org_id(), budget_id)
@@ -316,11 +323,13 @@ impl Command for TopUpBudget {
         }
 
         let budget_id = q::parse_budget_id(&self.budget_id)?;
-        ctx.db
+        let existing = ctx
+            .db
             .get_budget(ctx.org_id(), budget_id)
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
+        validate_subject_type(&existing.subject_type)?;
 
         let (_entry, updated) = ctx
             .db
@@ -573,91 +582,6 @@ impl Command for ResumeSessionBudgets {
 
 inventory::submit! { CommandDescriptor::of::<ResumeSessionBudgets>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ListAppBudgets {
-    /// App's prefixed public identifier.
-    pub app_id: String,
-    /// When true include budgets attached to any of the app's channels
-    /// (`app_channel:<id>`) in addition to the app itself.
-    // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
-    // so the lenient deserializer is required to accept `--include_channels true`.
-    #[serde(
-        default = "default_true",
-        deserialize_with = "deserialize_bool_lenient"
-    )]
-    pub include_channels: bool,
-}
-
-const fn default_true() -> bool {
-    true
-}
-
-impl Command for ListAppBudgets {
-    type Output = Vec<Budget>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_app_budgets",
-            category: "budgets",
-            description: "List budgets attached to an app and (optionally) its channels.",
-            method: "GET",
-            path: "/v1/apps/{app_id}/budgets",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("app_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&BUDGET_VIEW)
-    }
-
-    async fn execute(self, ctx: &Ctx) -> Result<Vec<Budget>, CommandError> {
-        if !ctx.feature_flags.app_budgets {
-            return Err(CommandError::feature_not_enabled("app_budgets"));
-        }
-
-        // THREAT[TM-TENANT-001]: org-scoped lookup before reading any channel
-        // metadata — without this an attacker could pass another org's app_id
-        // and learn its channel public_ids via the include_channels expansion
-        // (the budget query that follows is org-filtered, but the channel list
-        // would still leak). 404 (not 403) keeps cross-org existence opaque.
-        let app_row = ctx
-            .db
-            .get_app_by_public_id(ctx.org_id(), &self.app_id)
-            .await
-            .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("App"))?;
-
-        let mut rows = ctx
-            .db
-            .list_budgets(ctx.org_id(), Some("app"), Some(&self.app_id))
-            .await
-            .map_err(classify_anyhow)?;
-
-        if self.include_channels {
-            let channels = ctx
-                .db
-                .list_app_channels(app_row.id)
-                .await
-                .map_err(classify_anyhow)?;
-            for channel in channels {
-                let channel_rows = ctx
-                    .db
-                    .list_budgets(ctx.org_id(), Some("app_channel"), Some(&channel.public_id))
-                    .await
-                    .map_err(classify_anyhow)?;
-                rows.extend(channel_rows);
-            }
-        }
-
-        Ok(rows.iter().map(q::row_to_budget).collect())
-    }
-}
-
-inventory::submit! { CommandDescriptor::of::<ListAppBudgets>() }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -688,6 +612,22 @@ mod tests {
             None,
             Arc::new(everruns_core::DefaultPermissionResolver),
         )
+    }
+    async fn seed_historical_budget(ctx: &Ctx, subject_type: &str) -> uuid::Uuid {
+        ctx.db
+            .create_budget(CreateBudgetRow {
+                org_id: ctx.org_id(),
+                subject_type: subject_type.to_string(),
+                subject_id: format!("historical-{subject_type}"),
+                currency: "usd".to_string(),
+                limit: 10.0,
+                soft_limit: None,
+                period: None,
+                metadata: None,
+            })
+            .await
+            .expect("seed historical App budget")
+            .id
     }
 
     #[tokio::test]
@@ -732,41 +672,198 @@ mod tests {
         assert_eq!(budget.subject_type.to_string(), "session");
     }
 
-    /// `validate_subject_type` is the gate. It rejects unknown types and requires
-    /// the `app_budgets` feature flag for `app` / `app_channel`. We test the
-    /// always-on validation explicitly; flag-gated paths are tested via the env
-    /// var seam below.
     #[test]
-    fn validate_subject_type_accepts_classic_subjects() {
-        for kind in ["session", "agent", "user", "org"] {
-            assert!(
-                validate_subject_type(&ctx_for_role(OrgRole::Owner), kind).is_ok(),
-                "expected {kind} ok"
-            );
+    fn validate_subject_type_accepts_supported_subjects() {
+        for kind in ["session", "agent", "user", "org", "agent_endpoint"] {
+            assert!(validate_subject_type(kind).is_ok(), "expected {kind} ok");
         }
     }
 
     #[test]
     fn validate_subject_type_rejects_unknown_subjects() {
-        let ctx = ctx_for_role(OrgRole::Owner);
-        assert!(validate_subject_type(&ctx, "unknown").is_err());
-        assert!(validate_subject_type(&ctx, "").is_err());
+        assert!(validate_subject_type("unknown").is_err());
+        assert!(validate_subject_type("").is_err());
     }
 
     #[test]
-    fn validate_subject_type_app_budgets_honor_org_flag() {
-        // Default (flag off): app-scoped budget subjects are rejected.
-        let disabled = ctx_for_role(OrgRole::Owner);
-        assert!(validate_subject_type(&disabled, "app").is_err());
-        assert!(validate_subject_type(&disabled, "app_channel").is_err());
+    fn validate_subject_type_rejects_retired_app_subjects() {
+        assert!(validate_subject_type("app").is_err());
+        assert!(validate_subject_type("app_channel").is_err());
+    }
 
-        // Flag on (org opted in): app-scoped subjects are accepted.
-        let enabled =
+    #[tokio::test]
+    async fn create_budget_rejects_retired_app_subjects_when_app_budgets_is_enabled() {
+        let ctx =
             ctx_for_role(OrgRole::Owner).with_feature_flags(everruns_platform::FeatureFlags {
                 app_budgets: true,
                 ..Default::default()
             });
-        assert!(validate_subject_type(&enabled, "app").is_ok());
-        assert!(validate_subject_type(&enabled, "app_channel").is_ok());
+        for subject_type in ["app", "app_channel"] {
+            let err = CreateBudget(CreateBudgetRequest {
+                subject_type: subject_type.to_string(),
+                subject_id: "retired".to_string(),
+                currency: "usd".to_string(),
+                limit: 10.0,
+                soft_limit: None,
+                period: None,
+                metadata: None,
+            })
+            .execute(&ctx)
+            .await
+            .expect_err("retired App budget subjects must remain invalid");
+            assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_endpoint_budget_remains_creatable_and_updatable() {
+        let ctx = ctx_for_role(OrgRole::Owner);
+        let budget = CreateBudget(CreateBudgetRequest {
+            subject_type: "agent_endpoint".to_string(),
+            subject_id: "endpoint".to_string(),
+            currency: "usd".to_string(),
+            limit: 10.0,
+            soft_limit: None,
+            period: None,
+            metadata: None,
+        })
+        .execute(&ctx)
+        .await
+        .expect("agent endpoint budget remains supported");
+
+        let updated = UpdateBudgetCmd {
+            budget_id: budget.id.to_string(),
+            limit: Some(20.0),
+            soft_limit: None,
+            status: None,
+            metadata: None,
+        }
+        .execute(&ctx)
+        .await
+        .expect("agent endpoint budget remains writable");
+        assert_eq!(updated.limit, 20.0);
+    }
+    #[tokio::test]
+    async fn historical_app_budget_reads_remain_available() {
+        let ctx = ctx_for_role(OrgRole::Owner);
+        for subject_type in ["app", "app_channel"] {
+            let budget_id = seed_historical_budget(&ctx, subject_type).await;
+            ctx.db
+                .create_budget_ledger_entry(CreateBudgetLedgerRow {
+                    budget_id,
+                    amount: 1.0,
+                    meter_source: "historical".to_string(),
+                    ref_type: None,
+                    ref_id: None,
+                    session_id: None,
+                    description: None,
+                })
+                .await
+                .expect("seed historical ledger entry");
+
+            let fetched = GetBudget {
+                budget_id: budget_id.to_string(),
+            }
+            .execute(&ctx)
+            .await
+            .expect("historical App budget remains readable");
+            assert_eq!(fetched.subject_type.to_string(), subject_type);
+
+            let listed = ListBudgets {
+                subject_type: Some(subject_type.to_string()),
+                subject_id: Some(format!("historical-{subject_type}")),
+            }
+            .execute(&ctx)
+            .await
+            .expect("historical App budgets remain listable");
+            assert_eq!(listed.len(), 1);
+            assert_eq!(listed[0].id, fetched.id);
+
+            let ledger = ListBudgetLedger {
+                budget_id: budget_id.to_string(),
+                limit: 50,
+                offset: 0,
+            }
+            .execute(&ctx)
+            .await
+            .expect("historical App budget ledger remains readable");
+            assert_eq!(ledger.len(), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn update_budget_rejects_historical_app_subjects() {
+        let ctx = ctx_for_role(OrgRole::Owner);
+        for subject_type in ["app", "app_channel"] {
+            let budget_id = seed_historical_budget(&ctx, subject_type).await;
+            let err = UpdateBudgetCmd {
+                budget_id: budget_id.to_string(),
+                limit: Some(20.0),
+                soft_limit: None,
+                status: None,
+                metadata: None,
+            }
+            .execute(&ctx)
+            .await
+            .expect_err("historical App budget must not be writable");
+            assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_budget_rejects_historical_app_subjects() {
+        let ctx = ctx_for_role(OrgRole::Owner);
+        for subject_type in ["app", "app_channel"] {
+            let budget_id = seed_historical_budget(&ctx, subject_type).await;
+            let err = DeleteBudget {
+                budget_id: budget_id.to_string(),
+            }
+            .execute(&ctx)
+            .await
+            .expect_err("historical App budget must not be deleted");
+            assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+
+            let budget = GetBudget {
+                budget_id: budget_id.to_string(),
+            }
+            .execute(&ctx)
+            .await
+            .expect("rejected delete must preserve historical App budget");
+            assert_eq!(budget.status.to_string(), "active");
+        }
+    }
+
+    #[tokio::test]
+    async fn top_up_budget_rejects_historical_app_subjects() {
+        let ctx = ctx_for_role(OrgRole::Owner);
+        for subject_type in ["app", "app_channel"] {
+            let budget_id = seed_historical_budget(&ctx, subject_type).await;
+            let err = TopUpBudget {
+                budget_id: budget_id.to_string(),
+                amount: 5.0,
+                description: None,
+            }
+            .execute(&ctx)
+            .await
+            .expect_err("historical App budget must not be topped up");
+            assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+
+            let budget = GetBudget {
+                budget_id: budget_id.to_string(),
+            }
+            .execute(&ctx)
+            .await
+            .expect("rejected top-up must preserve historical App budget");
+            assert_eq!(budget.balance, 10.0);
+            let ledger = ListBudgetLedger {
+                budget_id: budget_id.to_string(),
+                limit: 50,
+                offset: 0,
+            }
+            .execute(&ctx)
+            .await
+            .expect("rejected top-up must not hide historical ledger");
+            assert!(ledger.is_empty());
+        }
     }
 }

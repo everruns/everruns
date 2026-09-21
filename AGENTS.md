@@ -74,7 +74,8 @@ variables per `docs/sre/runbooks/authentication.md`.
 
 `start-all` maps Doppler's `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` to
 `DEFAULT_OPENAI_API_KEY` and `DEFAULT_ANTHROPIC_API_KEY`. Analyze/Health additionally requires
-`UTILITY_OPENAI_API_KEY`; no extra setup is needed when Doppler already supplies it. If Doppler does
+`UTILITY_OPENAI_API_KEY` (or `UTILITY_OPENROUTER_API_KEY`); no extra setup is needed when Doppler
+already supplies it. If Doppler does
 not supply `SECRETS_ENCRYPTION_KEY`, startup creates a private per-prefix local-development key.
 
 PostgreSQL and NATS data persist under `.local/data/`, isolated by the derived ports. Encrypted

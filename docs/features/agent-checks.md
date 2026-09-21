@@ -29,7 +29,7 @@ Each finding includes:
 
 ## AI Analysis
 
-The **Analyze** button on the Checks card runs a deeper on-demand review using the platform's internal utility LLM (requires `UTILITY_OPENAI_API_KEY` on the deployment). Three scoped checkers run in parallel:
+The **Analyze** button on the Checks card runs a deeper on-demand review using the platform's internal utility LLM (requires `UTILITY_OPENAI_API_KEY` or `UTILITY_OPENROUTER_API_KEY` on the deployment). Three scoped checkers run in parallel:
 
 | Rule | What it catches |
 |------|-----------------|
@@ -58,7 +58,7 @@ Health checks are asynchronous (they run several real sessions and take a minute
 | `GET` | `/v1/agents/{agent_id}/health-checks/{run_id}` | Poll the run; `status` goes `pending → running → completed`/`failed` |
 | `GET` | `/v1/agents/{agent_id}/health-checks` | List recent runs for the agent |
 
-Runs are stored per agent and keyed by the resolved config hash. Health checks require the utility LLM (`UTILITY_OPENAI_API_KEY`) to generate and judge cases, and the agent's own model must be usable. They are advisory: a low score never blocks anything.
+Runs are stored per agent and keyed by the resolved config hash. Health checks require the utility LLM (`UTILITY_OPENAI_API_KEY` or `UTILITY_OPENROUTER_API_KEY`) to generate and judge cases, and the agent's own model must be usable. They are advisory: a low score never blocks anything.
 
 ## Built-in Rules
 

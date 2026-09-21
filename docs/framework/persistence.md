@@ -51,7 +51,9 @@ let session = engine.create(agent);
 Enable it with `cargo add everruns --features local`. Select both directories
 from trusted application configuration. After a restart, rebuild the Agent
 from trusted application configuration, attach it to a new engine, and resume
-the committed session by ID.
+the committed session by ID. For a session created with an explicit Harness,
+also deserialize its portable definition and call
+`Engine::attach_with_harness`; `Engine::attach` remains the no-Harness path.
 
 The local profile is designed for one embedded process at a time. Coordinate
 process ownership before handing the directory to another application process.

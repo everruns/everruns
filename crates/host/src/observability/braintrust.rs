@@ -848,7 +848,7 @@ impl BraintrustListener {
         })
     }
 
-    fn summarize_messages(messages: &[everruns_core::Message]) -> serde_json::Value {
+    fn summarize_messages(messages: &[everruns_core::RuntimeMessage]) -> serde_json::Value {
         serde_json::json!({
             "message_count": messages.len(),
             "roles": messages.iter().map(|message| message.role.to_string()).collect::<Vec<_>>(),
@@ -967,12 +967,12 @@ impl BraintrustListener {
 
     fn serialize_message_for_llm_input(
         &self,
-        message: &everruns_core::Message,
+        message: &everruns_core::RuntimeMessage,
     ) -> serde_json::Value {
         let mut serialized = message.to_openai_format();
 
         match message.role {
-            everruns_core::MessageRole::Agent if !message.tool_calls().is_empty() => {
+            everruns_core::RuntimeMessageRole::Agent if !message.tool_calls().is_empty() => {
                 let tool_calls = message
                     .tool_calls()
                     .into_iter()
@@ -986,7 +986,7 @@ impl BraintrustListener {
                     .collect::<Vec<_>>();
                 serialized["tool_calls"] = serde_json::Value::Array(tool_calls);
             }
-            everruns_core::MessageRole::ToolResult => {
+            everruns_core::RuntimeMessageRole::ToolResult => {
                 if let Some(tool_result) = message.tool_result_content() {
                     serialized["content"] =
                         serde_json::json!(self.serialize_tool_result_message_content(
@@ -2312,7 +2312,7 @@ mod tests {
         ReasonCompletedData, ReasonStartedData, TokenUsage, ToolCompletedData, ToolStartedData,
         TurnCompletedData, TurnStartedData,
     };
-    use everruns_core::message::Message;
+    use everruns_core::message::RuntimeMessage;
     use everruns_provider::tool_types::ToolCall;
     use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use serde_json::json;
@@ -2434,7 +2434,10 @@ mod tests {
         let turn_id = TurnId::new();
 
         let data = LlmGenerationData {
-            messages: vec![Message::user("Hello"), Message::assistant("Hi there!")],
+            messages: vec![
+                RuntimeMessage::user("Hello"),
+                RuntimeMessage::assistant("Hi there!"),
+            ],
             tools: vec![],
             output: LlmGenerationOutput {
                 text: Some("Hi there!".to_string()),
@@ -2675,7 +2678,7 @@ mod tests {
         context.parent_span_id = Some(reason_span_id.clone());
 
         let data = LlmGenerationData {
-            messages: vec![Message::user("Hello")],
+            messages: vec![RuntimeMessage::user("Hello")],
             tools: vec![],
             output: LlmGenerationOutput {
                 text: Some("Hi!".to_string()),
@@ -3574,7 +3577,7 @@ mod tests {
     fn test_llm_output_without_content_recording_omits_text_preview() {
         let listener = BraintrustListener::new(test_config()).unwrap();
         let data = LlmGenerationData {
-            messages: vec![Message::user("Hello")],
+            messages: vec![RuntimeMessage::user("Hello")],
             tools: vec![],
             output: LlmGenerationOutput {
                 text: Some("Sensitive completion".to_string()),
@@ -3613,7 +3616,7 @@ mod tests {
         let listener = BraintrustListener::new(config).unwrap();
         let data = LlmGenerationData {
             messages: vec![
-                Message::assistant_with_tools(
+                RuntimeMessage::assistant_with_tools(
                     "Calling tool",
                     vec![ToolCall {
                         id: "call_1".to_string(),
@@ -3621,7 +3624,7 @@ mod tests {
                         arguments: json!({"secret": "value", "query": "rust"}),
                     }],
                 ),
-                Message::tool_result(
+                RuntimeMessage::tool_result(
                     "call_1",
                     Some(json!({"secret_result": "top secret", "count": 3})),
                     None,

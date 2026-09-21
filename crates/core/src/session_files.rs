@@ -58,6 +58,23 @@ pub trait SessionFileSystem: Send + Sync {
     /// Used to avoid re-wrapping nested mount tables when building tool context.
     fn is_mount_resolver(&self) -> bool;
 
+    /// The directory on this machine's disk that `path` names, when the store
+    /// is backed by one.
+    ///
+    /// Deliberately not [`display_root`](Self::display_root): that is a
+    /// presentation choice, and an embedder may show `/workspace` for a store
+    /// that is really a host directory, or the host directory for one that is
+    /// not. A capability that spawns real processes cannot work from a
+    /// presentation. It needs the path the kernel will use, and it has to be
+    /// able to tell that there is none rather than guess, which is what `None`
+    /// says here for every virtual store.
+    ///
+    /// The path is not promised to exist; it is promised to be where this
+    /// store's bytes live.
+    fn host_path(&self, _path: &str) -> Option<std::path::PathBuf> {
+        None
+    }
+
     /// Read a file by path
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>>;
 
@@ -279,6 +296,10 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
     fn is_mount_resolver(&self) -> bool {
         self.inner.is_mount_resolver()
     }
+
+    fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {
+        self.inner.host_path(path)
+    }
 }
 
 #[async_trait]
@@ -297,6 +318,10 @@ impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
 
     fn is_mount_resolver(&self) -> bool {
         (**self).is_mount_resolver()
+    }
+
+    fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {
+        (**self).host_path(path)
     }
 
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {

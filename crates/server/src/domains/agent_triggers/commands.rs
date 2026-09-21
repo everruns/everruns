@@ -12,7 +12,7 @@ use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
 use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
 use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
-use crate::domains::apps::commands::{
+use crate::domains::apps::invocation::{
     calculate_schedule_next_trigger, cron_min_interval_seconds, normalize_cron_expression,
     render_message_template,
 };
@@ -507,6 +507,10 @@ impl Command for CreateAgentTrigger {
                 execution_resolved_owner_user_id: None,
                 execution_agent_identity_id: None,
                 execution_app_id: None,
+                execution_app_public_id: None,
+                execution_app_name: None,
+                execution_agent_version_policy: None,
+                execution_agent_version_id: None,
             })
             .await
             .map_err(classify_anyhow)?;
@@ -1122,15 +1126,16 @@ pub async fn invoke_webhook_agent_trigger(
         .webhook_config()
         .map_err(|_| CommandError::bad_request("Invalid webhook trigger configuration"))?;
 
-    let webhook_context = if let Some(app_id) = trigger_row.execution_app_id {
-        let app = db
-            .get_app_by_id(trigger_row.org_id, app_id)
-            .await
-            .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("App channel"))?;
+    let webhook_context = if trigger_row.execution_app_id.is_some() {
         Some(WebhookCompatibilityContext {
-            app_public_id: app.public_id,
-            app_name: app.name,
+            app_public_id: trigger_row
+                .execution_app_public_id
+                .clone()
+                .ok_or_else(|| CommandError::not_found("App channel"))?,
+            app_name: trigger_row
+                .execution_app_name
+                .clone()
+                .ok_or_else(|| CommandError::not_found("App channel"))?,
             ingress_id: req.ingress_id.clone(),
         })
     } else {
@@ -1231,6 +1236,8 @@ struct TriggerExecutionContext {
     resolved_owner_user_id: Option<Uuid>,
     agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
     app_id: Option<Uuid>,
+    agent_version_policy: everruns_platform::AgentVersionPolicy,
+    agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
 }
 
 #[derive(Debug, Clone)]
@@ -1266,6 +1273,12 @@ async fn resolve_trigger_execution_context(
             resolved_owner_user_id: trigger.execution_resolved_owner_user_id,
             agent_identity_id: trigger.execution_agent_identity_id,
             app_id: trigger.execution_app_id,
+            agent_version_policy: trigger
+                .execution_agent_version_policy
+                .as_deref()
+                .map(everruns_platform::AgentVersionPolicy::from)
+                .unwrap_or_default(),
+            agent_version_id: trigger.execution_agent_version_id,
         });
     }
 
@@ -1288,6 +1301,8 @@ async fn resolve_trigger_execution_context(
         resolved_owner_user_id: owner.resolved_user_id,
         agent_identity_id: Some(agent_identity_id),
         app_id: None,
+        agent_version_policy: everruns_platform::AgentVersionPolicy::Default,
+        agent_version_id: None,
     })
 }
 
@@ -1403,7 +1418,9 @@ async fn find_or_create_trigger_session(
                 execution_context.harness_id.uuid(),
                 Some(agent.id.uuid()),
                 Some(agent.id),
-                app_id,
+                Some(app_id),
+                execution_context.agent_version_policy.clone(),
+                execution_context.agent_version_id,
                 // Migrated App schedules (migration 106) kept
                 // `execution_app_id` but never an endpoint pointer, so there
                 // is nothing structural to record here.

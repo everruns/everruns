@@ -1,7 +1,8 @@
 use async_trait::async_trait;
+use everruns::llm::Message;
 use everruns::{
-    Agent, AgentLoopError, ChatDriver, InMemoryEngine, LlmCallConfig, LlmMessage,
-    LlmResponseStream, LlmStreamEvent, Provider, ProviderEndpoint,
+    Agent, AgentLoopError, ChatDriver, InMemoryEngine, LlmCallConfig, LlmResponseStream,
+    LlmStreamEvent, Provider, ProviderEndpoint,
 };
 
 #[derive(Clone)]
@@ -12,7 +13,7 @@ impl ChatDriver for DownstreamProtocol {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        _messages: Vec<LlmMessage>,
+        _messages: Vec<Message>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream, AgentLoopError> {
         Ok(Box::pin(futures::stream::iter([

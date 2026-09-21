@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use everruns_core::message::{ContentPart, MessageRole};
+use everruns_core::message::{ContentPart, RuntimeMessageRole};
 use everruns_core::message::{Controls, ReasoningConfig};
 use everruns_core::message_retriever::InputMessage;
 use everruns_core::tools::{Tool, ToolExecutionResult};
@@ -97,7 +97,7 @@ async fn mid_turn_effort_change_is_observed_by_next_llm_step() {
     // The initial user message requests effort "low" via controls. The tool will
     // bump it to "high" between step 1 and step 2.
     let input = InputMessage {
-        role: MessageRole::User,
+        role: RuntimeMessageRole::User,
         content: vec![ContentPart::text("Please proceed.")],
         controls: Some(Controls {
             reasoning: Some(ReasoningConfig {
@@ -190,7 +190,7 @@ async fn without_handle_mutation_effort_is_stable_across_steps() {
         .expect("build in-memory loop");
 
     let input = InputMessage {
-        role: MessageRole::User,
+        role: RuntimeMessageRole::User,
         content: vec![ContentPart::text("Go.")],
         controls: Some(Controls {
             reasoning: Some(ReasoningConfig {
@@ -243,7 +243,7 @@ async fn mid_turn_effort_override_is_cleared_before_next_turn() {
         .expect("build in-memory loop");
 
     let first_input = InputMessage {
-        role: MessageRole::User,
+        role: RuntimeMessageRole::User,
         content: vec![ContentPart::text("First turn.")],
         controls: Some(Controls {
             reasoning: Some(ReasoningConfig {
@@ -262,7 +262,7 @@ async fn mid_turn_effort_override_is_cleared_before_next_turn() {
     assert_eq!(handle.get().map(|e| e.as_str()), Some("high"));
 
     let second_input = InputMessage {
-        role: MessageRole::User,
+        role: RuntimeMessageRole::User,
         content: vec![ContentPart::text("Second turn.")],
         controls: Some(Controls {
             reasoning: Some(ReasoningConfig {

@@ -45,6 +45,9 @@ extern crate self as everruns;
 
 // --- Value-first agent description and execution -------------------------
 mod agent;
+/// Stability: stable — no breaking change without a major bump; see [`stability`].
+#[cfg(feature = "builtins")]
+pub mod ask_user;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;
@@ -64,6 +67,7 @@ mod mcp;
 pub mod models;
 mod plugin;
 mod session;
+mod session_environment;
 /// Stability tiers and the marking convention.
 pub mod stability;
 mod tool;
@@ -91,6 +95,28 @@ pub use everruns_core::classifier::{
 pub use everruns_host::WorkspaceBackend as WorkspaceProvider;
 #[deprecated(note = "use WorkspaceBackendId")]
 pub use everruns_host::WorkspaceBackendId as WorkspaceProviderId;
+#[cfg(feature = "host-shell")]
+pub use everruns_host::capabilities::shell::{
+    ApprovalPolicy, HostShell, HostShellApproval, ShellApprovalGate, ShellApprovalRequest,
+};
+/// The host shell capability, its approval policy, and the seam a host fills to
+/// put a person in front of a command.
+#[cfg(feature = "host-shell")]
+/// Be the containment worker: apply the kernel policy, then become the shell.
+///
+/// A single-binary host calls this from `main` with the arguments following its
+/// own routing flag, and names the same flag through
+/// [`SandboxLauncher::ReexecSelf`]. It never returns on success.
+#[cfg(feature = "host-shell")]
+pub use everruns_host::containment::worker::run_from_args as containment_worker;
+/// Containment for the host shell: what a command may touch, and the boundary
+/// `HostCompute::contained` applies.
+#[cfg(feature = "host-shell")]
+pub use everruns_host::containment::{
+    ContainmentMode, SandboxLauncher, SandboxOptions, SandboxProvider,
+    configure_stdio as configure_contained_stdio, danger_warning, network_access,
+    provider as containment_provider,
+};
 pub use everruns_host::{
     Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
     ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, NetworkPolicy,
@@ -126,9 +152,10 @@ pub use mcp::McpServer;
 pub use models::{CatalogError, ModelInfo};
 pub use plugin::PluginError;
 pub use session::{
-    CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session,
-    SessionEnvironmentError, Turn, TurnHandle,
+    CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session, Turn,
+    TurnHandle,
 };
+pub use session_environment::SessionEnvironmentError;
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 
 #[cfg(feature = "local")]
@@ -204,13 +231,18 @@ pub use everruns_host::{
 
 // --- Portable message, model, and platform types ------------------------
 pub use everruns_core::turn::TurnStopReason;
+// `MessageRole` is the role on stored and inspected session messages
+// (`SessionMessage`, `ContextMessage`) — the common path. The wire message and
+// role that travel on a direct model call live in [`llm`], so both keep the
+// plain name on their own surface.
 pub use everruns_core::{
-    ContentPart, Controls, ImageContentPart, InitialFile, InputMessage, MessageRole,
-    ReasoningConfig, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+    ContentPart, Controls, ImageContentPart, InitialFile, InputMessage, ReasoningConfig,
+    RuntimeMessageRole as MessageRole, WorkspacePolicy, WorkspacePolicyBuilder,
+    WorkspacePolicyError,
 };
 pub use everruns_provider::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart,
-    LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
+    LlmResponse, LlmResponseStream, LlmStreamEvent,
 };
 // Reasoning is part of the public surface: `ReasoningConfig` above carries a
 // `ReasoningEffort`, and the artifact types appear on assistant messages.
@@ -247,7 +279,10 @@ pub use everruns_provider::tool_types::{ToolCall, ToolDefinition};
 pub use everruns_provider::typed_id::{SessionId, WorkspaceId};
 
 // --- Deterministic in-process LLM simulator -----------------------------
-pub use everruns_llmsim::LlmSimConfig;
+// `LlmSimConfig::scripted` takes `SimTurn`s, so the turn, tool-call, and
+// exhaustion types belong here beside it: without them the facade exposes a
+// constructor nothing outside the workspace can call.
+pub use everruns_llmsim::{LlmSimConfig, OnExhausted, SimError, SimToolCall, SimTurn};
 
 /// The common path: everything needed to describe an agent and run turns.
 ///
@@ -306,6 +341,8 @@ pub mod prelude {
         ToolSearch,
     };
     pub use crate::{CatalogError, ModelInfo, ModelProfile};
+    #[cfg(feature = "host-shell")]
+    pub use crate::{ContainmentMode, HostShell};
     pub use crate::{DriverId, EnvCredentialError, EnvCredentialProvider};
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};
@@ -313,5 +350,5 @@ pub mod prelude {
     #[deprecated(note = "use WorkspaceBackend and WorkspaceBackendId")]
     pub use crate::{WorkspaceProvider, WorkspaceProviderId};
     pub use everruns_core::turn::TurnStopReason;
-    pub use everruns_core::{ContentPart, InputMessage, MessageRole};
+    pub use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole as MessageRole};
 }

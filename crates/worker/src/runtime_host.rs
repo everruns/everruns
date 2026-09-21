@@ -24,10 +24,11 @@ use everruns_platform::SessionMutator;
 use everruns_platform::{
     DurableToolResultStoreExt, KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt,
     PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
-    SessionSqlDbStoreExt,
+    SessionSqlDbStoreExt, SlackActionInvokerExt,
 };
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::Result;
+use everruns_provider::tool_types::{ConnectionRequired, ConnectionRequiredSubject};
 use everruns_provider::typed_id::{AgentId, SessionId};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -61,6 +62,32 @@ struct WorkerMcpResolver<A: WorkerAdapters> {
     adapters: A,
     org_id: i64,
     session_id: Uuid,
+    agent_id: Option<AgentId>,
+}
+
+fn pending_oauth_connection(
+    provider: &str,
+    acts_as: everruns_core::McpServerActsAs,
+    agent_id: Option<AgentId>,
+) -> anyhow::Result<ConnectionRequired> {
+    match (acts_as, agent_id) {
+        (everruns_core::McpServerActsAs::Service, Some(agent_id)) => {
+            Ok(ConnectionRequired::with_setup(
+                provider,
+                ConnectionRequiredSubject::Agent,
+                format!("/agents/{agent_id}?tab=mcp"),
+            ))
+        }
+        (everruns_core::McpServerActsAs::Service, None) => {
+            anyhow::bail!("MCP service attachment requires an agent")
+        }
+        (everruns_core::McpServerActsAs::User, _) => Ok(ConnectionRequired::with_setup(
+            provider,
+            ConnectionRequiredSubject::User,
+            "/settings/connections",
+        )),
+        _ => Ok(ConnectionRequired::provider_only(provider)),
+    }
 }
 
 #[async_trait]
@@ -110,7 +137,13 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
                 Ok(Some(token)) => {
                     headers.insert("Authorization".to_string(), format!("Bearer {token}"));
                 }
-                Ok(None) => pending_oauth_provider = Some(provider.to_string()),
+                Ok(None) => {
+                    pending_oauth_provider = Some(pending_oauth_connection(
+                        provider,
+                        info.acts_as,
+                        self.agent_id,
+                    )?);
+                }
                 Err(error) => {
                     tracing::warn!(
                         server = %info.name,
@@ -118,7 +151,11 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
                         %error,
                         "failed to resolve MCP OAuth connection token"
                     );
-                    pending_oauth_provider = Some(provider.to_string());
+                    pending_oauth_provider = Some(pending_oauth_connection(
+                        provider,
+                        info.acts_as,
+                        self.agent_id,
+                    )?);
                 }
             }
         }
@@ -336,8 +373,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn storage_store(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn everruns_core::session_services::SessionStorageStore>> {
-        Some(self.adapters.storage_store())
+        Some(self.adapters.storage_store(org_id))
     }
 
     fn connection_resolver(
@@ -364,7 +402,15 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         if let Some(search) = self.adapters.knowledge_index_search(org_id) {
             extensions.insert(Arc::new(KnowledgeIndexSearchExt(search)));
         }
-        extensions.insert(Arc::new(SessionSqlDbStoreExt(self.adapters.sqldb_store())));
+        extensions.insert(Arc::new(SessionSqlDbStoreExt(
+            self.adapters.sqldb_store(org_id),
+        )));
+        // EVE-1024. Installed per session because the invoker is bound to this
+        // org and session; a deployment without a control-plane route provides
+        // none and the Slack capability's tools fail closed.
+        if let Some(invoker) = self.adapters.slack_action_invoker(org_id, session_id) {
+            extensions.insert(Arc::new(SlackActionInvokerExt(invoker)));
+        }
         if let Some(store) = self.adapters.sandbox_checkpoint_store() {
             extensions.insert(Arc::new(SandboxCheckpointStoreExt(store)));
             // Checkpoint reconciliation needs both; installing one without the
@@ -474,6 +520,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
         org_id: i64,
         session_id: SessionId,
+        agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         let egress = self.adapters.egress_service()?;
         // A session has a user who can be shown a URL and asked about it, so
@@ -487,7 +534,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             Arc::new(NoAuthProvider),
             Arc::new(everruns_mcp::ConsentingUrlElicitations::new(Arc::new(
                 crate::mcp_elicitation_consent::SessionElicitationConsents::new(
-                    self.adapters.storage_store(),
+                    self.adapters.storage_store(org_id),
                     session_id,
                 ),
             ))),
@@ -496,6 +543,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             adapters: self.adapters.clone(),
             org_id,
             session_id: session_id.uuid(),
+            agent_id,
         });
         Some(Arc::new(McpExecutor::new(client, resolver)))
     }
@@ -612,6 +660,7 @@ mod mcp_credential_tests {
             adapters,
             org_id: everruns_core::DEFAULT_ORG_ID,
             session_id: Uuid::new_v4(),
+            agent_id: Some(AgentId::from_seed(7)),
         };
         let connection = worker_resolver
             .resolve("linear")
@@ -691,11 +740,82 @@ mod mcp_credential_tests {
             // No header at all, and the executor is told to prompt rather than
             // let the call go out bare against a permissive server.
             assert_eq!(authorization_of(&connection), None, "{acts_as}");
-            assert!(
-                connection.pending_oauth_provider.is_some(),
-                "{acts_as} must surface connection_required"
+            let required = connection
+                .pending_oauth_provider
+                .expect("missing grant must surface connection_required");
+            assert_eq!(
+                required.subject,
+                Some(match acts_as {
+                    McpServerActsAs::Service => ConnectionRequiredSubject::Agent,
+                    McpServerActsAs::User => ConnectionRequiredSubject::User,
+                    McpServerActsAs::None => unreachable!(),
+                })
+            );
+            let expected_setup_url = match acts_as {
+                McpServerActsAs::Service => {
+                    format!("/agents/{}?tab=mcp", AgentId::from_seed(7))
+                }
+                McpServerActsAs::User => "/settings/connections".to_string(),
+                McpServerActsAs::None => unreachable!(),
+            };
+            assert_eq!(
+                required.setup_url.as_deref(),
+                Some(expected_setup_url.as_str())
             );
         }
+    }
+
+    #[tokio::test]
+    async fn a_legacy_missing_grant_keeps_the_provider_only_shape() {
+        let (connection, resolver) = resolve_with(
+            server_info(
+                McpServerActsAs::None,
+                everruns_core::McpServerAuthMode::OAuth,
+                None,
+                &[],
+            ),
+            RecordingResolver::default(),
+        )
+        .await;
+
+        assert_eq!(authorization_of(&connection), None);
+        assert_eq!(*resolver.legacy_calls.lock().unwrap(), 1);
+        let required = connection
+            .pending_oauth_provider
+            .expect("legacy missing grant must still prompt");
+        assert_eq!(required.subject, None);
+        assert_eq!(required.setup_url, None);
+    }
+
+    #[tokio::test]
+    async fn an_agentless_service_missing_grant_is_rejected() {
+        let resolver = Arc::new(RecordingResolver::default());
+        let adapters = StubAdapters {
+            info: server_info(
+                McpServerActsAs::Service,
+                everruns_core::McpServerAuthMode::OAuth,
+                None,
+                &[],
+            ),
+            resolver: resolver.clone(),
+        };
+        let result = WorkerMcpResolver {
+            adapters,
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            session_id: Uuid::new_v4(),
+            agent_id: None,
+        }
+        .resolve("linear")
+        .await;
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "MCP service attachment requires an agent"
+        );
+        assert_eq!(
+            *resolver.acts_as_calls.lock().unwrap(),
+            vec![McpServerActsAs::Service]
+        );
     }
 
     #[tokio::test]
@@ -802,13 +922,13 @@ mod mcp_credential_tests {
             &self,
             _session_id: Uuid,
             _message_id: Uuid,
-        ) -> CoreResult<Option<everruns_core::Message>> {
+        ) -> CoreResult<Option<everruns_core::RuntimeMessage>> {
             unimplemented!()
         }
         async fn load_messages(
             &self,
             _session_id: Uuid,
-        ) -> CoreResult<Vec<everruns_core::Message>> {
+        ) -> CoreResult<Vec<everruns_core::RuntimeMessage>> {
             unimplemented!()
         }
         async fn emit_event(
@@ -988,11 +1108,21 @@ mod mcp_credential_tests {
         }
         fn sqldb_store(
             &self,
+            _org_id: i64,
         ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
             unimplemented!()
         }
-        fn storage_store(&self) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+        fn storage_store(
+            &self,
+            _org_id: i64,
+        ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
             unimplemented!()
+        }
+
+        fn storage_store_unscoped(
+            &self,
+        ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+            self.storage_store(everruns_core::DEFAULT_ORG_ID)
         }
         fn image_artifact_store(
             &self,

@@ -1,5 +1,6 @@
 //! API integration tests: agents.
 
+use crate::support::seed_archival_app;
 use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_core::DEFAULT_ORG_ID;
@@ -7,6 +8,7 @@ use everruns_platform::Agent;
 use everruns_platform::Session;
 use everruns_provider::model::Model;
 use everruns_provider::provider::Provider;
+use everruns_provider::typed_id::{AgentId, AgentIdentityId, HarnessId};
 use everruns_server::storage::models::{
     CreateAgentRow, CreateMcpServerRow, UpdateOrganizationSettings,
 };
@@ -1008,17 +1010,14 @@ async fn test_delete_agent_referenced_by_app_returns_conflict() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": "Agent Delete Blocker",
-                "harness_id": server.seed_generic_harness_id,
-                "agent_id": agent["id"]
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED);
+    seed_archival_app(
+        &server,
+        "Agent Delete Blocker",
+        server.seed_generic_harness_id.parse::<HarnessId>().unwrap(),
+        Some(agent["id"].as_str().unwrap().parse::<AgentId>().unwrap()),
+        None,
+    )
+    .await;
 
     server
         .delete(&format!("/v1/agents/{}", agent["id"].as_str().unwrap()))
@@ -1052,18 +1051,20 @@ async fn test_delete_agent_identity_referenced_by_app_returns_conflict() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": "Identity Delete Blocker",
-                "harness_id": server.seed_generic_harness_id,
-                "agent_id": agent["id"],
-                "agent_identity_id": identity["id"]
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED);
+    seed_archival_app(
+        &server,
+        "Identity Delete Blocker",
+        server.seed_generic_harness_id.parse::<HarnessId>().unwrap(),
+        Some(agent["id"].as_str().unwrap().parse::<AgentId>().unwrap()),
+        Some(
+            identity["id"]
+                .as_str()
+                .unwrap()
+                .parse::<AgentIdentityId>()
+                .unwrap(),
+        ),
+    )
+    .await;
 
     server
         .delete(&format!(
@@ -1072,58 +1073,6 @@ async fn test_delete_agent_identity_referenced_by_app_returns_conflict() {
         ))
         .await
         .assert_status(StatusCode::CONFLICT);
-}
-
-#[tokio::test]
-async fn test_create_app_missing_agent_returns_not_found() {
-    let server = TestServer::new().await;
-
-    server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": "Test App",
-                "harness_id": server.seed_generic_harness_id,
-                "agent_id": "agent_ffffffffffffffffffffffffffffffff"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_update_app_missing_agent_returns_not_found() {
-    let server = TestServer::new().await;
-
-    // Create agent and app
-    let agent: Value = server
-        .post(
-            "/v1/agents",
-            json!({ "name": "update-app-agent-agent", "display_name": "Test Agent", "system_prompt": "Test" }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let app: Value = server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": "Test App",
-                "harness_id": server.seed_generic_harness_id,
-                "agent_id": agent["id"]
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    server
-        .patch(
-            &format!("/v1/apps/{}", app["id"].as_str().unwrap()),
-            json!({ "agent_id": "agent_ffffffffffffffffffffffffffffffff" }),
-        )
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

@@ -21,6 +21,8 @@
 # Both halves are needed. (1) alone still loses to ordering: label a PR after a
 # real run went red and the no-op run's newer green Build Check supersedes it.
 # (2) alone lets the no-op keep cancelling real runs. This test pins both.
+# It also pins the opt-out policy for UI jobs because those labels use the same
+# event gate and must not suppress an affected full-stack budget test.
 
 set -euo pipefail
 
@@ -73,10 +75,40 @@ if not guards_run_ci:
         "run_ci != 'true'. A run where every job skipped would report success, "
         "turning 'nothing ran' into a green required check (EVE-939)."
     )
+# --- 3. the UI opt-out must guard every UI E2E path --------------------------
+opt_out_policy = None
+for job in doc["jobs"].values():
+    if job.get("name") == "CI Opt-Out Policy":
+        opt_out_policy = job
+        break
+
+if opt_out_policy is None:
+    errors.append(f"{workflow}: no job named 'CI Opt-Out Policy' found")
+else:
+    policy_script = "\n".join(
+        step.get("run") or "" for step in opt_out_policy.get("steps") or []
+    )
+    ui_guard_lines = [
+        line
+        for line in policy_script.splitlines()
+        if 'require_if_affected "ci:skip-ui-e2e"' in line
+    ]
+    for affected_output, check_name in [
+        ("needs.changes.outputs.ui", "UI Playwright smoke"),
+        ("needs.changes.outputs.budget_e2e", "UI endpoint budget full-stack E2E"),
+    ]:
+        if not any(
+            affected_output in line and check_name in line for line in ui_guard_lines
+        ):
+            errors.append(
+                f"{workflow}: ci:skip-ui-e2e is not blocked when "
+                f"{affected_output} is true; it can suppress affected {check_name} coverage."
+            )
 
 if errors:
     sys.exit("\n\n".join(errors))
 
 print("ci.yml: label-event runs cannot cancel real runs, and Build Check "
-      "refuses to pass a run that executed nothing")
+      "refuses to pass a run that executed nothing; UI E2E opt-outs cannot "
+      "suppress affected smoke or endpoint-budget coverage")
 PY

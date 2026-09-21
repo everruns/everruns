@@ -8,23 +8,25 @@ tags:
 ---
 # Public Endpoints
 
-A **public endpoint** is an HTTP endpoint that accepts unauthenticated traffic and serves it from app-/tenant-scoped configuration. Public endpoints have a different threat surface from API endpoints: callers may be anonymous, may be hostile, and have no relationship to operators or owners. This spec defines the contract every public endpoint MUST satisfy.
+A **public endpoint** is an HTTP endpoint that accepts unauthenticated traffic and serves it from endpoint-owned, tenant-scoped configuration. Public endpoints have a different threat surface from authenticated management APIs: callers may be anonymous, may be hostile, and have no relationship to operators or owners. This spec defines the contract every public endpoint MUST satisfy.
 
 ## Current Public Endpoints
 
 | Endpoint | Route | Source | Notes |
 |---|---|---|---|
-| AG-UI | `POST /v1/apps/{app_id}/ag-ui` | `crates/server/src/api/ag_ui.rs` | Public, app-scoped SSE stream; optional channel token |
-| AG-UI image upload | `POST /v1/apps/{app_id}/ag-ui/images` | `crates/server/src/api/ag_ui.rs` | Public, app-scoped multipart image upload; optional channel token |
-| FCP handshake | `GET /v1/apps/{app_id}/fcp` | `crates/server/src/api/fcp.rs` | Public, app-scoped Markdown handshake (always-open per FCP SPEC) |
-| FCP message | `POST /v1/apps/{app_id}/fcp` | `crates/server/src/api/fcp.rs` | Public, app-scoped text-in / text-out; optional channel token; FCP-only rate limiter |
-| Public Chat config | `GET /v1/apps/{app_id}/public-chat/config` | `crates/server/src/api/public_chat.rs` | Public, app-scoped non-secret bootstrap (branding, sign-in method, Turnstile site key) |
-| Public Chat run | `POST /v1/apps/{app_id}/public-chat` | `crates/server/src/api/public_chat.rs` | Public, app-scoped AG-UI SSE stream; anonymous + optional Google sign-in; Turnstile for anonymous; own rate-limiter namespace |
-| Slack events | `POST /v1/apps/{app_id}/slack/events` | `crates/server/src/api/slack_events.rs` | Anonymous Slack webhook (signature-verified) |
-| Slack manifest | `GET /v1/apps/{app_id}/slack/manifest` | `crates/server/src/api/slack_events.rs` | Anonymous YAML manifest fetch |
+| AG-UI | `POST /v1/e/{endpoint_id}/ag-ui` | `crates/server/src/api/ag_ui.rs` | Public SSE stream; optional endpoint token |
+| AG-UI image upload | `POST /v1/e/{endpoint_id}/ag-ui/images` | `crates/server/src/api/ag_ui.rs` | Public multipart image upload; optional endpoint token |
+| FCP handshake | `GET /v1/e/{endpoint_id}/fcp` | `crates/server/src/api/fcp.rs` | Public Markdown handshake (always-open per FCP SPEC) |
+| FCP message | `POST /v1/e/{endpoint_id}/fcp` | `crates/server/src/api/fcp.rs` | Public text-in / text-out; optional endpoint token; FCP-only rate limiter |
+| Public Chat config | `GET /v1/e/{endpoint_id}/public-chat/config` | `crates/server/src/api/public_chat.rs` | Public non-secret bootstrap (branding, sign-in method, Turnstile site key) |
+| Public Chat run | `POST /v1/e/{endpoint_id}/public-chat` | `crates/server/src/api/public_chat.rs` | Public AG-UI SSE stream; anonymous + optional Google sign-in; Turnstile for anonymous; own rate-limiter namespace |
+| Slack events | `POST /v1/e/{endpoint_id}/slack/events` | `crates/server/src/api/slack_events/` | Anonymous Slack webhook (signature-verified) |
+| Slack manifest | `GET /v1/e/{endpoint_id}/slack/manifest` | `crates/server/src/api/slack_events/` | Anonymous YAML manifest fetch |
 | Shared eval run | `GET /v1/public/eval-runs/{token}` | `crates/server/src/api/evals.rs` | Anonymous read-only view of one eval run, gated by an unguessable share token; sanitized DTO (no org/internal/session ids, no internal targets, no attribution env labels); uniform 404 for unknown/revoked/expired |
 
 Any new public endpoint MUST be added to this table and MUST follow the rules below. Existing endpoints that pre-date this contract may not yet route every error path through `PublicError`; aligning them is tracked separately and applies whenever those endpoints stream payload-phase errors to the caller.
+
+The `/v1/e/{endpoint_id}/...` routes are canonical. Existing `/v1/apps/{app_id}/...` routes are permanent aliases. Alias resolution uses the endpoint's frozen `legacy_app_public_id`; traffic serving does not read `apps` or `app_channels`.
 
 ## Mandatory Behavior
 
@@ -89,13 +91,13 @@ When adding a new public endpoint, define one adapter and use it from every erro
 Public endpoints are the unauthenticated entrypoint for the platform. Relevant categories from `knowledge/security/threat-model.md`:
 
 - **TM-INFO-001 (Information disclosure)**: sanitization above is the primary mitigation.
-- **TM-AUTHZ-005**: published-app + enabled-channel + `anonymous=true` gating before traffic reaches the handler.
+- **TM-AUTHZ-005**: live-endpoint + active-agent + `anonymous=true` gating before traffic reaches the handler.
 - **TM-DOS-010**: per-org / per-session SSE connection limits via the shared SSE tracker.
-- **TM-TENANT-009**: routing tags scoped by app public ID so cross-app collisions stay isolated.
+- **TM-TENANT-009**: routing tags retain the legacy App and endpoint public IDs so compatibility sessions stay isolated.
 
 Any new public endpoint MUST be reviewed against these mitigations before merge.
 
 ## Non-Goals
 
-- The HTTP-level error responses returned *before* the streaming/payload phase (e.g. `bad_request("messages must contain at least one user message")`, `forbidden("App is not published")`, `not_found()`) describe input shape or already-public app state. They keep their specific text because it is actionable for the caller and does not leak internal state. They are not routed through `PublicError`.
+- The HTTP-level error responses returned *before* the streaming/payload phase (for example malformed input, a non-live endpoint, or `not_found()`) describe input shape or public endpoint availability. They keep their specific text when it is actionable and does not leak internal state. They are not routed through `PublicError`.
 - Internal sessions, owner-scoped APIs, audit logs, and observability outputs are out of scope. They retain full internal detail.

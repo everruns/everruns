@@ -3,7 +3,7 @@ mod driver_tests {
     use crate::{azure_provider, completions_provider, provider, register_driver};
     use everruns_provider::ProviderEndpoint;
     use everruns_provider::driver_registry::{
-        DriverId, DriverRegistry, EmbedRequest, LlmCallConfig, LlmMessage, LlmMessageRole,
+        DriverId, DriverRegistry, EmbedRequest, LlmCallConfig, Message, MessageRole,
         ProviderConfig, ServiceKind,
     };
     use serde_json::{Value, json};
@@ -88,9 +88,9 @@ mod driver_tests {
                     config.parallel_tool_calls = Some(false);
                     config.previous_response_id = Some("prior-response".into());
                     let messages = vec![
-                        LlmMessage::text(LlmMessageRole::User, "old"),
-                        LlmMessage::text(LlmMessageRole::Assistant, "old answer"),
-                        LlmMessage::text(LlmMessageRole::User, "new"),
+                        Message::text(MessageRole::User, "old"),
+                        Message::text(MessageRole::Assistant, "old answer"),
+                        Message::text(MessageRole::User, "new"),
                     ];
                     let response = if registered {
                         let driver = registry

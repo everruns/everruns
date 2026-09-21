@@ -4,9 +4,11 @@ use std::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
-use crate::driver_registry::LlmMessage;
+use crate::driver_registry::Message;
 use crate::events::TokenUsage;
-use crate::message::Message;
+// `total_tool_result_bytes` measures the raw stored history; every other hook
+// on this trait operates on the provider-facing wire `Message`.
+use crate::message::RuntimeMessage;
 
 /// Strategy selected by a configured compaction policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -41,7 +43,7 @@ pub struct CompactionSettings {
 /// Result of applying policy-owned observation masking.
 #[derive(Debug, Clone)]
 pub struct ObservationMaskingResult {
-    pub messages: Vec<LlmMessage>,
+    pub messages: Vec<Message>,
     pub masked_count: usize,
 }
 
@@ -51,28 +53,28 @@ pub struct ObservationMaskingResult {
 /// implementation bundle owns thresholds and deterministic message transforms.
 pub trait CompactionPolicy: Send + Sync + Debug {
     fn settings(&self) -> CompactionSettings;
-    fn estimate_total_tokens(&self, messages: &[LlmMessage]) -> usize;
-    fn total_tool_result_bytes(&self, messages: &[Message]) -> usize;
-    fn should_compact_proactively(&self, messages: &[LlmMessage], context_window: usize) -> bool;
+    fn estimate_total_tokens(&self, messages: &[Message]) -> usize;
+    fn total_tool_result_bytes(&self, messages: &[RuntimeMessage]) -> usize;
+    fn should_compact_proactively(&self, messages: &[Message], context_window: usize) -> bool;
     fn should_compact_for_cost(
         &self,
         estimated_input_tokens: usize,
         raw_tool_result_bytes: usize,
         usage: Option<&TokenUsage>,
     ) -> bool;
-    fn apply_observation_masking(&self, messages: &[LlmMessage]) -> ObservationMaskingResult;
+    fn apply_observation_masking(&self, messages: &[Message]) -> ObservationMaskingResult;
     fn aggressive_trim(
         &self,
-        messages: &[LlmMessage],
+        messages: &[Message],
         target_tokens: usize,
         preserve_system: bool,
-    ) -> Vec<LlmMessage>;
+    ) -> Vec<Message>;
     fn summarization_prompt(&self) -> String;
-    fn format_messages_for_summarization(&self, messages: &[LlmMessage]) -> String;
+    fn format_messages_for_summarization(&self, messages: &[Message]) -> String;
     fn compose_summary_with_recent(
         &self,
-        system_message: Option<LlmMessage>,
+        system_message: Option<Message>,
         summary_text: &str,
-        recent_messages: &[LlmMessage],
-    ) -> Vec<LlmMessage>;
+        recent_messages: &[Message],
+    ) -> Vec<Message>;
 }

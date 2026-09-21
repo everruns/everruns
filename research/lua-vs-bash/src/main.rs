@@ -12,7 +12,7 @@
 use std::time::Instant;
 
 use everruns_core::session_file::InitialFile;
-use everruns_core::{CapabilityRegistry, MessageRole};
+use everruns_core::{CapabilityRegistry, RuntimeMessageRole};
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_integrations_bashkit::BashkitShellCapability;
@@ -183,7 +183,7 @@ async fn run_one(
     if let Ok(messages) = runtime.messages(session_id).await {
         for msg in &messages {
             m.tool_calls += msg.tool_calls().len();
-            if msg.role == MessageRole::ToolResult {
+            if msg.role == RuntimeMessageRole::ToolResult {
                 let serialized = serde_json::to_string(msg).unwrap_or_default();
                 if serialized.contains("\"error\"") {
                     m.tool_errors += 1;

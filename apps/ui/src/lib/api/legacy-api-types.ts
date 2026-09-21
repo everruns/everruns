@@ -800,24 +800,6 @@ export interface AppChannel {
   updated_at: string;
 }
 
-export interface AppRunEvent {
-  id: string;
-  app_id: string;
-  channel_id: string;
-  channel_type: ChannelType;
-  channel_name?: string | null;
-  status: "pending" | "running" | "completed" | "failed" | "skipped";
-  created_at: string;
-  completed_at?: string | null;
-}
-
-export interface AppRunBucket {
-  hour: string;
-  ok: number;
-  err: number;
-  running?: number;
-}
-
 export interface App {
   id: string;
   name: string;
@@ -838,65 +820,6 @@ export interface App {
   updated_at: string;
   archived_at: string | null;
   deleted_at: string | null;
-}
-
-export interface CreateAppRequest {
-  name: string;
-  description?: string;
-  harness_id: string;
-  agent_id?: string;
-  agent_version_policy?: AgentVersionPolicy;
-  agent_version_id?: string;
-  agent_identity_id?: string;
-  channel_type?: ChannelType;
-  channel_config?:
-    | SlackChannelConfig
-    | AgUiChannelConfig
-    | ScheduleChannelConfig
-    | WebhookChannelConfig
-    | A2aChannelConfig
-    | FcpChannelConfig
-    | PublicChatChannelConfig
-    | Record<string, unknown>;
-}
-
-export interface UpdateAppRequest {
-  name?: string;
-  description?: string;
-  harness_id?: string;
-  agent_id?: string;
-  agent_version_policy?: AgentVersionPolicy;
-  agent_version_id?: string | null;
-  agent_identity_id?: string | null;
-  status?: AppStatus;
-}
-
-export interface AddChannelRequest {
-  channel_type: ChannelType;
-  channel_config?:
-    | SlackChannelConfig
-    | AgUiChannelConfig
-    | ScheduleChannelConfig
-    | WebhookChannelConfig
-    | A2aChannelConfig
-    | FcpChannelConfig
-    | PublicChatChannelConfig
-    | Record<string, unknown>;
-  enabled?: boolean;
-}
-
-export interface UpdateChannelRequest {
-  channel_type?: ChannelType;
-  channel_config?:
-    | SlackChannelConfig
-    | AgUiChannelConfig
-    | ScheduleChannelConfig
-    | WebhookChannelConfig
-    | A2aChannelConfig
-    | FcpChannelConfig
-    | PublicChatChannelConfig
-    | Record<string, unknown>;
-  enabled?: boolean;
 }
 
 // From legacy auth-types.ts; retained as UI compatibility over generated OpenAPI schemas.
@@ -1176,67 +1099,6 @@ export interface ConnectionFormField {
 export interface VerifyConnectionResponse {
   valid: boolean;
   error?: string;
-}
-
-// From legacy budget-types.ts; retained as UI compatibility over generated OpenAPI schemas.
-// Budget API types — mirrors `crates/core/src/budget.rs`.
-// Behind the `app_budgets` feature flag for app/channel subjects.
-export type BudgetSubjectType = "session" | "agent" | "user" | "org" | "app" | "app_channel";
-
-export type BudgetStatus = "active" | "paused" | "exhausted" | "disabled";
-
-/**
- * Period configuration for recurring budgets. Drives automatic balance reset.
- *  - `Duration` is a sliding window of `seconds` from `period_started_at`.
- *  - `Rolling` accepts shorthand like `5h`, `24h`, `30d` (server normalises).
- *  - `Calendar` aligns to UTC `hour | day | week | month | year` boundaries.
- */
-export type BudgetPeriod =
-  | {
-      type: "duration";
-      seconds: number;
-    }
-  | {
-      type: "rolling";
-      window: string;
-    }
-  | {
-      type: "calendar";
-      unit: string;
-    };
-
-export interface Budget {
-  id: string;
-  organization_id: string;
-  subject_type: BudgetSubjectType;
-  subject_id: string;
-  currency: string;
-  limit: number;
-  soft_limit?: number | null;
-  balance: number;
-  period?: BudgetPeriod | null;
-  period_started_at?: string | null;
-  metadata?: Record<string, unknown> | null;
-  status: BudgetStatus;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateBudgetRequest {
-  subject_type: BudgetSubjectType;
-  subject_id: string;
-  currency: string;
-  limit: number;
-  soft_limit?: number | null;
-  period?: BudgetPeriod | null;
-  metadata?: Record<string, unknown> | null;
-}
-
-export interface UpdateBudgetRequest {
-  limit?: number;
-  soft_limit?: number | null;
-  status?: BudgetStatus;
-  metadata?: Record<string, unknown> | null;
 }
 
 // From legacy capability-types.ts; retained as UI compatibility over generated OpenAPI schemas.

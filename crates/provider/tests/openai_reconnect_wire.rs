@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use everruns_provider::OpenAIProtocolChatDriver;
 use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    LlmCallConfig, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
 };
 use everruns_provider::llm_retry::LlmRetryConfig;
 use everruns_provider::{BearerAuth, Provider};
@@ -135,7 +135,7 @@ async fn driver_reconnects_on_truncated_first_response() {
 
     let stream = driver
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("gpt-5.2"),
         )
         .await
@@ -167,7 +167,7 @@ async fn driver_surfaces_error_after_exhausting_reconnects() {
 
     let result = driver
         .chat_completion_stream(
-            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            vec![Message::text(MessageRole::User, "hi")],
             &config("gpt-5.2"),
         )
         .await;

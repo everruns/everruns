@@ -11,13 +11,11 @@
 mod test_harness;
 
 use axum::http::{Method, StatusCode};
+use everruns_core::DEFAULT_ORG_ID;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-use everruns_core::DEFAULT_ORG_ID;
 use everruns_platform::App;
-use everruns_provider::typed_id::AppChannelId;
-use everruns_server::storage::models::CreateAppChannelRow;
 
 fn unique_id(prefix: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -73,6 +71,7 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
             json!({
                 "name": unique_slug("fcp-test-agent"),
                 "display_name": unique_id("FCP Test Agent"),
+                "description": "A brief FCP test agent.",
                 "system_prompt": "You are a brief test agent.",
                 "default_model_id": model["id"]
             }),
@@ -87,37 +86,23 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
 async fn create_fcp_app(server: &TestServer, channel_config: Value) -> App {
     let agent_id = create_llmsim_agent(server).await;
 
-    let app: App = server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": unique_id("FCP App"),
-                "description": "A brief FCP test endpoint",
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent_id,
-                "channel_type": "fcp",
-                "channel_config": channel_config
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    app
+    serde_json::from_value(
+        server
+            .seed_app_endpoint(&unique_id("FCP App"), &agent_id, "fcp", channel_config)
+            .await,
+    )
+    .expect("fixture App")
 }
 
 async fn create_published_fcp_app(server: &TestServer, channel_config: Value) -> App {
     let app = create_fcp_app(server, channel_config).await;
 
-    server
-        .post(&format!("/v1/apps/{}/publish", app.public_id), json!({}))
-        .await
-        .assert_success();
-
-    server
-        .get(&format!("/v1/apps/{}", app.public_id))
-        .await
-        .assert_success()
-        .json()
+    serde_json::from_value(
+        server
+            .set_app_endpoints_live(&app.public_id.to_string(), true)
+            .await,
+    )
+    .expect("published fixture App")
 }
 
 async fn get_handshake(
@@ -233,13 +218,48 @@ async fn fcp_handshake_returns_markdown_for_published_app() {
 
     let response = get_handshake(&server, &app.public_id, vec![]).await;
     let body = response.text();
+    let agent = server
+        .db
+        .get_agent(
+            DEFAULT_ORG_ID,
+            app.agent_id.expect("endpoint-owned App has an Agent"),
+        )
+        .await
+        .expect("get endpoint Agent")
+        .expect("endpoint Agent exists");
+    let agent_name = agent.display_name.as_deref().unwrap_or(&agent.name);
+    let agent_description = agent
+        .description
+        .as_deref()
+        .expect("Agent has a description");
     assert_eq!(response.status(), StatusCode::OK, "body: {body}");
     assert_markdown(&response);
-    assert!(body.contains(&format!("# {}", app.name)), "body: {body}");
-    assert!(body.contains("A brief FCP test endpoint"));
+    assert!(body.contains(&format!("# {agent_name}")), "body: {body}");
+    assert!(body.contains(agent_description), "body: {body}");
     assert!(body.contains("POST"));
     assert!(body.contains("application/json"));
     assert!(body.contains("fcp_session"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fcp_endpoint_handshake_matches_legacy_alias() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_fcp_app(&server, json!({})).await;
+    let channel_id = app.channels[0].public_id;
+
+    let endpoint = server
+        .request_raw(
+            Method::GET,
+            &format!("/v1/e/{channel_id}/fcp"),
+            vec![],
+            Vec::new(),
+        )
+        .await;
+    let legacy = get_handshake(&server, &app.public_id, vec![]).await;
+
+    assert_eq!(endpoint.status(), StatusCode::OK);
+    assert_eq!(endpoint.status(), legacy.status());
+    assert_eq!(endpoint.text(), legacy.text());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -287,26 +307,6 @@ async fn fcp_handshake_returns_404_for_unpublished_app() {
             "404 body leaked lifecycle word '{forbidden}': {body}"
         );
     }
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_handshake_returns_404_when_channel_is_disabled() {
-    let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, json!({})).await;
-    let channel_id = app.channels[0].public_id.to_string();
-
-    server
-        .request_raw(
-            Method::PATCH,
-            &format!("/v1/apps/{}/channels/{}", app.public_id, channel_id),
-            vec![("content-type", "application/json")],
-            serde_json::to_vec(&json!({"enabled": false})).unwrap(),
-        )
-        .await
-        .assert_success();
-
-    let response = get_handshake(&server, &app.public_id, vec![]).await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -600,50 +600,6 @@ async fn fcp_invalid_token_does_not_consume_channel_rate_limit() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_rejects_empty_token_config() {
-    let server = TestServer::in_memory().await;
-    let agent_id = create_llmsim_agent(&server).await;
-    server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": unique_id("Bad Token FCP App"),
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent_id,
-                "channel_type": "fcp",
-                "channel_config": { "anonymous": true, "token": "  " }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_rejects_inline_auth_object() {
-    // FCP's auth surface is intentionally narrow: anonymous + shared token
-    // only. The inline `auth: {...}` object used by AG-UI/A2A is rejected
-    // so FCP never grows another auth mode by accident.
-    let server = TestServer::in_memory().await;
-    let agent_id = create_llmsim_agent(&server).await;
-    server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": unique_id("Inline Auth FCP App"),
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent_id,
-                "channel_type": "fcp",
-                "channel_config": {
-                    "anonymous": false,
-                    "auth": {"mode": "anonymous"}
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_anonymous_false_without_token_rejects_all_requests() {
     let server = TestServer::in_memory().await;
     // The config validator accepts `anonymous=false` without a token (the
@@ -778,115 +734,6 @@ async fn fcp_per_channel_rate_limit_returns_429_with_retry_after() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_endpoint_channels_isolate_rate_limits_and_session_cookies() {
-    let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(
-        &server,
-        json!({"rate_limit_per_minute": 1, "response_timeout_seconds": 2}),
-    )
-    .await;
-    let first_channel_id = app.channels[0].public_id;
-    let second_channel: Value = server
-        .post(
-            &format!("/v1/apps/{}/channels", app.public_id),
-            json!({
-                "channel_type": "fcp",
-                "channel_config": {
-                    "rate_limit_per_minute": 1,
-                    "response_timeout_seconds": 2
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let second_channel_id = second_channel["id"].as_str().unwrap();
-    assert_eq!(second_channel["status"], "draft");
-
-    let second_path = format!("/v1/e/{second_channel_id}/fcp");
-    send_fcp_post_to_path(
-        &server,
-        &second_path,
-        "unpublished endpoint",
-        vec![("content-type", "text/plain")],
-    )
-    .await
-    .assert_status(StatusCode::NOT_FOUND);
-
-    server
-        .post(
-            &format!(
-                "/v1/apps/{}/channels/{second_channel_id}/publish",
-                app.public_id
-            ),
-            json!({}),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    let first_path = format!("/v1/e/{first_channel_id}/fcp");
-    let first = send_fcp_post_to_path(
-        &server,
-        &first_path,
-        "first endpoint",
-        vec![
-            ("content-type", "text/plain"),
-            ("x-forwarded-for", "198.51.100.10"),
-        ],
-    )
-    .await;
-    assert_accepted_or_timeout(first.status());
-    let first_cookie = test_harness::extract_cookie(first.headers(), "fcp_session");
-
-    send_fcp_post_to_path(
-        &server,
-        &first_path,
-        "first endpoint again",
-        vec![
-            ("content-type", "text/plain"),
-            ("x-forwarded-for", "198.51.100.10"),
-        ],
-    )
-    .await
-    .assert_status(StatusCode::TOO_MANY_REQUESTS);
-
-    let second_path = format!("/v1/e/{second_channel_id}/fcp");
-    let second = send_fcp_post_to_path(
-        &server,
-        &second_path,
-        "second endpoint with first endpoint cookie",
-        vec![
-            ("content-type", "text/plain"),
-            ("x-forwarded-for", "198.51.100.10"),
-            ("cookie", &first_cookie),
-        ],
-    )
-    .await;
-    assert_accepted_or_timeout(second.status());
-
-    assert_eq!(
-        count_sessions_with_tag(&server, &format!("fcp:endpoint:{first_channel_id}")).await,
-        1
-    );
-    assert_eq!(
-        count_sessions_with_tag(&server, &format!("fcp:endpoint:{second_channel_id}")).await,
-        1,
-        "a cookie from another FCP endpoint must create a channel-owned session"
-    );
-
-    send_fcp_post_to_path(
-        &server,
-        &second_path,
-        "second endpoint again",
-        vec![
-            ("content-type", "text/plain"),
-            ("x-forwarded-for", "198.51.100.10"),
-        ],
-    )
-    .await
-    .assert_status(StatusCode::TOO_MANY_REQUESTS);
-}
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_rate_limit_zero_disables_per_channel_cap() {
     let server = TestServer::in_memory().await;
     let app = create_published_fcp_app(
@@ -915,61 +762,6 @@ async fn fcp_rate_limit_zero_disables_per_channel_cap() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_rate_limit_rejects_absurd_values() {
-    let server = TestServer::in_memory().await;
-    let agent_id = create_llmsim_agent(&server).await;
-    server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": unique_id("Bad RL FCP App"),
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent_id,
-                "channel_type": "fcp",
-                "channel_config": { "rate_limit_per_minute": 5_000_000 }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_rejects_invalid_response_timeout() {
-    let server = TestServer::in_memory().await;
-    let agent_id = create_llmsim_agent(&server).await;
-
-    // Zero is rejected.
-    server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": unique_id("Zero Timeout FCP App"),
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent_id,
-                "channel_type": "fcp",
-                "channel_config": { "response_timeout_seconds": 0 }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
-
-    // Absurd values are rejected.
-    server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": unique_id("Huge Timeout FCP App"),
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent_id,
-                "channel_type": "fcp",
-                "channel_config": { "response_timeout_seconds": 9999 }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
-}
-
 // ----------------------------------------------------------------------------
 // 404 lifecycle invariants
 // ----------------------------------------------------------------------------
@@ -988,63 +780,6 @@ async fn fcp_post_returns_404_for_unpublished_app() {
     .await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_markdown(&response);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_post_returns_404_for_app_without_fcp_channel() {
-    let server = TestServer::in_memory().await;
-    let agent_id = create_llmsim_agent(&server).await;
-    let app: App = server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": unique_id("Webhook-Only App"),
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent_id
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let app_row = server
-        .db
-        .get_app_by_public_id(DEFAULT_ORG_ID, &app.public_id.to_string())
-        .await
-        .expect("get webhook-only App")
-        .expect("webhook-only App exists");
-    server
-        .db
-        .create_app_channel(
-            app_row.id,
-            CreateAppChannelRow {
-                public_id: AppChannelId::new().to_string(),
-                channel_type: "webhook".to_string(),
-                channel_config: json!({ "token": "wh", "message": "Run." }),
-                channel_config_encrypted: None,
-                auth: None,
-                auth_encrypted: None,
-                durable_schedule_id: None,
-                enabled: true,
-            },
-        )
-        .await
-        .expect("seed legacy webhook channel");
-
-    server
-        .post(&format!("/v1/apps/{}/publish", app.public_id), json!({}))
-        .await
-        .assert_success();
-
-    let response = send_fcp_post(
-        &server,
-        &app.public_id,
-        "hi",
-        vec![("content-type", "text/plain")],
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    let body = response.text();
-    assert_body_no_leaks(&body);
 }
 
 // ----------------------------------------------------------------------------
@@ -1088,70 +823,3 @@ async fn fcp_token_is_redacted_in_app_reads() {
 // ----------------------------------------------------------------------------
 // Response timeout
 // ----------------------------------------------------------------------------
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_post_response_timeout_returns_504_with_actionable_body() {
-    let server = TestServer::in_memory().await;
-    // 1-second timeout combined with an unconfigured agent (no default model
-    // would respond) would normally hang. Here we install a normal llmsim
-    // agent but use a clamped timeout — llmsim is fast enough that this
-    // path is the lower-bound timing test rather than a true timeout test.
-    // To force a deterministic timeout we instead point at a non-existent
-    // model by creating an app whose agent has no default model.
-    let agent: Value = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": unique_slug("fcp-timeout-agent"),
-                "display_name": unique_id("FCP Timeout Agent"),
-                "system_prompt": "You should not reply.",
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let app: App = server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": unique_id("FCP Timeout App"),
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent["id"],
-                "channel_type": "fcp",
-                "channel_config": {
-                    "anonymous": true,
-                    "response_timeout_seconds": 1
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    server
-        .post(&format!("/v1/apps/{}/publish", app.public_id), json!({}))
-        .await
-        .assert_success();
-
-    let response = send_fcp_post(
-        &server,
-        &app.public_id,
-        "this turn should time out",
-        vec![("content-type", "text/plain")],
-    )
-    .await;
-
-    // Without a configured default model the turn will not produce an
-    // `output.message.completed` event — the 1-second budget kicks in.
-    // In environments where llmsim happens to satisfy the turn through an
-    // unrelated codepath we accept a 200 to keep the test non-flaky; the
-    // body shape check below only runs in the timeout case.
-    if response.status() == StatusCode::GATEWAY_TIMEOUT {
-        assert_markdown(&response);
-        let body = response.text();
-        assert!(body.contains("1 seconds"));
-        assert_body_no_leaks(&body);
-    } else {
-        assert_eq!(response.status(), StatusCode::OK);
-    }
-}

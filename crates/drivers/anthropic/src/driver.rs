@@ -27,8 +27,8 @@ use everruns_provider::driver_helpers::{
 };
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
-    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent, fold_system_messages,
+    LlmCompletionMetadata, LlmContentPart, LlmResponseStream, LlmStreamEvent, Message,
+    MessageContent, MessageRole, fold_system_messages,
 };
 use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_provider::is_provider_quota_message;
@@ -345,18 +345,18 @@ impl AnthropicChatDriver {
         .await
     }
 
-    fn convert_role(role: &LlmMessageRole) -> &'static str {
+    fn convert_role(role: &MessageRole) -> &'static str {
         match role {
-            LlmMessageRole::System => "user", // System is handled separately in Anthropic
-            LlmMessageRole::User => "user",
-            LlmMessageRole::Assistant => "assistant",
-            LlmMessageRole::Tool => "user", // Tool results are sent as user messages
+            MessageRole::System => "user", // System is handled separately in Anthropic
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+            MessageRole::Tool => "user", // Tool results are sent as user messages
         }
     }
 
-    fn convert_content(content: &LlmMessageContent) -> Vec<AnthropicContentBlock> {
+    fn convert_content(content: &MessageContent) -> Vec<AnthropicContentBlock> {
         match content {
-            LlmMessageContent::Text(text) => {
+            MessageContent::Text(text) => {
                 // Skip empty text to avoid Anthropic API error
                 if text.is_empty() {
                     vec![]
@@ -367,7 +367,7 @@ impl AnthropicChatDriver {
                     }]
                 }
             }
-            LlmMessageContent::Parts(parts) => parts
+            MessageContent::Parts(parts) => parts
                 .iter()
                 .filter_map(|part| match part {
                     LlmContentPart::Text { text } => {
@@ -496,7 +496,7 @@ impl AnthropicChatDriver {
     }
 
     fn convert_messages(
-        messages: &[LlmMessage],
+        messages: &[Message],
         prompt_cache_enabled: bool,
         volatile_suffix_len: usize,
     ) -> (Option<String>, Vec<AnthropicMessage>) {
@@ -510,11 +510,11 @@ impl AnthropicChatDriver {
 
         for msg in messages {
             match msg.role {
-                LlmMessageRole::System => {
+                MessageRole::System => {
                     // Folded above into the top-level `system` field; never emit a
                     // System-role entry into the Anthropic `messages` array.
                 }
-                LlmMessageRole::Tool => {
+                MessageRole::Tool => {
                     // Tool results in Anthropic are user messages with tool_result content blocks.
                     // When the message contains images, we use the array form with content blocks.
                     if let Some(tool_call_id) = &msg.tool_call_id {
@@ -525,7 +525,7 @@ impl AnthropicChatDriver {
                         }
 
                         let has_images = match &msg.content {
-                            LlmMessageContent::Parts(parts) => parts
+                            MessageContent::Parts(parts) => parts
                                 .iter()
                                 .any(|p| matches!(p, LlmContentPart::Image { .. })),
                             _ => false,
@@ -534,7 +534,7 @@ impl AnthropicChatDriver {
                         let content = if has_images {
                             // Build array of text + image content blocks
                             let blocks = match &msg.content {
-                                LlmMessageContent::Parts(parts) => parts
+                                MessageContent::Parts(parts) => parts
                                     .iter()
                                     .filter_map(|p| match p {
                                         LlmContentPart::Text { text } => {
@@ -556,7 +556,7 @@ impl AnthropicChatDriver {
                                         _ => None,
                                     })
                                     .collect(),
-                                LlmMessageContent::Text(text) => {
+                                MessageContent::Text(text) => {
                                     vec![AnthropicToolResultBlock::Text { text: text.clone() }]
                                 }
                             };
@@ -575,7 +575,7 @@ impl AnthropicChatDriver {
                         });
                     }
                 }
-                LlmMessageRole::Assistant => {
+                MessageRole::Assistant => {
                     let mut content = Vec::new();
 
                     tracing::debug!(
@@ -772,7 +772,7 @@ impl ChatDriver for AnthropicChatDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         // Note: OTel instrumentation is handled via event listeners.
@@ -1472,10 +1472,10 @@ fn is_anthropic_model_not_found(status: reqwest::StatusCode, error_text: &str) -
     false
 }
 
-fn visible_tool_call_ids(messages: &[LlmMessage]) -> HashSet<&str> {
+fn visible_tool_call_ids(messages: &[Message]) -> HashSet<&str> {
     messages
         .iter()
-        .filter(|msg| msg.role == LlmMessageRole::Assistant)
+        .filter(|msg| msg.role == MessageRole::Assistant)
         .flat_map(|msg| msg.tool_calls.iter().flatten())
         .map(|tool_call| tool_call.id.as_str())
         .collect()
@@ -2375,7 +2375,7 @@ mod tests {
         let error = match driver
             .chat_completion_stream(
                 &everruns_provider::ProviderEndpoint::default(),
-                vec![LlmMessage::text(LlmMessageRole::User, "hello")],
+                vec![Message::text(MessageRole::User, "hello")],
                 &config,
             )
             .await
@@ -2481,8 +2481,8 @@ mod tests {
                 expected
             );
         }
-        let mut first = LlmMessage::text(LlmMessageRole::User, "");
-        first.content = LlmMessageContent::Parts(vec![
+        let mut first = Message::text(MessageRole::User, "");
+        first.content = MessageContent::Parts(vec![
             LlmContentPart::Text {
                 text: "first".into(),
             },
@@ -2495,9 +2495,9 @@ mod tests {
         ]);
         let messages = [
             first,
-            LlmMessage::text(LlmMessageRole::Assistant, "reply"),
-            LlmMessage::text(LlmMessageRole::User, "question"),
-            LlmMessage::text(LlmMessageRole::Assistant, "volatile"),
+            Message::text(MessageRole::Assistant, "reply"),
+            Message::text(MessageRole::User, "question"),
+            Message::text(MessageRole::Assistant, "volatile"),
         ];
         for (enabled, volatile, positions) in [
             (false, 0, vec![]),
@@ -2565,15 +2565,12 @@ mod tests {
     #[test]
     fn message_conversion_folds_system_text_without_losing_the_transcript() {
         for with_system in [false, true] {
-            let mut messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+            let mut messages = vec![Message::text(MessageRole::User, "hello")];
             if with_system {
-                messages.insert(
-                    0,
-                    LlmMessage::text(LlmMessageRole::System, "first instruction"),
-                );
-                messages.push(LlmMessage::text(LlmMessageRole::System, "later summary"));
+                messages.insert(0, Message::text(MessageRole::System, "first instruction"));
+                messages.push(Message::text(MessageRole::System, "later summary"));
             }
-            messages.push(LlmMessage::text(LlmMessageRole::Assistant, "reply"));
+            messages.push(Message::text(MessageRole::Assistant, "reply"));
             let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
             assert_eq!(
                 system.as_deref(),
@@ -2591,17 +2588,17 @@ mod tests {
 
     #[test]
     fn tool_exchanges_preserve_identity_and_filter_only_orphan_results() {
-        let mut assistant = LlmMessage::text(LlmMessageRole::Assistant, "");
+        let mut assistant = Message::text(MessageRole::Assistant, "");
         assistant.tool_calls = Some(vec![ToolCall {
             id: "call_123".into(),
             name: "get_weather".into(),
             arguments: json!({"city":"London"}),
         }]);
-        let mut valid = LlmMessage::text(LlmMessageRole::Tool, "{\"temp\":20}");
+        let mut valid = Message::text(MessageRole::Tool, "{\"temp\":20}");
         valid.tool_call_id = Some("call_123".into());
-        let mut orphan = LlmMessage::text(LlmMessageRole::Tool, "orphan result");
+        let mut orphan = Message::text(MessageRole::Tool, "orphan result");
         orphan.tool_call_id = Some("trimmed_call".into());
-        let missing_id = LlmMessage::text(LlmMessageRole::Tool, "missing ID");
+        let missing_id = Message::text(MessageRole::Tool, "missing ID");
         let (system, converted) = AnthropicChatDriver::convert_messages(
             &[orphan, assistant, missing_id, valid],
             false,
@@ -2678,8 +2675,8 @@ mod tests {
                 json!([{"type":"text","text":text}])
             };
             for content in [
-                LlmMessageContent::Text(text.into()),
-                LlmMessageContent::Parts(vec![
+                MessageContent::Text(text.into()),
+                MessageContent::Parts(vec![
                     LlmContentPart::Text {
                         text: String::new(),
                     },
@@ -2698,7 +2695,7 @@ mod tests {
         }
         assert_eq!(
             serde_json::to_value(AnthropicChatDriver::convert_content(
-                &LlmMessageContent::Parts(vec![])
+                &MessageContent::Parts(vec![])
             ))
             .unwrap(),
             json!([])
@@ -2707,7 +2704,7 @@ mod tests {
 
     #[test]
     fn content_conversion_preserves_order_and_complete_media_payloads() {
-        let content = LlmMessageContent::Parts(vec![
+        let content = MessageContent::Parts(vec![
             LlmContentPart::Text {
                 text: String::new(),
             },
@@ -2742,7 +2739,7 @@ mod tests {
 
     #[test]
     fn file_pdf_serializes_to_document_block() {
-        let content = LlmMessageContent::Parts(vec![
+        let content = MessageContent::Parts(vec![
             LlmContentPart::Text {
                 text: "summarize".into(),
             },
@@ -2863,10 +2860,10 @@ mod tests {
     #[test]
     fn test_tool_result_with_images_conversion() {
         // Tool result with text + image content
-        let msg = LlmMessage {
+        let msg = Message {
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Parts(vec![
+            role: MessageRole::Tool,
+            content: MessageContent::Parts(vec![
                 LlmContentPart::Text {
                     text: "{\"status\": \"ok\"}".to_string(),
                 },
@@ -2881,10 +2878,10 @@ mod tests {
             configuration_update: None,
         };
 
-        let assistant = LlmMessage {
+        let assistant = Message {
             native_tool_calls: Vec::new(),
-            role: LlmMessageRole::Assistant,
-            content: LlmMessageContent::Text(String::new()),
+            role: MessageRole::Assistant,
+            content: MessageContent::Text(String::new()),
             tool_calls: Some(vec![ToolCall {
                 id: "call_img".to_string(),
                 name: "capture".to_string(),
@@ -2978,10 +2975,7 @@ mod tests {
             .base_url(format!("{}/v1", server.uri()))
             .auth(StaticHeaderAuth::new("x-api-key", "synthetic-key"));
             let error = match provider
-                .chat_completion_stream(
-                    vec![LlmMessage::text(LlmMessageRole::User, "hello")],
-                    &config,
-                )
+                .chat_completion_stream(vec![Message::text(MessageRole::User, "hello")], &config)
                 .await
             {
                 Ok(_) => panic!("expected HTTP error for {status}: {message}"),

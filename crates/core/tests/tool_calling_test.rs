@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    Message, MessageRole,
+    RuntimeMessage, RuntimeMessageRole,
     tool_execution::ToolExecutor,
     tools::{Tool, ToolExecutionResult, ToolRegistry},
 };
@@ -448,9 +448,10 @@ async fn test_tool_result_with_images_message() {
         media_type: "image/png".to_string(),
     }];
 
-    let msg = Message::tool_result_with_images("call_123", Some(json!({"ok": true})), images);
+    let msg =
+        RuntimeMessage::tool_result_with_images("call_123", Some(json!({"ok": true})), images);
 
-    assert_eq!(msg.role, MessageRole::ToolResult);
+    assert_eq!(msg.role, RuntimeMessageRole::ToolResult);
     assert_eq!(msg.tool_call_id(), Some("call_123"));
 
     // Should have ToolResult + Image content parts
@@ -480,7 +481,8 @@ async fn test_tool_result_with_images_llm_conversion() {
         },
     ];
 
-    let msg = Message::tool_result_with_images("call_456", Some(json!({"info": "test"})), images);
+    let msg =
+        RuntimeMessage::tool_result_with_images("call_456", Some(json!({"info": "test"})), images);
 
     let resolved = HashMap::new();
     let llm_msg =
@@ -489,13 +491,13 @@ async fn test_tool_result_with_images_llm_conversion() {
     // Should be Tool role with tool_call_id
     assert_eq!(
         llm_msg.role,
-        everruns_provider::driver_registry::LlmMessageRole::Tool
+        everruns_provider::driver_registry::MessageRole::Tool
     );
     assert_eq!(llm_msg.tool_call_id, Some("call_456".to_string()));
 
     // Content should have text (JSON result) + 2 images
     match &llm_msg.content {
-        everruns_provider::driver_registry::LlmMessageContent::Parts(parts) => {
+        everruns_provider::driver_registry::MessageContent::Parts(parts) => {
             assert_eq!(parts.len(), 3, "should have 1 text + 2 images");
             assert!(matches!(
                 &parts[0],
@@ -581,7 +583,12 @@ fn test_connection_required_into_tool_result() {
 
     let tool_result = result.into_tool_result("call_conn", "daytona_create_sandbox");
     assert_eq!(tool_result.tool_call_id, "call_conn");
-    assert_eq!(tool_result.connection_required, Some("daytona".to_string()));
+    assert_eq!(
+        tool_result.connection_required,
+        Some(everruns_provider::ConnectionRequired::provider_only(
+            "daytona"
+        ))
+    );
     assert!(tool_result.error.is_none());
 
     // Result JSON contains connection_required key
@@ -596,7 +603,9 @@ fn test_connection_required_serialization_roundtrip() {
         result: Some(json!({"connection_required": "daytona"})),
         images: None,
         error: None,
-        connection_required: Some("daytona".to_string()),
+        connection_required: Some(everruns_provider::ConnectionRequired::provider_only(
+            "daytona",
+        )),
         raw_output: None,
     };
 
@@ -604,7 +613,12 @@ fn test_connection_required_serialization_roundtrip() {
     let parsed: everruns_provider::tool_types::ToolResult =
         serde_json::from_str(&json_str).unwrap();
 
-    assert_eq!(parsed.connection_required, Some("daytona".to_string()));
+    assert_eq!(
+        parsed.connection_required,
+        Some(everruns_provider::ConnectionRequired::provider_only(
+            "daytona"
+        ))
+    );
     assert_eq!(parsed.result.unwrap()["connection_required"], "daytona");
 }
 

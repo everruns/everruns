@@ -15,9 +15,8 @@ use std::sync::Arc;
 
 use crate::kernel_imports::{
     everruns_provider::driver_registry::DriverRegistry,
-    everruns_provider::driver_registry::LlmCallConfig,
-    everruns_provider::driver_registry::LlmMessage,
-    everruns_provider::driver_registry::LlmMessageRole,
+    everruns_provider::driver_registry::LlmCallConfig, everruns_provider::driver_registry::Message,
+    everruns_provider::driver_registry::MessageRole,
     everruns_provider::driver_registry::ProviderConfig,
 };
 use everruns_provider::provider::DriverId;
@@ -215,8 +214,8 @@ impl JudgeClient for LlmJudgeClient {
 
         let (system, user) = build_judge_messages(rubric, evidence);
         let messages = vec![
-            LlmMessage::text(LlmMessageRole::System, system),
-            LlmMessage::text(LlmMessageRole::User, user),
+            Message::text(MessageRole::System, system),
+            Message::text(MessageRole::User, user),
         ];
         let mut config = LlmCallConfig::new(resolved.model_id);
         config.temperature = Some(0.0);

@@ -18,7 +18,7 @@
 
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
@@ -34,20 +34,20 @@ fn add_compaction_cost(usage: &mut TokenUsage, compaction_cost: f64) {
 use super::ExecutionContext;
 use crate::annotation_hook::{collect_annotations, verify_annotations};
 use crate::capabilities::CapabilityRegistry;
-use crate::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole, LlmStreamEvent};
+use crate::driver_registry::{LlmStreamEvent, Message, MessageContent, MessageRole};
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
     CapabilityUsageData, EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData,
     LlmRetryInfo, OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
     OutputMessageStartedData, ReasonCompletedData, ReasonItemData, ReasonRecoveredData,
     ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolDefinitionSummary,
+    ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolCompletedData, ToolDefinitionSummary,
 };
 use crate::llm_retry::{
     LlmRetryConfig, RetryMetadata, is_transient_error_message, remaining_retry_time,
     reserve_retry_wait,
 };
-use crate::message::{ContentPart, Message, MessageRole};
+use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, evaluate_guardrails,
@@ -62,7 +62,6 @@ use crate::{
     durability::DurableToolResultStore,
     durability::PartialStreamState,
     durability::PartialStreamStore,
-    event_emitter::EventEmitter,
     file_services::{FileResolver, ResolvedFile},
     image_services::ImageResolver,
     image_services::ResolvedImage,
@@ -71,6 +70,7 @@ use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 
 mod compaction;
 mod error_policy;
+mod finalized_calls;
 mod observability;
 mod output_hooks;
 mod reasoning_updates;
@@ -124,36 +124,6 @@ fn client_visible_guardrail_text(
     }
     guarded.push_str(&prose);
     guarded
-}
-
-/// Apply capability-owned transforms to the finalized model tool-call batch.
-/// The reason atom owns timing and context; each implementation owns its policy.
-#[allow(clippy::too_many_arguments)]
-async fn apply_finalized_tool_calls_hooks(
-    capability_registry: &CapabilityRegistry,
-    event_emitter: &dyn EventEmitter,
-    session_id: SessionId,
-    context: &ExecutionContext,
-    resolved_capability_configs: &[crate::CapabilityRef],
-    tool_definitions: &[ToolDefinition],
-    tool_calls: &mut [ToolCall],
-    iteration: u32,
-) {
-    let hook_context = crate::finalized_tool_calls::FinalizedToolCallsContext {
-        event_emitter,
-        session_id,
-        execution_context: context,
-        tool_definitions,
-        iteration,
-    };
-    for config in resolved_capability_configs {
-        let Some(capability) = capability_registry.get(config.capability_id()) else {
-            continue;
-        };
-        if let Some(hook) = capability.finalized_tool_calls_hook(config.config_value()) {
-            hook.apply(&hook_context, tool_calls).await;
-        }
-    }
 }
 
 fn unix_now_secs() -> u64 {
@@ -561,8 +531,8 @@ impl ReasonAtom {
         tool_definitions: &[ToolDefinition],
         tool_calls: &mut [ToolCall],
         iteration: u32,
-    ) {
-        apply_finalized_tool_calls_hooks(
+    ) -> Vec<crate::finalized_tool_calls::FinalizedToolCallRejection> {
+        finalized_calls::apply_finalized_tool_calls_hooks(
             &self.capability_registry,
             self.event_emitter.as_ref(),
             session_id,
@@ -572,7 +542,7 @@ impl ReasonAtom {
             tool_calls,
             iteration,
         )
-        .await;
+        .await
     }
 
     async fn execute_inner(
@@ -791,7 +761,7 @@ impl ReasonAtom {
 
                 if !is_transient {
                     // Create error message for the user to see
-                    let mut error_message = Message::assistant(&user_error_text);
+                    let mut error_message = RuntimeMessage::assistant(&user_error_text);
                     let mut metadata = std::collections::HashMap::new();
                     user_error.apply_to_message_metadata(&mut metadata);
                     UserFacingError::apply_disclosure_to_message_metadata(
@@ -979,7 +949,7 @@ impl ReasonAtom {
             if let crate::CompactionCheckpointPayload::Summary { text } = &checkpoint.payload {
                 messages.insert(
                     0,
-                    Message::system(format!(
+                    RuntimeMessage::system(format!(
                         "[CONVERSATION_SUMMARY]\n{text}\n[/CONVERSATION_SUMMARY]"
                     )),
                 );
@@ -1142,7 +1112,7 @@ impl ReasonAtom {
                 &facts_ctx,
             );
             if let Some(block) = crate::capabilities::render_facts_block(&dynamic_facts) {
-                context_messages.push(Message::user(block));
+                context_messages.push(RuntimeMessage::user(block));
                 volatile_suffix_len = 1;
             }
         }
@@ -1158,7 +1128,7 @@ impl ReasonAtom {
         if let Some(context) = runtime_agent.conversation_context.as_ref()
             && !context.is_empty()
         {
-            context_messages.insert(0, Message::user(context.clone()));
+            context_messages.insert(0, RuntimeMessage::user(context.clone()));
         }
 
         // 10. Resolve images from image_file references (if any)
@@ -1174,10 +1144,10 @@ impl ReasonAtom {
         // Add system prompt
         let has_system_prompt = !runtime_agent.system_prompt.is_empty();
         if has_system_prompt {
-            llm_messages.push(LlmMessage {
+            llm_messages.push(Message {
                 native_tool_calls: Vec::new(),
-                role: LlmMessageRole::System,
-                content: LlmMessageContent::Text(runtime_agent.system_prompt.clone()),
+                role: MessageRole::System,
+                content: MessageContent::Text(runtime_agent.system_prompt.clone()),
                 tool_calls: None,
                 tool_call_id: None,
                 phase: None,
@@ -1187,8 +1157,8 @@ impl ReasonAtom {
         }
 
         // Build messages for llm.generation event (includes system message)
-        let messages_for_event: Vec<Message> = if has_system_prompt {
-            std::iter::once(Message::system(&runtime_agent.system_prompt))
+        let messages_for_event: Vec<RuntimeMessage> = if has_system_prompt {
+            std::iter::once(RuntimeMessage::system(&runtime_agent.system_prompt))
                 .chain(context_messages.iter().cloned())
                 .collect()
         } else {
@@ -1214,7 +1184,7 @@ impl ReasonAtom {
             llm_msg.configuration_update = reasoning_replay
                 .as_ref()
                 .and_then(|replay| replay.transitions.get(&msg.id).copied());
-            if msg.role == MessageRole::User
+            if msg.role == RuntimeMessageRole::User
                 && let Some(ref actor) = msg.external_actor
             {
                 llm_msg.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
@@ -1288,7 +1258,7 @@ impl ReasonAtom {
             .iter()
             .rev()
             .find(|message| {
-                message.role == MessageRole::Agent && !is_error_placeholder_message(message)
+                message.role == RuntimeMessageRole::Agent && !is_error_placeholder_message(message)
             })
             .and_then(|message| message.metadata.as_ref())
             .is_some_and(|metadata| metadata.contains_key(reasoning_updates::STATE_KEY))
@@ -1941,7 +1911,7 @@ impl ReasonAtom {
                         // monotonically (never flip-flop, never back to None);
                         // subsequent output.message.delta events carry it. This is
                         // a hint only — it is NOT a completion signal and does not
-                        // count as stream output. The completed Message.phase stays
+                        // count as stream output. The completed message's phase stays
                         // authoritative, and the hint is deliberately not derived
                         // from later tool-call presence (EVE-448 anti-pattern).
                         streamed_phase = everruns_provider::ExecutionPhase::refine_streamed_hint(
@@ -2342,7 +2312,9 @@ impl ReasonAtom {
         // Finalized tool-call policy seam. This is the smallest provider-neutral
         // point where configured capabilities can normalize a complete call
         // batch before the assistant message and downstream events are built.
-        if !tool_calls.is_empty() {
+        let rejected_tool_calls = if tool_calls.is_empty() {
+            Vec::new()
+        } else {
             self.apply_finalized_tool_call_hooks(
                 session_id,
                 context,
@@ -2351,8 +2323,14 @@ impl ReasonAtom {
                 &mut tool_calls,
                 iteration,
             )
-            .await;
-        }
+            .await
+        };
+        let finalized_tool_calls = tool_calls.clone();
+        let rejected_tool_call_ids: HashSet<_> = rejected_tool_calls
+            .iter()
+            .map(|rejection| rejection.tool_call_id.clone())
+            .collect();
+        tool_calls.retain(|call| !rejected_tool_call_ids.contains(&call.id));
 
         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
 
@@ -2406,7 +2384,7 @@ impl ReasonAtom {
         let tools_summary: Vec<ToolDefinitionSummary> =
             runtime_agent.tools.iter().map(|t| t.into()).collect();
         let finish_reasons = Some(vec![finish_reason.clone().unwrap_or_else(|| {
-            if tool_calls.is_empty() {
+            if finalized_tool_calls.is_empty() {
                 "stop".to_string()
             } else {
                 "tool_calls".to_string()
@@ -2426,7 +2404,7 @@ impl ReasonAtom {
             messages_for_event.clone(),
             tools_summary,
             Some(text.clone()).filter(|s| !s.is_empty()),
-            tool_calls.clone(),
+            finalized_tool_calls.clone(),
             runtime_agent.model.clone(),
             Some(model_with_provider.provider_type.to_string()),
             usage.clone(),
@@ -2538,11 +2516,11 @@ impl ReasonAtom {
             &resolved_capability_configs,
             text,
         );
-        let has_tool_calls = !tool_calls.is_empty();
+        let has_tool_calls = !finalized_tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
-            Message::assistant_with_tools(&text, tool_calls.clone())
+            RuntimeMessage::assistant_with_tools(&text, finalized_tool_calls.clone())
         } else {
-            Message::assistant(&text)
+            RuntimeMessage::assistant(&text)
         }
         .with_id(output_message_id);
         for part in &mut assistant_message.content {
@@ -2660,6 +2638,27 @@ impl ReasonAtom {
                 .transcript_committed(&output_message_id.to_string())
                 .await?;
         }
+        for rejection in rejected_tool_calls {
+            let Some(call) = finalized_tool_calls
+                .iter()
+                .find(|call| call.id == rejection.tool_call_id)
+            else {
+                continue;
+            };
+            self.event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    EventContext::from_execution_context(context),
+                    ToolCompletedData::failure(
+                        call.id.clone(),
+                        call.name.clone(),
+                        "error".to_string(),
+                        rejection.error,
+                        None,
+                    ),
+                ))
+                .await?;
+        }
         tracing::info!(
             session_id = %session_id,
             turn_id = %context.turn_id,
@@ -2714,7 +2713,7 @@ impl ReasonAtom {
             resolved_capability_configs,
             partial.accumulated,
         );
-        let mut assistant_message = Message::assistant(&accumulated).with_id(message_id);
+        let mut assistant_message = RuntimeMessage::assistant(&accumulated).with_id(message_id);
         if let Some(state) = partial.reasoning_state {
             assistant_message.metadata = Some(HashMap::from([
                 ("model".into(), serde_json::json!("gpt-6-astra")),
@@ -2793,7 +2792,7 @@ impl ReasonAtom {
     /// A HashMap mapping image IDs to ResolvedImage data. If no ImageResolver
     /// is configured, or if resolution fails for some images, those images
     /// will simply be missing from the map (and converted to placeholder text).
-    async fn resolve_images(&self, messages: &[Message]) -> HashMap<Uuid, ResolvedImage> {
+    async fn resolve_images(&self, messages: &[RuntimeMessage]) -> HashMap<Uuid, ResolvedImage> {
         let mut resolved = HashMap::new();
 
         // Check if we have an image resolver
@@ -2849,7 +2848,7 @@ impl ReasonAtom {
         resolved
     }
 
-    async fn resolve_files(&self, messages: &[Message]) -> HashMap<Uuid, ResolvedFile> {
+    async fn resolve_files(&self, messages: &[RuntimeMessage]) -> HashMap<Uuid, ResolvedFile> {
         let Some(resolver) = &self.file_resolver else {
             return HashMap::new();
         };

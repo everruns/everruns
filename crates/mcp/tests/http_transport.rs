@@ -17,7 +17,7 @@ use everruns_mcp::{
     McpClient, McpConnection, McpExecutor, McpSecretBinding, NoAuthProvider, StaticAuthProvider,
     StaticConnectionResolver,
 };
-use everruns_provider::tool_types::ToolCall;
+use everruns_provider::tool_types::{ConnectionRequired, ConnectionRequiredSubject, ToolCall};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
@@ -27,6 +27,46 @@ struct FakeEgress {
     status: u16,
     last_authorization: Arc<Mutex<Option<String>>>,
     last_body: Arc<Mutex<Vec<u8>>>,
+}
+
+#[tokio::test]
+async fn executor_preserves_connection_required_subject_and_setup_url() {
+    for (subject, setup_url, subject_name) in [
+        (
+            ConnectionRequiredSubject::Agent,
+            "/agents/agent_123?tab=mcp",
+            "agent",
+        ),
+        (
+            ConnectionRequiredSubject::User,
+            "/settings/connections",
+            "user",
+        ),
+    ] {
+        let required = ConnectionRequired::with_setup("mcp_oauth_linear", subject, setup_url);
+        let mut connection = McpConnection::http("linear", FAKE_URL);
+        connection.pending_oauth_provider = Some(required.clone());
+        let executor = McpExecutor::new(
+            Arc::new(client_with_fake_egress()),
+            Arc::new(StaticConnectionResolver::new().with(connection)),
+        );
+        let result = executor
+            .execute_mcp_tool(&ToolCall {
+                id: "call_connection".into(),
+                name: "mcp_linear__search".into(),
+                arguments: json!({}),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.connection_required, Some(required));
+        assert!(
+            result
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains(subject_name))
+        );
+    }
 }
 
 impl FakeEgress {

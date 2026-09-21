@@ -1,4 +1,13 @@
-import { BarChart3, Edit2, Eye, GitBranch, LayoutDashboard, LockKeyhole, Plug } from "lucide-react";
+import {
+  BarChart3,
+  Edit2,
+  Eye,
+  GitBranch,
+  LayoutDashboard,
+  LockKeyhole,
+  Network,
+  Plug,
+} from "lucide-react";
 import type { SectionTabItem } from "@/components/layout";
 
 const agentTabItems = {
@@ -13,6 +22,7 @@ const agentTabItems = {
     label: "Credentials",
     icon: <LockKeyhole className="size-4" />,
   },
+  mcp: { value: "mcp", label: "MCP", icon: <Network className="size-4" /> },
   // One tab, not three (EVE-1009). "Triggers" and "Integrate" both described a
   // slice of the same question — how is this agent reached, and when does it
   // run — and the second could only ever show generic snippets, because an
@@ -32,6 +42,7 @@ export function getAgentDetailTabItems(versionsEnabled: boolean): SectionTabItem
     agentTabItems.overview,
     agentTabItems.preview,
     agentTabItems.credentials,
+    agentTabItems.mcp,
     agentTabItems.integrations,
     ...(versionsEnabled ? [agentTabItems.versions] : []),
     agentTabItems.stats,

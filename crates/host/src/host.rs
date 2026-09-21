@@ -12,7 +12,7 @@ use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     SessionModelChangedData, TurnCompletedData, TurnFailedData, TurnStartedData,
 };
-use everruns_core::message::{ContentPart, Message, MessageRole};
+use everruns_core::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::runtime_context::AssembledTurnContext;
 use everruns_core::session::SessionExecutionState;
@@ -124,7 +124,7 @@ pub struct ResolvedTurnInputs {
     /// Canonical resolved execution value for the session.
     pub snapshot: ResolvedExecutionSnapshot,
     /// Conversation messages available to the turn.
-    pub messages: Vec<Message>,
+    pub messages: Vec<RuntimeMessage>,
     /// MCP tool definitions discovered for the session's scoped servers.
     pub mcp_tool_definitions: Vec<ToolDefinition>,
 }
@@ -228,7 +228,12 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn storage_store(&self) -> Option<Arc<dyn SessionStorageStore>> {
+    /// The session key/value and secret store, scoped to the caller's org.
+    ///
+    /// Org-scoped like `image_artifact_store`: the store backs both the agent's
+    /// own runtime tools and the org-scoped command surface, so the two cannot
+    /// agree on what a session is without it.
+    fn storage_store(&self, _org_id: i64) -> Option<Arc<dyn SessionStorageStore>> {
         None
     }
 
@@ -374,6 +379,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         &self,
         _org_id: i64,
         _session_id: SessionId,
+        _agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         None
     }
@@ -708,7 +714,7 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
     };
     ToolContextServices {
         file_store: Some(adapter.file_store()),
-        storage_store: adapter.storage_store(),
+        storage_store: adapter.storage_store(org_id),
         image_store: adapter.image_artifact_store(org_id),
         provider_credential_store: adapter.provider_credential_store(org_id),
         utility_llm_service: adapter.utility_llm_service(),
@@ -1021,7 +1027,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         let user_error =
             UserFacingError::new(everruns_provider::user_facing_error::codes::BLOCKED_BY_HOOK);
         let shown = user_message.unwrap_or(reason);
-        let mut error_message = Message::assistant(shown);
+        let mut error_message = RuntimeMessage::assistant(shown);
         let mut metadata = std::collections::HashMap::new();
         user_error.apply_to_message_metadata(&mut metadata);
         error_message.metadata = Some(metadata);
@@ -1128,7 +1134,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                     }
                 },
             );
-        let mut error_message = Message::assistant(blocker.message());
+        let mut error_message = RuntimeMessage::assistant(blocker.message());
         let mut metadata = std::collections::HashMap::new();
         user_error.apply_to_message_metadata(&mut metadata);
         error_message.metadata = Some(metadata);
@@ -1460,7 +1466,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         adapter.driver_registry(),
     )
     .with_file_store(adapter.file_store());
-    let context_resolver = match adapter.storage_store() {
+    let context_resolver = match adapter.storage_store(org_id) {
         Some(store) => context_resolver.with_session_storage(store),
         None => context_resolver,
     };
@@ -1520,7 +1526,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         // Lets `channel_context` read the session's persisted ThreadContext at
         // prompt-assembly time (EVE-977). `None` when the adapter has no store;
         // the capability then contributes nothing.
-        adapter.storage_store(),
+        adapter.storage_store(org_id),
     )
     .await?;
     let input = ReasonInput {
@@ -1612,11 +1618,11 @@ async fn emit_model_change_if_switched<A: RuntimeHostAdapter>(
 /// turn without an override runs on an inherited default, and history visible
 /// here is capability-filtered: treating a missing override as "the default"
 /// would report a switch whenever an older message was filtered out.
-fn model_switch(messages: &[Message]) -> Option<(ModelId, ModelId)> {
+fn model_switch(messages: &[RuntimeMessage]) -> Option<(ModelId, ModelId)> {
     let mut user_model_ids = messages
         .iter()
         .rev()
-        .filter(|message| message.role == MessageRole::User)
+        .filter(|message| message.role == RuntimeMessageRole::User)
         .map(|message| {
             message
                 .controls
@@ -1690,17 +1696,15 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             .await?;
     }
 
-    // Register the session's MCP tools as first-class registry tools, so they
-    // execute through the regular `ToolExecutor` path and are visible to
-    // everything that introspects the registry (spawn_background, tool_search,
-    // openai_tool_search namespaces, ...). The turn's tool definitions already
-    // include the discovered MCP tools, so no re-discovery is needed; the host's
-    // MCP executor supplies execution (knowledge/integrations/runtime-mcp.md D5).
-    // The MCP invoker is reused below for the guardrails `mcp` check, which
-    // delegates a guardrail decision to an external endpoint over the same
-    // scoped-MCP client/auth (knowledge/execution/guardrails.md).
+    // Register session MCP tools through the regular registry path used by
+    // spawn_background, tool_search, and OpenAI namespaces. Definitions already
+    // contain discovered tools; the host executor supplies execution.
+    // Reuse the scoped MCP client for the guardrails `mcp` check.
     let mut mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>> = None;
-    if let Some(mcp) = adapter.mcp_executor(org_id, input.context.session_id).await {
+    if let Some(mcp) = adapter
+        .mcp_executor(org_id, input.context.session_id, input.agent_id)
+        .await
+    {
         let invoker: Arc<dyn everruns_core::McpToolInvoker> = mcp;
         for tool in everruns_core::build_mcp_proxy_tools(&input.tool_definitions, invoker.clone()) {
             tool_registry.register_boxed(tool);

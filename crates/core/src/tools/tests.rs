@@ -375,6 +375,15 @@ fn result_variants_keep_images_connections_and_classification_distinct() {
             json!({"tool_call_id":"variant-id","result":{"connection_required":"daytona"},"error":null,"connection_required":"daytona"}),
         ),
         (
+            ToolExecutionResult::connection_required_with_setup(
+                "mcp_oauth_linear",
+                crate::tool_types::ConnectionRequiredSubject::Agent,
+                "/agents/agent_123?tab=mcp",
+            ),
+            (false, false, true),
+            json!({"tool_call_id":"variant-id","result":{"connection_required":{"provider":"mcp_oauth_linear","subject":"agent","setup_url":"/agents/agent_123?tab=mcp"}},"error":null,"connection_required":{"provider":"mcp_oauth_linear","subject":"agent","setup_url":"/agents/agent_123?tab=mcp"}}),
+        ),
+        (
             ToolExecutionResult::tool_error("visible"),
             (false, true, false),
             json!({"tool_call_id":"variant-id","result":{"error":"visible"},"error":"visible"}),

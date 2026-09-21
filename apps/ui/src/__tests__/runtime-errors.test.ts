@@ -25,6 +25,24 @@ describe("runtime error localization", () => {
     expect(text).toContain("10,00");
   });
 
+  it("preserves the refusing budget id in localized budget errors", () => {
+    const text = localizeRuntimeError(
+      "en",
+      {
+        code: "budget_exhausted",
+        fields: {
+          spent: 10,
+          limit: 10,
+          currency: "usd",
+          budget_id: "bdgt_refusing",
+        },
+      },
+      "backend fallback",
+    );
+
+    expect(text).toContain("Budget ID: bdgt_refusing");
+  });
+
   it("falls back to structured provider rate-limit copy when retry_after is present", () => {
     const text = localizeRuntimeError(
       "uk",

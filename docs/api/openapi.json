@@ -874,6 +874,436 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/endpoints": {
+      "get": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "description": "List ingress endpoints owned by an Agent.",
+        "operationId": "list_agent_endpoints",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent endpoints",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppChannel"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "description": "Create an ingress endpoint owned by an Agent.",
+        "operationId": "create_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentEndpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Endpoint created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid endpoint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/endpoints/{endpoint_id}": {
+      "get": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "description": "Get one ingress endpoint owned by an Agent.",
+        "operationId": "get_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent endpoint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "description": "Delete an ingress endpoint owned by an Agent.",
+        "operationId": "delete_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Endpoint deleted"
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "description": "Update an ingress endpoint owned by an Agent.",
+        "operationId": "update_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentEndpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Endpoint updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid endpoint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish": {
+      "post": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "description": "Publish an Agent endpoint so it can accept ingress traffic.",
+        "operationId": "publish_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Endpoint published",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger": {
+      "post": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "description": "Run a published Agent schedule endpoint now.",
+        "operationId": "trigger_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Endpoint triggered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerAgentEndpointOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Endpoint cannot run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish": {
+      "post": {
+        "tags": [
+          "agent-endpoints"
+        ],
+        "description": "Unpublish an Agent endpoint so it no longer accepts ingress traffic.",
+        "operationId": "unpublish_agent_endpoint",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "description": "Endpoint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Endpoint unpublished",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpoint not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/export": {
       "get": {
         "tags": [
@@ -1172,6 +1602,135 @@
           },
           "404": {
             "description": "Run not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/mcp-attachments": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "description": "Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state and permitted actions are resolved for the current caller.",
+        "operationId": "list_agent_mcp_attachments",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Effective MCP attachments for the agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentMcpAttachment"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or harness not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/mcp-attachments/{name}/connection": {
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "description": "Revokes the current caller's user connection or the agent identity's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.",
+        "operationId": "revoke_agent_mcp_connection",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Effective MCP attachment name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "MCP connection revoked or already absent"
+          },
+          "400": {
+            "description": "Attachment does not use a connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent, attachment, or preset not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2021,7 +2580,7 @@
         "tags": [
           "apps"
         ],
-        "summary": "GET /v1/apps - List all non-archived apps",
+        "description": "List archival App records. This endpoint is read-only and deprecated.",
         "operationId": "list_apps",
         "parameters": [
           {
@@ -2051,7 +2610,7 @@
         ],
         "responses": {
           "200": {
-            "description": "List of apps",
+            "description": "Archival list of Apps",
             "content": {
               "application/json": {
                 "schema": {
@@ -2063,77 +2622,8 @@
           "500": {
             "description": "Internal server error"
           }
-        }
-      },
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "POST /v1/apps - Create a new app",
-        "operationId": "create_app",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateAppRequest"
-              }
-            }
-          },
-          "required": true
         },
-        "responses": {
-          "201": {
-            "description": "App created successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_App"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/apps/config": {
-      "get": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "GET /v1/apps/config",
-        "operationId": "app_config",
-        "responses": {
-          "200": {
-            "description": "Resource config for apps",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResourceConfigResponse"
-                }
-              }
-            }
-          }
-        }
+        "deprecated": true
       }
     },
     "/v1/apps/{app_id}": {
@@ -2141,7 +2631,7 @@
         "tags": [
           "apps"
         ],
-        "summary": "GET /v1/apps/{app_id} - Get app by ID",
+        "description": "Get an archival App record. This endpoint is read-only and deprecated.",
         "operationId": "get_app",
         "parameters": [
           {
@@ -2156,7 +2646,7 @@
         ],
         "responses": {
           "200": {
-            "description": "App found",
+            "description": "Archival App record",
             "content": {
               "application/json": {
                 "schema": {
@@ -2166,7 +2656,7 @@
             }
           },
           "400": {
-            "description": "Invalid app ID"
+            "description": "Invalid App ID"
           },
           "404": {
             "description": "App not found"
@@ -2174,272 +2664,8 @@
           "500": {
             "description": "Internal server error"
           }
-        }
-      },
-      "delete": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "DELETE /v1/apps/{app_id} - Archive app",
-        "operationId": "delete_app",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "App archived successfully"
-          },
-          "400": {
-            "description": "Invalid app ID"
-          },
-          "404": {
-            "description": "App not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "PATCH /v1/apps/{app_id} - Update app",
-        "operationId": "update_app",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateAppRequest"
-              }
-            }
-          },
-          "required": true
         },
-        "responses": {
-          "200": {
-            "description": "App updated successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_App"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid app ID or input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "App not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/apps/{app_id}/a2a-channels": {
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "POST /v1/apps/{app_id}/a2a-channels - Add an A2A channel (returns plaintext key once).",
-        "operationId": "add_a2a_channel",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddA2aChannelHttpRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "A2A channel created. The `api_key` field is the plaintext key returned exactly once and never recoverable later.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AddA2aChannelOutput"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "App not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/apps/{app_id}/a2a-channels/{channel_id}/regenerate-key": {
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "Regenerate an A2A channel API key. Returns the new plaintext key exactly once and invalidates the previous key.",
-        "operationId": "regenerate_a2a_key",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channel_id",
-            "in": "path",
-            "description": "A2A channel ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "API key rotated. The `api_key` field is the new plaintext key returned exactly once; the previous key is invalidated immediately.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RegenerateA2aApiKeyOutput"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid app/channel ID or channel is not an A2A channel",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "App or A2A channel not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
+        "deprecated": true
       }
     },
     "/v1/apps/{app_id}/a2a/{channel_id}": {
@@ -2547,169 +2773,6 @@
           },
           "404": {
             "description": "App or channel not found / unpublished / disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/apps/{app_id}/api-endpoint-channels": {
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "POST /v1/apps/{app_id}/api-endpoint-channels - Add an api_endpoint channel (returns plaintext key once).",
-        "operationId": "add_api_endpoint_channel",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddApiEndpointChannelHttpRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "api_endpoint channel created. The `api_key` field is the plaintext key returned exactly once and never recoverable later.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AddApiEndpointChannelOutput"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "App not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/apps/{app_id}/api-endpoint-channels/{channel_id}/regenerate-key": {
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "Regenerate an api_endpoint channel API key. Returns the new plaintext key exactly once and invalidates the previous key.",
-        "operationId": "regenerate_api_endpoint_key",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channel_id",
-            "in": "path",
-            "description": "api_endpoint channel ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "API key rotated. The `api_key` field is the new plaintext key returned exactly once; the previous key is invalidated immediately.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RegenerateApiEndpointApiKeyOutput"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid app/channel ID or channel is not an api_endpoint channel",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "App or api_endpoint channel not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -3092,128 +3155,6 @@
         }
       }
     },
-    "/v1/apps/{app_id}/channels/{channel_id}/publish": {
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "PATCH /v1/apps/{app_id}/channels/{channel_id} - Update a channel\nPOST /v1/apps/{app_id}/channels/{channel_id}/publish - Publish one endpoint",
-        "operationId": "publish_channel",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID (prefixed)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channel_id",
-            "in": "path",
-            "description": "Channel ID (prefixed)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Endpoint published",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppChannel"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "App or channel not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/apps/{app_id}/channels/{channel_id}/unpublish": {
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "POST /v1/apps/{app_id}/channels/{channel_id}/unpublish - Unpublish one endpoint",
-        "operationId": "unpublish_channel",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID (prefixed)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channel_id",
-            "in": "path",
-            "description": "Channel ID (prefixed)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Endpoint unpublished",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppChannel"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "App or channel not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/apps/{app_id}/fcp": {
       "get": {
         "tags": [
@@ -3329,194 +3270,6 @@
             "content": {
               "text/markdown": {}
             }
-          }
-        }
-      }
-    },
-    "/v1/apps/{app_id}/publish": {
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "POST /v1/apps/{app_id}/publish - Publish app (start accepting requests)",
-        "operationId": "publish_app",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "App published",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_App"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid app ID"
-          },
-          "404": {
-            "description": "App not found"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/v1/apps/{app_id}/runs": {
-      "get": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "GET /v1/apps/{app_id}/runs - Recent app invocation runs",
-        "operationId": "list_app_runs",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "window",
-            "in": "query",
-            "description": "Time window to include, such as 24h, 60m, or 7d.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "groupBy",
-            "in": "query",
-            "description": "Optional grouping. Currently only `hour` is supported.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Recent app invocation runs",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppRunListResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid app ID or query",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "App not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/apps/{app_id}/unpublish": {
-      "post": {
-        "tags": [
-          "apps"
-        ],
-        "summary": "POST /v1/apps/{app_id}/unpublish - Unpublish app (stop accepting requests)",
-        "operationId": "unpublish_app",
-        "parameters": [
-          {
-            "name": "app_id",
-            "in": "path",
-            "description": "App ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "App unpublished",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_App"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid app ID"
-          },
-          "404": {
-            "description": "App not found"
-          },
-          "500": {
-            "description": "Internal server error"
           }
         }
       }
@@ -8388,6 +8141,85 @@
         }
       }
     },
+    "/v1/mcp-servers/catalog": {
+      "get": {
+        "tags": [
+          "mcp-servers"
+        ],
+        "description": "List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization.",
+        "operationId": "list_mcp_server_catalog",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Continue after this MCP server ID.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (default: 50, max: 100).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cursor-paginated MCP server catalog with active-agent usage counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerCatalogResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/mcp-servers/config": {
       "get": {
         "tags": [
@@ -8522,6 +8354,78 @@
           },
           "400": {
             "description": "Invalid server ID or input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mcp-servers/{server_id}/usage": {
+      "get": {
+        "tags": [
+          "mcp-servers"
+        ],
+        "description": "Get the bounded active-agent impact summary used before archiving an MCP server preset.",
+        "operationId": "get_mcp_server_usage",
+        "parameters": [
+          {
+            "name": "server_id",
+            "in": "path",
+            "description": "MCP server ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded active-agent archive impact",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerUsageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid MCP server ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -16165,6 +16069,75 @@
         }
       }
     },
+    "/v1/user/mcp-connections": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "description": "List the current user's cursor-paginated MCP OAuth connections in the selected organization.",
+        "operationId": "list_mcp_connections",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Continue after this opaque connection cursor.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (default: 50, max: 100).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cursor-paginated current user's MCP OAuth connections in the selected organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpConnectionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/users": {
       "get": {
         "tags": [
@@ -17243,124 +17216,6 @@
           }
         }
       },
-      "AddA2aChannelHttpRequest": {
-        "type": "object",
-        "description": "Request body for the `add_a2a_channel_http` operation.",
-        "required": [
-          "message"
-        ],
-        "properties": {
-          "agent_card_description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Public agent card description advertised by the A2A endpoint. Defaults to the app description when omitted.",
-            "example": "Triages incoming support tickets and routes to the right team"
-          },
-          "agent_card_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Public agent card name advertised by the A2A endpoint. Defaults to the app name when omitted.",
-            "example": "Support Triage Agent"
-          },
-          "auth": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AppEndpointAuthConfig",
-                "description": "Optional endpoint auth. Example shape is defined on `AppEndpointAuthConfig`."
-              }
-            ]
-          },
-          "enabled": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Whether this resource is enabled.",
-            "example": true
-          },
-          "message": {
-            "type": "string",
-            "description": "First user message sent to the agent on each invocation; can reference incoming A2A payload via templating.",
-            "example": "Process incoming A2A request and return a structured response."
-          },
-          "session_mode": {
-            "$ref": "#/components/schemas/SessionBinding",
-            "description": "How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `SessionBinding`."
-          }
-        }
-      },
-      "AddA2aChannelOutput": {
-        "type": "object",
-        "description": "Output of [`AddA2aChannelCmd`] — includes the plaintext API key (returned\n**once**, never persisted) plus the resulting [`AppChannel`].",
-        "required": [
-          "api_key",
-          "channel"
-        ],
-        "properties": {
-          "api_key": {
-            "type": "string",
-            "description": "Plaintext API key. Persist this — it cannot be recovered later."
-          },
-          "channel": {
-            "$ref": "#/components/schemas/AppChannel",
-            "description": "The created A2A channel."
-          }
-        }
-      },
-      "AddApiEndpointChannelHttpRequest": {
-        "type": "object",
-        "description": "Request body for the `add_api_endpoint_channel_http` operation.",
-        "properties": {
-          "auth": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AppEndpointAuthConfig",
-                "description": "Optional endpoint auth. Example shape is defined on `AppEndpointAuthConfig`."
-              }
-            ]
-          },
-          "enabled": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Whether this resource is enabled.",
-            "example": true
-          },
-          "session_mode": {
-            "$ref": "#/components/schemas/SessionBinding",
-            "description": "How invocations route into sessions (`shared_session` to reuse one\ndurable session, or `session_per_invocation` for a fresh session)."
-          }
-        }
-      },
-      "AddApiEndpointChannelOutput": {
-        "type": "object",
-        "description": "Output of [`AddApiEndpointChannelCmd`] — includes the plaintext API key\n(returned **once**, never persisted) plus the resulting [`AppChannel`].",
-        "required": [
-          "api_key",
-          "channel"
-        ],
-        "properties": {
-          "api_key": {
-            "type": "string",
-            "description": "Plaintext API key. Persist this — it cannot be recovered later."
-          },
-          "channel": {
-            "$ref": "#/components/schemas/AppChannel",
-            "description": "The created api_endpoint channel."
-          }
-        }
-      },
       "AddSessionParticipantRequest": {
         "type": "object",
         "description": "Request to add a participant to a session.",
@@ -17788,6 +17643,198 @@
             "$ref": "#/components/schemas/AgentHarnessStatus"
           }
         }
+      },
+      "AgentMcpAttachment": {
+        "type": "object",
+        "description": "Effective MCP attachment projected for an agent and the current caller.",
+        "required": [
+          "name",
+          "source",
+          "source_label",
+          "overridden_sources",
+          "acts_as",
+          "header_names",
+          "tools_available",
+          "tools",
+          "state",
+          "action",
+          "can_revoke",
+          "editable"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/AgentMcpAttachmentAction",
+            "description": "Connection action available to the current caller."
+          },
+          "acts_as": {
+            "$ref": "#/components/schemas/McpServerActsAs",
+            "description": "Identity whose connection is used when the attachment calls the MCP server."
+          },
+          "can_revoke": {
+            "type": "boolean",
+            "description": "Whether the current caller can revoke the active connection."
+          },
+          "connected_as": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Connected account name, or the preset name when the provider did not supply one."
+          },
+          "connection_provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OAuth provider key used to create or revoke the attachment connection."
+          },
+          "contributor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentMcpAttachmentContributor",
+                "description": "Capability that contributed the attachment, when the winning source is a capability."
+              }
+            ]
+          },
+          "editable": {
+            "type": "boolean",
+            "description": "Whether the attachment is defined directly on the agent and can be removed there."
+          },
+          "header_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Header names configured for the endpoint; secret header values are omitted."
+          },
+          "name": {
+            "type": "string",
+            "description": "Logical attachment name used in the agent's MCP configuration."
+          },
+          "overridden_sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentMcpAttachmentSourceInfo"
+            },
+            "description": "Lower-precedence configuration layers overridden by this attachment."
+          },
+          "preset_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ID of the active catalog preset when the reference resolves."
+          },
+          "preset_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Catalog preset name referenced by the attachment, including a missing preset."
+          },
+          "source": {
+            "$ref": "#/components/schemas/AgentMcpAttachmentSource",
+            "description": "Highest-precedence configuration layer that supplied this attachment."
+          },
+          "source_label": {
+            "type": "string",
+            "description": "Human-readable name of the winning capability, harness, or agent layer."
+          },
+          "state": {
+            "$ref": "#/components/schemas/AgentMcpAttachmentState",
+            "description": "Current preset and connection availability."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Cached names of tools exposed by the MCP server."
+          },
+          "tools_available": {
+            "type": "boolean",
+            "description": "Whether at least one cached tool name is available."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Effective MCP endpoint URL from the catalog preset or inline configuration."
+          }
+        }
+      },
+      "AgentMcpAttachmentAction": {
+        "type": "string",
+        "description": "Action the current caller can take to make an MCP attachment usable.",
+        "enum": [
+          "none",
+          "connect",
+          "authorize",
+          "ask_admin"
+        ]
+      },
+      "AgentMcpAttachmentContributor": {
+        "type": "object",
+        "description": "Capability that contributed an effective MCP attachment.",
+        "required": [
+          "id",
+          "name",
+          "href"
+        ],
+        "properties": {
+          "href": {
+            "type": "string",
+            "description": "UI path for the capability detail page."
+          },
+          "id": {
+            "type": "string",
+            "description": "Canonical capability ID."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable capability name."
+          }
+        }
+      },
+      "AgentMcpAttachmentSource": {
+        "type": "string",
+        "description": "Configuration layer that supplied an effective MCP attachment.",
+        "enum": [
+          "capability",
+          "harness",
+          "agent"
+        ]
+      },
+      "AgentMcpAttachmentSourceInfo": {
+        "type": "object",
+        "description": "Configuration layer that was overridden by the effective MCP attachment.",
+        "required": [
+          "source",
+          "source_label"
+        ],
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/AgentMcpAttachmentSource",
+            "description": "Overridden configuration layer."
+          },
+          "source_label": {
+            "type": "string",
+            "description": "Human-readable name of the overridden capability, harness, or agent layer."
+          }
+        }
+      },
+      "AgentMcpAttachmentState": {
+        "type": "string",
+        "description": "Availability state of an effective MCP attachment.",
+        "enum": [
+          "ready",
+          "connection_missing",
+          "preset_missing"
+        ]
       },
       "AgentMessage": {
         "type": "object",
@@ -18699,123 +18746,6 @@
               "type": "string"
             },
             "description": "Allowlist of `sub` claim values. Empty list disables subject filtering."
-          }
-        }
-      },
-      "AppRunBucket": {
-        "type": "object",
-        "description": "One bucket of the run-history histogram (per-hour aggregate).",
-        "required": [
-          "hour",
-          "ok",
-          "err"
-        ],
-        "properties": {
-          "err": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Count of runs that failed in this bucket.",
-            "minimum": 0
-          },
-          "hour": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Bucket start (top of the hour, RFC 3339)."
-          },
-          "ok": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Count of runs that completed successfully in this bucket.",
-            "minimum": 0
-          },
-          "running": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Count of runs still running when the bucket was queried.",
-            "minimum": 0
-          }
-        }
-      },
-      "AppRunEvent": {
-        "type": "object",
-        "description": "Single app-channel invocation record (one run = one channel-side event).",
-        "required": [
-          "id",
-          "app_id",
-          "channel_id",
-          "channel_type",
-          "status",
-          "created_at"
-        ],
-        "properties": {
-          "app_id": {
-            "type": "string",
-            "description": "App that received the invocation."
-          },
-          "channel_id": {
-            "type": "string",
-            "description": "Channel that originated the invocation."
-          },
-          "channel_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable channel name when set."
-          },
-          "channel_type": {
-            "$ref": "#/components/schemas/ChannelType",
-            "description": "Channel kind (slack, ag_ui, webhook, a2a, fcp, public_chat)."
-          },
-          "completed_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp the run finished, if any (RFC 3339)."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp the run started (RFC 3339)."
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier of this run event."
-          },
-          "status": {
-            "type": "string",
-            "description": "Terminal status (`ok`, `err`, `running`)."
-          }
-        }
-      },
-      "AppRunListResponse": {
-        "type": "object",
-        "description": "Paged response for the app run history endpoint, optionally including a per-hour histogram.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "buckets": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/AppRunBucket"
-            },
-            "description": "Per-hour aggregate buckets when the caller asked for them."
-          },
-          "data": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AppRunEvent"
-            },
-            "description": "Page of run events ordered newest first."
           }
         }
       },
@@ -20874,6 +20804,26 @@
           }
         }
       },
+      "CreateAgentEndpointRequest": {
+        "type": "object",
+        "description": "Request to create an ingress endpoint owned by an Agent.",
+        "required": [
+          "channel_type"
+        ],
+        "properties": {
+          "channel_config": {
+            "description": "Transport-specific endpoint configuration."
+          },
+          "channel_type": {
+            "$ref": "#/components/schemas/ChannelType",
+            "description": "Transport used by the endpoint."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the endpoint can accept ingress traffic."
+          }
+        }
+      },
       "CreateAgentRequest": {
         "type": "object",
         "description": "Request to create a new agent",
@@ -21143,79 +21093,6 @@
             ],
             "description": "Free-text summary of what changed in this version. Shown in the version timeline.",
             "example": "Tightened the refund-window check and added a regression test."
-          }
-        }
-      },
-      "CreateAppRequest": {
-        "type": "object",
-        "description": "Request to create a new app",
-        "required": [
-          "name",
-          "harness_id"
-        ],
-        "properties": {
-          "agent_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "ID of the agent to use. The command validation requires this field even\nthough it remains optional in the wire shape for a clear domain error.",
-            "example": "agent_01933b5a00007000800000000000001"
-          },
-          "agent_identity_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional resident agent identity for unattended/channel execution.",
-            "example": "identity_01933b5a00007000800000000000001"
-          },
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "$ref": "#/components/schemas/AgentVersionPolicy",
-            "description": "How an App resolves the Agent version it runs.\nExample shape is defined on `AgentVersionPolicy`."
-          },
-          "channel_config": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "description": "Initial channel configuration. Shape depends on `channel_type`, for\nexample `{\"token\": \"whk_redacted\", \"message\": \"Run support triage\"}`\nfor `webhook`. New schedule and webhook channels are rejected; use agent\ntriggers."
-          },
-          "channel_type": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ChannelType",
-                "description": "Optional initial channel type (creates the first channel on the app).\nExample shape is defined on `ChannelType`."
-              }
-            ]
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Description of what the app does.",
-            "example": "Customer support bot connected to Slack"
-          },
-          "harness_id": {
-            "type": "string",
-            "description": "ID of the harness to use.",
-            "example": "harness_01933b5a00007000800000000000001"
-          },
-          "name": {
-            "type": "string",
-            "description": "Display name of the app.",
-            "example": "Support Bot"
           }
         }
       },
@@ -21628,7 +21505,7 @@
               "null"
             ],
             "description": "API key for authentication (optional). Sent with each request; never echoed in responses.",
-            "example": "sk-mcp-redacted-1234567890abcdef"
+            "example": "mcp-api-key-redacted-1234567890abcdef"
           },
           "auth_mode": {
             "oneOf": [
@@ -26750,26 +26627,6 @@
           }
         }
       },
-      "ListAppRunsQuery": {
-        "type": "object",
-        "description": "Query parameters for listing recent app invocation runs — a relative\ntime window and an optional bucketing hint for the dashboard.",
-        "properties": {
-          "groupBy": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional grouping. Currently only `hour` is supported."
-          },
-          "window": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Time window to include, such as 24h, 60m, or 7d."
-          }
-        }
-      },
       "ListExecutionsQuery": {
         "type": "object",
         "description": "Query parameters for listing executions of a schedule — optional status\nfilter plus offset/limit paging.",
@@ -31251,6 +31108,61 @@
         ],
         "example": "api_key"
       },
+      "McpServerCatalogEntry": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/WithUrls_McpServer",
+            "description": "MCP server preset and its resource URLs."
+          },
+          {
+            "type": "object",
+            "required": [
+              "used_by_agents"
+            ],
+            "properties": {
+              "used_by_agents": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Number of active agents that use this preset.",
+                "example": 2
+              }
+            }
+          }
+        ],
+        "description": "MCP server preset with its active-agent usage count."
+      },
+      "McpServerCatalogResponse": {
+        "type": "object",
+        "description": "One page of MCP server catalog entries for the selected organization.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpServerCatalogEntry"
+            },
+            "description": "MCP server presets in this page.",
+            "example": [
+              {
+                "id": "mcp_01933b5a00007000800000000000001",
+                "name": "microsoft_learn",
+                "url": "https://learn.microsoft.com/api/mcp",
+                "used_by_agents": 2
+              }
+            ]
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cursor for the next page, or null when this is the final page.",
+            "example": "mcp_01933b5a00007000800000000000001"
+          }
+        }
+      },
       "McpServerPresetRef": {
         "type": "string",
         "description": "Reference to an organization MCP server catalog entry.",
@@ -31275,6 +31187,39 @@
           "stdio"
         ],
         "example": "http"
+      },
+      "McpServerUsageResponse": {
+        "type": "object",
+        "description": "Bounded archive-impact summary for an MCP server preset.",
+        "required": [
+          "agent_names",
+          "total_count",
+          "truncated"
+        ],
+        "properties": {
+          "agent_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of active agents that use the preset, up to the response limit.",
+            "example": [
+              "Docs agent",
+              "Research agent"
+            ]
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total number of active agents that use the preset.",
+            "example": 2
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether additional agent names were omitted from the bounded list.",
+            "example": false
+          }
+        }
       },
       "McpToolAnnotations": {
         "type": "object",
@@ -32785,7 +32730,7 @@
               },
               {
                 "$ref": "#/components/schemas/ExecutionPhase",
-                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". Refinement is monotonic: once a stream reveals a native\nphase (`Commentary` or `FinalAnswer`) it stays fixed for the rest of the\nmessage — it never flip-flops and never reverts to `None`\n(see `ExecutionPhase::refine_streamed_hint`). Providers without native\nmid-stream phase (Anthropic, Gemini, …) leave this `None` until\ncompletion. The authoritative classification remains the completed\n`Message.phase`. See `knowledge/execution/events.md`."
+                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". Refinement is monotonic: once a stream reveals a native\nphase (`Commentary` or `FinalAnswer`) it stays fixed for the rest of the\nmessage — it never flip-flops and never reverts to `None`\n(see `ExecutionPhase::refine_streamed_hint`). Providers without native\nmid-stream phase (Anthropic, Gemini, …) leave this `None` until\ncompletion. The authoritative classification remains the completed\n`RuntimeMessage.phase`. See `knowledge/execution/events.md`."
               }
             ]
           },
@@ -32818,7 +32763,7 @@
           },
           "message_id": {
             "type": "string",
-            "description": "Stable public ID for the assistant message whose streamed text is replaced.\nThis is the same identifier as the subsequent completed `Message.id`.",
+            "description": "Stable public ID for the assistant message whose streamed text is replaced.\nThis is the same identifier as the subsequent completed `RuntimeMessage.id`.",
             "example": "message_550e8400e29b41d4a716446655440000"
           },
           "reason_code": {
@@ -32872,7 +32817,7 @@
               },
               {
                 "$ref": "#/components/schemas/ExecutionPhase",
-                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". A missing/unknown phase must fall back to the\nassistant-text channel, never the reasoning channel. Only populated when\nthe provider stream reveals a native phase before this event is emitted;\ntoday `output.message.started` is emitted before the LLM call, so this is\ngenerally `None` at start. The authoritative classification remains the\ncompleted `Message.phase`. See `knowledge/execution/events.md`."
+                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". A missing/unknown phase must fall back to the\nassistant-text channel, never the reasoning channel. Only populated when\nthe provider stream reveals a native phase before this event is emitted;\ntoday `output.message.started` is emitted before the LLM call, so this is\ngenerally `None` at start. The authoritative classification remains the\ncompleted `RuntimeMessage.phase`. See `knowledge/execution/events.md`."
               }
             ]
           },
@@ -35405,42 +35350,6 @@
           "finalize",
           "restart"
         ]
-      },
-      "RegenerateA2aApiKeyOutput": {
-        "type": "object",
-        "description": "Output of [`RegenerateA2aApiKeyCmd`] — includes the newly generated\nplaintext API key (returned **once**, never persisted) plus the updated\n[`AppChannel`].",
-        "required": [
-          "api_key",
-          "channel"
-        ],
-        "properties": {
-          "api_key": {
-            "type": "string",
-            "description": "New plaintext API key. Persist this — it cannot be recovered later.\nThe previous key is invalidated immediately."
-          },
-          "channel": {
-            "$ref": "#/components/schemas/AppChannel",
-            "description": "The updated A2A channel."
-          }
-        }
-      },
-      "RegenerateApiEndpointApiKeyOutput": {
-        "type": "object",
-        "description": "Output of [`RegenerateApiEndpointApiKeyCmd`] — includes the newly generated\nplaintext API key (returned **once**, never persisted) plus the updated\n[`AppChannel`].",
-        "required": [
-          "api_key",
-          "channel"
-        ],
-        "properties": {
-          "api_key": {
-            "type": "string",
-            "description": "New plaintext API key. Persist this — it cannot be recovered later.\nThe previous key is invalidated immediately."
-          },
-          "channel": {
-            "$ref": "#/components/schemas/AppChannel",
-            "description": "The updated api_endpoint channel."
-          }
-        }
       },
       "ReportColumn": {
         "type": "object",
@@ -39631,6 +39540,24 @@
           }
         }
       },
+      "TriggerAgentEndpointOutput": {
+        "type": "object",
+        "description": "Result of running an Agent schedule endpoint immediately.",
+        "required": [
+          "session_id",
+          "created_session"
+        ],
+        "properties": {
+          "created_session": {
+            "type": "boolean",
+            "description": "Whether the invocation created a new session."
+          },
+          "session_id": {
+            "$ref": "#/components/schemas/sessionId",
+            "description": "Session started or reused by the invocation."
+          }
+        }
+      },
       "TriggerAgentTriggerOutput": {
         "type": "object",
         "required": [
@@ -39969,6 +39896,22 @@
         ],
         "example": "completed"
       },
+      "UpdateAgentEndpointRequest": {
+        "type": "object",
+        "description": "Request to update an ingress endpoint owned by an Agent.",
+        "properties": {
+          "channel_config": {
+            "description": "Replacement transport-specific endpoint configuration."
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the endpoint can accept ingress traffic."
+          }
+        }
+      },
       "UpdateAgentRequest": {
         "type": "object",
         "description": "Request to update an agent. Only provided fields will be updated.",
@@ -40245,79 +40188,6 @@
               "null"
             ],
             "description": "Replacement webhook token."
-          }
-        }
-      },
-      "UpdateAppRequest": {
-        "type": "object",
-        "description": "Request to update an app. Only provided fields will be updated.",
-        "properties": {
-          "agent_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "ID of the agent to use.",
-            "example": "agent_01933b5a00007000800000000000001"
-          },
-          "agent_identity_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional resident agent identity for unattended/channel execution."
-          },
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "How the App resolves the agent version. Example shape is defined on `AgentVersionPolicy`."
-              }
-            ]
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Description of what the app does.",
-            "example": "Customer support bot connected to Slack"
-          },
-          "harness_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "ID of the harness to use.",
-            "example": "harness_01933b5a00007000800000000000001"
-          },
-          "name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Display name of the app.",
-            "example": "Support Bot"
-          },
-          "status": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AppStatus",
-                "description": "Lifecycle status (draft or archived). Use publish/unpublish endpoints for publishing."
-              }
-            ]
           }
         }
       },
@@ -40711,7 +40581,7 @@
               "null"
             ],
             "description": "API key for authentication. Set to update.",
-            "example": "sk-mcp-redacted-1234567890abcdef"
+            "example": "mcp-api-key-redacted-1234567890abcdef"
           },
           "auth_mode": {
             "oneOf": [
@@ -41522,6 +41392,103 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "UserMcpConnectionResponse": {
+        "type": "object",
+        "description": "Current user's MCP OAuth connection to a preset in the selected organization.",
+        "required": [
+          "provider",
+          "server_id",
+          "server_name",
+          "server_url",
+          "server_status",
+          "connected_at"
+        ],
+        "properties": {
+          "connected_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time when the user authorized the connection.",
+            "example": "2026-09-19T12:00:00Z"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Stored connection provider key used to revoke the grant.",
+            "example": "mcp_oauth_01933b5a-0000-7000-8000-000000000001"
+          },
+          "provider_username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Account name reported by the MCP OAuth provider, when available.",
+            "example": "alex@example.com"
+          },
+          "scopes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Space-delimited OAuth scopes granted to this connection, when available.",
+            "example": "tools:read tools:execute"
+          },
+          "server_id": {
+            "type": "string",
+            "description": "UUID of the MCP server preset associated with the connection.",
+            "example": "01933b5a-0000-7000-8000-000000000001"
+          },
+          "server_name": {
+            "type": "string",
+            "description": "Display name of the MCP server preset.",
+            "example": "microsoft_learn"
+          },
+          "server_status": {
+            "type": "string",
+            "description": "Current lifecycle status of the MCP server preset.",
+            "example": "active"
+          },
+          "server_url": {
+            "type": "string",
+            "description": "MCP server endpoint URL.",
+            "example": "https://learn.microsoft.com/api/mcp"
+          }
+        }
+      },
+      "UserMcpConnectionsResponse": {
+        "type": "object",
+        "description": "One page of the current user's MCP connections in the selected organization.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserMcpConnectionResponse"
+            },
+            "description": "MCP connections in this page.",
+            "example": [
+              {
+                "connected_at": "2026-09-19T12:00:00Z",
+                "provider": "mcp_oauth_01933b5a-0000-7000-8000-000000000001",
+                "provider_username": "alex@example.com",
+                "scopes": "tools:read tools:execute",
+                "server_id": "01933b5a-0000-7000-8000-000000000001",
+                "server_name": "microsoft_learn",
+                "server_status": "active",
+                "server_url": "https://learn.microsoft.com/api/mcp"
+              }
+            ]
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cursor for the next page, or null when this is the final page.",
+            "example": "01933b5a-0000-7000-8000-000000000002"
           }
         }
       },

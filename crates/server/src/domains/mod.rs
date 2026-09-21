@@ -5,6 +5,7 @@
 
 pub mod common;
 
+pub mod agent_endpoints;
 pub mod agent_identities;
 pub mod agent_triggers;
 pub mod agents;

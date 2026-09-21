@@ -220,6 +220,8 @@ export default defineConfig({
                     { label: "Research Agent", slug: "framework/examples/research-agent" },
                     { label: "Incident Commander Agent", slug: "framework/examples/incident-commander-agent" },
                     { label: "Bashkit Repo Agent", slug: "framework/examples/bashkit-repo-agent" },
+                    { label: "Host Shell Agent", slug: "framework/examples/host-shell-agent" },
+                    { label: "Foreman", slug: "framework/examples/foreman-agent" },
                   ],
                 },
               ],
@@ -246,6 +248,7 @@ export default defineConfig({
                       items: [
                         { label: "File System", slug: "capabilities/file-system" },
                         { label: "Bashkit Shell", slug: "capabilities/bashkit-shell" },
+                        { label: "Host Shell", slug: "capabilities/host-shell" },
                         { label: "Session", slug: "capabilities/session" },
                         { label: "Session Storage", slug: "capabilities/session-storage" },
                         { label: "Web Fetch", slug: "capabilities/web-fetch" },
@@ -306,6 +309,7 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "GitHub Scout", slug: "capabilities/github-scout" },
+                        { label: "Slack", slug: "capabilities/slack" },
                       ],
                     },
                     {

@@ -790,7 +790,7 @@ impl SessionBackgroundSink {
                 let message = match err {
                     ToolExecutionResult::ToolError(msg) => msg,
                     ToolExecutionResult::InternalError(inner) => inner.message,
-                    ToolExecutionResult::ConnectionRequired { provider } => {
+                    ToolExecutionResult::ConnectionRequired { provider, .. } => {
                         format!("Background tool requires connection setup: {provider}")
                     }
                     ToolExecutionResult::Success(_)

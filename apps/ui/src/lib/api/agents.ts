@@ -22,6 +22,7 @@ import type {
   SetDefaultAgentVersionRequest,
   UpdateAgentRequest,
   AgentCredentialBinding,
+  AgentMcpAttachment,
 } from "./types";
 
 export const agentsCrudApi = createCrudApi<Agent, CreateAgentRequest, UpdateAgentRequest>(
@@ -81,6 +82,19 @@ export async function copyAgent(agentId: string): Promise<Agent> {
 export async function getAgentStats(agentId: string): Promise<ResourceStats> {
   const response = await api.get<ResourceStats>(`/v1/agents/${agentId}/stats`);
   return response.data;
+}
+
+export async function getAgentMcpAttachments(agentId: string): Promise<AgentMcpAttachment[]> {
+  const response = await api.get<AgentMcpAttachment[]>(
+    `/v1/agents/${encodeURIComponent(agentId)}/mcp-attachments`,
+  );
+  return response.data;
+}
+
+export async function revokeAgentMcpConnection(agentId: string, name: string): Promise<void> {
+  await api.delete(
+    `/v1/agents/${encodeURIComponent(agentId)}/mcp-attachments/${encodeURIComponent(name)}/connection`,
+  );
 }
 
 export async function checkAgentName(

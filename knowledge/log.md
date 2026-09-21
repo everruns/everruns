@@ -1,5 +1,39 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-19
+
+* **A live PoC settled how far Slack one-click install can go, and disproved two
+  assumptions on the way.** `apps.manifest.create` accepts the manifest we
+  already generate — whole, `agent_view` and all — and returns the signing
+  secret with it, so three of the four fields an operator types today can be
+  obtained without a human. It does not verify `request_url` at save time. It
+  cannot, however, install without a consent screen. So the target is one
+  consent per agent, not zero, and a Slack Marketplace listing turns out not to
+  be on the critical path at all. Disproved: that one-click and per-agent bot
+  identity were in tension (they are not), and that the app cannot exist before
+  the endpoint is live (the API path does not check). Also surfaced a real
+  defect — the generated manifest declared no `oauth_config.redirect_urls`, so
+  no generated app could ever be OAuth-installed; invisible until now because
+  the copy-paste flow never runs OAuth. Recorded as [Slack One-Click
+  Install](integrations/slack-one-click-install.md).
+
+## 2026-09-19
+
+* **The utility LLM picks its backend from which key you set, and the model is
+  now an env var.** `UTILITY_OPENROUTER_API_KEY` routes internal model work
+  (Analyze, Health, `llm_judge` guardrails) through OpenRouter,
+  `UTILITY_OPENAI_API_KEY` keeps calling OpenAI directly, and
+  `UTILITY_LLM_MODEL` overrides the model on whichever backend was selected. A
+  separate `UTILITY_LLM_PROVIDER` variable would have been a second thing to
+  keep in sync with the secret that has to be rotated anyway, so presence of
+  the key *is* the selection; OpenRouter wins when both are set, with a startup
+  warning, because the key an operator just added is the deliberate one.
+  Defaults stay one model named two ways: `gpt-5.6-luna` on OpenAI,
+  `openai/gpt-5.6-luna` on OpenRouter. The deployment-owned contract is
+  unchanged — `UtilityLlmRequest` still carries no model and no credential, so
+  the new knob is unreachable from agent, session, or API input (TM-LLM-021).
+  See [Utility LLM Service](operations/utility-llm.md).
+
 ## 2026-09-18
 
 * **Platform Chat v2 measured against v1, and the shell surface holds: 48/63 to
@@ -305,15 +339,11 @@
   [Release Process](project/release-process.md).
 
 * **Slack had no manual test cases, and it is the reference messaging
-  integration.** [Messaging Integrations](integrations/messaging-integrations.md)
-  lists a UI test case as a parity requirement every platform must ship; FCP has
-  one, Slack never did. Four cases now cover what the 25-case integration suite
-  structurally cannot reach: that Slack *accepts* the generated manifest (not
-  merely that we emit YAML), that a pane reply appears progressively rather than
-  arriving whole, that a status line carries no tool name, that a markdown table
-  renders as a table, and that no turn ends in silence while a successful turn
-  never double-posts a reply and a notice. See
-  [Slack App test cases](test-cases/ui/slack_app/).
+  integration.** Four cases covered what the integration suite could not reach:
+  Slack manifest acceptance, progressive pane replies, safe status lines,
+  Markdown rendering, and terminal notices. The cases depended on the retired
+  App setup UI and were removed with that surface. See
+  [Messaging Integrations](integrations/messaging-integrations.md).
 * **The command line is one contract, shared by the CLI and the agent-facing
   tree.** Deriving the agent-facing parser from each command's JSON Schema
   produced a parallel contract, not the same one: `--system_prompt` where the

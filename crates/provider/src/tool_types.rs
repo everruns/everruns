@@ -720,6 +720,127 @@ impl ToolCall {
     }
 }
 
+/// The subject whose OAuth grant is required for a tool call.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionRequiredSubject {
+    /// The agent's shared service identity needs an administrator-managed grant.
+    Agent,
+    /// The invoking user needs their own grant.
+    User,
+}
+
+/// Structured details for a connection-required tool result.
+///
+/// Provider-only values retain their historical string wire shape. Values with
+/// a subject and setup URL use an object so callers can distinguish who must act.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectionRequired {
+    /// Connection provider id.
+    pub provider: String,
+    /// Whose grant is missing. Absent on provider-only legacy values.
+    pub subject: Option<ConnectionRequiredSubject>,
+    /// Relative UI route where the missing grant can be configured.
+    pub setup_url: Option<String>,
+}
+
+impl ConnectionRequired {
+    /// Construct the provider-only shape used by existing tool integrations.
+    pub fn provider_only(provider: impl Into<String>) -> Self {
+        Self {
+            provider: provider.into(),
+            subject: None,
+            setup_url: None,
+        }
+    }
+
+    /// Construct a connection requirement with an explicit subject and setup route.
+    pub fn with_setup(
+        provider: impl Into<String>,
+        subject: ConnectionRequiredSubject,
+        setup_url: impl Into<String>,
+    ) -> Self {
+        Self {
+            provider: provider.into(),
+            subject: Some(subject),
+            setup_url: Some(setup_url.into()),
+        }
+    }
+}
+
+impl From<String> for ConnectionRequired {
+    fn from(provider: String) -> Self {
+        Self::provider_only(provider)
+    }
+}
+
+impl From<&str> for ConnectionRequired {
+    fn from(provider: &str) -> Self {
+        Self::provider_only(provider)
+    }
+}
+
+/// Preserve the historical string wire shape until structured details are present.
+impl Serialize for ConnectionRequired {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if self.subject.is_none() && self.setup_url.is_none() {
+            return serializer.serialize_str(&self.provider);
+        }
+
+        #[derive(Serialize)]
+        struct Details<'a> {
+            provider: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            subject: Option<ConnectionRequiredSubject>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            setup_url: Option<&'a str>,
+        }
+
+        Details {
+            provider: &self.provider,
+            subject: self.subject,
+            setup_url: self.setup_url.as_deref(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ConnectionRequired {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Wire {
+            Provider(String),
+            Details {
+                provider: String,
+                #[serde(default)]
+                subject: Option<ConnectionRequiredSubject>,
+                #[serde(default)]
+                setup_url: Option<String>,
+            },
+        }
+
+        Ok(match Wire::deserialize(deserializer)? {
+            Wire::Provider(provider) => Self::provider_only(provider),
+            Wire::Details {
+                provider,
+                subject,
+                setup_url,
+            } => Self {
+                provider,
+                subject,
+                setup_url,
+            },
+        })
+    }
+}
+
 /// Tool execution result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
@@ -732,10 +853,11 @@ pub struct ToolResult {
     pub images: Option<Vec<ToolResultImage>>,
     /// Error message (failure)
     pub error: Option<String>,
-    /// When set, indicates the tool requires a user connection for this provider.
-    /// The workflow should pause and prompt the user to configure the connection.
+    /// When set, indicates the tool requires a connection before it can continue.
+    /// Provider-only strings remain accepted for compatibility; richer values
+    /// identify whose grant is missing and where to configure it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub connection_required: Option<String>,
+    pub connection_required: Option<ConnectionRequired>,
     /// Pre-truncation cleaned output for persistence hooks.
     /// Populated by exec tools (after ANSI strip + CR collapse, before truncation).
     /// Consumed by PostToolExecHook (e.g. tool_output_persistence) then cleared.
@@ -1030,6 +1152,10 @@ mod tests {
         let mut injected = expected.clone();
         injected["raw_output"] = json!("private-raw");
         let mut result: ToolResult = serde_json::from_value(injected).unwrap();
+        assert_eq!(
+            result.connection_required,
+            Some(ConnectionRequired::provider_only("provider"))
+        );
         assert!(result.raw_output.is_none());
         result.raw_output = Some("private-raw".into());
         assert_eq!(serde_json::to_value(result).unwrap(), expected);
@@ -1045,6 +1171,41 @@ mod tests {
             serde_json::to_value(success).unwrap(),
             json!({"tool_call_id":"call_123","result":{"temperature":72},"error":null})
         );
+    }
+
+    #[test]
+    fn connection_required_wire_distinguishes_subjects_and_accepts_provider_only_values() {
+        for (subject, setup_url) in [
+            (
+                ConnectionRequiredSubject::Agent,
+                "/agents/agent_123?tab=mcp",
+            ),
+            (ConnectionRequiredSubject::User, "/settings/connections"),
+        ] {
+            let required = ConnectionRequired::with_setup("mcp_oauth_123", subject, setup_url);
+            let wire = serde_json::to_value(&required).unwrap();
+            assert_eq!(wire["provider"], "mcp_oauth_123");
+            assert_eq!(
+                wire["subject"],
+                match subject {
+                    ConnectionRequiredSubject::Agent => "agent",
+                    ConnectionRequiredSubject::User => "user",
+                }
+            );
+            assert_eq!(wire["setup_url"], setup_url);
+            assert_eq!(
+                serde_json::from_value::<ConnectionRequired>(wire).unwrap(),
+                required
+            );
+        }
+
+        let legacy: ConnectionRequired = serde_json::from_value(json!("daytona")).unwrap();
+        assert_eq!(legacy, ConnectionRequired::provider_only("daytona"));
+        assert_eq!(serde_json::to_value(legacy).unwrap(), json!("daytona"));
+
+        let provider_object: ConnectionRequired =
+            serde_json::from_value(json!({"provider":"github"})).unwrap();
+        assert_eq!(provider_object, ConnectionRequired::provider_only("github"));
     }
 
     #[test]

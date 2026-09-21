@@ -50,6 +50,8 @@ tracing.workspace = true
 
 [dev-dependencies]
 everruns-capability.workspace = true
+tokio.workspace = true
+tower.workspace = true
 
 [build-dependencies]
 tonic-prost-build.workspace = true

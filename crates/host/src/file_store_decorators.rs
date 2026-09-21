@@ -149,6 +149,10 @@ impl SessionFileSystem for PolicyFileStore {
         self.inner.is_mount_resolver()
     }
 
+    fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {
+        self.inner.host_path(path)
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.check_read(path)?;
         self.inner.read_file(session_id, path).await
@@ -466,6 +470,10 @@ impl SessionFileSystem for WriteBlocklistFileStore {
     fn is_mount_resolver(&self) -> bool {
         self.inner.is_mount_resolver()
     }
+
+    fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {
+        self.inner.host_path(path)
+    }
 }
 
 /// Embedder-supplied approval callback used by [`ApprovalGatingFileStore`].
@@ -651,6 +659,10 @@ impl SessionFileSystem for ApprovalGatingFileStore {
 
     fn is_mount_resolver(&self) -> bool {
         self.inner.is_mount_resolver()
+    }
+
+    fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {
+        self.inner.host_path(path)
     }
 }
 

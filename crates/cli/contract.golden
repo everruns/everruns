@@ -13,7 +13,17 @@ agents create	--description --file/-f --harness/-H --initial-files-dir --model -
 agents credentials create	--agent-id --description --label! --mcp-server-name! --parameter-name! --tool-name!
 agents delete	<agent_id>!
 agents destroy	--id <id>
+agents endpoints create	--agent-id! --channel-config --channel-type! --enabled
+agents endpoints delete	--agent-id! --endpoint-id!
+agents endpoints get	--agent-id! --endpoint-id!
+agents endpoints list	--agent-id!
+agents endpoints publish	--agent-id! --endpoint-id!
+agents endpoints trigger	--agent-id! --endpoint-id!
+agents endpoints unpublish	--agent-id! --endpoint-id!
+agents endpoints update	--agent-id! --channel-config --enabled --endpoint-id!
 agents export	--id <id>
+agents exposures resume	--agent <agent_id>
+agents exposures suspend	--agent <agent_id>
 agents get	<agent_id>!
 agents health-checks get	--agent-id! --run-id!
 agents health-checks latest get	--agent-id!
@@ -22,13 +32,13 @@ agents health-checks trigger	--agent-id!
 agents import	--capabilities --default-model-id --description --display-name --harness-id --harness-name --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --short-description --starters --system-prompt! --tags... --tools
 agents list	
 agents preview	--capabilities --mcp-servers --system-prompt --tools
-agents triggers create	--agent-id! --cron-expression! --enabled --message! --session-mode --timezone
+agents triggers create	--agent-id! --auth --cron-expression --enabled --message! --rate-limit-per-minute --session-mode --timezone --token --trigger-type
 agents triggers delete	--agent-id! --trigger-id!
 agents triggers get	--agent-id! --trigger-id!
 agents triggers list	--agent-id! --include-archived
 agents triggers runs list	--agent-id! --trigger-id!
 agents triggers trigger	--agent-id! --trigger-id!
-agents triggers update	--agent-id! --cron-expression --enabled --message --session-mode --timezone --trigger-id!
+agents triggers update	--agent-id! --auth --cron-expression --enabled --message --rate-limit-per-minute --session-mode --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --model --name --system-prompt --tag/-t... --writable <agent_id>
 agents upsert	--capabilities --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --short-description --starters --system-prompt! --tags... --tools <id>
 agents versions create	--agent! --change-kind --summary
@@ -37,26 +47,6 @@ agents versions fork	--agent! --description --display-name --name! --version-id!
 agents versions list	--agent!
 agents versions rollback	--agent! --save-version --summary --version-id!
 agents versions set-default	--agent! --version-id!
-apps a2a-channels add	--agent-card-description --agent-card-name --app-id! --auth --enabled --message! --session-mode
-apps a2a-channels regenerate-key regenerate	--app-id! --channel-id!
-apps api-endpoint-channels add	--app-id! --auth --enabled --session-mode
-apps api-endpoint-channels regenerate-key regenerate	--app-id! --channel-id!
-apps budgets list	--app-id! --include-channels
-apps channels add	--app-id! --channel-config --channel-type! --enabled
-apps channels add-schedule	--app-id! --cron-expression! --enabled --message! --session-mode --timezone
-apps channels add-webhook	--app-id! --enabled --message! --session-mode --token!
-apps channels delete	--app-id! --channel-id!
-apps channels list	--app-id! --channel-type
-apps channels trigger	--app-id! --channel-id!
-apps channels update	--app-id! --channel-config --channel-id! --channel-type --enabled
-apps create	--agent-id --agent-identity-id --agent-version-id --agent-version-policy --channel-config --channel-type --description --harness-id! --name!
-apps delete destroy	--id!
-apps get	--id!
-apps list	--include-archived --search
-apps publish	--id!
-apps runs list	--app-id! --groupBy --window
-apps unpublish	--id!
-apps update	--agent-id --agent-identity-id --agent-version-id --agent-version-policy --description --harness-id --id! --name --status
 budgets check	--budget-id!
 budgets create	--currency! --limit! --metadata --period --soft-limit --subject-id! --subject-type!
 budgets delete	--budget-id!
@@ -89,6 +79,7 @@ durable schedules resume	--schedule-id!
 durable schedules stats get	--schedule-id!
 durable schedules trigger	--schedule-id!
 durable schedules update	--catch-up-missed --cron-expression --description --enabled --max-catch-up --max-concurrent --retry-policy --schedule-id! --target --timezone
+environment-targets list	
 evals atif-import import	--body! --eval-id!
 evals cases create	--artifacts --conversation! --description --eval-id! --max-turns --name! --position --post --scorers! --tags... --target --timeout-seconds
 evals cases delete	--case-id! --eval-id!
@@ -237,6 +228,7 @@ sessions databases get	--name! --session-id!
 sessions databases list	--session-id!
 sessions databases schema get	--name! --session-id!
 sessions delete	--session <session_id>
+sessions environment get	--session-id!
 sessions events list	--after-sequence --around --before-sequence --exclude... --exec-id --from-ts --limit --order-desc --q --session-id! --since-id --tags... --to-ts --tool-name --trace-id --turn-id --types... --window
 sessions events summary events	--session-id!
 sessions export	--format --output/-o <session>!

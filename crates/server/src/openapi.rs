@@ -33,7 +33,7 @@ use everruns_provider::provider::{
 };
 use serde_json::json;
 use utoipa::openapi::extensions::Extensions;
-use utoipa::openapi::{RefOr, Schema};
+use utoipa::openapi::{Deprecated, RefOr, Schema};
 use utoipa::{Modify, OpenApi};
 
 const SDK_RESPONSE_WRAPPERS: &[(&str, &str, &str)] = &[
@@ -58,6 +58,16 @@ struct SdkMetadata;
 
 impl Modify for SdkMetadata {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        for path in ["/v1/apps", "/v1/apps/{app_id}"] {
+            if let Some(operation) = openapi
+                .paths
+                .paths
+                .get_mut(path)
+                .and_then(|item| item.get.as_mut())
+            {
+                operation.deprecated = Some(Deprecated::True);
+            }
+        }
         let Some(components) = openapi.components.as_mut() else {
             return;
         };
@@ -104,6 +114,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agents::list_agents,
         api::agents::get_agent,
         api::agents::get_agent_stats,
+        api::agent_mcp_attachments::list_agent_mcp_attachments,
+        api::agent_mcp_attachments::revoke_agent_mcp_connection,
         api::agents::update_agent,
         api::agents::delete_agent,
         api::agents::export_agent,
@@ -114,6 +126,14 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agent_credentials::create_credential_binding,
         api::agent_credentials::set_credential_value,
         api::agent_credentials::delete_credential_binding,
+        api::agent_endpoints::list_agent_endpoints,
+        api::agent_endpoints::create_agent_endpoint,
+        api::agent_endpoints::get_agent_endpoint,
+        api::agent_endpoints::update_agent_endpoint,
+        api::agent_endpoints::delete_agent_endpoint,
+        api::agent_endpoints::publish_agent_endpoint,
+        api::agent_endpoints::unpublish_agent_endpoint,
+        api::agent_endpoints::trigger_agent_endpoint,
         api::sessions::create_session,
         api::sessions::fork_session,
         api::sessions::list_sessions,
@@ -149,11 +169,6 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::fcp::handshake,
         api::fcp::message_legacy,
         api::fcp::message_endpoint,
-        api::apps::list_app_runs,
-        api::apps::add_a2a_channel,
-        api::apps::regenerate_a2a_key,
-        api::apps::add_api_endpoint_channel,
-        api::apps::regenerate_api_endpoint_key,
         api::app_api::create_session,
         api::app_api::create_session_endpoint,
         api::app_api::post_message,
@@ -170,16 +185,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agent_triggers::update_agent_trigger,
         api::agent_triggers::delete_agent_trigger,
         api::agent_triggers::trigger_agent_trigger,
-        api::apps::create_app,
         api::apps::list_apps,
         api::apps::get_app,
-        api::apps::update_app,
-        api::apps::delete_app,
-        api::apps::publish_app,
-        api::apps::publish_channel,
-        api::apps::unpublish_channel,
-        api::apps::unpublish_app,
-        api::apps::app_config,
         api::events::stream_sse,
         api::events::list_events,
         api::events::events_summary,
@@ -240,6 +247,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::environments::list_environment_targets,
         api::mcp_servers::create_mcp_server,
         api::mcp_servers::list_mcp_servers,
+        api::mcp_servers::list_mcp_server_catalog,
+        api::mcp_servers::get_mcp_server_usage,
         api::mcp_servers::get_mcp_server,
         api::mcp_servers::update_mcp_server,
         api::mcp_servers::delete_mcp_server,
@@ -314,6 +323,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::providers::provider_config,
         api::models::model_config,
         api::mcp_servers::mcp_server_config,
+        api::user_connections::mcp_connections::list_mcp_connections,
         // Users - additional
         api::users::switch_org,
         api::users::update_profile,
@@ -512,16 +522,6 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::voice::VoiceEndResponse,
             api::voice::VoiceSessionResponse<api::voice::VoiceCallResponse>,
             api::app_webhooks::WebhookInvocationResponse,
-            api::apps::ListAppRunsQuery,
-            api::apps::AddA2aChannelHttpRequest,
-            api::apps::AddApiEndpointChannelHttpRequest,
-            domains::apps::types::AppRunEvent,
-            domains::apps::types::AppRunBucket,
-            domains::apps::types::AppRunListResponse,
-            domains::apps::AddA2aChannelOutput,
-            domains::apps::RegenerateA2aApiKeyOutput,
-            domains::apps::AddApiEndpointChannelOutput,
-            domains::apps::RegenerateApiEndpointApiKeyOutput,
             // Agent triggers (EVE-757)
             everruns_platform::AgentTrigger,
             everruns_platform::AgentTriggerType,
@@ -677,7 +677,12 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::budgets::TopUpRequest,
             domains::budgets::ResumeSessionBudgetsResult,
             api::user_connections::ConnectionResponse,
+            api::user_connections::mcp_connections::UserMcpConnectionResponse,
+            api::user_connections::mcp_connections::UserMcpConnectionsResponse,
             api::user_connections::ApiKeyConnectionRequest,
+            api::mcp_servers::McpServerCatalogEntry,
+            api::mcp_servers::McpServerCatalogResponse,
+            api::mcp_servers::McpServerUsageResponse,
             api::knowledge_bases::CreateKnowledgeBaseRequest,
             api::knowledge_bases::UpdateKnowledgeBaseRequest,
             api::knowledge_bases::ListKnowledgeBasesQuery,

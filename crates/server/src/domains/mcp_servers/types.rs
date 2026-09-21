@@ -36,7 +36,11 @@ pub struct CreateMcpServerRequest {
     pub protocol_mode: Option<McpProtocolMode>,
     /// API key for authentication (optional). Sent with each request; never echoed in responses.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "sk-mcp-redacted-1234567890abcdef")]
+    // The example carries no provider key prefix on purpose: a failing contract
+    // test dumps the whole catalog into a public Actions log, and an `sk-`
+    // placeholder there reads as a live key to
+    // scripts/scan_actions_log_secrets.py.
+    #[schema(example = "mcp-api-key-redacted-1234567890abcdef")]
     pub api_key: Option<String>,
     /// Additional HTTP headers for authentication.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,7 +81,7 @@ pub struct UpdateMcpServerRequest {
     pub status: Option<McpServerStatus>,
     /// API key for authentication. Set to update.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "sk-mcp-redacted-1234567890abcdef")]
+    #[schema(example = "mcp-api-key-redacted-1234567890abcdef")]
     pub api_key: Option<String>,
     /// Additional HTTP headers for authentication.
     #[serde(skip_serializing_if = "Option::is_none")]

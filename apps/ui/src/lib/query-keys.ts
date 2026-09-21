@@ -18,9 +18,17 @@ export const queryKeys = {
     list: (includeArchived = false) => ["agents", { includeArchived }] as const,
     detail: (agentId: string) => ["agent", agentId] as const,
     stats: (org?: string, agentId?: string) => ["agent", org, agentId, "stats"] as const,
+    mcpAttachments: (agentId?: string) => ["agent", agentId, "mcp-attachments"] as const,
     versions: (org?: string, agentId?: string) => ["agent", org, agentId, "versions"] as const,
     versionDiff: (org?: string, agentId?: string, from?: string, to?: string) =>
       ["agent", org, agentId, "versions", "diff", from, to] as const,
+  },
+
+  agentEndpoints: {
+    all: (agentId: string) => ["agent-endpoints", agentId] as const,
+    list: (agentId: string) => ["agent-endpoints", agentId, "list"] as const,
+    detail: (agentId: string, endpointId: string) =>
+      ["agent-endpoints", agentId, endpointId] as const,
   },
 
   agentTriggers: {
@@ -167,6 +175,8 @@ export const queryKeys = {
   mcpServers: {
     all: ["mcp-servers"] as const,
     list: (includeArchived = false) => ["mcp-servers", { includeArchived }] as const,
+    catalog: (org?: string) => ["mcp-servers", "catalog", org] as const,
+    usage: (serverId: string) => ["mcp-server", serverId, "usage"] as const,
     detail: (serverId: string) => ["mcp-server", serverId] as const,
   },
 
@@ -192,6 +202,7 @@ export const queryKeys = {
   userConnections: {
     all: ["user-connections"] as const,
     list: () => ["user-connections"] as const,
+    mcp: (org?: string) => ["user-connections", "mcp", org] as const,
   },
 
   // User preference (key/value) queries

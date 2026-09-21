@@ -7,7 +7,7 @@ use everruns_core::events::{
     Event, EventContext, EventRequest, InputMessageData, OutputMessageCompletedData,
     OutputMessageDeltaData, OutputMessageReplacedData, ToolCompletedData, TurnStartedData,
 };
-use everruns_core::message::{ContentPart, Message};
+use everruns_core::message::{ContentPart, RuntimeMessage};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_host::{
     EventCursor, EventDurability, EventHistory, EventHistoryReadLimit, EventHistoryReadRequest,
@@ -21,7 +21,7 @@ fn input(session_id: SessionId, text: &str) -> EventRequest {
     EventRequest::new(
         session_id,
         EventContext::empty(),
-        InputMessageData::new(Message::user(text)),
+        InputMessageData::new(RuntimeMessage::user(text)),
     )
 }
 
@@ -520,7 +520,9 @@ async fn replay_is_identical_with_replacement_and_tool_completion() {
     log.append(EventRequest::new(
         session,
         EventContext::empty(),
-        OutputMessageCompletedData::new(Message::assistant("safe answer").with_id(message_id)),
+        OutputMessageCompletedData::new(
+            RuntimeMessage::assistant("safe answer").with_id(message_id),
+        ),
     ))
     .await
     .unwrap();

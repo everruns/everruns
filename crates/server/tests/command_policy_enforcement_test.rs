@@ -425,6 +425,24 @@ fn every_non_readonly_command_declares_policy() {
 }
 
 #[test]
+fn app_commands_are_absent_from_the_inventory() {
+    use everruns_server::domains::common::CommandDescriptor;
+
+    let app_commands: Vec<&'static str> = inventory::iter::<CommandDescriptor>
+        .into_iter()
+        .filter_map(|descriptor| {
+            let meta = (descriptor.meta)();
+            (meta.category == "apps").then_some(meta.name)
+        })
+        .collect();
+
+    assert!(
+        app_commands.is_empty(),
+        "retired App commands must not appear in CLI or MCP catalogs: {app_commands:?}"
+    );
+}
+
+#[test]
 fn mcp_query_read_only_overrides_are_allowlisted() {
     use everruns_server::domains::common::CommandDescriptor;
 

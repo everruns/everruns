@@ -18,8 +18,8 @@ use tracing::error;
 
 use crate::background::BackgroundExecutableTool;
 use crate::tool_types::{
-    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
-    ToolResultImage,
+    BuiltinTool, ConnectionRequired, ConnectionRequiredSubject, DeferrablePolicy, ToolCall,
+    ToolDefinition, ToolHints, ToolPolicy, ToolResult, ToolResultImage,
 };
 use crate::{
     tool_context::ToolContext, tool_context::ToolContextService, tool_context::ToolContextServices,
@@ -79,15 +79,19 @@ pub enum ToolExecutionResult {
     /// with a generic message when returned to the LLM.
     InternalError(ToolInternalError),
 
-    /// A user connection is required to execute this tool.
+    /// A connection is required to execute this tool.
     ///
     /// Instead of returning an error, this signals that the workflow should
     /// pause and ask the client to set up a connection for the given provider.
-    /// The UI renders an inline connection dialog; once the user saves (or
-    /// cancels), a tool result is submitted and execution resumes.
+    /// The UI renders an inline setup prompt; once setup is confirmed (or
+    /// skipped), a tool result is submitted and execution resumes.
     ConnectionRequired {
         /// Connection provider id (e.g. "daytona", "brave_search")
         provider: String,
+        /// Whose grant is missing. Absent for provider-only integrations.
+        subject: Option<ConnectionRequiredSubject>,
+        /// Relative UI route where the missing grant can be configured.
+        setup_url: Option<String>,
     },
 }
 
@@ -145,10 +149,25 @@ impl ToolExecutionResult {
         ToolExecutionResult::InternalError(ToolInternalError::from_message(message))
     }
 
-    /// Signal that a user connection is required before this tool can execute.
+    /// Signal a provider-only connection requirement.
     pub fn connection_required(provider: impl Into<String>) -> Self {
         ToolExecutionResult::ConnectionRequired {
             provider: provider.into(),
+            subject: None,
+            setup_url: None,
+        }
+    }
+
+    /// Signal that a subject-specific connection is required before execution.
+    pub fn connection_required_with_setup(
+        provider: impl Into<String>,
+        subject: ConnectionRequiredSubject,
+        setup_url: impl Into<String>,
+    ) -> Self {
+        ToolExecutionResult::ConnectionRequired {
+            provider: provider.into(),
+            subject: Some(subject),
+            setup_url: Some(setup_url.into()),
         }
     }
 
@@ -168,7 +187,7 @@ impl ToolExecutionResult {
         )
     }
 
-    /// Check if this requires a user connection setup
+    /// Check whether this requires connection setup.
     pub fn is_connection_required(&self) -> bool {
         matches!(self, ToolExecutionResult::ConnectionRequired { .. })
     }
@@ -254,16 +273,27 @@ impl ToolExecutionResult {
                     raw_output: None,
                 }
             }
-            ToolExecutionResult::ConnectionRequired { ref provider } => ToolResult {
-                tool_call_id: tool_call_id.to_string(),
-                result: Some(serde_json::json!({
-                    "connection_required": provider,
-                })),
-                images: None,
-                error: None,
-                connection_required: Some(provider.clone()),
-                raw_output: None,
-            },
+            ToolExecutionResult::ConnectionRequired {
+                provider,
+                subject,
+                setup_url,
+            } => {
+                let required = ConnectionRequired {
+                    provider,
+                    subject,
+                    setup_url,
+                };
+                ToolResult {
+                    tool_call_id: tool_call_id.to_string(),
+                    result: Some(serde_json::json!({
+                        "connection_required": &required,
+                    })),
+                    images: None,
+                    error: None,
+                    connection_required: Some(required),
+                    raw_output: None,
+                }
+            }
         }
     }
 }

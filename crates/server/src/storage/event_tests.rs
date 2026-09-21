@@ -4,7 +4,7 @@
 //! for storage in the events table.
 
 use everruns_core::events::{EventContext, InputMessageData, ToolCompletedData};
-use everruns_core::message::Message;
+use everruns_core::message::RuntimeMessage;
 use everruns_core::{ContentPart, Event};
 use everruns_provider::typed_id::SessionId;
 use uuid::Uuid;
@@ -16,7 +16,7 @@ fn test_event_serialization() {
     let event = Event::new(
         session_id,
         event_context,
-        InputMessageData::new(Message::user("test")),
+        InputMessageData::new(RuntimeMessage::user("test")),
     );
 
     let json = serde_json::to_value(&event).unwrap();
@@ -36,7 +36,7 @@ fn test_event_type() {
     let event = Event::new(
         session_id,
         event_context,
-        InputMessageData::new(Message::user("test")),
+        InputMessageData::new(RuntimeMessage::user("test")),
     );
 
     assert_eq!(event.event_type, "input.message");
@@ -50,7 +50,7 @@ fn test_event_session_id() {
     let event = Event::new(
         session_id,
         event_context,
-        InputMessageData::new(Message::user("test")),
+        InputMessageData::new(RuntimeMessage::user("test")),
     );
 
     assert_eq!(event.session_uuid(), raw_uuid);
@@ -169,7 +169,7 @@ fn test_event_api_contract_structure() {
     let event = Event::new(
         session_id,
         EventContext::empty(),
-        InputMessageData::new(Message::user("test")),
+        InputMessageData::new(RuntimeMessage::user("test")),
     );
 
     let json = serde_json::to_value(&event).unwrap();
@@ -242,6 +242,6 @@ fn test_event_context_api_contract() {
     let mid = json["input_message_id"].as_str().unwrap();
     assert!(
         mid.starts_with("message_"),
-        "Message ID should have 'message_' prefix"
+        "RuntimeMessage ID should have 'message_' prefix"
     );
 }

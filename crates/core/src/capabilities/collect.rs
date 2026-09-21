@@ -23,7 +23,7 @@
 use crate::capability_mcp_server::capability_mcp_servers_to_scoped;
 use crate::events::TokenUsage;
 use crate::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
-use crate::message::Message;
+use crate::message::RuntimeMessage;
 use crate::message_filter::MessageFilterProvider;
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolDefinition;
@@ -49,10 +49,10 @@ pub struct ModelViewContext<'a> {
 pub trait ModelViewProvider: Send + Sync {
     fn apply_model_view(
         &self,
-        messages: Vec<Message>,
+        messages: Vec<RuntimeMessage>,
         config: &serde_json::Value,
         context: &ModelViewContext<'_>,
-    ) -> Vec<Message>;
+    ) -> Vec<RuntimeMessage>;
 
     fn priority(&self) -> i32 {
         0
@@ -152,7 +152,7 @@ impl CollectedCapabilities {
 
     /// Apply post-load transforms from all message filter providers.
     /// Called after messages are loaded, filtered, and injected.
-    pub fn apply_post_load_filters(&self, messages: &mut Vec<crate::message::Message>) {
+    pub fn apply_post_load_filters(&self, messages: &mut Vec<crate::message::RuntimeMessage>) {
         for (provider, config) in &self.message_filter_providers {
             provider.post_load(messages, config);
         }
@@ -215,7 +215,7 @@ impl CollectedMessageFilters {
     }
 
     /// Apply post-load transforms from all message filter providers.
-    pub fn apply_post_load_filters(&self, messages: &mut Vec<crate::message::Message>) {
+    pub fn apply_post_load_filters(&self, messages: &mut Vec<crate::message::RuntimeMessage>) {
         for (provider, config) in &self.message_filter_providers {
             provider.post_load(messages, config);
         }
@@ -226,9 +226,9 @@ impl CollectedModelViewProviders {
     /// Apply all collected model-view providers in priority order.
     pub fn apply_model_view(
         &self,
-        mut messages: Vec<Message>,
+        mut messages: Vec<RuntimeMessage>,
         context: &ModelViewContext<'_>,
-    ) -> Vec<Message> {
+    ) -> Vec<RuntimeMessage> {
         for (provider, config) in &self.model_view_providers {
             messages = provider.apply_model_view(messages, config, context);
         }

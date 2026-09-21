@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::domains::sessions::SessionService;
 use crate::durable_seal::{DurableTaskSessionContext, extract_context};
-use crate::kernel_imports::{Caller, Message, TURN_STARTED};
+use crate::kernel_imports::{Caller, RuntimeMessage, TURN_STARTED};
 use crate::services::EventService;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{
@@ -78,7 +78,7 @@ pub async fn handle_failed_task(
         let shown = user_error.fallback_message();
         let context = EventContext::turn(turn_id, ctx.input_message_id);
 
-        let mut message = Message::assistant(shown.clone());
+        let mut message = RuntimeMessage::assistant(shown.clone());
         let mut metadata = std::collections::HashMap::new();
         user_error.apply_to_message_metadata(&mut metadata);
         message.metadata = Some(metadata);

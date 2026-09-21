@@ -156,13 +156,13 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _session_id: Uuid,
                 _message_id: Uuid,
-            ) -> CoreResult<Option<everruns_core::Message>> {
+            ) -> CoreResult<Option<everruns_core::RuntimeMessage>> {
                 unimplemented!()
             }
             async fn load_messages(
                 &self,
                 _session_id: Uuid,
-            ) -> CoreResult<Vec<everruns_core::Message>> {
+            ) -> CoreResult<Vec<everruns_core::RuntimeMessage>> {
                 Ok(vec![])
             }
             async fn emit_event(
@@ -347,13 +347,21 @@ macro_rules! mock_worker_adapters {
             }
             fn sqldb_store(
                 &self,
+                _org_id: i64,
             ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
                 unimplemented!()
             }
             fn storage_store(
                 &self,
+                _org_id: i64,
             ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
                 unimplemented!()
+            }
+
+            fn storage_store_unscoped(
+                &self,
+            ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+                self.storage_store(everruns_core::DEFAULT_ORG_ID)
             }
             fn image_artifact_store(
                 &self,

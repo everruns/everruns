@@ -86,7 +86,7 @@ tar.workspace = true
 
 # `default-features = false` drops bashkit's default `ring`; the rest of its
 # default set is restored explicitly so only the crypto backend changes (EVE-924).
-bashkit = { version = "0.18.0", default-features = false, features = ["scripted_tool", "jq", "tzdata", "aws-lc-rs"] }
+bashkit = { version = "0.18.1", default-features = false, features = ["scripted_tool", "jq", "tzdata", "aws-lc-rs"] }
 
 everruns-capability = { workspace = true }
 everruns-core = { path = "../core", features = ["openapi", "tree-sitter-outlines"] }
@@ -105,7 +105,7 @@ everruns-integrations-typesafe = { path = "../../integrations/typesafe" }
 everruns-integrations-bashkit.workspace = true
 everruns-integrations-web-fetch.workspace = true
 rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_decltype", "hooks"] }
-everruns-host = { path = "../host", features = ["direct-egress", "utility-openai", "observability"] }  # HostComposition and deployment-owned utility LLM/telemetry wiring
+everruns-host = { path = "../host", features = ["direct-egress", "utility-llm", "observability"] }  # HostComposition and deployment-owned utility LLM/telemetry wiring
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }
@@ -127,6 +127,7 @@ futures.workspace = true
 http-body-util = "0.1"
 serde_html_form = "0.4"  # Same deserializer axum-extra::extract::Query uses
 everruns-sdk.workspace = true
+everruns-test-support = { path = "../test-support", default-features = false }
 wiremock = "0.6"
 flate2.workspace = true
 tar.workspace = true

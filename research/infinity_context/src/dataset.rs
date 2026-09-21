@@ -262,11 +262,11 @@ pub fn write_results(
 // Event Helpers
 // ============================================================================
 
-use everruns_core::message::Message;
+use everruns_core::message::RuntimeMessage;
 
 /// Create an input.message event for a user message
 pub fn make_input_event(session_id: SessionId, content: impl Into<String>, sequence: i32) -> Event {
-    let message = Message::user(content);
+    let message = RuntimeMessage::user(content);
     Event::new(
         session_id,
         EventContext::empty(),
@@ -281,7 +281,7 @@ pub fn make_output_event(
     content: impl Into<String>,
     sequence: i32,
 ) -> Event {
-    let message = Message::assistant(content);
+    let message = RuntimeMessage::assistant(content);
     Event::new(
         session_id,
         EventContext::empty(),
@@ -307,7 +307,7 @@ pub fn make_output_event_with_tool_call(
         name: tool_name.into(),
         arguments: tool_arguments,
     };
-    let message = Message::assistant_with_tools(content, vec![tool_call]);
+    let message = RuntimeMessage::assistant_with_tools(content, vec![tool_call]);
     Event::new(
         session_id,
         EventContext::empty(),

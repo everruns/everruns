@@ -299,7 +299,7 @@ pub trait ChatDriver: Send + Sync {
     async fn chat_completion_stream(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream>;
 
@@ -307,7 +307,7 @@ pub trait ChatDriver: Send + Sync {
     async fn chat_completion(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         // One folding loop for the whole runtime: the same rules (and the
@@ -350,7 +350,7 @@ pub trait ChatDriver: Send + Sync {
     async fn chat_completion_non_streaming(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         self.chat_completion(endpoint, messages, config).await
@@ -459,7 +459,7 @@ impl ChatDriver for Box<dyn ChatDriver> {
     async fn chat_completion_stream(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         (**self)
@@ -470,7 +470,7 @@ impl ChatDriver for Box<dyn ChatDriver> {
     async fn chat_completion(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         (**self).chat_completion(endpoint, messages, config).await
@@ -483,7 +483,7 @@ impl ChatDriver for Box<dyn ChatDriver> {
     async fn chat_completion_non_streaming(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         (**self)
@@ -523,11 +523,11 @@ impl ChatDriver for Box<dyn ChatDriver> {
     }
 }
 
-// The message types moved to `llm_message` when this file outgrew what anyone
+// The message types moved to `message` when this file outgrew what anyone
 // can hold in their head; they are re-exported here so every existing path
 // keeps working.
-pub use crate::llm_message::{
-    LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole, fold_system_messages,
+pub use crate::message::{
+    LlmContentPart, Message, MessageContent, MessageRole, fold_system_messages,
 };
 
 // ============================================================================
@@ -899,7 +899,7 @@ impl LlmCallConfigBuilder {
     }
 }
 
-// The Message->LlmMessage adapters (plain, with-images, and image-file
+// The Message->Message adapters (plain, with-images, and image-file
 // helpers) live in everruns-core (`llm_conversions`): they depend on core
 // domain types (Message, ContentPart, ResolvedImage).
 
@@ -1210,7 +1210,7 @@ impl ChatDriver for CredentialGateDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &crate::runtime_provider::ProviderEndpoint,
-        _messages: Vec<LlmMessage>,
+        _messages: Vec<Message>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         Err(self.error())
@@ -1308,7 +1308,7 @@ impl ChatDriver for RequestOptionsDriver {
     async fn chat_completion_stream(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         self.inner
@@ -1319,7 +1319,7 @@ impl ChatDriver for RequestOptionsDriver {
     async fn chat_completion(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         self.inner
@@ -1334,7 +1334,7 @@ impl ChatDriver for RequestOptionsDriver {
     async fn chat_completion_non_streaming(
         &self,
         endpoint: &crate::runtime_provider::ProviderEndpoint,
-        messages: Vec<LlmMessage>,
+        messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         self.inner
@@ -1908,38 +1908,38 @@ mod tests {
 
     #[test]
     fn system_messages_fold_only_system_text_in_transcript_order() {
-        use LlmMessageRole::{Assistant, System, Tool, User};
+        use MessageRole::{Assistant, System, Tool, User};
         for (messages, expected) in [
             (vec![], None),
             (
                 vec![
-                    LlmMessage::text(User, "user"),
-                    LlmMessage::text(Assistant, "answer"),
-                    LlmMessage::text(Tool, "result"),
+                    Message::text(User, "user"),
+                    Message::text(Assistant, "answer"),
+                    Message::text(Tool, "result"),
                 ],
                 None,
             ),
-            (vec![LlmMessage::text(System, "")], Some("")),
+            (vec![Message::text(System, "")], Some("")),
             (
                 vec![
-                    LlmMessage::text(System, "rules"),
-                    LlmMessage::text(User, "question"),
+                    Message::text(System, "rules"),
+                    Message::text(User, "question"),
                 ],
                 Some("rules"),
             ),
             (
                 vec![
-                    LlmMessage::text(System, "first"),
-                    LlmMessage::text(User, "question"),
-                    LlmMessage::text(System, "second"),
-                    LlmMessage::text(Assistant, "answer"),
-                    LlmMessage::text(System, "third"),
+                    Message::text(System, "first"),
+                    Message::text(User, "question"),
+                    Message::text(System, "second"),
+                    Message::text(Assistant, "answer"),
+                    Message::text(System, "third"),
                 ],
                 Some("first\n\nsecond\n\nthird"),
             ),
             (
                 vec![
-                    LlmMessage::parts(
+                    Message::parts(
                         System,
                         vec![
                             LlmContentPart::text("foo"),
@@ -1948,7 +1948,7 @@ mod tests {
                             LlmContentPart::text("bar"),
                         ],
                     ),
-                    LlmMessage::text(System, "next"),
+                    Message::text(System, "next"),
                 ],
                 Some("foobar\n\nnext"),
             ),
@@ -1959,11 +1959,9 @@ mod tests {
 
     #[test]
     fn prefix_preserves_all_media_and_changes_only_the_first_text_part() {
-        let mut plain = LlmMessage::text(LlmMessageRole::User, "Hello");
+        let mut plain = Message::text(MessageRole::User, "Hello");
         plain.prepend_text_prefix("[Alice] ");
-        assert!(
-            matches!(plain.content, LlmMessageContent::Text(ref text) if text == "[Alice] Hello")
-        );
+        assert!(matches!(plain.content, MessageContent::Text(ref text) if text == "[Alice] Hello"));
         for (parts, expected) in [
             (vec![], vec![("text", "[Alice] ")]),
             (
@@ -1999,10 +1997,10 @@ mod tests {
                 vec![("text", "[Alice] "), ("text", "later")],
             ),
         ] {
-            let mut message = LlmMessage::parts(LlmMessageRole::Tool, parts);
+            let mut message = Message::parts(MessageRole::Tool, parts);
             message.tool_call_id = Some("call-1".into());
             message.prepend_text_prefix("[Alice] ");
-            let LlmMessageContent::Parts(parts) = &message.content else {
+            let MessageContent::Parts(parts) = &message.content else {
                 panic!("parts must remain parts")
             };
             let actual: Vec<_> = parts
@@ -2015,7 +2013,7 @@ mod tests {
                 })
                 .collect();
             assert_eq!(actual, expected);
-            assert_eq!(message.role, LlmMessageRole::Tool);
+            assert_eq!(message.role, MessageRole::Tool);
             assert_eq!(message.tool_call_id.as_deref(), Some("call-1"));
         }
     }
@@ -2026,7 +2024,7 @@ mod tests {
         async fn chat_completion_stream(
             &self,
             _: &ProviderEndpoint,
-            _: Vec<LlmMessage>,
+            _: Vec<Message>,
             _: &LlmCallConfig,
         ) -> Result<LlmResponseStream> {
             Ok(Box::pin(futures::stream::iter([
@@ -2088,7 +2086,7 @@ mod tests {
             async fn chat_completion_stream(
                 &self,
                 _: &ProviderEndpoint,
-                _: Vec<LlmMessage>,
+                _: Vec<Message>,
                 _: &LlmCallConfig,
             ) -> Result<LlmResponseStream> {
                 Ok(Box::pin(futures::stream::empty()))
@@ -2303,7 +2301,7 @@ mod tests {
             async fn chat_completion_stream(
                 &self,
                 _: &ProviderEndpoint,
-                _: Vec<LlmMessage>,
+                _: Vec<Message>,
                 _: &LlmCallConfig,
             ) -> Result<LlmResponseStream> {
                 panic!("unauthenticated stream dispatch")
@@ -2397,7 +2395,7 @@ mod tests {
             fn capture(
                 &self,
                 endpoint: &ProviderEndpoint,
-                messages: &[LlmMessage],
+                messages: &[Message],
                 config: &LlmCallConfig,
             ) {
                 assert_eq!(
@@ -2405,7 +2403,7 @@ mod tests {
                     Some("https://gateway.example/v1/probe")
                 );
                 assert_eq!(messages.len(), 1);
-                assert_eq!(messages[0].role, LlmMessageRole::User);
+                assert_eq!(messages[0].role, MessageRole::User);
                 assert_eq!(messages[0].content_as_text(), "request text");
                 self.0.lock().unwrap().push(config.clone());
             }
@@ -2415,7 +2413,7 @@ mod tests {
             async fn chat_completion_stream(
                 &self,
                 endpoint: &ProviderEndpoint,
-                messages: Vec<LlmMessage>,
+                messages: Vec<Message>,
                 config: &LlmCallConfig,
             ) -> Result<LlmResponseStream> {
                 self.capture(endpoint, &messages, config);
@@ -2426,7 +2424,7 @@ mod tests {
             async fn chat_completion(
                 &self,
                 endpoint: &ProviderEndpoint,
-                messages: Vec<LlmMessage>,
+                messages: Vec<Message>,
                 config: &LlmCallConfig,
             ) -> Result<LlmResponse> {
                 self.capture(endpoint, &messages, config);
@@ -2468,7 +2466,7 @@ mod tests {
             let mut stream = driver
                 .chat_completion_stream(
                     provider.endpoint(),
-                    vec![LlmMessage::text(LlmMessageRole::User, "request text")],
+                    vec![Message::text(MessageRole::User, "request text")],
                     &config,
                 )
                 .await
@@ -2486,7 +2484,7 @@ mod tests {
                 driver
                     .chat_completion(
                         provider.endpoint(),
-                        vec![LlmMessage::text(LlmMessageRole::User, "request text")],
+                        vec![Message::text(MessageRole::User, "request text")],
                         &config
                     )
                     .await

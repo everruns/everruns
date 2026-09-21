@@ -10,8 +10,8 @@
 // Messages are reconstructed from typed events when loaded.
 
 use crate::kernel_imports::{
-    ContentPart, Event, EventData, InputMessage, Message, MessageFilter, MessageHistory,
-    MessageQuery, MessageRetriever, MessageRole,
+    ContentPart, Event, EventData, InputMessage, MessageFilter, MessageHistory, MessageQuery,
+    MessageRetriever, RuntimeMessage, RuntimeMessageRole,
     events::{
         EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
     },
@@ -58,9 +58,9 @@ impl DbMessageRetriever {
     ///
     /// Note: This is provided for API layer convenience.
     /// Messages are stored via EventService as typed events.
-    pub async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
+    pub async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<RuntimeMessage> {
         // Create the message
-        let message = Message {
+        let message = RuntimeMessage {
             id: Uuid::now_v7().into(),
             role: input.role,
             content: input.content,
@@ -75,18 +75,18 @@ impl DbMessageRetriever {
         // Emit as typed event based on role
         let session_id: SessionId = session_id.into();
         let event_request = match message.role {
-            MessageRole::User => EventRequest::new(
+            RuntimeMessageRole::User => EventRequest::new(
                 session_id,
                 EventContext::empty(),
                 InputMessageData::new(message.clone()),
             ),
-            MessageRole::Agent => EventRequest::new(
+            RuntimeMessageRole::Agent => EventRequest::new(
                 session_id,
                 EventContext::empty(),
                 OutputMessageCompletedData::new(message.clone()),
             ),
             // System and ToolResult messages are not stored as separate events
-            MessageRole::System | MessageRole::ToolResult => {
+            RuntimeMessageRole::System | RuntimeMessageRole::ToolResult => {
                 return Ok(message);
             }
         };
@@ -99,12 +99,16 @@ impl DbMessageRetriever {
 
 #[async_trait]
 impl MessageRetriever for DbMessageRetriever {
-    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+    async fn get(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<RuntimeMessage>> {
         let messages = self.load(session_id).await?;
         Ok(messages.into_iter().find(|m| m.id == message_id))
     }
 
-    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
+    async fn load(&self, session_id: SessionId) -> Result<Vec<RuntimeMessage>> {
         let events = self.db.list_message_events(session_id).await.store_err()?;
 
         let mut messages = Vec::with_capacity(events.len());
@@ -121,7 +125,7 @@ impl MessageRetriever for DbMessageRetriever {
         Ok(messages)
     }
 
-    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<RuntimeMessage>> {
         Ok(self.load_filtered_history(query).await?.messages)
     }
 
@@ -208,7 +212,7 @@ impl MessageRetriever for DbMessageRetriever {
 // Event Parsing
 // ============================================================================
 
-/// Convert stored event data to a Message
+/// Convert stored event data to a RuntimeMessage
 ///
 /// Handles two formats:
 /// - Legacy format: full Event struct with id, type, data, etc.
@@ -216,9 +220,9 @@ impl MessageRetriever for DbMessageRetriever {
 fn event_to_message(
     data: &serde_json::Value,
     event_type: &str,
-) -> std::result::Result<Message, String> {
+) -> std::result::Result<RuntimeMessage, String> {
     // Helper to extract message from EventData
-    let extract_message = |event_data: EventData| -> std::result::Result<Message, String> {
+    let extract_message = |event_data: EventData| -> std::result::Result<RuntimeMessage, String> {
         match event_data {
             EventData::InputMessage(d) => Ok(d.message),
             EventData::OutputMessageCompleted(d) => Ok(d.message),
@@ -256,7 +260,7 @@ fn event_to_message(
 }
 
 /// Convert ToolCompletedData to a ToolResult message
-fn tool_completed_to_message(data: ToolCompletedData) -> Message {
+fn tool_completed_to_message(data: ToolCompletedData) -> RuntimeMessage {
     // Separate text and image parts from the result content
     let mut images: Vec<everruns_provider::tool_types::ToolResultImage> = Vec::new();
     let metadata = tool_result_metadata(&data);
@@ -291,9 +295,9 @@ fn tool_completed_to_message(data: ToolCompletedData) -> Message {
     });
 
     let mut message = if images.is_empty() {
-        Message::tool_result(&data.tool_call_id, result, data.error)
+        RuntimeMessage::tool_result(&data.tool_call_id, result, data.error)
     } else {
-        Message::tool_result_with_images(&data.tool_call_id, result, images)
+        RuntimeMessage::tool_result_with_images(&data.tool_call_id, result, images)
     };
     message.metadata = metadata;
     message
@@ -377,7 +381,7 @@ mod tests {
 
         let messages = retriever.load_filtered(query).await.unwrap();
 
-        let texts: Vec<_> = messages.iter().filter_map(Message::text).collect();
+        let texts: Vec<_> = messages.iter().filter_map(RuntimeMessage::text).collect();
         assert_eq!(texts, vec!["keep 2", "keep 3"]);
     }
 
@@ -393,7 +397,7 @@ mod tests {
 
         let messages = retriever.load_filtered(query).await.unwrap();
 
-        let texts: Vec<_> = messages.iter().filter_map(Message::text).collect();
+        let texts: Vec<_> = messages.iter().filter_map(RuntimeMessage::text).collect();
         assert_eq!(texts, vec!["m3", "m4", "m5"]);
     }
 
@@ -409,7 +413,7 @@ mod tests {
 
         let messages = retriever.load_filtered(query).await.unwrap();
 
-        let texts: Vec<_> = messages.iter().filter_map(Message::text).collect();
+        let texts: Vec<_> = messages.iter().filter_map(RuntimeMessage::text).collect();
         assert_eq!(texts, vec!["m4", "m5"]);
     }
     #[tokio::test]
@@ -439,24 +443,27 @@ mod tests {
                 .is_some_and(|text| text.contains("1 earlier messages"))
         );
 
-        let visible_texts: Vec<_> = messages[1..].iter().filter_map(Message::text).collect();
+        let visible_texts: Vec<_> = messages[1..]
+            .iter()
+            .filter_map(RuntimeMessage::text)
+            .collect();
         assert_eq!(visible_texts, vec!["rust 2", "rust 3"]);
     }
 
     // ========================================================================
-    // Test: Message constructors
+    // Test: RuntimeMessage constructors
     // ========================================================================
 
     #[test]
     fn test_user_message_content() {
-        let message = Message::user("Hello, world!");
+        let message = RuntimeMessage::user("Hello, world!");
         assert_eq!(message.content.len(), 1);
         assert!(matches!(&message.content[0], ContentPart::Text(t) if t.text == "Hello, world!"));
     }
 
     #[test]
     fn test_assistant_message_content() {
-        let message = Message::assistant("I can help you with that.");
+        let message = RuntimeMessage::assistant("I can help you with that.");
         assert_eq!(message.content.len(), 1);
         assert!(
             matches!(&message.content[0], ContentPart::Text(t) if t.text == "I can help you with that.")
@@ -477,7 +484,7 @@ mod tests {
                 arguments: json!({"city": "London"}),
             },
         ];
-        let message = Message::assistant_with_tools("Checking weather...", tool_calls);
+        let message = RuntimeMessage::assistant_with_tools("Checking weather...", tool_calls);
 
         assert_eq!(message.content.len(), 3); // 1 text + 2 tool calls
         assert!(matches!(&message.content[0], ContentPart::Text(_)));
@@ -487,15 +494,17 @@ mod tests {
 
     #[test]
     fn test_tool_result_success() {
-        let message = Message::tool_result("call_123", Some(json!({"temperature": 72})), None);
+        let message =
+            RuntimeMessage::tool_result("call_123", Some(json!({"temperature": 72})), None);
 
-        assert_eq!(message.role, MessageRole::ToolResult);
+        assert_eq!(message.role, RuntimeMessageRole::ToolResult);
         assert_eq!(message.tool_call_id(), Some("call_123"));
     }
 
     #[test]
     fn test_tool_result_error() {
-        let message = Message::tool_result("call_fail", None, Some("Division by zero".to_string()));
+        let message =
+            RuntimeMessage::tool_result("call_fail", None, Some("Division by zero".to_string()));
 
         if let ContentPart::ToolResult(tr) = &message.content[0] {
             assert!(tr.result.is_none());
@@ -506,12 +515,12 @@ mod tests {
     }
 
     // ========================================================================
-    // Test: Message helpers
+    // Test: RuntimeMessage helpers
     // ========================================================================
 
     #[test]
     fn test_message_text_helper() {
-        let message = Message::user("Hello!");
+        let message = RuntimeMessage::user("Hello!");
         assert_eq!(message.text(), Some("Hello!"));
     }
 
@@ -529,7 +538,7 @@ mod tests {
                 arguments: json!({}),
             },
         ];
-        let message = Message::assistant_with_tools("", tool_calls);
+        let message = RuntimeMessage::assistant_with_tools("", tool_calls);
 
         let extracted = message.tool_calls();
         assert_eq!(extracted.len(), 2);
@@ -539,10 +548,10 @@ mod tests {
 
     #[test]
     fn test_message_has_tool_calls() {
-        let without_tools = Message::assistant("Just text");
+        let without_tools = RuntimeMessage::assistant("Just text");
         assert!(!without_tools.has_tool_calls());
 
-        let with_tools = Message::assistant_with_tools(
+        let with_tools = RuntimeMessage::assistant_with_tools(
             "With tools",
             vec![ToolCall {
                 id: "call_1".to_string(),
@@ -554,13 +563,13 @@ mod tests {
     }
 
     // ========================================================================
-    // Test: Event to Message parsing
+    // Test: Event to RuntimeMessage parsing
     // ========================================================================
 
     #[test]
     fn test_parse_input_message_event() {
         let session_id = SessionId::new();
-        let message = Message::user("Hello from user!");
+        let message = RuntimeMessage::user("Hello from user!");
         let event = Event::new(
             session_id,
             EventContext::empty(),
@@ -572,14 +581,14 @@ mod tests {
 
         assert!(result.is_ok());
         let parsed = result.unwrap();
-        assert_eq!(parsed.role, MessageRole::User);
+        assert_eq!(parsed.role, RuntimeMessageRole::User);
         assert_eq!(parsed.text(), Some("Hello from user!"));
     }
 
     #[test]
     fn test_parse_output_message_completed_event() {
         let session_id = SessionId::new();
-        let message = Message::assistant("Hello from agent!");
+        let message = RuntimeMessage::assistant("Hello from agent!");
         let event = Event::new(
             session_id,
             EventContext::empty(),
@@ -591,7 +600,7 @@ mod tests {
 
         assert!(result.is_ok());
         let parsed = result.unwrap();
-        assert_eq!(parsed.role, MessageRole::Agent);
+        assert_eq!(parsed.role, RuntimeMessageRole::Agent);
         assert_eq!(parsed.text(), Some("Hello from agent!"));
     }
 
@@ -611,7 +620,7 @@ mod tests {
 
         assert!(result.is_ok());
         let parsed = result.unwrap();
-        assert_eq!(parsed.role, MessageRole::ToolResult);
+        assert_eq!(parsed.role, RuntimeMessageRole::ToolResult);
         assert_eq!(parsed.tool_call_id(), Some("call_123"));
     }
 
@@ -632,7 +641,7 @@ mod tests {
 
         assert!(result.is_ok());
         let parsed = result.unwrap();
-        assert_eq!(parsed.role, MessageRole::ToolResult);
+        assert_eq!(parsed.role, RuntimeMessageRole::ToolResult);
 
         if let ContentPart::ToolResult(tr) = &parsed.content[0] {
             assert_eq!(tr.error.as_deref(), Some("File not found"));
@@ -644,7 +653,7 @@ mod tests {
     #[test]
     fn test_parse_output_message_with_tool_calls() {
         let session_id = SessionId::new();
-        let message = Message::assistant_with_tools(
+        let message = RuntimeMessage::assistant_with_tools(
             "Let me search for that",
             vec![ToolCall {
                 id: "call_search".to_string(),
@@ -671,7 +680,7 @@ mod tests {
     #[test]
     fn test_parse_input_message_preserves_external_actor() {
         let session_id = SessionId::new();
-        let mut message = Message::user("Hello from Slack!");
+        let mut message = RuntimeMessage::user("Hello from Slack!");
         message.external_actor = Some(everruns_core::ExternalActor {
             actor_id: "U0123456789".to_string(),
             actor_name: Some("Alice".to_string()),
@@ -690,7 +699,7 @@ mod tests {
 
         assert!(result.is_ok());
         let parsed = result.unwrap();
-        assert_eq!(parsed.role, MessageRole::User);
+        assert_eq!(parsed.role, RuntimeMessageRole::User);
         assert_eq!(parsed.text(), Some("Hello from Slack!"));
 
         let actor = parsed
@@ -705,7 +714,7 @@ mod tests {
     #[test]
     fn test_parse_input_message_external_actor_fallback_to_id() {
         let session_id = SessionId::new();
-        let mut message = Message::user("Hello!");
+        let mut message = RuntimeMessage::user("Hello!");
         message.external_actor = Some(everruns_core::ExternalActor {
             actor_id: "U0123456789".to_string(),
             actor_name: None,

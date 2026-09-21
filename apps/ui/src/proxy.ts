@@ -61,7 +61,6 @@ export const config = {
     "/",
     "/agent-identities/:path*",
     "/agents/:path*",
-    "/apps/:path*",
     "/capabilities/:path*",
     "/chat/:path*",
     "/chats/:path*",

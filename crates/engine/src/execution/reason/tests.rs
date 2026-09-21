@@ -252,7 +252,10 @@ fn stream_stall_deadline_advances_on_output_progress() {
 async fn test_repair_dangling_tool_calls_no_tool_calls() {
     use crate::events::EventContext;
     use crate::typed_id::SessionId;
-    let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
+    let messages = vec![
+        RuntimeMessage::user("Hello"),
+        RuntimeMessage::assistant("Hi there!"),
+    ];
     let emitter = crate::test_fixtures::NoopEventEmitter;
     let session_id = SessionId::new();
     let ctx = EventContext::empty();
@@ -272,9 +275,9 @@ async fn test_repair_dangling_tool_calls_with_result() {
     };
 
     let messages = vec![
-        Message::user("What's the weather?"),
-        Message::assistant_with_tools("Let me check", vec![tool_call]),
-        Message::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
+        RuntimeMessage::user("What's the weather?"),
+        RuntimeMessage::assistant_with_tools("Let me check", vec![tool_call]),
+        RuntimeMessage::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
     ];
 
     let emitter = crate::test_fixtures::NoopEventEmitter;
@@ -296,9 +299,9 @@ async fn test_repair_dangling_tool_calls_missing_result_no_store() {
     };
 
     let messages = vec![
-        Message::user("Search for rust"),
-        Message::assistant_with_tools("Searching...", vec![tool_call]),
-        Message::user("Actually, never mind"),
+        RuntimeMessage::user("Search for rust"),
+        RuntimeMessage::assistant_with_tools("Searching...", vec![tool_call]),
+        RuntimeMessage::user("Actually, never mind"),
     ];
 
     let emitter = crate::test_fixtures::NoopEventEmitter;
@@ -308,7 +311,7 @@ async fn test_repair_dangling_tool_calls_missing_result_no_store() {
         repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01").await;
     // Should have added a cancelled result
     assert_eq!(patched.len(), 4);
-    assert_eq!(patched[2].role, MessageRole::ToolResult);
+    assert_eq!(patched[2].role, RuntimeMessageRole::ToolResult);
     assert_eq!(patched[2].tool_call_id(), Some("call_456"));
 }
 
@@ -369,8 +372,8 @@ async fn test_repair_dangling_tool_calls_settled_result_replayed() {
         arguments: serde_json::json!({"x": 21}),
     };
     let messages = vec![
-        Message::user("Compute"),
-        Message::assistant_with_tools("Computing...", vec![tool_call]),
+        RuntimeMessage::user("Compute"),
+        RuntimeMessage::assistant_with_tools("Computing...", vec![tool_call]),
     ];
 
     let store = MockSettledStore;
@@ -389,7 +392,7 @@ async fn test_repair_dangling_tool_calls_settled_result_replayed() {
 
     // Settled result should be replayed (not cancelled message)
     assert_eq!(patched.len(), 3);
-    assert_eq!(patched[2].role, MessageRole::ToolResult);
+    assert_eq!(patched[2].role, RuntimeMessageRole::ToolResult);
     assert_eq!(patched[2].tool_call_id(), Some("call_789"));
 }
 
@@ -443,8 +446,8 @@ async fn test_repair_dangling_tool_calls_interrupted_result_replayed() {
         arguments: serde_json::json!({}),
     };
     let messages = vec![
-        Message::user("Do it"),
-        Message::assistant_with_tools("Doing...", vec![tool_call]),
+        RuntimeMessage::user("Do it"),
+        RuntimeMessage::assistant_with_tools("Doing...", vec![tool_call]),
     ];
 
     let store = MockInterruptedStore;
@@ -463,7 +466,7 @@ async fn test_repair_dangling_tool_calls_interrupted_result_replayed() {
 
     assert_eq!(patched.len(), 3);
     let repair = &patched[2];
-    assert_eq!(repair.role, MessageRole::ToolResult);
+    assert_eq!(repair.role, RuntimeMessageRole::ToolResult);
     assert_eq!(repair.tool_call_id(), Some("call_int"));
     // Interrupted replay uses the stored error or fallback text; must contain "interrupted"
     let content = format!("{:?}", repair);
@@ -521,8 +524,8 @@ async fn test_repair_dangling_tool_calls_running_synthesized() {
         arguments: serde_json::json!({}),
     };
     let messages = vec![
-        Message::user("Start job"),
-        Message::assistant_with_tools("Starting...", vec![tool_call]),
+        RuntimeMessage::user("Start job"),
+        RuntimeMessage::assistant_with_tools("Starting...", vec![tool_call]),
     ];
 
     let store = MockRunningStore;
@@ -541,7 +544,7 @@ async fn test_repair_dangling_tool_calls_running_synthesized() {
 
     assert_eq!(patched.len(), 3);
     let repair = &patched[2];
-    assert_eq!(repair.role, MessageRole::ToolResult);
+    assert_eq!(repair.role, RuntimeMessageRole::ToolResult);
     assert_eq!(repair.tool_call_id(), Some("call_run"));
     // Running stale claim must warn "uncertain; do not retry automatically"
     let content = format!("{:?}", repair);
@@ -597,8 +600,8 @@ async fn test_repair_dangling_tool_calls_store_error_unknown() {
         arguments: serde_json::json!({}),
     };
     let messages = vec![
-        Message::user("Do risky op"),
-        Message::assistant_with_tools("On it...", vec![tool_call]),
+        RuntimeMessage::user("Do risky op"),
+        RuntimeMessage::assistant_with_tools("On it...", vec![tool_call]),
     ];
 
     let store = MockErrorStore;
@@ -617,7 +620,7 @@ async fn test_repair_dangling_tool_calls_store_error_unknown() {
 
     assert_eq!(patched.len(), 3);
     let repair = &patched[2];
-    assert_eq!(repair.role, MessageRole::ToolResult);
+    assert_eq!(repair.role, RuntimeMessageRole::ToolResult);
     assert_eq!(repair.tool_call_id(), Some("call_err"));
     // Store error must NOT say "safe to retry"
     let content = format!("{:?}", repair);
@@ -811,7 +814,7 @@ use crate::ChatDriver;
 use crate::compaction_policy::{
     CompactionPolicy, CompactionSettings, CompactionStrategy, ObservationMaskingResult,
 };
-use crate::driver_registry::{LlmMessage, LlmResponseStream};
+use crate::driver_registry::{LlmResponseStream, Message};
 use crate::events::{
     CompactionFailStage, CompactionSkipReason, CompactionTrigger, EventData, TokenUsage,
 };
@@ -834,15 +837,18 @@ impl CompactionPolicy for LifecycleStubPolicy {
         }
     }
 
-    fn estimate_total_tokens(&self, _messages: &[LlmMessage]) -> usize {
+    fn estimate_total_tokens(&self, _messages: &[Message]) -> usize {
         90_000
     }
 
-    fn total_tool_result_bytes(&self, _messages: &[everruns_core::message::Message]) -> usize {
+    fn total_tool_result_bytes(
+        &self,
+        _messages: &[everruns_core::message::RuntimeMessage],
+    ) -> usize {
         0
     }
 
-    fn should_compact_proactively(&self, _messages: &[LlmMessage], _context_window: usize) -> bool {
+    fn should_compact_proactively(&self, _messages: &[Message], _context_window: usize) -> bool {
         self.window_pressure
     }
 
@@ -855,7 +861,7 @@ impl CompactionPolicy for LifecycleStubPolicy {
         false
     }
 
-    fn apply_observation_masking(&self, _messages: &[LlmMessage]) -> ObservationMaskingResult {
+    fn apply_observation_masking(&self, _messages: &[Message]) -> ObservationMaskingResult {
         ObservationMaskingResult {
             messages: vec![],
             masked_count: 0,
@@ -864,10 +870,10 @@ impl CompactionPolicy for LifecycleStubPolicy {
 
     fn aggressive_trim(
         &self,
-        messages: &[LlmMessage],
+        messages: &[Message],
         _target_tokens: usize,
         _preserve_system: bool,
-    ) -> Vec<LlmMessage> {
+    ) -> Vec<Message> {
         messages.to_vec()
     }
 
@@ -875,16 +881,16 @@ impl CompactionPolicy for LifecycleStubPolicy {
         "summarize".to_string()
     }
 
-    fn format_messages_for_summarization(&self, _messages: &[LlmMessage]) -> String {
+    fn format_messages_for_summarization(&self, _messages: &[Message]) -> String {
         String::new()
     }
 
     fn compose_summary_with_recent(
         &self,
-        _system_message: Option<LlmMessage>,
+        _system_message: Option<Message>,
         _summary_text: &str,
-        recent_messages: &[LlmMessage],
-    ) -> Vec<LlmMessage> {
+        recent_messages: &[Message],
+    ) -> Vec<Message> {
         recent_messages.to_vec()
     }
 }
@@ -898,7 +904,7 @@ impl ChatDriver for NoNativeCompactDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        _messages: Vec<LlmMessage>,
+        _messages: Vec<Message>,
         _config: &crate::driver_registry::LlmCallConfig,
     ) -> ProviderResult<LlmResponseStream> {
         unimplemented!("proactive skip path never streams")
@@ -914,7 +920,7 @@ impl ChatDriver for FailingCompactDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        _messages: Vec<LlmMessage>,
+        _messages: Vec<Message>,
         _config: &crate::driver_registry::LlmCallConfig,
     ) -> ProviderResult<LlmResponseStream> {
         unimplemented!("proactive path never streams")
@@ -942,7 +948,7 @@ impl ChatDriver for InstallingCompactDriver {
     async fn chat_completion_stream(
         &self,
         _endpoint: &ProviderEndpoint,
-        _messages: Vec<LlmMessage>,
+        _messages: Vec<Message>,
         _config: &crate::driver_registry::LlmCallConfig,
     ) -> ProviderResult<LlmResponseStream> {
         unimplemented!("proactive path never streams")
@@ -1096,7 +1102,7 @@ async fn proactive_pressure_without_native_support_emits_skip() {
     let emitter = TestEventEmitter::new();
     let event_context = crate::events::EventContext::default();
     let ctx = lifecycle_test_context(&policy, &driver, &emitter, &event_context, None);
-    let mut messages: Vec<LlmMessage> = vec![];
+    let mut messages: Vec<Message> = vec![];
     let mut config = lifecycle_test_config();
 
     let outcome = apply_proactive_compaction(ctx, &mut messages, &mut config)
@@ -1129,7 +1135,7 @@ async fn proactive_checkpoint_install_failure_emits_failed() {
     let store: std::sync::Arc<dyn crate::CompactionCheckpointStore> =
         std::sync::Arc::new(FailingInstallStore);
     let ctx = lifecycle_test_context(&policy, &driver, &emitter, &event_context, Some(&store));
-    let mut messages: Vec<LlmMessage> = vec![];
+    let mut messages: Vec<Message> = vec![];
     let mut config = lifecycle_test_config();
 
     let result = apply_proactive_compaction(ctx, &mut messages, &mut config).await;
@@ -1167,7 +1173,7 @@ async fn proactive_endpoint_error_without_fallback_install_emits_skipped() {
     let store: std::sync::Arc<dyn crate::CompactionCheckpointStore> =
         std::sync::Arc::new(LifecycleStubStore);
     let ctx = lifecycle_test_context(&policy, &driver, &emitter, &event_context, Some(&store));
-    let mut messages: Vec<LlmMessage> = vec![];
+    let mut messages: Vec<Message> = vec![];
     let mut config = lifecycle_test_config();
 
     let outcome = apply_proactive_compaction(ctx, &mut messages, &mut config)

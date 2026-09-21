@@ -592,7 +592,7 @@ mod tests {
     async fn missing_token_returns_connection_required() {
         let context = ToolContext::new(SessionId::new());
         match get_github_token(&context).await {
-            Err(ToolExecutionResult::ConnectionRequired { provider }) => {
+            Err(ToolExecutionResult::ConnectionRequired { provider, .. }) => {
                 assert_eq!(provider, GITHUB_CONNECTION_PROVIDER)
             }
             other => panic!("expected connection required, got {other:?}"),
@@ -662,7 +662,7 @@ mod tests {
             }));
 
         match get_github_token(&context).await {
-            Err(ToolExecutionResult::ConnectionRequired { provider }) => {
+            Err(ToolExecutionResult::ConnectionRequired { provider, .. }) => {
                 assert_eq!(provider, GITHUB_CONNECTION_PROVIDER)
             }
             other => panic!("expected connection required, got {other:?}"),
@@ -686,7 +686,7 @@ mod tests {
         context = context.with_session_store(Arc::new(MockSessionStore { session }));
 
         match get_github_token(&context).await {
-            Err(ToolExecutionResult::ConnectionRequired { provider }) => {
+            Err(ToolExecutionResult::ConnectionRequired { provider, .. }) => {
                 assert_eq!(provider, GITHUB_CONNECTION_PROVIDER)
             }
             other => panic!("expected connection required, got {other:?}"),

@@ -1,13 +1,18 @@
 //! System utility LLM service.
 //!
 //! This is a host-owned service for capability internals, not an agent-visible
-//! model provider. It is configured once per deployment and deliberately keeps
-//! the model fixed so call sites cannot turn it into a user-selectable model.
+//! model provider. Provider and model are configured once per deployment; a
+//! request carries no model, so call sites cannot turn it into a
+//! user-selectable model.
 
-use crate::{AgentLoopError, LlmCallConfig, LlmMessage, LlmResponse, LlmResponseStream, Result};
+use crate::driver_registry::{Message, MessageRole};
+use crate::{AgentLoopError, LlmCallConfig, LlmResponse, LlmResponseStream, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
+/// Default utility model. A deployment can override it (see
+/// `everruns-host`'s `UTILITY_LLM_MODEL` environment variable); the model is
+/// chosen once per deployment and never by a caller, agent, or session.
 pub const UTILITY_LLM_MODEL: &str = "gpt-5.6-luna";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,7 +44,7 @@ impl UtilityLlmReasoningEffort {
 
 #[derive(Debug, Clone)]
 pub struct UtilityLlmRequest {
-    pub messages: Vec<LlmMessage>,
+    pub messages: Vec<Message>,
     pub reasoning_effort: Option<UtilityLlmReasoningEffort>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
@@ -47,7 +52,7 @@ pub struct UtilityLlmRequest {
 }
 
 impl UtilityLlmRequest {
-    pub fn new(messages: Vec<LlmMessage>) -> Self {
+    pub fn new(messages: Vec<Message>) -> Self {
         Self {
             messages,
             reasoning_effort: None,
@@ -58,10 +63,7 @@ impl UtilityLlmRequest {
     }
 
     pub fn user_text(prompt: impl Into<String>) -> Self {
-        Self::new(vec![LlmMessage::text(
-            crate::LlmMessageRole::User,
-            prompt.into(),
-        )])
+        Self::new(vec![Message::text(MessageRole::User, prompt.into())])
     }
 
     pub fn with_reasoning_effort(mut self, effort: UtilityLlmReasoningEffort) -> Self {
@@ -85,14 +87,17 @@ impl UtilityLlmRequest {
     }
 
     /// Convert the host-neutral request into the provider-driver inputs.
-    pub fn into_driver_request(self) -> Result<(Vec<LlmMessage>, LlmCallConfig)> {
+    ///
+    /// The model comes from the host service, not from the request: callers
+    /// build a `UtilityLlmRequest` with no way to name one.
+    pub fn into_driver_request(self, model: &str) -> Result<(Vec<Message>, LlmCallConfig)> {
         if self.messages.is_empty() {
             return Err(AgentLoopError::llm(
                 "utility LLM request must include at least one message",
             ));
         }
 
-        let mut config = LlmCallConfig::new(UTILITY_LLM_MODEL);
+        let mut config = LlmCallConfig::new(model);
         config.temperature = self.temperature;
         config.max_tokens = self.max_tokens;
         config.reasoning_effort = self.reasoning_effort.map(Into::into);
@@ -143,7 +148,6 @@ impl UtilityLlmService for DisabledUtilityLlmService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::LlmMessageRole;
 
     #[tokio::test]
     async fn disabled_service_rejects_streaming_and_nonstreaming_requests() {
@@ -171,10 +175,10 @@ mod tests {
     #[test]
     fn default_request_preserves_user_text_and_disables_agent_controls() {
         let (messages, config) = UtilityLlmRequest::user_text("summarize α")
-            .into_driver_request()
+            .into_driver_request(UTILITY_LLM_MODEL)
             .unwrap();
         assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].role, LlmMessageRole::User);
+        assert_eq!(messages[0].role, MessageRole::User);
         assert_eq!(messages[0].content_as_text(), "summarize α");
         assert_eq!(config.model, "gpt-5.6-luna");
         assert_eq!(config.reasoning_effort, None);
@@ -204,8 +208,8 @@ mod tests {
             (UtilityLlmReasoningEffort::High, "high"),
         ] {
             let (messages, config) = UtilityLlmRequest::new(vec![
-                LlmMessage::text(LlmMessageRole::System, "Classify"),
-                LlmMessage::text(LlmMessageRole::User, "Input α"),
+                Message::text(MessageRole::System, "Classify"),
+                Message::text(MessageRole::User, "Input α"),
             ])
             .with_reasoning_effort(effort)
             .with_temperature(0.25)
@@ -213,7 +217,7 @@ mod tests {
             .with_metadata("source", "old")
             .with_metadata("request", "request_1")
             .with_metadata("source", "judge")
-            .into_driver_request()
+            .into_driver_request(UTILITY_LLM_MODEL)
             .unwrap();
             assert_eq!(
                 messages
@@ -221,8 +225,8 @@ mod tests {
                     .map(|m| (m.role.clone(), m.content_as_text()))
                     .collect::<Vec<_>>(),
                 [
-                    (LlmMessageRole::System, "Classify".into()),
-                    (LlmMessageRole::User, "Input α".into())
+                    (MessageRole::System, "Classify".into()),
+                    (MessageRole::User, "Input α".into())
                 ]
             );
             assert_eq!(config.reasoning_effort.map(|e| e.as_str()), Some(expected));
@@ -241,9 +245,17 @@ mod tests {
     }
 
     #[test]
+    fn model_comes_from_the_host_service_not_the_request() {
+        let (_, config) = UtilityLlmRequest::user_text("summarize α")
+            .into_driver_request("openai/gpt-5.6-luna")
+            .unwrap();
+        assert_eq!(config.model, "openai/gpt-5.6-luna");
+    }
+
+    #[test]
     fn request_requires_messages() {
         let error = UtilityLlmRequest::new(vec![])
-            .into_driver_request()
+            .into_driver_request(UTILITY_LLM_MODEL)
             .unwrap_err();
         assert_eq!(
             error.to_string(),

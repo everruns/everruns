@@ -542,7 +542,7 @@ async fn extract_metrics_from_events(
                 metrics.messages_in_context = data
                     .messages
                     .iter()
-                    .filter(|m| !matches!(m.role, everruns_core::message::MessageRole::System))
+                    .filter(|m| !matches!(m.role, everruns_core::message::RuntimeMessageRole::System))
                     .count();
             }
         }

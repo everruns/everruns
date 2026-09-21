@@ -235,16 +235,12 @@ service WorkerService {
     // Session-scoped SQL databases (SQLite over PostgreSQL VFS)
 
     // Create a named database in a session
-    rpc SessionSqlDbCreateDatabase(SessionSqlDbCreateDatabaseRequest) returns (SessionSqlDbCreateDatabaseResponse);
 
     // List all databases for a session
-    rpc SessionSqlDbListDatabases(SessionSqlDbListDatabasesRequest) returns (SessionSqlDbListDatabasesResponse);
 
     // Get metadata for a specific database
-    rpc SessionSqlDbGetDatabase(SessionSqlDbGetDatabaseRequest) returns (SessionSqlDbGetDatabaseResponse);
 
     // Delete a database and all its pages
-    rpc SessionSqlDbDeleteDatabase(SessionSqlDbDeleteDatabaseRequest) returns (SessionSqlDbDeleteDatabaseResponse);
 
     // Execute DDL/DML SQL (auto-creates database if needed)
     rpc SessionSqlDbExecute(SessionSqlDbExecuteRequest) returns (SessionSqlDbExecuteResponse);
@@ -253,7 +249,6 @@ service WorkerService {
     rpc SessionSqlDbQuery(SessionSqlDbQueryRequest) returns (SessionSqlDbQueryResponse);
 
     // Get schema for tables in a database
-    rpc SessionSqlDbSchema(SessionSqlDbSchemaRequest) returns (SessionSqlDbSchemaResponse);
 
     // === Platform management operations ===
     // Used by the platform capability to manage org-wide entities
@@ -265,37 +260,20 @@ service WorkerService {
     rpc InvokePlatformCommandSurface(InvokePlatformCommandSurfaceRequest) returns (InvokePlatformCommandSurfaceResponse);
 
     // Harness operations
-    rpc PlatformListHarnesses(PlatformListHarnessesRequest) returns (PlatformListHarnessesResponse);
-    rpc PlatformCreateHarness(PlatformCreateHarnessRequest) returns (PlatformCreateHarnessResponse);
-    rpc PlatformUpdateHarness(PlatformUpdateHarnessRequest) returns (PlatformUpdateHarnessResponse);
-    rpc PlatformDeleteHarness(PlatformDeleteHarnessRequest) returns (PlatformDeleteHarnessResponse);
-    rpc PlatformCopyHarness(PlatformCopyHarnessRequest) returns (PlatformCopyHarnessResponse);
 
     // Agent operations
-    rpc PlatformListAgents(PlatformListAgentsRequest) returns (PlatformListAgentsResponse);
-    rpc PlatformCreateAgent(PlatformCreateAgentRequest) returns (PlatformCreateAgentResponse);
-    rpc PlatformUpdateAgent(PlatformUpdateAgentRequest) returns (PlatformUpdateAgentResponse);
-    rpc PlatformDeleteAgent(PlatformDeleteAgentRequest) returns (PlatformDeleteAgentResponse);
 
     // Session operations
-    rpc PlatformListSessions(PlatformListSessionsRequest) returns (PlatformListSessionsResponse);
-    rpc PlatformCreateSession(PlatformCreateSessionRequest) returns (PlatformCreateSessionResponse);
-    rpc PlatformDeleteSession(PlatformDeleteSessionRequest) returns (PlatformDeleteSessionResponse);
 
     // Messaging operations
-    rpc PlatformSendMessage(PlatformSendMessageRequest) returns (PlatformSendMessageResponse);
-    rpc PlatformGetMessages(PlatformGetMessagesRequest) returns (PlatformGetMessagesResponse);
     rpc InvokeScheduledAppChannel(InvokeScheduledAppChannelRequest) returns (InvokeScheduledAppChannelResponse);
     rpc InvokeAgentTrigger(InvokeAgentTriggerRequest) returns (InvokeAgentTriggerResponse);
 
     // Turn management
-    rpc PlatformWaitForIdle(PlatformWaitForIdleRequest) returns (PlatformWaitForIdleResponse);
 
     // Capability discovery
-    rpc PlatformListCapabilities(PlatformListCapabilitiesRequest) returns (PlatformListCapabilitiesResponse);
 
     // Base URL for UI links
-    rpc PlatformGetBaseUrl(PlatformGetBaseUrlRequest) returns (PlatformGetBaseUrlResponse);
 
     // === Budget and rate-limit operations ===
     // Check budget status for a session (used by check_budget tool)
@@ -303,6 +281,12 @@ service WorkerService {
 
     // Gate outbound tool calls through the control-plane org rate limiter.
     rpc CheckOutboundToolRateLimit(CheckOutboundToolRateLimitRequest) returns (CheckOutboundToolRateLimitResponse);
+
+    // === Slack endpoint actions (EVE-1024) ===
+    // The native `slack` capability names an action and the control plane
+    // performs it as the session's own endpoint bot. The action crosses the
+    // wire; the endpoint's bot_token never does.
+    rpc InvokeSlackAction(InvokeSlackActionRequest) returns (InvokeSlackActionResponse);
 
     // === Machine payment operations ===
     // Execute a paid capability request through the control-plane payment authority.
@@ -1604,15 +1588,6 @@ message CountActiveOrgSchedulesResponse {
 // Session SQL database types
 // ============================================================================
 
-// Database metadata (mirrors core::session_sqldb::DatabaseInfo)
-message SessionSqlDbDatabaseInfo {
-    string name = 1;
-    int64 size_bytes = 2;
-    int32 page_count = 3;
-    Timestamp created_at = 4;
-    Timestamp updated_at = 5;
-}
-
 // Column schema (mirrors core::session_sqldb::ColumnSchema)
 message SessionSqlDbColumnSchema {
     string name = 1;
@@ -1631,46 +1606,11 @@ message SessionSqlDbTableSchema {
 
 // === Create database ===
 
-message SessionSqlDbCreateDatabaseRequest {
-    Uuid session_id = 1;
-    string name = 2;
-}
-
-message SessionSqlDbCreateDatabaseResponse {
-    SessionSqlDbDatabaseInfo database = 1;
-}
-
 // === List databases ===
-
-message SessionSqlDbListDatabasesRequest {
-    Uuid session_id = 1;
-}
-
-message SessionSqlDbListDatabasesResponse {
-    repeated SessionSqlDbDatabaseInfo databases = 1;
-}
 
 // === Get database ===
 
-message SessionSqlDbGetDatabaseRequest {
-    Uuid session_id = 1;
-    string name = 2;
-}
-
-message SessionSqlDbGetDatabaseResponse {
-    optional SessionSqlDbDatabaseInfo database = 1;
-}
-
 // === Delete database ===
-
-message SessionSqlDbDeleteDatabaseRequest {
-    Uuid session_id = 1;
-    string name = 2;
-}
-
-message SessionSqlDbDeleteDatabaseResponse {
-    bool deleted = 1;
-}
 
 // === Execute SQL (DDL/DML) ===
 
@@ -1702,26 +1642,9 @@ message SessionSqlDbQueryResponse {
 
 // === Schema ===
 
-message SessionSqlDbSchemaRequest {
-    Uuid session_id = 1;
-    string db_name = 2;
-    optional string table = 3;
-}
-
-message SessionSqlDbSchemaResponse {
-    repeated SessionSqlDbTableSchema tables = 1;
-}
-
 // ============================================================================
 // Platform management types
 // ============================================================================
-
-// Simplified message for platform management (role + text + timestamp)
-message PlatformMessage {
-    string role = 1;
-    string content = 2;
-    Timestamp created_at = 3;
-}
 
 // === Generic domain command transport ===
 
@@ -1796,155 +1719,11 @@ message InvokePlatformCommandSurfaceResponse {
 
 // === Harness operations ===
 
-message PlatformListHarnessesRequest {
-    int64 org_id = 1;
-}
-
-message PlatformListHarnessesResponse {
-    repeated Harness harnesses = 1;
-}
-
-message PlatformCreateHarnessRequest {
-    int64 org_id = 1;
-    string name = 2;
-    optional string description = 3;
-    string system_prompt = 4;
-    repeated string capabilities = 5;
-    optional Uuid parent_harness_id = 6;
-    optional string display_name = 7;
-}
-
-message PlatformCreateHarnessResponse {
-    Harness harness = 1;
-}
-
-message PlatformUpdateHarnessRequest {
-    int64 org_id = 1;
-    Uuid harness_id = 2;
-    optional string name = 3;
-    optional string description = 4;
-    optional string system_prompt = 5;
-    optional Uuid parent_harness_id = 6;
-    optional bool clear_parent_harness_id = 7;
-    optional string display_name = 8;
-}
-
-message PlatformUpdateHarnessResponse {
-    Harness harness = 1;
-}
-
-message PlatformDeleteHarnessRequest {
-    int64 org_id = 1;
-    Uuid harness_id = 2;
-}
-
-message PlatformDeleteHarnessResponse {}
-
-message PlatformCopyHarnessRequest {
-    int64 org_id = 1;
-    Uuid harness_id = 2;
-    optional string new_name = 3;
-}
-
-message PlatformCopyHarnessResponse {
-    Harness harness = 1;
-}
-
 // === Agent operations ===
-
-message PlatformListAgentsRequest {
-    int64 org_id = 1;
-}
-
-message PlatformListAgentsResponse {
-    repeated Agent agents = 1;
-}
-
-message PlatformCreateAgentRequest {
-    int64 org_id = 1;
-    string name = 2;
-    optional string description = 3;
-    string system_prompt = 4;
-    repeated string capabilities = 5;
-    optional string display_name = 6;
-}
-
-message PlatformCreateAgentResponse {
-    Agent agent = 1;
-}
-
-message PlatformUpdateAgentRequest {
-    int64 org_id = 1;
-    Uuid agent_id = 2;
-    optional string name = 3;
-    optional string description = 4;
-    optional string system_prompt = 5;
-    optional string display_name = 6;
-}
-
-message PlatformUpdateAgentResponse {
-    Agent agent = 1;
-}
-
-message PlatformDeleteAgentRequest {
-    int64 org_id = 1;
-    Uuid agent_id = 2;
-}
-
-message PlatformDeleteAgentResponse {}
 
 // === Session operations ===
 
-message PlatformListSessionsRequest {
-    int64 org_id = 1;
-    optional uint32 limit = 2;
-    optional Uuid agent_id = 3;
-}
-
-message PlatformListSessionsResponse {
-    repeated Session sessions = 1;
-}
-
-message PlatformCreateSessionRequest {
-    int64 org_id = 1;
-    Uuid harness_id = 2;
-    optional Uuid agent_id = 3;
-    optional string title = 4;
-    optional string locale = 5;
-    optional string blueprint_id = 6;
-    optional string blueprint_config_json = 7;
-}
-
-message PlatformCreateSessionResponse {
-    Session session = 1;
-}
-
-message PlatformDeleteSessionRequest {
-    int64 org_id = 1;
-    Uuid session_id = 2;
-}
-
-message PlatformDeleteSessionResponse {}
-
 // === Messaging operations ===
-
-message PlatformSendMessageRequest {
-    int64 org_id = 1;
-    Uuid session_id = 2;
-    string content = 3;
-}
-
-message PlatformSendMessageResponse {}
-
-message PlatformGetMessagesRequest {
-    int64 org_id = 1;
-    Uuid session_id = 2;
-    optional uint32 limit = 3;
-}
-
-message PlatformGetMessagesResponse {
-    repeated PlatformMessage messages = 1;
-}
 
 message InvokeScheduledAppChannelRequest {
     int64 org_id = 1;
@@ -1970,49 +1749,9 @@ message InvokeAgentTriggerResponse {
 
 // === Turn management ===
 
-message PlatformWaitForIdleRequest {
-    int64 org_id = 1;
-    Uuid session_id = 2;
-    optional uint64 timeout_secs = 3;
-}
-
-message PlatformWaitForIdleResponse {
-    string status = 1;
-}
-
 // === Capability discovery ===
 
-message PlatformListCapabilitiesRequest {
-    int64 org_id = 1;
-    optional string search = 2;
-}
-
-message PlatformCapabilityInfo {
-    string id = 1;
-    string name = 2;
-    string description = 3;
-    string status = 4;
-    optional string category = 5;
-    optional string icon = 6;
-    bool is_mcp = 7;
-    bool is_skill = 8;
-    uint32 tool_count = 9;
-    repeated string tool_names = 10;
-    repeated string dependencies = 11;
-    bool is_guardrail = 12;
-}
-
-message PlatformListCapabilitiesResponse {
-    repeated PlatformCapabilityInfo capabilities = 1;
-}
-
 // === Base URL ===
-
-message PlatformGetBaseUrlRequest {}
-
-message PlatformGetBaseUrlResponse {
-    string base_url = 1;
-}
 
 // === Budget check messages ===
 
@@ -2043,6 +1782,98 @@ message CheckOutboundToolRateLimitRequest {
 
 message CheckOutboundToolRateLimitResponse {
     bool allowed = 1;
+}
+
+// === Slack endpoint action messages (EVE-1024) ===
+
+message SlackAddReaction {
+    string channel = 1;
+    string timestamp = 2;
+    string name = 3;
+}
+
+message SlackUpdateMessage {
+    string channel = 1;
+    string timestamp = 2;
+    string text = 3;
+}
+
+message SlackLookupUser {
+    string user_id = 1;
+}
+
+message SlackUploadFile {
+    string channel = 1;
+    optional string thread_ts = 2;
+    string filename = 3;
+    bytes content = 4;
+    optional string initial_comment = 5;
+}
+
+message InvokeSlackActionRequest {
+    int64 org_id = 1;
+    string session_id = 2;
+    oneof action {
+        SlackAddReaction add_reaction = 3;
+        SlackUpdateMessage update_message = 4;
+        SlackLookupUser lookup_user = 5;
+        SlackUploadFile upload_file = 6;
+    }
+}
+
+message SlackReactionAdded {
+    bool already_reacted = 1;
+}
+
+message SlackMessageUpdated {
+    string channel = 1;
+    string timestamp = 2;
+}
+
+message SlackUser {
+    string user_id = 1;
+    optional string display_name = 2;
+    optional string real_name = 3;
+    bool is_bot = 4;
+    optional string tz = 5;
+}
+
+message SlackFileUploaded {
+    string file_id = 1;
+    optional string permalink = 2;
+}
+
+// Why the action failed, kept as a closed enum rather than a message string:
+// the capability maps each variant onto a different tool-result shape, and a
+// worker must not have to pattern-match prose to tell "not a Slack session"
+// (a configuration story) from a transient fault (an internal error).
+enum SlackActionErrorKind {
+    SLACK_ACTION_ERROR_KIND_UNSPECIFIED = 0;
+    SLACK_ACTION_ERROR_KIND_NO_SLACK_SESSION = 1;
+    SLACK_ACTION_ERROR_KIND_ENDPOINT_UNAVAILABLE = 2;
+    SLACK_ACTION_ERROR_KIND_NOT_CONFIGURED = 3;
+    SLACK_ACTION_ERROR_KIND_REJECTED = 4;
+    SLACK_ACTION_ERROR_KIND_RATE_LIMITED = 5;
+    SLACK_ACTION_ERROR_KIND_INVALID_ARGUMENT = 6;
+    SLACK_ACTION_ERROR_KIND_TRANSIENT = 7;
+}
+
+message SlackActionError {
+    SlackActionErrorKind kind = 1;
+    // Detail for the variants that carry one (rejected, invalid argument,
+    // transient). Empty otherwise; the kind alone renders those.
+    optional string message = 2;
+    optional uint64 retry_after_secs = 3;
+}
+
+message InvokeSlackActionResponse {
+    oneof result {
+        SlackReactionAdded reaction_added = 1;
+        SlackMessageUpdated message_updated = 2;
+        SlackUser user = 3;
+        SlackFileUploaded file_uploaded = 4;
+        SlackActionError error = 5;
+    }
 }
 
 // === Machine payment messages ===

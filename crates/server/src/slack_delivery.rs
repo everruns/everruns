@@ -33,6 +33,11 @@ use uuid::Uuid;
 
 use crate::event_notifications::EventNotificationPayload;
 use crate::services::run_summary::is_terminal_turn_event;
+use crate::slack_api::{
+    SLACK_API_BASE, post_slack_blocks, post_slack_message_returning_ts, slack_api_call,
+    update_slack_message_text,
+};
+use crate::slack_api_error::{SlackApiError, parse_retry_after, retry_wait};
 use crate::storage::StorageBackend;
 
 /// Which Slack surface a turn belongs to.
@@ -147,6 +152,12 @@ pub struct DeliveryRegistration {
     pub tool_visibility: PublicToolVisibility,
     /// Status text for a running tool under `Generic` visibility.
     pub generic_tool_text: String,
+    /// Whether this session declared the approval hint (EVE-1025).
+    ///
+    /// Resolved at registration rather than read per event: a card that cannot
+    /// be drawn must degrade to the ask in prose, and deciding that once keeps
+    /// the two paths from disagreeing mid-turn.
+    pub approvals_enabled: bool,
 }
 
 /// Context needed to deliver Slack messages for a turn.
@@ -165,6 +176,12 @@ struct DeliveryContext {
     /// Tool-activity policy for the pane status line.
     tool_visibility: PublicToolVisibility,
     generic_tool_text: String,
+    /// Whether this session can render an approval card (EVE-1025).
+    approvals_enabled: bool,
+    /// Live task fan-out for this turn, rendered into one status message that is
+    /// updated in place (EVE-1026). Empty for a turn that delegates nothing,
+    /// which is how such a turn gains no status message at all.
+    task_progress: crate::slack_task_progress::TaskProgress,
     /// Tools running right now. The status line reverts to the thinking text
     /// when this returns to zero, so two overlapping tools do not clear it early.
     active_tool_count: usize,
@@ -269,6 +286,7 @@ impl SlackDeliveryDispatcher {
             recipient_team_id,
             tool_visibility,
             generic_tool_text,
+            approvals_enabled,
         } = registration;
 
         let key = DeliveryKey {
@@ -287,6 +305,8 @@ impl SlackDeliveryDispatcher {
             recipient_team_id,
             tool_visibility,
             generic_tool_text,
+            approvals_enabled,
+            task_progress: Default::default(),
             active_tool_count: 0,
             last_status: None,
             streams: HashMap::new(),
@@ -329,6 +349,11 @@ impl SlackDeliveryDispatcher {
             tokio::select! {
                 _ = flush.tick() => {
                     self.flush_open_streams().await;
+                    // Same cadence as the stream flush, deliberately: a task
+                    // summary and an open reply stream are two things writing to
+                    // one thread, and one rhythm keeps their ordering
+                    // predictable (EVE-1026).
+                    self.flush_task_progress_all().await;
                 }
                 result = event_rx.recv() => {
                     match result {
@@ -536,6 +561,16 @@ impl SlackDeliveryDispatcher {
                     // `tool.completed` is emitted for a failed call too — there is
                     // no `tool.failed` — so the counter cannot strand above zero.
                     events::TOOL_STARTED | events::TOOL_COMPLETED => {
+                        // EVE-1025: a `request_approval` that is actually
+                        // waiting becomes buttons in the thread. Posted here
+                        // rather than at turn end because the pause *is* the
+                        // end of the turn, and the card should land with the
+                        // ask rather than after the terminal notice.
+                        if event.event_type == events::TOOL_COMPLETED
+                            && self.post_approval_card(&ctx, session_id, &event.data).await
+                        {
+                            delivered = true;
+                        }
                         if let Some(live) = self.deliveries.write().await.get_mut(&key) {
                             live.active_tool_count = if event.event_type == events::TOOL_STARTED {
                                 live.active_tool_count + 1
@@ -550,6 +585,23 @@ impl SlackDeliveryDispatcher {
                     // about. That title is worth showing; the synthetic seed title
                     // (`Slack thread <ts> in <channel>`) is the thread's own
                     // coordinates and would tell the reader nothing.
+                    // EVE-1026: fold the fan-out in, but do not push. The flush
+                    // tick decides when, so twenty workers settling at once cost
+                    // one `chat.update`, not twenty.
+                    events::TASK_CREATED | events::TASK_UPDATED => {
+                        if let Some(task) = event.data.get("task")
+                            && let (Some(id), Some(name), Some(state)) = (
+                                task.get("id").and_then(|v| v.as_str()),
+                                task.get("display_name").and_then(|v| v.as_str()),
+                                task.get("state").and_then(|v| v.as_str()),
+                            )
+                            && let Some(state) =
+                                everruns_core::session_task::SessionTaskState::parse(state)
+                            && let Some(live) = self.deliveries.write().await.get_mut(&key)
+                        {
+                            live.task_progress.observe(id, name, state);
+                        }
+                    }
                     events::SESSION_TITLE_UPDATED => {
                         if let Some(title) = event.data.get("title").and_then(|v| v.as_str())
                             && !title.trim().is_empty()
@@ -577,6 +629,12 @@ impl SlackDeliveryDispatcher {
             // the agent is working long after it stopped.
             if terminal_event.is_some() {
                 self.set_status(&key, &ctx, "").await;
+                // A summary frozen mid-flight is worse than none: it reads as
+                // live forever. The final push says where the fan-out actually
+                // got to (EVE-1026).
+                if self.flush_task_progress(&key, true).await {
+                    delivered = true;
+                }
             }
 
             // Every terminal state stops the stream. An unstopped stream is a
@@ -870,6 +928,83 @@ impl SlackDeliveryDispatcher {
     }
 
     /// Flush every open stream across every delivery. Driven by the timer.
+    /// Push one delivery's task summary, posting it the first time and updating
+    /// in place after that.
+    ///
+    /// Returns whether Slack accepted something, so a turn whose only output was
+    /// its fan-out is not also given the "nothing came back" notice.
+    async fn flush_task_progress(&self, key: &DeliveryKey, final_state: bool) -> bool {
+        let Some((ctx, text, existing_ts)) = ({
+            let deliveries = self.deliveries.read().await;
+            deliveries.get(key).and_then(|ctx| {
+                // Nothing delegated, or nothing changed since the last push.
+                if ctx.task_progress.is_empty() || !(ctx.task_progress.is_dirty() || final_state) {
+                    return None;
+                }
+                Some((
+                    ctx.clone(),
+                    ctx.task_progress.render(final_state),
+                    ctx.task_progress.message_ts().map(str::to_string),
+                ))
+            })
+        }) else {
+            return false;
+        };
+
+        match existing_ts {
+            Some(ts) => {
+                match update_slack_message_text(&ctx.bot_token, &ctx.channel, &ts, &text).await {
+                    Ok(()) => {
+                        if let Some(live) = self.deliveries.write().await.get_mut(key) {
+                            live.task_progress.mark_updated();
+                        }
+                        true
+                    }
+                    Err(error) => {
+                        warn!(%error, "Failed to update the Slack task summary");
+                        false
+                    }
+                }
+            }
+            None => {
+                match post_slack_message_returning_ts(
+                    &ctx.bot_token,
+                    &ctx.channel,
+                    &ctx.thread_ts,
+                    &text,
+                )
+                .await
+                {
+                    Ok(ts) => {
+                        if let Some(live) = self.deliveries.write().await.get_mut(key) {
+                            live.task_progress.mark_posted(ts);
+                        }
+                        true
+                    }
+                    Err(error) => {
+                        warn!(%error, "Failed to post the Slack task summary");
+                        false
+                    }
+                }
+            }
+        }
+    }
+
+    /// Push every delivery whose task summary changed since the last tick.
+    async fn flush_task_progress_all(&self) {
+        let keys: Vec<DeliveryKey> = {
+            let deliveries = self.deliveries.read().await;
+            deliveries
+                .iter()
+                .filter(|(_, ctx)| !ctx.task_progress.is_empty() && ctx.task_progress.is_dirty())
+                .map(|(key, _)| key.clone())
+                .collect()
+        };
+        for key in keys {
+            self.flush_task_progress(&key, false).await;
+        }
+    }
+
     async fn flush_open_streams(&self) {
         let pending: Vec<(DeliveryKey, DeliveryContext, Vec<String>)> = {
             let deliveries = self.deliveries.read().await;
@@ -899,6 +1034,66 @@ impl SlackDeliveryDispatcher {
     /// The dispatcher deliberately does not interpret the failure variant.
     /// Transient-vs-permanent is the adapter's judgement (EVE-972); the only
     /// thing the dispatcher decides is whether the user saw the message.
+    /// Post an approval card, if this event is one and this thread can draw it.
+    ///
+    /// Returns whether something was delivered, so a turn that ends on a pause
+    /// is not also given the "nothing came back" notice.
+    ///
+    /// Without the hint, or without a requester to bind the card to, the ask is
+    /// posted as prose instead. That is the documented degradation rather than
+    /// a failure: the model asked, the thread shows the question, and the human
+    /// answers by replying — which is exactly what happens today.
+    async fn post_approval_card(
+        &self,
+        ctx: &DeliveryContext,
+        session_id: Uuid,
+        data: &serde_json::Value,
+    ) -> bool {
+        use crate::slack_approvals::{
+            ApprovalBinding, approval_fallback_text, approval_turn_id, build_approval_blocks,
+            extract_approval_request,
+        };
+
+        let Some(request) = extract_approval_request(data) else {
+            return false;
+        };
+
+        let blocks = if ctx.approvals_enabled {
+            ctx.recipient_user_id.as_ref().and_then(|requester| {
+                build_approval_blocks(
+                    &request,
+                    &ApprovalBinding {
+                        session_id: SessionId::from_uuid(session_id).to_string(),
+                        requester: requester.clone(),
+                        turn_id: approval_turn_id(data),
+                        action: request.action.clone(),
+                    },
+                )
+            })
+        } else {
+            None
+        };
+
+        let text = approval_fallback_text(&request);
+        let result = match blocks {
+            Some(blocks) => {
+                post_slack_blocks(&ctx.bot_token, &ctx.channel, &ctx.thread_ts, &text, &blocks)
+                    .await
+            }
+            None => post_to_slack(&ctx.bot_token, &ctx.channel, &ctx.thread_ts, &text)
+                .await
+                .map_err(|error| SlackApiError::Transient(error.to_string())),
+        };
+
+        match result {
+            Ok(()) => true,
+            Err(error) => {
+                error!(%session_id, %error, "Failed to post the Slack approval ask");
+                false
+            }
+        }
+    }
+
     async fn post(
         &self,
         ctx: &DeliveryContext,
@@ -1188,6 +1383,9 @@ impl SlackDeliveryDispatcher {
             self.register(DeliveryRegistration {
                 session_id: session.id.uuid(),
                 input_message_id,
+                approvals_enabled: crate::slack_approvals::approvals_enabled(
+                    session.hints.as_ref(),
+                ),
                 bot_token: slack_config.bot_token.clone(),
                 channel,
                 thread_ts,
@@ -1237,104 +1435,6 @@ impl Default for SlackDeliveryAdapter {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Slack API error codes that retrying cannot fix.
-///
-/// The single source of truth for transient-vs-permanent (EVE-972), matched as
-/// exact codes rather than substrings of a formatted message (EVE-968).
-const PERMANENT_SLACK_ERRORS: &[&str] = &[
-    "channel_not_found",
-    "not_authed",
-    "invalid_auth",
-    "token_revoked",
-    "account_inactive",
-    "no_text",
-];
-
-/// Ceiling on an honoured `Retry-After`.
-///
-/// Slack's advice is normally seconds, but a delivery task must not be pinned by
-/// a pathological value. Worst case is `max_attempts` waits at this cap.
-const MAX_RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
-
-/// A failed Slack API call, typed so the retry loop can act on the reason.
-///
-/// Before EVE-968 every failure was flattened into a string and re-examined by
-/// substring match, which threw away the one thing a 429 actually tells us:
-/// how long to wait.
-#[derive(Debug)]
-pub(crate) enum SlackApiError {
-    /// Slack asked us to slow down, and said for how long when it could.
-    RateLimited {
-        retry_after: Option<std::time::Duration>,
-    },
-    /// Retrying cannot help: bad token, missing channel, empty message.
-    Permanent(String),
-    /// Network trouble, a 5xx, or an error code we do not recognise.
-    Transient(String),
-}
-
-impl SlackApiError {
-    /// Classify a Slack `error` code from an `ok: false` body.
-    fn from_code(code: &str, retry_after: Option<std::time::Duration>) -> Self {
-        if code == "ratelimited" {
-            return Self::RateLimited { retry_after };
-        }
-        let message = format!("Slack API error: {code}");
-        if PERMANENT_SLACK_ERRORS.contains(&code) {
-            Self::Permanent(message)
-        } else {
-            Self::Transient(message)
-        }
-    }
-
-    /// Whether retrying this failure is pointless.
-    fn is_permanent(&self) -> bool {
-        matches!(self, Self::Permanent(_))
-    }
-}
-
-impl std::fmt::Display for SlackApiError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::RateLimited {
-                retry_after: Some(d),
-            } => {
-                write!(f, "Slack API rate limited (retry after {}s)", d.as_secs())
-            }
-            Self::RateLimited { retry_after: None } => write!(f, "Slack API rate limited"),
-            Self::Permanent(message) | Self::Transient(message) => write!(f, "{message}"),
-        }
-    }
-}
-
-impl std::error::Error for SlackApiError {}
-
-/// How long to wait before the next attempt.
-///
-/// Slack's own advice beats our guess. Retrying a 429 on a 1s backoff burns the
-/// remaining attempts before the rate-limit window has even opened, which is how
-/// a burst drops replies that would otherwise have gone through (EVE-968).
-fn retry_wait(error: &SlackApiError, backoff: std::time::Duration) -> std::time::Duration {
-    match error {
-        SlackApiError::RateLimited {
-            retry_after: Some(advice),
-        } => (*advice).min(MAX_RETRY_AFTER),
-        _ => backoff,
-    }
-}
-
-/// Slack sends `Retry-After` in whole seconds.
-fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<std::time::Duration> {
-    headers
-        .get(reqwest::header::RETRY_AFTER)?
-        .to_str()
-        .ok()?
-        .trim()
-        .parse::<u64>()
-        .ok()
-        .map(std::time::Duration::from_secs)
 }
 
 #[async_trait]
@@ -1674,8 +1774,6 @@ async fn post_to_slack_with_retry_base(
     unreachable!()
 }
 
-const SLACK_API_BASE: &str = "https://slack.com/api";
-
 /// Characters Slack accepts in one `markdown` block.
 const SLACK_MARKDOWN_BLOCK_LIMIT: usize = 12_000;
 
@@ -1984,69 +2082,6 @@ pub(crate) async fn post_slack_message(
 
     info!(channel = channel, parts = total, "Posted response to Slack");
     Ok(())
-}
-
-/// Call one Slack Web API method that is not `chat.postMessage`.
-///
-/// The streaming methods share the same envelope — `ok: false` plus an `error`
-/// code, and a `Retry-After` header on a rate limit — so error handling lives
-/// here rather than being rewritten per endpoint (EVE-974). Posting keeps its
-/// own loop above, which splits one reply across several calls and logs each
-/// part.
-async fn slack_api_call(
-    base_url: &str,
-    bot_token: &str,
-    method: &str,
-    payload: serde_json::Value,
-) -> Result<serde_json::Value, SlackApiError> {
-    let client = reqwest::Client::new();
-
-    let response = client
-        .post(format!("{}/{}", base_url, method))
-        .header("Authorization", format!("Bearer {}", bot_token))
-        .header("Content-Type", "application/json")
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| SlackApiError::Transient(e.to_string()))?;
-
-    let status = response.status();
-    // Read the header before the body is consumed: a 429 carries its advice here,
-    // not in the JSON.
-    let retry_after = parse_retry_after(response.headers());
-
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| SlackApiError::Transient(e.to_string()))?;
-
-    if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
-        let error = body
-            .get("error")
-            .and_then(|e| e.as_str())
-            .unwrap_or("unknown");
-
-        let failure = SlackApiError::from_code(error, retry_after);
-
-        if matches!(failure, SlackApiError::RateLimited { .. }) {
-            debug!(
-                method = method,
-                retry_after_secs = ?retry_after.map(|d| d.as_secs()),
-                status = %status,
-                "Slack rate limited the call"
-            );
-        } else {
-            error!(
-                method = method,
-                error = error,
-                status = %status,
-                "Slack API call failed"
-            );
-        }
-        return Err(failure);
-    }
-
-    Ok(body)
 }
 
 #[cfg(test)]
@@ -3012,6 +3047,7 @@ mod tests {
                     tool_visibility: PublicToolVisibility::default(),
                     generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
+                    approvals_enabled: true,
                 })
                 .await;
 
@@ -3265,6 +3301,7 @@ mod tests {
                     tool_visibility: PublicToolVisibility::default(),
                     generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
+                    approvals_enabled: true,
                 })
                 .await;
         }
@@ -3629,46 +3666,6 @@ mod tests {
                 "loop waited {waited:?}, expected the advised 30s"
             );
         }
-
-        #[test]
-        fn advice_wins_over_backoff() {
-            let one_second = Duration::from_secs(1);
-            assert_eq!(
-                retry_wait(
-                    &SlackApiError::RateLimited {
-                        retry_after: Some(Duration::from_secs(30))
-                    },
-                    one_second
-                ),
-                Duration::from_secs(30),
-                "a 429 saying 30s must not be retried after 1s"
-            );
-        }
-
-        #[test]
-        fn backoff_applies_without_advice() {
-            let backoff = Duration::from_secs(4);
-            for error in [
-                SlackApiError::RateLimited { retry_after: None },
-                SlackApiError::Transient("boom".to_string()),
-            ] {
-                assert_eq!(retry_wait(&error, backoff), backoff, "{error:?}");
-            }
-        }
-
-        #[test]
-        fn pathological_advice_is_capped() {
-            assert_eq!(
-                retry_wait(
-                    &SlackApiError::RateLimited {
-                        retry_after: Some(Duration::from_secs(86_400))
-                    },
-                    Duration::from_secs(1)
-                ),
-                MAX_RETRY_AFTER,
-                "a delivery task must not be pinned for a day"
-            );
-        }
     }
 
     /// EVE-966: a turn that ends without a delivered reply must say so in the
@@ -3781,6 +3778,7 @@ mod tests {
                     tool_visibility,
                     generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
+                    approvals_enabled: true,
                 })
                 .await;
 
@@ -4089,6 +4087,7 @@ mod tests {
                     tool_visibility: PublicToolVisibility::default(),
                     generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
                         .to_string(),
+                    approvals_enabled: true,
                 })
                 .await;
         }

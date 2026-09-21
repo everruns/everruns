@@ -9,9 +9,8 @@ use everruns_host::{
 };
 use everruns_provider::typed_id::HarnessId;
 
-use crate::CapabilityRef;
-use crate::session::{EnvironmentSessionBuilder, Session, SessionEnvironmentError};
-
+use crate::session::{EnvironmentSessionBuilder, Session};
+use crate::{CapabilityRef, SessionEnvironmentError};
 /// A reusable description of what an agent runs on.
 ///
 /// A Harness declares the capabilities available to a session, the Environment
@@ -52,15 +51,11 @@ impl Harness {
     }
 
     /// Compute features an Environment must provide.
-    ///
-    /// The declaration is recorded but not negotiated during session creation.
     pub fn required_capabilities(&self) -> ComputeCapabilities {
         self.inner.required_capabilities
     }
 
     /// The minimum containment level an Environment must provide.
-    ///
-    /// The declaration is recorded but not negotiated during session creation.
     pub fn required_containment(&self) -> ContainmentLevel {
         self.inner.required_containment
     }
@@ -80,6 +75,47 @@ impl Harness {
 
     pub(crate) fn is_same_binding(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
+    }
+    pub(crate) fn negotiate(
+        &self,
+        environment: &everruns_host::Environment,
+    ) -> Result<(), SessionEnvironmentError> {
+        let required = self.required_capabilities();
+        let available = environment.capabilities();
+        for (capability, required, available) in [
+            (
+                "native_processes",
+                required.native_processes,
+                available.native_processes,
+            ),
+            ("packages", required.packages, available.packages),
+            ("pty", required.pty, available.pty),
+            ("ports", required.ports, available.ports),
+            (
+                "portable_checkpoint",
+                required.portable_checkpoint,
+                available.portable_checkpoint,
+            ),
+            (
+                "network_enforced",
+                required.network_enforced,
+                available.network_enforced,
+            ),
+        ] {
+            if required && !available {
+                return Err(SessionEnvironmentError::MissingHarnessCapability { capability });
+            }
+        }
+
+        let available = environment.containment().level;
+        let required = self.required_containment();
+        if available < required {
+            return Err(SessionEnvironmentError::InsufficientHarnessContainment {
+                required,
+                available,
+            });
+        }
+        Ok(())
     }
 
     pub(crate) fn seeded(&self) -> everruns_host::SeededHarness {
@@ -328,7 +364,7 @@ impl Session {
         }
     }
 
-    fn bind_harness(&self, harness: Harness) -> Result<(), SessionEnvironmentError> {
+    pub(crate) fn bind_harness(&self, harness: Harness) -> Result<(), SessionEnvironmentError> {
         if self.has_started() {
             return Err(SessionEnvironmentError::AlreadyStarted);
         }
@@ -373,8 +409,7 @@ impl HarnessSessionBuilder {
 
     /// Freeze the Harness binding and select the Agent's default Environment.
     pub async fn start(self) -> Result<Session, SessionEnvironmentError> {
-        self.session.bind_harness(self.harness)?;
-        self.session.start().await?;
+        self.session.start_with_harness(self.harness).await?;
         Ok(self.session)
     }
 }
@@ -389,6 +424,7 @@ pub struct HarnessEnvironmentSessionBuilder {
 impl HarnessEnvironmentSessionBuilder {
     /// Persist and freeze both bindings before execution starts.
     pub async fn start(self) -> Result<Session, SessionEnvironmentError> {
+        self.harness.negotiate(&self.environment)?;
         self.session.bind_harness(self.harness)?;
         EnvironmentSessionBuilder {
             session: self.session,
@@ -412,7 +448,79 @@ impl EnvironmentSessionBuilder {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
+    use async_trait::async_trait;
+    use everruns_host::{
+        Compute, ComputeError, ComputeKind, ComputeSession, Durability, Environment, WorkspaceHead,
+    };
+    struct TestCompute {
+        kind: ComputeKind,
+        capabilities: ComputeCapabilities,
+        containment: ContainmentLevel,
+    }
+
+    #[async_trait]
+    impl Compute for TestCompute {
+        fn id(&self) -> &str {
+            "test"
+        }
+
+        fn kind(&self) -> ComputeKind {
+            self.kind
+        }
+
+        fn capabilities(&self) -> ComputeCapabilities {
+            self.capabilities
+        }
+
+        fn enforced_containment(&self) -> ContainmentLevel {
+            self.containment
+        }
+
+        fn durability(&self) -> Durability {
+            Durability::Checkpointed
+        }
+
+        async fn connect(
+            &self,
+            _head: &WorkspaceHead,
+        ) -> Result<Arc<dyn ComputeSession>, ComputeError> {
+            Err(ComputeError::Unsupported("test execution"))
+        }
+    }
+
+    fn test_agent() -> crate::Agent {
+        crate::Agent::builder()
+            .instructions("Reply deterministically.")
+            .model(crate::Model::simulated("ok"))
+            .build()
+            .expect("valid test agent")
+    }
+
+    async fn test_environment(
+        session: &Session,
+        kind: ComputeKind,
+        capabilities: ComputeCapabilities,
+        containment: ContainmentLevel,
+    ) -> Environment {
+        let default = session
+            .inner
+            .execution
+            .default_environment()
+            .await
+            .expect("default environment");
+        Environment::builder()
+            .workspace(default.workspace_head().clone())
+            .compute(Arc::new(TestCompute {
+                kind,
+                capabilities,
+                containment,
+            }))
+            .build()
+            .expect("valid test environment")
+    }
 
     #[test]
     fn deserialization_regenerates_runtime_association_identity() {
@@ -421,5 +529,214 @@ mod tests {
         let deserialized: Harness = serde_json::from_str(&serialized).unwrap();
 
         assert_ne!(deserialized.inner.id, harness.inner.id);
+    }
+
+    #[tokio::test]
+    async fn missing_native_processes_is_rejected_at_session_start() {
+        let session = crate::InMemoryEngine::new().create(test_agent());
+        let environment = test_environment(
+            &session,
+            ComputeKind::Vfs,
+            ComputeCapabilities::default(),
+            ContainmentLevel::Isolated,
+        )
+        .await;
+        let harness = Harness::builder("coding")
+            .requires_capabilities(ComputeCapabilities {
+                native_processes: true,
+                ..Default::default()
+            })
+            .build()
+            .expect("valid harness");
+
+        let error = session
+            .harness(harness)
+            .environment(environment)
+            .start()
+            .await
+            .err()
+            .expect("missing native processes must reject the session");
+        assert_eq!(
+            error,
+            SessionEnvironmentError::MissingHarnessCapability {
+                capability: "native_processes"
+            }
+        );
+        assert!(error.to_string().contains("native_processes"));
+    }
+
+    #[tokio::test]
+    async fn native_process_harness_starts_on_compatible_container() {
+        let session = crate::InMemoryEngine::new().create(test_agent());
+        let environment = test_environment(
+            &session,
+            ComputeKind::Container,
+            ComputeCapabilities {
+                native_processes: true,
+                ..Default::default()
+            },
+            ContainmentLevel::Isolated,
+        )
+        .await;
+        let harness = Harness::builder("coding")
+            .requires_capabilities(ComputeCapabilities {
+                native_processes: true,
+                ..Default::default()
+            })
+            .build()
+            .expect("valid harness");
+
+        session
+            .harness(harness)
+            .environment(environment)
+            .start()
+            .await
+            .expect("compatible container starts");
+    }
+
+    #[tokio::test]
+    async fn every_required_compute_capability_is_negotiated_environment_first() {
+        let requirements = [
+            (
+                "native_processes",
+                ComputeCapabilities {
+                    native_processes: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                "packages",
+                ComputeCapabilities {
+                    packages: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                "pty",
+                ComputeCapabilities {
+                    pty: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                "ports",
+                ComputeCapabilities {
+                    ports: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                "portable_checkpoint",
+                ComputeCapabilities {
+                    portable_checkpoint: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                "network_enforced",
+                ComputeCapabilities {
+                    network_enforced: true,
+                    ..Default::default()
+                },
+            ),
+        ];
+
+        for (capability, required) in requirements {
+            let session = crate::InMemoryEngine::new().create(test_agent());
+            let environment = test_environment(
+                &session,
+                ComputeKind::Vfs,
+                ComputeCapabilities::default(),
+                ContainmentLevel::Isolated,
+            )
+            .await;
+            let harness = Harness::builder("requirements")
+                .requires_capabilities(required)
+                .build()
+                .expect("valid harness");
+
+            let error = session
+                .environment(environment)
+                .harness(harness)
+                .start()
+                .await
+                .err()
+                .expect("missing capability must reject the session");
+
+            assert_eq!(
+                error,
+                SessionEnvironmentError::MissingHarnessCapability { capability }
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn containment_requirement_uses_environment_ordering() {
+        let session = crate::InMemoryEngine::new().create(test_agent());
+        let environment = test_environment(
+            &session,
+            ComputeKind::Container,
+            ComputeCapabilities::default(),
+            ContainmentLevel::Native,
+        )
+        .await;
+        let harness = Harness::builder("isolated")
+            .requires_containment(ContainmentLevel::Isolated)
+            .build()
+            .expect("valid harness");
+
+        let error = session
+            .harness(harness)
+            .environment(environment)
+            .start()
+            .await
+            .err()
+            .expect("native containment is weaker than isolated");
+
+        assert_eq!(
+            error,
+            SessionEnvironmentError::InsufficientHarnessContainment {
+                required: ContainmentLevel::Isolated,
+                available: ContainmentLevel::Native,
+            }
+        );
+
+        let session = crate::InMemoryEngine::new().create(test_agent());
+        let environment = test_environment(
+            &session,
+            ComputeKind::Container,
+            ComputeCapabilities::default(),
+            ContainmentLevel::Isolated,
+        )
+        .await;
+        let harness = Harness::builder("native")
+            .requires_containment(ContainmentLevel::Native)
+            .build()
+            .expect("valid harness");
+
+        session
+            .environment(environment)
+            .harness(harness)
+            .start()
+            .await
+            .expect("isolated containment satisfies native");
+    }
+
+    #[tokio::test]
+    async fn environment_without_harness_skips_negotiation() {
+        let session = crate::InMemoryEngine::new().create(test_agent());
+        let environment = test_environment(
+            &session,
+            ComputeKind::Vfs,
+            ComputeCapabilities::default(),
+            ContainmentLevel::None,
+        )
+        .await;
+
+        session
+            .environment(environment)
+            .start()
+            .await
+            .expect("an environment does not need to satisfy an absent harness");
     }
 }

@@ -34,6 +34,24 @@ pub fn service(ctx: &Ctx) -> Arc<WorkspaceFileService> {
         .unwrap_or_else(|| Arc::new(WorkspaceFileService::new(ctx.db.clone())))
 }
 
+/// The file-store key for a session, resolved without a [`Ctx`].
+///
+/// Trusted internal orchestration — the worker gRPC surface — addresses sessions
+/// by id alone and has no `Caller` to build a `Ctx` from, but it must key files
+/// the same way [`verify_session`] does: by the workspace the session is attached
+/// to, never by the session uuid. The two coincide for the default 1:1 session,
+/// which is why keying by the uuid looks correct until a session is attached to a
+/// shared workspace.
+pub async fn workspace_key_unscoped(
+    db: &crate::storage::StorageBackend,
+    session_id: SessionId,
+) -> anyhow::Result<Option<Uuid>> {
+    Ok(db
+        .get_session_unscoped(session_id)
+        .await?
+        .map(|row| row.workspace_id))
+}
+
 pub fn parse_session_id(session_id: &str) -> Result<SessionId, CommandError> {
     session_id
         .parse()

@@ -6,14 +6,14 @@ use std::time::SystemTime;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use everruns_core::Message;
+use everruns_core::RuntimeMessage;
 use everruns_host::{
     EventCursor, EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventLogError,
     MAX_EVENT_HISTORY_PAGE_SIZE,
 };
 
 use crate::engine::SessionExecution;
-use crate::{ContentPart, MessageRole, SessionId};
+use crate::{ContentPart, MessageRole, SessionEnvironmentError, SessionId};
 
 const MAX_CURSOR_TOKEN_LEN: usize = 4096;
 const CURSOR_PREFIX: &str = "eh1.";
@@ -232,8 +232,8 @@ impl SessionMessage {
     }
 }
 
-impl From<Message> for SessionMessage {
-    fn from(message: Message) -> Self {
+impl From<RuntimeMessage> for SessionMessage {
+    fn from(message: RuntimeMessage) -> Self {
         Self {
             id: message.id.to_string(),
             role: message.role,
@@ -433,6 +433,8 @@ pub enum ResumeError {
     WorkspaceMismatch,
     /// The persisted opaque workspace binding could not be decoded.
     WorkspaceBindingCorrupt,
+    /// The reconstructed Harness is incompatible with the reopened Environment.
+    Environment(SessionEnvironmentError),
 }
 
 impl fmt::Display for ResumeError {
@@ -453,11 +455,21 @@ impl fmt::Display for ResumeError {
             Self::WorkspaceUnavailable => f.write_str("recorded workspace head is unavailable"),
             Self::WorkspaceMismatch => f.write_str("workspace backend reopened a different head"),
             Self::WorkspaceBindingCorrupt => f.write_str("persisted workspace binding is corrupt"),
+            Self::Environment(error) => {
+                write!(f, "reopened environment is incompatible: {error}")
+            }
         }
     }
 }
 
-impl std::error::Error for ResumeError {}
+impl std::error::Error for ResumeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Environment(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 fn map_event_error(error: EventLogError) -> HistoryError {
     match error {

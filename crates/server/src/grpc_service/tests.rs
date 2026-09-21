@@ -1,3 +1,4 @@
+use super::worker::commands::test_support::execute_test_command;
 use super::*;
 use tonic::service::Interceptor;
 
@@ -5,7 +6,7 @@ use tonic::service::Interceptor;
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const EXAMPLE_TOKEN: &str = "YExample0";
 
-async fn test_worker_service() -> WorkerServiceImpl {
+pub(crate) async fn test_worker_service() -> WorkerServiceImpl {
     test_worker_service_with_runner(None).await
 }
 
@@ -52,7 +53,7 @@ impl everruns_worker::AgentRunner for CompletingTestRunner {
                 session_id,
                 everruns_core::events::EventContext::empty(),
                 everruns_core::events::OutputMessageCompletedData::new(
-                    everruns_core::Message::assistant("Child completed through gRPC"),
+                    everruns_core::RuntimeMessage::assistant("Child completed through gRPC"),
                 ),
             ))
             .await?;
@@ -315,7 +316,7 @@ async fn test_list_commands_includes_platform_catalog_commands() {
         response
             .commands
             .iter()
-            .any(|command| command.name == "create_app" && command.api_version == "v1")
+            .any(|command| command.name == "create_agent_endpoint" && command.api_version == "v1")
     );
 }
 
@@ -521,45 +522,54 @@ async fn direct_worker_rpcs_do_not_leak_storage_errors() {
     }
 }
 
-async fn create_grpc_test_session(service: &WorkerServiceImpl) -> proto::Session {
+/// Seed a session the way the worker actually does it: through the generic
+/// command RPC. The bespoke `platform_*` RPCs this used to call were dead — the
+/// worker's `PlatformStore` has been on the command surface all along — so
+/// driving the tests through `ExecuteCommand` keeps them on the live path.
+pub(crate) async fn create_grpc_test_session(
+    service: &WorkerServiceImpl,
+) -> (
+    everruns_provider::typed_id::SessionId,
+    everruns_provider::typed_id::HarnessId,
+) {
+    let harnesses = execute_test_command(service, "list_harnesses", serde_json::json!({})).await;
     // By name, not by position. This list is newest-first, so taking the first
     // row silently re-points every test here whenever a built-in is added, and
     // a feature-gated one lands the session on a harness the org may not create
     // sessions with. `generic` is the built-in these tests actually want.
-    let harness = service
-        .platform_list_harnesses(Request::new(PlatformListHarnessesRequest {
-            org_id: everruns_core::DEFAULT_ORG_ID,
-        }))
-        .await
-        .expect("list harnesses should succeed")
-        .into_inner()
-        .harnesses
-        .into_iter()
-        .find(|harness| harness.name == "generic")
-        .expect("seeded generic harness");
+    let harness_id = harnesses
+        .as_array()
+        .and_then(|list| {
+            list.iter()
+                .find(|harness| harness["name"].as_str() == Some("generic"))
+        })
+        .and_then(|harness| harness["id"].as_str())
+        .expect("seeded generic harness")
+        .to_string();
 
-    service
-        .platform_create_session(Request::new(PlatformCreateSessionRequest {
-            org_id: everruns_core::DEFAULT_ORG_ID,
-            harness_id: harness.id,
-            agent_id: None,
-            title: None,
-            locale: None,
-            blueprint_id: None,
-            blueprint_config_json: None,
-        }))
-        .await
-        .expect("create session should succeed")
-        .into_inner()
-        .session
-        .expect("session response")
+    let session = execute_test_command(
+        service,
+        "create_session",
+        serde_json::json!({
+            "harness_id": harness_id,
+            "tags": [],
+            "capabilities": [],
+            "tools": [],
+            "mcp_servers": {},
+            "initial_files": [],
+        }),
+    )
+    .await;
+
+    let session_id = session["id"]
+        .as_str()
+        .expect("created session id")
+        .parse()
+        .expect("session id");
+    let harness_id = harness_id.parse().expect("harness id");
+
+    (session_id, harness_id)
 }
-
-fn proto_session_id(session: &proto::Session) -> everruns_provider::typed_id::SessionId {
-    let id = session.id.as_ref().expect("session id");
-    everruns_provider::typed_id::SessionId::from_uuid(id.value.parse().expect("uuid session id"))
-}
-
 struct DenyGrpcSessionManageResolver;
 
 impl everruns_core::PermissionResolver for DenyGrpcSessionManageResolver {
@@ -672,7 +682,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
     assert_eq!(denied.code(), tonic::Code::PermissionDenied);
 }
 
-async fn start_grpc_test_server(
+pub(crate) async fn start_grpc_test_server(
     service: WorkerServiceImpl,
 ) -> (
     String,
@@ -724,8 +734,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     use everruns_platform::PlatformStore;
 
     let service = test_worker_service_with_completing_runner().await;
-    let parent = create_grpc_test_session(&service).await;
-    let parent_id = proto_session_id(&parent);
+    let (parent_id, parent_harness_id) = create_grpc_test_session(&service).await;
     let user = service
         .db
         .create_user(crate::storage::models::CreateUserRow {
@@ -758,14 +767,6 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         )
         .await
         .expect("mark parent session as user owned");
-    let parent_harness_id = parent
-        .harness_id
-        .as_ref()
-        .expect("parent harness id")
-        .value
-        .parse()
-        .map(everruns_provider::typed_id::HarnessId::from_uuid)
-        .expect("harness uuid");
 
     // Keep a storage handle: `start_grpc_test_server` takes the service by value.
     let db = service.db.clone();
@@ -1444,26 +1445,6 @@ fn test_json_value_to_proto_object() {
         _ => panic!("Expected StructValue"),
     }
 }
-
-#[test]
-fn test_db_info_to_proto_roundtrip() {
-    use chrono::Utc;
-    let now = Utc::now();
-    let info = everruns_platform::session_sqldb::DatabaseInfo {
-        name: "test_db".into(),
-        size_bytes: 4096,
-        page_count: 1,
-        created_at: now,
-        updated_at: now,
-    };
-    let proto = db_info_to_proto(info);
-    assert_eq!(proto.name, "test_db");
-    assert_eq!(proto.size_bytes, 4096);
-    assert_eq!(proto.page_count, 1);
-    assert!(proto.created_at.is_some());
-    assert!(proto.updated_at.is_some());
-}
-
 // ============================================================================
 // Session task RPC tests — ListOrphanedSessionTasks
 // ============================================================================

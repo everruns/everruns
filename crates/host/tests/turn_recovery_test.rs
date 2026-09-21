@@ -4,7 +4,7 @@ use everruns_host::HostComposition;
 use everruns_host::{HostBackends, InProcessRuntimeBuilder};
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, SimError, SimToolCall, SimTurn};
-use everruns_provider::driver_registry::{DriverRegistry, LlmMessage};
+use everruns_provider::driver_registry::{DriverRegistry, Message};
 use everruns_provider::llm_retry::LlmRetryConfig;
 use everruns_test_support::TestMathCapability;
 use std::sync::{Arc, Mutex};
@@ -24,7 +24,7 @@ fn fast_retry(max_retries: u32) -> LlmRetryConfig {
 async fn runtime(
     turns: Vec<SimTurn>,
     retry: LlmRetryConfig,
-    capture: Arc<Mutex<Vec<Vec<LlmMessage>>>>,
+    capture: Arc<Mutex<Vec<Vec<Message>>>>,
 ) -> everruns_host::InProcessRuntime {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(TestMathCapability);
@@ -46,7 +46,7 @@ async fn runtime(
         .expect("runtime")
 }
 
-fn provider_view(messages: &[LlmMessage]) -> Vec<String> {
+fn provider_view(messages: &[Message]) -> Vec<String> {
     messages
         .iter()
         .map(|message| format!("{message:?}"))

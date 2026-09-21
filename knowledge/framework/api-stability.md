@@ -11,17 +11,18 @@ tags:
 # Framework API Stability Tiers
 
 Application authors should know which framework surfaces they can rely on.
-The direct-LLM surface is the settled contract; the classifier surface is new
-and still taking shape. This concept records that split and the marking
-convention so later changes stay deliberate.
+The direct-LLM and in-process Ask User surfaces are settled contracts; the
+classifier surface is new and still taking shape. This concept records that
+split and the marking convention so later changes stay deliberate.
 
 ## Tiers
 
 * **Stable** promises no breaking change without a major version bump.
   Applies to the direct-LLM surface: `crates/everruns/src/llm.rs`,
   `Model::complete` / `Model::completion` in `crates/everruns/src/agent.rs`,
-  and the provider traits behind them (`Provider`, `ChatDriver`,
-  `DriverRegistry` in `crates/everruns/src/providers/`).
+  the provider traits behind them (`Provider`, `ChatDriver`, `DriverRegistry`
+  in `crates/everruns/src/providers/`), and the in-process Ask User host
+  contract in `crates/everruns/src/ask_user.rs`.
 * **Alpha** may break without a major bump. Applies to the classifier
   surface: `crates/everruns/src/classifier.rs` and its `everruns-core`
   re-exports in `crates/everruns/src/lib.rs`; and to the model-catalog

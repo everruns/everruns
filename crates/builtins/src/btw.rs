@@ -16,7 +16,7 @@ use crate::command::{
 };
 use crate::command_host::SessionCompletionRequest;
 use crate::error::AgentLoopError;
-use crate::message::Message;
+use crate::message::RuntimeMessage;
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -99,7 +99,7 @@ impl Capability for BtwCapability {
         let turn = ctx.host.turn_context().await?;
 
         let mut messages = turn.messages;
-        let mut side_question = Message::user(question.to_string());
+        let mut side_question = RuntimeMessage::user(question.to_string());
         side_question.controls = request.controls.clone();
         messages.push(side_question);
 
@@ -172,7 +172,7 @@ mod tests {
             let session_id = SessionId::new();
             Ok(CommandTurnContext {
                 session_id,
-                messages: vec![Message::user("earlier message")],
+                messages: vec![RuntimeMessage::user("earlier message")],
                 system_prompt: "merged system prompt".to_string(),
                 model: "llmsim-model".to_string(),
                 provider_type: "llmsim".to_string(),

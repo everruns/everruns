@@ -14,9 +14,7 @@ use everruns_openrouter::options::{
     OpenRouterRoute, OpenRouterRoutingConfig, insert_routing_option,
 };
 use everruns_openrouter::provider;
-use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent,
-};
+use everruns_provider::driver_registry::{LlmCallConfig, LlmStreamEvent, Message, MessageRole};
 use everruns_provider::model::ReasoningEffort;
 use futures::StreamExt;
 
@@ -48,8 +46,8 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
         },
     );
 
-    let messages = vec![LlmMessage::text(
-        LlmMessageRole::User,
+    let messages = vec![Message::text(
+        MessageRole::User,
         "Reply with exactly one word: pong",
     )];
 

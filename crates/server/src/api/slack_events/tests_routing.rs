@@ -41,8 +41,43 @@ fn test_truncate_display_name_multibyte() {
 }
 
 #[test]
+fn test_manifest_yaml_declares_the_oauth_redirect_url() {
+    // Slack refuses /oauth/v2/authorize with "redirect_uri did not match any
+    // configured URIs" when the app declares none, so an app generated without
+    // this can only ever be installed by copy-paste, never by OAuth.
+    let yaml = build_manifest_yaml(
+        "My Bot",
+        "My Bot",
+        None,
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        false,
+        &[],
+    );
+
+    assert!(
+        yaml.contains(&format!("    - \"{TEST_REDIRECT_URL}\"")),
+        "manifest must declare redirect_urls, got:\n{yaml}"
+    );
+    assert!(
+        yaml.contains("  redirect_urls:"),
+        "redirect_urls must sit under oauth_config, got:\n{yaml}"
+    );
+}
+
+#[test]
 fn test_manifest_yaml_contains_event_subscriptions() {
-    let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false, &[]);
+    let yaml = build_manifest_yaml(
+        "My Bot",
+        "My Bot",
+        None,
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        false,
+        &[],
+    );
 
     assert!(
         yaml.contains(&format!("    request_url: \"{TEST_REQUEST_URL}\"")),
@@ -74,7 +109,16 @@ fn test_manifest_yaml_contains_event_subscriptions() {
 
 #[test]
 fn test_manifest_yaml_parses_as_yaml_with_expected_shape() {
-    let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false, &[]);
+    let yaml = build_manifest_yaml(
+        "My Bot",
+        "My Bot",
+        None,
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        false,
+        &[],
+    );
     let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
 
     let subs = &parsed["settings"]["event_subscriptions"];
@@ -104,7 +148,16 @@ fn test_manifest_yaml_agent_view_carries_suggested_prompts() {
         test_starter("Triage the newest P1"),
         test_starter("Summarize this channel"),
     ];
-    let yaml = build_manifest_yaml("Bot", "Bot", None, TEST_REQUEST_URL, true, &starters);
+    let yaml = build_manifest_yaml(
+        "Bot",
+        "Bot",
+        None,
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        true,
+        &starters,
+    );
     let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
 
     let prompts = parsed["features"]["agent_view"]["suggested_prompts"]
@@ -121,7 +174,16 @@ fn test_manifest_yaml_agent_view_carries_suggested_prompts() {
 #[test]
 fn test_manifest_yaml_omits_suggested_prompts_when_unauthored() {
     for starters in [vec![], vec![test_starter("   ")]] {
-        let yaml = build_manifest_yaml("Bot", "Bot", None, TEST_REQUEST_URL, true, &starters);
+        let yaml = build_manifest_yaml(
+            "Bot",
+            "Bot",
+            None,
+            TEST_REQUEST_URL,
+            TEST_INTERACTIVITY_URL,
+            TEST_REDIRECT_URL,
+            true,
+            &starters,
+        );
         assert!(
             yaml.contains("agent_view"),
             "the agent surface itself must stay on: {yaml}"
@@ -140,7 +202,16 @@ fn test_manifest_yaml_caps_suggested_prompts_at_slack_limit() {
     let starters: Vec<ConversationStarter> = (0..8)
         .map(|i| test_starter(&format!("Prompt {i}")))
         .collect();
-    let yaml = build_manifest_yaml("Bot", "Bot", None, TEST_REQUEST_URL, true, &starters);
+    let yaml = build_manifest_yaml(
+        "Bot",
+        "Bot",
+        None,
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        true,
+        &starters,
+    );
     let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
 
     let prompts = parsed["features"]["agent_view"]["suggested_prompts"]
@@ -161,6 +232,8 @@ fn test_manifest_yaml_truncates_prompt_title_but_not_message() {
         "Bot",
         None,
         TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         true,
         &[test_starter(&long)],
     );
@@ -183,6 +256,8 @@ fn test_manifest_yaml_escapes_prompt_text() {
         "Bot",
         None,
         TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         true,
         &[test_starter(r#"Say "hi" \ now"#)],
     );
@@ -203,6 +278,8 @@ fn test_manifest_yaml_agent_surface_off_carries_no_prompts() {
         "Bot",
         None,
         TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[test_starter("Triage the newest P1")],
     );
@@ -212,7 +289,16 @@ fn test_manifest_yaml_agent_surface_off_carries_no_prompts() {
 
 #[test]
 fn test_manifest_yaml_agent_surface_off_is_unchanged() {
-    let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false, &[]);
+    let yaml = build_manifest_yaml(
+        "My Bot",
+        "My Bot",
+        None,
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        false,
+        &[],
+    );
 
     // Existing apps must be untouched by the feature existing.
     assert!(!yaml.contains("agent_view"), "{yaml}");
@@ -237,6 +323,8 @@ fn test_manifest_yaml_agent_surface_on() {
         "My Bot",
         Some("Answers questions"),
         TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         true,
         &[],
     );
@@ -291,7 +379,16 @@ fn test_manifest_yaml_agent_surface_on() {
 fn test_agent_description_respects_slack_limit() {
     // Slack rejects an agent_description over 300 characters.
     let long = "d".repeat(500);
-    let yaml = build_manifest_yaml("Bot", "Bot", Some(&long), TEST_REQUEST_URL, true, &[]);
+    let yaml = build_manifest_yaml(
+        "Bot",
+        "Bot",
+        Some(&long),
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        true,
+        &[],
+    );
     let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
 
     let description = parsed["features"]["agent_view"]["agent_description"]
@@ -304,7 +401,16 @@ fn test_agent_description_respects_slack_limit() {
 fn test_agent_description_is_char_safe() {
     // Truncation must not split a multi-byte character.
     let long = "é".repeat(500);
-    let yaml = build_manifest_yaml("Bot", "Bot", Some(&long), TEST_REQUEST_URL, true, &[]);
+    let yaml = build_manifest_yaml(
+        "Bot",
+        "Bot",
+        Some(&long),
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        true,
+        &[],
+    );
     let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
     assert_eq!(
         parsed["features"]["agent_view"]["agent_description"]
@@ -320,7 +426,16 @@ fn test_agent_description_is_char_safe() {
 fn test_manifest_yaml_escapes_request_url() {
     // The URL is server-configured, but a quote in it must not break out of
     // the YAML string and corrupt the rest of the manifest.
-    let yaml = build_manifest_yaml("My Bot", "My Bot", None, r#"https://x/"evil"#, false, &[]);
+    let yaml = build_manifest_yaml(
+        "My Bot",
+        "My Bot",
+        None,
+        r#"https://x/"evil"#,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        false,
+        &[],
+    );
     let parsed: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("manifest is valid YAML");
     assert_eq!(
         parsed["settings"]["event_subscriptions"]["request_url"].as_str(),
@@ -343,7 +458,16 @@ fn test_slack_webhook_url_shape() {
 
 #[test]
 fn test_manifest_yaml_contains_description_and_long_description() {
-    let yaml = build_manifest_yaml("My Bot", "My Bot", None, TEST_REQUEST_URL, false, &[]);
+    let yaml = build_manifest_yaml(
+        "My Bot",
+        "My Bot",
+        None,
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        false,
+        &[],
+    );
     assert!(yaml.contains(r#"description: "My Bot (Powered by Everruns)""#));
     assert!(yaml.contains("AI agent powered by Everruns"));
     assert!(yaml.contains("https://everruns.com"));
@@ -356,6 +480,8 @@ fn test_manifest_yaml_with_app_description() {
         "My Bot",
         Some("A helpful assistant"),
         TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[],
     );
@@ -368,7 +494,16 @@ fn test_manifest_yaml_description_within_slack_limit() {
     // Slack description limit is 140 chars. Worst case: 35-char app name
     // (Slack's name limit) + " (Powered by Everruns)" = 57 chars.
     let long_name = "a".repeat(35);
-    let yaml = build_manifest_yaml(&long_name, &long_name, None, TEST_REQUEST_URL, false, &[]);
+    let yaml = build_manifest_yaml(
+        &long_name,
+        &long_name,
+        None,
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        false,
+        &[],
+    );
     // Extract the description value
     let desc_prefix = "description: \"";
     let desc_start = yaml.find(desc_prefix).unwrap() + desc_prefix.len();
@@ -389,6 +524,8 @@ fn test_manifest_yaml_escapes_special_chars_in_name() {
         "Bot Special",
         None,
         TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
         false,
         &[],
     );
@@ -919,4 +1056,39 @@ async fn test_inject_thread_context_empty_replies() {
     )
     .await;
     assert!(result.is_ok());
+}
+
+/// EVE-1025: Slack verifies `settings.interactivity.request_url` when the
+/// manifest is saved, which is why it is generated rather than added by hand.
+#[test]
+fn manifest_declares_the_interactivity_request_url() {
+    let yaml = build_manifest_yaml(
+        "My Bot",
+        "My Bot",
+        None,
+        TEST_REQUEST_URL,
+        TEST_INTERACTIVITY_URL,
+        TEST_REDIRECT_URL,
+        false,
+        &[],
+    );
+    assert!(
+        yaml.contains("  interactivity:"),
+        "manifest must declare an interactivity block: {yaml}"
+    );
+    assert!(
+        yaml.contains("    is_enabled: true"),
+        "interactivity must be enabled or Slack ignores the URL: {yaml}"
+    );
+    assert!(
+        yaml.contains(&format!("    request_url: \"{TEST_INTERACTIVITY_URL}\"")),
+        "manifest must point interactivity at this endpoint: {yaml}"
+    );
+    // The events subscription must survive alongside it: both live under
+    // `settings`, and an interactivity block that replaced them would silently
+    // stop every incoming message.
+    assert!(
+        yaml.contains(&format!("    request_url: \"{TEST_REQUEST_URL}\"")),
+        "manifest must keep the events request_url: {yaml}"
+    );
 }

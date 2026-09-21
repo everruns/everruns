@@ -23,7 +23,7 @@ everruns-builtins = { path = "../../crates/builtins" }
 everruns-core = { path = "../../crates/core" }
 everruns-provider = { path = "../../crates/provider" }
 # Both engines' concrete services live here.
-everruns-host = { path = "../../crates/host", features = ["utility-openai"] }
+everruns-host = { path = "../../crates/host", features = ["utility-llm"] }
 # The classifier moved here with the vendor client it uses.
 everruns-integrations-typesafe = { path = "../../integrations/typesafe", default-features = false }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }

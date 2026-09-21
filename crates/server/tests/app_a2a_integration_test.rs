@@ -25,7 +25,7 @@ use everruns_provider::typed_id::SessionId;
 use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use test_harness::TestServer;
 use tokio::time::{Duration, sleep};
 
@@ -72,48 +72,71 @@ async fn create_app_with_a2a_mode(
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let app: Value = server
-        .post(
-            "/v1/apps",
-            json!({
-                "name": name,
-                "harness_id": server.seed_generic_harness_id.clone(),
-                "agent_id": agent["id"],
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let app_id = app["id"].as_str().unwrap().to_string();
-    let response: Value = server
-        .post(
-            &format!("/v1/apps/{app_id}/a2a-channels"),
+    let api_key = format!("evr_app_{}", uuid::Uuid::new_v4().simple());
+    let api_key_hash = hex::encode(Sha256::digest(api_key.as_bytes()));
+    let app = server
+        .seed_app_endpoint(
+            name,
+            agent["id"].as_str().unwrap(),
+            "a2a",
             json!({
                 "session_mode": session_mode,
                 "message": message,
                 "agent_card_name": "Inbox triage",
                 "agent_card_description": "Triages inbound A2A traffic",
+                "api_key_hash": api_key_hash,
+                "api_key_prefix": &api_key[..12],
             }),
         )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let api_key = response["api_key"].as_str().unwrap().to_string();
-    let app_after: Value = server
-        .get(&format!("/v1/apps/{app_id}"))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    (app_after, api_key)
+        .await;
+    (app, api_key)
 }
 
 async fn publish_app(server: &TestServer, app_id: &str) {
+    server.set_app_endpoints_live(app_id, true).await;
+}
+#[tokio::test]
+async fn a2a_legacy_app_channel_mismatch_is_not_found() {
+    let server = TestServer::in_memory().await;
+    let (app_a, _) = create_app_with_a2a(&server, "a2a-mismatch-a", "{{a2a.text}}").await;
+    let (app_b, key_b) = create_app_with_a2a(&server, "a2a-mismatch-b", "{{a2a.text}}").await;
+    let app_a_id = app_a["id"].as_str().unwrap();
+    let app_b_id = app_b["id"].as_str().unwrap();
+    let channel_b_id = app_b["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_a_id).await;
+    publish_app(&server, app_b_id).await;
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "mismatch",
+        "method": "message/send",
+        "params": {
+            "message": {
+                "role": "user",
+                "parts": [{ "kind": "text", "text": "hi" }]
+            }
+        }
+    }))
+    .unwrap();
     server
-        .post(&format!("/v1/apps/{app_id}/publish"), json!({}))
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_a_id}/a2a/{channel_b_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {key_b}")),
+            ],
+            body,
+        )
         .await
-        .assert_status(StatusCode::OK);
+        .assert_status(StatusCode::NOT_FOUND);
+
+    server
+        .get(&format!(
+            "/v1/apps/{app_a_id}/a2a/{channel_b_id}/.well-known/agent-card.json"
+        ))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
@@ -596,64 +619,6 @@ async fn a2a_rejects_missing_or_invalid_api_key() {
         )
         .await
         .assert_status(StatusCode::OK);
-}
-
-#[tokio::test]
-async fn a2a_rejects_unpublished_or_disabled() {
-    let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-pub", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-
-    let body = serde_json::to_vec(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "message/send",
-        "params": {
-            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
-        }
-    }))
-    .unwrap();
-
-    // Unpublished: generic 404 (EVE-632 / TM-TENANT-002). An unauthenticated
-    // caller must not be able to distinguish "unpublished" from "unknown app".
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {api_key}")),
-            ],
-            body.clone(),
-        )
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
-
-    publish_app(&server, app_id).await;
-
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({ "enabled": false }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    // Disabled channel: also a generic 404, not a 403 that confirms the app
-    // exists and is published (EVE-632 / TM-AUTHZ-006).
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {api_key}")),
-            ],
-            body,
-        )
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -1485,84 +1450,6 @@ async fn a2a_tasks_get_rejects_cross_channel_lookup() {
     assert_eq!(cross_cancel["error"]["code"], -32001);
 }
 
-#[tokio::test]
-async fn a2a_agent_card_published_only_when_live() {
-    let server = TestServer::in_memory().await;
-    let (app, _api_key) = create_app_with_a2a(&server, "a2a-card", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    let card_path = format!("/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json");
-
-    // Draft -> 404.
-    server
-        .request_raw(Method::GET, &card_path, vec![], vec![])
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
-
-    publish_app(&server, app_id).await;
-
-    let card: Value = server
-        .request_raw(
-            Method::GET,
-            &card_path,
-            vec![("host", "example.test"), ("x-forwarded-proto", "http")],
-            vec![],
-        )
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    assert_eq!(card["name"], "Inbox triage");
-    assert!(card.get("protocolVersion").is_none());
-    assert!(card.get("preferredTransport").is_none());
-    assert!(card.get("url").is_none());
-    let interfaces = card["supportedInterfaces"].as_array().unwrap();
-    assert_eq!(interfaces.len(), 1);
-    assert_eq!(interfaces[0]["protocolBinding"], "JSONRPC");
-    assert_eq!(interfaces[0]["protocolVersion"], "1.0");
-    assert!(
-        interfaces[0]["url"]
-            .as_str()
-            .unwrap()
-            .ends_with(&format!("/v1/apps/{app_id}/a2a/{channel_id}"))
-    );
-    let parsed_card: a2a::AgentCard = serde_json::from_value(card.clone()).unwrap();
-    assert_eq!(parsed_card.supported_interfaces.len(), 1);
-    assert_eq!(
-        parsed_card.supported_interfaces[0].protocol_binding,
-        "JSONRPC"
-    );
-    assert_eq!(parsed_card.supported_interfaces[0].protocol_version, "1.0");
-    a2a_client::A2AClientFactory::builder()
-        .build()
-        .create_from_card(&parsed_card)
-        .await
-        .expect("served AgentCard should negotiate with the linked A2AClientFactory");
-    // Streaming is only advertised for session_per_invocation channels.
-    // The helper builds a shared_session channel by default, so the card
-    // must report streaming=false to stay consistent with the runtime gate.
-    assert_eq!(card["capabilities"]["streaming"], false);
-    assert_eq!(card["capabilities"]["pushNotifications"], false);
-    // Card never echoes secrets.
-    let serialized = serde_json::to_string(&card).unwrap();
-    assert!(!serialized.contains("api_key"));
-    assert!(!serialized.contains("api_key_hash"));
-
-    // Disable channel -> 404.
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({ "enabled": false }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    server
-        .request_raw(Method::GET, &card_path, vec![], vec![])
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn outbound_a2a_delegation_reaches_local_app_with_discovery_card() {
     let (_server, endpoint, api_key, _app_id, _channel_id) =
@@ -1640,401 +1527,6 @@ async fn outbound_a2a_delegation_reaches_local_app_with_inline_card() {
     );
 }
 
-#[tokio::test]
-async fn a2a_patch_preserves_api_key_when_omitted() {
-    // PATCH on an A2A channel must preserve the server-managed api_key_hash
-    // and api_key_prefix even when the client only sends the user-editable
-    // fields (message, session_mode, agent card metadata). Otherwise an edit
-    // would silently break authentication for previously issued keys.
-    let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-preserve", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
-
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({
-                "channel_config": {
-                    "session_mode": "session_per_invocation",
-                    "message": "edited {{a2a.text}}",
-                    "agent_card_name": "Edited",
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    // The originally issued API key still works after the edit.
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {api_key}")),
-            ],
-            serde_json::to_vec(&json!({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "message/send",
-                "params": {
-                    "message": { "role": "user", "parts": [{ "kind": "text", "text": "post-edit" }] }
-                }
-            }))
-            .unwrap(),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-}
-
-#[tokio::test]
-async fn a2a_regenerate_key_invalidates_previous_key() {
-    let server = TestServer::in_memory().await;
-    let (app, original_key) = create_app_with_a2a(&server, "a2a-rotate", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
-
-    // Original key works.
-    let body = serde_json::to_vec(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "message/send",
-        "params": {
-            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
-        }
-    }))
-    .unwrap();
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {original_key}")),
-            ],
-            body.clone(),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    // Rotate.
-    let rotated: Value = server
-        .post(
-            &format!("/v1/apps/{app_id}/a2a-channels/{channel_id}/regenerate-key"),
-            json!({}),
-        )
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    let new_key = rotated["api_key"].as_str().unwrap().to_string();
-    assert_ne!(new_key, original_key);
-
-    // Original key fails.
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {original_key}")),
-            ],
-            body.clone(),
-        )
-        .await
-        .assert_status(StatusCode::UNAUTHORIZED);
-
-    // New key works.
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {new_key}")),
-            ],
-            body,
-        )
-        .await
-        .assert_status(StatusCode::OK);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a2a_per_channel_rate_limit_returns_429() {
-    // TM-A2A-013: configurable per-app, per-IP cap on the A2A ingress endpoint
-    // protects an app's quota and LLM budget from a runaway counterparty agent
-    // even when the global API limit would still allow more traffic.
-    let server = TestServer::in_memory().await;
-    let (app, api_key) =
-        create_app_with_a2a(&server, "a2a-rate-limit", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
-
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({
-                "channel_config": {
-                    "session_mode": "shared_session",
-                    "message": "from a2a: {{a2a.text}}",
-                    "rate_limit_per_minute": 2
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    let body = serde_json::to_vec(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "message/send",
-        "params": {
-            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
-        }
-    }))
-    .unwrap();
-
-    for _ in 0..2 {
-        server
-            .request_raw(
-                Method::POST,
-                &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-                vec![
-                    ("content-type", "application/json"),
-                    ("authorization", &format!("Bearer {api_key}")),
-                ],
-                body.clone(),
-            )
-            .await
-            .assert_status(StatusCode::OK);
-    }
-
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {api_key}")),
-            ],
-            body,
-        )
-        .await
-        .assert_status(StatusCode::TOO_MANY_REQUESTS);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a2a_rate_limit_zero_disables_per_channel_cap() {
-    let server = TestServer::in_memory().await;
-    let (app, api_key) =
-        create_app_with_a2a(&server, "a2a-rate-zero", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
-
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({
-                "channel_config": {
-                    "session_mode": "shared_session",
-                    "message": "from a2a: {{a2a.text}}",
-                    "rate_limit_per_minute": 0
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    let body = serde_json::to_vec(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "message/send",
-        "params": {
-            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
-        }
-    }))
-    .unwrap();
-
-    // With rate_limit_per_minute=0 the per-channel cap is disabled; five back-
-    // to-back requests must each succeed (or at least never hit 429).
-    for _ in 0..5 {
-        let response = server
-            .request_raw(
-                Method::POST,
-                &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-                vec![
-                    ("content-type", "application/json"),
-                    ("authorization", &format!("Bearer {api_key}")),
-                ],
-                body.clone(),
-            )
-            .await;
-        assert_ne!(response.status(), StatusCode::TOO_MANY_REQUESTS);
-    }
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a2a_rate_limit_is_per_channel_not_per_app() {
-    // TM-A2A-013 regression: an app with two A2A channels that have
-    // different `rate_limit_per_minute` settings must keep independent
-    // buckets. If the limiter were keyed on `app_id` only, alternating
-    // requests across the two channels would replace the cached limiter
-    // (replace-on-limit-change) and effectively bypass the stricter cap.
-    let server = TestServer::in_memory().await;
-    let (app, api_key_a) =
-        create_app_with_a2a(&server, "a2a-multi-channel", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id_a = app["channels"][0]["id"].as_str().unwrap().to_string();
-
-    // Create a second A2A channel on the same app, with a much higher cap.
-    let second_channel_response: Value = server
-        .post(
-            &format!("/v1/apps/{app_id}/a2a-channels"),
-            json!({
-                "session_mode": "shared_session",
-                "message": "from a2a (b): {{a2a.text}}",
-                "agent_card_name": "Inbox triage (b)",
-                "agent_card_description": "Triages inbound A2A traffic (b)",
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let api_key_b = second_channel_response["api_key"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let app_after: Value = server
-        .get(&format!("/v1/apps/{app_id}"))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    let channels = app_after["channels"].as_array().unwrap();
-    let channel_id_b = channels
-        .iter()
-        .map(|c| c["id"].as_str().unwrap().to_string())
-        .find(|id| id != &channel_id_a)
-        .expect("second a2a channel id");
-
-    publish_app(&server, app_id).await;
-
-    // Channel A: rate_limit_per_minute = 2 (strict).
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id_a}"),
-            json!({
-                "channel_config": {
-                    "session_mode": "shared_session",
-                    "message": "from a2a: {{a2a.text}}",
-                    "rate_limit_per_minute": 2
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    // Channel B: rate_limit_per_minute = 100 (permissive — different limit
-    // value, which is the trigger for the replace-on-limit-change strategy
-    // that previously flushed the per-IP buckets when both channels shared
-    // the same `app_id` cache key).
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id_b}"),
-            json!({
-                "channel_config": {
-                    "session_mode": "shared_session",
-                    "message": "from a2a (b): {{a2a.text}}",
-                    "rate_limit_per_minute": 100
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    let body = serde_json::to_vec(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "message/send",
-        "params": {
-            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
-        }
-    }))
-    .unwrap();
-
-    // Burn channel A's quota.
-    for _ in 0..2 {
-        server
-            .request_raw(
-                Method::POST,
-                &format!("/v1/apps/{app_id}/a2a/{channel_id_a}"),
-                vec![
-                    ("content-type", "application/json"),
-                    ("authorization", &format!("Bearer {api_key_a}")),
-                ],
-                body.clone(),
-            )
-            .await
-            .assert_status(StatusCode::OK);
-    }
-
-    // A request to channel B with its own (higher) limit must succeed and
-    // must NOT reset channel A's bucket.
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id_b}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {api_key_b}")),
-            ],
-            body.clone(),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    // The next request on channel A must still be rate-limited — its bucket
-    // was not flushed by the channel B request.
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id_a}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {api_key_a}")),
-            ],
-            body,
-        )
-        .await
-        .assert_status(StatusCode::TOO_MANY_REQUESTS);
-}
-
-#[tokio::test]
-async fn a2a_rate_limit_rejects_absurd_values() {
-    let server = TestServer::in_memory().await;
-    let (app, _api_key) = create_app_with_a2a(&server, "a2a-rate-bad", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-
-    // Mirror the AG-UI cap so a typo can't silently disable the per-channel
-    // limit by overflowing reasonable expectations.
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({
-                "channel_config": {
-                    "session_mode": "shared_session",
-                    "message": "{{a2a.text}}",
-                    "rate_limit_per_minute": 9_999_999_u32
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
-}
 // ---------------------------------------------------------------------------
 // A2A request replay protection (TM-A2A-010)
 //
@@ -2047,20 +1539,17 @@ async fn a2a_rate_limit_rejects_absurd_values() {
 
 const A2A_SIGNING_SECRET: &str = "shared-a2a-signing-secret-1234567890";
 
-async fn enable_a2a_signing(server: &TestServer, app_id: &str, channel_id: &str, secret: &str) {
+async fn enable_a2a_signing(server: &TestServer, channel_id: &str, secret: &str) {
     server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
+        .update_endpoint_config(
+            channel_id,
             json!({
-                "channel_config": {
-                    "session_mode": "shared_session",
-                    "message": "from a2a: {{a2a.text}}",
-                    "signing_secret": secret
-                }
+                "session_mode": "shared_session",
+                "message": "from a2a: {{a2a.text}}",
+                "signing_secret": secret
             }),
         )
-        .await
-        .assert_status(StatusCode::OK);
+        .await;
 }
 
 #[tokio::test]
@@ -2070,7 +1559,7 @@ async fn a2a_signed_channel_accepts_valid_signature() {
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     publish_app(&server, app_id).await;
-    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+    enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -2113,7 +1602,7 @@ async fn a2a_signed_channel_rejects_missing_signature_headers() {
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     publish_app(&server, app_id).await;
-    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+    enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -2149,7 +1638,7 @@ async fn a2a_signed_channel_rejects_bad_signature() {
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     publish_app(&server, app_id).await;
-    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+    enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -2192,7 +1681,7 @@ async fn a2a_signed_channel_rejects_stale_timestamp() {
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     publish_app(&server, app_id).await;
-    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+    enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -2240,7 +1729,7 @@ async fn a2a_signed_channel_rejects_replay_within_window() {
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     publish_app(&server, app_id).await;
-    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+    enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -2294,111 +1783,6 @@ async fn a2a_signed_channel_rejects_replay_within_window() {
 }
 
 #[tokio::test]
-async fn a2a_signed_channel_rejects_cross_channel_replay() {
-    // TM-A2A-010 cross-channel binding: when operators reuse the same
-    // `signing_secret` across two A2A channels on the same app, a
-    // signature computed for channel A must NOT be accepted on channel B.
-    // The signed basestring includes `{app_id}:{channel_id}` so the
-    // signature is bound to its target; verification on a different
-    // channel must fail with 401.
-    let server = TestServer::in_memory().await;
-    let (app, api_key_a) =
-        create_app_with_a2a(&server, "a2a-cross-channel", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id_a = app["channels"][0]["id"].as_str().unwrap().to_string();
-
-    let second_channel_response: Value = server
-        .post(
-            &format!("/v1/apps/{app_id}/a2a-channels"),
-            json!({
-                "session_mode": "shared_session",
-                "message": "from a2a (b): {{a2a.text}}",
-                "agent_card_name": "Inbox triage (b)",
-                "agent_card_description": "Triages inbound A2A traffic (b)",
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let api_key_b = second_channel_response["api_key"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let app_after: Value = server
-        .get(&format!("/v1/apps/{app_id}"))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    let channel_id_b = app_after["channels"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|c| c["id"].as_str().unwrap().to_string())
-        .find(|id| id != &channel_id_a)
-        .expect("second a2a channel id");
-
-    publish_app(&server, app_id).await;
-
-    // Both channels share the SAME signing secret — this is exactly the
-    // misconfiguration the scope binding is intended to defend against.
-    enable_a2a_signing(&server, app_id, &channel_id_a, A2A_SIGNING_SECRET).await;
-    enable_a2a_signing(&server, app_id, &channel_id_b, A2A_SIGNING_SECRET).await;
-
-    let body = serde_json::to_vec(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "message/send",
-        "params": {
-            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
-        }
-    }))
-    .unwrap();
-    let ts = a2a_now_secs();
-    // Sign with channel A's scope.
-    let sig_for_a = a2a_sign(
-        A2A_SIGNING_SECRET,
-        ts,
-        &format!("{app_id}:{channel_id_a}"),
-        &body,
-    );
-
-    // Sanity check: the signature is accepted on channel A (its target).
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id_a}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {api_key_a}")),
-                ("x-everruns-a2a-timestamp", &ts.to_string()),
-                ("x-everruns-a2a-signature", &sig_for_a),
-            ],
-            body.clone(),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    // The same signed envelope replayed against channel B with channel
-    // B's API key must be rejected, even though both channels share the
-    // signing secret and the timestamp is still fresh. Without the
-    // scope binding the per-channel replay store would not catch this.
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id_b}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {api_key_b}")),
-                ("x-everruns-a2a-timestamp", &ts.to_string()),
-                ("x-everruns-a2a-signature", &sig_for_a),
-            ],
-            body,
-        )
-        .await
-        .assert_status(StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
 async fn a2a_unsigned_channel_keeps_api_key_only_behavior() {
     // Backward compatibility: channels without a `signing_secret` must
     // continue to accept plain bearer-only requests with no signing
@@ -2443,7 +1827,7 @@ async fn a2a_agent_card_advertises_signing_scheme_when_enabled() {
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     publish_app(&server, app_id).await;
-    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+    enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let card: Value = server
         .get(&format!(
@@ -2489,7 +1873,7 @@ async fn a2a_channel_read_redacts_signing_secret_with_configured_flag() {
         create_app_with_a2a(&server, "a2a-redact", "from a2a: {{a2a.text}}").await;
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+    enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let app_after: Value = server
         .get(&format!("/v1/apps/{app_id}"))
@@ -2510,80 +1894,4 @@ async fn a2a_channel_read_redacts_signing_secret_with_configured_flag() {
     assert_eq!(cfg["signing_secret_configured"], json!(true));
     let serialized = serde_json::to_string(&app_after).unwrap();
     assert!(!serialized.contains(A2A_SIGNING_SECRET));
-}
-
-#[tokio::test]
-async fn a2a_patch_preserves_signing_secret_when_omitted() {
-    // PATCHing a signed channel without resending `signing_secret` must
-    // keep the channel's signing requirement intact — otherwise editing
-    // an unrelated field would silently turn off replay protection.
-    let server = TestServer::in_memory().await;
-    let (app, api_key) =
-        create_app_with_a2a(&server, "a2a-patch-keep", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
-    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
-
-    // Edit an unrelated field (the agent card name) without sending the
-    // signing secret. Channel must remain in signed mode.
-    server
-        .patch(
-            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
-            json!({
-                "channel_config": {
-                    "session_mode": "shared_session",
-                    "message": "from a2a: {{a2a.text}}",
-                    "agent_card_name": "Renamed Agent"
-                }
-            }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    // Unsigned request must still 401 because signing is preserved.
-    let body = serde_json::to_vec(&json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "message/send",
-        "params": {
-            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
-        }
-    }))
-    .unwrap();
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {api_key}")),
-            ],
-            body.clone(),
-        )
-        .await
-        .assert_status(StatusCode::UNAUTHORIZED);
-
-    // A correctly-signed request still works against the preserved secret.
-    let ts = a2a_now_secs();
-    let sig = a2a_sign(
-        A2A_SIGNING_SECRET,
-        ts,
-        &format!("{app_id}:{channel_id}"),
-        &body,
-    );
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {api_key}")),
-                ("x-everruns-a2a-timestamp", &ts.to_string()),
-                ("x-everruns-a2a-signature", &sig),
-            ],
-            body,
-        )
-        .await
-        .assert_status(StatusCode::OK);
 }

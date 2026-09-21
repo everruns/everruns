@@ -38,7 +38,7 @@ fn host_manifest_has_no_edge_to_facades_or_adapters() {
 #[test]
 fn host_exposes_no_writable_message_store_contract() {
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    for forbidden in ["RuntimeMessageStore", "PersistingEventEmitter"] {
+    for forbidden in ["MessageStore", "PersistingEventEmitter"] {
         for entry in std::fs::read_dir(&source).expect("read host source") {
             let path = entry.expect("host source entry").path();
             if path.extension().is_some_and(|extension| extension == "rs") {

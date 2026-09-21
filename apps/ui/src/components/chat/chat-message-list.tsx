@@ -45,6 +45,7 @@ import {
   UrlElicitationToolCall,
   type UrlElicitationArguments,
 } from "@/components/chat/url-elicitation-tool-call";
+import { AskUserToolCall, isAskUserArguments } from "@/components/chat/ask-user-tool-call";
 import { ToolActivityTimelineGroup } from "@/components/chat/tool-activity-timeline-group";
 import { buildToolActivityGroups } from "@/components/chat/tool-activity-groups";
 import {
@@ -99,6 +100,12 @@ interface ChatMessageListProps {
    * be a second, competing centred message.
    */
   emptyState?: ReactNode;
+}
+
+interface SetupConnectionArguments {
+  provider?: string;
+  subject?: "agent" | "user";
+  setup_url?: string;
 }
 
 /** A derived join/leave marker interleaved into the transcript by timestamp. */
@@ -396,6 +403,8 @@ export const ChatMessageList = memo(function ChatMessageList({
       const elicitationCalls =
         requested?.tool_calls.filter((toolCall) => toolCall.name === "confirm_url_elicitation") ??
         [];
+      const askUserCalls =
+        requested?.tool_calls.filter((toolCall) => toolCall.name === "ask_user") ?? [];
       return (
         <div key={event.id} className="space-y-1">
           <ToolActivityTimelineGroup
@@ -408,7 +417,9 @@ export const ChatMessageList = memo(function ChatMessageList({
               key={toolCall.id}
               sessionId={sessionId}
               toolCallId={toolCall.id}
-              provider={(toolCall.arguments as { provider?: string })?.provider ?? "unknown"}
+              provider={(toolCall.arguments as SetupConnectionArguments)?.provider ?? "unknown"}
+              subject={(toolCall.arguments as SetupConnectionArguments)?.subject}
+              setupUrl={(toolCall.arguments as SetupConnectionArguments)?.setup_url}
               toolResultsMap={toolResultsMap}
             />
           ))}
@@ -421,6 +432,18 @@ export const ChatMessageList = memo(function ChatMessageList({
               toolResultsMap={toolResultsMap}
             />
           ))}
+          {askUserCalls.map((toolCall) =>
+            isAskUserArguments(toolCall.arguments) ? (
+              <AskUserToolCall
+                key={toolCall.id}
+                sessionId={sessionId}
+                toolCallId={toolCall.id}
+                request={toolCall.arguments}
+                requestedAt={event.ts}
+                toolResultsMap={toolResultsMap}
+              />
+            ) : null,
+          )}
         </div>
       );
     }
@@ -438,6 +461,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     const elicitationCalls = reqData.tool_calls.filter(
       (toolCall) => toolCall.name === "confirm_url_elicitation",
     );
+    const askUserCalls = reqData.tool_calls.filter((toolCall) => toolCall.name === "ask_user");
 
     return (
       <div key={event.id} className="space-y-1">
@@ -446,7 +470,9 @@ export const ChatMessageList = memo(function ChatMessageList({
             key={toolCall.id}
             sessionId={sessionId}
             toolCallId={toolCall.id}
-            provider={(toolCall.arguments as { provider?: string })?.provider ?? "unknown"}
+            provider={(toolCall.arguments as SetupConnectionArguments)?.provider ?? "unknown"}
+            subject={(toolCall.arguments as SetupConnectionArguments)?.subject}
+            setupUrl={(toolCall.arguments as SetupConnectionArguments)?.setup_url}
             toolResultsMap={toolResultsMap}
           />
         ))}
@@ -459,6 +485,18 @@ export const ChatMessageList = memo(function ChatMessageList({
             toolResultsMap={toolResultsMap}
           />
         ))}
+        {askUserCalls.map((toolCall) =>
+          isAskUserArguments(toolCall.arguments) ? (
+            <AskUserToolCall
+              key={toolCall.id}
+              sessionId={sessionId}
+              toolCallId={toolCall.id}
+              request={toolCall.arguments}
+              requestedAt={event.ts}
+              toolResultsMap={toolResultsMap}
+            />
+          ) : null,
+        )}
       </div>
     );
   };
