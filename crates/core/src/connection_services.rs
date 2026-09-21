@@ -69,6 +69,22 @@ pub trait UserConnectionResolver: Send + Sync {
         Ok(None)
     }
 
+    /// Invalidate an MCP credential after the remote server rejects it.
+    ///
+    /// Implementations that own persistent grants can remove the credential
+    /// selected by `acts_as` and its credential-scoped tool cache. The default
+    /// is a no-op. Implementations must preserve a replacement grant when its
+    /// fingerprint differs from the credential the remote server rejected.
+    async fn invalidate_mcp_connection(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+        _acts_as: crate::mcp_server::McpServerActsAs,
+        _rejected_credential_fingerprint: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     /// Resolve the user ID of the connection used for a session/provider pair.
     ///
     /// This is used by leased resources to bind cleanup to the same provider
