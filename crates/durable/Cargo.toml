@@ -20,6 +20,9 @@ authors.workspace = true
 
 [dependencies]
 everruns-engine.workspace = true
+# Shared database-failure classification (EVE-1071). Already in the tree via
+# everruns-engine; named directly so the macro's path is explicit.
+everruns-core.workspace = true
 
 # Async runtime
 tokio = { workspace = true }
@@ -58,6 +61,9 @@ fail = { workspace = true, optional = true }
 
 [dev-dependencies]
 everruns-provider.workspace = true
+# Test-only: capturing log output is how `db_failure` proves every starved
+# subsystem reports one incident under one message (EVE-1071).
+tracing-subscriber.workspace = true
 
 [features]
 failpoints = ["fail/failpoints"]
