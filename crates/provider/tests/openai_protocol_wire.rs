@@ -21,6 +21,33 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 fn config(model: &str) -> LlmCallConfig {
     LlmCallConfig::new(model)
 }
+#[tokio::test]
+async fn provider_reported_model_is_separate_from_the_requested_alias() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"id":"chatcmpl-model","model":"gpt-5.2-2026-09-01","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":"stop"}]}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let response = driver(&server)
+        .chat_completion(
+            vec![Message::text(MessageRole::User, "hi")],
+            &config("gpt-5.2-latest"),
+        )
+        .await
+        .expect("completion should succeed");
+
+    assert_eq!(response.metadata.model.as_deref(), Some("gpt-5.2-latest"));
+    assert_eq!(
+        response.metadata.response_model.as_deref(),
+        Some("gpt-5.2-2026-09-01")
+    );
+}
 
 #[derive(Debug, PartialEq)]
 enum Golden {

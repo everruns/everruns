@@ -618,6 +618,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             reasoning_tokens: reasoning_used,
                                             provider_cost_usd,
                                             model: Some(model),
+                                            response_model: response_obj
+                                                .get("model")
+                                                .and_then(Value::as_str)
+                                                .map(str::to_owned),
                                             finish_reason: Some(reason),
                                             retry_metadata: retry_metadata_for_done
                                                 .map(|arc| (*arc).clone()),

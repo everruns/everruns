@@ -105,6 +105,37 @@ pub(crate) struct OpenAiMessage {
     pub(crate) tool_call_id: Option<String>,
 }
 
+/// Non-streaming `chat/completions` response (`stream: false`).
+#[derive(Debug, Deserialize)]
+pub(crate) struct OpenAiChatCompletionResponse {
+    #[serde(default)]
+    pub(crate) id: Option<String>,
+    #[serde(default)]
+    pub(crate) model: Option<String>,
+    #[serde(default)]
+    pub(crate) choices: Vec<OpenAiChatChoice>,
+    #[serde(default)]
+    pub(crate) usage: Option<OpenAiUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OpenAiChatChoice {
+    pub(crate) message: OpenAiChatMessage,
+    #[serde(default)]
+    pub(crate) finish_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OpenAiChatMessage {
+    #[serde(default)]
+    pub(crate) content: Option<OpenAiContent>,
+    #[serde(default)]
+    pub(crate) tool_calls: Vec<OpenAiToolCall>,
+    /// DeepSeek-style non-streamed reasoning payload.
+    #[serde(default)]
+    pub(crate) reasoning_content: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct OpenAiTool {
     pub(crate) r#type: String,
