@@ -23,13 +23,13 @@
 3921 crates/durable/src/persistence/postgres.rs
 2444 crates/durable/tests/postgres_integration_test.rs
 3329 crates/engine/src/execution/act.rs
-2886 crates/engine/src/execution/reason.rs
+2885 crates/engine/src/execution/reason.rs
 1827 crates/everruns/src/agent.rs
 1655 crates/everruns/src/session.rs
 1741 crates/host/src/events.rs
 1725 crates/host/src/host.rs
-4024 crates/host/src/observability/braintrust.rs
-2518 crates/host/src/observability/otel.rs
+3996 crates/host/src/observability/braintrust.rs
+1531 crates/host/src/observability/otel.rs
 2213 crates/host/src/runtime.rs
 2807 crates/host/tests/runtime_host_test.rs
 2593 crates/internal-protocol/src/lib.rs

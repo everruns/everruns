@@ -2971,7 +2971,7 @@ mod tests {
             .iter()
             .map(|c| c.capability_id())
             .collect();
-        assert_eq!(cap_ids.len(), 24);
+        assert_eq!(cap_ids.len(), 25);
         assert!(cap_ids.contains(&"human_intent"));
         assert!(cap_ids.contains(&"session_file_system"));
         assert!(cap_ids.contains(&"bashkit_shell"));
@@ -3144,11 +3144,11 @@ mod tests {
         );
     }
 
-    /// Verify all Generic Harness capabilities produce tool implementations
-    /// (not just definitions). Tools without implementations cause "Tool not found".
+    /// Verify server-executed Generic tools have implementations.
     #[tokio::test]
     async fn test_generic_harness_collected_tools_have_implementations() {
         use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
+        use everruns_provider::tool_types::ToolPolicy;
 
         let registry =
             crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
@@ -3168,30 +3168,30 @@ mod tests {
             SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
-        // Every tool definition must have a matching tool implementation
+        // Client-side definitions deliberately park for an external result.
+        let builtin_definition_count = collected
+            .tool_definitions
+            .iter()
+            .filter(|definition| definition.policy() != &ToolPolicy::ClientSide)
+            .count();
         assert_eq!(
             collected.tools.len(),
-            collected.tool_definitions.len(),
-            "tool implementations ({}) must match tool definitions ({}) — \
+            builtin_definition_count,
+            "tool implementations ({}) must match built-in tool definitions ({}) — \
              mismatches cause 'Tool not found' at runtime",
             collected.tools.len(),
-            collected.tool_definitions.len(),
+            builtin_definition_count,
         );
 
-        // Verify specific tools that Generic Harness users expect
         let tool_names: Vec<&str> = collected
             .tool_definitions
             .iter()
             .map(|t| t.name())
             .collect();
-        assert!(tool_names.contains(&"bash"), "must include bash tool");
         assert!(
-            tool_names.contains(&"list_skills"),
-            "must include list_skills tool"
-        );
-        assert!(
-            tool_names.contains(&"activate_skill"),
-            "must include activate_skill tool"
+            ["bash", "list_skills", "activate_skill", "ask_user"]
+                .iter()
+                .all(|expected| tool_names.contains(expected))
         );
     }
 

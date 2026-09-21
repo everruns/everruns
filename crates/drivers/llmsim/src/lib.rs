@@ -804,8 +804,7 @@ impl ChatDriver for LlmSimDriver {
             Vec::new()
         };
 
-        // Map llmsim ChatCompletionChunk -> our LlmStreamEvent, then append
-        // tool calls and metadata after the text stream completes.
+        // Map simulated chunks to stream events, then append tool calls and metadata.
         let tool_calls_tail = tool_calls;
         let model_name_done = model_name.clone();
         let event_stream = chunk_stream.flat_map(move |chunk| {
@@ -834,6 +833,7 @@ impl ChatDriver for LlmSimDriver {
                 metadata.prompt_tokens = Some(prompt_tokens);
                 metadata.completion_tokens = Some(completion_tokens);
                 metadata.model = Some(model_name_done);
+                metadata.response_model = Some(self.config.model_name.clone());
                 metadata.finish_reason = Some("stop".to_string());
                 metadata.response_id = response_id_for_done;
                 metadata
@@ -1601,7 +1601,6 @@ mod tests {
 
         let response = driver.chat_completion(messages, &config).await.unwrap();
 
-        // Model should come from the request config
         assert_eq!(response.metadata.model, Some("request-model".to_string()));
         assert!(response.metadata.prompt_tokens.is_some());
         assert!(response.metadata.completion_tokens.is_some());

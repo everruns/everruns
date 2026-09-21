@@ -24,7 +24,8 @@ pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         PLATFORM_CHAT_V2_HARNESS_NAME,
         "Platform Chat v2",
-        "Conversational harness for the Everruns Platform chat, with a session filesystem: \
+        "Conversational harness for the Everruns Platform chat, with structured user questions, \
+         soft approval for destructive actions, and a session filesystem: \
          product documentation and shared operator memory are folders the shell can read, \
          search, and write.",
         SYSTEM_PROMPT,
@@ -100,6 +101,8 @@ pub fn definition() -> BuiltInHarnessDefinition {
         // from keeping the full result on disk and showing the model a digest.
         BuiltInCapabilityDefinition::new("tool_output_persistence"),
         BuiltInCapabilityDefinition::new("tool_output_distillation"),
+        BuiltInCapabilityDefinition::new("ask_user"),
+        BuiltInCapabilityDefinition::new("soft_approval"),
     ])
 }
 
