@@ -411,6 +411,8 @@ impl StorageBackend {
     // ============================================
 
     pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
+        #[cfg(test)]
+        self.fail_if_forced("create_event")?;
         dispatch!(self, create_event, input)
     }
 

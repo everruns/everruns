@@ -33,7 +33,7 @@ use utoipa::ToSchema;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse};
 use super::tool_results::AppState;
-use crate::storage::models::UpsertSessionKeyValue;
+use crate::storage::models::{ClaimWaitingTurnResult, UpsertSessionKeyValue};
 use everruns_core::Caller;
 use everruns_provider::tool_types::CONFIRM_URL_ELICITATION_TOOL;
 
@@ -141,158 +141,166 @@ pub async fn submit_elicitation_consent(
         .await
         .log_internal_error_json("read session events")?
         .ok_or_not_found_json("Pending URL elicitation")?;
-
-    // Record before resuming. The tool call that reads this consent can start
-    // as soon as the workflow is running again, so a consent written after the
-    // resume could arrive too late to be seen.
-    if req.action == ConsentAction::Accept {
-        let record = StoredConsent::new(
-            &pending.server,
-            &pending.tool,
-            &pending.host,
-            chrono::Utc::now(),
-        );
-        state
-            .db
-            .upsert_session_key_value(UpsertSessionKeyValue {
-                session_id,
-                key: consent_storage_key(&pending.server, &pending.tool),
-                value: serde_json::to_string(&record).unwrap_or_default(),
-            })
-            .await
-            .log_internal_error_json("record elicitation consent")?;
-    }
-
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let event_message_id = MessageId::from_uuid(session_id.uuid());
-
-    // What the model reads. On an accept it needs to know the retry is now
-    // worth making; on a decline it needs to stop asking.
-    let summary = match req.action {
-        ConsentAction::Accept => serde_json::json!({
-            "action": "accept",
-            "server": pending.server,
-            "host": pending.host,
-            "message": format!(
-                "The user opened {} and completed what {} asked for. Call '{}' again now; \
-                 do not ask them to open the link again.",
-                pending.host, pending.server, pending.retry_tool
-            ),
-        }),
-        ConsentAction::Decline => serde_json::json!({
-            "action": "decline",
-            "server": pending.server,
-            "host": pending.host,
-            "message": format!(
-                "The user declined to open {}, so '{}' cannot run. Continue without it and \
-                 do not ask again.",
-                pending.host, pending.retry_tool
-            ),
-        }),
-    };
-
-    let completed = ToolCompletedData::success(
-        req.tool_call_id.clone(),
-        CONFIRM_URL_ELICITATION_TOOL.to_string(),
-        vec![ContentPart::tool_result_text(&summary)],
-        None,
-    );
-
-    // The decision also goes in as a turn of the conversation.
-    //
-    // The tool.completed above is what closes the card in the UI, but it cannot
-    // carry the decision to the model: the synthetic call was emitted by the
-    // engine, never by the model, so nothing in the transcript claims that tool
-    // call and the lone result is dropped before the request is built. Saying it
-    // as the user is both what reaches the model and what actually happened —
-    // they answered, with a button instead of the keyboard.
-    // Written the way the user would say it, without internal tool ids: the
-    // model already knows which call it just made, and this line is read by a
-    // person in the transcript.
-    let spoken = match req.action {
-        ConsentAction::Accept => format!(
-            "I opened {} and finished what {} asked for — go ahead.",
-            pending.host, pending.server
-        ),
-        ConsentAction::Decline => format!(
-            "I'd rather not open {}. Carry on without it, and don't ask again.",
-            pending.host
-        ),
-    };
-
-    // Inherit the run's controls. A turn's model can be pinned per message, and
-    // a decision that arrived without them would resume the turn on whatever the
-    // org default resolves to — switching provider mid-conversation, carrying
-    // the other provider's response ids with it.
-    let mut message = everruns_core::message::RuntimeMessage::user(spoken);
-    message.controls = latest_user_controls(&state, session_id).await;
-
-    if let Err(e) = state
-        .event_service
-        .emit(EventRequest::new(
-            session_id,
-            EventContext::empty(),
-            everruns_core::events::InputMessageData::new(message),
-        ))
+    match state
+        .db
+        .claim_waiting_turn(org.org_id, session_id)
         .await
+        .log_internal_error_json("claim waiting turn")?
     {
-        tracing::warn!(
-            session_id = %session_id,
-            error = %e,
-            "Failed to record the elicitation decision as a message"
-        );
-    }
-
-    if let Err(e) = state
-        .event_service
-        .emit(EventRequest::new(
-            session_id,
-            EventContext::turn(turn_id, event_message_id),
-            completed,
-        ))
-        .await
-    {
-        tracing::warn!(
-            session_id = %session_id,
-            tool_call_id = %req.tool_call_id,
-            error = %e,
-            "Failed to emit tool.completed event for elicitation consent"
-        );
-    }
-
-    if let Err(e) = state
-        .session_service
-        .update_status(&caller, session_id.uuid(), "active".to_string())
-        .await
-    {
-        tracing::warn!(error = %e, "Failed to set session status to active");
-    }
-
-    tracing::info!(
-        session_id = %session_id,
-        server = %pending.server,
-        tool = %pending.tool,
-        host = %pending.host,
-        url = %pending.url,
-        action = ?req.action,
-        "URL elicitation consent recorded"
-    );
-
-    let runner = state.runner.clone();
-    tokio::spawn(async move {
-        if let Err(e) = runner.resume_after_tool_results(session_id).await {
-            tracing::error!(
-                session_id = %session_id,
-                error = %e,
-                "Failed to resume workflow after elicitation consent"
-            );
+        ClaimWaitingTurnResult::Claimed => {}
+        ClaimWaitingTurnResult::Conflict { current_status } => {
+            return Err(ErrorResponse::new(format!(
+                "Session is not waiting for tool results (current status: {current_status})"
+            ))
+            .into_response(StatusCode::CONFLICT));
         }
-    });
+        ClaimWaitingTurnResult::SessionNotFound => {
+            return Err(ErrorResponse::not_found("Session"));
+        }
+    }
+    let mut durable_resume_enqueued = false;
+    let result: anyhow::Result<ElicitationConsentResponse> = async {
+        // Record before resuming. The tool call that reads this consent can start
+        // as soon as the workflow is running again, so a consent written after the
+        // resume could arrive too late to be seen.
+        if req.action == ConsentAction::Accept {
+            let record = StoredConsent::new(
+                &pending.server,
+                &pending.tool,
+                &pending.host,
+                chrono::Utc::now(),
+            );
+            state
+                .db
+                .upsert_session_key_value(UpsertSessionKeyValue {
+                    session_id,
+                    key: consent_storage_key(&pending.server, &pending.tool),
+                    value: serde_json::to_string(&record).unwrap_or_default(),
+                })
+                .await?;
+        }
 
-    Ok(Json(ElicitationConsentResponse {
-        host: pending.host,
-        status: "active".to_string(),
-    }))
+        let turn_id = TurnId::from_uuid(session_id.uuid());
+        let event_message_id = MessageId::from_uuid(session_id.uuid());
+
+        // What the model reads. On an accept it needs to know the retry is now
+        // worth making; on a decline it needs to stop asking.
+        let summary = match req.action {
+            ConsentAction::Accept => serde_json::json!({
+                "action": "accept",
+                "server": pending.server,
+                "host": pending.host,
+                "message": format!(
+                    "The user opened {} and completed what {} asked for. Call '{}' again now; \
+                     do not ask them to open the link again.",
+                    pending.host, pending.server, pending.retry_tool
+                ),
+            }),
+            ConsentAction::Decline => serde_json::json!({
+                "action": "decline",
+                "server": pending.server,
+                "host": pending.host,
+                "message": format!(
+                    "The user declined to open {}, so '{}' cannot run. Continue without it and \
+                     do not ask again.",
+                    pending.host, pending.retry_tool
+                ),
+            }),
+        };
+
+        let completed = ToolCompletedData::success(
+            req.tool_call_id.clone(),
+            CONFIRM_URL_ELICITATION_TOOL.to_string(),
+            vec![ContentPart::tool_result_text(&summary)],
+            None,
+        );
+
+        // The decision also goes in as a turn of the conversation.
+        //
+        // The tool.completed above is what closes the card in the UI, but it cannot
+        // carry the decision to the model: the synthetic call was emitted by the
+        // engine, never by the model, so nothing in the transcript claims that tool
+        // call and the lone result is dropped before the request is built. Saying it
+        // as the user is both what reaches the model and what actually happened —
+        // they answered, with a button instead of the keyboard.
+        // Written the way the user would say it, without internal tool ids: the
+        // model already knows which call it just made, and this line is read by a
+        // person in the transcript.
+        let spoken = match req.action {
+            ConsentAction::Accept => format!(
+                "I opened {} and finished what {} asked for — go ahead.",
+                pending.host, pending.server
+            ),
+            ConsentAction::Decline => format!(
+                "I'd rather not open {}. Carry on without it, and don't ask again.",
+                pending.host
+            ),
+        };
+
+        // Inherit the run's controls. A turn's model can be pinned per message, and
+        // a decision that arrived without them would resume the turn on whatever the
+        // org default resolves to — switching provider mid-conversation, carrying
+        // the other provider's response ids with it.
+        let mut message = everruns_core::message::RuntimeMessage::user(spoken);
+        message.controls = latest_user_controls(&state, session_id).await;
+
+        state
+            .event_service
+            .emit(EventRequest::new(
+                session_id,
+                EventContext::empty(),
+                everruns_core::events::InputMessageData::new(message),
+            ))
+            .await?;
+
+        state
+            .event_service
+            .emit(EventRequest::new(
+                session_id,
+                EventContext::turn(turn_id, event_message_id),
+                completed,
+            ))
+            .await?;
+
+        state.runner.resume_after_tool_results(session_id).await?;
+        durable_resume_enqueued = true;
+        anyhow::ensure!(
+            state
+                .db
+                .complete_waiting_turn_claim(org.org_id, session_id)
+                .await?,
+            "waiting-turn claim was lost before activation"
+        );
+
+        tracing::info!(
+            session_id = %session_id,
+            server = %pending.server,
+            tool = %pending.tool,
+            host = %pending.host,
+            url = %pending.url,
+            action = ?req.action,
+            "URL elicitation consent recorded"
+        );
+
+        Ok(ElicitationConsentResponse {
+            host: pending.host,
+            status: "active".to_string(),
+        })
+    }
+    .await;
+
+    if result.is_err()
+        && !durable_resume_enqueued
+        && let Err(error) = state
+            .db
+            .release_waiting_turn_claim(org.org_id, session_id)
+            .await
+    {
+        tracing::warn!(session_id = %session_id, error = %error, "Failed to release waiting-turn claim");
+    }
+    Ok(Json(result.log_internal_error_json(
+        "resolve URL elicitation consent",
+    )?))
 }
 
 /// Controls from the most recent user message in this session, if any.

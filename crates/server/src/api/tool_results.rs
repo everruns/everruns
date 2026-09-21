@@ -20,11 +20,11 @@ use axum::{
 };
 use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_core::message::ContentPart;
-use everruns_platform::SessionStatus;
 use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use everruns_worker::AgentRunner;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
+use crate::storage::models::ClaimWaitingTurnResult;
 use everruns_core::Caller;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -146,19 +146,28 @@ pub async fn submit_tool_results(
 
     // Get session and verify status
     let caller = Caller::from(&org);
-    let session = state
+    state
         .session_service
         .get(&caller, session_id.uuid(), None)
         .await
         .log_internal_error_json("get session")?
         .ok_or_not_found_json("Session")?;
-
-    if session.status != SessionStatus::WaitingForToolResults {
-        return Err(ErrorResponse::new(format!(
-            "Session is not waiting for tool results (current status: {})",
-            session.status
-        ))
-        .into_response(StatusCode::CONFLICT));
+    match state
+        .db
+        .claim_waiting_turn(org.org_id, session_id)
+        .await
+        .log_internal_error_json("claim waiting turn")?
+    {
+        ClaimWaitingTurnResult::Claimed => {}
+        ClaimWaitingTurnResult::Conflict { current_status } => {
+            return Err(ErrorResponse::new(format!(
+                "Session is not waiting for tool results (current status: {current_status})"
+            ))
+            .into_response(StatusCode::CONFLICT));
+        }
+        ClaimWaitingTurnResult::SessionNotFound => {
+            return Err(ErrorResponse::not_found("Session"));
+        }
     }
 
     // Use session_id as turn_id (matches how DurableRunner uses workflow_id = session_id)
@@ -168,78 +177,67 @@ pub async fn submit_tool_results(
 
     let accepted = req.tool_results.len();
 
-    // Emit tool.completed events for each result
-    for client_result in &req.tool_results {
-        let tool_result = if let Some(ref error) = client_result.error {
-            ToolCompletedData::failure(
-                client_result.tool_call_id.clone(),
-                String::new(), // tool name not available from client
-                "error".to_string(),
-                error.clone(),
-                None,
-            )
-        } else {
-            let result_content = client_result
-                .result
-                .as_ref()
-                .map(|r| vec![ContentPart::tool_result_text(r)])
-                .unwrap_or_default();
-            ToolCompletedData::success(
-                client_result.tool_call_id.clone(),
-                String::new(), // tool name not available from client
-                result_content,
-                None,
-            )
-        };
-
-        let event = EventRequest::new(
-            session_id,
-            EventContext::turn(turn_id, event_message_id),
-            tool_result,
+    let mut durable_resume_enqueued = false;
+    let result: anyhow::Result<SubmitToolResultsResponse> = async {
+        for client_result in &req.tool_results {
+            let tool_result = if let Some(ref error) = client_result.error {
+                ToolCompletedData::failure(
+                    client_result.tool_call_id.clone(),
+                    String::new(),
+                    "error".to_string(),
+                    error.clone(),
+                    None,
+                )
+            } else {
+                let result_content = client_result
+                    .result
+                    .as_ref()
+                    .map(|r| vec![ContentPart::tool_result_text(r)])
+                    .unwrap_or_default();
+                ToolCompletedData::success(
+                    client_result.tool_call_id.clone(),
+                    String::new(),
+                    result_content,
+                    None,
+                )
+            };
+            state
+                .event_service
+                .emit(EventRequest::new(
+                    session_id,
+                    EventContext::turn(turn_id, event_message_id),
+                    tool_result,
+                ))
+                .await?;
+        }
+        state.runner.resume_after_tool_results(session_id).await?;
+        durable_resume_enqueued = true;
+        anyhow::ensure!(
+            state
+                .db
+                .complete_waiting_turn_claim(org.org_id, session_id)
+                .await?,
+            "waiting-turn claim was lost before activation"
         );
-
-        if let Err(e) = state.event_service.emit(event).await {
-            tracing::warn!(
-                session_id = %session_id,
-                tool_call_id = %client_result.tool_call_id,
-                error = %e,
-                "Failed to emit tool.completed event for client tool result"
-            );
-        }
+        Ok(SubmitToolResultsResponse {
+            accepted,
+            status: "active".to_string(),
+        })
     }
+    .await;
 
-    // Set session status back to active
-    if let Err(e) = state
-        .session_service
-        .update_status(&caller, session_id.uuid(), "active".to_string())
-        .await
+    if result.is_err()
+        && !durable_resume_enqueued
+        && let Err(error) = state
+            .db
+            .release_waiting_turn_claim(org.org_id, session_id)
+            .await
     {
-        tracing::warn!(error = %e, "Failed to set session status to active");
+        tracing::warn!(session_id = %session_id, error = %error, "Failed to release waiting-turn claim");
     }
-
-    // Resume the workflow by enqueueing a reason activity directly.
-    // This skips InputAtom (there is no new user message) and uses the
-    // DurableTurnInput saved when the workflow paused for connection_required.
-    let runner = state.runner.clone();
-    tokio::spawn(async move {
-        if let Err(e) = runner.resume_after_tool_results(session_id).await {
-            tracing::error!(
-                session_id = %session_id,
-                error = %e,
-                "Failed to resume workflow after tool results"
-            );
-        } else {
-            tracing::info!(
-                session_id = %session_id,
-                "Workflow resumed after client tool results"
-            );
-        }
-    });
-
-    Ok(Json(SubmitToolResultsResponse {
-        accepted,
-        status: "active".to_string(),
-    }))
+    Ok(Json(
+        result.log_internal_error_json("resolve client tool results")?,
+    ))
 }
 
 #[cfg(test)]

@@ -391,8 +391,188 @@ fn test_tool_call_and_result_correlation() {
 
     assert_eq!(parsed_call.id, parsed_result.tool_call_id);
 }
+
 struct RecordingRunner {
     resumed_sessions: tokio::sync::mpsc::UnboundedSender<SessionId>,
+}
+
+struct BlockingRunner {
+    entered: tokio::sync::mpsc::UnboundedSender<SessionId>,
+    releases: Arc<tokio::sync::Semaphore>,
+}
+
+#[async_trait]
+impl AgentRunner for BlockingRunner {
+    async fn start_run(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+        _harness_id: HarnessId,
+        _agent_id: Option<AgentId>,
+        _input_message_id: MessageId,
+        _request_id: Option<String>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn resume_after_tool_results(&self, session_id: SessionId) -> anyhow::Result<()> {
+        self.entered
+            .send(session_id)
+            .map_err(|_| anyhow::anyhow!("resume observer dropped"))?;
+        self.releases.acquire().await?.forget();
+        Ok(())
+    }
+
+    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self, _run_id: SessionId) -> bool {
+        false
+    }
+
+    async fn active_count(&self) -> usize {
+        0
+    }
+}
+
+#[tokio::test]
+async fn user_message_claim_rejects_concurrent_tool_result() {
+    let (entered_tx, mut entered_rx) = tokio::sync::mpsc::unbounded_channel();
+    let releases = Arc::new(tokio::sync::Semaphore::new(0));
+    let server = Arc::new(
+        TestServer::in_memory_with_runner(Arc::new(BlockingRunner {
+            entered: entered_tx,
+            releases: releases.clone(),
+        }))
+        .await,
+    );
+    let session = create_waiting_client_tool_session(&server, "message-result").await;
+    let first_server = server.clone();
+    let first = tokio::spawn(async move {
+        first_server
+            .post(
+                &format!("/v1/sessions/{}/messages", session.id),
+                json!({
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "text", "text": "typed answer wins"}]
+                    }
+                }),
+            )
+            .await
+    });
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), entered_rx.recv())
+            .await
+            .expect("resume entry timeout")
+            .expect("resume entry"),
+        session.id
+    );
+
+    server
+        .post(
+            &format!("/v1/sessions/{}/tool-results", session.id),
+            json!({
+                "tool_results": [{
+                    "tool_call_id": "call_message-result",
+                    "result": {"answer": "late"}
+                }]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CONFLICT);
+    releases.add_permits(1);
+    first
+        .await
+        .expect("message task")
+        .assert_status(StatusCode::CREATED);
+
+    let completions = server
+        .db
+        .list_events(
+            session.id,
+            None,
+            None,
+            &["tool.completed".to_string()],
+            &[],
+            None,
+            None,
+        )
+        .await
+        .expect("list completions");
+    let matching: Vec<_> = completions
+        .iter()
+        .filter(|event| event.data["tool_call_id"] == "call_message-result")
+        .collect();
+    assert_eq!(matching.len(), 1);
+    assert_eq!(matching[0].data["status"], "cancelled");
+}
+
+#[tokio::test]
+async fn user_message_claim_rejects_concurrent_user_message() {
+    let (entered_tx, mut entered_rx) = tokio::sync::mpsc::unbounded_channel();
+    let releases = Arc::new(tokio::sync::Semaphore::new(0));
+    let server = Arc::new(
+        TestServer::in_memory_with_runner(Arc::new(BlockingRunner {
+            entered: entered_tx,
+            releases: releases.clone(),
+        }))
+        .await,
+    );
+    let session = create_waiting_client_tool_session(&server, "message-message").await;
+    let first_server = server.clone();
+    let first = tokio::spawn(async move {
+        first_server
+            .post(
+                &format!("/v1/sessions/{}/messages", session.id),
+                json!({
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "text", "text": "first typed answer"}]
+                    }
+                }),
+            )
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(1), entered_rx.recv())
+        .await
+        .expect("resume entry timeout")
+        .expect("resume entry");
+
+    server
+        .post(
+            &format!("/v1/sessions/{}/messages", session.id),
+            json!({
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "second typed answer"}]
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CONFLICT);
+    releases.add_permits(1);
+    first
+        .await
+        .expect("message task")
+        .assert_status(StatusCode::CREATED);
+
+    let messages = server
+        .db
+        .list_message_events_limited(session.id, None)
+        .await
+        .expect("list messages");
+    assert!(
+        messages
+            .iter()
+            .any(|event| { event.data["message"]["content"][0]["text"] == "first typed answer" })
+    );
+    assert!(
+        !messages
+            .iter()
+            .any(|event| { event.data["message"]["content"][0]["text"] == "second typed answer" })
+    );
 }
 
 #[async_trait]
@@ -426,6 +606,60 @@ impl AgentRunner for RecordingRunner {
     async fn active_count(&self) -> usize {
         0
     }
+}
+
+async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -> Session {
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": format!("parked-race-agent-{suffix}"),
+                "display_name": "Parked Race Agent",
+                "description": "Agent for parked-turn race coverage",
+                "system_prompt": "Use client-side tools."
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let session: Session = server
+        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    server
+        .db
+        .update_session(
+            1,
+            session.id,
+            everruns_server::storage::models::UpdateSession {
+                status: Some("waiting_for_tool_results".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update session status")
+        .expect("session exists");
+    server
+        .db
+        .create_event(everruns_server::storage::models::CreateEventRow {
+            session_id: session.id,
+            event_type: "tool.call_requested".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({
+                "tool_calls": [{
+                    "id": format!("call_{suffix}"),
+                    "name": "ask_user",
+                    "arguments": {}
+                }]
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("emit pending client tool call");
+    session
 }
 
 #[tokio::test]

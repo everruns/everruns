@@ -381,9 +381,32 @@ impl StorageBackend {
         )
     }
 
-    /// Release a previously reserved active-turn slot, restoring the session's
-    /// status captured at reservation time (best-effort; only reverts a session
-    /// still `active`).
+    pub async fn claim_waiting_turn(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<ClaimWaitingTurnResult> {
+        dispatch!(self, claim_waiting_turn, org_id, session_id)
+    }
+
+    pub async fn complete_waiting_turn_claim(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<bool> {
+        dispatch!(self, complete_waiting_turn_claim, org_id, session_id)
+    }
+
+    pub async fn release_waiting_turn_claim(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<()> {
+        dispatch!(self, release_waiting_turn_claim, org_id, session_id)
+    }
+
+    /// Release a turn reservation or parked-turn claim, restoring the status
+    /// captured when it was accepted.
     pub async fn release_active_turn_slot_for_org(
         &self,
         org_id: i64,

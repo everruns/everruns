@@ -7,15 +7,56 @@
 //! MCP client can find on the retry.
 
 mod test_harness;
+use std::sync::Arc;
+
+use async_trait::async_trait;
 
 use axum::http::StatusCode;
 use everruns_mcp::{StoredConsent, consent_storage_key};
 use everruns_platform::{Agent, Session};
-use everruns_provider::typed_id::SessionId;
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
 const TEST_ORG_ID: i64 = 1;
+
+struct ConsentRunner;
+
+#[async_trait]
+impl AgentRunner for ConsentRunner {
+    async fn start_run(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+        _harness_id: HarnessId,
+        _agent_id: Option<AgentId>,
+        _input_message_id: MessageId,
+        _request_id: Option<String>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn resume_after_tool_results(&self, _session_id: SessionId) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self, _run_id: SessionId) -> bool {
+        false
+    }
+
+    async fn active_count(&self) -> usize {
+        0
+    }
+}
+
+async fn test_server() -> TestServer {
+    TestServer::in_memory_with_runner(Arc::new(ConsentRunner)).await
+}
 
 async fn waiting_session(server: &TestServer) -> SessionId {
     let agent: Agent = server
@@ -109,7 +150,7 @@ async fn post_consent(
 
 #[tokio::test]
 async fn accepting_records_a_consent_the_retry_can_use() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let session_id = waiting_session(&server).await;
     emit_elicitation_card(&server, session_id, "url_elicitation_1").await;
 
@@ -134,7 +175,7 @@ async fn accepting_records_a_consent_the_retry_can_use() {
 
 #[tokio::test]
 async fn declining_records_nothing() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let session_id = waiting_session(&server).await;
     emit_elicitation_card(&server, session_id, "url_elicitation_2").await;
 
@@ -157,7 +198,7 @@ async fn declining_records_nothing() {
 /// it and the lone result is dropped before the provider request is built.
 #[tokio::test]
 async fn the_decision_is_spoken_into_the_conversation() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let session_id = waiting_session(&server).await;
     emit_elicitation_card(&server, session_id, "url_elicitation_6").await;
 
@@ -195,7 +236,7 @@ async fn the_decision_is_spoken_into_the_conversation() {
 /// while carrying the previous provider's response ids.
 #[tokio::test]
 async fn the_decision_inherits_the_runs_model() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let session_id = waiting_session(&server).await;
 
     // The user's own message, pinned to a model.
@@ -251,7 +292,7 @@ async fn the_decision_inherits_the_runs_model() {
 
 #[tokio::test]
 async fn the_decision_resumes_the_turn() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let session_id = waiting_session(&server).await;
     emit_elicitation_card(&server, session_id, "url_elicitation_3").await;
 
@@ -285,7 +326,7 @@ async fn the_decision_resumes_the_turn() {
 
 #[tokio::test]
 async fn an_unknown_tool_call_is_not_a_consent() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let session_id = waiting_session(&server).await;
     emit_elicitation_card(&server, session_id, "url_elicitation_4").await;
 
@@ -303,7 +344,7 @@ async fn an_unknown_tool_call_is_not_a_consent() {
 
 #[tokio::test]
 async fn a_session_that_is_not_paused_rejects_a_decision() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let agent: Agent = server
         .post(
             "/v1/agents",

@@ -388,7 +388,12 @@ impl InMemoryDatabase {
             },
             active_now: matched
                 .iter()
-                .filter(|s| matches!(s.status.as_str(), "active" | "waiting_for_tool_results"))
+                .filter(|s| {
+                    matches!(
+                        s.status.as_str(),
+                        "active" | "waiting_for_tool_results" | RESOLVING_TOOL_RESULTS_STATUS
+                    )
+                })
                 .count() as i64,
             failed_today: matched
                 .iter()
@@ -484,7 +489,12 @@ impl InMemoryDatabase {
         let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
         for s in sessions.values() {
             if s.org_id == org_id {
-                *counts.entry(s.status.clone()).or_default() += 1;
+                let status = if s.status == RESOLVING_TOOL_RESULTS_STATUS {
+                    "waiting_for_tool_results".to_string()
+                } else {
+                    s.status.clone()
+                };
+                *counts.entry(status).or_default() += 1;
             }
         }
         Ok(counts.into_iter().collect())
@@ -499,7 +509,12 @@ impl InMemoryDatabase {
                 s.org_id == org_id
                     && matches!(
                         s.status.as_str(),
-                        "active" | "idle" | "started" | "waiting_for_tool_results" | "paused"
+                        "active"
+                            | "idle"
+                            | "started"
+                            | "waiting_for_tool_results"
+                            | RESOLVING_TOOL_RESULTS_STATUS
+                            | "paused"
                     )
             })
             .count();
@@ -516,8 +531,8 @@ impl InMemoryDatabase {
         Ok(count as i64)
     }
 
-    /// Atomically reserve active-turn capacity for a new turn, or identify a
-    /// parked turn that the caller must resume without a new reservation.
+    /// Atomically reserve active-turn capacity for a new turn, or claim a
+    /// parked turn for exclusive resolution without a new reservation.
     pub async fn reserve_active_turn_slot_for_org(
         &self,
         org_id: i64,
@@ -533,7 +548,17 @@ impl InMemoryDatabase {
             _ => return Ok(ReserveActiveTurnSlotResult::SessionNotFound),
         };
         if previous_status == "waiting_for_tool_results" {
+            let session = sessions
+                .get_mut(&session_id)
+                .expect("session presence checked above");
+            session.status = RESOLVING_TOOL_RESULTS_STATUS.to_string();
+            session.updated_at = Self::now();
             return Ok(ReserveActiveTurnSlotResult::Accepted { previous_status });
+        }
+        if previous_status == RESOLVING_TOOL_RESULTS_STATUS {
+            return Ok(ReserveActiveTurnSlotResult::Conflict {
+                current_status: previous_status,
+            });
         }
 
         let active_turns = sessions
@@ -553,8 +578,62 @@ impl InMemoryDatabase {
         Ok(ReserveActiveTurnSlotResult::Accepted { previous_status })
     }
 
-    /// Release a previously reserved active-turn slot by restoring the prior
-    /// status. Best-effort: only reverts a session still in `active`.
+    pub async fn claim_waiting_turn(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<ClaimWaitingTurnResult> {
+        let mut sessions = self.sessions.write();
+        let Some(session) = sessions
+            .get_mut(&session_id)
+            .filter(|session| session.org_id == org_id)
+        else {
+            return Ok(ClaimWaitingTurnResult::SessionNotFound);
+        };
+        if session.status != "waiting_for_tool_results" {
+            return Ok(ClaimWaitingTurnResult::Conflict {
+                current_status: session.status.clone(),
+            });
+        }
+        session.status = RESOLVING_TOOL_RESULTS_STATUS.to_string();
+        session.updated_at = Self::now();
+        Ok(ClaimWaitingTurnResult::Claimed)
+    }
+
+    pub async fn complete_waiting_turn_claim(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<bool> {
+        let mut sessions = self.sessions.write();
+        let Some(session) = sessions.get_mut(&session_id).filter(|session| {
+            session.org_id == org_id && session.status == RESOLVING_TOOL_RESULTS_STATUS
+        }) else {
+            return Ok(false);
+        };
+        session.status = "active".to_string();
+        session.updated_at = Self::now();
+        Ok(true)
+    }
+
+    pub async fn release_waiting_turn_claim(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<()> {
+        let mut sessions = self.sessions.write();
+        if let Some(session) = sessions.get_mut(&session_id)
+            && session.org_id == org_id
+            && session.status == RESOLVING_TOOL_RESULTS_STATUS
+        {
+            session.status = "waiting_for_tool_results".to_string();
+            session.updated_at = Self::now();
+        }
+        Ok(())
+    }
+
+    /// Release a turn reservation or parked-turn claim by restoring its prior
+    /// status without clobbering worker progress.
     pub async fn release_active_turn_slot_for_org(
         &self,
         org_id: i64,
@@ -562,9 +641,14 @@ impl InMemoryDatabase {
         previous_status: &str,
     ) -> Result<()> {
         let mut sessions = self.sessions.write();
+        let current_status = if previous_status == "waiting_for_tool_results" {
+            RESOLVING_TOOL_RESULTS_STATUS
+        } else {
+            "active"
+        };
         if let Some(session) = sessions.get_mut(&session_id)
             && session.org_id == org_id
-            && session.status == "active"
+            && session.status == current_status
         {
             session.status = previous_status.to_string();
             session.updated_at = Self::now();
@@ -594,7 +678,9 @@ impl InMemoryDatabase {
                 "active" => stats.active_session_count += 1,
                 "idle" => stats.idle_session_count += 1,
                 "started" => stats.started_session_count += 1,
-                "waiting_for_tool_results" => stats.waiting_for_tool_results_session_count += 1,
+                "waiting_for_tool_results" | RESOLVING_TOOL_RESULTS_STATUS => {
+                    stats.waiting_for_tool_results_session_count += 1
+                }
                 _ => {}
             }
 

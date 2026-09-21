@@ -4,6 +4,7 @@
 
 use crate::services::EventService;
 use crate::storage::StorageBackend;
+use crate::storage::models::ClaimWaitingTurnResult;
 use chrono::Utc;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, ToolCompletedData, deserialize_event_data,
@@ -93,74 +94,61 @@ async fn timeout_session(
     session_id: SessionId,
     org_id: i64,
 ) -> anyhow::Result<()> {
-    // Find pending tool call IDs from the most recent tool.call_requested event
-    let tool_call_ids = find_pending_tool_call_ids(db, session_id).await?;
-
-    if tool_call_ids.is_empty() {
-        tracing::warn!(
-            session_id = %session_id,
-            "No tool.call_requested event found for timed-out session, resetting status"
-        );
+    match db.claim_waiting_turn(org_id, session_id).await? {
+        ClaimWaitingTurnResult::Claimed => {}
+        ClaimWaitingTurnResult::Conflict { .. } | ClaimWaitingTurnResult::SessionNotFound => {
+            return Ok(());
+        }
     }
-
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let message_id = MessageId::from_uuid(session_id.uuid());
-
-    // Emit timeout error events for each pending tool call
-    for tool_call_id in &tool_call_ids {
-        let error_result = ToolCompletedData::failure(
-            tool_call_id.clone(),
-            String::new(),
-            "timeout".to_string(),
-            "Timed out waiting for client tool results".to_string(),
-            None,
-        );
-
-        let event = EventRequest::new(
-            session_id,
-            EventContext::turn(turn_id, message_id),
-            error_result,
-        );
-
-        if let Err(e) = event_service.emit(event).await {
+    let mut durable_resume_enqueued = false;
+    let result: anyhow::Result<()> = async {
+        let tool_call_ids = find_pending_tool_call_ids(db, session_id).await?;
+        if tool_call_ids.is_empty() {
             tracing::warn!(
                 session_id = %session_id,
-                tool_call_id = %tool_call_id,
-                error = %e,
-                "Failed to emit timeout tool.completed event"
+                "No tool.call_requested event found for timed-out session, resetting status"
             );
         }
-    }
 
-    // Update session status to active
-    let caller = everruns_core::Caller::internal(org_id);
-    let session_service = crate::domains::sessions::SessionService::new(db.clone());
-    if let Err(e) = session_service
-        .update_status(&caller, session_id.uuid(), "active".to_string())
-        .await
+        let turn_id = TurnId::from_uuid(session_id.uuid());
+        let message_id = MessageId::from_uuid(session_id.uuid());
+        for tool_call_id in &tool_call_ids {
+            event_service
+                .emit(EventRequest::new(
+                    session_id,
+                    EventContext::turn(turn_id, message_id),
+                    ToolCompletedData::failure(
+                        tool_call_id.clone(),
+                        String::new(),
+                        "timeout".to_string(),
+                        "Timed out waiting for client tool results".to_string(),
+                        None,
+                    ),
+                ))
+                .await?;
+        }
+
+        runner.resume_after_tool_results(session_id).await?;
+        durable_resume_enqueued = true;
+        anyhow::ensure!(
+            db.complete_waiting_turn_claim(org_id, session_id).await?,
+            "waiting-turn claim was lost before activation"
+        );
+        tracing::info!(
+            session_id = %session_id,
+            "Workflow resumed after tool result timeout"
+        );
+        Ok(())
+    }
+    .await;
+
+    if result.is_err()
+        && !durable_resume_enqueued
+        && let Err(error) = db.release_waiting_turn_claim(org_id, session_id).await
     {
-        tracing::warn!(session_id = %session_id, error = %e, "Failed to reset session status");
+        tracing::warn!(session_id = %session_id, error = %error, "Failed to release waiting-turn claim");
     }
-
-    // Resume the workflow
-    let runner = runner.clone();
-    let sid = session_id;
-    tokio::spawn(async move {
-        if let Err(e) = runner.resume_after_tool_results(sid).await {
-            tracing::warn!(
-                session_id = %sid,
-                error = %e,
-                "Failed to resume workflow after tool result timeout"
-            );
-        } else {
-            tracing::info!(
-                session_id = %sid,
-                "Workflow resumed after tool result timeout"
-            );
-        }
-    });
-
-    Ok(())
+    result
 }
 
 /// Find pending tool call IDs from the most recent tool.call_requested event.
