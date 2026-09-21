@@ -125,6 +125,18 @@ before resume, recorded in [Application API Boundaries](application-api.md).
 An application still composes code-defined capabilities and tools on top of a
 data-defined harness; the harness is the shared floor, not a ceiling.
 
+`generic` is now shared in exactly that way (EVE-1041). The capability list
+lives in `everruns-capability` — the one crate both surfaces already depend on,
+so adopting it pulls no platform code into an application's graph — and is read
+by `crates/server/src/harnesses/generic.rs` for org provisioning and by
+`everruns::Harness::generic()` for embedders. Sharing a function makes
+divergence impossible by construction; a test in `crates/server/src/harnesses/`
+fails if the list is re-hardcoded locally, which is how the two drifted before.
+
+Only the capability references and their config cross over. The base system
+prompt and the hosted record's presentation fields stay platform-side, for the
+reasons above.
+
 ## Naming
 
 The concept is `Harness` on both surfaces. It was re-examined against the

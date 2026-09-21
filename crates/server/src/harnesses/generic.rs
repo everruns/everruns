@@ -1,8 +1,6 @@
 //! Generic harness — batteries-included default for most use cases.
 
-use everruns_platform::{
-    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole,
-};
+use everruns_platform::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "generic",
@@ -13,65 +11,11 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_icon("box")
     .with_tags(["generic", "default", "built-in"])
     .with_roles([BuiltInHarnessRole::Default])
-    .with_capabilities([
-        BuiltInCapabilityDefinition::new("human_intent"),
-        BuiltInCapabilityDefinition::new("session_file_system"),
-        BuiltInCapabilityDefinition::new("bashkit_shell"),
-        BuiltInCapabilityDefinition::with_config(
-            "web_fetch",
-            serde_json::json!({"enable_file_download": true}),
-        ),
-        BuiltInCapabilityDefinition::new("session_storage"),
-        BuiltInCapabilityDefinition::new("session"),
-        BuiltInCapabilityDefinition::new("session_schedule"),
-        BuiltInCapabilityDefinition::new("btw"),
-        BuiltInCapabilityDefinition::new("agent_instructions"),
-        BuiltInCapabilityDefinition::new("skills"),
-        BuiltInCapabilityDefinition::new("infinity_context"),
-        BuiltInCapabilityDefinition::new("auto_tool_search"),
-        BuiltInCapabilityDefinition::new("budgeting"),
-        BuiltInCapabilityDefinition::new("self_budget"),
-        BuiltInCapabilityDefinition::new("loop_detection"),
-        // Batch independent reads/searches: request parallel tool calls where the
-        // provider supports it; the local scheduler already runs batches
-        // concurrently by class.
-        BuiltInCapabilityDefinition::with_config(
-            "parallel_tool_calls",
-            serde_json::json!({"mode": "prefer"}),
-        ),
-        // Trusted, operator-facing default harness: show full provider error
-        // detail so failures (bad key, quota, outage) are self-explanatory.
-        BuiltInCapabilityDefinition::with_config(
-            "error_disclosure",
-            serde_json::json!({"mode": "detailed"}),
-        ),
-        BuiltInCapabilityDefinition::new("message_metadata"),
-        BuiltInCapabilityDefinition::with_config(
-            "compaction",
-            serde_json::json!({
-                "strategy": "auto",
-                "proactive": true,
-                "budget_percent": 0.85
-            }),
-        ),
-        BuiltInCapabilityDefinition::new("tool_output_persistence"),
-        BuiltInCapabilityDefinition::new("tool_output_distillation"),
-        // Citations (knowledge/runtime-resources/citations.md). citation_retrieval attaches
-        // claim-level citations to answers from any retrieval feed
-        // (search_index / search_knowledge) — a no-op until a knowledge
-        // capability is also enabled on the agent. citation_verification stamps
-        // faithfulness verdicts; its default `heuristic` mode is deterministic
-        // and adds no model call.
-        BuiltInCapabilityDefinition::new("citation_retrieval"),
-        BuiltInCapabilityDefinition::new("citation_verification"),
-        BuiltInCapabilityDefinition::new("ask_user"),
-        // Soft approval, at the default `normal` level: this harness has a
-        // shell, a file system, and the network, so an unattended agent can
-        // delete or publish for real. The gate is guidance rather than a
-        // permission wall, so it costs nothing on safe work and is overridden
-        // per agent with `{"mode": "off"}`.
-        BuiltInCapabilityDefinition::new("soft_approval"),
-    ])
+    // The one definition (EVE-1041). Org provisioning and the `everruns`
+    // facade read the same list from `everruns-capability`, so the two cannot
+    // drift; `shared_generic_capabilities_are_the_platform_ones` fails if
+    // anyone re-hardcodes it here.
+    .with_capabilities(everruns_capability::generic_capabilities())
 }
 
 const SYSTEM_PROMPT: &str = "\
