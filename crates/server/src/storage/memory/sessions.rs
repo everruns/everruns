@@ -685,18 +685,23 @@ impl InMemoryDatabase {
         let mut sessions = self.sessions.write();
         let mut resolutions = self.waiting_turn_resolutions.write();
         let owns_claim = resolutions.get(&session_id).is_some_and(|resolution| {
-            resolution.resolution_id == resolution_id
-                && resolution.claim_token == claim_token
-                && resolution.lease_expires_at > Self::now()
+            resolution.resolution_id == resolution_id && resolution.claim_token == claim_token
         });
         let Some(session) = sessions.get_mut(&session_id).filter(|session| {
+            let worker_advanced = matches!(session.status.as_str(), "active" | "idle" | "paused");
+            let lease_valid = resolutions
+                .get(&session_id)
+                .is_some_and(|resolution| resolution.lease_expires_at > Self::now());
             session.org_id == org_id
-                && session.status == RESOLVING_TOOL_RESULTS_STATUS
                 && owns_claim
+                && (session.status == RESOLVING_TOOL_RESULTS_STATUS || worker_advanced)
+                && (lease_valid || worker_advanced)
         }) else {
             return Ok(false);
         };
-        session.status = "active".to_string();
+        if session.status == RESOLVING_TOOL_RESULTS_STATUS {
+            session.status = "active".to_string();
+        }
         session.updated_at = Self::now();
         resolutions.remove(&session_id);
         Ok(true)

@@ -972,12 +972,16 @@ impl Database {
         claim_token: Uuid,
     ) -> Result<bool> {
         let completed = sqlx::query(
-            "UPDATE sessions SET status = 'active', turn_resolution_id = NULL, \
-             turn_resolution_claim_token = NULL, turn_resolution_lease_expires_at = NULL, \
-             turn_resolution_plan = NULL, updated_at = NOW() \
-             WHERE org_id = $1 AND id = $2 AND status = $3 \
+            "UPDATE sessions SET \
+                 status = CASE WHEN status = $3 THEN 'active' ELSE status END, \
+                 turn_resolution_id = NULL, \
+                 turn_resolution_claim_token = NULL, turn_resolution_lease_expires_at = NULL, \
+                 turn_resolution_plan = NULL, updated_at = NOW() \
+             WHERE org_id = $1 AND id = $2 \
+               AND status IN ($3, 'active', 'idle', 'paused') \
                AND turn_resolution_id = $4 AND turn_resolution_claim_token = $5 \
-               AND turn_resolution_lease_expires_at > NOW()",
+               AND (turn_resolution_lease_expires_at > NOW() \
+                    OR status IN ('active', 'idle', 'paused'))",
         )
         .bind(org_id)
         .bind(session_id)

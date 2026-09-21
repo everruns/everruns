@@ -10,7 +10,10 @@
 //!
 //! Run with: cargo test -p everruns-server --test client_side_tools_test
 mod test_harness;
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 
@@ -401,6 +404,67 @@ struct BlockingRunner {
     releases: Arc<tokio::sync::Semaphore>,
 }
 
+#[derive(Default)]
+struct FastCompletingRunner {
+    db: Mutex<Option<Arc<everruns_server::storage::StorageBackend>>>,
+}
+
+impl FastCompletingRunner {
+    fn attach(&self, db: Arc<everruns_server::storage::StorageBackend>) {
+        *self.db.lock().expect("runner database lock") = Some(db);
+    }
+}
+
+#[async_trait]
+impl AgentRunner for FastCompletingRunner {
+    async fn start_run(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+        _harness_id: HarnessId,
+        _agent_id: Option<AgentId>,
+        _input_message_id: MessageId,
+        _request_id: Option<String>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn resume_after_tool_results(
+        &self,
+        session_id: SessionId,
+        _resolution_id: uuid::Uuid,
+    ) -> anyhow::Result<()> {
+        let db = self
+            .db
+            .lock()
+            .expect("runner database lock")
+            .clone()
+            .expect("runner database attached");
+        db.update_session(
+            1,
+            session_id,
+            everruns_server::storage::models::UpdateSession {
+                status: Some("idle".to_string()),
+                ..Default::default()
+            },
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self, _run_id: SessionId) -> bool {
+        false
+    }
+
+    async fn active_count(&self) -> usize {
+        0
+    }
+}
+
 #[async_trait]
 impl AgentRunner for BlockingRunner {
     async fn start_run(
@@ -576,6 +640,38 @@ async fn user_message_claim_rejects_concurrent_user_message() {
         !messages
             .iter()
             .any(|event| { event.data["message"]["content"][0]["text"] == "second typed answer" })
+    );
+}
+
+#[tokio::test]
+async fn tool_result_succeeds_when_worker_finishes_before_claim_completion() {
+    let runner = Arc::new(FastCompletingRunner::default());
+    let server = TestServer::in_memory_with_runner(runner.clone()).await;
+    runner.attach(server.db.clone());
+    let session = create_waiting_client_tool_session(&server, "fast-worker").await;
+
+    server
+        .post(
+            &format!("/v1/sessions/{}/tool-results", session.id),
+            json!({
+                "tool_results": [{
+                    "tool_call_id": "call_fast-worker",
+                    "result": {"answer": "done"}
+                }]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    assert_eq!(
+        server
+            .db
+            .get_session(1, session.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "idle"
     );
 }
 
