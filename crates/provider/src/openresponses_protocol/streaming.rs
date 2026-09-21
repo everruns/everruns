@@ -516,6 +516,7 @@ pub(crate) fn handle_streaming_event(
                 reasoning_tokens: reasoning_used,
                 provider_cost_usd,
                 model: Some(model),
+                response_model: Some(response.model),
                 finish_reason: Some(reason),
                 retry_metadata: retry_metadata.map(|arc| (*arc).clone()),
                 response_id: Some(response.id),

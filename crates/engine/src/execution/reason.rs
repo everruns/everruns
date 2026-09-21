@@ -2334,7 +2334,6 @@ impl ReasonAtom {
 
         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
 
-        // Extract response_id from completion metadata for chaining and OTel
         let response_id = completion_metadata
             .as_ref()
             .and_then(|meta| meta.response_id.clone());
@@ -2390,7 +2389,8 @@ impl ReasonAtom {
                 "tool_calls".to_string()
             }
         })]);
-        let served_model = completion_metadata.as_ref().and_then(|m| m.model.clone());
+        let meta = completion_metadata.as_ref();
+        let served = meta.and_then(|m| m.response_model.clone());
         let retry_info = completion_metadata
             .as_ref()
             .and_then(|meta| meta.retry_metadata.as_ref())
@@ -2413,7 +2413,7 @@ impl ReasonAtom {
             response_id.clone(),
             retry_info,
         )
-        .with_response_model(served_model);
+        .with_response_model(served);
 
         // Add compaction info if compaction was performed. Compaction is a
         // separate billable model call on the same turn. Preserve whether the

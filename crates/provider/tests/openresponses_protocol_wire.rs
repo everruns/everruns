@@ -120,6 +120,32 @@ fn driver(server: &MockServer) -> Provider {
         .auth(BearerAuth::new("test-key"))
 }
 
+#[tokio::test]
+async fn provider_reported_model_is_separate_from_the_requested_alias() {
+    let server = MockServer::start().await;
+    mount_sse(
+        &server,
+        sse_event(
+            r#"{"type":"response.completed","response":{"id":"resp_model","model":"gpt-5.2-2026-09-01","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}"#,
+        ),
+    )
+    .await;
+
+    let response = driver(&server)
+        .chat_completion(
+            vec![Message::text(MessageRole::User, "hi")],
+            &config("gpt-5.2-latest"),
+        )
+        .await
+        .expect("completion should succeed");
+
+    assert_eq!(response.metadata.model.as_deref(), Some("gpt-5.2-latest"));
+    assert_eq!(
+        response.metadata.response_model.as_deref(),
+        Some("gpt-5.2-2026-09-01")
+    );
+}
+
 /// Text streaming: two output-text deltas then a `response.completed` carrying
 /// usage. The golden output is the two text deltas plus a single `Done` with the
 /// disjoint token buckets (the driver subtracts the cached-read subset from the
