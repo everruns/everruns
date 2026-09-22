@@ -34,6 +34,7 @@
 //! # let _ = accepts_inputs;
 //! ```
 
+mod ask_user_lifecycle;
 pub mod native_async;
 
 mod backends;

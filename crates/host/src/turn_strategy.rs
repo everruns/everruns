@@ -91,6 +91,15 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
                     .get("waiting_for_url_elicitation")
                     .and_then(|value| value.as_bool())
                     .unwrap_or(false),
+                waiting_for_ask_user: output
+                    .get("client_tool_calls")
+                    .and_then(|v| v.as_array())
+                    .is_some_and(|calls| {
+                        calls.iter().any(|call| {
+                            call.get("name").and_then(|n| n.as_str())
+                                == Some(everruns_provider::ASK_USER_TOOL_NAME)
+                        })
+                    }),
             };
 
             let hints = resolve_pause_hints(adapter, state.org_id, state.session_id, outcome).await;
@@ -146,6 +155,10 @@ pub(crate) async fn resolve_act_scheduling<A: RuntimeHostAdapter>(
 pub(crate) struct PauseHints {
     pub setup_connection: bool,
     pub url_elicitation: bool,
+    /// The client declared it renders `ask_user` question cards. Without it the
+    /// turn answers the question with the declared defaults rather than
+    /// parking on a card nobody can draw (EVE-1057).
+    pub ask_user: bool,
 }
 
 /// Resolve the pause hints only when the act actually paused for tool results,
@@ -171,6 +184,7 @@ pub(crate) async fn resolve_pause_hints<A: RuntimeHostAdapter>(
             PauseHints {
                 setup_connection: flag("setup_connection"),
                 url_elicitation: flag("url_elicitation"),
+                ask_user: flag("ask_user"),
             }
         }
         _ => PauseHints::default(),
@@ -241,7 +255,51 @@ pub(crate) async fn perform_effects<A: RuntimeHostAdapter>(
             TurnLifecycleEffect::WaitingForToolResults => {
                 lifecycle.waiting_for_tool_results().await?;
             }
+            TurnLifecycleEffect::ResolveAskUserUnattended {
+                turn_id,
+                input_message_id,
+                calls,
+            } => {
+                lifecycle
+                    .resolve_ask_user_unattended(turn_id, input_message_id, calls)
+                    .await?;
+            }
         }
     }
     Ok(())
+}
+
+/// The `ask_user` calls an act left pending, as `(tool_call_id, arguments)`.
+///
+/// Carried to the planner so it can answer them with declared defaults when no
+/// client declared it renders questions (EVE-1057). Empty unless the act
+/// actually paused on `ask_user`.
+pub(crate) fn pending_ask_user_calls(
+    act_result: &everruns_engine::ActResult,
+) -> Vec<(String, serde_json::Value)> {
+    act_result
+        .client_tool_calls
+        .iter()
+        .filter(|call| call.name == everruns_provider::ASK_USER_TOOL_NAME)
+        .map(|call| (call.id.clone(), call.arguments.clone()))
+        .collect()
+}
+
+/// True when an act paused on at least one `ask_user` call (EVE-1057).
+pub(crate) fn has_pending_ask_user(act_result: &everruns_engine::ActResult) -> bool {
+    act_result
+        .client_tool_calls
+        .iter()
+        .any(|call| call.name == everruns_provider::ASK_USER_TOOL_NAME)
+}
+
+/// Build the planner's [`ActOutcome`] from a completed act, deriving the
+/// `ask_user` pause from the client tool calls it left pending (EVE-1057).
+pub(crate) fn act_outcome(act_result: &everruns_engine::ActResult) -> ActOutcome {
+    ActOutcome {
+        blocked: act_result.blocked,
+        waiting_for_tool_results: act_result.waiting_for_tool_results,
+        waiting_for_url_elicitation: act_result.waiting_for_url_elicitation,
+        waiting_for_ask_user: has_pending_ask_user(act_result),
+    }
 }

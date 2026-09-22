@@ -7291,11 +7291,12 @@ export interface components {
        *     server what the client can handle. These are defaults for every turn;
        *     per-message `controls.hints` override these key-by-key (shallow merge).
        *
-       *     Two hints decide whether a turn may pause for the user rather than talk
-       *     past them: `setup_connection` (the client renders connection setup) and
-       *     `url_elicitation` (the client renders consent for a URL an MCP server
-       *     asks the user to open).
+       *     Three hints decide whether a turn may pause rather than talk past the
+       *     user: `setup_connection`, `url_elicitation`, and `ask_user` (each names
+       *     the card the client renders). A pause whose hint is absent does not park
+       *     — an unhinted `ask_user` resolves with the model's defaults (EVE-1057).
        * @example {
+       *       "ask_user": true,
        *       "rich_media": true,
        *       "setup_connection": true,
        *       "url_elicitation": true
