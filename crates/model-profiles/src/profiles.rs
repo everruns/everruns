@@ -14,6 +14,8 @@
 // Data source: https://github.com/sst/models.dev/tree/dev/providers
 // Cross-referenced with official Anthropic and OpenAI documentation
 
+mod gpt6;
+
 use crate::types::{
     CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
     ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue, ServiceKind, Speed, SpeedConfig,
@@ -129,23 +131,6 @@ fn reasoning_effort_gpt52_pro() -> ReasoningEffortConfig {
             effort(ReasoningEffort::Medium, "Medium"),
             effort(ReasoningEffort::High, "High"),
             effort(ReasoningEffort::Xhigh, "Extra High"),
-        ],
-        default: ReasoningEffort::Medium,
-    }
-}
-
-/// Reasoning effort for gpt-6-astra
-/// Default: medium, supports: low, medium, high, xhigh, max (no `none` — this
-/// is a pure reasoning model). Verified live against `/v1/responses`: `low`
-/// through `max` are all accepted (2026-09-04).
-fn reasoning_effort_gpt6_astra() -> ReasoningEffortConfig {
-    ReasoningEffortConfig {
-        values: vec![
-            effort(ReasoningEffort::Low, "Low"),
-            effort(ReasoningEffort::Medium, "Medium"),
-            effort(ReasoningEffort::High, "High"),
-            effort(ReasoningEffort::Xhigh, "Extra High"),
-            effort(ReasoningEffort::Max, "Max"),
         ],
         default: ReasoningEffort::Medium,
     }
@@ -381,6 +366,8 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["gpt-5.6-terra"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-5.6-luna"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-6-astra"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-6-sol"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-6-luna"], ModelVendor::OpenAi, OPENAI),
     // Anthropic
     md(&["claude-fable-5-1"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5"], ModelVendor::Anthropic, ANTHROPIC),
@@ -833,6 +820,7 @@ fn openai_embedding_profile(name: &str, family: &str, input_cost: f64) -> ModelP
 
 fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id {
+        "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna" => gpt6::profile_data(model_id),
         "text-embedding-3-small" => Some(openai_embedding_profile(
             "Text Embedding 3 Small",
             "text-embedding-3-small",
@@ -1734,64 +1722,6 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt55()),
-            speed: Some(speed_flex_priority()),
-            verbosity: Some(verbosity_standard()),
-            tool_search: true,
-            supported_parameters: Vec::new(),
-            supports_phases: true,
-        }),
-
-        // GPT-6 Astra: current flagship, publicly released 2026-09-04
-        // (limited preview 2026-09-03). Source: developers.openai.com/api/docs/
-        // models/gpt-6-astra (models.dev did not yet list it at the time of
-        // addition; refresh once it catches up). Same 1.05M/128K context/output
-        // shape and tiered pricing structure as the GPT-5.6 series, but priced
-        // higher ($10/$50, cache read $1) with the 2x/1.5x tier at 272K input
-        // tokens (cache read 2x). `reasoning.effort` adds a `max` tier above
-        // `xhigh` — verified live against `/v1/responses` (2026-09-04).
-        //
-        // Live-verified quirk: unlike GPT-5.x, GPT-6 Astra's reasoning item
-        // never carries readable summary content (`content: []`) even with
-        // `summary: "auto"`/`"concise"` — only `encrypted_content`. It is
-        // therefore excluded from the extended-thinking transcript test in
-        // `crates/llm-tests`, which asserts on readable reasoning text.
-        "gpt-6-astra" => Some(ModelProfile {
-            name: "GPT-6 Astra".into(),
-            family: "gpt-6-astra".into(),
-            description: Some("OpenAI's most capable model, built for the hardest end-to-end work: complex reasoning, coding, computer use, research, and document creation.".into()),
-            release_date: Some("2026-09-04".into()),
-            last_updated: Some("2026-09-04".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: Some("2026-04-30".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 10.00,
-                output: 50.00,
-                cache_read: Some(1.00),
-                cache_write: Some(12.5),
-                cost_tiers: vec![CostTier {
-                    above_tokens: 272_000,
-                    input: 20.00,
-                    output: 75.00,
-                    cache_read: Some(2.00),
-                    cache_write: Some(25.0),
-                }],
-            }),
-            limits: Some(ModelLimits {
-                context: 1_050_000,
-                input: None,
-                output: 128_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_gpt6_astra()),
             speed: Some(speed_flex_priority()),
             verbosity: Some(verbosity_standard()),
             tool_search: true,
@@ -3632,6 +3562,10 @@ mod tests {
             ("openai", "gpt-5.6-sol-2026-07-09", "gpt-5.6-sol"),
             ("openai", "gpt-6-astra", "gpt-6-astra"),
             ("openai", "gpt-6-astra-2026-09-04", "gpt-6-astra"),
+            ("openai", "gpt-6-sol", "gpt-6-sol"),
+            ("openai", "gpt-6-sol-2026-09-22", "gpt-6-sol"),
+            ("openai", "gpt-6-luna", "gpt-6-luna"),
+            ("openai", "gpt-6-luna-2026-09-22", "gpt-6-luna"),
             ("openai", "o3", "o3"),
             ("openai", "o3-2025-04-16", "o3"),
             ("openai", "o3-pro", "o3-pro"),
@@ -3661,6 +3595,8 @@ mod tests {
     fn cache_write_pricing_uses_disjoint_buckets_and_context_tier() {
         for (model, input) in [
             ("gpt-6-astra", 10.0),
+            ("gpt-6-sol", 2.0),
+            ("gpt-6-luna", 0.1),
             ("gpt-5.6-sol", 5.0),
             ("gpt-5.6-terra", 2.5),
             ("gpt-5.6-luna", 1.0),
@@ -3882,6 +3818,8 @@ mod tests {
         use Speed::*;
         // Flex + priority pricing rows.
         for model in [
+            "gpt-6-sol",
+            "gpt-6-luna",
             "gpt-5.6-sol",
             "gpt-5.6-terra",
             "gpt-5.6-luna",
@@ -4170,52 +4108,6 @@ mod tests {
             assert_eq!(effort.default, ReasoningEffort::Medium);
             assert_eq!(effort.values.len(), 5);
         }
-    }
-
-    #[test]
-    fn test_gpt6_astra_profile() {
-        let profile = get_model_profile("openai", "gpt-6-astra").unwrap();
-        assert_eq!(profile.name, "GPT-6 Astra");
-        assert_eq!(profile.family, "gpt-6-astra");
-        assert!(profile.reasoning);
-        assert!(!profile.temperature);
-        assert!(profile.tool_call);
-        assert!(profile.structured_output);
-        assert!(profile.tool_search);
-        assert!(profile.supports_phases);
-        assert_eq!(profile.knowledge.as_deref(), Some("2026-04-30"));
-
-        let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 1_050_000);
-        assert_eq!(limits.output, 128_000);
-
-        let cost = profile.cost.unwrap();
-        assert!((cost.input - 10.00).abs() < f64::EPSILON);
-        assert!((cost.output - 50.00).abs() < f64::EPSILON);
-        assert!((cost.cache_read.unwrap() - 1.00).abs() < f64::EPSILON);
-        assert_eq!(cost.cost_tiers.len(), 1);
-        let tier = &cost.cost_tiers[0];
-        assert_eq!(tier.above_tokens, 272_000);
-        assert!((tier.input - 20.00).abs() < f64::EPSILON);
-        assert!((tier.output - 75.00).abs() < f64::EPSILON);
-        assert!((tier.cache_read.unwrap() - 2.00).abs() < f64::EPSILON);
-
-        // Adds a `max` tier above `xhigh`, unlike every earlier GPT-5.x series.
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, ReasoningEffort::Medium);
-        assert_eq!(
-            effort.values.iter().map(|v| v.value).collect::<Vec<_>>(),
-            vec![
-                ReasoningEffort::Low,
-                ReasoningEffort::Medium,
-                ReasoningEffort::High,
-                ReasoningEffort::Xhigh,
-                ReasoningEffort::Max,
-            ]
-        );
-
-        assert!(profile.verbosity.is_some());
-        assert!(profile.speed.is_some());
     }
 
     #[test]

@@ -47,7 +47,6 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         is_favorite: true, // Favorite model
     },
     SeedModel {
-        // Platform default model (see `platform::PLATFORM_DEFAULT_MODEL_ID`).
         id: seed_ids::GPT_5_6_TERRA,
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.6-terra",
@@ -63,14 +62,31 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         enabled: true, // Enabled by default
         is_favorite: false,
     },
+    // OpenAI GPT-6 series (Astra / Sol / Luna)
     SeedModel {
-        // GPT-6 Astra is OpenAI's current flagship (above the GPT-5.6 series).
-        // GPT-5.6 Terra stays the platform default for now; Astra is available
-        // as an enabled favorite for the hardest reasoning/agentic work.
+        // GPT-6 Astra is OpenAI's flagship, available as an enabled favorite
+        // for the hardest reasoning/agentic work.
         id: seed_ids::GPT_6_ASTRA,
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-6-astra",
         display_name: "GPT-6 Astra",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::GPT_6_SOL,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-6-sol",
+        display_name: "GPT-6 Sol",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        // Platform default model (see `platform::PLATFORM_DEFAULT_MODEL_ID`).
+        id: seed_ids::GPT_6_LUNA,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-6-luna",
+        display_name: "GPT-6 Luna",
         enabled: true,     // Enabled by default
         is_favorite: true, // Favorite model
     },

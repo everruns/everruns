@@ -57,13 +57,13 @@ const BOOTSTRAP_ENABLE_LIMIT: usize = 8;
 const BOOTSTRAP_FAVORITE_LIMIT: usize = 3;
 
 /// Curated first pick per vendor, by model family. Recency alone elects the
-/// newest flagship the day it ships, which is the wrong default for everyday
-/// agent work: GPT-6 Astra is four times the price of GPT-5.6 Terra without
-/// being the better fit for most runs. Terra is also the platform fallback
+/// newest model the day it ships, which is the wrong default for everyday
+/// agent work: GPT-6 Astra costs 100x GPT-6 Luna on input without being the
+/// better fit for most runs. Luna is also the platform fallback
 /// (`platform::PLATFORM_DEFAULT_MODEL_ID`), so a freshly credentialed org lands
 /// on the same model the default org already uses. Families not listed here
 /// keep falling back to the recency order below.
-const PREFERRED_DEFAULT_FAMILIES: &[&str] = &["gpt-5.6-terra"];
+const PREFERRED_DEFAULT_FAMILIES: &[&str] = &["gpt-6-luna"];
 
 /// Default-model preference order: the curated pick first, then newest release,
 /// then the model with the fewest missing agent-relevant traits. Lower sorts
@@ -1024,17 +1024,17 @@ mod tests {
         }
     }
 
-    /// The newest OpenAI flagship must not win the default election just by
-    /// being newest: GPT-5.6 Terra is the curated everyday default, GPT-6 Astra
-    /// is the pricier flagship an operator opts into.
+    /// No other OpenAI model wins the default election over the curated pick,
+    /// whether newer or pricier: GPT-6 Luna is the everyday default, GPT-6
+    /// Astra and Sol are the stronger tiers an operator opts into.
     #[tokio::test]
-    async fn bootstrap_elects_terra_over_the_newer_astra_flagship() {
+    async fn bootstrap_elects_luna_over_other_openai_models() {
         let db = Arc::new(StorageBackend::in_memory());
         let org_id = create_second_org(&db).await;
         let service = ModelService::new(db.clone());
         let provider_id = create_keyed_provider(&db, org_id).await;
 
-        for model_id in ["gpt-6-astra", "gpt-5.6-terra", "gpt-5.6-sol"] {
+        for model_id in ["gpt-6-astra", "gpt-6-sol", "gpt-5.6-terra", "gpt-6-luna"] {
             discover_model(&db, org_id, provider_id, model_id, &["chat"]).await;
         }
 
@@ -1048,7 +1048,7 @@ mod tests {
             .await
             .unwrap()
             .expect("default elected");
-        assert_eq!(default.model_id, "gpt-5.6-terra");
+        assert_eq!(default.model_id, "gpt-6-luna");
     }
 
     /// Disabling the org default must hand the org another *chat* model. An
