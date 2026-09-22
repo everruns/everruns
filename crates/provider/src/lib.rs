@@ -40,6 +40,8 @@ pub mod model_spec;
 pub mod native_async;
 pub mod openai_compat;
 #[cfg(feature = "http")]
+pub mod openai_errors;
+#[cfg(feature = "http")]
 pub mod openai_protocol;
 #[cfg(feature = "http")]
 mod openai_types;
