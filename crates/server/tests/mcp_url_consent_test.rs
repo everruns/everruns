@@ -15,6 +15,7 @@ use axum::http::StatusCode;
 use everruns_mcp::{StoredConsent, consent_storage_key};
 use everruns_platform::{Agent, Session};
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
 use test_harness::TestServer;
@@ -150,6 +151,62 @@ async fn post_consent(
             body,
         )
         .await
+}
+
+async fn abandon_message_resolution(server: &TestServer, session_id: SessionId) {
+    let result = server
+        .db
+        .reserve_active_turn_slot_for_org(
+            TEST_ORG_ID,
+            session_id,
+            1,
+            WaitingTurnResolutionPlan {
+                kind: "user_message".to_string(),
+                events: Vec::new(),
+                session_values: Vec::new(),
+                response: json!({}),
+            },
+        )
+        .await
+        .expect("reserve message resolution");
+    let claim = match result {
+        ReserveActiveTurnSlotResult::Accepted {
+            resolution_claim: Some(claim),
+            ..
+        } => claim,
+        other => panic!("expected parked-turn claim, got {other:?}"),
+    };
+    server
+        .db
+        .abandon_waiting_turn_claim(
+            TEST_ORG_ID,
+            session_id,
+            claim.resolution_id,
+            claim.claim_token,
+        )
+        .await
+        .expect("expire message resolution claim");
+}
+
+#[tokio::test]
+async fn expired_message_resolution_rejects_url_consent_without_recording_it() {
+    let server = test_server().await;
+    let session_id = waiting_session(&server).await;
+    emit_elicitation_card(&server, session_id, "url_elicitation_stale_message").await;
+    abandon_message_resolution(&server, session_id).await;
+
+    post_consent(
+        &server,
+        session_id,
+        json!({
+            "tool_call_id": "url_elicitation_stale_message",
+            "action": "accept"
+        }),
+    )
+    .await
+    .assert_status(StatusCode::CONFLICT);
+
+    assert!(stored_consent(&server, session_id).await.is_none());
 }
 
 #[tokio::test]

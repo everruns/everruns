@@ -576,6 +576,7 @@ impl InMemoryDatabase {
             let mut resolutions = self.waiting_turn_resolutions.write();
             if let Some(resolution) = resolutions.get_mut(&session_id)
                 && resolution.lease_expires_at <= Self::now()
+                && resolution.plan.kind == resolution_plan.kind
             {
                 resolution.claim_token = Uuid::now_v7();
                 resolution.lease_expires_at = waiting_turn_claim_lease_expires_at();
@@ -590,7 +591,7 @@ impl InMemoryDatabase {
                 });
             }
             return Ok(ReserveActiveTurnSlotResult::Conflict {
-                current_status: previous_status,
+                current_status: "waiting_for_tool_results".to_string(),
             });
         }
 
@@ -619,6 +620,27 @@ impl InMemoryDatabase {
         session_id: SessionId,
         resolution_plan: WaitingTurnResolutionPlan,
     ) -> Result<ClaimWaitingTurnResult> {
+        self.claim_waiting_turn_inner(org_id, session_id, resolution_plan, false)
+            .await
+    }
+
+    pub async fn recover_waiting_turn(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        resolution_plan: WaitingTurnResolutionPlan,
+    ) -> Result<ClaimWaitingTurnResult> {
+        self.claim_waiting_turn_inner(org_id, session_id, resolution_plan, true)
+            .await
+    }
+
+    async fn claim_waiting_turn_inner(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        resolution_plan: WaitingTurnResolutionPlan,
+        recover_existing: bool,
+    ) -> Result<ClaimWaitingTurnResult> {
         let mut sessions = self.sessions.write();
         let Some(session) = sessions
             .get_mut(&session_id)
@@ -630,6 +652,7 @@ impl InMemoryDatabase {
             let mut resolutions = self.waiting_turn_resolutions.write();
             if let Some(resolution) = resolutions.get_mut(&session_id)
                 && resolution.lease_expires_at <= Self::now()
+                && (recover_existing || resolution.plan.kind == resolution_plan.kind)
             {
                 resolution.claim_token = Uuid::now_v7();
                 resolution.lease_expires_at = waiting_turn_claim_lease_expires_at();
@@ -643,7 +666,7 @@ impl InMemoryDatabase {
                 ));
             }
             return Ok(ClaimWaitingTurnResult::Conflict {
-                current_status: session.status.clone(),
+                current_status: "waiting_for_tool_results".to_string(),
             });
         }
         if session.status != "waiting_for_tool_results" {

@@ -398,6 +398,21 @@ impl StorageBackend {
         )
     }
 
+    pub async fn recover_waiting_turn(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        resolution_plan: WaitingTurnResolutionPlan,
+    ) -> Result<ClaimWaitingTurnResult> {
+        dispatch!(
+            self,
+            recover_waiting_turn,
+            org_id,
+            session_id,
+            resolution_plan
+        )
+    }
+
     pub async fn complete_waiting_turn_claim(
         &self,
         org_id: i64,
