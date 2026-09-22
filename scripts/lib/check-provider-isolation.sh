@@ -30,6 +30,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Keeps cargo's stderr, so "the guard could not run" never looks like
+# "the guard found a violation". See guard-cargo.sh.
+source "$SCRIPT_DIR/guard-cargo.sh"
+
 FAILED=0
 
 DRIVER_LAYOUT_NAMES=(
@@ -101,7 +105,7 @@ done
 # 3. Dependency trees: forbidden crates absent on every edge kind, so
 #    `cargo test -p <provider>` never builds the kernel.
 for crate in "${PROVIDER_CRATES[@]}"; do
-  tree=$(cargo tree -p "$crate" --edges normal,build,dev --prefix none 2>/dev/null)
+  tree=$(guard_cargo_tree -p "$crate" --edges normal,build,dev --prefix none)
   if echo "$tree" | grep -qE "$FORBIDDEN_TREE"; then
     echo "$crate must not depend on core/host/platform/server (any edge kind):"
     echo "$tree" | grep -E "$FORBIDDEN_TREE" | sort -u
@@ -112,7 +116,7 @@ done
 # 4. Shipped (normal-edge) trees: no heavy core feature subtree leaks into
 #    provider-only builds.
 for crate in "${PROVIDER_CRATES[@]}"; do
-  tree=$(cargo tree -p "$crate" --edges normal --prefix none 2>/dev/null)
+  tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)
   if echo "$tree" | grep -qE "$HEAVY_TREE"; then
     echo "$crate must not ship heavy core feature subtrees (sqlx/utoipa/inventory/axum/tonic):"
     echo "$tree" | grep -E "$HEAVY_TREE" | sort -u

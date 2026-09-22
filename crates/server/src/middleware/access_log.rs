@@ -188,6 +188,60 @@ mod tests {
         capture
     }
 
+    /// EVE-1075: the layers as `app_builder` wires them, not as the other
+    /// tests wire them.
+    ///
+    /// Every other test here injects `RequestId` into the request by hand and
+    /// mounts the access log alone, so none of them exercises the one thing
+    /// that was actually broken in production: whether `RequestIdLayer` runs
+    /// *before* the access log reads the extension. The ID the client never
+    /// sent has to be generated, land in the extension, reach the log event,
+    /// and match what the response echoes back.
+    fn wired_app() -> Router {
+        async fn ok() -> &'static str {
+            "ok"
+        }
+        Router::new()
+            .route("/users/{id}", get(ok))
+            .route_layer(axum::middleware::from_fn(http_access_log_layer))
+            .layer(crate::middleware::RequestIdLayer)
+    }
+
+    #[test]
+    fn the_logged_request_id_is_the_one_the_response_echoes() {
+        let capture = CaptureLayer::default();
+        let subscriber = Registry::default().with(capture.clone());
+        let echoed = with_default(subscriber, || {
+            let req = Request::builder()
+                .uri("/users/42")
+                .body(Body::empty())
+                .unwrap();
+            futures::executor::block_on(async {
+                let response = wired_app().oneshot(req).await.unwrap();
+                response
+                    .headers()
+                    .get(&crate::middleware::request_id::REQUEST_ID_HEADER)
+                    .map(|value| value.to_str().unwrap().to_string())
+            })
+        });
+
+        let echoed = echoed.expect("the response echoes a request id");
+        assert!(!echoed.is_empty());
+
+        let events = capture.events.lock().unwrap().clone();
+        assert_eq!(events.len(), 1, "expected exactly one access-log event");
+        let logged = events[0]
+            .fields
+            .get("request_id")
+            .map(String::as_str)
+            .unwrap_or_default();
+        assert_eq!(
+            logged, echoed,
+            "the access log logged {logged:?} while the response echoed {echoed:?}; \
+             `request_id=<x>` cannot return the wire-side line"
+        );
+    }
+
     #[test]
     fn emits_info_event_with_method_route_status_latency_request_id() {
         let capture = run_request(build_app(), "/users/42", "req-abc");

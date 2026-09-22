@@ -10,6 +10,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Keeps cargo's stderr, so "the guard could not run" never looks like
+# "the guard found a violation". See guard-cargo.sh.
+source "$SCRIPT_DIR/guard-cargo.sh"
+
 FAILED=0
 HOSTED_MODULES=(
   a2a_delegation agent_handoff background_execution citation_retrieval
@@ -62,7 +66,7 @@ if [ -e crates/container-sandbox/Cargo.toml ] || [ ! -e crates/platform/src/cont
   FAILED=1
 fi
 
-CORE_TREE=$(cargo tree -p everruns-core --edges normal,build --prefix none 2>/dev/null)
+CORE_TREE=$(guard_cargo_tree -p everruns-core --edges normal,build --prefix none)
 if echo "$CORE_TREE" | grep -qE '^(a2a-lf|a2a-client-lf) '; then
   echo "everruns-core must not ship the outbound A2A implementation subtree:"
   echo "$CORE_TREE" | grep -E '^(a2a-lf|a2a-client-lf) ' | sort -u

@@ -27,6 +27,10 @@ in `src/agent.rs`, and its editable prompt under `src/resources/`. Shared
 terminal presentation lives in `demo-support`; it does not change agent behavior.
 
 [Public walkthroughs](https://docs.everruns.com/framework/examples/) explain the code.
+[Weekend Concierge Host](weekend-concierge-host/) is a standalone host application:
+it answers the agent's `ask_user` questions from a real terminal, which is the
+half of that capability an embedding host owns.
 [Focused Framework API examples](../crates/everruns/examples/) cover persistence,
-session history, workspaces, cancellation, and other individual features.
+session history, workspaces, cancellation, structured questions, and other
+individual features.
 [Platform definitions](agents/) are a separate hosted-control-plane catalog.

@@ -21,6 +21,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Keeps cargo's stderr, so "the guard could not run" never looks like
+# "the guard found a violation". See guard-cargo.sh.
+source "$SCRIPT_DIR/guard-cargo.sh"
+
 FAILED=0
 
 if [ -e crates/observability/Cargo.toml ] || [ ! -e crates/host/src/observability/mod.rs ]; then
@@ -39,7 +43,7 @@ if matches=$(grep -rnE "$SOURCE_PATTERN" crates/core/src --include='*.rs' 2>/dev
 fi
 
 # 2. Core: no exporter crate on normal/build edges.
-CORE_TREE=$(cargo tree -p everruns-core --edges normal,build --prefix none 2>/dev/null)
+CORE_TREE=$(guard_cargo_tree -p everruns-core --edges normal,build --prefix none)
 if echo "$CORE_TREE" | grep -qE "$EXPORTER_CRATES_TREE"; then
   echo "everruns-core must not depend on OpenTelemetry/OTLP exporter crates:"
   echo "$CORE_TREE" | grep -E "$EXPORTER_CRATES_TREE" | sort -u
@@ -62,7 +66,7 @@ CLEAN_CRATES=(
   everruns-meta
 )
 for crate in "${CLEAN_CRATES[@]}"; do
-  tree=$(cargo tree -p "$crate" --edges normal --prefix none 2>/dev/null)
+  tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)
   if echo "$tree" | grep -qE "$EXPORTER_CRATES_TREE"; then
     echo "$crate must not ship OpenTelemetry/OTLP exporter crates in its normal dependency tree:"
     echo "$tree" | grep -E "$EXPORTER_CRATES_TREE" | sort -u

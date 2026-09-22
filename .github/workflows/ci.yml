@@ -161,6 +161,16 @@ jobs:
               - 'examples/demo-support/**'
               - 'scripts/cli-e2e-test.sh'
               - 'scripts/lib/check-everruns-examples.sh'
+              # The isolation and dependency guards are rust-gated jobs, so a
+              # PR that changes only a guard would otherwise skip the very job
+              # that runs it and prove nothing.
+              - 'scripts/lib/check-agent-record-isolation.sh'
+              - 'scripts/lib/check-core-kernel-dependencies.sh'
+              - 'scripts/lib/check-hosted-capability-isolation.sh'
+              - 'scripts/lib/check-observability-isolation.sh'
+              - 'scripts/lib/check-provider-isolation.sh'
+              - 'scripts/lib/check-test-support-isolation.sh'
+              - 'scripts/lib/guard-cargo.sh'
               # The lockfile job runs the single-version gate; re-run it when
               # the gate itself changes.
               - 'scripts/sync-publish-pin-versions.py'
@@ -711,6 +721,19 @@ jobs:
 
       - name: Check no oversized file grew and no new file crossed the threshold
         run: bash scripts/lib/check-file-size.sh
+
+  log-error-field:
+    name: Log Error Field
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check no file gained a log site that interpolates an error
+        run: bash scripts/lib/check-log-error-field.sh
 
   lint-floor:
     name: Clippy Lint Floor
@@ -2708,6 +2731,7 @@ jobs:
       - clippy
       - integration-catalog
       - file-size
+      - log-error-field
       - lint-floor
       - unit-test
       - worker-test
