@@ -22333,12 +22333,13 @@
               "object",
               "null"
             ],
-            "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).\n\nTwo hints decide whether a turn may pause for the user rather than talk\npast them: `setup_connection` (the client renders connection setup) and\n`url_elicitation` (the client renders consent for a URL an MCP server\nasks the user to open).",
+            "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).\n\nThree hints decide whether a turn may pause rather than talk past the\nuser: `setup_connection`, `url_elicitation`, and `ask_user` (each names\nthe card the client renders). A pause whose hint is absent does not park\n— an unhinted `ask_user` resolves with the model's defaults (EVE-1057).",
             "additionalProperties": {},
             "propertyNames": {
               "type": "string"
             },
             "example": {
+              "ask_user": true,
               "rich_media": true,
               "setup_connection": true,
               "url_elicitation": true
