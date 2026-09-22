@@ -118,7 +118,7 @@ let spam = judge.probability("Is this message spam?", text).await?;
 ```
 
 The threshold stays in your code, so there is no written verdict to misparse.
-See [Direct decision](https://docs.everruns.com/framework/direct-decision/).
+See [Direct decision](https://docs.everruns.com/framework/direct-decisions/).
 
 ## Credentials come from your vendor's own variables
 
@@ -287,7 +287,7 @@ includes the exact command for each one.
 - [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/)
 - [Model catalogs](https://docs.everruns.com/framework/model-catalogs/)
-- [Direct decision](https://docs.everruns.com/framework/direct-decision/)
+- [Direct decision](https://docs.everruns.com/framework/direct-decisions/)
 - [Credentials](https://docs.everruns.com/framework/credentials/)
 - [Sessions](https://docs.everruns.com/framework/sessions/)
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
