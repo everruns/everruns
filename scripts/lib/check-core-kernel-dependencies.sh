@@ -8,6 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Keeps cargo's stderr, so "the guard could not run" never looks like
+# "the guard found a violation". See guard-cargo.sh.
+source "$SCRIPT_DIR/guard-cargo.sh"
+
 FAILED=0
 fail() { echo "$1"; FAILED=1; }
 
@@ -91,20 +95,23 @@ if matches=$(grep -rnE "$SOURCE_PATTERN" crates/core/src --include='*.rs' 2>/dev
   echo "$matches"
 fi
 
-CORE_TREE=$(cargo tree -p everruns-core --edges normal,build --prefix none 2>/dev/null)
+CORE_TREE=$(guard_cargo_tree -p everruns-core --edges normal,build --prefix none)
 FORBIDDEN_TREE='^(rustls|rustls-webpki|reqwest|hyper|hyper-util|hyper-rustls|h2|tower-http|eventsource-stream|sqlx|opentelemetry|opentelemetry_sdk|opentelemetry-otlp|opentelemetry-http|opentelemetry-proto|tracing-opentelemetry|tree-sitter|tree-sitter-rust|tree-sitter-typescript|tree-sitter-python|utoipa|mlua|bashkit|deno_core|wasmtime) '
 if echo "$CORE_TREE" | grep -qE "$FORBIDDEN_TREE"; then
   fail "everruns-core default tree contains a forbidden implementation dependency:"
   echo "$CORE_TREE" | grep -E "$FORBIDDEN_TREE" | sort -u
 fi
 
+# Deliberately not guard_cargo_tree: `-i tokio` exits non-zero when tokio is
+# absent from the tree, which is the *passing* case here, so a failure is not
+# evidence the guard could not run.
 TOKIO_FEATURES=$(cargo tree -p everruns-core --edges normal,build,features -i tokio 2>/dev/null || true)
 if echo "$TOKIO_FEATURES" | grep -qE 'tokio feature "(net|process|fs|io-util|signal|rt-multi-thread|full)"'; then
   fail "everruns-core enables a non-kernel Tokio feature:"
   echo "$TOKIO_FEATURES" | grep -E 'tokio feature "(net|process|fs|io-util|signal|rt-multi-thread|full)"' | sort -u
 fi
 
-OPENAPI_TREE=$(cargo tree -p everruns-core --features openapi --edges normal,build --prefix none 2>/dev/null)
+OPENAPI_TREE=$(guard_cargo_tree -p everruns-core --features openapi --edges normal,build --prefix none)
 if ! echo "$OPENAPI_TREE" | grep -qE '^utoipa '; then
   fail "everruns-core openapi opt-in must activate utoipa"
 fi

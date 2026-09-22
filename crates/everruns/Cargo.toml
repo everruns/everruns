@@ -209,6 +209,9 @@ trybuild = { workspace = true }
 tempfile = { workspace = true }
 
 [[example]]
+name = "ask_user"
+
+[[example]]
 name = "workspace_policy"
 
 [[example]]

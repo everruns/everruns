@@ -866,6 +866,50 @@ pub async fn events_summary(
 mod tests {
     use super::*;
 
+    /// EVE-1076: the connection guard is released when the *stream* is
+    /// dropped, not merely when the guard is.
+    ///
+    /// `sse.rs` already pins `SseConnectionGuard::drop`. What it cannot pin is
+    /// that the guard is actually held for the stream's lifetime and travels
+    /// with it — which is the wiring a client disconnect relies on, and the
+    /// thing that would leak a slot per abandoned tab if it were wrong.
+    ///
+    /// Asserted through the tracker's observable behaviour rather than its
+    /// private counters: with a cap of one, a second acquire must fail while
+    /// the stream is alive and succeed once it is gone.
+    #[test]
+    fn dropping_the_stream_releases_the_sse_connection() {
+        use crate::api::sse::{SseConnectionLimits, SseConnectionTracker};
+
+        let tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits {
+            global_max: 10,
+            per_org_max: 10,
+            per_session_max: 1,
+        }));
+        let session = uuid::Uuid::new_v4();
+
+        let guarded = GuardedStream {
+            inner: Box::pin(futures::stream::empty::<()>()),
+            _guard: tracker
+                .try_acquire(1, session)
+                .expect("the first connection is admitted"),
+            notification_task: None,
+        };
+
+        // The slot is taken for as long as the stream is alive.
+        assert!(
+            tracker.try_acquire(1, session).is_err(),
+            "a second connection must be rejected while the stream holds the slot"
+        );
+
+        // A client that goes away drops the response body, and with it the stream.
+        drop(guarded);
+
+        tracker
+            .try_acquire(1, session)
+            .expect("the slot is free once the stream is dropped");
+    }
+
     /// Test that EventId correctly parses prefixed event IDs.
     /// This was a bug where since_id was typed as Uuid instead of EventId,
     /// causing "UUID parsing failed" errors when clients sent prefixed IDs

@@ -422,7 +422,7 @@ pub async fn collect_capabilities(
     let resolved_ids = match resolve_dependencies(capability_ids, registry) {
         Ok(resolved) => resolved.resolved_ids,
         Err(e) => {
-            tracing::warn!("Failed to resolve capability dependencies: {}", e);
+            tracing::warn!(error = %e, "Failed to resolve capability dependencies");
             capability_ids.to_vec()
         }
     };
