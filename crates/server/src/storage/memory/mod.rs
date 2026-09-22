@@ -117,6 +117,8 @@ struct WaitingTurnResolutionState {
 
 /// All data is stored in memory and lost on restart
 pub struct InMemoryDatabase {
+    /// Serializes event allocation and insertion to mirror a database transaction.
+    event_write_lock: tokio::sync::Mutex<()>,
     // TODO: Used in Phase 3 when org APIs are implemented
     #[allow(dead_code)]
     organizations: RwLock<HashMap<i64, OrganizationRow>>,
@@ -297,6 +299,7 @@ impl Default for InMemoryDatabase {
         );
 
         Self {
+            event_write_lock: tokio::sync::Mutex::new(()),
             organizations: RwLock::new(organizations),
             organization_members: RwLock::new(HashMap::new()),
             users: RwLock::new(HashMap::new()),

@@ -1706,6 +1706,7 @@ Frozen execution-only API keys (`evr_app_...`) authenticate endpoint-owned nativ
 | Slack webhook forgery | TM-SLACK-001 | HMAC-SHA256 signing secret verification, 5-min replay window; a channel whose secret is not yet configured rejects every request with 401, including `url_verification`, and an empty secret is refused by the verifier itself rather than keying an HMAC anyone can compute |
 | Slack bot loop | TM-SLACK-002 | Skip events with `bot_id` or `subtype` to prevent infinite loops |
 | Slack signing secret exposure | TM-SLACK-003 | Stored in `channel_config` (org-scoped access), not logged |
+| Stale or replayed Slack approval card | TM-SLACK-004 | Each signed card carries an unpredictable ID and originating turn; the server atomically consumes it only while that turn's approval is current, before recording the decision message |
 | A2A API key forgery | TM-A2A-001, TM-A2A-002 | SHA-256 hashed at rest, constant-time compare, 128-bit entropy |
 | A2A method abuse | TM-A2A-005 | Allowlist of one (`message/send`); other methods rejected before session creation |
 | A2A Agent Card disclosure | TM-A2A-009 | Card never echoes API key / hash / internal IDs; only published while app is live and channel enabled |
