@@ -103,9 +103,39 @@ rule covers every headless surface. The engine recognises the call through
 there is the JSON twin of `DefaultsResponder`; a drift test in
 `everruns-builtins` fails if the two disagree.
 
-Deadline timestamp generation and automatic timeout resolution are separate
-work. This contract carries the bounded timeout duration, but it does not add
-server ticks or deadline timestamps to the emitted call.
+### Deadlines
+
+Normalization stamps `asked_at`, `nudge_at` and `expires_at` onto the call
+(EVE-1056). They are server-owned: whatever the model supplied is discarded and
+replaced, because `expires_at` is the instant the server stops waiting, and a
+caller that chose its own would be choosing when it stops waiting for a human.
+The parameters schema declares all three `readOnly` — it is
+`additionalProperties: false` and validates the *normalized* call, so a stamped
+field it does not declare gets the whole call rejected before the tool runs.
+
+`nudge_at` keeps its shipped shape at the default 300s timeout — 60s before
+expiry, the four-minute mark — but scales below that, because a fixed 60s lead
+on a short window would land at or before `asked_at` and open the card already
+warning. Surfaces render the deadline the server will act on rather than one
+they derived, so the countdown and the resolution cannot disagree.
+
+At `expires_at` the tool-result sweep resolves the call with each question's
+declared default (or its first option), `status: "timed_out"` and
+`answered_by: "timeout"`. Both fields matter: the value is a default being
+applied, not consent, and only `answered_by` says so. A secret question resolves
+`declined` instead — a credential has no default worth applying.
+
+The sweep keeps its 30s periodic shape rather than per-session timers, so a
+deadline survives a restart; firing up to 30s late is acceptable, losing it on
+deploy is not. It resolves through the shared resolution operation rather than
+writing a completion event directly, so a human answering at the same instant
+races it on one claim and the first writer wins.
+
+A session parked on `ask_user` never falls through to the generic
+`waiting_for_tool_results` timeout, whose payload would tell the model the
+client went away when in fact nobody answered a question. A call recorded before
+the server stamped deadlines carries no `expires_at`, and is left to that
+generic path rather than resolved on a deadline nobody wrote down.
 
 ## Secret questions
 
