@@ -18,6 +18,7 @@ use crate::storage::models::{
 };
 use anyhow::Result;
 use chrono::Utc;
+use everruns_builtins::ask_user::{ASK_USER_TOOL_NAME, AskUserStatus};
 use everruns_core::Event;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
@@ -350,16 +351,34 @@ impl MessageService {
             .tool_calls
             .into_iter()
             .map(|tool_call| {
-                EventRequest::new(
-                    session_id,
-                    EventContext::turn(turn_id, event_message_id),
+                let completed = if tool_call.name == ASK_USER_TOOL_NAME
+                    && tool_call.arguments.get("questions").is_some()
+                {
+                    let result = crate::api::question_answers::build_result(
+                        AskUserStatus::Cancelled,
+                        Vec::new(),
+                    );
+                    ToolCompletedData::success(
+                        tool_call.id,
+                        tool_call.name,
+                        vec![everruns_core::message::ContentPart::tool_result_text(
+                            &serde_json::to_value(result).unwrap_or_default(),
+                        )],
+                        None,
+                    )
+                } else {
                     ToolCompletedData::failure(
                         tool_call.id,
                         tool_call.name,
                         "cancelled".to_string(),
                         "Cancelled because the user sent a message instead".to_string(),
                         None,
-                    ),
+                    )
+                };
+                EventRequest::new(
+                    session_id,
+                    EventContext::turn(turn_id, event_message_id),
+                    completed,
                 )
             })
             .collect())
