@@ -20,6 +20,7 @@ impl AskUser for RecordingResponder {
                 id: questions[0].id.clone().unwrap(),
                 selected: vec!["Production".to_string()],
                 other_text: None,
+                secret_ref: None,
             }],
         }
     }
@@ -88,4 +89,48 @@ async fn capability_without_responder_uses_unattended_defaults() {
     assert!(turn.success);
     assert_eq!(turn.tool_calls, 1);
     assert_eq!(turn.response, "Deploying to production.");
+}
+
+fn asking_for_a_secret() -> Model {
+    Model::simulated_with_config(
+        LlmSimConfig::fixed("I cannot continue without the key.").with_tool_call_sequence(vec![
+            vec![ToolCall {
+                id: "call_secret".to_string(),
+                name: "ask_user".to_string(),
+                arguments: json!({
+                    "questions": [{
+                        "kind": "secret",
+                        "header": "Stripe key",
+                        "question": "Which Stripe restricted key should I use?",
+                        "secret_name": "STRIPE_API_KEY",
+                        "purpose": "Read-only charge lookups."
+                    }]
+                }),
+            }],
+            vec![],
+        ]),
+    )
+}
+
+/// EVE-1058: a headless Framework host has nobody to type a credential, and a
+/// "default credential" is meaningless. The unattended responder declines
+/// rather than inventing one, so proceeding without it stays the model's
+/// explicit decision.
+#[tokio::test]
+async fn an_unattended_secret_question_is_declined_not_defaulted() {
+    let agent = Agent::builder()
+        .instructions("Ask for the key before calling Stripe.")
+        .model(asking_for_a_secret())
+        .capability("ask_user")
+        .build()
+        .expect("valid agent");
+
+    let turn = InMemoryEngine::new()
+        .create(agent)
+        .run("Reconcile yesterday's charges.")
+        .await
+        .expect("turn runs");
+
+    assert!(turn.success);
+    assert_eq!(turn.tool_calls, 1);
 }

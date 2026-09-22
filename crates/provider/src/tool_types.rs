@@ -902,9 +902,26 @@ pub const ASK_USER_TOOL_NAME: &str = "ask_user";
 /// question that declared none falls back to its first option, which the
 /// prompt tells the model to order most-applicable-first.
 pub fn unattended_ask_user_result(arguments: &serde_json::Value) -> serde_json::Value {
-    let answers: Vec<serde_json::Value> = arguments
+    let questions = arguments
         .get("questions")
-        .and_then(|value| value.as_array())
+        .and_then(|value| value.as_array());
+
+    // A secret question has no unattended answer: a "default credential" is
+    // meaningless, and fabricating one would be worse than waiting. Declining
+    // leaves proceeding without it as the model's explicit decision (EVE-1058).
+    if questions.is_some_and(|questions| {
+        questions
+            .iter()
+            .any(|question| question.get("kind").and_then(|v| v.as_str()) == Some("secret"))
+    }) {
+        return serde_json::json!({
+            "status": "declined",
+            "answered_by": "unattended",
+            "answers": [],
+        });
+    }
+
+    let answers: Vec<serde_json::Value> = questions
         .map(|questions| {
             questions
                 .iter()

@@ -168,6 +168,42 @@ async fn emit_other_tool_card(server: &TestServer, session_id: SessionId, tool_c
         .expect("emit later tool.call_requested");
 }
 
+/// Emit the card the engine emits for a `kind: "secret"` question.
+async fn emit_secret_card(server: &TestServer, session_id: SessionId, tool_call_id: &str) {
+    server
+        .db
+        .create_event(everruns_server::storage::models::CreateEventRow {
+            session_id,
+            event_type: "tool.call_requested".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({
+                "tool_calls": [{
+                    "id": tool_call_id,
+                    "name": "ask_user",
+                    "arguments": {
+                        "questions": [{
+                            "kind": "secret",
+                            "id": "stripe_key",
+                            "header": "Stripe key",
+                            "question": "Which Stripe restricted key should I use?",
+                            "multi_select": false,
+                            "allow_other": false,
+                            "options": [],
+                            "secret_name": "STRIPE_API_KEY",
+                            "purpose": "Read-only charge lookups for the reconciliation report."
+                        }],
+                        "timeout_seconds": 300
+                    }
+                }]
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("emit tool.call_requested");
+}
+
 async fn post_answer(
     server: &TestServer,
     session_id: SessionId,
@@ -469,4 +505,119 @@ async fn a_chat_message_cancels_the_question_and_is_still_delivered() {
         rendered.contains("just use staging"),
         "the message is delivered normally: {rendered}"
     );
+}
+
+/// THREAT[TM-AGENT-016]: the whole point of the secret kind. The credential
+/// reaches the encrypted store and nothing else — not the tool result, not any
+/// event, not model context.
+///
+/// This asserts absence from the event log rather than presence in the secret
+/// store, because presence was never the risk.
+#[tokio::test]
+async fn a_secret_answer_puts_the_credential_in_no_event() {
+    const CREDENTIAL: &str = "rk_live_thisisthesecretvalue";
+
+    let server = test_server().await;
+    let session_id = waiting_session(&server).await;
+    emit_secret_card(&server, session_id, "toolu_ask_secret").await;
+
+    // Step one, the value: the session-secret endpoint that has always
+    // encrypted it. The question-answer endpoint is never given the value.
+    server
+        .put(
+            &format!("/v1/sessions/{session_id}/storage/secrets"),
+            json!({"secrets": {"STRIPE_API_KEY": CREDENTIAL}}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    // Step two, the reference.
+    post_answer(
+        &server,
+        session_id,
+        json!({
+            "tool_call_id": "toolu_ask_secret",
+            "status": "answered",
+            "answers": [{"id": "stripe_key", "secret_ref": "session:STRIPE_API_KEY"}]
+        }),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    let results = completed_results(&server, session_id).await;
+    assert_eq!(results.len(), 1);
+    let rendered = serde_json::to_string(&results[0]).expect("serialize result");
+    assert!(
+        rendered.contains("session:STRIPE_API_KEY"),
+        "the model needs the handle: {rendered}"
+    );
+    assert!(
+        !rendered.contains(CREDENTIAL),
+        "the credential reached a tool result: {rendered}"
+    );
+
+    // Not just this event. Nothing the session persisted may carry the value.
+    let every_event = server
+        .db
+        .list_events(session_id, None, None, &[], &[], None, Some(500))
+        .await
+        .expect("read events");
+    for event in &every_event {
+        let rendered = serde_json::to_string(&event.data).expect("serialize event");
+        assert!(
+            !rendered.contains(CREDENTIAL),
+            "the credential reached a {} event: {rendered}",
+            event.event_type
+        );
+    }
+}
+
+/// A credential typed into the question-answer endpoint is an error, not an
+/// answer. Ignoring the field would persist it in the result.
+#[tokio::test]
+async fn a_secret_answer_carrying_the_value_is_refused() {
+    let server = test_server().await;
+    let session_id = waiting_session(&server).await;
+    emit_secret_card(&server, session_id, "toolu_ask_secret").await;
+
+    post_answer(
+        &server,
+        session_id,
+        json!({
+            "tool_call_id": "toolu_ask_secret",
+            "status": "answered",
+            "answers": [{
+                "id": "stripe_key",
+                "secret_ref": "session:STRIPE_API_KEY",
+                "other_text": "rk_live_thisisthesecretvalue"
+            }]
+        }),
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+
+    assert!(completed_results(&server, session_id).await.is_empty());
+}
+
+/// A reference to a secret nobody stored would read to the model as answered
+/// while resolving to nothing.
+#[tokio::test]
+async fn a_reference_to_an_unstored_secret_is_refused() {
+    let server = test_server().await;
+    let session_id = waiting_session(&server).await;
+    emit_secret_card(&server, session_id, "toolu_ask_secret").await;
+
+    post_answer(
+        &server,
+        session_id,
+        json!({
+            "tool_call_id": "toolu_ask_secret",
+            "status": "answered",
+            "answers": [{"id": "stripe_key", "secret_ref": "session:STRIPE_API_KEY"}]
+        }),
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+
+    assert!(completed_results(&server, session_id).await.is_empty());
 }
