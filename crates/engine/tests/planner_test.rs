@@ -249,9 +249,12 @@ fn act_blocked_completes_end_turn() {
             blocked: true,
             waiting_for_tool_results: false,
             waiting_for_url_elicitation: false,
+            waiting_for_ask_user: false,
         },
         false,
         false,
+        false,
+        Vec::new(),
     );
     assert!(effects.is_empty());
     assert!(matches!(
@@ -301,9 +304,12 @@ fn act_waiting_pauses_when_hint_enabled() {
             blocked: false,
             waiting_for_tool_results: true,
             waiting_for_url_elicitation: false,
+            waiting_for_ask_user: false,
         },
         true,
         false,
+        false,
+        Vec::new(),
     );
     match plan {
         TurnPlan::WaitForToolResults { resume } => {
@@ -329,9 +335,12 @@ fn act_waiting_continues_when_hint_absent() {
             blocked: false,
             waiting_for_tool_results: true,
             waiting_for_url_elicitation: false,
+            waiting_for_ask_user: false,
         },
         false,
         false,
+        false,
+        Vec::new(),
     );
     assert!(effects.is_empty());
     match plan {
@@ -397,15 +406,110 @@ fn act_waiting_on_a_url_elicitation_pauses_only_on_its_own_hint() {
         blocked: false,
         waiting_for_tool_results: true,
         waiting_for_url_elicitation: true,
+        waiting_for_ask_user: false,
     };
 
-    let (plan, effects) = plan_after_act(&state, outcome, false, true);
+    let (plan, effects) = plan_after_act(&state, outcome, false, true, false, Vec::new());
     assert!(matches!(plan, TurnPlan::WaitForToolResults { .. }));
     assert_eq!(effects.len(), 1);
 
     // No hint for it: the elicitation reaches the user as an ordinary tool
     // result instead of stalling the turn on a card nobody draws.
-    let (plan, effects) = plan_after_act(&state, outcome, false, false);
+    let (plan, effects) = plan_after_act(&state, outcome, false, false, false, Vec::new());
     assert!(matches!(plan, TurnPlan::ScheduleReason(_)));
     assert!(effects.is_empty());
+}
+
+/// EVE-1057: a question nobody can render must not hold the turn.
+///
+/// Burning a 300-second timeout waiting for a human who structurally is not
+/// there — a cron run, a trigger, an SDK caller — is the obvious failure mode
+/// of a timed question, so the pause needs a client that declared it can draw
+/// one.
+#[test]
+fn an_ask_user_pause_without_the_hint_continues_the_turn() {
+    let state = turn_state();
+    let outcome = ActOutcome {
+        blocked: false,
+        waiting_for_tool_results: true,
+        waiting_for_url_elicitation: false,
+        waiting_for_ask_user: true,
+    };
+    let calls = vec![(
+        "toolu_ask_1".to_string(),
+        serde_json::json!({"questions": [{
+            "id": "target", "header": "Target", "question": "Where?",
+            "options": [
+                {"label": "Staging", "description": "Safe.", "default": true},
+                {"label": "Production", "description": "Live."}
+            ]
+        }]}),
+    )];
+
+    // setup_connection is on, which is enough for any other client-side tool.
+    // It must not be enough for a question: a client can finish a connection
+    // setup and still have no way to render one.
+    let (plan, effects) = plan_after_act(&state, outcome, true, true, false, calls);
+    match plan {
+        TurnPlan::ScheduleReason(_) => {}
+        other => panic!("expected the turn to continue, got {other:?}"),
+    }
+    match effects.as_slice() {
+        [TurnLifecycleEffect::ResolveAskUserUnattended { calls, .. }] => {
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].0, "toolu_ask_1");
+        }
+        other => panic!("expected an unattended resolution, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_ask_user_pause_with_the_hint_parks_as_usual() {
+    let state = turn_state();
+    let outcome = ActOutcome {
+        blocked: false,
+        waiting_for_tool_results: true,
+        waiting_for_url_elicitation: false,
+        waiting_for_ask_user: true,
+    };
+    let calls = vec![(
+        "toolu_ask_1".to_string(),
+        serde_json::json!({"questions": []}),
+    )];
+
+    // The hint is the only thing on, so it is the hint doing the work.
+    let (plan, effects) = plan_after_act(&state, outcome, false, false, true, calls);
+    match plan {
+        TurnPlan::WaitForToolResults { .. } => {}
+        other => panic!("expected the turn to park, got {other:?}"),
+    }
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [TurnLifecycleEffect::WaitingForToolResults]
+        ),
+        "a parked question is answered by the client, not by defaults: {effects:?}"
+    );
+}
+
+/// The gate is per-pause-kind. A URL elicitation keeps its own behaviour when
+/// only the `ask_user` hint is declared.
+#[test]
+fn the_ask_user_hint_does_not_speak_for_a_url_elicitation() {
+    let state = turn_state();
+    let outcome = ActOutcome {
+        blocked: false,
+        waiting_for_tool_results: true,
+        waiting_for_url_elicitation: true,
+        waiting_for_ask_user: false,
+    };
+    let (plan, effects) = plan_after_act(&state, outcome, false, false, true, Vec::new());
+    match plan {
+        TurnPlan::ScheduleReason(_) => {}
+        other => panic!("expected the turn to continue, got {other:?}"),
+    }
+    assert!(
+        effects.is_empty(),
+        "no defaults for a URL card: {effects:?}"
+    );
 }

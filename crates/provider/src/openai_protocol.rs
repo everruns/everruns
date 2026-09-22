@@ -17,7 +17,6 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::{Client, Url};
-use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
@@ -483,35 +482,6 @@ fn drop_orphaned_tool_messages(messages: &[Message]) -> Vec<Message> {
         .collect()
 }
 
-/// Non-streaming `chat/completions` response (`stream: false`).
-#[derive(Debug, Deserialize)]
-struct OpenAiChatCompletionResponse {
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    choices: Vec<OpenAiChatChoice>,
-    #[serde(default)]
-    usage: Option<OpenAiUsage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiChatChoice {
-    message: OpenAiChatMessage,
-    #[serde(default)]
-    finish_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiChatMessage {
-    #[serde(default)]
-    content: Option<OpenAiContent>,
-    #[serde(default)]
-    tool_calls: Vec<OpenAiToolCall>,
-    /// DeepSeek-style non-streamed reasoning payload.
-    #[serde(default)]
-    reasoning_content: Option<String>,
-}
-
 #[async_trait]
 impl ChatDriver for OpenAIProtocolChatDriver {
     fn supports_native_non_streaming(&self) -> bool {
@@ -577,6 +547,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         let body: OpenAiChatCompletionResponse = response.json().await.map_err(|error| {
             AgentLoopError::llm(format!("failed to decode non-streaming response: {error}"))
         })?;
+        let response_model = body.model.clone();
         let (text, tool_calls, reasoning, finish_reason) = match body.choices.into_iter().next() {
             Some(choice) => {
                 let text = match choice.message.content {
@@ -653,6 +624,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 reasoning_tokens,
                 provider_cost_usd: cost,
                 model: Some(config.model.clone()),
+                response_model,
                 finish_reason,
                 retry_metadata: if retry_metadata.had_retries() {
                     Some(retry_metadata)
@@ -742,6 +714,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
 
         let captured_request = Arc::new(capture_request_body(config, &request));
         let model = config.model.clone();
+        let response_model = Arc::new(Mutex::new(Option::<String>::None));
         let completion_tokens = Arc::new(Mutex::new(CompletionTokenCount::default()));
         let prompt_tokens = Arc::new(Mutex::new(0u32));
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
@@ -773,6 +746,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             event_stream
                 .then(move |result| {
                     let model = model.clone();
+                    let response_model = Arc::clone(&response_model);
                     let completion_tokens = Arc::clone(&completion_tokens);
                     let prompt_tokens = Arc::clone(&prompt_tokens);
                     let cache_read_tokens = Arc::clone(&cache_read_tokens);
@@ -804,6 +778,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                             let cached = *cache_read_tokens.lock().unwrap();
                             let reasoning_used = *reasoning_tokens.lock().unwrap();
                             let cost = *provider_cost_usd.lock().unwrap();
+                            let served_model = response_model.lock().unwrap().clone();
                             let resp_id = response_id.lock().unwrap().clone();
                             let mut reason = finish_reason.lock().unwrap().clone();
 
@@ -862,6 +837,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     cache_creation_tokens: None,
                                     provider_cost_usd: cost,
                                     model: Some(model),
+                                    response_model: served_model,
                                     finish_reason: reason.or_else(|| Some("stop".to_string())),
                                     retry_metadata: retry_metadata_for_done
                                         .map(|arc| (*arc).clone()),
@@ -877,6 +853,9 @@ impl ChatDriver for OpenAIProtocolChatDriver {
 
                         match serde_json::from_str::<OpenAiStreamChunk>(&event.data) {
                             Ok(chunk) => {
+                                if chunk.model.is_some() {
+                                    *response_model.lock().unwrap() = chunk.model.clone();
+                                }
                                 // Capture the completion ID from the first chunk that
                                 // carries one. OpenRouter sets this to a "gen-..."
                                 // identifier on every chunk; direct OpenAI uses
@@ -1581,6 +1560,7 @@ mod tests {
     async fn non_streaming_completion_waits_for_full_json_response() {
         let (server, provider) = mock_json_provider(json!({
             "id": "chatcmpl-123",
+            "model": "gpt-5.2-2026-09-01",
             "choices": [{
                 "message": {"role": "assistant", "content": "done"},
                 "finish_reason": "stop"
@@ -1599,6 +1579,10 @@ mod tests {
         assert_eq!(
             response.metadata.response_id.as_deref(),
             Some("chatcmpl-123")
+        );
+        assert_eq!(
+            response.metadata.response_model.as_deref(),
+            Some("gpt-5.2-2026-09-01")
         );
         assert_eq!(response.metadata.prompt_tokens, Some(10));
         assert_eq!(response.metadata.completion_tokens, Some(3));
@@ -1786,6 +1770,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.metadata.response_id, None);
+        assert_eq!(response.metadata.response_model, None);
         assert_eq!(response.metadata.completion_tokens, Some(1));
         assert_eq!(response.metadata.provider_cost_usd, None);
     }

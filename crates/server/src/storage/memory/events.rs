@@ -14,12 +14,9 @@ impl InMemoryDatabase {
     // ============================================
     // Events
     // ============================================
-
-    pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
+    fn insert_event_row(&self, input: CreateEventRow) -> EventRow {
         let now = Self::now();
         let id = EventId::new();
-
-        // Get next sequence for this session
         let sequence = {
             let mut sequences = self.event_sequences.write();
             let seq = sequences.entry(input.session_id).or_insert(0);
@@ -62,6 +59,10 @@ impl InMemoryDatabase {
                 }
             }
         }
+        row
+    }
+
+    async fn enqueue_event_projection(&self, row: &EventRow) -> Result<()> {
         let org_id = {
             let sessions = self.sessions.read();
             sessions.get(&row.session_id).map(|session| session.org_id)
@@ -76,7 +77,41 @@ impl InMemoryDatabase {
             )
             .await?;
         }
+        Ok(())
+    }
+
+    pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
+        let row = self.insert_event_row(input);
+        self.enqueue_event_projection(&row).await?;
         Ok(row)
+    }
+
+    pub async fn create_waiting_turn_resolution_event(
+        &self,
+        input: CreateEventRow,
+        resolution_id: Uuid,
+        event_index: i32,
+    ) -> Result<(EventRow, bool)> {
+        let (row, inserted) = {
+            let mut resolution_events = self.waiting_turn_resolution_events.write();
+            if let Some(event_id) = resolution_events
+                .get(&(resolution_id, event_index))
+                .copied()
+            {
+                let row = self.events.read().get(&event_id).cloned().ok_or_else(|| {
+                    anyhow::anyhow!("resolution event index points to a missing event")
+                })?;
+                (row, false)
+            } else {
+                let row = self.insert_event_row(input);
+                resolution_events.insert((resolution_id, event_index), row.id);
+                (row, true)
+            }
+        };
+        if inserted {
+            self.enqueue_event_projection(&row).await?;
+        }
+        Ok((row, inserted))
     }
 
     #[allow(clippy::too_many_arguments)]

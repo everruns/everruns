@@ -972,6 +972,7 @@ impl ChatDriver for AnthropicChatDriver {
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
         let response_id = Arc::new(Mutex::new(Option::<String>::None));
+        let response_model = Arc::new(Mutex::new(Option::<String>::None));
         let diagnostics_payload = Arc::new(Mutex::new(Option::<serde_json::Value>::None));
         // Share retry metadata with stream closure (only set if retries occurred)
         let shared_retry_metadata = if retry_metadata.had_retries() {
@@ -991,6 +992,7 @@ impl ChatDriver for AnthropicChatDriver {
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
             let finish_reason = Arc::clone(&finish_reason);
             let response_id = Arc::clone(&response_id);
+            let response_model = Arc::clone(&response_model);
             let diagnostics_payload = Arc::clone(&diagnostics_payload);
             let retry_metadata_for_done = shared_retry_metadata.clone();
 
@@ -1000,18 +1002,15 @@ impl ChatDriver for AnthropicChatDriver {
                         // Anthropic uses different event types
                         match event.event.as_str() {
                             "message_start" => {
-                                // Parse message_start for the message id, input
-                                // token count, cache tokens, and prompt-cache
-                                // diagnostics.
+                                // Parse response identity/model, usage, and prompt-cache diagnostics.
                                 if let Ok(data) =
                                     serde_json::from_str::<AnthropicMessageStart>(&event.data)
                                 {
                                     if let Some(id) = data.message.id {
-                                        // The message id is what a following
-                                        // request passes as
-                                        // `diagnostics.previous_message_id`.
+                                        // Following requests use this for prompt-cache diagnostics.
                                         *response_id.lock().unwrap() = Some(id);
                                     }
+                                    *response_model.lock().unwrap() = data.message.model;
                                     if let Some(diagnostics) =
                                         data.message.diagnostics.or(data.diagnostics)
                                     {
@@ -1241,6 +1240,7 @@ impl ChatDriver for AnthropicChatDriver {
                                     metadata.cache_read_tokens = cache_read;
                                     metadata.cache_creation_tokens = cache_creation;
                                     metadata.model = Some(model);
+                                    metadata.response_model = response_model.lock().unwrap().clone();
                                     metadata.finish_reason = finish_reason
                                         .lock()
                                         .unwrap()
@@ -1846,7 +1846,6 @@ struct AnthropicMessageStart {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)] // model is deserialized but used by event listeners, not directly
 struct AnthropicMessageInfo {
     /// Unique identifier for this message
     #[serde(default)]

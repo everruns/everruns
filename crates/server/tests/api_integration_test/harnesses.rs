@@ -94,8 +94,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        24,
-        "Generic harness should have 24 capabilities"
+        25,
+        "Generic harness should have 25 capabilities"
     );
     assert!(
         cap_ids.contains(&"human_intent"),
@@ -149,6 +149,10 @@ async fn test_get_generic_harness() {
     assert!(
         cap_ids.contains(&"soft_approval"),
         "Should have soft approval"
+    );
+    assert!(
+        cap_ids.contains(&"ask_user"),
+        "Should have structured user questions"
     );
     assert!(
         cap_ids.contains(&"message_metadata"),
@@ -438,14 +442,20 @@ async fn test_copy_seed_generic_harness() {
     // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),
-        24,
-        "Copied harness should have same 24 capabilities"
+        25,
+        "Copied harness should have same 25 capabilities"
     );
     assert!(
         copied
             .capabilities
             .iter()
             .any(|cap| cap.capability_id() == "human_intent")
+    );
+    assert!(
+        copied
+            .capabilities
+            .iter()
+            .any(|cap| cap.capability_id() == "ask_user")
     );
 }
 
@@ -596,6 +606,7 @@ async fn test_chat_harness_includes_platform_capability() {
             "loop_detection",
             "error_disclosure",
             "compaction",
+            "ask_user",
             "soft_approval"
         ],
         "Platform Chat should keep platform operations, commands, and runtime safeguards locally"
@@ -621,7 +632,13 @@ async fn test_chat_harness_includes_platform_capability() {
         .filter_map(|tool| tool["name"].as_str())
         .collect();
 
-    for expected in ["discover", "query", "execute"] {
+    for expected in [
+        "discover",
+        "query",
+        "execute",
+        "ask_user",
+        "request_approval",
+    ] {
         assert!(
             tool_names.contains(&expected),
             "Platform Chat preview should include {expected}"

@@ -127,4 +127,87 @@ mod tests {
             );
         }
     }
+
+    /// EVE-1041: `generic` is one definition, read by org provisioning here and
+    /// by `everruns::Harness::generic()` in the facade.
+    ///
+    /// Sharing a function already makes divergence impossible; this fails if
+    /// someone re-hardcodes the list locally, which is how it drifted before.
+    #[test]
+    fn shared_generic_capabilities_are_the_platform_ones() {
+        let provisioned: Vec<String> = generic::definition()
+            .capabilities
+            .iter()
+            .map(|capability| capability.capability_id().to_string())
+            .collect();
+        let shared: Vec<String> = everruns_capability::generic_capabilities()
+            .iter()
+            .map(|capability| capability.capability_id().to_string())
+            .collect();
+        assert_eq!(provisioned, shared);
+        assert!(
+            provisioned.len() > 10,
+            "a truncated list would pass a bare equality check against itself"
+        );
+    }
+
+    /// The shared floor carries capability references only. Presentation and
+    /// the base system prompt stay platform-side, per
+    /// `knowledge/framework/harnesses.md`.
+    #[test]
+    fn the_shared_floor_leaves_presentation_to_the_platform() {
+        let definition = generic::definition();
+        assert_eq!(definition.icon.as_deref(), Some("box"));
+        assert!(!definition.system_prompt.is_empty());
+    }
+
+    #[test]
+    fn interactive_harnesses_expose_ask_user_and_describe_it() {
+        for definition in [
+            generic::definition(),
+            platform_chat::definition(),
+            platform_chat_v2::definition(),
+        ] {
+            assert!(
+                definition
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability.capability_id() == "ask_user"),
+                "{} must expose ask_user",
+                definition.name
+            );
+            assert!(
+                definition.description.contains("structured user questions"),
+                "{} must describe structured user questions",
+                definition.name
+            );
+        }
+
+        assert!(
+            base::definition()
+                .capabilities
+                .iter()
+                .all(|capability| capability.capability_id() != "ask_user")
+        );
+    }
+
+    #[test]
+    fn ask_user_harnesses_also_expose_request_approval() {
+        for definition in [
+            generic::definition(),
+            platform_chat::definition(),
+            platform_chat_v2::definition(),
+        ] {
+            let capabilities = definition
+                .capabilities
+                .iter()
+                .map(|capability| capability.capability_id())
+                .collect::<Vec<_>>();
+            assert!(
+                capabilities.contains(&"soft_approval"),
+                "{} must keep request_approval available alongside ask_user",
+                definition.name
+            );
+        }
+    }
 }

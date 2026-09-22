@@ -83,6 +83,27 @@ impl StorageBackend {
         )
     }
 
+    pub async fn invalidate_mcp_service_connection_if_access_token_matches(
+        &self,
+        identity_id: AgentIdentityId,
+        provider: &str,
+        expected_access_token_encrypted: &[u8],
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            invalidate_mcp_service_connection_if_access_token_matches,
+            identity_id,
+            provider,
+            expected_access_token_encrypted,
+            org_id,
+            mcp_server_id,
+            agent_id
+        )
+    }
+
     // ============================================
     // Session Schedules
     // ============================================

@@ -3547,6 +3547,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/question-answers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * POST /v1/sessions/{session_id}/question-answers
+     * @description Answers the question set an agent raised with `ask_user`, and resumes the
+     *     paused turn.
+     */
+    post: operations["submit_question_answers"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/resolved-model": {
     parameters: {
       query?: never;
@@ -7270,11 +7291,12 @@ export interface components {
        *     server what the client can handle. These are defaults for every turn;
        *     per-message `controls.hints` override these key-by-key (shallow merge).
        *
-       *     Two hints decide whether a turn may pause for the user rather than talk
-       *     past them: `setup_connection` (the client renders connection setup) and
-       *     `url_elicitation` (the client renders consent for a URL an MCP server
-       *     asks the user to open).
+       *     Three hints decide whether a turn may pause rather than talk past the
+       *     user: `setup_connection`, `url_elicitation`, and `ask_user` (each names
+       *     the card the client renders). A pause whose hint is absent does not park
+       *     — an unhinted `ask_user` resolves with the model's defaults (EVE-1057).
        * @example {
+       *       "ask_user": true,
        *       "rich_media": true,
        *       "setup_connection": true,
        *       "url_elicitation": true
@@ -11920,6 +11942,22 @@ export interface components {
        * @example msg_01ABCDef0123456789
        */
       response_id?: string | null;
+      /**
+       * @description Model the provider reported actually serving the request.
+       *
+       *     `model` is what was *asked for*, which is routinely an alias that
+       *     resolves at request time — `claude-sonnet-4-5` served by
+       *     `claude-sonnet-4-5-20250929`, or an OpenRouter route landing on one
+       *     upstream of several. Collapsing the two loses the only record of which
+       *     weights produced the answer, which is what a regression in output
+       *     quality has to be correlated against.
+       *
+       *     `None` when the provider reported no model, which is the honest answer:
+       *     consumers fall back to `model` rather than being told the alias was
+       *     confirmed.
+       * @example claude-sonnet-4-5-20250929
+       */
+      response_model?: string | null;
       retry?: null | components["schemas"]["LlmRetryInfo"];
       /**
        * @description Whether the generation was successful
@@ -14435,6 +14473,51 @@ export interface components {
         [key: string]: boolean;
       };
     };
+    /** @description Request to answer a pending `ask_user` question set. */
+    QuestionAnswersRequest: {
+      /**
+       * @description One answer per asked question, keyed by question id.
+       * @example [
+       *       {
+       *         "id": "target",
+       *         "other_text": null,
+       *         "selected": [
+       *           "Staging"
+       *         ]
+       *       }
+       *     ]
+       */
+      answers?: components["schemas"]["SubmittedAnswer"][];
+      /**
+       * @description What the person did. `answered` carries answers; `declined` is a finished
+       *     decision the model must not re-ask.
+       */
+      status?: components["schemas"]["SubmittedStatus"];
+      /**
+       * @description The `ask_user` tool call being answered. Optional: when omitted the one
+       *     pending question set on the session is used.
+       * @example toolu_01933b5a00007000800000000000001
+       */
+      tool_call_id?: string | null;
+    };
+    /** @description Result of answering a pending question set. */
+    QuestionAnswersResponse: {
+      /**
+       * @description Who the server attributed the outcome to.
+       * @example user
+       */
+      answered_by: string;
+      /**
+       * @description Session status after the answer.
+       * @example active
+       */
+      session_status: string;
+      /**
+       * @description Outcome recorded against the call.
+       * @example answered
+       */
+      status: string;
+    };
     /** @description Data for reason.completed event */
     ReasonCompletedData: {
       /**
@@ -16434,6 +16517,32 @@ export interface components {
       /** @description Session status after submission */
       status: string;
     };
+    /** @description One submitted answer. */
+    SubmittedAnswer: {
+      /** @description Question id, as carried in the `tool.call_requested` payload. */
+      id: string;
+      /** @description Free text, accepted only when the question allows it. */
+      other_text?: string | null;
+      /**
+       * @description Handle to the stored credential, on a `secret` question only — the value
+       *     itself is never submitted here. Store it with
+       *     `PUT /v1/sessions/{session_id}/storage/secrets` first, then answer with
+       *     `session:{secret_name}`.
+       * @example session:STRIPE_API_KEY
+       */
+      secret_ref?: string | null;
+      /** @description Chosen option labels. Must be labels that were actually offered. */
+      selected?: string[];
+    };
+    /**
+     * @description The outcomes a caller may submit.
+     *
+     *     `cancelled` and `timed_out` are deliberately absent: they are the server's to
+     *     decide, from a superseding message and from the deadline sweep. A caller that
+     *     could assert them could claim a person's silence as their answer.
+     * @enum {string}
+     */
+    SubmittedStatus: "answered" | "declined";
     /** @description Generic success response */
     SuccessResponse: {
       ok: boolean;
@@ -31418,6 +31527,61 @@ export interface operations {
       };
       /** @description Session not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  submit_question_answers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["QuestionAnswersRequest"];
+      };
+    };
+    responses: {
+      /** @description Answer recorded and workflow resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QuestionAnswersResponse"];
+        };
+      };
+      /** @description Invalid session ID, or answers that do not match what was asked */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or pending question set not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session is not waiting for tool results, or the question set was already answered */
+      409: {
         headers: {
           [name: string]: unknown;
         };

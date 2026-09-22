@@ -29,6 +29,7 @@ pub mod principal;
 pub mod provider_resolver;
 pub mod run_summary;
 pub mod usage_tracking;
+pub mod waiting_turn_resolution;
 
 pub use approval_audit::ApprovalAuditListener;
 pub use capability::CapabilityService;

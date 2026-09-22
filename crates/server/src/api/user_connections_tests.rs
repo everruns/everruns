@@ -1,6 +1,10 @@
+use super::mcp_oauth::discover_oauth_server_metadata;
 use super::*;
+use crate::oauth_client::egress_oauth_json;
 use crate::storage::models::{CreateAgentRow, CreateMcpServerRow, UpdateMcpServer};
-use everruns_core::{EgressRequest, EgressResponse, OrgRole, Permission, PermissionResolver};
+use everruns_core::{
+    EgressRequest, EgressResponse, EgressService, OrgRole, Permission, PermissionResolver,
+};
 use everruns_provider::typed_id::{AgentId, HarnessId};
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -38,6 +42,22 @@ impl EgressService for FakeOAuthEgress {
     ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
         panic!("streaming egress is not used by OAuth handlers")
     }
+}
+
+#[test]
+fn service_authorization_params_cannot_override_reserved_oauth_fields() {
+    let params = BTreeMap::from([
+        ("actor".to_string(), "app".to_string()),
+        (
+            "resource".to_string(),
+            "https://attacker.example".to_string(),
+        ),
+    ]);
+
+    let error = validate_authorization_params(&params).unwrap_err();
+
+    assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    assert!(error.1.contains("'resource' is reserved"));
 }
 
 struct MismatchedIssuerEgress;
@@ -221,8 +241,10 @@ async fn identity_oauth_callback_stores_only_an_identity_grant() {
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
-            code: "code".to_string(),
+            code: Some("code".to_string()),
             state: Some(pending.state),
+            error: None,
+            error_description: None,
         }),
     )
     .await
@@ -355,8 +377,10 @@ async fn identity_oauth_callback_rejects_mismatched_state_without_grant() {
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
-            code: "code".to_string(),
+            code: Some("code".to_string()),
             state: Some("wrong-state".to_string()),
+            error: None,
+            error_description: None,
         }),
     )
     .await
@@ -406,8 +430,10 @@ async fn identity_oauth_callback_rejects_archived_server_without_grant() {
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
-            code: "code".to_string(),
+            code: Some("code".to_string()),
             state: Some(pending.state),
+            error: None,
+            error_description: None,
         }),
     )
     .await
@@ -446,8 +472,10 @@ async fn identity_oauth_callback_rechecks_permission_before_writing_grant() {
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
-            code: "code".to_string(),
+            code: Some("code".to_string()),
             state: Some(pending.state),
+            error: None,
+            error_description: None,
         }),
     )
     .await
@@ -487,8 +515,10 @@ async fn identity_oauth_callback_rejects_deleted_authorized_agent_without_grant(
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
-            code: "code".to_string(),
+            code: Some("code".to_string()),
             state: Some(pending.state),
+            error: None,
+            error_description: None,
         }),
     )
     .await

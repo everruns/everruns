@@ -11,6 +11,10 @@ mod worker_service_impl;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_platform_command_surface;
+#[cfg(test)]
+mod tests_sqldb_sharing;
 
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::session_files::{
@@ -128,6 +132,8 @@ use everruns_internal_protocol::proto::{
     HeartbeatDurableTaskResponse,
     HeartbeatDurableWorkerRequest,
     HeartbeatDurableWorkerResponse,
+    InvalidateMcpConnectionRequest,
+    InvalidateMcpConnectionResponse,
     InvokeAgentTriggerRequest,
     InvokeAgentTriggerResponse,
     InvokePlatformCommandSurfaceRequest,
@@ -657,6 +663,24 @@ impl WorkerServiceImpl {
 
     pub fn set_org_rate_limiter(&mut self, limiter: Arc<crate::auth::rate_limit::OrgRateLimiter>) {
         self.org_rate_limiter = Some(limiter);
+    }
+
+    /// Share the HTTP app's session SQL database store with the worker.
+    ///
+    /// Without this the constructor's own in-memory backend stands, and the two
+    /// never share state: a database an agent created through the worker is
+    /// invisible to `GET /v1/sessions/{id}/databases`, which answers `200` with
+    /// an empty list rather than an error (EVE-1047). Both run in the same
+    /// process — `app_builder` spawns the gRPC server — so one store is all
+    /// that was ever needed.
+    ///
+    /// Injected rather than made a process-wide singleton so tests that want
+    /// their own isolated backend still get one.
+    pub fn set_sqldb_store(
+        &mut self,
+        store: Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
+    ) {
+        self.sqldb_store = Some(store);
     }
 
     pub fn set_permission_resolver(&mut self, resolver: Arc<dyn PermissionResolver>) {

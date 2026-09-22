@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Ask User"
-description: "Structured choice questions resolved by client-side or in-process hosts."
+description: "Structured choice and credential questions resolved by client-side or in-process hosts."
 tags:
   - everruns
   - execution
@@ -44,8 +44,8 @@ being copied here.
 ## Contract decisions
 
 One call batches related questions into one host interaction. The client-side
-strategy pauses once. EVE-1053 supports choice questions only; secret
-collection is a separate capability extension.
+strategy pauses once. Two kinds exist: `choice` offers options, and `secret`
+collects one credential (see below).
 
 Question identifiers are stable result-correlation keys. The runtime preserves
 an identifier supplied by the model and generates a collision-free identifier
@@ -91,9 +91,65 @@ the standard client-side path:
 The result alone returns the answer to the model. No synthetic user message is
 needed because the model authored the call.
 
+Whether the turn parks on step 3 at all is a client-capability question, so it
+rides a session hint — `ask_user`, declared by the UI alongside
+`setup_connection` and `url_elicitation`, the same mechanism URL elicitation
+uses. A client that never declared it (a scheduled run, a trigger, an SDK
+caller) has nobody to answer the card, so the planner answers the call itself
+with the model's declared defaults and `answered_by: "unattended"` in the same
+turn rather than burning the whole timeout on a human who is not there. One
+rule covers every headless surface. The engine recognises the call through
+`ASK_USER_TOOL_NAME` in `everruns-provider`, and `unattended_ask_user_result`
+there is the JSON twin of `DefaultsResponder`; a drift test in
+`everruns-builtins` fails if the two disagree.
+
 Deadline timestamp generation and automatic timeout resolution are separate
 work. This contract carries the bounded timeout duration, but it does not add
 server ticks or deadline timestamps to the emitted call.
+
+## Secret questions
+
+`kind: "secret"` collects a credential in flow. It exists because an `ask_user`
+answer is a *tool result*: a credential typed into an ordinary question box
+would be plaintext in the event log **and** replayed into model context every
+turn, which is strictly worse than one typed in chat. It closes the in-flow half
+of TM-AGENT-016.
+
+The answer returns a reference, never a value. There is no `value` field on
+`AskUserAnswer` — not empty, absent — so no code path carries a collected
+secret into a result. The client stores the value through the session-secret
+endpoint that has always encrypted it, then answers the question with
+`session:{secret_name}`; tools already resolve session secrets by name. Two
+posts, one card, and no endpoint that could persist the value as a result.
+Resolution refuses an answer carrying a selection or free text on a secret
+question rather than ignoring it, and refuses a reference to a secret that was
+not the one asked for — the caller does not get to say what it was asked, the
+same rule the choice path applies to option labels. It also refuses a reference
+to a secret that is not actually stored, because a handle resolving to nothing
+reads to the model as answered.
+
+Three shape rules follow from that and are enforced in validation or
+normalization:
+
+- a secret question is the only question in its call, so the unattended outcome
+  below is unambiguous and the card stays a password field rather than a form;
+- `secret_name` and `purpose` are required — nobody should type a credential
+  without being told what it is for;
+- free text and multi-select are normalized off, because free text is exactly
+  the path a typed credential would take into the result.
+
+A secret question never auto-resolves. A "default credential" is meaningless, so
+`DefaultsResponder` and the engine's unattended path both decline the call
+rather than answer it, and proceeding without the credential becomes the model's
+explicit decision. This overrides the deadline-defaults rule in EVE-1056.
+
+Surfaces project this rather than rebuild it. `/mcp` already has
+`ElicitationIntent::SessionSecret` — a signed, principal-bound token and a form
+writing through `BatchSetSessionSecrets`. A2A refuses outright: a remote agent is
+never handed a prompt for a human's credential, so a secret question projects as
+`auth_required` carrying a URL, never a `DataPart` asking for the value. Forking
+needs no work; `session_secrets` copy ciphertext verbatim, so a `secret_ref`
+survives a fork.
 
 ## Safety invariants
 
@@ -103,3 +159,6 @@ server ticks or deadline timestamps to the emitted call.
 - The model inspects answer provenance before acting on a timed-out or
   unattended choice.
 - A declined choice is a completed decision, not a prompt to ask again.
+- A secret answer carries a reference; the value reaches only the encrypted
+  session-secret store, never an event, tool result, or model context.
+- A secret question has no unattended or timeout answer.

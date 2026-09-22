@@ -630,7 +630,7 @@ async fn oauth_authorize(
         .and_then(|origin| {
             axum::http::HeaderValue::from_str(&format!(
                 "{} {origin}",
-                crate::app_builder::BASE_CONTENT_SECURITY_POLICY
+                crate::security_headers::BASE_CONTENT_SECURITY_POLICY
             ))
             .ok()
         })

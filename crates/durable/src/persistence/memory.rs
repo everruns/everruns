@@ -381,8 +381,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
 
         workflow.status = status;
         if matches!(status, WorkflowStatus::Pending) {
-            // Clear transient fields when resetting for a new turn
-            workflow.result = None;
+            workflow.result = result;
             workflow.error = None;
             workflow.started_at = None;
             workflow.completed_at = None;
@@ -497,9 +496,16 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     }
 
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError> {
-        let task_id = Uuid::now_v7();
         let mut tasks = self.tasks.write();
-
+        if task.activity_id.starts_with("waiting_turn_resolution_")
+            && let Some((task_id, _)) = tasks.iter().find(|(_, existing)| {
+                existing.definition.workflow_id == task.workflow_id
+                    && existing.definition.activity_id == task.activity_id
+            })
+        {
+            return Ok(*task_id);
+        }
+        let task_id = Uuid::now_v7();
         // Check pending task limits
         if let Some(wf_id) = task.workflow_id {
             let limit = self.max_pending_tasks_per_workflow;
@@ -509,7 +515,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                     t.definition.workflow_id == Some(wf_id) && t.status == TaskStatus::Pending
                 })
                 .count() as u32;
-
             if pending_count >= limit {
                 return Err(StoreError::TaskQueueLimitExceeded {
                     workflow_id: wf_id,
@@ -523,7 +528,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 .values()
                 .filter(|t| t.definition.workflow_id.is_none() && t.status == TaskStatus::Pending)
                 .count() as u32;
-
             if pending_count >= limit {
                 return Err(StoreError::StandaloneTaskQueueLimitExceeded {
                     current: pending_count,
@@ -531,7 +535,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 });
             }
         }
-
         tasks.insert(
             task_id,
             TaskState {
@@ -549,7 +552,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         );
         Ok(task_id)
     }
-
     async fn claim_task(
         &self,
         worker_id: &str,
@@ -558,12 +560,10 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     ) -> Result<Vec<ClaimedTask>, StoreError> {
         let mut tasks = self.tasks.write();
         let mut claimed = vec![];
-
         for (task_id, task) in tasks.iter_mut() {
             if claimed.len() >= max_tasks {
                 break;
             }
-
             // Check attempt < max_attempts to prevent infinite retries when workers panic
             // without calling fail_task (mirroring PostgreSQL fix)
             let max_attempts = task.definition.options.retry_policy.max_attempts;
@@ -575,7 +575,6 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 task.claimed_by = Some(worker_id.to_string());
                 task.claimed_at = Some(Utc::now());
                 task.attempt += 1;
-
                 claimed.push(ClaimedTask {
                     id: *task_id,
                     workflow_id: task.definition.workflow_id,

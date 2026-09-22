@@ -324,6 +324,13 @@ everruns_core::context_report::SessionContextReport	struct
 everruns_core::context_report::build_session_context_report	function
 everruns_core::context_report::build_session_context_report_from_generation	function
 everruns_core::context_report::estimate_text_tokens	function
+everruns_core::database_failure	module
+everruns_core::database_failure::DatabaseFailureKind	enum
+everruns_core::database_failure::DatabaseFailureKind::ConnectionLost	variant
+everruns_core::database_failure::DatabaseFailureKind::Other	variant
+everruns_core::database_failure::DatabaseFailureKind::PoolExhausted	variant
+everruns_core::database_failure::DatabaseFailureKind::shared_message	function
+everruns_core::database_failure::log_database_failure	function
 everruns_core::delegation_services	module
 everruns_core::delegation_services::DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS	constant
 everruns_core::delegation_services::DEFAULT_MAX_ACTIVE_DETACHED_TASKS	constant
