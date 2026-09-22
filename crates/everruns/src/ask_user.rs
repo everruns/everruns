@@ -7,7 +7,7 @@
 pub use async_trait::async_trait;
 pub use everruns_builtins::{
     AskUser, AskUserAnswer, AskUserAnsweredBy, AskUserOption, AskUserQuestion, AskUserQuestionKind,
-    AskUserRequest, AskUserResult, AskUserStatus, DefaultsResponder,
+    AskUserRequest, AskUserResult, AskUserStatus, DefaultsResponder, session_secret_ref,
 };
 
 /// One answer in an [`Outcome`].
@@ -16,7 +16,7 @@ pub use AskUserAnswer as Answer;
 pub use AskUserAnsweredBy as AnsweredBy;
 /// One structured question in a responder request.
 pub use AskUserQuestion as Question;
-/// The supported question kind.
+/// The supported question kinds: a choice, or a credential.
 pub use AskUserQuestionKind as QuestionKind;
 /// The complete result returned by an [`AskUser`] responder.
 pub use AskUserResult as Outcome;
