@@ -15,7 +15,9 @@ use crate::tool_types::{
 use crate::tools::{Tool, ToolExecutionResult};
 
 pub const ASK_USER_CAPABILITY_ID: &str = "ask_user";
-pub const ASK_USER_TOOL_NAME: &str = "ask_user";
+// Defined in `everruns-provider` so the engine can recognise the call without
+// depending on this crate; re-exported here so capability authors keep one path.
+pub use crate::tool_types::ASK_USER_TOOL_NAME;
 pub const DEFAULT_ASK_USER_TIMEOUT_SECONDS: u64 = 300;
 pub const MAX_ASK_USER_QUESTIONS: usize = 4;
 pub const MAX_ASK_USER_OPTIONS: usize = 6;
@@ -763,5 +765,67 @@ mod tests {
                 },
             ]
         );
+    }
+
+    /// EVE-1057: `DefaultsResponder` and `unattended_ask_user_result` answer an
+    /// unanswerable question set the same way.
+    ///
+    /// Two implementations exist because the engine must be able to resolve one
+    /// without depending on this crate, and the contract types live here. This
+    /// is what stops them drifting: a model that marked an option `default`
+    /// would otherwise get that option from one path and the first option from
+    /// the other, depending only on which surface could not be asked.
+    #[tokio::test]
+    async fn defaults_responder_matches_unattended_result() {
+        let cases = vec![
+            // A declared default, not first in the list.
+            serde_json::json!({"questions": [{
+                "kind": "choice", "id": "target", "header": "Target",
+                "question": "Where?", "multi_select": false, "allow_other": true,
+                "options": [
+                    {"label": "Staging", "description": "Safe."},
+                    {"label": "Production", "description": "Live.", "default": true}
+                ]
+            }]}),
+            // No default at all: the first option wins.
+            serde_json::json!({"questions": [{
+                "kind": "choice", "id": "target", "header": "Target",
+                "question": "Where?", "multi_select": false, "allow_other": true,
+                "options": [
+                    {"label": "Staging", "description": "Safe."},
+                    {"label": "Production", "description": "Live."}
+                ]
+            }]}),
+            // Multi-select with several defaults: all of them are taken.
+            serde_json::json!({"questions": [{
+                "kind": "choice", "id": "checks", "header": "Checks",
+                "question": "Which?", "multi_select": true, "allow_other": false,
+                "options": [
+                    {"label": "Lint", "description": "Fast.", "default": true},
+                    {"label": "Tests", "description": "Slow.", "default": true},
+                    {"label": "Docs", "description": "Rare."}
+                ]
+            }]}),
+            // Two questions at once.
+            serde_json::json!({"questions": [
+                {"kind": "choice", "id": "a", "header": "A", "question": "A?",
+                 "multi_select": false, "allow_other": true,
+                 "options": [{"label": "A1", "description": "x", "default": true},
+                             {"label": "A2", "description": "y"}]},
+                {"kind": "choice", "id": "b", "header": "B", "question": "B?",
+                 "multi_select": false, "allow_other": true,
+                 "options": [{"label": "B1", "description": "x"},
+                             {"label": "B2", "description": "y"}]}
+            ]}),
+        ];
+
+        for arguments in cases {
+            let request: AskUserRequest =
+                serde_json::from_value(arguments.clone()).expect("fixture parses");
+            let typed = DefaultsResponder.ask(&request.questions).await;
+            let typed_json = serde_json::to_value(&typed).expect("serialises");
+            let engine_json = crate::tool_types::unattended_ask_user_result(&arguments);
+            assert_eq!(engine_json, typed_json, "diverged on {arguments}");
+        }
     }
 }

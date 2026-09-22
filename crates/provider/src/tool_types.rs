@@ -878,6 +878,80 @@ pub const URL_ELICITATION_REQUIRED_CODE: &str = "url_elicitation_required";
 /// surface for it, and the API that collects the decision recognises it.
 pub const CONFIRM_URL_ELICITATION_TOOL: &str = "confirm_url_elicitation";
 
+/// Name of the client-side tool an agent uses to ask a structured question.
+///
+/// Lives here rather than in `everruns-builtins` because the engine has to
+/// recognise the call to decide whether the turn may park on it, and the engine
+/// does not depend on the builtins crate. `everruns-builtins` re-exports it, so
+/// the public path capability authors use is unchanged (EVE-1057).
+pub const ASK_USER_TOOL_NAME: &str = "ask_user";
+
+/// Answer an `ask_user` question set with the options the model declared as
+/// defaults, for a client that structurally cannot be asked.
+///
+/// A scheduled run, a trigger, or an SDK caller that never declared it renders
+/// questions has nobody to ask, and parking the turn would burn the whole
+/// timeout waiting for a human who is not there (EVE-1057).
+///
+/// Takes and returns JSON rather than the typed contract because that contract
+/// lives in `everruns-builtins`, above this crate. `DefaultsResponder` is the
+/// typed twin, and `defaults_responder_matches_unattended_result` in that crate
+/// fails if the two ever disagree.
+///
+/// Mirrors `DefaultsResponder`: every declared default is selected, and a
+/// question that declared none falls back to its first option, which the
+/// prompt tells the model to order most-applicable-first.
+pub fn unattended_ask_user_result(arguments: &serde_json::Value) -> serde_json::Value {
+    let answers: Vec<serde_json::Value> = arguments
+        .get("questions")
+        .and_then(|value| value.as_array())
+        .map(|questions| {
+            questions
+                .iter()
+                .map(|question| {
+                    let options = question.get("options").and_then(|v| v.as_array());
+                    let label = |option: &serde_json::Value| {
+                        option
+                            .get("label")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string)
+                    };
+                    let mut selected: Vec<String> = options
+                        .map(|options| {
+                            options
+                                .iter()
+                                .filter(|option| {
+                                    option
+                                        .get("default")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false)
+                                })
+                                .filter_map(label)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    if selected.is_empty() {
+                        selected.extend(options.and_then(|o| o.first()).and_then(label));
+                    }
+                    serde_json::json!({
+                        "id": question.get("id").and_then(|v| v.as_str()).unwrap_or_default(),
+                        "selected": selected,
+                        "other_text": serde_json::Value::Null,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    serde_json::json!({
+        "status": "answered",
+        // Not "timeout": telling the two apart is how the model learns whether
+        // waiting would ever have helped.
+        "answered_by": "unattended",
+        "answers": answers,
+    })
+}
+
 /// Structured payload of a tool result that stopped on a URL mode elicitation.
 ///
 /// An MCP server answered `tools/call` by asking that a human visit a URL out

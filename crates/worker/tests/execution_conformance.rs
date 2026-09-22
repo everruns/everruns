@@ -77,6 +77,7 @@ fn effect_sequence(effects: &[TurnLifecycleEffect]) -> Vec<&'static str> {
             TurnLifecycleEffect::TurnFailedWithDisclosure { .. } => "turn.failed",
             TurnLifecycleEffect::FireTurnEndHooks { .. } => "hook.turn_end",
             TurnLifecycleEffect::WaitingForToolResults => "session.waiting_for_tool_results",
+            TurnLifecycleEffect::ResolveAskUserUnattended { .. } => "ask_user.unattended",
         })
         .collect()
 }
@@ -312,11 +313,13 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
                 blocked: true,
                 waiting_for_tool_results: false,
                 waiting_for_url_elicitation: false,
+                waiting_for_ask_user: false,
             }),
             ActivityOutcome::Act(ActOutcome {
                 blocked: true,
                 waiting_for_tool_results: false,
                 waiting_for_url_elicitation: false,
+                waiting_for_ask_user: false,
             }),
             0,
             HostFacts::default(),
@@ -334,11 +337,13 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
                 blocked: false,
                 waiting_for_tool_results: true,
                 waiting_for_url_elicitation: false,
+                waiting_for_ask_user: false,
             }),
             ActivityOutcome::Act(ActOutcome {
                 blocked: false,
                 waiting_for_tool_results: true,
                 waiting_for_url_elicitation: false,
+                waiting_for_ask_user: false,
             }),
             0,
             HostFacts {

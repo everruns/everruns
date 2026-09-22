@@ -659,6 +659,10 @@ impl InMemoryAgenticLoop {
                                 blocked: act_result.blocked,
                                 waiting_for_tool_results: act_result.waiting_for_tool_results,
                                 waiting_for_url_elicitation: act_result.waiting_for_url_elicitation,
+                                waiting_for_ask_user: act_result
+                                    .client_tool_calls
+                                    .iter()
+                                    .any(|call| call.name == everruns_provider::ASK_USER_TOOL_NAME),
                             }),
                             0,
                             Utc::now(),
