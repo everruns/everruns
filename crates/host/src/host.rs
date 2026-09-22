@@ -19,7 +19,7 @@ use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::runtime_context::AssembledTurnContext;
 use everruns_core::session::SessionExecutionState;
 use everruns_core::{
-    CapabilityRegistry, CapabilityStatus, ClassifierService, DependencyBlocker, EgressService,
+    CapabilityRegistry, CapabilityStatus, DecisionsService, DependencyBlocker, EgressService,
     ResolvedExecutionSnapshot, TokenUsage, ToolRegistry, UtilityLlmService,
     org_public_id_from_internal, resolve_runtime_capabilities,
 };
@@ -220,8 +220,8 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Classification service for capability internals that ask typed questions.
-    fn classifier(&self) -> Option<Arc<dyn ClassifierService>> {
+    /// Decision service for capability internals that ask typed questions.
+    fn decisions(&self) -> Option<Arc<dyn DecisionsService>> {
         None
     }
 
@@ -1478,8 +1478,8 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     if let Some(utility_llm_service) = adapter.utility_llm_service() {
         atom = atom.with_utility_llm_service(utility_llm_service);
     }
-    if let Some(classifier) = adapter.classifier() {
-        atom = atom.with_classifier(classifier);
+    if let Some(decisions) = adapter.decisions() {
+        atom = atom.with_decisions(decisions);
     }
     // Schedule store powers the `usage_limit_auto_continue` capability, which
     // schedules a continuation after a provider usage limit resets.

@@ -8,7 +8,7 @@
 use everruns_core::DeploymentGrade;
 use everruns_host::DirectEgressService;
 use everruns_host::{HostComposition, SystemUtilityLlmConfig};
-use everruns_integrations_typesafe::SystemClassifierConfig;
+use everruns_integrations_typesafe::SystemDecisionsConfig;
 use std::sync::Arc;
 
 /// Build the default worker-side platform definition for the current deployment grade.
@@ -27,9 +27,9 @@ pub fn default_host_composition_for_grade(grade: DeploymentGrade) -> HostComposi
         // egress (capabilities, MCP, integrations) in distributed workers too.
         .egress_service(Arc::new(DirectEgressService::for_runtime_traffic_from_env()))
         .utility_llm_service(SystemUtilityLlmConfig::from_env().into_service())
-        // Guardrail checks on the classifier need the same service in a
+        // Guardrail checks on the decisions need the same service in a
         // distributed worker as in the in-process server path.
-        .classifier(SystemClassifierConfig::from_env().into_service())
+        .decisions(SystemDecisionsConfig::from_env().into_service())
         .build()
 }
 
@@ -38,14 +38,14 @@ mod tests {
     use super::*;
 
     /// A distributed worker runs the same guardrail checks as the in-process
-    /// server path, so it has to carry the same classifier. The server's
+    /// server path, so it has to carry the same decisions. The server's
     /// `oss_composition_carries_a_classifier` asserts this for its side; drift
     /// between the two would make `jev` checks silently no-op under a
     /// distributed deployment while passing every in-process test.
     #[test]
     fn worker_composition_carries_the_same_classifier_as_the_server() {
         let composition = default_host_composition_for_grade(DeploymentGrade::Dev);
-        let service = composition.classifier();
+        let service = composition.decisions();
         // Process env decides which one; both are valid, a missing service is not.
         let configured =
             std::env::var(everruns_integrations_typesafe::UTILITY_TYPESAFE_API_KEY_ENV)
@@ -53,7 +53,7 @@ mod tests {
         assert_eq!(
             service.is_configured(),
             configured,
-            "classifier configuration must follow {}",
+            "decisions configuration must follow {}",
             everruns_integrations_typesafe::UTILITY_TYPESAFE_API_KEY_ENV
         );
         assert_eq!(
@@ -61,7 +61,7 @@ mod tests {
             if configured {
                 "TypeSafeAI"
             } else {
-                "DisabledClassifierService"
+                "DisabledDecisionsService"
             }
         );
     }

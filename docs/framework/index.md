@@ -49,7 +49,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Models and providers](/framework/models-and-providers/), the model/provider split and the open provider boundary.
 - [Supported providers](/framework/supported-providers/), every driver that ships today and what each one supports.
 - [Direct model calls](/framework/direct-model-calls/), one prompt and one answer without an agent.
-- [Direct classification](/framework/direct-classification/), a calibrated number rather than prose, without an agent.
+- [Direct decision](/framework/direct-decision/), a calibrated number rather than prose, without an agent.
 - [Model catalogs](/framework/model-catalogs/), ask a provider which models it offers and what each supports.
 - [Credentials](/framework/credentials/), each driver's own vendor-standard environment variables.
 - [Tools and macros](/framework/tools-and-macros/), typed function tools through `everruns::tool`.

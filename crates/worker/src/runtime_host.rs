@@ -409,8 +409,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.utility_llm_service()
     }
 
-    fn classifier(&self) -> Option<Arc<dyn everruns_core::ClassifierService>> {
-        self.adapters.classifier()
+    fn decisions(&self) -> Option<Arc<dyn everruns_core::DecisionsService>> {
+        self.adapters.decisions()
     }
 
     fn egress_service(&self) -> Option<Arc<dyn EgressService>> {

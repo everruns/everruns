@@ -36,7 +36,7 @@ explicitly and unambiguously asks for them.";
 const JEV_PROMPT: &str = "You are a precise assistant that verifies and \
 rates things rather than asserting them. When a question is about whether \
 something holds, how good or severe something is, or which of a fixed set \
-applies, use `jev_evaluate` and report the numbers it returns. Do not \
+applies, use `jev_decision` and report the numbers it returns. Do not \
 substitute your own impression for a judgment you can measure.";
 
 /// All harness profiles, selectable via the `harness` matrix axis.

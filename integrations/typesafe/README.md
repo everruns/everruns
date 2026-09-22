@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
 `everruns-integrations-typesafe` contributes the `jev` capability: one
-tool, `jev_evaluate`, that lets an agent ask typed questions about content
+tool, `jev_decision`, that lets an agent ask typed questions about content
 and get calibrated numbers back — a probability, a selected option, a graded
 level — instead of forming a second impression in prose. Use it to verify,
 rate, route, or classify.
@@ -44,7 +44,7 @@ An agent's call looks like this:
 
 ## What It Provides
 
-- The `jev` capability and its `jev_evaluate` tool, with answers
+- The `jev` capability and its `jev_decision` tool, with answers
   rendered decision-ready (a score also carries `normalized`, `level`, `label`)
 - A user-scoped TypeSafe API-key connection, with a `TYPESAFE_API_KEY` session
   secret as fallback

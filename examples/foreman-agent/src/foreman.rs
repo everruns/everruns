@@ -5,14 +5,14 @@
 //! them as probabilities rather than prose, so the decision stays in
 //! [`policy`](crate::policy) rather than in a sentence this code has to parse.
 //!
-//! All nine ride one [`Classification`](everruns::Classification): questions in
+//! All nine ride one [`Decision`](everruns::Decision): questions in
 //! a request are answered independently and in parallel, so asking nine costs
 //! one round trip. That is what makes supervision cheap enough to run *while*
 //! the worker works.
 
 use std::time::Duration;
 
-use everruns::{Classifier, ClassifierError};
+use everruns::{Decisions, DecisionsError};
 use serde::Serialize;
 
 use crate::observation::Observation;
@@ -39,7 +39,7 @@ pub struct Dimension {
 /// The nine dimensions, in the order they are reported.
 ///
 /// Question wording is carried over from Foreman unchanged. Wording is the
-/// interface to a classifier the way a schema is the interface to an API, and a
+/// interface to a decision service the way a schema is the interface to an API, and a
 /// threshold calibrated against one phrasing says nothing about another.
 pub const DIMENSIONS: [Dimension; 9] = [
     Dimension {
@@ -154,18 +154,18 @@ impl Assessment {
 /// Why an assessment could not be made.
 #[derive(Debug)]
 pub enum ForemanError {
-    /// The classification call failed or answered incompletely.
-    Classifier(ClassifierError),
+    /// The decision call failed or answered incompletely.
+    Decisions(DecisionsError),
     /// The call did not return inside the configured budget.
     TimedOut(Duration),
-    /// The observation could not be serialized into classifier state.
+    /// The observation could not be serialized into decisions state.
     State(serde_json::Error),
 }
 
 impl std::fmt::Display for ForemanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Classifier(error) => write!(f, "{error}"),
+            Self::Decisions(error) => write!(f, "{error}"),
             Self::TimedOut(budget) => {
                 write!(f, "assessment exceeded {:.0}s", budget.as_secs_f64())
             }
@@ -176,21 +176,21 @@ impl std::fmt::Display for ForemanError {
 
 impl std::error::Error for ForemanError {}
 
-/// The supervisor: a classifier, and how long one reading may take.
+/// The supervisor: a decision service, and how long one reading may take.
 ///
 /// There is one of these, and it is always real. A run with no credentials is
 /// not a different supervisor — it is the same code over a different
-/// [`ClassifierService`](everruns::ClassifierService), which is the
+/// [`DecisionsService`](everruns::DecisionsService), which is the
 /// Framework's own seam for that. See `demo/src/scripted.rs`.
 pub struct Foreman {
-    classifier: Classifier,
+    decisions: Decisions,
     budget: Duration,
 }
 
 impl Foreman {
-    /// Supervise through `classifier`, giving each reading `budget`.
-    pub fn new(classifier: Classifier, budget: Duration) -> Self {
-        Self { classifier, budget }
+    /// Supervise through `decisions`, giving each reading `budget`.
+    pub fn new(decisions: Decisions, budget: Duration) -> Self {
+        Self { decisions, budget }
     }
 
     /// Ask all nine questions about one observation.
@@ -199,20 +199,20 @@ impl Foreman {
         // One request, nine independent questions. Asking them one at a time
         // would cost nine round trips and still not be a snapshot: the floor
         // moves between calls.
-        let mut classification = self.classifier.about(state);
+        let mut decision = self.decisions.about(state);
         for dimension in &DIMENSIONS {
-            classification = classification.noul(dimension.id, dimension.question);
+            decision = decision.noul(dimension.id, dimension.question);
         }
-        let answers = tokio::time::timeout(self.budget, classification.send())
+        let answers = tokio::time::timeout(self.budget, decision.send())
             .await
             .map_err(|_| ForemanError::TimedOut(self.budget))?
-            .map_err(ForemanError::Classifier)?;
+            .map_err(ForemanError::Decisions)?;
 
         let mut assessment = Assessment::default();
         for dimension in &DIMENSIONS {
             let probability = answers
                 .probability(dimension.id)
-                .map_err(ForemanError::Classifier)?;
+                .map_err(ForemanError::Decisions)?;
             assessment.set(dimension.id, probability);
         }
         Ok(assessment)
@@ -223,23 +223,21 @@ impl Foreman {
 mod tests {
     use super::*;
 
-    use everruns::{
-        AgentLoopError, ClassificationOutcome, ClassificationRequest, ClassifierService,
-    };
+    use everruns::{AgentLoopError, DecisionOutcome, DecisionRequest, DecisionsService};
 
     /// A service that never answers, which is what a hung vendor looks like.
     struct Stalling;
 
     #[async_trait::async_trait]
-    impl ClassifierService for Stalling {
+    impl DecisionsService for Stalling {
         fn is_configured(&self) -> bool {
             true
         }
 
         async fn evaluate(
             &self,
-            _request: ClassificationRequest,
-        ) -> Result<ClassificationOutcome, AgentLoopError> {
+            _request: DecisionRequest,
+        ) -> Result<DecisionOutcome, AgentLoopError> {
             std::future::pending().await
         }
     }
@@ -270,7 +268,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_classifier_answers_all_nine_in_one_request() {
-        let foreman = Foreman::new(Classifier::simulated(0.42), Duration::from_secs(10));
+        let foreman = Foreman::new(Decisions::simulated(0.42), Duration::from_secs(10));
         let assessment = foreman.assess(&observation()).await.unwrap();
         for dimension in &DIMENSIONS {
             assert_eq!(assessment.value(dimension.id), 0.42, "{}", dimension.id);
@@ -281,7 +279,7 @@ mod tests {
     async fn a_supervisor_that_cannot_answer_says_so_rather_than_guessing() {
         // A service that never returns is the failure a real deployment has;
         // the budget is what turns it into a decision instead of a hang.
-        let foreman = Foreman::new(Classifier::new("slow", Stalling), Duration::from_millis(50));
+        let foreman = Foreman::new(Decisions::new("slow", Stalling), Duration::from_millis(50));
         let error = foreman.assess(&observation()).await.unwrap_err();
         assert!(error.to_string().contains("exceeded"), "{error}");
     }

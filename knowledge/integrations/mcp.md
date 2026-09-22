@@ -595,7 +595,7 @@ value to set. Today they are populated only on the cases the server
 can reason about, for example, `tool_not_found` ships a fixed `hint`
 pointing the caller at `tools/list`. As more tool implementations
 construct `McpExecuteError` directly (instead of going through the
-prose-string classifier), more occurrences will populate the
+prose-string decisions), more occurrences will populate the
 optional fields with case-specific values.
 
 The legacy `content[0].text` channel is preserved verbatim for MCP
@@ -623,11 +623,11 @@ known to be transient still ships `retryable: true`.
   category, new retry semantics, new client guidance).
 * SDKs deserialise any unrecognised code into `unknown` (serde
   `#[serde(other)]`); they must not crash on a value they don't know.
-* The classifier `classify_mcp_execute_error` in the same module
+* The decisions `classify_mcp_execute_error` in the same module
   recovers a structured envelope from the legacy `Result<String,
   String>` error path. New tool implementations should construct
   `McpExecuteError` directly when they have a precise code; the
-  classifier exists for forward-compat with the existing prose-string
+  decisions exists for forward-compat with the existing prose-string
   failures.
 
 ## Not yet adopted from 2026-07-28

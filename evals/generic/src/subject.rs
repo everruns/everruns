@@ -255,7 +255,7 @@ fn extract_tool_calls(events: &[serde_json::Value]) -> Vec<String> {
         .collect()
 }
 
-/// Every question the model asked `jev_evaluate`, flattened across calls.
+/// Every question the model asked `jev_decision`, flattened across calls.
 ///
 /// Read from `tool.started`, which carries the arguments; `tool.completed`
 /// carries only the name.
@@ -264,7 +264,7 @@ fn extract_jev_questions(events: &[serde_json::Value]) -> Vec<serde_json::Value>
         .iter()
         .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("tool.started"))
         .filter_map(|e| e.get("data").and_then(|d| d.get("tool_call")))
-        .filter(|call| call.get("name").and_then(|n| n.as_str()) == Some("jev_evaluate"))
+        .filter(|call| call.get("name").and_then(|n| n.as_str()) == Some("jev_decision"))
         .filter_map(|call| call.get("arguments"))
         .filter_map(|args| args.get("questions").and_then(|q| q.as_array()))
         .flat_map(|questions| questions.iter().cloned())
@@ -632,7 +632,7 @@ mod tests {
         // tool.started; a call to another tool must not contribute.
         let events = vec![
             json!({"type": "tool.started", "data": {"tool_call": {
-                "name": "jev_evaluate",
+                "name": "jev_decision",
                 "arguments": {"state": "a joke", "questions": [
                     {"id": "funny", "type": "noul", "instructions": "Would an audience laugh?"}
                 ]}
@@ -641,13 +641,13 @@ mod tests {
                 "name": "read_file", "arguments": {"path": "x"}
             }}}),
             json!({"type": "tool.started", "data": {"tool_call": {
-                "name": "jev_evaluate",
+                "name": "jev_decision",
                 "arguments": {"state": "a joke", "questions": [
                     {"id": "quality", "type": "score", "instructions": "How good?",
                      "levels": ["Bad", "Good"]}
                 ]}
             }}}),
-            json!({"type": "tool.completed", "data": {"tool_name": "jev_evaluate"}}),
+            json!({"type": "tool.completed", "data": {"tool_name": "jev_decision"}}),
         ];
         let questions = extract_jev_questions(&events);
         assert_eq!(questions.len(), 2, "questions flatten across calls");
@@ -698,7 +698,7 @@ mod tests {
             transcript.metadata.get(SKIPPED_KEY)
         );
         assert!(
-            transcript.tool_calls.iter().any(|c| c == "jev_evaluate"),
+            transcript.tool_calls.iter().any(|c| c == "jev_decision"),
             "the model must measure rather than opine; saw {:?}",
             transcript.tool_calls
         );

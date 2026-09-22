@@ -195,7 +195,7 @@ pub struct ReasonResult {
     /// Error message if the call failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// Disclosed user-facing classification of the failure, already filtered
+    /// Disclosed user-facing decision of the failure, already filtered
     /// through the resolved error-disclosure mode. Hosts must prefer this over
     /// re-classifying `error`/`text` strings so disclosure stays consistent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -280,10 +280,10 @@ pub struct ReasonAtom {
     /// end-of-message output guardrails (e.g. moderation). When absent, those
     /// guardrails fail open and the seam is a no-op.
     utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
-    /// Optional classifier. Powers guardrail checks that ask for a
+    /// Optional decisions. Powers guardrail checks that ask for a
     /// calibrated number rather than text to parse. When absent, those checks
     /// fail open exactly like the utility-model-backed ones.
-    classifier: Option<Arc<dyn crate::ClassifierService>>,
+    decisions: Option<Arc<dyn crate::DecisionsService>>,
     /// Optional session schedule store. Used by the `usage_limit_auto_continue`
     /// capability to schedule a one-shot continuation after a provider usage
     /// limit resets. When absent, the capability degrades to a no-op (no
@@ -325,7 +325,7 @@ impl ReasonAtom {
             partial_stream_store: None,
             reasoning_effort_handle: None,
             utility_llm_service: None,
-            classifier: None,
+            decisions: None,
             schedule_store: None,
             compaction_checkpoint_store: None,
         }
@@ -455,10 +455,10 @@ impl ReasonAtom {
         self
     }
 
-    /// Set the classifier used by guardrail checks that ask for typed
+    /// Set the decisions used by guardrail checks that ask for typed
     /// answers. When unset, those checks fail open.
-    pub fn with_classifier(mut self, service: Arc<dyn crate::ClassifierService>) -> Self {
-        self.classifier = Some(service);
+    pub fn with_decisions(mut self, service: Arc<dyn crate::DecisionsService>) -> Self {
+        self.decisions = Some(service);
         self
     }
 }
@@ -2167,7 +2167,7 @@ impl ReasonAtom {
                     system_prompt: &runtime_agent.system_prompt,
                     message_text: &guarded_output,
                     utility_llm_service: self.utility_llm_service.as_ref(),
-                    classifier: self.classifier.as_ref(),
+                    decisions: self.decisions.as_ref(),
                 };
                 tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
             }
@@ -2200,7 +2200,7 @@ impl ReasonAtom {
                 system_prompt: &runtime_agent.system_prompt,
                 message_text: &guarded_output,
                 utility_llm_service: self.utility_llm_service.as_ref(),
-                classifier: self.classifier.as_ref(),
+                decisions: self.decisions.as_ref(),
             };
             tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
         }
@@ -2543,8 +2543,8 @@ impl ReasonAtom {
         // calls), FinalAnswer for the completed response.
         let provider_type_for_reasoning = model_with_provider.provider_type.to_string();
         // Record where the phase came from. A provider-reported phase is a real
-        // classification; a derived one is just `has_tool_calls` wearing a
-        // classification's name, and consumers must be able to tell.
+        // decision; a derived one is just `has_tool_calls` wearing a
+        // decision's name, and consumers must be able to tell.
         let provider_phase = completion_metadata
             .as_ref()
             .and_then(|meta| meta.phase.as_deref())

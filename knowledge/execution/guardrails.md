@@ -75,7 +75,7 @@ A check binds a **rule** to a **stage** with an **on-fail action**:
   `mcp` (delegates the decision to a third-party guardrail served as an
   external MCP endpoint; valid only on `tool_use` and `tool_output` stages;
   async; sends stage content off-platform), and `moderation` (scores the
-  finalized assistant message via the utility LLM as a content classifier;
+  finalized assistant message via the utility LLM as a content decisions;
   valid only on the `output` stage; async; runs on the end-of-message boundary).
 - **On-fail**: `block` or `log`. `block` suppresses the matched content
   (replacing output/tool-output with a notice, or refusing the tool call);
@@ -155,10 +155,10 @@ same JSON verdict shape as `llm_judge` (`{"verdict":"allow"}` /
 
 `moderation` is the first **model-backed output check** (EVE-573). It scores
 the finalized assistant message via the utility LLM acting as a content
-classifier and blocks (or logs) when any configured category scores at or above
+decisions and blocks (or logs) when any configured category scores at or above
 a threshold. A check carries `categories` (a list; defaults to a built-in set,
 `hate`, `harassment`, `self_harm`, `sexual`, `violence`, `illicit`, when
-omitted) and `threshold` (a percentage `0..=100`, default 50). The classifier
+omitted) and `threshold` (a percentage `0..=100`, default 50). The decisions
 returns `{"scores":{"<category>":<0-100>, ...}}`; a category at or above the
 threshold applies reason code `guardrail.moderation`. Constraints:
 
@@ -176,9 +176,9 @@ threshold applies reason code `guardrail.moderation`. Constraints:
 - **Data egress**: the finalized assistant text (capped at 4 000 bytes, UTF-8
   safe) is sent to the org's configured utility model, the same provider the
   agent already uses, not a new third party. Still flagged because the model's
-  output leaves the generating path for classification (TM-LLM, TM-DOS).
+  output leaves the generating path for decision (TM-LLM, TM-DOS).
 - **Fail-open**: a timeout (10 s), LLM error, unparseable response, or missing
-  utility service defaults to `allow`, so a classifier outage never wedges a
+  utility service defaults to `allow`, so a decisions outage never wedges a
   turn.
 - **Cap**: at most 4 utility-LLM moderation calls per finalized message
   (TM-DOS). Jev-engine categories all ride the stage's single request.
@@ -193,7 +193,7 @@ picks its engine with `engine`:
 
 | | `utility_llm` (default) | `jev` |
 |---|---|---|
-| Backing service | [Utility LLM Service](../operations/utility-llm.md) | [Classifier Service](../operations/classifier-service.md) |
+| Backing service | [Utility LLM Service](../operations/utility-llm.md) | [Decisions Service](../operations/decisions-service.md) |
 | Requests | one per check (per category set) | one per stage, for every judgment check on it |
 | Answer | JSON verdict / scores the call site parses | a calibrated probability |
 | Verdict | what the model wrote | `threshold`, applied in code |
@@ -210,7 +210,7 @@ was a silent bypass, since a malformed verdict read as `allow`.
 the same agent. Their calibration is measured by the
 [guardrail-calibration study](../../evals/guardrail-calibration/README.md), whose
 first run found the default threshold of 50 was not the best point on its corpus
-— see [Coverage of model-backed classification](../evaluation/evals.md#coverage-of-model-backed-classification). When a check selects `jev` and the deployment configured no classifier
+— see [Coverage of model-backed decision](../evaluation/evals.md#coverage-of-model-backed-decision). When a check selects `jev` and the deployment configured no decisions
 service (`UTILITY_TYPESAFE_API_KEY` unset), the check is skipped with a warning
 and the stage proceeds — fail-open, and visible in logs rather than silent.
 
@@ -336,14 +336,14 @@ Clients localize copy from the code rather than the human text. The
 
 - Deterministic checks run in-process with no external network access.
 - A model-backed check with `engine: "jev"` sends the same bounded excerpt
-  to the deployment's classifier instead of the utility model; the
+  to the deployment's decisions instead of the utility model; the
   egress class is identical, the destination is not. See
-  [Classifier Service](../operations/classifier-service.md).
+  [Decisions Service](../operations/decisions-service.md).
 - The `llm_judge` check sends a bounded content excerpt to the utility LLM
   (TM-LLM-027/028); the `mcp` check sends a bounded content excerpt to an
   external, operator-configured MCP guardrail endpoint (data egress,
   TM-LLM-029); the `moderation` check sends a bounded excerpt of the finalized
-  assistant message to the utility LLM for classification (TM-LLM-030). All are
+  assistant message to the utility LLM for decision (TM-LLM-030). All are
   async, bounded (timeout + per-invocation call cap), and fail open: a guardrail
   outage or hostile endpoint can only block, never make execution more permissive
   than the no-guardrail baseline.
@@ -368,9 +368,9 @@ The defense-in-depth design and its remaining success bar are tracked in
 
 - More model-backed checks: PII (NER), prompt-injection classifiers; a dedicated
   provider moderation API (e.g. OpenAI moderations) as an alternative backend to
-  the utility-model classifier; local/on-device models later. The end-of-message
+  the utility-model decisions; local/on-device models later. The end-of-message
   boundary and the first model-backed output check (`moderation`, utility-model
-  classifier) shipped in EVE-573.
+  decisions) shipped in EVE-573.
 - `llm_judge` on the `output` stage: the end-of-message boundary now exists
   (EVE-573); enabling `llm_judge`/`mcp` on `output` is tracked in EVE-572. Those
   checks still ship for `tool_use`/`tool_output` only today.

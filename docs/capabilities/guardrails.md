@@ -67,7 +67,7 @@ The two model-backed types, `llm_judge` and `moderation`, choose which system mo
 
 Two reasons to prefer `jev` once your deployment has a key configured. It is cheaper on latency: four judge checks on a tool call cost one round trip instead of four. And the verdict is yours — the model reports how likely a violation is, your threshold decides what to do about it, and there is no written verdict to misparse. For moderation it also reads the *tail* of the distribution rather than a score: content that is probably fine but 30% likely to be a clear violation trips a 30% threshold, where an averaged score would hide it.
 
-`utility_llm` stays the default, so existing configs are unchanged. Both engines fail open, honor `on_fail` and advisory mode identically, and send the same bounded excerpt. A check set to `jev` in a deployment with no classifier configured is skipped with a warning.
+`utility_llm` stays the default, so existing configs are unchanged. Both engines fail open, honor `on_fail` and advisory mode identically, and send the same bounded excerpt. A check set to `jev` in a deployment with no decisions configured is skipped with a warning.
 
 ### On-fail
 
@@ -112,10 +112,10 @@ The `id` is optional but recommended, it is surfaced in reason codes and logs.
 ## Data egress and failure behavior
 
 - **Deterministic checks** (`regex`, `blocklist`, `tool_pattern`) run entirely in-process; no data leaves the platform.
-- **`llm_judge` and `moderation`** send a bounded content excerpt to a system model: with `engine: "utility_llm"`, your org's *own* configured utility LLM, the same provider the agent already uses; with `engine: "jev"`, the deployment's classifier. Either way it is an operator-configured destination, not a per-agent one.
+- **`llm_judge` and `moderation`** send a bounded content excerpt to a system model: with `engine: "utility_llm"`, your org's *own* configured utility LLM, the same provider the agent already uses; with `engine: "jev"`, the deployment's decisions. Either way it is an operator-configured destination, not a per-agent one.
 - **`mcp`** sends a bounded content excerpt to an external, operator-configured MCP guardrail endpoint. Tenant scoping is enforced by the host's per-session scoped-MCP resolver, so a config can only reach servers scoped to its own session/org.
 
-Every async check is bounded (10 s timeout; at most 4 utility-LLM calls per invocation, and one batched request for the classifier) and **fails open**: a timeout, error, or unparseable verdict defaults to `allow`. A guardrail outage, or a hostile MCP endpoint, can only ever *allow*, never make execution more permissive than the no-guardrail baseline in a way that blocks a healthy turn. Model-backed checks flow through utility-LLM accounting, not the session model budget.
+Every async check is bounded (10 s timeout; at most 4 utility-LLM calls per invocation, and one batched request for the decisions) and **fails open**: a timeout, error, or unparseable verdict defaults to `allow`. A guardrail outage, or a hostile MCP endpoint, can only ever *allow*, never make execution more permissive than the no-guardrail baseline in a way that blocks a healthy turn. Model-backed checks flow through utility-LLM accounting, not the session model budget.
 
 ## Tuning: dry-run and advisory
 
