@@ -24,13 +24,17 @@ jobs:
       - name: Check if release commit
         id: check
         env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          EVENT_NAME: ${{ github.event_name }}
+          # A boolean, not the message. The runner prints every `env:` entry
+          # verbatim, so handing this step the commit body published each merged
+          # PR description into a public log -- and a credential *shape* quoted
+          # in one (a placeholder, a key under discussion) then trips the hourly
+          # Actions log secret scan, as commit d6f65f8 did. The subject is a
+          # prefix of the message, so `startsWith` reads it for free.
+          # Quoted because the expression contains a colon, which bare YAML
+          # would read as a mapping.
+          IS_RELEASE: "${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore(release): prepare v') }}"
         run: |
-          # Use env var to safely handle multiline commit messages
-          FIRST_LINE=$(echo "$COMMIT_MSG" | head -n1)
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]] || \
-             [[ "$FIRST_LINE" == chore\(release\):\ prepare\ v* ]]; then
+          if [[ "$IS_RELEASE" == "true" ]]; then
             echo "is_release=true" >> $GITHUB_OUTPUT
             echo "This is a release commit, proceeding with release"
           else
@@ -56,7 +60,6 @@ jobs:
       - name: Extract version from commit message or input
         id: version
         env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
           EVENT_NAME: ${{ github.event_name }}
           INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
@@ -65,8 +68,11 @@ jobs:
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             VERSION="$INPUT_VERSION"
           else
-            # Extract version from commit message like "chore(release): prepare v0.4.0"
-            VERSION=$(echo "$COMMIT_MSG" | head -n1 | grep -oP 'prepare v\K[0-9]+\.[0-9]+\.[0-9]+' || true)
+            # Read the subject from the checked-out commit rather than taking the
+            # message through `env:`. Same reason as check-release above: the
+            # runner prints an env entry verbatim, and the body of a squashed
+            # release PR is a changelog that can quote anything.
+            VERSION=$(git log -1 --format=%s HEAD | grep -oP 'prepare v\K[0-9]+\.[0-9]+\.[0-9]+' || true)
           fi
           if [ -z "$VERSION" ]; then
             echo "::error::Could not extract version from commit message or input"

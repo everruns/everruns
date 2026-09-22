@@ -8,15 +8,15 @@ use crate::auth::ResolvedOrg;
 use crate::auth::config::AuthConfig;
 use crate::auth::middleware::{AuthState, AuthUser};
 use crate::auth::oauth::GitHubAppService;
-use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService, McpServerSettings};
+use crate::domains::mcp_servers::McpServerService;
 use crate::domains::plugins::oauth_anchor::humanize_connection_name;
 use crate::kernel_imports::{
-    Caller, EgressService, McpServerAuthMode,
+    Caller, McpServerAuthMode,
     everruns_provider::typed_id::{AgentId, AgentIdentityId, SessionId},
     everruns_provider::url_validation::validate_safe_url,
     mcp_oauth_provider_id_for_uuid,
 };
-use crate::oauth_client::{egress_oauth_json, exchange_oauth_code};
+use crate::oauth_client::{OAuthCodeExchangeRequest, exchange_oauth_code};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -38,7 +38,7 @@ use sha2::{Digest, Sha256};
 use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
 
-use super::common::{impl_auth_state, sanitized_bad_gateway, sanitized_internal_error};
+use super::common::{impl_auth_state, sanitized_internal_error};
 use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
 use crate::domains::mcp_servers::MCP_SERVER_MANAGE;
 use crate::storage::models::{
@@ -46,6 +46,10 @@ use crate::storage::models::{
 };
 pub mod mcp_connections;
 use mcp_connections::list_mcp_connections;
+mod mcp_oauth;
+use mcp_oauth::{
+    ensure_mcp_oauth_registration, oauth_refusal_message, validate_authorization_params,
+};
 
 /// App state for user connections routes
 #[derive(Clone)]
@@ -174,8 +178,10 @@ pub struct OAuthAuthorizeQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct OAuthCallbackQuery {
-    pub code: String,
+    pub code: Option<String>,
     pub state: Option<String>,
+    pub error: Option<String>,
+    pub error_description: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -194,31 +200,6 @@ struct PendingOAuthState {
     agent_identity_id: Option<String>,
     popup: bool,
     code_verifier: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct OAuthProtectedResourceMetadata {
-    #[serde(default)]
-    authorization_servers: Vec<String>,
-    #[serde(default)]
-    scopes_supported: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OAuthServerMetadata {
-    issuer: Option<String>,
-    authorization_endpoint: String,
-    token_endpoint: String,
-    #[serde(default)]
-    registration_endpoint: Option<String>,
-    #[serde(default)]
-    scopes_supported: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-struct OAuthClientRegistration {
-    client_id: String,
-    client_secret: Option<String>,
 }
 
 // ============================================================================
@@ -716,7 +697,7 @@ pub async fn authorize_connection(
             org.org_id,
             server_id,
             crate::storage::models::UpdateMcpServer {
-                settings: Some(serde_json::to_value(updated_settings).unwrap_or_default()),
+                settings: Some(serde_json::to_value(&updated_settings).unwrap_or_default()),
                 ..Default::default()
             },
         )
@@ -735,6 +716,7 @@ pub async fn authorize_connection(
         None => (None, None),
     };
 
+    let service_grant = mode == "identity";
     let pending = PendingOAuthState {
         state: oauth_state.clone(),
         provider: provider.clone(),
@@ -770,21 +752,39 @@ pub async fn authorize_connection(
     })?;
     let authorize_url = reqwest::Url::parse(&metadata.authorization_endpoint)
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
-    let scopes = if !metadata.scopes_supported.is_empty() {
-        metadata.scopes_supported.join(" ")
-    } else {
-        "email".to_string()
-    };
+    let oauth = updated_settings.oauth.as_ref().ok_or((
+        StatusCode::BAD_REQUEST,
+        "OAuth settings missing for MCP server".to_string(),
+    ))?;
+    let scopes = oauth.scope.clone().unwrap_or_else(|| {
+        if !metadata.scopes_supported.is_empty() {
+            metadata.scopes_supported.join(" ")
+        } else {
+            "email".to_string()
+        }
+    });
     let redirect_uri = mcp_oauth_redirect_uri(&state.auth_config, &provider);
     let mut url = authorize_url;
-    url.query_pairs_mut()
-        .append_pair("response_type", "code")
-        .append_pair("client_id", &registration.client_id)
-        .append_pair("redirect_uri", &redirect_uri)
-        .append_pair("scope", &scopes)
-        .append_pair("state", &oauth_state)
-        .append_pair("code_challenge", &code_challenge)
-        .append_pair("code_challenge_method", "S256");
+    {
+        let mut pairs = url.query_pairs_mut();
+        pairs
+            .append_pair("response_type", "code")
+            .append_pair("client_id", &registration.client_id)
+            .append_pair("redirect_uri", &redirect_uri)
+            .append_pair("scope", &scopes)
+            .append_pair("state", &oauth_state)
+            .append_pair("code_challenge", &code_challenge)
+            .append_pair("code_challenge_method", "S256");
+        if let Some(resource) = oauth.resource.as_deref() {
+            pairs.append_pair("resource", resource);
+        }
+        if service_grant {
+            validate_authorization_params(&oauth.service_authorization_params)?;
+            for (key, value) in &oauth.service_authorization_params {
+                pairs.append_pair(key, value);
+            }
+        }
+    }
 
     Ok((jar.add(cookie), Redirect::to(url.as_str())))
 }
@@ -810,6 +810,16 @@ pub async fn connection_oauth_callback(
     };
     let pending = validate_pending_oauth_state(&jar, &provider, query.state.as_deref())?;
     let clear_cookie = jar.remove(Cookie::from(oauth_state_cookie_name(&provider)));
+    if let Some(error) = query.error.as_deref() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            oauth_refusal_message(error, query.error_description.as_deref()),
+        ));
+    }
+    let code = query.code.as_deref().ok_or((
+        StatusCode::BAD_REQUEST,
+        "OAuth callback is missing the authorization code".to_string(),
+    ))?;
 
     let row = state
         .db
@@ -846,12 +856,15 @@ pub async fn connection_oauth_callback(
 
     let token = exchange_oauth_code(
         state.mcp_service.egress_service().as_ref(),
-        &token_endpoint,
-        &client_id,
-        client_secret.as_deref(),
-        &redirect_uri,
-        &query.code,
-        &pending.code_verifier,
+        OAuthCodeExchangeRequest {
+            token_endpoint: &token_endpoint,
+            client_id: &client_id,
+            client_secret: client_secret.as_deref(),
+            redirect_uri: &redirect_uri,
+            code,
+            code_verifier: &pending.code_verifier,
+            resource: oauth.resource.as_deref(),
+        },
     )
     .await?;
 
@@ -1370,188 +1383,6 @@ fn validate_pending_oauth_state(
         return Err((StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()));
     }
     Ok(pending)
-}
-
-async fn ensure_mcp_oauth_registration(
-    state: &AppState,
-    row: &crate::storage::McpServerRow,
-    mut settings: McpServerSettings,
-    provider: &str,
-) -> Result<
-    (
-        OAuthServerMetadata,
-        OAuthClientRegistration,
-        McpServerSettings,
-    ),
-    (StatusCode, String),
-> {
-    let oauth = settings
-        .oauth
-        .get_or_insert_with(McpServerOAuthSettings::default);
-    let metadata = if oauth.authorization_endpoint.is_some() && oauth.token_endpoint.is_some() {
-        OAuthServerMetadata {
-            issuer: oauth.issuer.clone(),
-            authorization_endpoint: oauth.authorization_endpoint.clone().unwrap_or_default(),
-            token_endpoint: oauth.token_endpoint.clone().unwrap_or_default(),
-            registration_endpoint: oauth.registration_endpoint.clone(),
-            scopes_supported: oauth.scopes_supported.clone(),
-        }
-    } else {
-        let resource_metadata =
-            discover_resource_metadata(state.mcp_service.egress_service().as_ref(), &row.url)
-                .await?;
-        let issuer = match resource_metadata.authorization_servers.first().cloned() {
-            Some(issuer) => issuer,
-            None => resource_origin(&parse_and_validate_url(&row.url)?)?,
-        };
-        validate_safe_url(&issuer).map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("OAuth issuer blocked: {e}"),
-            )
-        })?;
-        let metadata =
-            discover_oauth_server_metadata(state.mcp_service.egress_service().as_ref(), &issuer)
-                .await?;
-        oauth.issuer = metadata.issuer.clone().or(Some(issuer));
-        oauth.authorization_endpoint = Some(metadata.authorization_endpoint.clone());
-        oauth.token_endpoint = Some(metadata.token_endpoint.clone());
-        oauth.registration_endpoint = metadata.registration_endpoint.clone();
-        oauth.scopes_supported = if !metadata.scopes_supported.is_empty() {
-            metadata.scopes_supported.clone()
-        } else {
-            resource_metadata.scopes_supported
-        };
-        metadata
-    };
-
-    let registration = if let Some(client_id) = oauth.client_id.clone() {
-        OAuthClientRegistration {
-            client_id,
-            client_secret: oauth
-                .client_secret_encrypted
-                .as_deref()
-                .map(|value| state.mcp_service.decrypt_string_from_b64(value))
-                .transpose()
-                .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
-        }
-    } else {
-        let registration_endpoint = metadata.registration_endpoint.as_deref().ok_or((
-            StatusCode::BAD_REQUEST,
-            "OAuth server metadata missing registration_endpoint; configure client_id manually"
-                .to_string(),
-        ))?;
-        let registration = register_oauth_client(
-            state.mcp_service.egress_service().as_ref(),
-            registration_endpoint,
-            &mcp_oauth_redirect_uri(&state.auth_config, provider),
-        )
-        .await?;
-        oauth.client_id = Some(registration.client_id.clone());
-        oauth.client_secret_encrypted = registration
-            .client_secret
-            .as_deref()
-            .map(|value| state.mcp_service.encrypt_string_to_b64(value))
-            .transpose()
-            .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
-        registration
-    };
-
-    Ok((metadata, registration, settings))
-}
-
-async fn discover_resource_metadata(
-    egress: &dyn EgressService,
-    server_url: &str,
-) -> Result<OAuthProtectedResourceMetadata, (StatusCode, String)> {
-    let resource_url = parse_and_validate_url(server_url)?;
-    let origin = resource_origin(&resource_url)?;
-    egress_oauth_json(
-        egress,
-        "GET",
-        &format!("{origin}/.well-known/oauth-protected-resource"),
-        &[],
-        Vec::new(),
-    )
-    .await
-}
-
-async fn discover_oauth_server_metadata(
-    egress: &dyn EgressService,
-    issuer: &str,
-) -> Result<OAuthServerMetadata, (StatusCode, String)> {
-    let issuer = parse_and_validate_url(issuer)?;
-    let metadata: OAuthServerMetadata = egress_oauth_json(
-        egress,
-        "GET",
-        &format!(
-            "{}/.well-known/oauth-authorization-server",
-            issuer.as_str().trim_end_matches('/')
-        ),
-        &[],
-        Vec::new(),
-    )
-    .await?;
-    if let Some(discovered_issuer) = metadata.issuer.as_deref() {
-        let discovered_issuer = parse_and_validate_url(discovered_issuer)?;
-        if discovered_issuer.as_str().trim_end_matches('/') != issuer.as_str().trim_end_matches('/')
-        {
-            return Err((
-                StatusCode::BAD_GATEWAY,
-                "OAuth authorization server returned mismatched issuer metadata".to_string(),
-            ));
-        }
-    }
-    validate_safe_url(&metadata.authorization_endpoint).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Authorization endpoint blocked: {e}"),
-        )
-    })?;
-    validate_safe_url(&metadata.token_endpoint).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Token endpoint blocked: {e}"),
-        )
-    })?;
-    if let Some(registration_endpoint) = &metadata.registration_endpoint {
-        validate_safe_url(registration_endpoint).map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("Registration endpoint blocked: {e}"),
-            )
-        })?;
-    }
-    Ok(metadata)
-}
-
-async fn register_oauth_client(
-    egress: &dyn EgressService,
-    registration_endpoint: &str,
-    redirect_uri: &str,
-) -> Result<OAuthClientRegistration, (StatusCode, String)> {
-    validate_safe_url(registration_endpoint).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Registration endpoint blocked: {e}"),
-        )
-    })?;
-    let body = serde_json::to_vec(&serde_json::json!({
-        "client_name": "Everruns MCP",
-        "redirect_uris": [redirect_uri],
-        "grant_types": ["authorization_code", "refresh_token"],
-        "response_types": ["code"],
-        "token_endpoint_auth_method": "client_secret_post"
-    }))
-    .map_err(|e| sanitized_bad_gateway("OAuth registration body", &e))?;
-    egress_oauth_json(
-        egress,
-        "POST",
-        registration_endpoint,
-        &[("Content-Type", "application/json".to_string())],
-        body,
-    )
-    .await
 }
 
 fn finalize_oauth_redirect(

@@ -71,6 +71,7 @@ impl Command for CreateMessage {
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
         require_platform_chat_owner(ctx, &session).await?;
+        supersede_pending_questions(ctx, &session, session_id).await;
         let responder_agent_id = resolve_responder_agent_id(
             ctx,
             session_id,
@@ -94,6 +95,74 @@ impl Command for CreateMessage {
             )
             .await
             .map_err(classify_anyhow)
+    }
+}
+
+/// Typing an answer instead of clicking one resolves the question (EVE-1054).
+///
+/// Before this, a message to a session parked on `ask_user` was appended and the
+/// tool call stayed pending forever — a transcript with a call nothing ever
+/// answered, which is the most common real-world interaction and was undefined.
+///
+/// Resolved as `cancelled`, not `answered`: the person said something, but not
+/// in terms of the options, and nothing may guess which one they meant.
+///
+/// Deliberately does not resume the turn. Resuming here and then delivering the
+/// message would drive two concurrent turns; the message delivery that follows
+/// is what carries the conversation on, with the cancellation already in the
+/// transcript ahead of it.
+///
+/// Costs nothing on the ordinary path: `status` is already in hand, so a session
+/// that is not parked does no extra work.
+async fn supersede_pending_questions(
+    ctx: &Ctx,
+    session: &everruns_platform::Session,
+    session_id: everruns_provider::typed_id::SessionId,
+) {
+    if session.status != everruns_platform::SessionStatus::WaitingForToolResults {
+        return;
+    }
+    let (Some(session_service), Some(event_service)) =
+        (ctx.session_service.as_ref(), ctx.event_service.as_ref())
+    else {
+        return;
+    };
+
+    let resolver = crate::api::question_answers::QuestionResolver {
+        db: &ctx.db,
+        session_service,
+        event_service,
+        runner: None,
+    };
+    match crate::api::question_answers::resolve_question_answers(
+        &resolver,
+        &ctx.caller,
+        session_id,
+        None,
+        everruns_builtins::ask_user::AskUserStatus::Cancelled,
+        &[],
+    )
+    .await
+    {
+        Ok(_) => {
+            tracing::info!(
+                session_id = %session_id,
+                "Pending ask_user question set cancelled by a chat message"
+            );
+        }
+        // No pending question set is the common case: the session may be parked
+        // on some other client-side tool, which is not this path's business.
+        Err(crate::api::question_answers::ResolveError::NoPendingQuestions) => {}
+        Err(error) => {
+            // The message is the person's intent and still gets delivered;
+            // refusing it because a cleanup failed would be worse than the
+            // dangling call this is trying to prevent.
+            tracing::warn!(
+                session_id = %session_id,
+                error = ?error,
+                "Failed to cancel a pending question set superseded by a message"
+            );
+        }
     }
 }
 

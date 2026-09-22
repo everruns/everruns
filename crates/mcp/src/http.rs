@@ -47,6 +47,23 @@ const NEGOTIATION_TTL: Duration = Duration::from_secs(300);
 /// interaction (typically because the user has not finished it yet).
 const MAX_INPUT_REQUIRED_ROUNDS: usize = 2;
 
+/// A non-success HTTP response from an MCP resource server.
+#[derive(Debug, thiserror::Error)]
+#[error("MCP server returned error: {status} - {body}")]
+pub struct McpHttpStatusError {
+    /// HTTP status returned by the MCP resource server.
+    pub status: u16,
+    /// Response body returned by the MCP resource server.
+    pub body: String,
+}
+
+impl McpHttpStatusError {
+    /// Whether the resource server rejected the supplied credential.
+    pub fn is_unauthorized(&self) -> bool {
+        self.status == 401
+    }
+}
+
 /// Raw MCP HTTP response: status, headers, and the (possibly SSE-framed) body
 /// text — without the 2xx check, so negotiation can inspect failures.
 pub struct RawMcpResponse {
@@ -123,11 +140,11 @@ pub async fn http_send_rpc(
 ) -> Result<String> {
     let response = send_raw(egress, url, headers, &[], credential, body, timeout).await?;
     if !(200..300).contains(&response.status) {
-        return Err(anyhow!(
-            "MCP server returned error: {} - {}",
-            response.status,
-            response.body
-        ));
+        return Err(McpHttpStatusError {
+            status: response.status,
+            body: response.body,
+        }
+        .into());
     }
     Ok(response.body)
 }
@@ -147,11 +164,11 @@ async fn do_handshake(
     let extra = protocol::routable_headers(preferred_version, "initialize", None);
     let response = send_raw(egress, url, headers, &extra, credential, body, timeout).await?;
     if !(200..300).contains(&response.status) {
-        return Err(anyhow!(
-            "MCP initialize handshake failed: {} - {}",
-            response.status,
-            response.body
-        ));
+        return Err(McpHttpStatusError {
+            status: response.status,
+            body: response.body,
+        }
+        .into());
     }
     // The initialize result may be plain JSON or SSE-framed, like any MCP
     // response — extract the JSON payload before reading the negotiated version.
@@ -273,12 +290,10 @@ async fn negotiate_and_send(
         )
         .await
         .map_err(|fallback_error| {
-            anyhow!(
-                "MCP 2026-07-28 probe failed: {} - {}; stateful fallback failed: {}",
-                response.status,
-                response.body,
-                fallback_error
-            )
+            fallback_error.context(format!(
+                "MCP 2026-07-28 probe failed: {} - {}; stateful fallback failed",
+                response.status, response.body
+            ))
         })?;
         send_op(
             egress,
@@ -306,19 +321,22 @@ async fn negotiate_and_send(
 
     if !(200..300).contains(&response.status) {
         if let Some((probe_status, probe_body)) = rejected_probe {
-            return Err(anyhow!(
-                "MCP 2026-07-28 probe failed: {} - {}; stateful fallback failed: {} - {}",
-                probe_status,
-                probe_body,
-                response.status,
-                response.body
-            ));
+            let fallback_status = response.status;
+            let fallback_body = response.body;
+            return Err(anyhow!(McpHttpStatusError {
+                status: fallback_status,
+                body: fallback_body.clone(),
+            })
+            .context(format!(
+                "MCP 2026-07-28 probe failed: {probe_status} - {probe_body}; \
+                 stateful fallback failed: {fallback_status} - {fallback_body}"
+            )));
         }
-        return Err(anyhow!(
-            "MCP server returned error: {} - {}",
-            response.status,
-            response.body
-        ));
+        return Err(McpHttpStatusError {
+            status: response.status,
+            body: response.body,
+        }
+        .into());
     }
 
     Ok((response.body, negotiated))
@@ -540,11 +558,11 @@ async fn resolve_input_required(
         )
         .await?;
         if !(200..300).contains(&response.status) {
-            return Err(anyhow!(
-                "MCP server returned error on input_required retry: {} - {}",
-                response.status,
-                response.body
-            ));
+            return Err(McpHttpStatusError {
+                status: response.status,
+                body: response.body,
+            }
+            .into());
         }
         text = response.body;
     }

@@ -9,6 +9,7 @@
 
 use crate::client::McpClient;
 use crate::elicitation::{ElicitationAction, UrlElicitationPending};
+use crate::http::McpHttpStatusError;
 use crate::transport::McpConnection;
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
@@ -49,6 +50,14 @@ fn redact_json(value: &mut serde_json::Value, secrets: &[String]) {
     }
 }
 
+fn is_unauthorized(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<McpHttpStatusError>()
+            .is_some_and(McpHttpStatusError::is_unauthorized)
+    })
+}
+
 fn redact_tool_result(result: &mut ToolResult, secrets: &[String]) {
     // Nothing was injected for this call, so nothing can be reflected. Skip the
     // walk instead of reallocating every string in the result (base64 images in
@@ -78,6 +87,13 @@ fn redact_tool_result(result: &mut ToolResult, secrets: &[String]) {
 #[async_trait]
 pub trait McpConnectionResolver: Send + Sync {
     async fn resolve(&self, server_prefix: &str) -> Result<Option<McpConnection>>;
+    async fn invalidate(
+        &self,
+        _server_prefix: &str,
+        _rejected_connection: &McpConnection,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// In-memory resolver over a fixed set of connections, keyed by sanitized
@@ -157,18 +173,12 @@ impl McpExecutor {
                 Some(everruns_provider::ConnectionRequiredSubject::User) => "user",
                 None => "user",
             };
-            return Ok(ToolResult {
-                tool_call_id: tool_call.id.clone(),
-                result: None,
-                images: None,
-                error: Some(format!(
-                    "MCP server '{}' requires an OAuth connection. \
-                     Ask the {subject} to connect provider '{}'.",
-                    connection.name, required.provider
-                )),
-                connection_required: Some(required.clone()),
-                raw_output: None,
-            });
+            return Ok(connection_required_result(
+                tool_call.id.clone(),
+                &connection.name,
+                subject,
+                required,
+            ));
         }
 
         let mut arguments = tool_call.arguments.clone();
@@ -232,6 +242,30 @@ impl McpExecutor {
                 arguments,
             )
             .await;
+        let result = match result {
+            Err(error) if is_unauthorized(&error) => {
+                self.resolver
+                    .invalidate(&server_prefix, &connection)
+                    .await?;
+                if let Some(connection) = self.resolver.resolve(&server_prefix).await?
+                    && let Some(required) = &connection.pending_oauth_provider
+                {
+                    let subject = match required.subject {
+                        Some(everruns_provider::ConnectionRequiredSubject::Agent) => "agent",
+                        Some(everruns_provider::ConnectionRequiredSubject::User) => "user",
+                        None => "user",
+                    };
+                    return Ok(connection_required_result(
+                        tool_call.id.clone(),
+                        &connection.name,
+                        subject,
+                        required,
+                    ));
+                }
+                Err(error)
+            }
+            result => result,
+        };
 
         // THREAT[TM-TOOL-029]: the remote server can reflect credential-bearing
         // arguments in successful content or any transport/JSON-RPC error.
@@ -262,6 +296,26 @@ impl McpExecutor {
             Err(error) if injected_secrets.is_empty() => Err(error),
             Err(error) => Err(anyhow!(redact_text(&error.to_string(), &injected_secrets))),
         }
+    }
+}
+
+fn connection_required_result(
+    tool_call_id: String,
+    connection_name: &str,
+    subject: &str,
+    required: &everruns_provider::ConnectionRequired,
+) -> ToolResult {
+    ToolResult {
+        tool_call_id,
+        result: None,
+        images: None,
+        error: Some(format!(
+            "MCP server '{connection_name}' requires an OAuth connection. \
+             Ask the {subject} to connect provider '{}'.",
+            required.provider
+        )),
+        connection_required: Some(required.clone()),
+        raw_output: None,
     }
 }
 
