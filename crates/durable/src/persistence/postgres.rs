@@ -621,12 +621,8 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             .map(serde_json::to_value)
             .transpose()
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
-
-        // When resetting to Pending (for multi-turn reuse), clear timestamps,
-        // result, and error so the workflow starts clean. For other transitions,
-        // use COALESCE to preserve existing values.
+        // Pending resets transient fields but retains explicit recovery input.
         let reset_to_pending = matches!(status, WorkflowStatus::Pending);
-
         let (started_at, completed_at): (Option<DateTime<Utc>>, Option<DateTime<Utc>>) =
             match status {
                 WorkflowStatus::Running => (Some(Utc::now()), None),
@@ -636,17 +632,14 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 | WorkflowStatus::ContinuedAsNew => (None, Some(Utc::now())),
                 WorkflowStatus::Pending => (None, None),
             };
-
         let result = result.map(sanitize_json_null_bytes);
         let error_json = error_json.map(sanitize_json_null_bytes);
-
         if reset_to_pending {
-            // Clear all transient fields when resetting for a new turn.
             sqlx::query(
                 r#"
                 UPDATE durable_workflow_instances
                 SET status = $2,
-                    result = NULL,
+                    result = $3,
                     error = NULL,
                     started_at = NULL,
                     completed_at = NULL
@@ -655,6 +648,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             )
             .bind(workflow_id)
             .bind(&status_str)
+            .bind(&result)
             .execute(&self.pool)
             .await
             .map_err(|e| {
@@ -725,18 +719,20 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             let limit = self.max_pending_tasks_per_workflow;
             let pending_count: i64 = sqlx::query_scalar(
                 r#"
-                SELECT COUNT(*) FROM durable_task_queue
+                SELECT CASE WHEN $2 LIKE 'waiting_turn_resolution_%' AND EXISTS (
+                    SELECT 1 FROM durable_task_queue WHERE workflow_id = $1 AND activity_id = $2
+                ) THEN 0 ELSE COUNT(*) END FROM durable_task_queue
                 WHERE workflow_id = $1 AND status = 'pending'
                 "#,
             )
             .bind(wf_id)
+            .bind(&task.activity_id)
             .fetch_one(&self.pool)
             .await
             .map_err(|e| {
                 error!("Failed to count pending tasks: {}", e);
                 StoreError::Database(e.to_string())
             })?;
-
             if pending_count >= limit as i64 {
                 return Err(StoreError::TaskQueueLimitExceeded {
                     workflow_id: wf_id,
@@ -767,14 +763,13 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 });
             }
         }
-
         let task_id = Uuid::now_v7();
         let task_input = sanitize_json_null_bytes(task.input.clone());
         let options_json = serde_json::to_value(&task.options)
             .map(sanitize_json_null_bytes)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
-        sqlx::query(
+        let task_id: Uuid = sqlx::query_scalar(
             r#"
             INSERT INTO durable_task_queue (
                 id, workflow_id, activity_id, activity_type, input, options,
@@ -782,6 +777,11 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ON CONFLICT (workflow_id, activity_id)
+                WHERE workflow_id IS NOT NULL
+                  AND activity_id LIKE 'waiting_turn_resolution_%'
+                DO UPDATE SET activity_id = EXCLUDED.activity_id
+            RETURNING id
             "#,
         )
         .bind(task_id)
@@ -795,7 +795,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         .bind(task.options.schedule_to_start_timeout.as_millis() as i64)
         .bind(task.options.start_to_close_timeout.as_millis() as i64)
         .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e| {
             error!("Failed to enqueue task: {}", e);

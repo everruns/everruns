@@ -1272,19 +1272,19 @@ mod tests {
         ) -> anyhow::Result<()> {
             Ok(())
         }
-
-        async fn resume_after_tool_results(&self, _session_id: SessionId) -> anyhow::Result<()> {
+        async fn resume_after_tool_results(
+            &self,
+            _session_id: SessionId,
+            _resolution_id: uuid::Uuid,
+        ) -> anyhow::Result<()> {
             Ok(())
         }
-
         async fn cancel_run(&self, _session_id: SessionId) -> anyhow::Result<()> {
             Ok(())
         }
-
         async fn is_running(&self, _session_id: SessionId) -> bool {
             false
         }
-
         async fn active_count(&self) -> usize {
             0
         }

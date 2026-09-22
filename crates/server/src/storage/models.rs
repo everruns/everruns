@@ -1,4 +1,5 @@
 // Database models (internal, may differ from public DTOs)
+pub use super::session_turn_claim::*;
 
 use crate::kernel_imports::{
     everruns_provider::driver_registry::ServiceKind, everruns_provider::typed_id::AgentId,
@@ -1192,20 +1193,6 @@ pub struct UpdateSession {
     pub status: Option<String>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReserveActiveTurnSlotResult {
-    /// Slot reserved (session marked `active`). Carries the status the session
-    /// held beforehand so a caller can release the reservation on a later
-    /// failure by restoring it.
-    Reserved {
-        previous_status: String,
-    },
-    AtCapacity {
-        active_turns: i64,
-    },
-    SessionNotFound,
 }
 
 // ============================================

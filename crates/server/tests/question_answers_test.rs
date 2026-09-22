@@ -7,15 +7,59 @@
 //! question rather than leaving it pending forever.
 
 mod test_harness;
+use async_trait::async_trait;
 
 use axum::http::StatusCode;
 use everruns_platform::{Agent, Session};
-use everruns_provider::typed_id::SessionId;
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
+use std::sync::Arc;
 use test_harness::TestServer;
+use uuid::Uuid;
 
 const TEST_ORG_ID: i64 = 1;
 
+struct NoopRunner;
+
+#[async_trait]
+impl AgentRunner for NoopRunner {
+    async fn start_run(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+        _harness_id: HarnessId,
+        _agent_id: Option<AgentId>,
+        _input_message_id: MessageId,
+        _request_id: Option<String>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn resume_after_tool_results(
+        &self,
+        _session_id: SessionId,
+        _resolution_id: Uuid,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self, _run_id: SessionId) -> bool {
+        false
+    }
+
+    async fn active_count(&self) -> usize {
+        0
+    }
+}
+
+async fn test_server() -> TestServer {
+    TestServer::in_memory_with_runner(Arc::new(NoopRunner)).await
+}
 async fn waiting_session(server: &TestServer) -> SessionId {
     let agent: Agent = server
         .post(
@@ -124,7 +168,7 @@ async fn completed_results(server: &TestServer, session_id: SessionId) -> Vec<Va
 
 #[tokio::test]
 async fn an_answer_resumes_the_turn_with_the_validated_result() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let session_id = waiting_session(&server).await;
     emit_question_card(&server, session_id, "toolu_ask_1").await;
 
@@ -159,7 +203,7 @@ async fn an_answer_resumes_the_turn_with_the_validated_result() {
 /// THREAT[TM-TOOL-036]: the caller does not get to say what it was asked.
 #[tokio::test]
 async fn a_label_that_was_never_offered_is_refused() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let session_id = waiting_session(&server).await;
     emit_question_card(&server, session_id, "toolu_ask_1").await;
 
@@ -183,7 +227,7 @@ async fn a_label_that_was_never_offered_is_refused() {
 
 #[tokio::test]
 async fn a_second_answer_is_a_conflict_not_a_second_result() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let session_id = waiting_session(&server).await;
     emit_question_card(&server, session_id, "toolu_ask_1").await;
 
@@ -211,7 +255,7 @@ async fn a_second_answer_is_a_conflict_not_a_second_result() {
 
 #[tokio::test]
 async fn answering_a_session_that_is_not_parked_is_a_conflict() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let session_id = waiting_session(&server).await;
     emit_question_card(&server, session_id, "toolu_ask_1").await;
     server
@@ -245,7 +289,7 @@ async fn answering_a_session_that_is_not_parked_is_a_conflict() {
 /// appended and the call stayed pending forever.
 #[tokio::test]
 async fn a_chat_message_cancels_the_question_and_is_still_delivered() {
-    let server = TestServer::in_memory().await;
+    let server = test_server().await;
     let session_id = waiting_session(&server).await;
     emit_question_card(&server, session_id, "toolu_ask_1").await;
 

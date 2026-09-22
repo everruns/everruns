@@ -18,6 +18,7 @@ use async_trait::async_trait;
 use everruns_durable::InMemoryWorkflowEventStore;
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::durable_runner::{DurableRunner, DurableTaskNotifier};
 
@@ -51,7 +52,11 @@ pub trait AgentRunner: Send + Sync {
     /// Unlike `start_run`, this skips `InputAtom` (there is no new user message)
     /// and enqueues a `reason` activity directly using the turn context saved
     /// when the workflow paused for tool results.
-    async fn resume_after_tool_results(&self, session_id: SessionId) -> Result<()>;
+    async fn resume_after_tool_results(
+        &self,
+        session_id: SessionId,
+        resolution_id: Uuid,
+    ) -> Result<()>;
 
     /// Cancel a running workflow
     async fn cancel_run(&self, run_id: SessionId) -> Result<()>;
