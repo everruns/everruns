@@ -912,7 +912,7 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
         agent_message["metadata"]
     );
 
-    // 1. Classification survives the worker boundary.
+    // 1. Decision survives the worker boundary.
     let phase = agent_message["phase"]
         .as_str()
         .expect("agent message must carry `phase`");

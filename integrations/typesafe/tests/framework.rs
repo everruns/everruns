@@ -56,7 +56,7 @@ async fn an_agent_tool_call_returns_decision_ready_numbers() {
     let output = definition.tools()[0]
         .invoke(
             joke_call(),
-            everruns::capability::Context::new("jev_evaluate", "session", "workspace"),
+            everruns::capability::Context::new("jev_decision", "session", "workspace"),
         )
         .await
         .expect("tool call succeeds");
@@ -90,7 +90,7 @@ async fn framework_reports_http_errors_without_upstream_credential_echoes() {
     let error = definition.tools()[0]
         .invoke(
             joke_call(),
-            everruns::capability::Context::new("jev_evaluate", "session", "workspace"),
+            everruns::capability::Context::new("jev_decision", "session", "workspace"),
         )
         .await
         .unwrap_err();

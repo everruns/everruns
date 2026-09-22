@@ -41,6 +41,7 @@ export default defineConfig({
     "/features/runtime/": "/framework/custom-backends/",
     "/framework/runtime-compatibility/": "/framework/custom-backends/",
     "/advanced/embedding-everruns/": "/framework/custom-backends/",
+    "/framework/direct-classification/": "/framework/direct-decisions/",
   },
   vite: {
     resolve: {
@@ -186,7 +187,7 @@ export default defineConfig({
                     { label: "Models and Providers", slug: "framework/models-and-providers" },
                     { label: "Supported Providers", slug: "framework/supported-providers" },
                     { label: "Direct Model Calls", slug: "framework/direct-model-calls" },
-                    { label: "Direct Classification", slug: "framework/direct-classification" },
+                    { label: "Direct Decisions", slug: "framework/direct-decisions" },
                     { label: "Model Catalogs", slug: "framework/model-catalogs" },
                     { label: "Credentials", slug: "framework/credentials" },
                     { label: "Tools and Macros", slug: "framework/tools-and-macros" },

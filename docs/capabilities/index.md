@@ -125,7 +125,7 @@ Streaming-output guardrails and runtime safety nets.
 The [`guardrails`](/capabilities/guardrails/) capability runs config-driven
 checks over model output and tool activity, blocking or logging per check.
 Checks can be deterministic (regex, blocklist, tool-call patterns) or
-model-backed, an `llm_judge` policy or a `moderation` classifier, plus
+model-backed, an `llm_judge` policy or a `moderation` decisions, plus
 delegation to an external guardrail over scoped MCP. Each check binds a rule to
 a stage (`output`, `tool_use`, `tool_output`) with an `on_fail` of `block` or
 `log`; model-backed and MCP checks send a bounded excerpt off the sync path and

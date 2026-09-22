@@ -1977,8 +1977,8 @@ impl RuntimeHostAdapter for InProcessRuntime {
         self.tool_augmentor.clone()
     }
 
-    fn classifier(&self) -> Option<Arc<dyn everruns_core::ClassifierService>> {
-        Some(self.host_composition.classifier())
+    fn decisions(&self) -> Option<Arc<dyn everruns_core::DecisionsService>> {
+        Some(self.host_composition.decisions())
     }
 
     fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {

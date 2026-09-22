@@ -158,7 +158,7 @@ internal paths, credentials, or debug dumps of prompt-sized values.
 
 Internal failures retain diagnostic detail for operator logs but are mapped to
 a generic model-visible failure by the consumer. The integration uses the
-toolkit's classification rather than matching error strings.
+toolkit's decision rather than matching error strings.
 
 Interpreter-backed toolkits own output hygiene at the source. Everruns may add
 defense-in-depth truncation, but that does not justify verbose debug rendering
@@ -212,7 +212,7 @@ An Everruns capability wrapper should:
 2. delegate name, display metadata, schema, hints, and prompt contribution;
 3. add only Everruns-owned schema or prompt behavior;
 4. inject session filesystem or egress adapters at execution time;
-5. map safe and internal errors through the toolkit's classification;
+5. map safe and internal errors through the toolkit's decision;
 6. keep operational metadata out of the model-visible result;
 7. test delegated schema and critical policy wiring against the pinned toolkit.
 

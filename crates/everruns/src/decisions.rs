@@ -1,11 +1,11 @@
 //! Stability: alpha — may change without a major bump; see [`stability`](crate::stability).
 //!
-//! Direct classification, without an agent.
+//! Direct decision, without an agent.
 //!
 //! Some work is not a prompt at all: it is a question with a typed answer.
 //! *Is this claim supported by the source? How severe is this complaint? Which
 //! queue does this ticket belong in?* A chat model answers those in prose that
-//! your code then has to parse and trust. A classifier answers them as
+//! your code then has to parse and trust. A decisions answers them as
 //! numbers — a probability, a distribution over your options, a position along
 //! your levels — so the decision stays in your code.
 //!
@@ -13,24 +13,24 @@
 //! counterpart to [`Model::complete`](crate::Model::complete): same shape, a
 //! different contract.
 //!
-//! | | [`Model`](crate::Model) | [`Classifier`] |
+//! | | [`Model`](crate::Model) | [`Decisions`] |
 //! |---|---|---|
 //! | you send | messages | state plus typed questions |
 //! | you get back | text | calibrated numbers |
 //! | decides the outcome | the model's words | your threshold, in your code |
 //! | streams | yes | no — one round trip, nothing to stream |
 //!
-//! Start from a [`Classifier`]: [`Classifier::probability`] for the one-line case,
-//! [`Classifier::about`] when the call asks more than one question or needs the
+//! Start from a [`Decisions`]: [`Decisions::probability`] for the one-line case,
+//! [`Decisions::about`] when the call asks more than one question or needs the
 //! other primitives.
 //!
 //! ```
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! use everruns::Classifier;
+//! use everruns::Decisions;
 //!
-//! let classifier = Classifier::simulated(0.93);
-//! let p = classifier
+//! let decisions = Decisions::simulated(0.93);
+//! let p = decisions
 //!     .probability("Does this convey urgency?", "I've been on hold for two hours.")
 //!     .await?;
 //! assert!(p > 0.9);
@@ -42,7 +42,7 @@
 //! one round trip. Ids are yours: they label answers for your code and are
 //! never shown to the model, so every question must read on its own.
 //!
-//! A classification keeps no history, runs no tools, and has no session — those stay
+//! A decision keeps no history, runs no tools, and has no session — those stay
 //! with [`Agent`](crate::Agent).
 //!
 //! The three primitives are System One's, and this API keeps their names rather
@@ -56,13 +56,12 @@
 use std::fmt;
 use std::sync::Arc;
 
-use everruns_core::classifier::{
-    ClassificationAnswer, ClassificationOutcome, ClassificationQuestion, ClassificationRequest,
-    ClassifierService,
+use everruns_core::decisions::{
+    DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionsService,
 };
 use everruns_provider::error::AgentLoopError;
 
-/// Why a classification could not be made.
+/// Why a decision could not be made.
 ///
 /// [`MissingService`](Self::MissingService), [`NoQuestions`](Self::NoQuestions)
 /// and [`Unconfigured`](Self::Unconfigured) are configuration mistakes, caught
@@ -70,10 +69,10 @@ use everruns_provider::error::AgentLoopError;
 /// service failure verbatim.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum ClassifierError {
-    /// No classifier service was attached.
+pub enum DecisionsError {
+    /// No decisions service was attached.
     MissingService,
-    /// The classification was sent with no questions.
+    /// The decision was sent with no questions.
     NoQuestions,
     /// The service exists but the deployment never configured it, so it would
     /// answer nothing.
@@ -87,54 +86,54 @@ pub enum ClassifierError {
     Call(AgentLoopError),
 }
 
-impl fmt::Display for ClassifierError {
+impl fmt::Display for DecisionsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ClassifierError::MissingService => {
+            DecisionsError::MissingService => {
                 write!(
                     f,
-                    "classifier has no service; use Classifier::new(model, service)"
+                    "decisions has no service; use Decisions::new(model, service)"
                 )
             }
-            ClassifierError::NoQuestions => {
-                write!(f, "classification has no questions; ask at least one")
+            DecisionsError::NoQuestions => {
+                write!(f, "decision has no questions; ask at least one")
             }
-            ClassifierError::Unconfigured => write!(
+            DecisionsError::Unconfigured => write!(
                 f,
-                "classifier is not configured; set its deployment credential"
+                "decisions is not configured; set its deployment credential"
             ),
-            ClassifierError::NoSuchAnswer(id) => write!(f, "no answer for question '{id}'"),
-            ClassifierError::Call(error) => write!(f, "{error}"),
+            DecisionsError::NoSuchAnswer(id) => write!(f, "no answer for question '{id}'"),
+            DecisionsError::Call(error) => write!(f, "{error}"),
         }
     }
 }
 
-impl std::error::Error for ClassifierError {
+impl std::error::Error for DecisionsError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            ClassifierError::Call(error) => Some(error),
+            DecisionsError::Call(error) => Some(error),
             _ => None,
         }
     }
 }
 
-impl From<AgentLoopError> for ClassifierError {
+impl From<AgentLoopError> for DecisionsError {
     fn from(error: AgentLoopError) -> Self {
-        ClassifierError::Call(error)
+        DecisionsError::Call(error)
     }
 }
 
-/// A classifier, and the service used to reach it.
+/// A decisions, and the service used to reach it.
 ///
-/// Cheap to clone and safe to share: one classifier can serve many concurrent
+/// Cheap to clone and safe to share: one decisions can serve many concurrent
 /// calls.
 #[derive(Clone)]
-pub struct Classifier {
-    service: Option<Arc<dyn ClassifierService>>,
+pub struct Decisions {
+    service: Option<Arc<dyn DecisionsService>>,
     model: Option<String>,
 }
 
-impl Classifier {
+impl Decisions {
     /// Select a model and the service used to reach it.
     ///
     /// Reads as [`Model::new`](crate::Model::new) does, and for the same
@@ -148,14 +147,14 @@ impl Classifier {
     /// One, `everruns_integrations_typesafe::TypeSafeAI`.
     ///
     /// ```no_run
-    /// # use everruns::{Classifier, TypeSafeAI};
+    /// # use everruns::{Decisions, TypeSafeAI};
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let classifier = Classifier::new("jev-latest", TypeSafeAI::from_env()?);
-    /// # let _ = classifier;
+    /// let decisions = Decisions::new("jev-latest", TypeSafeAI::from_env()?);
+    /// # let _ = decisions;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new(model: impl Into<String>, service: impl ClassifierService + 'static) -> Self {
+    pub fn new(model: impl Into<String>, service: impl DecisionsService + 'static) -> Self {
         Self {
             service: Some(Arc::new(service)),
             model: Some(model.into()),
@@ -163,27 +162,27 @@ impl Classifier {
     }
 
     /// Select a model, reaching it through a service that is already shared.
-    pub fn shared(model: impl Into<String>, service: Arc<dyn ClassifierService>) -> Self {
+    pub fn shared(model: impl Into<String>, service: Arc<dyn DecisionsService>) -> Self {
         Self {
             service: Some(service),
             model: Some(model.into()),
         }
     }
 
-    /// A deterministic in-process classifier that answers every question the same
+    /// A deterministic in-process decisions that answers every question the same
     /// way, with no credentials and no network.
     ///
     /// `probability` answers yes/no questions; choices and scores spread their
     /// mass evenly, so tests exercise the shape without asserting a vendor's
     /// numbers.
     pub fn simulated(probability: f64) -> Self {
-        Self::new(SIMULATED_MODEL, SimulatedClassifierService { probability })
+        Self::new(SIMULATED_MODEL, SimulatedDecisionsService { probability })
     }
 
     /// Whether the underlying service is configured to answer at all.
     ///
     /// False means a deployment left its credential unset. Calls would fail
-    /// with [`ClassifierError::Unconfigured`] rather than reaching anything.
+    /// with [`DecisionsError::Unconfigured`] rather than reaching anything.
     pub fn is_configured(&self) -> bool {
         self.service
             .as_ref()
@@ -198,9 +197,9 @@ impl Classifier {
     /// ```
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// use everruns::Classifier;
+    /// use everruns::Decisions;
     ///
-    /// let p = Classifier::simulated(0.04)
+    /// let p = Decisions::simulated(0.04)
     ///     .probability("Is this spam?", "Standup moved to 10am.")
     ///     .await?;
     /// assert!(p < 0.1);
@@ -211,7 +210,7 @@ impl Classifier {
         &self,
         question: impl Into<String>,
         state: impl Into<serde_json::Value>,
-    ) -> Result<f64, ClassifierError> {
+    ) -> Result<f64, DecisionsError> {
         const ID: &str = "answer";
         self.about(state)
             .noul(ID, question)
@@ -220,20 +219,20 @@ impl Classifier {
             .probability(ID)
     }
 
-    /// Describe a classification of `state`.
-    pub fn about(&self, state: impl Into<serde_json::Value>) -> Classification {
-        let mut request = ClassificationRequest::new(state);
+    /// Describe a decision of `state`.
+    pub fn about(&self, state: impl Into<serde_json::Value>) -> Decision {
+        let mut request = DecisionRequest::new(state);
         request.model = self.model.clone();
-        Classification {
+        Decision {
             service: self.service.clone(),
             request,
         }
     }
 }
 
-impl fmt::Debug for Classifier {
+impl fmt::Debug for Decisions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Classifier")
+        f.debug_struct("Decisions")
             .field(
                 "service",
                 &self.service.as_ref().map(|service| service.name()),
@@ -242,17 +241,17 @@ impl fmt::Debug for Classifier {
     }
 }
 
-/// One classification call, described before it is sent.
+/// One decision call, described before it is sent.
 ///
-/// Built with [`Classifier::about`]. Questions answer in parallel inside a single
+/// Built with [`Decisions::about`]. Questions answer in parallel inside a single
 /// request, so asking several is the cheap path, not the expensive one.
 ///
 /// ```
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// use everruns::Classifier;
+/// use everruns::Decisions;
 ///
-/// let answers = Classifier::simulated(0.8)
+/// let answers = Decisions::simulated(0.8)
 ///     .about("I've been on hold for two hours and nobody can tell me why.")
 ///     .noul("urgent", "Does this convey urgency?")
 ///     .score(
@@ -272,14 +271,14 @@ impl fmt::Debug for Classifier {
 /// # Ok(())
 /// # }
 /// ```
-pub struct Classification {
-    service: Option<Arc<dyn ClassifierService>>,
-    request: ClassificationRequest,
+pub struct Decision {
+    service: Option<Arc<dyn DecisionsService>>,
+    request: DecisionRequest,
 }
 
-impl Classification {
-    /// Reach the model through `service`, replacing the classifier's own.
-    pub fn service(mut self, service: impl ClassifierService + 'static) -> Self {
+impl Decision {
+    /// Reach the model through `service`, replacing the decisions's own.
+    pub fn service(mut self, service: impl DecisionsService + 'static) -> Self {
         self.service = Some(Arc::new(service));
         self
     }
@@ -294,8 +293,8 @@ impl Classification {
     /// ```
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let classifier = everruns::Classifier::simulated(0.96);
-    /// let answers = classifier
+    /// # let decisions = everruns::Decisions::simulated(0.96);
+    /// let answers = decisions
     ///     .about("Wire the deposit today or the unit goes to another buyer.")
     ///     .noul("pressure", "Does this message apply time pressure?")
     ///     .send()
@@ -311,7 +310,7 @@ impl Classification {
     /// TypeSafe documents the primitive as
     /// [Noul](https://docs.typesafe.ai/primitives/noul).
     pub fn noul(self, id: impl Into<String>, instructions: impl Into<String>) -> Self {
-        self.ask(id, ClassificationQuestion::noul(instructions))
+        self.ask(id, DecisionQuestion::noul(instructions))
     }
 
     /// Ask a yes/no question, spelling out what each side means.
@@ -322,8 +321,8 @@ impl Classification {
     /// ```
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let classifier = everruns::Classifier::simulated(0.2);
-    /// let answers = classifier
+    /// # let decisions = everruns::Decisions::simulated(0.2);
+    /// let answers = decisions
     ///     .about("Refunded on 3 Jan. Customer says it never arrived.")
     ///     .noul_between(
     ///         "resolved",
@@ -351,7 +350,7 @@ impl Classification {
     ) -> Self {
         self.ask(
             id,
-            ClassificationQuestion::Noul {
+            DecisionQuestion::Noul {
                 instructions: instructions.into(),
                 yes: Some(yes.into()),
                 no: Some(no.into()),
@@ -368,8 +367,8 @@ impl Classification {
     /// ```
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let classifier = everruns::Classifier::simulated(0.5);
-    /// let answers = classifier
+    /// # let decisions = everruns::Decisions::simulated(0.5);
+    /// let answers = decisions
     ///     .about("My card was charged twice for one order.")
     ///     .choice(
     ///         "queue",
@@ -399,7 +398,7 @@ impl Classification {
     {
         self.ask(
             id,
-            ClassificationQuestion::Choice {
+            DecisionQuestion::Choice {
                 instructions: instructions.into(),
                 options: options
                     .into_iter()
@@ -422,8 +421,8 @@ impl Classification {
     /// ```
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let classifier = everruns::Classifier::simulated(0.5);
-    /// let answers = classifier
+    /// # let decisions = everruns::Decisions::simulated(0.5);
+    /// let answers = decisions
     ///     .about("I've been on hold for two hours and my card was charged twice.")
     ///     .score(
     ///         "severity",
@@ -458,12 +457,12 @@ impl Classification {
     {
         self.ask(
             id,
-            ClassificationQuestion::score(instructions, levels.into_iter().map(Into::into)),
+            DecisionQuestion::score(instructions, levels.into_iter().map(Into::into)),
         )
     }
 
     /// Attach a question built directly, for shapes the helpers do not cover.
-    pub fn ask(mut self, id: impl Into<String>, question: ClassificationQuestion) -> Self {
+    pub fn ask(mut self, id: impl Into<String>, question: DecisionQuestion) -> Self {
         self.request = self.request.ask(id, question);
         self
     }
@@ -480,31 +479,29 @@ impl Classification {
         self
     }
 
-    /// Send the classification and wait for every answer.
-    pub async fn send(self) -> Result<Answers, ClassifierError> {
+    /// Send the decision and wait for every answer.
+    pub async fn send(self) -> Result<Answers, DecisionsError> {
         let (service, request) = self.into_request()?;
         Ok(Answers(service.evaluate(request).await?))
     }
 
     /// Validate the described call, keeping configuration mistakes off the
     /// wire.
-    fn into_request(
-        self,
-    ) -> Result<(Arc<dyn ClassifierService>, ClassificationRequest), ClassifierError> {
-        let service = self.service.ok_or(ClassifierError::MissingService)?;
+    fn into_request(self) -> Result<(Arc<dyn DecisionsService>, DecisionRequest), DecisionsError> {
+        let service = self.service.ok_or(DecisionsError::MissingService)?;
         if self.request.questions.is_empty() {
-            return Err(ClassifierError::NoQuestions);
+            return Err(DecisionsError::NoQuestions);
         }
         if !service.is_configured() {
-            return Err(ClassifierError::Unconfigured);
+            return Err(DecisionsError::Unconfigured);
         }
         Ok((service, self.request))
     }
 }
 
-impl fmt::Debug for Classification {
+impl fmt::Debug for Decision {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Classification")
+        f.debug_struct("Decision")
             .field(
                 "service",
                 &self.service.as_ref().map(|service| service.name()),
@@ -514,12 +511,12 @@ impl fmt::Debug for Classification {
     }
 }
 
-/// Answers to one classification, keyed by the ids you asked under.
+/// Answers to one decision, keyed by the ids you asked under.
 ///
 /// The accessors return the shape you asked for, so reading a `score` as a
 /// probability is a typed mistake rather than a silent one.
 #[derive(Debug, Clone)]
-pub struct Answers(ClassificationOutcome);
+pub struct Answers(DecisionOutcome);
 
 impl Answers {
     /// The model that answered, as the service resolved it.
@@ -529,9 +526,9 @@ impl Answers {
     /// threshold is calibrated against it.
     ///
     /// ```
-    /// # use everruns::Classifier;
+    /// # use everruns::Decisions;
     /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let answers = Classifier::simulated(0.9)
+    /// let answers = Decisions::simulated(0.9)
     ///     .about("Two hours on hold.")
     ///     .noul("urgent", "Does this convey urgency?")
     ///     .send()
@@ -547,20 +544,20 @@ impl Answers {
     /// The probability of yes for a `noul` question.
     ///
     /// Near 0.5 means yes and no are near-equally likely — not "medium".
-    pub fn probability(&self, id: &str) -> Result<f64, ClassifierError> {
+    pub fn probability(&self, id: &str) -> Result<f64, DecisionsError> {
         match self.answer(id)? {
-            ClassificationAnswer::Noul { probability } => Ok(*probability),
-            _ => Err(ClassifierError::NoSuchAnswer(format!(
+            DecisionAnswer::Noul { probability } => Ok(*probability),
+            _ => Err(DecisionsError::NoSuchAnswer(format!(
                 "{id} was not asked as a yes/no question"
             ))),
         }
     }
 
     /// The selected option for a `choice` question.
-    pub fn selected(&self, id: &str) -> Result<&str, ClassifierError> {
+    pub fn selected(&self, id: &str) -> Result<&str, DecisionsError> {
         match self.answer(id)? {
-            ClassificationAnswer::Choice { selected, .. } => Ok(selected.as_str()),
-            _ => Err(ClassifierError::NoSuchAnswer(format!(
+            DecisionAnswer::Choice { selected, .. } => Ok(selected.as_str()),
+            _ => Err(DecisionsError::NoSuchAnswer(format!(
                 "{id} was not asked as a choice"
             ))),
         }
@@ -570,10 +567,10 @@ impl Answers {
     ///
     /// For an "any serious hit" rule prefer [`tail`](Self::tail): an answer
     /// that is probably fine and possibly awful must not average into fine.
-    pub fn score(&self, id: &str) -> Result<f64, ClassifierError> {
+    pub fn score(&self, id: &str) -> Result<f64, DecisionsError> {
         match self.answer(id)? {
-            ClassificationAnswer::Score { score, .. } => Ok(*score),
-            _ => Err(ClassifierError::NoSuchAnswer(format!(
+            DecisionAnswer::Score { score, .. } => Ok(*score),
+            _ => Err(DecisionsError::NoSuchAnswer(format!(
                 "{id} was not asked as a score"
             ))),
         }
@@ -587,8 +584,8 @@ impl Answers {
     /// ```
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let classifier = everruns::Classifier::simulated(0.5);
-    /// let answers = classifier
+    /// # let decisions = everruns::Decisions::simulated(0.5);
+    /// let answers = decisions
     ///     .about("The deploy dropped the customers table.")
     ///     .score(
     ///         "severity",
@@ -605,25 +602,25 @@ impl Answers {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn tail(&self, id: &str, level: usize) -> Result<f64, ClassifierError> {
+    pub fn tail(&self, id: &str, level: usize) -> Result<f64, DecisionsError> {
         match self.answer(id)? {
-            ClassificationAnswer::Score { probabilities, .. } => Ok(probabilities
+            DecisionAnswer::Score { probabilities, .. } => Ok(probabilities
                 .iter()
                 .filter(|(index, _)| **index >= level)
                 .map(|(_, probability)| probability)
                 .sum()),
-            _ => Err(ClassifierError::NoSuchAnswer(format!(
+            _ => Err(DecisionsError::NoSuchAnswer(format!(
                 "{id} was not asked as a score"
             ))),
         }
     }
 
     /// The raw answer, for shapes the accessors do not cover.
-    pub fn answer(&self, id: &str) -> Result<&ClassificationAnswer, ClassifierError> {
+    pub fn answer(&self, id: &str) -> Result<&DecisionAnswer, DecisionsError> {
         self.0
             .answers
             .get(id)
-            .ok_or_else(|| ClassifierError::NoSuchAnswer(id.to_string()))
+            .ok_or_else(|| DecisionsError::NoSuchAnswer(id.to_string()))
     }
 
     /// The whole outcome, including usage.
@@ -632,49 +629,49 @@ impl Answers {
     /// and the per-option or per-level distributions behind a `choice` or
     /// `score`, including the `confidence` TypeSafe documents under
     /// [Confidence](https://docs.typesafe.ai/confidence).
-    pub fn outcome(&self) -> &ClassificationOutcome {
+    pub fn outcome(&self) -> &DecisionOutcome {
         &self.0
     }
 }
 
-/// The model id [`Classifier::simulated`] reports, the way `Model::simulated`
+/// The model id [`Decisions::simulated`] reports, the way `Model::simulated`
 /// reports `llmsim-model`: a stubbed answer must never pass for a real one.
 const SIMULATED_MODEL: &str = "simulated";
 
-/// Deterministic classifications for offline use; see [`Classifier::simulated`].
+/// Deterministic decisions for offline use; see [`Decisions::simulated`].
 #[derive(Debug)]
-struct SimulatedClassifierService {
+struct SimulatedDecisionsService {
     probability: f64,
 }
 
 #[async_trait::async_trait]
-impl ClassifierService for SimulatedClassifierService {
+impl DecisionsService for SimulatedDecisionsService {
     fn is_configured(&self) -> bool {
         true
     }
 
     fn name(&self) -> &'static str {
-        "SimulatedClassifierService"
+        "SimulatedDecisionsService"
     }
 
     async fn evaluate(
         &self,
-        request: ClassificationRequest,
-    ) -> everruns_provider::error::Result<ClassificationOutcome> {
+        request: DecisionRequest,
+    ) -> everruns_provider::error::Result<DecisionOutcome> {
         // Names itself rather than a vendor model: `Answers::model` must never
-        // let a stubbed answer pass for one a real classifier gave.
-        let mut outcome = ClassificationOutcome {
+        // let a stubbed answer pass for one a real decisions gave.
+        let mut outcome = DecisionOutcome {
             model: SIMULATED_MODEL.to_string(),
-            ..ClassificationOutcome::default()
+            ..DecisionOutcome::default()
         };
         for (id, question) in &request.questions {
             let answer = match question {
-                ClassificationQuestion::Noul { .. } => ClassificationAnswer::Noul {
+                DecisionQuestion::Noul { .. } => DecisionAnswer::Noul {
                     probability: self.probability,
                 },
-                ClassificationQuestion::Choice { options, .. } => {
+                DecisionQuestion::Choice { options, .. } => {
                     let each = 1.0 / options.len().max(1) as f64;
-                    ClassificationAnswer::Choice {
+                    DecisionAnswer::Choice {
                         selected: options
                             .first()
                             .map(|(name, _)| name.clone())
@@ -686,9 +683,9 @@ impl ClassifierService for SimulatedClassifierService {
                         confidence: each,
                     }
                 }
-                ClassificationQuestion::Score { levels, .. } => {
+                DecisionQuestion::Score { levels, .. } => {
                     let each = 1.0 / levels.len().max(1) as f64;
-                    ClassificationAnswer::Score {
+                    DecisionAnswer::Score {
                         score: (levels.len().saturating_sub(1)) as f64 / 2.0,
                         probabilities: (0..levels.len()).map(|index| (index, each)).collect(),
                         confidence: each,
@@ -707,16 +704,16 @@ mod tests {
 
     #[tokio::test]
     async fn probability_answers_the_one_line_case() {
-        let p = Classifier::simulated(0.93)
+        let p = Decisions::simulated(0.93)
             .probability("Does this convey urgency?", "Two hours on hold.")
             .await
-            .expect("simulated classification succeeds");
+            .expect("simulated decision succeeds");
         assert!((p - 0.93).abs() < 1e-9, "{p}");
     }
 
     #[tokio::test]
     async fn every_question_rides_one_request_and_keeps_its_id() {
-        let answers = Classifier::simulated(0.8)
+        let answers = Decisions::simulated(0.8)
             .about("I've been on hold for two hours.")
             .noul("urgent", "Does this convey urgency?")
             .score(
@@ -727,7 +724,7 @@ mod tests {
             .choice("queue", "Which team?", ["billing", "technical"])
             .send()
             .await
-            .expect("simulated classification succeeds");
+            .expect("simulated decision succeeds");
 
         assert!((answers.probability("urgent").expect("noul") - 0.8).abs() < 1e-9);
         assert_eq!(answers.selected("queue").expect("choice"), "billing");
@@ -739,54 +736,51 @@ mod tests {
 
     #[tokio::test]
     async fn reading_an_answer_as_the_wrong_shape_is_an_error_not_a_number() {
-        let answers = Classifier::simulated(0.5)
+        let answers = Decisions::simulated(0.5)
             .about("x")
             .score("rating", "How good?", ["Bad", "Good"])
             .send()
             .await
-            .expect("simulated classification succeeds");
+            .expect("simulated decision succeeds");
         assert!(matches!(
             answers.probability("rating"),
-            Err(ClassifierError::NoSuchAnswer(_))
+            Err(DecisionsError::NoSuchAnswer(_))
         ));
         assert!(matches!(
             answers.answer("missing"),
-            Err(ClassifierError::NoSuchAnswer(_))
+            Err(DecisionsError::NoSuchAnswer(_))
         ));
     }
 
     #[tokio::test]
     async fn configuration_mistakes_never_reach_the_service() {
         // No questions: nothing to ask.
-        let empty = Classifier::simulated(0.5).about("x").send().await;
-        assert!(matches!(empty, Err(ClassifierError::NoQuestions)));
+        let empty = Decisions::simulated(0.5).about("x").send().await;
+        assert!(matches!(empty, Err(DecisionsError::NoQuestions)));
 
         // No service at all.
-        let classifier = Classifier {
+        let decisions = Decisions {
             service: None,
             model: None,
         };
-        let orphan = classifier.about("x").noul("q", "Is it?").send().await;
-        assert!(matches!(orphan, Err(ClassifierError::MissingService)));
+        let orphan = decisions.about("x").noul("q", "Is it?").send().await;
+        assert!(matches!(orphan, Err(DecisionsError::MissingService)));
 
         // A service the deployment never configured answers nothing, and says
         // so rather than looking like a confident negative.
-        let disabled = Classifier::new(
+        let disabled = Decisions::new(
             "jev-latest",
-            everruns_core::classifier::DisabledClassifierService,
+            everruns_core::decisions::DisabledDecisionsService,
         );
         assert!(!disabled.is_configured());
         let unconfigured = disabled.about("x").noul("q", "Is it?").send().await;
-        assert!(matches!(unconfigured, Err(ClassifierError::Unconfigured)));
+        assert!(matches!(unconfigured, Err(DecisionsError::Unconfigured)));
     }
 
     #[test]
     fn debug_never_renders_a_credential_bearing_service() {
-        let rendered = format!("{:?}", Classifier::simulated(0.5));
-        assert!(
-            rendered.contains("SimulatedClassifierService"),
-            "{rendered}"
-        );
+        let rendered = format!("{:?}", Decisions::simulated(0.5));
+        assert!(rendered.contains("SimulatedDecisionsService"), "{rendered}");
     }
 }
 
@@ -803,33 +797,29 @@ mod model_selection_tests {
     }
 
     #[async_trait::async_trait]
-    impl ClassifierService for RecordingService {
+    impl DecisionsService for RecordingService {
         fn is_configured(&self) -> bool {
             true
         }
 
         async fn evaluate(
             &self,
-            request: ClassificationRequest,
-        ) -> everruns_provider::error::Result<ClassificationOutcome> {
+            request: DecisionRequest,
+        ) -> everruns_provider::error::Result<DecisionOutcome> {
             self.seen.lock().expect("lock").push(request.model.clone());
-            Ok(ClassificationOutcome::default())
+            Ok(DecisionOutcome::default())
         }
     }
 
     #[tokio::test]
     async fn the_classifiers_model_travels_and_a_call_outranks_it() {
         let service = Arc::new(RecordingService::default());
-        let classifier = Classifier::shared("jev-1.13.0", service.clone());
+        let decisions = Decisions::shared("jev-1.13.0", service.clone());
 
-        // No per-call model: the classifier's choice travels with the request.
-        let _ = classifier
-            .about("x")
-            .noul("q", "Does it hold?")
-            .send()
-            .await;
-        // A per-call model wins over the classifier's.
-        let _ = classifier
+        // No per-call model: the decisions's choice travels with the request.
+        let _ = decisions.about("x").noul("q", "Does it hold?").send().await;
+        // A per-call model wins over the decisions's.
+        let _ = decisions
             .about("x")
             .noul("q", "Does it hold?")
             .model("jev-latest")
@@ -848,13 +838,13 @@ mod model_selection_tests {
 
     #[tokio::test]
     async fn a_request_built_without_a_classifier_can_still_leave_the_model_open() {
-        // `Classifier` always names a model, but the wire contract does not
+        // `Decisions` always names a model, but the wire contract does not
         // require one: the platform composes requests directly and leaves the
         // choice to the service, so the knob stays absent from every surface an
         // agent can write (THREAT[TM-LLM-037]).
         let service = RecordingService::default();
-        let request = ClassificationRequest::new(serde_json::json!("x"))
-            .ask("q", ClassificationQuestion::noul("Does it hold?"));
+        let request = DecisionRequest::new(serde_json::json!("x"))
+            .ask("q", DecisionQuestion::noul("Does it hold?"));
         assert_eq!(request.model, None);
 
         let _ = service.evaluate(request).await;
@@ -867,8 +857,8 @@ mod model_selection_tests {
         // The vendor resolves an alias to a version, so a caller reads back what
         // answered rather than what it asked for — the id to pin once a
         // threshold is calibrated. The stub names itself, so a simulated answer
-        // can never pass for a real classifier's.
-        let answers = Classifier::simulated(0.5)
+        // can never pass for a real decisions's.
+        let answers = Decisions::simulated(0.5)
             .about("x")
             .noul("q", "Does it hold?")
             .send()

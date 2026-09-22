@@ -1,6 +1,6 @@
 ---
 title: TypeSafe
-description: "Typed classification from TypeSafe's System One model: calibrated probabilities, single-choice routing, and graded scores. Requires a TypeSafe API key."
+description: "Typed decision from TypeSafe's System One model: calibrated probabilities, single-choice routing, and graded scores. Requires a TypeSafe API key."
 ---
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M12 3v18M7 21h10M3 8l4-3 4 3M3 8a4 4 0 0 0 8 0M13 8l4-3 4 3M13 8a4 4 0 0 0 8 0M12 5l5-2M12 5 7 3"/></svg>
@@ -44,7 +44,7 @@ Agents with the TypeSafe capability get one tool:
 
 | Tool | Description |
 |------|-------------|
-| `jev_evaluate` | Ask typed questions about content and get calibrated answers |
+| `jev_decision` | Ask typed questions about content and get calibrated answers |
 
 A call gives it the content plus the questions to ask about it:
 
@@ -123,8 +123,8 @@ for the pattern it enables.
 
 Running the Everruns Framework in your own application rather than on the
 platform? The same capability attaches to an agent you build yourself, and the
-classifier is also callable directly with no agent at all. See
-[Direct classification](/framework/direct-classification/).
+decisions is also callable directly with no agent at all. See
+[Direct decision](/framework/direct-decision/).
 
 ## Guardrails
 
@@ -139,7 +139,7 @@ personal connection.
 
 - The API key is stored as a user connection and never exposed to the agent or
   written into session transcripts.
-- Content passed to `jev_evaluate` leaves the platform for TypeSafe, like
+- Content passed to `jev_decision` leaves the platform for TypeSafe, like
   any other integration that inspects content. Calls are capped at 20 questions
   and 32 KiB of content.
 - The content being judged is sent as **data**, and every question states so — a

@@ -12,7 +12,7 @@ tags:
 
 Application authors should know which framework surfaces they can rely on.
 The direct-LLM and in-process Ask User surfaces are settled contracts; the
-classifier surface is new and still taking shape. This concept records that
+decisions surface is new and still taking shape. This concept records that
 split and the marking convention so later changes stay deliberate.
 
 ## Tiers
@@ -23,8 +23,8 @@ split and the marking convention so later changes stay deliberate.
   the provider traits behind them (`Provider`, `ChatDriver`, `DriverRegistry`
   in `crates/everruns/src/providers/`), and the in-process Ask User host
   contract in `crates/everruns/src/ask_user.rs`.
-* **Alpha** may break without a major bump. Applies to the classifier
-  surface: `crates/everruns/src/classifier.rs` and its `everruns-core`
+* **Alpha** may break without a major bump. Applies to the decisions
+  surface: `crates/everruns/src/decisions.rs` and its `everruns-core`
   re-exports in `crates/everruns/src/lib.rs`; and to the model-catalog
   surface: `crates/everruns/src/models.rs` and its profile re-exports.
 * **Unmarked** public items are provisional: treat as alpha until marked.

@@ -1,4 +1,4 @@
-//! A classifier supervising a coding agent it never has to stop.
+//! A decision service supervising a coding agent it never has to stop.
 //!
 //! A Framework port of [Foreman](https://github.com/thruwire/foreman): a fast
 //! decision model placed above a slower coding agent. The worker keeps its own

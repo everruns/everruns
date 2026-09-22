@@ -125,7 +125,7 @@ impl Subject for GuardrailCalibrationSubject {
 
         let context = match engine.as_str() {
             "jev" => ToolContext::new(SessionId::new())
-                .with_classifier(Arc::new(TypeSafeAI::new(key))),
+                .with_decisions(Arc::new(TypeSafeAI::new(key))),
             // The utility service resolves its own backend, model, and key
             // from the environment; `key` only proved one is configured.
             _ => ToolContext::new(SessionId::new())

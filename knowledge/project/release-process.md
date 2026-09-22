@@ -81,10 +81,10 @@ and a host that reached an immutable `0.23.0` tag it could not publish from
 
 The cost was not confined to release week, and it does not track consumer impact
 at all. [#3659](https://github.com/everruns/everruns/pull/3659) settled on a name
-for a contract nobody had adopted yet — `Judgment` became `Classifier` — plus
+for a contract nobody had adopted yet — `Judgment` became `Decisions` — plus
 folded one crate into another. No consumer was using the old name, so the change
 broke nothing in practice. But renaming an exported item in `everruns-core` is
-breaking *by classification* at `0.x`, so the machinery charged full price: five
+breaking *by decision* at `0.x`, so the machinery charged full price: five
 crates with real changes and patch bumps for 23 published dependants that changed
 nothing, each a manifest edit, a pin, and a republish. That is the clearest
 statement of the problem — the release cost was set by where the symbol lived,
@@ -141,7 +141,7 @@ version choice and keep their guards:
   `everruns-integrations-typesafe` 0.28.0 failed after
   [#3666](https://github.com/everruns/everruns/pull/3666) published it while
   0.28.0 was already cut and `everruns-core` 0.28.0 on crates.io predated the
-  `ClassificationRequest::model` field it uses. The plan now defers a
+  `DecisionRequest::model` field it uses. The plan now defers a
   never-published crate to the next platform version, where every crate
   publishes from one commit again; `scripts/test-publish-crates-order.sh`
   exercises that against a stubbed index. Nothing is published wrongly either

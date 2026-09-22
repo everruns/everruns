@@ -164,7 +164,7 @@ pub fn arm_guardrails(
 /// delta in the hot path and must stay cheap — this seam runs **once** on the
 /// fully assembled assistant message after streaming completes and before the
 /// message is finalized into context. It may perform I/O (e.g. call a
-/// moderation classifier through the utility LLM).
+/// moderation decisions through the utility LLM).
 ///
 /// Contract: implementations MUST be internally time-bounded and **fail open**
 /// — any timeout, transport error, or missing dependency must return
@@ -197,11 +197,11 @@ pub struct PostGenerationOutputContext<'a> {
     /// Utility LLM service for model-backed checks. `None` when the deployment
     /// has no utility model configured — model-backed checks then fail open.
     pub utility_llm_service: Option<&'a Arc<dyn crate::UtilityLlmService>>,
-    /// Classification service for checks that want a calibrated number instead of
+    /// Decision service for checks that want a calibrated number instead of
     /// text to parse. `None` when the deployment configured no judgment
     /// provider — those checks then fail open, or fall back to the utility
     /// model when the check allows it.
-    pub classifier: Option<&'a Arc<dyn crate::ClassifierService>>,
+    pub decisions: Option<&'a Arc<dyn crate::DecisionsService>>,
 }
 
 /// A post-generation guardrail provider paired with its contributing
@@ -361,7 +361,7 @@ mod tests {
             system_prompt: "",
             message_text: text,
             utility_llm_service: None,
-            classifier: None,
+            decisions: None,
         }
     }
 

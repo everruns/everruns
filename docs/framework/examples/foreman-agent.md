@@ -1,11 +1,11 @@
 ---
 title: Foreman
-description: A classifier supervising a coding agent it never has to stop.
+description: A decisions supervising a coding agent it never has to stop.
 ---
 
 [Browse the complete example](https://github.com/everruns/everruns/tree/main/examples/foreman-agent).
 
-A fast classifier watching a slow coding agent, and a policy in ordinary Rust
+A fast decisions watching a slow coding agent, and a policy in ordinary Rust
 deciding what to do about the numbers. A Framework port of
 [thruwire/foreman](https://github.com/thruwire/foreman), which placed
 [TypeSafe's Jev](https://docs.typesafe.ai/introduction) above a Codex worker and
@@ -16,7 +16,7 @@ asked whether semantic supervision can run *while* the work happens.
 ## What you learn
 
 How to run a worker session and observe it at the same time: a
-[`Classifier`](/framework/examples/) turning bounded evidence into nine
+[`Decisions`](/framework/examples/) turning bounded evidence into nine
 probabilities in one request, and a deterministic policy that owns every
 threshold, every limit, and the closed vocabulary of things the supervisor may
 do.
@@ -38,11 +38,11 @@ Five questions describe the job (`implementation_complete`, `tests_sufficient`,
 describe the floor right now (`meaningful_progress`, `worker_stuck`,
 `work_off_track`, `needs_human`). Each is a Noul — the probability that a
 yes/no statement is true — and all nine ride one request, because questions in
-a classification are answered independently and in parallel.
+a decision are answered independently and in parallel.
 
 ## What it may do about them
 
-The classifier only estimates. The policy decides, safety and hard limits
+The decisions only estimates. The policy decides, safety and hard limits
 before productivity: escalate when a person is needed or the iteration ceiling
 is reached, stop a worker that is off track or stuck, retry once after a stop,
 finish when the completion thresholds hold and verification is resolved, start
@@ -58,12 +58,12 @@ untracked paths a diff cannot show, recent session events, verification
 results, and the previous assessment and decision. An unbounded observation
 would make supervision as slow as the work it is watching.
 
-That snapshot goes to the classifier's service on every reading, so a bounded
+That snapshot goes to the decisions's service on every reading, so a bounded
 slice of the repository leaves the machine on every run — point `--repo` at a
 private repository only if that is acceptable for it. `demo` works on a fixture
 it materializes itself, so it carries nothing of yours. The repository content in
-an observation is also untrusted input to the classifier, and that it can only
-produce a number is the point: the classifier never names an action, and every
+an observation is also untrusted input to the decisions, and that it can only
+produce a number is the point: the decisions never names an action, and every
 action the policy can take is in one readable file.
 
 ## Run it
@@ -75,7 +75,7 @@ cargo run -p everruns-foreman-agent --bin foreman -- demo
 foreman run --repo ./my-project --job "Add rate limiting, and test it."
 ```
 
-Both are real runs — same worker, same classifier, same credentials. The only
+Both are real runs — same worker, same decisions, same credentials. The only
 difference is who chose the repository and the job:
 
 | Command | Repository | Job | Needs |
@@ -94,10 +94,10 @@ and the only thing that touches it is the worker. It will be modified.
 
 ## One supervisor
 
-There is one, and it is always real: a `Classifier`, a budget, one request, nine
+There is one, and it is always real: a `Decisions`, a budget, one request, nine
 answers. There is no offline mode and no second supervisor with fabricated
 numbers — every run asks a vendor the nine questions. CI cannot, so the test
-suite substitutes a different `ClassifierService`, the Framework's own seam for
+suite substitutes a different `DecisionsService`, the Framework's own seam for
 answering typed questions without a vendor, rather than adding a branch to the
 supervisor. The stub receives the observation as JSON exactly as a vendor's
 service does and answers from a table keyed by what is on the floor, so the test
@@ -161,7 +161,7 @@ original stays honest.
 ## Limits
 
 This is an architectural experiment, and porting it does not make it a proven
-one. Classifier accuracy for this use is unproven and the thresholds are
+one. Decisions accuracy for this use is unproven and the thresholds are
 uncalibrated: false positives stop useful workers, false negatives let bad work
 continue. Observations are bounded and therefore incomplete. One coding worker
 runs at a time, a verifier reports evidence rather than proof, and the session
