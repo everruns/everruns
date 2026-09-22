@@ -1286,6 +1286,7 @@ jobs:
             --lib \
             --test mcp_url_consent_test \
             --test mcp_url_elicitation_test \
+            --test question_answers_test \
             --test sse_replay_test
 
       - name: Run server integration tests (API + repository)
