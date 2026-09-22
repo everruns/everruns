@@ -27,7 +27,7 @@ pub(crate) const QUESTION_LOOKBACK_EVENTS: i32 = 200;
 
 /// What was actually asked, recovered from the event that asked it.
 ///
-/// THREAT[TM-TOOL-036]: the caller submitting an answer does not get to say what
+/// THREAT[TM-AGENT-015]: the caller submitting an answer does not get to say what
 /// it was asked. Every label an answer selects is checked against the options in
 /// the emitted `tool.call_requested`, never against anything in the request body
 /// — the same principle `mcp_url_consent` applies to the consented domain.
@@ -142,41 +142,39 @@ pub(crate) fn build_result(status: AskUserStatus, answers: Vec<AskUserAnswer>) -
     }
 }
 
-/// Pull the `ask_user` call out of the emitted `tool.call_requested`.
+/// Pull the `ask_user` call out of the current `tool.call_requested` batch.
 ///
-/// `tool_call_id` is optional: a browser answering the card it is showing knows
-/// the id, but the message path superseding a question does not, and asking it
-/// to guess would be worse than taking the one call that is actually pending.
+/// `tool_call_id` is optional because some answer surfaces rely on the current
+/// pending question set instead of carrying a rendered card's call id.
 pub(crate) fn pending_from_events(
     events: &[crate::storage::models::EventRow],
     tool_call_id: Option<&str>,
 ) -> Option<PendingQuestions> {
-    for event in events.iter().rev() {
-        let tool_calls = event.data.get("tool_calls")?.as_array()?;
-        for call in tool_calls {
-            let id = call.get("id").and_then(|v| v.as_str())?;
-            if let Some(wanted) = tool_call_id
-                && id != wanted
-            {
-                continue;
-            }
-            if call.get("name").and_then(|v| v.as_str()) != Some(ASK_USER_TOOL_NAME) {
-                // A specific id that names some other tool is a client error,
-                // not "keep looking": answering it as a question set would
-                // complete a call that asked something else entirely.
-                if tool_call_id.is_some() {
-                    return None;
-                }
-                continue;
-            }
-            let arguments = call.get("arguments")?;
-            let questions: Vec<AskUserQuestion> =
-                serde_json::from_value(arguments.get("questions")?.clone()).ok()?;
-            return Some(PendingQuestions {
-                tool_call_id: id.to_string(),
-                questions,
-            });
+    let event = events.last()?;
+    let tool_calls = event.data.get("tool_calls")?.as_array()?;
+    for call in tool_calls {
+        let id = call.get("id").and_then(|v| v.as_str())?;
+        if let Some(wanted) = tool_call_id
+            && id != wanted
+        {
+            continue;
         }
+        if call.get("name").and_then(|v| v.as_str()) != Some(ASK_USER_TOOL_NAME) {
+            // A specific id that names some other tool is a client error,
+            // not "keep looking": answering it as a question set would
+            // complete a call that asked something else entirely.
+            if tool_call_id.is_some() {
+                return None;
+            }
+            continue;
+        }
+        let arguments = call.get("arguments")?;
+        let questions: Vec<AskUserQuestion> =
+            serde_json::from_value(arguments.get("questions")?.clone()).ok()?;
+        return Some(PendingQuestions {
+            tool_call_id: id.to_string(),
+            questions,
+        });
     }
     None
 }
@@ -188,6 +186,8 @@ pub enum ResolveError {
     NotWaiting(String),
     /// No pending `ask_user` call matches.
     NoPendingQuestions,
+    /// The current parked call is not the submitted `ask_user` question set.
+    WrongPendingCall,
     /// Something already answered this call. First writer wins.
     AlreadyResolved,
     /// The submitted answers do not match what was asked.
@@ -239,8 +239,11 @@ pub async fn resolve_question_answers(
         )
         .await
         .map_err(|error| ResolveError::Internal(error.to_string()))?;
+    if requested.is_empty() {
+        return Err(ResolveError::NoPendingQuestions);
+    }
     let pending =
-        pending_from_events(&requested, tool_call_id).ok_or(ResolveError::NoPendingQuestions)?;
+        pending_from_events(&requested, tool_call_id).ok_or(ResolveError::WrongPendingCall)?;
 
     let answers = if status == AskUserStatus::Answered {
         validate_answers(&pending.questions, submitted).map_err(ResolveError::Invalid)?
@@ -479,6 +482,10 @@ pub async fn submit_question_answers(
             super::common::ErrorResponse::new("Pending question set not found".to_string())
                 .into_response(axum::http::StatusCode::NOT_FOUND)
         }
+        ResolveError::WrongPendingCall => super::common::ErrorResponse::new(
+            "Session is waiting on a different tool call".to_string(),
+        )
+        .into_response(axum::http::StatusCode::CONFLICT),
         ResolveError::Invalid(detail) => super::common::ErrorResponse::new(detail)
             .into_response(axum::http::StatusCode::BAD_REQUEST),
         ResolveError::Internal(detail) => {
@@ -543,7 +550,7 @@ mod tests {
         assert_eq!(validated[0].selected, vec!["Staging".to_string()]);
     }
 
-    /// THREAT[TM-TOOL-036]: the caller does not get to say what it was asked.
+    /// THREAT[TM-AGENT-015]: the caller does not get to say what it was asked.
     #[test]
     fn a_label_that_was_never_offered_is_refused() {
         let questions = vec![question("target", false, true)];

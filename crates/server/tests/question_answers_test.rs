@@ -14,16 +14,21 @@ use everruns_platform::{Agent, Session};
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use test_harness::TestServer;
 use uuid::Uuid;
 
 const TEST_ORG_ID: i64 = 1;
 
-struct NoopRunner;
+struct RecordingRunner {
+    resume_calls: AtomicUsize,
+}
 
 #[async_trait]
-impl AgentRunner for NoopRunner {
+impl AgentRunner for RecordingRunner {
     async fn start_run(
         &self,
         _org_id: i64,
@@ -41,6 +46,7 @@ impl AgentRunner for NoopRunner {
         _session_id: SessionId,
         _resolution_id: Uuid,
     ) -> anyhow::Result<()> {
+        self.resume_calls.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -58,7 +64,10 @@ impl AgentRunner for NoopRunner {
 }
 
 async fn test_server() -> TestServer {
-    TestServer::in_memory_with_runner(Arc::new(NoopRunner)).await
+    TestServer::in_memory_with_runner(Arc::new(RecordingRunner {
+        resume_calls: AtomicUsize::new(0),
+    }))
+    .await
 }
 async fn waiting_session(server: &TestServer) -> SessionId {
     let agent: Agent = server
@@ -137,6 +146,28 @@ async fn emit_question_card(server: &TestServer, session_id: SessionId, tool_cal
         .expect("emit tool.call_requested");
 }
 
+async fn emit_other_tool_card(server: &TestServer, session_id: SessionId, tool_call_id: &str) {
+    server
+        .db
+        .create_event(everruns_server::storage::models::CreateEventRow {
+            session_id,
+            event_type: "tool.call_requested".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({
+                "tool_calls": [{
+                    "id": tool_call_id,
+                    "name": "setup_connection",
+                    "arguments": {}
+                }]
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("emit later tool.call_requested");
+}
+
 async fn post_answer(
     server: &TestServer,
     session_id: SessionId,
@@ -200,7 +231,7 @@ async fn an_answer_resumes_the_turn_with_the_validated_result() {
     assert_eq!(session.status, "active", "the turn is resumed");
 }
 
-/// THREAT[TM-TOOL-036]: the caller does not get to say what it was asked.
+/// THREAT[TM-AGENT-015]: the caller does not get to say what it was asked.
 #[tokio::test]
 async fn a_label_that_was_never_offered_is_refused() {
     let server = test_server().await;
@@ -283,6 +314,101 @@ async fn answering_a_session_that_is_not_parked_is_a_conflict() {
     )
     .await
     .assert_status(StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn a_stale_question_card_cannot_resolve_a_later_tool_pause() {
+    for explicit_id in [true, false] {
+        let runner = Arc::new(RecordingRunner {
+            resume_calls: AtomicUsize::new(0),
+        });
+        let server = TestServer::in_memory_with_runner(runner.clone()).await;
+        let session_id = waiting_session(&server).await;
+        let old_call_id = format!("toolu_old_ask_{explicit_id}");
+        emit_question_card(&server, session_id, &old_call_id).await;
+
+        post_answer(
+            &server,
+            session_id,
+            json!({
+                "tool_call_id": old_call_id,
+                "status": "answered",
+                "answers": [{"id": "target", "selected": ["Staging"]}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+        server
+            .db
+            .update_session(
+                TEST_ORG_ID,
+                session_id,
+                everruns_server::storage::models::UpdateSession {
+                    status: Some("waiting_for_tool_results".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("park session on later tool call")
+            .expect("session exists");
+        emit_other_tool_card(
+            &server,
+            session_id,
+            &format!("toolu_setup_connection_{explicit_id}"),
+        )
+        .await;
+
+        let mut stale_answer = json!({
+            "status": "answered",
+            "answers": [{"id": "target", "selected": ["Production"]}]
+        });
+        if explicit_id {
+            stale_answer["tool_call_id"] = Value::String(old_call_id);
+        }
+        post_answer(&server, session_id, stale_answer)
+            .await
+            .assert_status(StatusCode::CONFLICT);
+
+        let results = completed_results(&server, session_id).await;
+        assert_eq!(
+            results.len(),
+            1,
+            "the old answer must not be completed twice"
+        );
+        assert_eq!(
+            runner.resume_calls.load(Ordering::SeqCst),
+            1,
+            "the stale card must not resume the later pause"
+        );
+        assert_eq!(
+            server
+                .db
+                .get_session(TEST_ORG_ID, session_id)
+                .await
+                .expect("read session")
+                .expect("session exists")
+                .status,
+            "waiting_for_tool_results"
+        );
+        assert!(
+            server
+                .db
+                .list_events(
+                    session_id,
+                    None,
+                    None,
+                    &["input.message".to_string()],
+                    &[],
+                    None,
+                    None,
+                )
+                .await
+                .expect("read input events")
+                .is_empty(),
+            "rejecting a stale card must not inject user input"
+        );
+    }
 }
 
 /// Typing an answer rather than clicking one. Before EVE-1054 the message was
