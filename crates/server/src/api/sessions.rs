@@ -139,7 +139,7 @@ pub struct CreateSessionRequest {
     /// the card the client renders). A pause whose hint is absent does not park
     /// — an unhinted `ask_user` resolves with the model's defaults (EVE-1057).
     #[serde(default)]
-    #[schema(example = json!({"setup_connection": true, "url_elicitation": true, "ask_user": true}))]
+    #[schema(example = json!({"setup_connection": true, "url_elicitation": true, "ask_user": true, "rich_media": true}))]
     pub hints: Option<std::collections::HashMap<String, serde_json::Value>>,
     /// Network access list controlling which hosts/URLs this session can reach.
     /// Merged with harness and agent layers (allowed: intersect, blocked: union).
