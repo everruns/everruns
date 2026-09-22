@@ -16,7 +16,7 @@
 1704 crates/core/src/message.rs
 1673 crates/core/src/skill.rs
 2277 crates/core/src/tool_narration.rs
-3212 crates/drivers/anthropic/src/driver.rs
+3143 crates/drivers/anthropic/src/driver.rs
 1785 crates/drivers/llmsim/src/lib.rs
 2285 crates/durable/src/engine/executor.rs
 3714 crates/durable/src/persistence/memory.rs
@@ -33,7 +33,7 @@
 2213 crates/host/src/runtime.rs
 2807 crates/host/tests/runtime_host_test.rs
 2593 crates/internal-protocol/src/lib.rs
-4880 crates/model-profiles/src/profiles.rs
+4837 crates/model-profiles/src/profiles.rs
 1649 crates/platform/src/app.rs
 2698 crates/platform/src/background_run.rs
 3193 crates/platform/src/capabilities/a2a_delegation.rs
@@ -67,7 +67,7 @@
 2751 crates/server/src/domains/session_files/service.rs
 1897 crates/server/src/domains/session_tasks/commands.rs
 2192 crates/server/src/domains/sessions/commands.rs
-3837 crates/server/src/seed.rs
+3314 crates/server/src/seed.rs
 1570 crates/server/src/services/provider_resolver.rs
 4591 crates/server/src/slack_delivery.rs
 4555 crates/server/src/storage/memory/tests.rs
