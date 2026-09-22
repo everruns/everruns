@@ -90,7 +90,7 @@ status with no contributions made a broken row look like a working one:
   and MCP servers the capability was attached to supply. Same contract as
   EVE-1029.
 - Read surfaces keep the row's identity, force the definition inert
-  (`status: retired`) and carry the parse error in `definitionError`, so a
+  (`status: retired`) and carry the parse error in `definition_error`, so a
   corrupt capability is visibly broken rather than plausibly empty.
 - A failed read never rewrites or drops the row; the stored bytes are what makes
   it diagnosable. The corruption is logged once per row, not once per read.

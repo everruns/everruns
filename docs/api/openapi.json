@@ -22789,6 +22789,14 @@
             "type": "object",
             "description": "Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata."
           },
+          "definition_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the stored definition could not be parsed, when it could not be.\n\nPresent only for a corrupt row. The capability keeps its identity\ncolumns so a surface can name what is broken, but `definition` is the\ninert default and `definition.status` reports `retired`, so nothing\nreads it as a usable capability.",
+            "example": "missing field `acts_as` at line 1 column 84"
+          },
           "deleted_at": {
             "type": [
               "string",
@@ -29291,6 +29299,14 @@
                     "definition": {
                       "type": "object",
                       "description": "Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata."
+                    },
+                    "definition_error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Why the stored definition could not be parsed, when it could not be.\n\nPresent only for a corrupt row. The capability keeps its identity\ncolumns so a surface can name what is broken, but `definition` is the\ninert default and `definition.status` reports `retired`, so nothing\nreads it as a usable capability.",
+                      "example": "missing field `acts_as` at line 1 column 84"
                     },
                     "deleted_at": {
                       "type": [
@@ -42983,6 +42999,14 @@
               "definition": {
                 "type": "object",
                 "description": "Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata."
+              },
+              "definition_error": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Why the stored definition could not be parsed, when it could not be.\n\nPresent only for a corrupt row. The capability keeps its identity\ncolumns so a surface can name what is broken, but `definition` is the\ninert default and `definition.status` reports `retired`, so nothing\nreads it as a usable capability.",
+                "example": "missing field `acts_as` at line 1 column 84"
               },
               "deleted_at": {
                 "type": [

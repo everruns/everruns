@@ -7555,6 +7555,16 @@ export interface components {
       /** @description Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata. */
       definition: Record<string, unknown>;
       /**
+       * @description Why the stored definition could not be parsed, when it could not be.
+       *
+       *     Present only for a corrupt row. The capability keeps its identity
+       *     columns so a surface can name what is broken, but `definition` is the
+       *     inert default and `definition.status` reports `retired`, so nothing
+       *     reads it as a usable capability.
+       * @example missing field `acts_as` at line 1 column 84
+       */
+      definition_error?: string | null;
+      /**
        * Format: date-time
        * @description Timestamp when this resource was soft-deleted, if any (RFC 3339).
        */
@@ -11199,6 +11209,16 @@ export interface components {
         created_at: string;
         /** @description Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata. */
         definition: Record<string, unknown>;
+        /**
+         * @description Why the stored definition could not be parsed, when it could not be.
+         *
+         *     Present only for a corrupt row. The capability keeps its identity
+         *     columns so a surface can name what is broken, but `definition` is the
+         *     inert default and `definition.status` reports `retired`, so nothing
+         *     reads it as a usable capability.
+         * @example missing field `acts_as` at line 1 column 84
+         */
+        definition_error?: string | null;
         /**
          * Format: date-time
          * @description Timestamp when this resource was soft-deleted, if any (RFC 3339).
@@ -18990,6 +19010,16 @@ export interface components {
       created_at: string;
       /** @description Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata. */
       definition: Record<string, unknown>;
+      /**
+       * @description Why the stored definition could not be parsed, when it could not be.
+       *
+       *     Present only for a corrupt row. The capability keeps its identity
+       *     columns so a surface can name what is broken, but `definition` is the
+       *     inert default and `definition.status` reports `retired`, so nothing
+       *     reads it as a usable capability.
+       * @example missing field `acts_as` at line 1 column 84
+       */
+      definition_error?: string | null;
       /**
        * Format: date-time
        * @description Timestamp when this resource was soft-deleted, if any (RFC 3339).
