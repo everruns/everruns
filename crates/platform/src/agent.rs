@@ -136,7 +136,7 @@ pub struct AgentVersion {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub created_by_principal_id: Option<PrincipalId>,
-    /// Decision of why this version was created (manual publish, automatic draft, rollback, fork, etc.).
+    /// Classification of why this version was created (manual publish, automatic draft, rollback, fork, etc.).
     pub change_kind: AgentVersionChangeKind,
     /// Human-readable summary of changes in this version (release notes). `None` if not provided.
     #[serde(skip_serializing_if = "Option::is_none")]
