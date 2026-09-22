@@ -13,20 +13,20 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use everruns_core::InitialFile;
 use everruns_host::{
     AgentBuilder as RuntimeAgentBuilder, Environment, EnvironmentBindingError,
     EnvironmentBindingStore, EventLogError, EventSink, HarnessBuilder, HostBackends,
     InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder, WorkspaceBackend,
-    WorkspaceBackendId,
 };
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::runtime_provider::Provider;
 use everruns_provider::typed_id::SessionId;
 
+use crate::agent_state::AgentState;
 use crate::capability_config::{
     framework_capability_registry, validate_registered_capability_config,
 };
@@ -193,6 +193,8 @@ impl fmt::Debug for Model {
 pub enum BuildError {
     /// `instructions` was empty or only whitespace.
     BlankInstructions,
+    /// Both [`AgentBuilder::backends`] and [`AgentBuilder::local`] were set.
+    ConflictingBackends,
     /// No model was selected.
     MissingModel,
     /// A tool name is not a valid model-facing identifier.
@@ -262,6 +264,9 @@ impl fmt::Display for BuildError {
                 write!(f, "agent instructions must not be blank")
             }
             BuildError::MissingModel => write!(f, "agent requires a model"),
+            BuildError::ConflictingBackends => {
+                write!(f, "agent cannot combine `backends(..)` with `local(..)`")
+            }
             BuildError::InvalidToolName { name, reason } => {
                 write!(f, "invalid tool name {name:?}: {reason}")
             }
@@ -324,56 +329,9 @@ pub struct Agent {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
-    state: Arc<AgentState>,
-}
-
-struct AgentState {
-    workspace_backends: Mutex<HashMap<WorkspaceBackendId, Arc<dyn WorkspaceBackend>>>,
-}
-
-impl AgentState {
-    fn new(workspace_backends: HashMap<WorkspaceBackendId, Arc<dyn WorkspaceBackend>>) -> Self {
-        Self {
-            workspace_backends: Mutex::new(workspace_backends),
-        }
-    }
-
-    fn remember_backend(&self, backend: Arc<dyn WorkspaceBackend>) -> bool {
-        let mut backends = self
-            .workspace_backends
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let id = backend.id();
-        match backends.get(&id) {
-            Some(existing) => Arc::ptr_eq(existing, &backend),
-            None => {
-                backends.insert(id, backend);
-                true
-            }
-        }
-    }
-
-    fn backend(&self, id: &WorkspaceBackendId) -> Option<Arc<dyn WorkspaceBackend>> {
-        self.workspace_backends
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get(id)
-            .cloned()
-    }
-}
-
-impl fmt::Debug for AgentState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AgentState")
-            .field(
-                "workspace_backend_count",
-                &self
-                    .workspace_backends
-                    .lock()
-                    .map_or(0, |backends| backends.len()),
-            )
-            .finish()
-    }
+    /// See [`AgentBuilder::backends`]; mutually exclusive with `local`.
+    pub(crate) backends: Option<HostBackends>,
+    pub(crate) state: Arc<AgentState>,
 }
 
 impl fmt::Debug for Agent {
@@ -785,6 +743,8 @@ pub struct AgentBuilder {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
+    /// See [`AgentBuilder::backends`]; mutually exclusive with `local`.
+    pub(crate) backends: Option<HostBackends>,
 }
 
 impl AgentBuilder {
@@ -1111,6 +1071,10 @@ impl AgentBuilder {
     ///   capability implementation, including aliases and reference/implementation
     ///   collisions.
     pub fn build(self) -> Result<Agent, BuildError> {
+        #[cfg(feature = "local")]
+        if self.local.is_some() && self.backends.is_some() {
+            return Err(BuildError::ConflictingBackends);
+        }
         let mut workspace_backends = HashMap::new();
         for backend in &self.workspace_backends {
             let id = backend.id();
@@ -1338,6 +1302,7 @@ impl AgentBuilder {
             #[cfg(feature = "local")]
             local: self.local,
             lifecycle_hooks: self.lifecycle_hooks,
+            backends: self.backends,
             state: Arc::new(AgentState::new(workspace_backends)),
         })
     }

@@ -121,9 +121,9 @@ impl Default for EventReadLimit {
 ///   after a completed snapshot.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EventCursor {
-    session_id: SessionId,
-    after_sequence: i32,
-    snapshot_high_watermark: Option<i32>,
+    pub(crate) session_id: SessionId,
+    pub(crate) after_sequence: i32,
+    pub(crate) snapshot_high_watermark: Option<i32>,
 }
 
 impl EventCursor {

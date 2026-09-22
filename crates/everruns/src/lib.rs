@@ -45,6 +45,7 @@ extern crate self as everruns;
 
 // --- Value-first agent description and execution -------------------------
 mod agent;
+mod agent_state;
 /// Stability: stable — no breaking change without a major bump; see [`stability`].
 #[cfg(feature = "builtins")]
 pub mod ask_user;
@@ -119,7 +120,8 @@ pub use everruns_host::containment::{
 };
 pub use everruns_host::{
     Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
-    ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, NetworkPolicy,
+    ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, HostBackends,
+    NetworkPolicy,
 };
 #[cfg(feature = "host-compute")]
 pub use everruns_host::{HostCompute, HostComputeSession};

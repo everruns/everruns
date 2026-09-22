@@ -252,6 +252,9 @@ impl Engine {
         &self,
         agent: &Agent,
     ) -> Result<Arc<OnceCell<Arc<EngineBackends>>>, BackendInitError> {
+        if agent.custom_backends().is_some() {
+            return Ok(agent.custom_backend_cell());
+        }
         #[cfg(feature = "local")]
         if let Some(config) = agent.local_config() {
             let key = absolute_path(config.data_dir());
@@ -389,7 +392,10 @@ fn absolute_path(path: &std::path::Path) -> std::path::PathBuf {
 }
 
 async fn initialize_backends(agent: &Agent) -> Result<Arc<EngineBackends>, BackendInitError> {
-    let backends = HostBackends::in_memory();
+    let backends = agent
+        .custom_backends()
+        .cloned()
+        .unwrap_or_else(HostBackends::in_memory);
     #[cfg(feature = "local")]
     if let Some(config) = agent.local_config() {
         let profile = config.profile();
@@ -416,8 +422,6 @@ async fn initialize_backends(agent: &Agent) -> Result<Arc<EngineBackends>, Backe
             binding_store: session_store,
         }));
     }
-    #[cfg(not(feature = "local"))]
-    let _ = agent;
     Ok(Arc::new(EngineBackends {
         host: backends,
         binding_store: Arc::new(InMemoryEnvironmentBindingStore::default()),
