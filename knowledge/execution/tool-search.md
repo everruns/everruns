@@ -221,7 +221,8 @@ live OpenAI integration tests in `crates/llm-tests/tests/tool_search_test.rs`; t
 Claude families are covered by the live Anthropic tests
 `test_anthropic_claude_tool_search_low_threshold` and
 `test_anthropic_auto_tool_search_resolves_to_hosted` in the same file (run against
-Claude Haiku 4.5).
+Claude Haiku 4.5 and Opus 5.5). These live tests are run by hand: CI's live
+provider matrix does not include `tool_search_test`.
 
 ### Provider gating (which transports honor the flag)
 
