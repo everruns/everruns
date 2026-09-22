@@ -1,3 +1,6 @@
+pub mod terminal;
+
+use everruns::ask_user::{AskUser, AskUserOption, Question, QuestionKind};
 use everruns::{Agent, FunctionTool, InMemoryEngine, LlmSimConfig, Model, ToolCall};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -73,7 +76,9 @@ fn lookup_neighborhood_spot() -> FunctionTool {
             let group_size = arguments
                 .get("group_size")
                 .and_then(Value::as_u64)
-                .ok_or_else(|| "'group_size' is required and must be an unsigned integer".to_string())?;
+                .ok_or_else(|| {
+                    "'group_size' is required and must be an unsigned integer".to_string()
+                })?;
             let vibe = arguments
                 .get("vibe")
                 .and_then(Value::as_str)
@@ -86,7 +91,10 @@ fn lookup_neighborhood_spot() -> FunctionTool {
                 .filter(|spot| {
                     vibe == "any"
                         || spot.vibe.eq_ignore_ascii_case(&vibe)
-                        || spot.best_for.iter().any(|tag| tag.eq_ignore_ascii_case(&vibe))
+                        || spot
+                            .best_for
+                            .iter()
+                            .any(|tag| tag.eq_ignore_ascii_case(&vibe))
                 })
                 .filter(|spot| {
                     occasion == "outing"
@@ -125,13 +133,92 @@ pub struct ExampleRun {
     pub event_types: Vec<String>,
 }
 
-pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
+/// The two questions the concierge asks before planning: one single-select and
+/// one multi-select. A concierge that never asks about preferences is a bad
+/// concierge, which is why they are here rather than bolted on.
+pub fn preference_questions() -> Vec<Question> {
+    vec![
+        Question {
+            kind: QuestionKind::Choice,
+            id: Some("vibe".into()),
+            header: "Vibe".into(),
+            question: "What should the evening feel like?".into(),
+            multi_select: false,
+            allow_other: true,
+            options: vec![
+                AskUserOption {
+                    label: "playful".into(),
+                    description: "Games, noise, a bit of competition".into(),
+                    is_default: true,
+                },
+                AskUserOption {
+                    label: "cozy".into(),
+                    description: "Booths, board games, easy conversation".into(),
+                    is_default: false,
+                },
+                AskUserOption {
+                    label: "bright".into(),
+                    description: "Lively, celebratory, dessert-forward".into(),
+                    is_default: false,
+                },
+            ],
+            secret_name: None,
+            purpose: None,
+        },
+        Question {
+            kind: QuestionKind::Choice,
+            id: Some("must_haves".into()),
+            header: "Musts".into(),
+            question: "Which of these does the evening need?".into(),
+            multi_select: true,
+            allow_other: true,
+            options: vec![
+                AskUserOption {
+                    label: "snacks".into(),
+                    description: "Food on site".into(),
+                    is_default: true,
+                },
+                AskUserOption {
+                    label: "desserts".into(),
+                    description: "Something sweet late".into(),
+                    is_default: true,
+                },
+                AskUserOption {
+                    label: "quiet corner".into(),
+                    description: "Somewhere to actually talk".into(),
+                    is_default: false,
+                },
+            ],
+            secret_name: None,
+            purpose: None,
+        },
+    ]
+}
+
+/// Run the demo, answering the agent's questions with `responder`.
+///
+/// The responder is a parameter rather than a constant so the binary can hand
+/// in [`terminal::TerminalResponder`] while the tests hand in something
+/// scripted — the offline test stays deterministic without the example having
+/// to pretend nobody is ever at the keyboard.
+pub async fn run_weekend_concierge_demo_with(
+    responder: impl AskUser + 'static,
+) -> ExampleResult<ExampleRun> {
     let model = Model::simulated_with_config(
         LlmSimConfig::sequence(vec![
+            "Before I pick anything, two quick questions.".into(),
             "Let me check the concierge book before I recommend anything.".into(),
             "Go with Neon Arcade in the West Loop. It fits six people, stays under the budget, and gives the group an easy mix of games and snacks. Backup: Quiet Boardroom Cafe if the team wants something calmer.".into(),
         ])
         .with_tool_call_sequence(vec![
+            // One single-select and one multi-select, batched into a single
+            // call — `ask_user` takes the whole set at once so the group is
+            // interrupted once rather than twice.
+            vec![ToolCall {
+                id: "call_ask_1".into(),
+                name: "ask_user".into(),
+                arguments: json!({ "questions": preference_questions() }),
+            }],
             vec![ToolCall {
                 id: "call_spot_1".into(),
                 name: "lookup_neighborhood_spot".into(),
@@ -151,6 +238,7 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
         )
         .model(model)
         .tool(lookup_neighborhood_spot())
+        .ask_user(responder)
         .readonly_file(
             "/workspace/welcome-note.md",
             "This session is hosted entirely in-process by the embedding application.",
@@ -190,27 +278,84 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
     })
 }
 
+/// Run the demo with the terminal responder — what `cargo run` uses.
+pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
+    run_weekend_concierge_demo_with(terminal::TerminalResponder::new(
+        terminal::HostSecrets::new(),
+    ))
+    .await
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{lookup_neighborhood_spot, run_weekend_concierge_demo};
+    use super::{lookup_neighborhood_spot, run_weekend_concierge_demo_with};
+    use everruns::ask_user::{Answer, AnsweredBy, AskUser, Outcome, Question, Status, async_trait};
     use everruns::{Agent, InMemoryEngine, Model};
+
+    /// Answers without touching stdin, so the offline test is deterministic
+    /// whether or not a terminal happens to be attached.
+    struct ScriptedResponder;
+
+    #[async_trait]
+    impl AskUser for ScriptedResponder {
+        async fn ask(&self, questions: &[Question]) -> Outcome {
+            Outcome {
+                status: Status::Answered,
+                answered_by: AnsweredBy::User,
+                answers: questions
+                    .iter()
+                    .map(|question| Answer {
+                        id: question.id.clone().unwrap_or_default(),
+                        selected: question
+                            .options
+                            .iter()
+                            .filter(|option| option.is_default)
+                            .map(|option| option.label.clone())
+                            .collect(),
+                        other_text: None,
+                        secret_ref: None,
+                    })
+                    .collect(),
+            }
+        }
+    }
 
     #[tokio::test]
     async fn weekend_concierge_demo_stays_deterministic() {
-        let run = run_weekend_concierge_demo()
+        let run = run_weekend_concierge_demo_with(ScriptedResponder)
             .await
             .expect("example run should succeed");
 
-        assert_eq!(run.tool_names, vec!["lookup_neighborhood_spot"]);
+        assert_eq!(run.tool_names, vec!["ask_user", "lookup_neighborhood_spot"]);
         assert!(run.seeded_brief.contains("Budget: under $40/person"));
         assert!(run.final_response.contains("Neon Arcade"));
         assert!(run.final_response.contains("Quiet Boardroom Cafe"));
         assert!(run.success);
-        assert_eq!(run.iterations, 2);
-        assert_eq!(run.tool_calls_count, 1);
-        assert!(run.transcript.iter().any(|line| line.contains("call_spot_1")));
-        assert!(run.event_types.iter().any(|event| event == "tool.completed"));
-        assert!(run.event_types.iter().any(|event| event == "reason.completed"));
+        assert_eq!(run.iterations, 3);
+        assert_eq!(run.tool_calls_count, 2);
+        // The agent asked before it planned, and the answers reached the turn.
+        assert!(
+            run.transcript
+                .iter()
+                .any(|line| line.contains("call_ask_1"))
+        );
+        assert!(run.transcript.iter().any(|line| line.contains("playful")));
+        assert!(run.transcript.iter().any(|line| line.contains("desserts")));
+        assert!(
+            run.transcript
+                .iter()
+                .any(|line| line.contains("call_spot_1"))
+        );
+        assert!(
+            run.event_types
+                .iter()
+                .any(|event| event == "tool.completed")
+        );
+        assert!(
+            run.event_types
+                .iter()
+                .any(|event| event == "reason.completed")
+        );
     }
 
     #[tokio::test]
@@ -221,7 +366,11 @@ mod tests {
             .tool(lookup_neighborhood_spot())
             .build()
             .expect("tool should be valid");
-        let context = InMemoryEngine::new().create(agent.clone()).inspect().await.expect("context");
+        let context = InMemoryEngine::new()
+            .create(agent.clone())
+            .inspect()
+            .await
+            .expect("context");
         assert_eq!(context.tools[0].name, "lookup_neighborhood_spot");
     }
 }

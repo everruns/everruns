@@ -7,7 +7,8 @@
 pub use async_trait::async_trait;
 pub use everruns_builtins::{
     AskUser, AskUserAnswer, AskUserAnsweredBy, AskUserOption, AskUserQuestion, AskUserQuestionKind,
-    AskUserRequest, AskUserResult, AskUserStatus, DefaultsResponder,
+    AskUserRequest, AskUserResult, AskUserStatus, DefaultsResponder, SESSION_SECRET_REF_PREFIX,
+    session_secret_ref,
 };
 
 /// One answer in an [`Outcome`].

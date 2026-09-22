@@ -2,7 +2,7 @@
 
 These examples use the [`everruns`](../README.md) crate.
 Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`;
-`capability_configuration`, `canonical_events`, `session_work`,
+`ask_user`, `capability_configuration`, `canonical_events`, `session_work`,
 `workspace_policy`, and `session_history` run entirely offline.
 `workspace_heads` also runs offline against a local Git repository.
 `live_session`, `direct_llm`, and `model_catalog` default to offline stand-ins; add
@@ -25,6 +25,7 @@ Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`;
 | [`canonical_events.rs`](canonical_events.rs) | Lossless recording and typed rendering of live canonical events | `cargo run -p everruns --example canonical_events` |
 | [`subagents.rs`](subagents.rs) | Concurrent child agents managed by an application-owned task registry | `cargo run -p everruns --features openai --example subagents` |
 | [`observe_and_cancel.rs`](observe_and_cancel.rs) | Live event streaming and cooperative cancellation | `cargo run -p everruns --features openai --example observe_and_cancel` |
+| [`ask_user.rs`](ask_user.rs) | Single-select, multi-select, and the declared-defaults path when no responder is registered | `cargo run -p everruns --example ask_user` |
 | [`advanced_capability.rs`](advanced_capability.rs) | Curated capability SPI with typed protocol, metadata, progress, and structured errors | `cargo run -p everruns --features openai --example advanced_capability` |
 | [`lifecycle_hooks.rs`](lifecycle_hooks.rs) | Awaited agent, turn, tool, and completion handlers | `cargo run -p everruns --features openai --example lifecycle_hooks` |
 

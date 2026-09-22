@@ -13,9 +13,12 @@ repository: these Cargo packages depend on local workspace crates.
 | [Incident Commander](incident-commander-agent/) | Investigate evidence and persist a safe update | `cargo run -p everruns-incident-commander-agent` |
 | [Bashkit Repo](bashkit-repo-agent/) | Modify and verify a repository through a sandboxed shell | `cargo run -p everruns-bashkit-repo-agent` |
 | [Foreman](foreman-agent/) | Supervise a coding agent — a session, Codex, or yolop — with a classifier | `cargo run -p everruns-foreman-agent --bin foreman -- demo` |
+| [Weekend Concierge](weekend-concierge-host/) | Ask the user before planning, and answer from the terminal | `cargo run --manifest-path examples/weekend-concierge-host/Cargo.toml` |
 
 Each README lists credentials, contrasting scenarios, expected outcomes, and
-limits. Support Agent, Everruns Support Agent, Bashkit Repo Agent, and Foreman
+limits. Weekend Concierge is run by manifest path rather than `-p`: it is
+deliberately outside the repository workspace, so it stands in for an external
+application consuming `everruns` by path. Support Agent, Everruns Support Agent, Bashkit Repo Agent, and Foreman
 use the reference layout: crate metadata and the README stay at the root, executable
 code and bundled resources live in `src/`, and recording collateral lives in
 `demo/`. Live runs incur provider/search charges.
