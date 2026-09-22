@@ -1,15 +1,15 @@
-//! Give an agent the classifier as a tool.
+//! Give an agent the decision service as a tool.
 //!
-//! The counterpart to `direct_classification`: there your code asks the
+//! The counterpart to `direct_decisions`: there your code asks the
 //! questions, here the agent writes its own and acts on the numbers.
 //!
 //! Offline (no API key):
 //! ```text
-//! cargo run -p everruns --features typesafe --example agent_classification
+//! cargo run -p everruns --features typesafe --example agent_decisions
 //! ```
 //! Live (requires TYPESAFE_API_KEY and OPENAI_API_KEY):
 //! ```text
-//! cargo run -p everruns --features typesafe,openai --example agent_classification -- --live
+//! cargo run -p everruns --features typesafe,openai --example agent_decisions -- --live
 //! ```
 
 use everruns::{Agent, Engine, Jev, Model};
@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name("reviewer")
         .instructions(
             "You review copy. When asked how something reads, measure it with \
-             jev_evaluate and report the numbers rather than judging by eye.",
+             jev_decision and report the numbers rather than judging by eye.",
         )
         .model(model)
         .capability(Jev::new(key))

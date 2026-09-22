@@ -136,8 +136,8 @@ a2a = ["local", "everruns-platform/a2a"]
 # `OpenAI` config type and its driver wiring compile only with this feature.
 openai = ["dep:everruns-openai"]
 openrouter = ["dep:everruns-openrouter"]
-# Typed classification: the TypeSafe-backed `ClassifierService` behind
-# `Classifier`, re-exported so one import reaches both halves.
+# Typed decision: the TypeSafe-backed `DecisionsService` behind
+# `Decisions`, re-exported so one import reaches both halves.
 typesafe = ["dep:everruns-integrations-typesafe"]
 
 [dependencies]
@@ -250,9 +250,9 @@ required-features = ["capabilities", "openai"]
 name = "capability_configuration"
 required-features = ["capabilities"]
 
-# Uses the TypeSafe-backed classifier tool, which `typesafe` re-exports. Live
+# Uses the TypeSafe-backed decisions tool, which `typesafe` re-exports. Live
 # mode additionally needs `openai`, but the example compiles and runs offline
 # against the simulator without it.
 [[example]]
-name = "agent_classification"
+name = "agent_decisions"
 required-features = ["typesafe"]

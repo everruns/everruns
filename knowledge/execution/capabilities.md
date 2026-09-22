@@ -1241,7 +1241,7 @@ carries mounts in product registries.
   a user or raise the caller.
 - **Command contract**: MCP and capability adapters share catalog search,
   positional rewriting, script limits, output formatting, and safe error
-  classification in `crates/server/src/services/platform_command_surface.rs`.
+  decision in `crates/server/src/services/platform_command_surface.rs`.
   Multi-match searches omit schemas and return a refinement hint so catalog
   browsing stays below model/tool-output limits. An exact command-name search
   returns only that operation with `bash_usage`, rendered from the registered

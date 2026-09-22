@@ -136,7 +136,7 @@ host-owned platform services: provider endpoints and credentials come from
 deployment/org provider configuration, not from agent-authored URLs or
 tenant/agent egress policy. Runtime providers own endpoint, auth, and service
 headers. Drivers own protocol request construction, streaming parse logic,
-retry classification, and error mapping. Shared clients disable redirects and
+retry decision, and error mapping. Shared clients disable redirects and
 pin DNS only after private-range validation.
 
 ### Message Types
@@ -450,7 +450,7 @@ decides whether to recover. Transport loss, a stream that makes no output
 progress, overload, ordinary rate limiting, and retryable server failures may
 be retried. Invalid credentials, exhausted billing quota, unavailable models,
 invalid/unsafe requests, and long-horizon usage limits fail fast with their
-specific classification.
+specific decision.
 
 Recovery is bounded by both attempts and elapsed wall-clock time. Backoff is
 exponential with jitter, honors reasonable provider retry hints, and lower

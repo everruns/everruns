@@ -2,9 +2,9 @@
 
 This crate owns the whole TypeSafe surface: the vendor [`client`](src/client/),
 the `jev` capability and its tool, the connector catalog entry, and the
-deployment classifier that backs guardrail checks. The published
+deployment decisions that backs guardrail checks. The published
 `everruns-host` stays provider-neutral — it no longer depends on TypeSafe at
-all, because the platform composes the classifier from above.
+all, because the platform composes the decisions from above.
 
 ## Split
 
@@ -18,7 +18,7 @@ all, because the platform composes the classifier from above.
 
 ## Capability
 
-`jev` contributes one tool, `jev_evaluate`. The agent supplies the
+`jev` contributes one tool, `jev_decision`. The agent supplies the
 content and its own typed questions; the tool returns every answer with its
 distribution. Score answers additionally carry `normalized`, `level`, and
 `label` so the calling code can threshold without re-deriving the level count.
@@ -47,13 +47,13 @@ question the API accepts — one noul over a two-word state — because there is
 dedicated auth probe; `401`/`403` means the key is invalid, `429` means it is
 valid but throttled.
 
-## Relationship to the classifier
+## Relationship to the decisions
 
 This crate owns the whole TypeSafe surface: the vendor [`client`](src/client/),
 the `jev` capability and its tool, the connector catalog entry, and the
-deployment classifier that backs guardrail checks. The published
+deployment decisions that backs guardrail checks. The published
 `everruns-host` stays provider-neutral — it no longer depends on TypeSafe at
-all, because the platform composes the classifier from above.
+all, because the platform composes the decisions from above.
 [`knowledge/operations/judgment-service.md`](../../knowledge/operations/judgment-service.md).
 
 ## Tests

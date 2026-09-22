@@ -1,21 +1,19 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! The deployment classifier over a mock endpoint.
+//! The deployment decisions over a mock endpoint.
 //!
 //! `classifier_live.rs` proves the judgments are calibrated; this proves the
 //! seam around them — which model a request reaches, how a vendor answer
-//! becomes a `ClassificationOutcome`, and what an upstream failure says. Those
+//! becomes a `DecisionOutcome`, and what an upstream failure says. Those
 //! are the parts a live test cannot pin down without spending a real request
 //! per case, and the parts that break when either side of the mapping moves.
 
-use everruns_core::{
-    ClassificationAnswer, ClassificationQuestion, ClassificationRequest, ClassifierService,
-};
+use everruns_core::{DecisionAnswer, DecisionQuestion, DecisionRequest, DecisionsService};
 use everruns_integrations_typesafe::{TypeSafeAI, TypeSafeAIClient};
 use serde_json::json;
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
-const CREDENTIAL: &str = "sentinel-classifier-credential";
+const CREDENTIAL: &str = "sentinel-decisions-credential";
 
 fn service(server: &MockServer) -> TypeSafeAI {
     TypeSafeAI::with_client(
@@ -49,10 +47,10 @@ const ONE_NOUL: fn() -> serde_json::Value = || {
     })
 };
 
-fn ask_one() -> ClassificationRequest {
-    ClassificationRequest::new("some content").ask(
+fn ask_one() -> DecisionRequest {
+    DecisionRequest::new("some content").ask(
         "q",
-        ClassificationQuestion::Noul {
+        DecisionQuestion::Noul {
             instructions: "Is it urgent?".to_string(),
             yes: None,
             no: None,
@@ -92,10 +90,10 @@ async fn an_outcome_carries_the_model_usage_and_every_answer_shape() {
 
     let outcome = service(&server)
         .evaluate(
-            ClassificationRequest::new("a ticket")
+            DecisionRequest::new("a ticket")
                 .ask(
                     "urgent",
-                    ClassificationQuestion::Noul {
+                    DecisionQuestion::Noul {
                         instructions: "Is it urgent?".to_string(),
                         yes: None,
                         no: None,
@@ -103,7 +101,7 @@ async fn an_outcome_carries_the_model_usage_and_every_answer_shape() {
                 )
                 .ask(
                     "team",
-                    ClassificationQuestion::Choice {
+                    DecisionQuestion::Choice {
                         instructions: "Who handles this?".to_string(),
                         options: vec![
                             ("billing".to_string(), None),
@@ -113,7 +111,7 @@ async fn an_outcome_carries_the_model_usage_and_every_answer_shape() {
                 )
                 .ask(
                     "anger",
-                    ClassificationQuestion::score("How angry?", ["Calm", "Annoyed", "Furious"]),
+                    DecisionQuestion::score("How angry?", ["Calm", "Annoyed", "Furious"]),
                 ),
         )
         .await
@@ -126,7 +124,7 @@ async fn an_outcome_carries_the_model_usage_and_every_answer_shape() {
 
     assert_eq!(outcome.get("urgent").unwrap().probability_yes(), Some(0.81));
 
-    let ClassificationAnswer::Choice {
+    let DecisionAnswer::Choice {
         selected,
         probabilities,
         confidence,
@@ -145,7 +143,7 @@ async fn an_outcome_carries_the_model_usage_and_every_answer_shape() {
 }
 
 /// Three ways a model can be chosen, in the order that matters. The platform
-/// pins its classifier by naming none, so the default must hold; an embedder
+/// pins its decisions by naming none, so the default must hold; an embedder
 /// naming one on the service must get it; and a request naming one must win
 /// over both, because that is the only knob a caller has.
 #[tokio::test]
@@ -187,10 +185,7 @@ async fn an_upstream_failure_is_reported_without_echoing_the_key() {
 
     let error = service(&server).evaluate(ask_one()).await.unwrap_err();
     let rendered = error.to_string();
-    assert!(
-        rendered.contains("classification request failed"),
-        "{rendered}"
-    );
+    assert!(rendered.contains("decision request failed"), "{rendered}");
     assert!(rendered.contains("401"), "{rendered}");
     assert!(!rendered.contains(CREDENTIAL), "{rendered}");
 }

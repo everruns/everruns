@@ -1,6 +1,6 @@
-# Semantic supervision: a fast classifier watches a slow coding agent while it
+# Semantic supervision: a fast decisions watches a slow coding agent while it
 # works. The worker is an ordinary Framework agent on the Bashkit shell; the
-# supervisor is `Classifier`, asking nine narrow questions about bounded
+# supervisor is `Decisions`, asking nine narrow questions about bounded
 # evidence in one request. The policy that acts on the numbers is plain Rust.
 #
 # A Framework port of https://github.com/thruwire/foreman.
@@ -11,7 +11,7 @@ version = "0.1.0"
 edition = "2024"
 license.workspace = true
 publish = false
-description = "A classifier supervising a coding agent it does not have to stop"
+description = "A decision service supervising a coding agent it does not have to stop"
 
 [lib]
 # The runtime, so `tests/` can drive the same loop with a scripted worker.

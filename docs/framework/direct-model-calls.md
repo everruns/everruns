@@ -126,7 +126,7 @@ while let Some(event) = stream.next().await {
 - `MissingProvider` — the model names an id but nothing says how to reach it.
 - `NoMessages` — the completion was sent empty.
 - `Call(..)` — the provider call failed, carrying the `AgentLoopError` and its
-  full `LlmError` classification.
+  full `LlmError` decision.
 
 The first two are caught before any request leaves the process.
 

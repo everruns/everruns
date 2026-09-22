@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Record the terminal demo: `foreman demo`, which is a real run. A real worker
-# edits the bundled fixture while a real classifier watches it, so every number
+# edits the bundled fixture while a real decision service watches it, so every number
 # on screen is a live reading and the repository at the end is the worker's
 # actual work. The starting state is fixed; the run is not scripted.
 set -euo pipefail

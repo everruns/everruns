@@ -2,7 +2,7 @@
 //!
 //! The worker's loop is its own — an Everruns session, or an external CLI in a
 //! child process. The supervisory loop runs beside it on whatever that worker
-//! emits, so evidence reaches the classifier while the work is still happening.
+//! emits, so evidence reaches the decision service while the work is still happening.
 //! Nothing has to stop for the factory to think.
 //!
 //! Between readings the loop debounces: activity marks the run dirty and waits
@@ -117,7 +117,7 @@ pub enum Signal {
     },
 }
 
-/// A crew supervised by a classifier.
+/// A crew supervised by a decision service.
 pub struct Factory {
     config: Config,
     foreman: Foreman,
@@ -646,15 +646,15 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use everruns::{
-        AgentLoopError, ClassificationAnswer, ClassificationOutcome, ClassificationRequest,
-        Classifier, ClassifierService, LlmSimConfig, Model,
+        AgentLoopError, DecisionAnswer, DecisionOutcome, DecisionRequest, Decisions,
+        DecisionsService, LlmSimConfig, Model,
     };
     use serde_json::Value;
 
     use crate::foreman::DIMENSIONS;
     use crate::worker::ExternalAgent;
 
-    /// A classifier service that answers from a closure over the observation.
+    /// A decision service that answers from a closure over the observation.
     ///
     /// The stub receives the state as JSON, exactly as a vendor's service does,
     /// so a test drives the run through the same request and parsing a live
@@ -665,30 +665,30 @@ mod tests {
     struct Answering(Reply);
 
     #[async_trait::async_trait]
-    impl ClassifierService for Answering {
+    impl DecisionsService for Answering {
         fn is_configured(&self) -> bool {
             true
         }
 
         async fn evaluate(
             &self,
-            request: ClassificationRequest,
-        ) -> Result<ClassificationOutcome, AgentLoopError> {
+            request: DecisionRequest,
+        ) -> Result<DecisionOutcome, AgentLoopError> {
             let assessment = (self.0)(&request.state)?;
-            Ok(ClassificationOutcome {
+            Ok(DecisionOutcome {
                 model: "test".to_owned(),
                 answers: DIMENSIONS
                     .iter()
                     .map(|dimension| {
                         (
                             dimension.id.to_owned(),
-                            ClassificationAnswer::Noul {
+                            DecisionAnswer::Noul {
                                 probability: assessment.value(dimension.id),
                             },
                         )
                     })
                     .collect::<BTreeMap<_, _>>(),
-                ..ClassificationOutcome::default()
+                ..DecisionOutcome::default()
             })
         }
     }
@@ -697,7 +697,7 @@ mod tests {
         answer: impl Fn(&Value) -> Result<Assessment, AgentLoopError> + Send + Sync + 'static,
     ) -> Foreman {
         Foreman::new(
-            Classifier::new("test", Answering(Box::new(answer))),
+            Decisions::new("test", Answering(Box::new(answer))),
             Duration::from_secs(5),
         )
     }
@@ -831,7 +831,7 @@ mod tests {
             "Anything.",
             workspace.path(),
             sessions(workspace.path(), slow_worker),
-            answering(|_| Err(AgentLoopError::llm("classifier service is down"))),
+            answering(|_| Err(AgentLoopError::llm("decision service is down"))),
             brisk(),
         )
         .run()

@@ -447,7 +447,7 @@ The refactor has landed; current implementations live at:
 - `crates/core/src/provider_resolution.rs`, `ProviderStore` + `ResolvedModel`
 - `crates/server/src/services/provider_resolver.rs`, fail-closed resolution (`resolve_service`)
 - `crates/server/src/services/model_sync.rs`, model discovery
-- `crates/server/src/domains/providers/credential_check.rs`, pre-store credential probe + failure classification
+- `crates/server/src/domains/providers/credential_check.rs`, pre-store credential probe + failure decision
 - `crates/server/src/api/providers.rs`, `crates/server/src/api/models.rs`, REST API
 - `crates/server/src/api/voice.rs`, realtime credential resolution (routed through `resolve_service`)
 - `crates/platform/src/connector.rs`, connector plugin trait

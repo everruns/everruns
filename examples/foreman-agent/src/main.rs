@@ -13,7 +13,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
-use everruns::{Classifier, Model};
+use everruns::{Decisions, Model};
 use everruns_example_demo::shell as demo;
 use everruns_foreman_agent::cli::{Cli, Command, Demo, Run};
 use everruns_foreman_agent::factory::{Outcome, Status};
@@ -109,8 +109,8 @@ async fn start_factory(
         None => sessions(workspace)?,
     };
     // TYPESAFE_API_KEY, declared by the TypeSafe integration.
-    let classifier = Classifier::new(agent::FOREMAN_MODEL, everruns::TypeSafeAI::from_env()?);
-    let foreman = Foreman::new(classifier, config.assessment_budget);
+    let decisions = Decisions::new(agent::FOREMAN_MODEL, everruns::TypeSafeAI::from_env()?);
+    let foreman = Foreman::new(decisions, config.assessment_budget);
 
     Ok(run::supervise(
         job,

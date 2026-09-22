@@ -1,6 +1,6 @@
 //! The deterministic half: what the numbers are allowed to do.
 //!
-//! The classifier estimates; it never commands. Every threshold, every
+//! The decision service estimates; it never commands. Every threshold, every
 //! resource limit, and the whole vocabulary of legal actions live here, in
 //! ordinary Rust that can be read, tested, and recalibrated without touching
 //! how evidence is assessed.
