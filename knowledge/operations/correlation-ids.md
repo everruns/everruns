@@ -69,16 +69,34 @@ The W3C `traceparent` / `tracestate` headers are handled automatically by the OT
 
 ```
 RequestIdLayer            ← outermost: extracts/generates request_id, stores in extensions, echoes in response
-  TraceLayer              ← reads request_id from extensions, creates span with request_id + session_id fields
-    CORS
-    Security headers
-      route_layer:        ← inner layers, run only for matched routes (MatchedPath populated)
-        http_access_log_layer  ← emits one INFO/WARN/DEBUG event per request with method, route, status, latency_ms, request_id
-        prometheus http_metrics_layer  ← records HTTP request duration histogram with matched-path labels
+  prometheus http_metrics_layer  ← records HTTP request duration histogram with matched-path labels
+  http_access_log_layer   ← emits one INFO/WARN/DEBUG event per request with method, route, status, latency_ms, request_id
+    TraceLayer            ← reads request_id from extensions, creates span with request_id + session_id fields
+      Security headers
+      CORS
         Handlers          ← record session_id on span; extract RequestId extension for CreateMessageContext
 ```
 
-The `RequestIdLayer` must sit outside `TraceLayer` so the span has the ID when it is created. The `http_access_log_layer` and prometheus middleware sit inside as `route_layer` so axum's `MatchedPath` extractor is populated before they run; this means completely unmatched paths (404 outside any route) are not logged via the access-log middleware but are still wrapped by the outer `TraceLayer` span.
+`RequestIdLayer` must sit outside everything that reads the ID: `TraceLayer`,
+which needs it when the span is created, and `http_access_log_layer`, which
+reads the extension directly. The access log and prometheus middleware are
+applied with `route_layer` so axum's `MatchedPath` extractor is populated before
+they run; completely unmatched paths (404 outside any route) are therefore not
+logged via the access-log middleware, though the `TraceLayer` span still records
+them. The access-log event is emitted outside that span rather than under it,
+which is why the middleware mirrors `request_id` as its own field instead of
+inheriting it.
+
+**The ordering trap.** Each `.layer()` / `.route_layer()` call wraps *outside*
+what came before, so the stack above is built bottom-up and the outermost
+middleware is the one applied **last**. Adding a new middleware that reads
+`RequestId` at the end of the chain puts it outside `RequestIdLayer`, where the
+extension does not exist yet and `unwrap_or_default()` silently yields `""`.
+That is EVE-1075: every production access-log line carried `request_id=""` for
+as long as the access log was applied after `RequestIdLayer`. Nothing caught it
+because the middleware's own tests injected the extension by hand and mounted
+one layer. `the_logged_request_id_is_the_one_the_response_echoes` in
+`crates/server/src/middleware/access_log.rs` now mounts both and pins the order.
 
 ---
 

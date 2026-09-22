@@ -53,6 +53,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Keeps cargo's stderr, so "the guard could not run" never looks like
+# "the guard found a violation". See guard-cargo.sh.
+source "$SCRIPT_DIR/guard-cargo.sh"
+
 FAILED=0
 
 # 1. Kernel sources: no platform-crate references (src, tests, and examples —
@@ -102,7 +106,7 @@ KERNEL_CRATES=(
   everruns-capability
 )
 for crate in "${KERNEL_CRATES[@]}"; do
-  tree=$(cargo tree -p "$crate" --edges normal,build,dev --prefix none 2>/dev/null)
+  tree=$(guard_cargo_tree -p "$crate" --edges normal,build,dev --prefix none)
   if echo "$tree" | grep -qE '^everruns-platform '; then
     echo "$crate must not depend on everruns-platform (any edge):"
     echo "$tree" | grep -E '^everruns-platform '
@@ -112,7 +116,7 @@ done
 
 # The reusable execution host is below the hosted product layer. Platform may
 # implement host extension ports; host must never import or ship platform.
-host_tree=$(cargo tree -p everruns-host --edges normal --prefix none 2>/dev/null)
+host_tree=$(guard_cargo_tree -p everruns-host --edges normal --prefix none)
 if echo "$host_tree" | grep -qE '^everruns-platform '; then
   echo "everruns-host must not depend on everruns-platform in its shipped graph:"
   echo "$host_tree" | grep -E '^everruns-platform '
@@ -136,7 +140,7 @@ PROVIDER_CRATES=(
   everruns-meta
 )
 for crate in "${PROVIDER_CRATES[@]}"; do
-  tree=$(cargo tree -p "$crate" --edges normal --prefix none 2>/dev/null)
+  tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)
   if echo "$tree" | grep -qE '^everruns-platform '; then
     echo "$crate must not ship everruns-platform in its normal dependency tree:"
     echo "$tree" | grep -E '^everruns-platform '

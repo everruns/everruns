@@ -3,7 +3,7 @@
 These examples use the [`everruns`](../README.md) crate.
 Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`;
 `capability_configuration`, `canonical_events`, `session_work`,
-`workspace_policy`, and `session_history` run entirely offline.
+`workspace_policy`, `ask_user`, and `session_history` run entirely offline.
 `workspace_heads` also runs offline against a local Git repository.
 `live_session`, `direct_llm`, and `model_catalog` default to offline stand-ins; add
 `--features openai` and `-- --live` to use a real model with API credentials.
@@ -19,6 +19,7 @@ Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`;
 | [`production_agent.rs`](production_agent.rs) | Tool safety boundary and production-shaped multi-turn use | `cargo run -p everruns --features openai --example production_agent` |
 | [`github_monitor.rs`](github_monitor.rs) | Host-owned background work that wakes an agent when it finishes | `cargo run -p everruns --features openai --example github_monitor -- --simulate` |
 | [`session_work.rs`](session_work.rs) | Session-owned work, leased delivery, and completion wakes | `cargo run -p everruns --example session_work` |
+| [`ask_user.rs`](ask_user.rs) | Structured questions answered by a host responder, and the unattended defaults path | `cargo run -p everruns --example ask_user` |
 | [`session_history.rs`](session_history.rs) | Durable local resume and bounded, event-derived history pages | `cargo run -p everruns --features local --example session_history` |
 | [`engine_sessions.rs`](engine_sessions.rs) | Concrete Engine ownership, isolated sessions, and engine-scoped resume | `cargo run -p everruns --example engine_sessions` |
 | [`workspace_heads.rs`](workspace_heads.rs) | Isolated Git-worktree heads, Environments, and durable session binding | `cargo run -p everruns --features local --example workspace_heads -- /path/to/repo /path/to/state` |

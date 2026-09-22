@@ -22,6 +22,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Keeps cargo's stderr, so "the guard could not run" never looks like
+# "the guard found a violation". See guard-cargo.sh.
+source "$SCRIPT_DIR/guard-cargo.sh"
+
 FAILED=0
 
 # 1. No test-support imports in production trees. Tests and examples
@@ -44,7 +48,7 @@ fi
 
 # 2. Core: no llmsim / host / test-support on ANY edge (including dev), so
 #    `cargo tree -p everruns-core` stays clean.
-CORE_TREE=$(cargo tree -p everruns-core --edges normal,build,dev --prefix none 2>/dev/null)
+CORE_TREE=$(guard_cargo_tree -p everruns-core --edges normal,build,dev --prefix none)
 if grep -qE '^(llmsim|everruns-llmsim|everruns-host|everruns-test-support) ' <<<"$CORE_TREE"; then
   echo "everruns-core must not depend on llmsim, everruns-llmsim, everruns-host, or everruns-test-support (any edge):"
   grep -E '^(llmsim|everruns-llmsim|everruns-host|everruns-test-support) ' <<<"$CORE_TREE"
@@ -63,7 +67,7 @@ PROVIDER_CRATES=(
   everruns-meta
 )
 for crate in "${PROVIDER_CRATES[@]}"; do
-  tree=$(cargo tree -p "$crate" --edges normal --prefix none 2>/dev/null)
+  tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)
   if grep -qE '^(llmsim|everruns-llmsim|everruns-test-support) ' <<<"$tree"; then
     echo "$crate must not ship simulator or test-support crates in its normal dependency tree:"
     grep -E '^(llmsim|everruns-llmsim|everruns-test-support) ' <<<"$tree"
@@ -116,7 +120,7 @@ fi
 # 4. Product binaries and the Framework facade use the focused simulator
 #    directly and must never ship testing/demo helpers.
 for crate in everruns-server everruns-worker everruns; do
-  tree=$(cargo tree -p "$crate" --edges normal --prefix none 2>/dev/null)
+  tree=$(guard_cargo_tree -p "$crate" --edges normal --prefix none)
   if grep -qE '^everruns-test-support ' <<<"$tree"; then
     echo "$crate must not ship everruns-test-support in its normal dependency tree:"
     grep -E '^everruns-test-support ' <<<"$tree"
