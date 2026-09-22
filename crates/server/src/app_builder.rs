@@ -30,14 +30,9 @@ use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::{
     ErrorReport, ErrorReporter, ErrorScope, EventListener, NoopErrorReporter, SharedErrorReporter,
 };
-use everruns_durable::{
-    InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
-};
+use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
 use everruns_host::observability::{BraintrustListener, OtelEventListener};
-use everruns_worker::{
-    AgentRunner, DurableTaskNotifier, RunnerBackend, TaskWorker, TaskWorkerConfig,
-    create_runner_with_backend,
-};
+use everruns_worker::{AgentRunner, DurableTaskNotifier, TaskWorker, TaskWorkerConfig};
 use serde::Serialize;
 use sqlx::PgPool;
 use std::future::Future;
@@ -55,7 +50,7 @@ use utoipa::OpenApi;
 type AuthFactoryFn =
     Box<dyn FnOnce(Arc<StorageBackend>, Arc<HostComposition>) -> Arc<dyn AuthBackend> + Send>;
 
-type MigrationFn =
+pub(crate) type MigrationFn =
     Box<dyn FnOnce(PgPool) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send>;
 
 type BackgroundTaskFn =
@@ -123,8 +118,8 @@ fn optional_connection_resolver(
         .map(|enc| build_connection_resolver(db, enc, auth_config, egress))
 }
 
-struct ServerTaskNotifier {
-    broadcaster: Arc<crate::task_notifications::TaskBroadcaster>,
+pub(crate) struct ServerTaskNotifier {
+    pub(crate) broadcaster: Arc<crate::task_notifications::TaskBroadcaster>,
 }
 
 #[async_trait]
@@ -132,125 +127,6 @@ impl DurableTaskNotifier for ServerTaskNotifier {
     async fn notify_task_available(&self, activity_type: &str) {
         self.broadcaster.notify_task_available(activity_type).await;
     }
-}
-
-struct StorageInit {
-    db: Arc<StorageBackend>,
-    runner: Arc<dyn AgentRunner>,
-    shared_durable_store: Option<Arc<InMemoryWorkflowEventStore>>,
-    database_url: Option<String>,
-    database_unpooled_url: Option<String>,
-    task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>,
-}
-
-async fn init_storage(config: &ServerConfig, migrations: Vec<MigrationFn>) -> Result<StorageInit> {
-    let database_unpooled_url = std::env::var("DATABASE_UNPOOLED_URL").ok();
-
-    if config.dev_mode {
-        tracing::info!("Starting in DEV MODE (in-memory storage, no PostgreSQL required)");
-
-        let db = Arc::new(StorageBackend::in_memory());
-        let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
-        let runner =
-            create_runner_with_backend(RunnerBackend::SharedInMemory(shared_store.clone()))
-                .await
-                .context("Failed to create in-memory agent runner")?;
-
-        tracing::info!(
-            "Using in-memory storage and durable execution engine with in-process worker"
-        );
-        return Ok(StorageInit {
-            db,
-            runner,
-            shared_durable_store: Some(shared_store),
-            database_url: None,
-            database_unpooled_url,
-            task_broadcaster: None,
-        });
-    }
-
-    let database_url =
-        std::env::var("DATABASE_URL").context("DATABASE_URL environment variable required")?;
-
-    // TM-NEW: Warn when DATABASE_URL lacks TLS in production.
-    if !database_url.contains("sslmode=") {
-        tracing::warn!(
-            "DATABASE_URL does not specify sslmode. \
-             For production, use sslmode=require or sslmode=verify-full \
-             to encrypt database connections."
-        );
-    } else if database_url.contains("sslmode=disable") {
-        tracing::warn!(
-            "DATABASE_URL has sslmode=disable — database connections are unencrypted. \
-             For production, use sslmode=require or sslmode=verify-full."
-        );
-    }
-
-    let backend = StorageBackend::postgres(&database_url)
-        .await
-        .context("Failed to connect to database")?;
-    tracing::info!("Connected to PostgreSQL database");
-
-    // Optional S3-compatible blob backend for file/image content offload
-    // (knowledge/runtime-resources/object-storage.md). Defaults to inline PostgreSQL storage.
-    let blob_store = crate::storage::blob_store::blob_store_from_env()
-        .context("Invalid object-storage configuration (STORAGE_S3_*)")?;
-    let backend = backend.with_blob_store(blob_store);
-
-    if !config.no_migrations {
-        tracing::info!("Running database migrations...");
-        let pool = backend.pool().expect("PostgreSQL backend should have pool");
-        if let Err(e) = sqlx::migrate!("./migrations").run(pool).await {
-            tracing::error!(
-                error = %e,
-                "Database migration failed - check migration files and database state"
-            );
-            return Err(e)
-                .context("Database migration failed - check migration files and database state");
-        }
-        tracing::info!("Database migrations complete");
-
-        for migration_fn in migrations {
-            if let Err(e) = migration_fn(pool.clone()).await {
-                tracing::error!(error = %e, "Custom database migration failed");
-                return Err(e);
-            }
-        }
-    } else {
-        tracing::info!("Skipping database migrations (--no-migrations)");
-    }
-
-    let pool = backend
-        .pool()
-        .expect("PostgreSQL backend should have pool")
-        .clone();
-    let task_broadcaster = crate::task_notifications::TaskBroadcaster::from_env(
-        Some(database_url.as_str()),
-        database_unpooled_url.as_deref(),
-    )
-    .await
-    .map(Arc::new);
-    let runner_backend = if let Some(broadcaster) = task_broadcaster.clone() {
-        RunnerBackend::PostgresWithNotifier {
-            pool,
-            task_notifier: Arc::new(ServerTaskNotifier { broadcaster }),
-        }
-    } else {
-        RunnerBackend::Postgres(pool)
-    };
-    let runner = create_runner_with_backend(runner_backend)
-        .await
-        .context("Failed to create agent runner")?;
-
-    tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
-    Ok(StorageInit {
-        db: Arc::new(backend),
-        runner,
-        shared_durable_store: None,
-        database_url: Some(database_url),
-        database_unpooled_url,
-        task_broadcaster,
-    })
 }
 
 fn spawn_background_tasks(
@@ -283,25 +159,6 @@ fn apply_personal_access_token_routes_wrap(
 // `form-action` must remain the LAST directive: the MCP OAuth consent page
 // extends it by appending the validated client redirect origin to this string
 // (see `auth::mcp_oauth::oauth_authorize`).
-pub(crate) const BASE_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
-
-fn permissions_policy_header_value(
-    voice_enabled: bool,
-    webmcp_enabled: bool,
-) -> axum::http::HeaderValue {
-    let tools = if webmcp_enabled {
-        "tools=(self)"
-    } else {
-        "tools=()"
-    };
-    let value = format!(
-        "camera=(), {}, geolocation=(), {tools}",
-        api::voice::microphone_permissions_policy_directive(voice_enabled),
-    );
-    axum::http::HeaderValue::from_str(&value)
-        .expect("permissions policy value is assembled from static directives")
-}
-
 // =========================================================================
 // ServerContext
 // =========================================================================
@@ -391,6 +248,8 @@ pub struct ServerAppBuilder {
     built_in_harnesses: Option<Vec<everruns_platform::BuiltInHarnessDefinition>>,
     connector_registry: Option<everruns_platform::connector::ConnectorRegistry>,
     email_sender: Option<Arc<dyn everruns_platform::email::EmailSender>>,
+    slack_app_provisioner:
+        Option<Arc<dyn everruns_platform::slack_provisioning::SlackAppProvisioner>>,
     extra_routes: Vec<Router>,
     event_listeners: Vec<Arc<dyn EventListener>>,
     error_reporter: Option<SharedErrorReporter>,
@@ -411,6 +270,7 @@ impl ServerAppBuilder {
             built_in_harnesses: None,
             connector_registry: None,
             email_sender: None,
+            slack_app_provisioner: None,
             extra_routes: Vec::new(),
             event_listeners: Vec::new(),
             error_reporter: None,
@@ -481,6 +341,19 @@ impl ServerAppBuilder {
     /// the shared `HostComposition` runtime surface.
     pub fn email_sender(mut self, sender: Arc<dyn everruns_platform::email::EmailSender>) -> Self {
         self.email_sender = Some(sender);
+        self
+    }
+
+    /// Supply the Slack app provisioner that backs one-click install (EVE-1069).
+    ///
+    /// The app configuration token it needs is a company credential, not
+    /// something a self-hosted deployment holds; unset, the install route
+    /// answers 501 and the copy-paste flow is unchanged.
+    pub fn slack_app_provisioner(
+        mut self,
+        provisioner: Arc<dyn everruns_platform::slack_provisioning::SlackAppProvisioner>,
+    ) -> Self {
+        self.slack_app_provisioner = Some(provisioner);
         self
     }
 
@@ -624,14 +497,14 @@ impl ServerAppBuilder {
         // Phase 1: Storage backend & runner
         // =====================================================================
         let migrations = self.migrations;
-        let StorageInit {
+        let crate::storage_init::StorageInit {
             db,
             runner,
             shared_durable_store,
             database_url,
             database_unpooled_url,
             task_broadcaster,
-        } = init_storage(&self.config, migrations).await?;
+        } = crate::storage_init::init_storage(&self.config, migrations).await?;
 
         // =====================================================================
         // Phase 2: Seed & infrastructure services
@@ -1671,7 +1544,17 @@ impl ServerAppBuilder {
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))
-            .merge(api::slack_events::routes(slack_state))
+            .merge(api::slack_events::routes(slack_state.clone()))
+            // One-click Slack install (EVE-1069); without a provisioner the
+            // route answers 501 and the copy-paste flow is unchanged.
+            .merge(api::slack_install::routes(
+                api::slack_install::SlackInstallState::new(
+                    slack_state,
+                    auth_state.clone(),
+                    auth_config.frontend_url.clone(),
+                    self.slack_app_provisioner.clone(),
+                ),
+            ))
             .merge(api::app_webhooks::routes(app_webhooks_state))
             .merge(api::app_a2a::routes(app_a2a_state))
             .merge(api::app_api::routes(app_api_state))
@@ -1886,11 +1769,16 @@ impl ServerAppBuilder {
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("permissions-policy"),
-                permissions_policy_header_value(feature_flags.voice, feature_flags.webmcp),
+                crate::security_headers::permissions_policy_header_value(
+                    feature_flags.voice,
+                    feature_flags.webmcp,
+                ),
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("content-security-policy"),
-                axum::http::HeaderValue::from_static(BASE_CONTENT_SECURITY_POLICY),
+                axum::http::HeaderValue::from_static(
+                    crate::security_headers::BASE_CONTENT_SECURITY_POLICY,
+                ),
             ));
 
         let app = app.layer(TraceLayer::new_for_http().make_span_with(
@@ -1970,6 +1858,7 @@ impl ServerAppBuilder {
             let grpc_connector_registry = connector_registry.clone();
             let grpc_provider_resolver = provider_resolver.clone();
             let grpc_permission_resolver = auth_state.permission_resolver.clone();
+            let grpc_sqldb_store = sqldb_store.clone();
             let grpc_org_rate_limiter = Arc::new(org_rate_limiter.clone());
 
             let grpc_task_broadcaster = task_broadcaster.clone();
@@ -1999,6 +1888,7 @@ impl ServerAppBuilder {
                     let grpc_connector_registry = grpc_connector_registry.clone();
                     let grpc_provider_resolver = grpc_provider_resolver.clone();
                     let grpc_permission_resolver = grpc_permission_resolver.clone();
+                    let grpc_sqldb_store = grpc_sqldb_store.clone();
                     let grpc_org_rate_limiter = grpc_org_rate_limiter.clone();
                     let grpc_task_broadcaster = grpc_task_broadcaster.clone();
                     let grpc_virtual_registry = grpc_virtual_registry.clone();
@@ -2020,6 +1910,8 @@ impl ServerAppBuilder {
                         }
                         grpc_svc.set_connector_registry(grpc_connector_registry);
                         grpc_svc.set_permission_resolver(grpc_permission_resolver);
+                        // EVE-1047: the worker and the HTTP routes share one store.
+                        grpc_svc.set_sqldb_store(grpc_sqldb_store);
                         grpc_svc.set_org_rate_limiter(grpc_org_rate_limiter);
                         // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
                         // Mitigation: Bearer token auth + optional mTLS validated before spawn.
@@ -2710,36 +2602,6 @@ mod tests {
         assert_eq!(config.stream_window, 2 * 1024 * 1024); // falls back to default
         assert_eq!(config.connection_window, 16 * 1024 * 1024); // falls back to default
         assert_eq!(config.max_concurrent_streams, 256); // not set, default
-    }
-
-    #[test]
-    fn permissions_policy_denies_microphone_by_default() {
-        assert_eq!(
-            permissions_policy_header_value(false, false)
-                .to_str()
-                .unwrap(),
-            "camera=(), microphone=(), geolocation=(), tools=()"
-        );
-    }
-
-    #[test]
-    fn permissions_policy_allows_microphone_when_voice_is_enabled() {
-        assert_eq!(
-            permissions_policy_header_value(true, false)
-                .to_str()
-                .unwrap(),
-            "camera=(), microphone=(self), geolocation=(), tools=()"
-        );
-    }
-
-    #[test]
-    fn permissions_policy_allows_same_origin_webmcp_when_enabled() {
-        assert_eq!(
-            permissions_policy_header_value(false, true)
-                .to_str()
-                .unwrap(),
-            "camera=(), microphone=(), geolocation=(), tools=(self)"
-        );
     }
 
     // EVE-401: embedders can layer route-specific middleware on the auto-mounted

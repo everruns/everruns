@@ -2,6 +2,7 @@
 //
 // Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (detail)
 
+use super::super::mcp_catalog::{McpServerAgentNamesRow, McpServerAgentUsageRow};
 use super::super::mcp_tool_cache::*;
 use super::super::models::*;
 use super::InMemoryDatabase;
@@ -9,6 +10,7 @@ use super::matches_search_tokens;
 use anyhow::Result;
 use anyhow::anyhow;
 use everruns_provider::typed_id::McpServerId;
+use std::collections::HashSet;
 use uuid::Uuid;
 
 /// Statuses that hold a name. Mirrors the partial unique index in
@@ -204,6 +206,151 @@ impl InMemoryDatabase {
             .collect();
         servers.sort_by_key(|server| std::cmp::Reverse(server.created_at));
         Ok(servers)
+    }
+
+    pub async fn list_mcp_server_agent_usage(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<McpServerAgentUsageRow>> {
+        let servers = self.mcp_servers.read();
+        let agents = self.agents.read();
+        let mut usage = servers
+            .values()
+            .filter(|server| server.org_id == org_id && server.status != "deleted")
+            .map(|server| {
+                let reference = format!("catalog:{}", server.name);
+                let used_by_agents = agents
+                    .values()
+                    .filter(|agent| {
+                        agent.org_id == org_id
+                            && agent.status == "active"
+                            && agent.archived_at.is_none()
+                            && agent.deleted_at.is_none()
+                            && agent.mcp_servers.as_object().is_some_and(|attachments| {
+                                attachments.values().any(|attachment| {
+                                    attachment.get("use").and_then(|value| value.as_str())
+                                        == Some(reference.as_str())
+                                })
+                            })
+                    })
+                    .count() as i64;
+                McpServerAgentUsageRow {
+                    mcp_server_id: server.id,
+                    used_by_agents,
+                }
+            })
+            .collect::<Vec<_>>();
+        usage.sort_by_key(|row| row.mcp_server_id.to_string());
+        Ok(usage)
+    }
+    pub async fn list_mcp_server_catalog_page(
+        &self,
+        org_id: i64,
+        cursor: Option<McpServerId>,
+        limit: i64,
+    ) -> Result<Vec<McpServerRow>> {
+        let mut servers = self
+            .mcp_servers
+            .read()
+            .values()
+            .filter(|server| server.org_id == org_id && server.status != "deleted")
+            .filter(|server| cursor.is_none_or(|cursor| server.id.uuid() < cursor.uuid()))
+            .cloned()
+            .collect::<Vec<_>>();
+        servers.sort_by_key(|server| std::cmp::Reverse(server.id.uuid()));
+        servers.truncate(limit.max(0) as usize);
+        Ok(servers)
+    }
+
+    pub async fn list_mcp_server_agent_usage_for_ids(
+        &self,
+        org_id: i64,
+        server_ids: &[Uuid],
+    ) -> Result<Vec<McpServerAgentUsageRow>> {
+        let selected = server_ids.iter().copied().collect::<HashSet<_>>();
+        let servers = self.mcp_servers.read();
+        let agents = self.agents.read();
+        Ok(servers
+            .values()
+            .filter(|server| {
+                server.org_id == org_id
+                    && server.status != "deleted"
+                    && selected.contains(&server.id.uuid())
+            })
+            .map(|server| {
+                let reference = format!("catalog:{}", server.name);
+                let used_by_agents = agents
+                    .values()
+                    .filter(|agent| {
+                        agent.org_id == org_id
+                            && agent.status == "active"
+                            && agent.archived_at.is_none()
+                            && agent.deleted_at.is_none()
+                            && agent.mcp_servers.as_object().is_some_and(|attachments| {
+                                attachments.values().any(|attachment| {
+                                    attachment.get("use").and_then(|value| value.as_str())
+                                        == Some(reference.as_str())
+                                })
+                            })
+                    })
+                    .count() as i64;
+                McpServerAgentUsageRow {
+                    mcp_server_id: server.id,
+                    used_by_agents,
+                }
+            })
+            .collect())
+    }
+
+    pub async fn get_mcp_server_agent_names(
+        &self,
+        org_id: i64,
+        server_id: McpServerId,
+        limit: i64,
+    ) -> Result<McpServerAgentNamesRow> {
+        let servers = self.mcp_servers.read();
+        let Some(server) = servers
+            .get(&server_id)
+            .filter(|server| server.org_id == org_id && server.status != "deleted")
+        else {
+            return Ok(McpServerAgentNamesRow {
+                agent_names: Vec::new(),
+                total_count: 0,
+            });
+        };
+        let reference = format!("catalog:{}", server.name);
+        let agents = self.agents.read();
+        let mut seen = HashSet::new();
+        let mut names = agents
+            .values()
+            .filter(|agent| {
+                agent.org_id == org_id
+                    && agent.status == "active"
+                    && agent.archived_at.is_none()
+                    && agent.deleted_at.is_none()
+                    && agent.mcp_servers.as_object().is_some_and(|attachments| {
+                        attachments.values().any(|attachment| {
+                            attachment.get("use").and_then(|value| value.as_str())
+                                == Some(reference.as_str())
+                        })
+                    })
+                    && seen.insert(agent.id)
+            })
+            .map(|agent| {
+                agent
+                    .display_name
+                    .clone()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or_else(|| agent.name.clone())
+            })
+            .collect::<Vec<_>>();
+        names.sort_by_key(|name| name.to_lowercase());
+        let total_count = names.len() as i64;
+        names.truncate(limit.max(0) as usize);
+        Ok(McpServerAgentNamesRow {
+            agent_names: names,
+            total_count,
+        })
     }
 
     pub async fn list_active_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {

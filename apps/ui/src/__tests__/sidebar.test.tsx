@@ -337,7 +337,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Memory")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Apps" })).not.toBeInTheDocument();
     expect(screen.getByText("Models")).toBeInTheDocument();
-    expect(screen.getByText("MCP servers")).toBeInTheDocument();
+    expect(screen.getByText("MCP")).toBeInTheDocument();
     expect(screen.getByText("Skills")).toBeInTheDocument();
     expect(screen.getByText("Capabilities")).toBeInTheDocument();
     expect(screen.getByText("Plugins")).toBeInTheDocument();
@@ -378,7 +378,7 @@ describe("Sidebar", () => {
     const capabilitiesLink = screen.getByRole("link", { name: "Capabilities" });
     const identitiesLink = screen.getByRole("link", { name: "Identities" });
     const knowledgeLink = screen.getByRole("link", { name: "Knowledge indexes" });
-    const mcpServersLink = screen.getByRole("link", { name: "MCP servers" });
+    const mcpServersLink = screen.getByRole("link", { name: "MCP" });
     const settingsLink = screen.getByRole("link", { name: "Settings" });
 
     expect(chatsLink).toHaveAttribute("href", "/chats");
@@ -401,7 +401,7 @@ describe("Sidebar", () => {
     expect(icon("Skills")).toHaveClass("lucide-book-open");
     expect(icon("Capabilities")).toHaveClass("lucide-blocks");
     expect(icon("Plugins")).toHaveClass("lucide-plug");
-    expect(icon("MCP servers")).toHaveAttribute("viewBox", "0 0 186 186");
+    expect(icon("MCP")).toHaveAttribute("viewBox", "0 0 186 186");
   });
 
   it("disables automatic viewport prefetch for every sidebar navigation link", () => {

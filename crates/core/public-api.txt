@@ -643,6 +643,7 @@ everruns_core::file_services::ResolvedFile	struct
 everruns_core::file_services::StoredFile	struct
 everruns_core::file_services::StoredFileInfo	struct
 everruns_core::finalized_tool_calls	module
+everruns_core::finalized_tool_calls::FinalizedToolCallRejection	struct
 everruns_core::finalized_tool_calls::FinalizedToolCallsContext	struct
 everruns_core::finalized_tool_calls::FinalizedToolCallsHook	trait
 everruns_core::guardrail_checks	module

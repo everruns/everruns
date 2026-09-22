@@ -15,12 +15,20 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::{Caller, McpServer, ResourceConfigResponse, evaluate_policies_with};
+use everruns_provider::typed_id::McpServerId;
 
-use super::common::{ApiResult, ErrorResponse, ListResponse, WithUrls, impl_auth_state};
+use super::common::{
+    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
+};
 use super::dispatch::{Dispatchable, impl_dispatchable};
+use super::pagination::bounded_page_limit;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
+
+const USAGE_AGENT_NAME_LIMIT: i64 = 25;
+const CATALOG_DEFAULT_LIMIT: u32 = 50;
+const CATALOG_MAX_LIMIT: u32 = 100;
 
 /// Query parameters for listing MCP servers.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
@@ -29,6 +37,50 @@ pub struct ListMcpServersQuery {
     pub search: Option<String>,
     /// Include archived MCP servers. Deleted MCP servers never appear in lists.
     pub include_archived: Option<bool>,
+}
+
+/// One page of MCP server catalog entries for the selected organization.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct McpServerCatalogResponse {
+    /// MCP server presets in this page.
+    #[schema(example = json!([{"id": "mcp_01933b5a00007000800000000000001", "name": "microsoft_learn", "url": "https://learn.microsoft.com/api/mcp", "used_by_agents": 2}]))]
+    pub data: Vec<McpServerCatalogEntry>,
+    /// Cursor for the next page, or null when this is the final page.
+    #[schema(example = "mcp_01933b5a00007000800000000000001")]
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, IntoParams)]
+pub struct ListMcpServerCatalogQuery {
+    /// Continue after this MCP server ID.
+    pub cursor: Option<String>,
+    /// Page size (default: 50, max: 100).
+    pub limit: Option<u32>,
+}
+
+/// MCP server preset with its active-agent usage count.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct McpServerCatalogEntry {
+    /// MCP server preset and its resource URLs.
+    #[serde(flatten)]
+    pub server: WithUrls<McpServer>,
+    /// Number of active agents that use this preset.
+    #[schema(example = 2)]
+    pub used_by_agents: i64,
+}
+
+/// Bounded archive-impact summary for an MCP server preset.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct McpServerUsageResponse {
+    /// Names of active agents that use the preset, up to the response limit.
+    #[schema(example = json!(["Docs agent", "Research agent"]))]
+    pub agent_names: Vec<String>,
+    /// Total number of active agents that use the preset.
+    #[schema(example = 2)]
+    pub total_count: i64,
+    /// Whether additional agent names were omitted from the bounded list.
+    #[schema(example = false)]
+    pub truncated: bool,
 }
 
 /// Response for a simple MCP server config (matches Claude Desktop format)
@@ -88,6 +140,11 @@ pub fn routes(state: AppState) -> Router {
             post(create_mcp_server).get(list_mcp_servers),
         )
         .route("/v1/mcp-servers/config", get(mcp_server_config))
+        .route("/v1/mcp-servers/catalog", get(list_mcp_server_catalog))
+        .route(
+            "/v1/mcp-servers/{server_id}/usage",
+            get(get_mcp_server_usage),
+        )
         .route(
             "/v1/mcp-servers/{server_id}",
             get(get_mcp_server)
@@ -171,6 +228,136 @@ pub async fn list_mcp_servers(
             include_archived: query.include_archived.unwrap_or(false),
         })
         .await
+}
+
+#[utoipa::path(
+    description = "List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization.",
+    get,
+    path = "/v1/mcp-servers/catalog",
+    params(ListMcpServerCatalogQuery),
+    responses(
+        (status = 200, description = "Cursor-paginated MCP server catalog with active-agent usage counts", body = McpServerCatalogResponse),
+        (status = 400, description = "Invalid cursor or limit", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse),
+    ),
+    tag = "mcp-servers"
+)]
+pub async fn list_mcp_server_catalog(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Query(query): Query<ListMcpServerCatalogQuery>,
+) -> Result<Json<McpServerCatalogResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let caller = Caller::from(&org);
+    MCP_SERVER_VIEW
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(|error| ErrorResponse::new(error.message).into_response(StatusCode::FORBIDDEN))?;
+    let limit = bounded_page_limit(query.limit, CATALOG_DEFAULT_LIMIT, CATALOG_MAX_LIMIT)
+        .map_err(|message| ErrorResponse::new(message).into_response(StatusCode::BAD_REQUEST))?;
+    let cursor = query
+        .cursor
+        .map(|cursor| {
+            cursor.parse::<McpServerId>().map_err(|_| {
+                ErrorResponse::new("Invalid catalog cursor").into_response(StatusCode::BAD_REQUEST)
+            })
+        })
+        .transpose()?;
+    let mut servers = state
+        .db
+        .list_mcp_server_catalog_page(org.org_id, cursor, i64::from(limit) + 1)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "failed to list MCP catalog");
+            ErrorResponse::internal_error()
+        })?;
+    let has_more = servers.len() > limit as usize;
+    if has_more {
+        servers.truncate(limit as usize);
+    }
+    let next_cursor = has_more
+        .then(|| servers.last().map(|server| server.id.to_string()))
+        .flatten();
+    let server_ids = servers
+        .iter()
+        .map(|server| server.id.uuid())
+        .collect::<Vec<_>>();
+    let usage = state
+        .db
+        .list_mcp_server_agent_usage_for_ids(org.org_id, &server_ids)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "failed to load MCP catalog usage");
+            ErrorResponse::internal_error()
+        })?
+        .into_iter()
+        .map(|row| (row.mcp_server_id, row.used_by_agents))
+        .collect::<std::collections::HashMap<_, _>>();
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    let data = servers
+        .into_iter()
+        .map(|row| {
+            let used_by_agents = usage.get(&row.id).copied().unwrap_or_default();
+            McpServerCatalogEntry {
+                server: urls.wrap(crate::domains::mcp_servers::queries::row_to_mcp_server(
+                    &row,
+                )),
+                used_by_agents,
+            }
+        })
+        .collect();
+    Ok(Json(McpServerCatalogResponse { data, next_cursor }))
+}
+
+#[utoipa::path(
+    description = "Get the bounded active-agent impact summary used before archiving an MCP server preset.",
+    get,
+    path = "/v1/mcp-servers/{server_id}/usage",
+    params(("server_id" = String, Path, description = "MCP server ID")),
+    responses(
+        (status = 200, description = "Bounded active-agent archive impact", body = McpServerUsageResponse),
+        (status = 400, description = "Invalid MCP server ID", body = ErrorResponse),
+        (status = 403, description = "Permission denied", body = ErrorResponse),
+        (status = 404, description = "MCP server not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse),
+    ),
+    tag = "mcp-servers"
+)]
+pub async fn get_mcp_server_usage(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(server_id): Path<String>,
+) -> Result<Json<McpServerUsageResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let caller = Caller::from(&org);
+    MCP_SERVER_VIEW
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(|error| ErrorResponse::new(error.message).into_response(StatusCode::FORBIDDEN))?;
+    let server_id = server_id.parse::<McpServerId>().map_err(|error| {
+        ErrorResponse::new(format!("Invalid MCP server ID: {error}"))
+            .into_response(StatusCode::BAD_REQUEST)
+    })?;
+    state
+        .db
+        .get_mcp_server(org.org_id, server_id.uuid())
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "failed to load MCP server for usage");
+            ErrorResponse::internal_error()
+        })?
+        .filter(|server| server.status != "deleted")
+        .ok_or_else(|| ErrorResponse::not_found("MCP server"))?;
+    let usage = state
+        .db
+        .get_mcp_server_agent_names(org.org_id, server_id, USAGE_AGENT_NAME_LIMIT)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "failed to load MCP server usage");
+            ErrorResponse::internal_error()
+        })?;
+    Ok(Json(McpServerUsageResponse {
+        truncated: usage.total_count > usage.agent_names.len() as i64,
+        agent_names: usage.agent_names,
+        total_count: usage.total_count,
+    }))
 }
 
 /// GET /v1/mcp-servers/{server_id} - Get MCP server by ID

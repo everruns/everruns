@@ -247,6 +247,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::environments::list_environment_targets,
         api::mcp_servers::create_mcp_server,
         api::mcp_servers::list_mcp_servers,
+        api::mcp_servers::list_mcp_server_catalog,
+        api::mcp_servers::get_mcp_server_usage,
         api::mcp_servers::get_mcp_server,
         api::mcp_servers::update_mcp_server,
         api::mcp_servers::delete_mcp_server,
@@ -321,6 +323,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::providers::provider_config,
         api::models::model_config,
         api::mcp_servers::mcp_server_config,
+        api::user_connections::mcp_connections::list_mcp_connections,
         // Users - additional
         api::users::switch_org,
         api::users::update_profile,
@@ -426,6 +429,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         // Client-side tool results
         api::tool_results::submit_tool_results,
         api::mcp_url_consent::submit_elicitation_consent,
+        api::question_answers::submit_question_answers,
         // Skills
         api::skills::create_skill,
         api::skills::upload_skill,
@@ -607,6 +611,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::mcp_url_consent::ElicitationConsentRequest,
             api::mcp_url_consent::ConsentAction,
             api::mcp_url_consent::ElicitationConsentResponse,
+            api::question_answers::QuestionAnswersRequest,
+            api::question_answers::QuestionAnswersResponse,
+            api::question_answers::SubmittedAnswer,
+            api::question_answers::SubmittedStatus,
             // MCP Server types
             McpServer, McpServerStatus, McpServerTransportType,
             everruns_core::mcp_server::McpToolAnnotations,
@@ -674,7 +682,12 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::budgets::TopUpRequest,
             domains::budgets::ResumeSessionBudgetsResult,
             api::user_connections::ConnectionResponse,
+            api::user_connections::mcp_connections::UserMcpConnectionResponse,
+            api::user_connections::mcp_connections::UserMcpConnectionsResponse,
             api::user_connections::ApiKeyConnectionRequest,
+            api::mcp_servers::McpServerCatalogEntry,
+            api::mcp_servers::McpServerCatalogResponse,
+            api::mcp_servers::McpServerUsageResponse,
             api::knowledge_bases::CreateKnowledgeBaseRequest,
             api::knowledge_bases::UpdateKnowledgeBaseRequest,
             api::knowledge_bases::ListKnowledgeBasesQuery,

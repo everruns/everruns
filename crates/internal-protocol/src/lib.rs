@@ -12,18 +12,19 @@
 // Decision: Proto is transport layer, Rust schemas remain source of truth
 
 mod capability_wire;
+mod credential_fingerprint;
 mod json_wire;
+#[cfg(test)]
+mod rolling_upgrade_tests;
 mod slack_action_wire;
-
 use chrono::{DateTime, TimeZone, Utc};
 use everruns_provider::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 
-// Generated protobuf code
 pub mod proto {
     tonic::include_proto!("everruns.internal");
 }
 
-// Re-export for convenience
+pub use credential_fingerprint::credential_fingerprint;
 pub use json_wire::{
     json_array_to_proto_list, json_object_to_proto_struct, json_to_proto_list,
     json_to_proto_struct, json_to_proto_value, proto_list_to_json, proto_struct_to_json,
@@ -31,7 +32,6 @@ pub use json_wire::{
 };
 pub use proto::worker_service_client::WorkerServiceClient;
 pub use proto::worker_service_server::{WorkerService, WorkerServiceServer};
-
 // ============================================================================
 // Error types
 // ============================================================================

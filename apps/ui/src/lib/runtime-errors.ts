@@ -56,14 +56,19 @@ export function localizeRuntimeError(
   if (!error?.code) return fallback;
 
   const localized = localizeRuntimeErrorBase(locale, error, fallback);
-  if (localized === fallback) return localized;
+  const budgetId =
+    error.code === "budget_exhausted" || error.code === "budget_paused"
+      ? stringField(error.fields, "budget_id")
+      : undefined;
+  const traced = budgetId ? `${localized}\n\nBudget ID: ${budgetId}` : localized;
+  if (localized === fallback) return traced;
 
   // Detailed disclosure mode attaches the underlying provider error as a
   // `detail` field; the backend fallback text already includes it, so append
   // it only when the text was replaced with a localized template.
   const detail = stringField(error.fields, "detail");
-  if (!detail) return localized;
-  return `${localized}\n\n${formatMessage(locale, "runtime_error_details_label")}: ${detail}`;
+  if (!detail) return traced;
+  return `${traced}\n\n${formatMessage(locale, "runtime_error_details_label")}: ${detail}`;
 }
 
 function localizeRuntimeErrorBase(

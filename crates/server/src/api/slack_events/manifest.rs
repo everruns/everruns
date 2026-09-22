@@ -39,7 +39,32 @@ pub(crate) async fn handle_slack_manifest(
     target: SlackTarget,
 ) -> Result<Json<ManifestResponse>, (StatusCode, Json<ErrorResponse>)> {
     let (app, slack_channel) = resolve_slack_channel(&state, target).await?;
+    let manifest_yaml = manifest_yaml_for_endpoint(&state, &app, &slack_channel).await?;
 
+    // URL-encode the manifest for the Slack "create from manifest" URL
+    let encoded = urlencoding_encode(&manifest_yaml);
+    let create_url = format!(
+        "https://api.slack.com/apps?new_app=1&manifest_yaml={}",
+        encoded
+    );
+
+    Ok(Json(ManifestResponse {
+        manifest_yaml,
+        create_url,
+    }))
+}
+
+/// The manifest YAML for one resolved endpoint.
+///
+/// Split out of the handler so the one-click install path (`slack_install`)
+/// creates the app from exactly the manifest the copy-paste flow serves —
+/// the PoC's finding that `apps.manifest.create` accepts it whole only holds
+/// if the two cannot drift.
+pub(crate) async fn manifest_yaml_for_endpoint(
+    state: &SlackState,
+    app: &crate::api::app_ingress::IngressContext,
+    slack_channel: &crate::api::app_ingress::IngressEndpoint,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     // A config we cannot parse still produces the channel-bot manifest rather than
     // a 500: the agent surface is additive, so defaulting it off is the safe read.
     let agent_surface_enabled =
@@ -52,7 +77,7 @@ pub(crate) async fn handle_slack_manifest(
     // Suggested prompts come from the exposure's conversation starters (EVE-978).
     // Only the agent surface renders them, so nothing is loaded when it is off.
     let starters = if agent_surface_enabled {
-        resolve_manifest_starters(&state, &app).await
+        resolve_manifest_starters(state, app).await
     } else {
         Vec::new()
     };
@@ -72,17 +97,7 @@ pub(crate) async fn handle_slack_manifest(
         &starters,
     );
 
-    // URL-encode the manifest for the Slack "create from manifest" URL
-    let encoded = urlencoding_encode(&manifest_yaml);
-    let create_url = format!(
-        "https://api.slack.com/apps?new_app=1&manifest_yaml={}",
-        encoded
-    );
-
-    Ok(Json(ManifestResponse {
-        manifest_yaml,
-        create_url,
-    }))
+    Ok(manifest_yaml)
 }
 
 /// This server's Slack webhook endpoint for one channel.

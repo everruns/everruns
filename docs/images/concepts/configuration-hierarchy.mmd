@@ -9,9 +9,9 @@ graph LR
 
     RuntimeAgent -.->|executes in| Session
 
-    App -->|uses| Harness
-    App -->|uses| Agent
-    App -.->|creates| Session
+    Endpoint -->|inherits| Harness
+    Endpoint -->|belongs to| Agent
+    Endpoint -.->|creates| Session
 
     classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
     classDef assembly fill:#ffd6a5,stroke:#e07b39,color:#5a3000
@@ -21,4 +21,4 @@ graph LR
     class Harness,Agent,Capability config
     class RuntimeAgent assembly
     class Session runtime
-    class App deploy
+    class Endpoint deploy

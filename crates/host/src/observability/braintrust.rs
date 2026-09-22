@@ -2313,6 +2313,29 @@ mod tests {
         TurnCompletedData, TurnStartedData,
     };
     use everruns_core::message::RuntimeMessage;
+
+    /// A successful generation that reported nothing but its model.
+    ///
+    /// Four tests built this same literal inline. They care about event
+    /// conversion, not metadata, so the shape is noise at the call site and a
+    /// place to forget a field every time one is added.
+    fn bare_generation_metadata(model: &str) -> LlmGenerationMetadata {
+        LlmGenerationMetadata {
+            model: model.to_string(),
+            provider: None,
+            response_model: None,
+            usage: None,
+            duration_ms: None,
+            time_to_first_token_ms: None,
+            success: true,
+            error: None,
+            finish_reasons: None,
+            response_id: None,
+            retry: None,
+            compaction: None,
+            request_options: None,
+        }
+    }
     use everruns_provider::tool_types::ToolCall;
     use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use serde_json::json;
@@ -2446,6 +2469,7 @@ mod tests {
             metadata: LlmGenerationMetadata {
                 model: "gpt-4".to_string(),
                 provider: Some("openai".to_string()),
+                response_model: None,
                 usage: Some(TokenUsage {
                     input_tokens: 10,
                     output_tokens: 5,
@@ -2684,20 +2708,7 @@ mod tests {
                 text: Some("Hi!".to_string()),
                 tool_calls: vec![],
             },
-            metadata: LlmGenerationMetadata {
-                model: "gpt-4".to_string(),
-                provider: None,
-                usage: None,
-                duration_ms: None,
-                time_to_first_token_ms: None,
-                success: true,
-                error: None,
-                finish_reasons: None,
-                response_id: None,
-                retry: None,
-                compaction: None,
-                request_options: None,
-            },
+            metadata: bare_generation_metadata("gpt-4"),
         };
         let event = Event::new(
             SessionId::new(),
@@ -2966,20 +2977,7 @@ mod tests {
                 text: Some("hi".to_string()),
                 tool_calls: vec![],
             },
-            metadata: LlmGenerationMetadata {
-                model: "gpt-4".to_string(),
-                provider: None,
-                usage: None,
-                duration_ms: None,
-                time_to_first_token_ms: None,
-                success: true,
-                error: None,
-                finish_reasons: None,
-                response_id: None,
-                retry: None,
-                compaction: None,
-                request_options: None,
-            },
+            metadata: bare_generation_metadata("gpt-4"),
         };
         let llm_event = Event::new(
             SessionId::new(),
@@ -3587,20 +3585,7 @@ mod tests {
                     arguments: json!({"query": "rust"}),
                 }],
             },
-            metadata: LlmGenerationMetadata {
-                model: "gpt-4".to_string(),
-                provider: None,
-                usage: None,
-                duration_ms: None,
-                time_to_first_token_ms: None,
-                success: true,
-                error: None,
-                finish_reasons: None,
-                response_id: None,
-                retry: None,
-                compaction: None,
-                request_options: None,
-            },
+            metadata: bare_generation_metadata("gpt-4"),
         };
 
         let output = listener.llm_output_payload(&data).unwrap();
@@ -3639,20 +3624,7 @@ mod tests {
                     arguments: json!({"token": "shh", "path": "/tmp/out"}),
                 }],
             },
-            metadata: LlmGenerationMetadata {
-                model: "gpt-4".to_string(),
-                provider: None,
-                usage: None,
-                duration_ms: None,
-                time_to_first_token_ms: None,
-                success: true,
-                error: None,
-                finish_reasons: None,
-                response_id: None,
-                retry: None,
-                compaction: None,
-                request_options: None,
-            },
+            metadata: bare_generation_metadata("gpt-4"),
         };
 
         let input = listener.llm_input_payload(&data).unwrap();

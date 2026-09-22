@@ -23,6 +23,20 @@ jest.mock("@/hooks/use-agent-triggers", () => ({
         created_at: "2026-07-17T00:00:00Z",
         updated_at: "2026-07-17T00:00:00Z",
       } satisfies AgentTrigger,
+      {
+        id: "trg_webhook",
+        agent_id: "agent_123",
+        trigger_type: "webhook",
+        ingress_id: "appchan_webhook",
+        config: {
+          token_configured: true,
+          session_mode: "shared_session",
+          message: "Process {{payload}}",
+        },
+        enabled: true,
+        created_at: "2026-07-17T00:00:00Z",
+        updated_at: "2026-07-17T00:00:00Z",
+      } satisfies AgentTrigger,
     ],
     isLoading: false,
   }),
@@ -50,13 +64,16 @@ describe("AgentTriggersPanel", () => {
     render(<AgentTriggersPanel agentId="agent_123" />);
 
     expect(screen.getByText("At 30 minutes past the hour · America/Chicago")).toBeInTheDocument();
-    expect(screen.getByText("Prepare the hourly report")).toBeInTheDocument();
+    expect(screen.getAllByText("Prepare the hourly report").length).toBeGreaterThan(0);
     expect(screen.getByText("New session per run")).toBeInTheDocument();
     expect(screen.getByText("completed")).toBeInTheDocument();
+    expect(screen.getByText("Webhook")).toBeInTheDocument();
+    expect(screen.getByText("Token Configured")).toBeInTheDocument();
+    expect(screen.getAllByText(/\/api\/v1\/e\/appchan_webhook\/webhook/).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Run now" }));
-    fireEvent.click(screen.getByRole("switch", { name: "Disable trigger" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete trigger" }));
+    fireEvent.click(screen.getAllByRole("switch", { name: "Disable trigger" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete trigger" })[0]);
 
     expect(run).toHaveBeenCalledWith("trg_123");
     expect(update).toHaveBeenCalledWith({ triggerId: "trg_123", request: { enabled: false } });

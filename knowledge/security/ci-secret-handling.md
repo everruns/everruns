@@ -64,6 +64,17 @@ Two decisions in the scanner are load-bearing and non-obvious:
   there invisible to the log scan too, so the examples give up the credential shape instead, guarded
   by a fixture in [`scripts/test-actions-log-secret-scan.sh`](../../scripts/test-actions-log-secret-scan.sh).
 
+- **When the source is immutable, cut the route instead.** A commit message is history: a
+  credential shape quoted in one — a placeholder, a key being discussed — cannot be reshaped after
+  the fact. `release.yml`'s `check-release` handed `github.event.head_commit.message` to a step
+  through `env:`, and the runner prints an `env:` entry verbatim, so every merged PR description was
+  republished into a public log on every push to `main`. That is what turned the sweep red on
+  commit `d6f65f8`, whose body quotes the very placeholder the commit removed. The job only needed a
+  boolean, so it now gets one from a `startsWith` expression and the message never reaches a log.
+  The general rule still points the other way — binding event text to `env:` is what keeps it out of
+  `run:` where it would be an injection vector — so this is not a blanket prohibition: prefer a
+  derived value when the step does not need the text itself.
+
 - **A prefix rule needs a left boundary.** `sk-` with no boundary matched inside
   the ordinary word "ask-", so a PR body linking
   `linear.app/.../EVE-1053/ask-user-capability-contract-schema-and-knowledge-spec`
