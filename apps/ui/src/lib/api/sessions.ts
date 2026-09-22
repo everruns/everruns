@@ -436,17 +436,10 @@ export interface SubmittedQuestionAnswer {
   other_text: string | null;
 }
 
-export interface QuestionAnswersRequest {
-  tool_call_id: string;
-  status: "answered" | "declined";
-  answers: SubmittedQuestionAnswer[];
-}
-
-export interface QuestionAnswersResponse {
-  answered_by: string;
-  session_status: string;
-  status: string;
-}
+// Hand-written against the planned contract before the endpoint existed; the
+// generated pair is now authoritative and carries the same names, so keeping
+// both made `lib/api/index.ts` re-export an ambiguous symbol.
+import type { QuestionAnswersRequest, QuestionAnswersResponse } from "./schema-types";
 
 export async function submitQuestionAnswers(
   sessionId: string,
