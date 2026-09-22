@@ -31,12 +31,12 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 // ============================================================================
 
 #[rstest]
-// Current Anthropic models only: Fable 5.1, Opus 5 and Sonnet 5 surface
+// Current Anthropic models only: Fable 5.1, Opus 5.5 and Sonnet 5 surface
 // reasoning on the private `thinking` field, which is what this assertion
 // checks. The superseded `claude-opus-4-7` alias returned its reasoning as
 // public response text with an empty private field (observed 6/6 on main).
 #[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
-#[case::anthropic_opus5(ANTHROPIC_OPUS5)]
+#[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
@@ -225,7 +225,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 
 #[rstest]
 #[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
-#[case::anthropic_opus5(ANTHROPIC_OPUS5)]
+#[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]

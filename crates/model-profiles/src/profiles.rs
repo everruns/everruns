@@ -166,7 +166,7 @@ fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
 }
 
 /// Adaptive thinking config for recent Claude reasoning models
-/// (Fable 5.1, Fable 5, Opus 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
+/// (Fable 5.1, Fable 5, Opus 5.5, Opus 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
 /// Uses thinking.type="adaptive" with effort parameter instead of budget_tokens
 /// Default: high, supports: low, medium, high, max (mapped to xhigh)
 fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
@@ -384,6 +384,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     // Anthropic
     md(&["claude-fable-5-1"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-5-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-8"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7"], ModelVendor::Anthropic, ANTHROPIC),
@@ -394,6 +395,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     // `anthropic_1m_variant` for how their profiles are derived.
     md(&["claude-fable-5-1[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-5-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-8[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7[1m]"], ModelVendor::Anthropic, ANTHROPIC),
@@ -2611,6 +2613,7 @@ fn anthropic_family_supports_tool_search(family: &str) -> bool {
         family,
         "claude-fable-5-1"
             | "claude-fable-5"
+            | "claude-opus-5-5"
             | "claude-opus-5"
             | "claude-opus-4-8"
             | "claude-opus-4-7"
@@ -2734,7 +2737,54 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             supports_phases: false,
         }),
 
-        // Claude Opus 5 (current Opus; below Fable 5.1, above Opus 4.8)
+        // Claude Opus 5.5 (current Opus; successor to Opus 5 at a lower price)
+        // Source: Anthropic model card (claude-api skill). Same 200K/1M-twin context,
+        // 128K output, and tokenizer as Opus 5 at $4/$20 (cache-read $0.20).
+        // Thinking cannot be disabled (adaptive only; omitting `thinking` still
+        // runs adaptive), sampling parameters are removed (`temperature: false`),
+        // and forced `tool_choice` any/tool returns 400 — the driver only sends
+        // `auto`. The API's default effort is `medium`, one below Opus 5's `high`;
+        // the profile keeps `high` so effort is always sent explicitly.
+        "claude-opus-5-5" => Some(ModelProfile {
+            name: "Claude Opus 5.5".into(),
+            family: "claude-opus-5-5".into(),
+            description: None,
+            release_date: None,
+            last_updated: None,
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 4.00,
+                output: 20.00,
+                cache_read: Some(0.20),
+                cache_write: None,
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                // Bare id is the 200K profile; `claude-opus-5-5[1m]` is the 1M twin.
+                context: 200_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
+
+        // Claude Opus 5 (previous Opus; below Opus 5.5, above Opus 4.8)
         // Source: Anthropic model card (claude-api skill `shared/models.md`) and
         // docs.claude.com — Opus 5 is not yet in models.dev. A drop-in upgrade at
         // Opus 4.8's pricing ($5/$25, cache-read $0.50) with the same 200K/1M-twin
@@ -2915,6 +2965,9 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             anthropic_profile_data("claude-fable-5-1").map(anthropic_1m_variant)
         }
         "claude-fable-5[1m]" => anthropic_profile_data("claude-fable-5").map(anthropic_1m_variant),
+        "claude-opus-5-5[1m]" => {
+            anthropic_profile_data("claude-opus-5-5").map(anthropic_1m_variant)
+        }
         "claude-opus-5[1m]" => anthropic_profile_data("claude-opus-5").map(anthropic_1m_variant),
         "claude-opus-4-8[1m]" => {
             anthropic_profile_data("claude-opus-4-8").map(anthropic_1m_variant)
@@ -3501,6 +3554,10 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+#[path = "profiles_claude_tests.rs"]
+mod claude_tests;
 
 #[cfg(test)]
 mod tests {
@@ -4386,108 +4443,7 @@ mod tests {
 
     // Newly added flagship model profiles
 
-    #[test]
-    fn test_claude_opus_4_8_1m_variant() {
-        // `[1m]` is the large-context twin: same flat pricing, 1M context,
-        // "(1M)" display suffix, shared family for grouping.
-        let base = get_model_profile("anthropic", "claude-opus-4-8").unwrap();
-        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
-
-        let m1 = get_model_profile("anthropic", "claude-opus-4-8[1m]").unwrap();
-        assert_eq!(m1.name, "Claude Opus 4.8 (1M)");
-        assert_eq!(m1.family, "claude-opus-4-8");
-        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-        assert_eq!(m1.limits.as_ref().unwrap().output, 128_000);
-
-        // Flat standard pricing — Anthropic serves the 1M window with no
-        // long-context premium, so cost matches the 200K base exactly.
-        let (base_cost, m1_cost) = (base.cost.unwrap(), m1.cost.unwrap());
-        assert_eq!(m1_cost.input, base_cost.input);
-        assert_eq!(m1_cost.output, base_cost.output);
-        assert_eq!(m1_cost.cache_read, base_cost.cache_read);
-        assert!(m1_cost.cost_tiers.is_empty());
-    }
-
-    #[test]
-    fn test_claude_opus_5_1m_variant() {
-        let base = get_model_profile("anthropic", "claude-opus-5").unwrap();
-        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
-
-        let m1 = get_model_profile("anthropic", "claude-opus-5[1m]").unwrap();
-        assert_eq!(m1.name, "Claude Opus 5 (1M)");
-        assert_eq!(m1.family, "claude-opus-5");
-        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-        assert_eq!(m1.limits.as_ref().unwrap().output, 128_000);
-
-        // Flat standard pricing — the 1M window carries no long-context premium,
-        // so cost matches the 200K base exactly.
-        let (base_cost, m1_cost) = (base.cost.unwrap(), m1.cost.unwrap());
-        assert_eq!(m1_cost.input, base_cost.input);
-        assert_eq!(m1_cost.output, base_cost.output);
-        assert_eq!(m1_cost.cache_read, base_cost.cache_read);
-        assert!(m1_cost.cost_tiers.is_empty());
-    }
-
-    #[test]
-    fn test_claude_fable_5_1m_variant() {
-        let base = get_model_profile("anthropic", "claude-fable-5").unwrap();
-        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
-
-        let m1 = get_model_profile("anthropic", "claude-fable-5[1m]").unwrap();
-        assert_eq!(m1.name, "Claude Fable 5 (1M)");
-        assert_eq!(m1.family, "claude-fable-5");
-        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-        assert_eq!(m1.cost.unwrap().input, base.cost.unwrap().input);
-    }
-
-    #[test]
-    fn test_claude_fable_5_1_profile_and_1m_variant() {
-        // `claude-fable-5-1` is its own family: the `-1` is not a version
-        // suffix, so it must not fall back to the Fable 5 descriptor.
-        let base = get_model_profile("anthropic", "claude-fable-5-1").unwrap();
-        assert_eq!(base.name, "Claude Fable 5.1");
-        assert_eq!(base.family, "claude-fable-5-1");
-        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
-        assert!(base.reasoning);
-        assert!(!base.temperature);
-        assert!(base.tool_search);
-        let base_cost = base.cost.as_ref().unwrap();
-        let fable_5_cost = get_model_profile("anthropic", "claude-fable-5")
-            .unwrap()
-            .cost
-            .unwrap();
-        // Same per-token price as Fable 5; cache reads are a quarter of it.
-        assert_eq!(base_cost.input, fable_5_cost.input);
-        assert_eq!(base_cost.output, fable_5_cost.output);
-        assert_eq!(base_cost.cache_read, Some(0.25));
-
-        let m1 = get_model_profile("anthropic", "claude-fable-5-1[1m]").unwrap();
-        assert_eq!(m1.name, "Claude Fable 5.1 (1M)");
-        assert_eq!(m1.family, "claude-fable-5-1");
-        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-        assert_eq!(m1.cost.unwrap().input, base_cost.input);
-    }
-
-    #[test]
-    fn test_claude_opus_4_7_and_4_6_have_1m_variants() {
-        for id in ["claude-opus-4-7[1m]", "claude-opus-4-6[1m]"] {
-            let m1 = get_model_profile("anthropic", id).unwrap();
-            assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-            assert!(m1.name.ends_with("(1M)"));
-        }
-    }
-
-    #[test]
-    fn test_claude_sonnet_5_1m_variant() {
-        let base = get_model_profile("anthropic", "claude-sonnet-5").unwrap();
-        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
-
-        let m1 = get_model_profile("anthropic", "claude-sonnet-5[1m]").unwrap();
-        assert_eq!(m1.name, "Claude Sonnet 5 (1M)");
-        assert_eq!(m1.family, "claude-sonnet-5");
-        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-        assert_eq!(m1.cost.unwrap().input, base.cost.unwrap().input);
-    }
+    // Claude `[1m]` twin tests live in `profiles_claude_tests.rs`.
 
     #[test]
     fn test_gemini_3_1_pro_preview_profile() {
@@ -4629,6 +4585,7 @@ mod tests {
         for id in [
             "claude-fable-5-1",
             "claude-fable-5",
+            "claude-opus-5-5",
             "claude-opus-5",
             "claude-opus-4-8",
             "claude-opus-4-7",

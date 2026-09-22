@@ -2,7 +2,7 @@ use everruns::{Agent, BuildError};
 
 use crate::tools;
 
-pub const MODEL: &str = "claude-opus-5";
+pub const MODEL: &str = "claude-opus-5-5";
 
 pub fn build(provider: impl Into<everruns::Provider>) -> Result<Agent, BuildError> {
     Agent::builder()
