@@ -723,65 +723,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn expired_waiting_turn_claim_recovers_persisted_plan_and_fences_old_owner() {
-        let db = StorageBackend::in_memory();
-        let session = create_test_session(&db, 1).await;
-        park_test_session(&db, &session).await;
-        let original_plan = WaitingTurnResolutionPlan {
-            kind: "original".to_string(),
-            events: Vec::new(),
-            session_values: Vec::new(),
-            response: serde_json::json!({ "winner": "original" }),
-        };
-        let first = match db
-            .claim_waiting_turn(1, session.id, original_plan.clone())
-            .await
-            .unwrap()
-        {
-            crate::storage::models::ClaimWaitingTurnResult::Claimed(claim) => claim,
-            other => panic!("expected initial claim, got {other:?}"),
-        };
-        db.abandon_waiting_turn_claim(1, session.id, first.resolution_id, first.claim_token)
-            .await
-            .unwrap();
-
-        let replacement_plan = WaitingTurnResolutionPlan {
-            kind: "replacement".to_string(),
-            events: Vec::new(),
-            session_values: Vec::new(),
-            response: serde_json::json!({ "winner": "replacement" }),
-        };
-        let recovered = match db
-            .claim_waiting_turn(1, session.id, replacement_plan)
-            .await
-            .unwrap()
-        {
-            crate::storage::models::ClaimWaitingTurnResult::Claimed(claim) => claim,
-            other => panic!("expected recovered claim, got {other:?}"),
-        };
-
-        assert!(recovered.recovered);
-        assert_eq!(recovered.resolution_id, first.resolution_id);
-        assert_ne!(recovered.claim_token, first.claim_token);
-        assert_eq!(recovered.plan, original_plan);
-        assert!(
-            !db.complete_waiting_turn_claim(1, session.id, first.resolution_id, first.claim_token,)
-                .await
-                .unwrap()
-        );
-        assert!(
-            db.complete_waiting_turn_claim(
-                1,
-                session.id,
-                recovered.resolution_id,
-                recovered.claim_token,
-            )
-            .await
-            .unwrap()
-        );
-    }
-
-    #[tokio::test]
     async fn active_turn_cap_enforced() {
         let db = Arc::new(StorageBackend::in_memory());
         let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);

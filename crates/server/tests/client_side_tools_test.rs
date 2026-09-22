@@ -404,12 +404,19 @@ struct BlockingRunner {
     releases: Arc<tokio::sync::Semaphore>,
 }
 
-#[derive(Default)]
 struct FastCompletingRunner {
     db: Mutex<Option<Arc<everruns_server::storage::StorageBackend>>>,
+    completed_status: &'static str,
 }
 
 impl FastCompletingRunner {
+    fn new(completed_status: &'static str) -> Self {
+        Self {
+            db: Mutex::new(None),
+            completed_status,
+        }
+    }
+
     fn attach(&self, db: Arc<everruns_server::storage::StorageBackend>) {
         *self.db.lock().expect("runner database lock") = Some(db);
     }
@@ -444,7 +451,7 @@ impl AgentRunner for FastCompletingRunner {
             1,
             session_id,
             everruns_server::storage::models::UpdateSession {
-                status: Some("idle".to_string()),
+                status: Some(self.completed_status.to_string()),
                 ..Default::default()
             },
         )
@@ -644,35 +651,39 @@ async fn user_message_claim_rejects_concurrent_user_message() {
 }
 
 #[tokio::test]
-async fn tool_result_succeeds_when_worker_finishes_before_claim_completion() {
-    let runner = Arc::new(FastCompletingRunner::default());
-    let server = TestServer::in_memory_with_runner(runner.clone()).await;
-    runner.attach(server.db.clone());
-    let session = create_waiting_client_tool_session(&server, "fast-worker").await;
+async fn tool_result_succeeds_for_fast_worker_advanced_statuses() {
+    for completed_status in ["active", "idle", "paused"] {
+        let runner = Arc::new(FastCompletingRunner::new(completed_status));
+        let server = TestServer::in_memory_with_runner(runner.clone()).await;
+        runner.attach(server.db.clone());
+        let session =
+            create_waiting_client_tool_session(&server, &format!("fast-worker-{completed_status}"))
+                .await;
 
-    server
-        .post(
-            &format!("/v1/sessions/{}/tool-results", session.id),
-            json!({
-                "tool_results": [{
-                    "tool_call_id": "call_fast-worker",
-                    "result": {"answer": "done"}
-                }]
-            }),
-        )
-        .await
-        .assert_status(StatusCode::OK);
-
-    assert_eq!(
         server
-            .db
-            .get_session(1, session.id)
+            .post(
+                &format!("/v1/sessions/{}/tool-results", session.id),
+                json!({
+                    "tool_results": [{
+                        "tool_call_id": format!("call_fast-worker-{completed_status}"),
+                        "result": {"answer": "done"}
+                    }]
+                }),
+            )
             .await
-            .unwrap()
-            .unwrap()
-            .status,
-        "idle"
-    );
+            .assert_status(StatusCode::OK);
+
+        assert_eq!(
+            server
+                .db
+                .get_session(1, session.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            completed_status
+        );
+    }
 }
 
 #[async_trait]

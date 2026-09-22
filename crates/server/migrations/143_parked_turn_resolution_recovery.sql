@@ -1,4 +1,19 @@
 ALTER TABLE sessions
+    DROP CONSTRAINT sessions_status_check;
+
+ALTER TABLE sessions
+    ADD CONSTRAINT sessions_status_check CHECK (
+        status IN (
+            'started',
+            'active',
+            'idle',
+            'waiting_for_tool_results',
+            'resolving_tool_results',
+            'paused'
+        )
+    );
+
+ALTER TABLE sessions
     ADD COLUMN turn_resolution_id UUID,
     ADD COLUMN turn_resolution_claim_token UUID,
     ADD COLUMN turn_resolution_lease_expires_at TIMESTAMPTZ,
