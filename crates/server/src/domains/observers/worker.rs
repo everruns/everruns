@@ -13,7 +13,7 @@ use tokio::task::JoinHandle;
 use everruns_platform::eval::Score;
 use everruns_platform::observer::{ObserverScorerConfig, ScorerMethod};
 use everruns_provider::typed_id::SessionId;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 use crate::domains::evals::runner::{extract_final_assistant_content, extract_tool_calls};
 use crate::domains::evals::scoring::score_rule;
@@ -75,7 +75,11 @@ pub fn spawn_observer_worker(
                         }
                     }
                     Err(e) => {
-                        error!(error = %e, "Observer scoring batch failed");
+                        everruns_core::log_database_failure(
+                            "server.observers.scoring",
+                            "Observer scoring batch failed",
+                            &e.to_string(),
+                        );
                         break;
                     }
                 }

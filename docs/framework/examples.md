@@ -19,7 +19,7 @@ behavior and recording logic; it does not establish the quality of a live model'
 | Example | Provider and model | What it does |
 | --- | --- | --- |
 | [Support Agent](/framework/examples/support-agent/) | OpenAI `gpt-5.6-terra` | Chooses between MFA recovery, lockout, and browser troubleshooting from facts and policy. |
-| [Everruns Support Agent](/framework/examples/everruns-support-agent/) | Anthropic `claude-opus-5` | Searches and reads citable official documentation snapshots. |
+| [Everruns Support Agent](/framework/examples/everruns-support-agent/) | Anthropic `claude-opus-5-5` | Searches and reads citable official documentation snapshots. |
 | [Coding Review Agent](/framework/examples/coding-review-agent/) | Anthropic `claude-sonnet-5` | Reads a refund contract and executes a fixed regression before reporting a defect. |
 | [Research Agent](/framework/examples/research-agent/) | OpenRouter `z-ai/glm-5.2` | Searches and fetches primary sources before writing a cited brief. |
 | [Incident Commander Agent](/framework/examples/incident-commander-agent/) | Meta Model API `muse-spark-1.3` | Investigates fixture telemetry and persists an evidence-backed incident update. |

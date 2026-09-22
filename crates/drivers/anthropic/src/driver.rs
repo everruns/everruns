@@ -820,7 +820,7 @@ impl ChatDriver for AnthropicChatDriver {
             Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
         };
 
-        // Sampling parameters are removed on Fable 5.x and Opus 5/4.8/4.7 —
+        // Sampling parameters are removed on Fable 5.x and Opus 5.5/5/4.8/4.7 —
         // sending `temperature` returns 400 ("`temperature` is deprecated for
         // this model"). The model profile's `temperature` flag is the source
         // of truth; drop the parameter for models that reject it.
@@ -837,9 +837,9 @@ impl ChatDriver for AnthropicChatDriver {
 
         // Build thinking config from reasoning effort.
         //
-        // Recent Claude models (Fable 5.x, Opus 5/4.8/4.7, and the 4.6 family)
+        // Recent Claude models (Fable 5.x, Opus 5.5/5/4.8/4.7, and the 4.6 family)
         // use adaptive thinking: `thinking: {type: "adaptive"}` plus
-        // `output_config.effort`. On Fable 5.x and Opus 5/4.8/4.7 the budget-based
+        // `output_config.effort`. On Fable 5.x and Opus 5.5/5/4.8/4.7 the budget-based
         // `thinking: {type: "enabled", budget_tokens}` form is removed and
         // returns 400, so this split is load-bearing, not stylistic.
         let (thinking, output_config) = match config.reasoning_effort {
@@ -972,6 +972,7 @@ impl ChatDriver for AnthropicChatDriver {
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
         let response_id = Arc::new(Mutex::new(Option::<String>::None));
+        let response_model = Arc::new(Mutex::new(Option::<String>::None));
         let diagnostics_payload = Arc::new(Mutex::new(Option::<serde_json::Value>::None));
         // Share retry metadata with stream closure (only set if retries occurred)
         let shared_retry_metadata = if retry_metadata.had_retries() {
@@ -991,6 +992,7 @@ impl ChatDriver for AnthropicChatDriver {
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
             let finish_reason = Arc::clone(&finish_reason);
             let response_id = Arc::clone(&response_id);
+            let response_model = Arc::clone(&response_model);
             let diagnostics_payload = Arc::clone(&diagnostics_payload);
             let retry_metadata_for_done = shared_retry_metadata.clone();
 
@@ -1000,18 +1002,15 @@ impl ChatDriver for AnthropicChatDriver {
                         // Anthropic uses different event types
                         match event.event.as_str() {
                             "message_start" => {
-                                // Parse message_start for the message id, input
-                                // token count, cache tokens, and prompt-cache
-                                // diagnostics.
+                                // Parse response identity/model, usage, and prompt-cache diagnostics.
                                 if let Ok(data) =
                                     serde_json::from_str::<AnthropicMessageStart>(&event.data)
                                 {
                                     if let Some(id) = data.message.id {
-                                        // The message id is what a following
-                                        // request passes as
-                                        // `diagnostics.previous_message_id`.
+                                        // Following requests use this for prompt-cache diagnostics.
                                         *response_id.lock().unwrap() = Some(id);
                                     }
+                                    *response_model.lock().unwrap() = data.message.model;
                                     if let Some(diagnostics) =
                                         data.message.diagnostics.or(data.diagnostics)
                                     {
@@ -1241,6 +1240,7 @@ impl ChatDriver for AnthropicChatDriver {
                                     metadata.cache_read_tokens = cache_read;
                                     metadata.cache_creation_tokens = cache_creation;
                                     metadata.model = Some(model);
+                                    metadata.response_model = response_model.lock().unwrap().clone();
                                     metadata.finish_reason = finish_reason
                                         .lock()
                                         .unwrap()
@@ -1585,7 +1585,7 @@ enum AnthropicSystemBlock {
 /// Thinking configuration for Claude.
 ///
 /// `Enabled` is the legacy budget-based form; `Adaptive` is required on
-/// Fable 5.x and Opus 5/4.8/4.7 (where `budget_tokens` returns 400) and is the
+/// Fable 5.x and Opus 5.5/5/4.8/4.7 (where `budget_tokens` returns 400) and is the
 /// recommended form on the 4.6 family. "No thinking" is always expressed by
 /// omitting the field — an explicit `{type: "disabled"}` is rejected by
 /// Fable 5.x.
@@ -1597,7 +1597,7 @@ enum AnthropicThinking {
         budget_tokens: u32,
     },
     Adaptive {
-        /// Fable 5.x and Opus 5/4.8/4.7 omit thinking text by default
+        /// Fable 5.x and Opus 5.5/5/4.8/4.7 omit thinking text by default
         /// (`display: "omitted"`); "summarized" restores it so assistant
         /// messages keep their thinking content like on budget-based models.
         display: &'static str,
@@ -1626,7 +1626,7 @@ struct AnthropicOutputConfig {
     effort: String,
 }
 
-/// Claude families that use adaptive thinking. On Fable 5.x, Opus 5/4.8/4.7,
+/// Claude families that use adaptive thinking. On Fable 5.x, Opus 5.5/5/4.8/4.7,
 /// and Sonnet 5 budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6
 /// it is deprecated and adaptive is the recommended form. Keep in sync with the
 /// adaptive-thinking profiles in `everruns_provider::model_profiles`.
@@ -1636,6 +1636,7 @@ struct AnthropicOutputConfig {
 const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-fable-5-1",
     "claude-fable-5",
+    "claude-opus-5-5",
     "claude-opus-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
@@ -1652,6 +1653,7 @@ const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
 const MILLION_CONTEXT_FAMILIES: &[&str] = &[
     "claude-fable-5-1",
     "claude-fable-5",
+    "claude-opus-5-5",
     "claude-opus-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
@@ -1846,7 +1848,6 @@ struct AnthropicMessageStart {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)] // model is deserialized but used by event listeners, not directly
 struct AnthropicMessageInfo {
     /// Unique identifier for this message
     #[serde(default)]
@@ -2313,6 +2314,10 @@ impl AnthropicModelInfo {
 // ============================================================================
 
 #[cfg(test)]
+#[path = "driver_family_tests.rs"]
+mod family_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use everruns_provider::driver_registry::ChatDriver;
@@ -2763,27 +2768,6 @@ mod tests {
     }
 
     #[test]
-    fn test_uses_adaptive_thinking_by_family() {
-        // Adaptive-only / adaptive-recommended families, with and without
-        // dated suffixes.
-        assert!(uses_adaptive_thinking("claude-fable-5-1"));
-        assert!(uses_adaptive_thinking("claude-fable-5-1-20260901"));
-        assert!(uses_adaptive_thinking("claude-fable-5"));
-        assert!(uses_adaptive_thinking("claude-fable-5-20260601"));
-        assert!(uses_adaptive_thinking("claude-opus-5"));
-        assert!(uses_adaptive_thinking("claude-opus-5-20260101"));
-        assert!(uses_adaptive_thinking("claude-opus-4-8"));
-        assert!(uses_adaptive_thinking("claude-opus-4-7-20260416"));
-        assert!(uses_adaptive_thinking("claude-opus-4-6"));
-        assert!(uses_adaptive_thinking("claude-sonnet-5"));
-        assert!(uses_adaptive_thinking("claude-sonnet-4-6"));
-        // Budget-based families stay on extended thinking.
-        assert!(!uses_adaptive_thinking("claude-opus-4-5"));
-        assert!(!uses_adaptive_thinking("claude-sonnet-4-5"));
-        assert!(!uses_adaptive_thinking("claude-haiku-4-5-20251001"));
-    }
-
-    #[test]
     fn test_thinking_config_serialization() {
         // Adaptive must not carry budget_tokens (400 on Fable 5.x / Opus 4.8 /
         // 4.7); display:"summarized" opts back into visible thinking text,
@@ -3010,59 +2994,6 @@ mod tests {
     // ========================================================================
     // Discovered profile construction tests
     // ========================================================================
-
-    #[test]
-    fn test_split_million_context() {
-        // Registered `[1m]` twins: stripped to the wire id and flagged.
-        assert_eq!(
-            split_million_context("claude-opus-4-8[1m]"),
-            ("claude-opus-4-8", true)
-        );
-        assert_eq!(
-            split_million_context("claude-fable-5-1[1m]"),
-            ("claude-fable-5-1", true)
-        );
-        assert_eq!(
-            split_million_context("claude-fable-5[1m]"),
-            ("claude-fable-5", true)
-        );
-        assert_eq!(
-            split_million_context("claude-opus-5[1m]"),
-            ("claude-opus-5", true)
-        );
-        assert_eq!(
-            split_million_context("claude-opus-4-6[1m]"),
-            ("claude-opus-4-6", true)
-        );
-        assert_eq!(
-            split_million_context("claude-sonnet-5[1m]"),
-            ("claude-sonnet-5", true)
-        );
-
-        // Date-suffixed 1M-capable id is still honored (family normalization).
-        assert_eq!(
-            split_million_context("claude-opus-4-8-20260101[1m]"),
-            ("claude-opus-4-8-20260101", true)
-        );
-
-        // Bare ids are unchanged and not flagged.
-        assert_eq!(
-            split_million_context("claude-opus-4-8"),
-            ("claude-opus-4-8", false)
-        );
-
-        // Models that merely end in `[1m]` but are NOT 1M-capable must be left
-        // untouched — never strip them or send `context-1m` (it can 400 or
-        // silently truncate, e.g. on sonnet-4-5 where the header was retired).
-        for not_1m in [
-            "claude-haiku-4-5[1m]",
-            "claude-haiku-4-5-20251001[1m]",
-            "claude-sonnet-4-5[1m]",
-            "totally-made-up[1m]",
-        ] {
-            assert_eq!(split_million_context(not_1m), (not_1m, false), "{not_1m}");
-        }
-    }
 
     #[test]
     fn discovered_profile_preserves_complete_catalog_metadata() {

@@ -1,3 +1,6 @@
+pub mod terminal;
+
+use everruns::ask_user::{Answer, AnsweredBy, AskUser, Outcome, Question, Status, async_trait};
 use everruns::{Agent, FunctionTool, InMemoryEngine, LlmSimConfig, Model, ToolCall};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -73,7 +76,9 @@ fn lookup_neighborhood_spot() -> FunctionTool {
             let group_size = arguments
                 .get("group_size")
                 .and_then(Value::as_u64)
-                .ok_or_else(|| "'group_size' is required and must be an unsigned integer".to_string())?;
+                .ok_or_else(|| {
+                    "'group_size' is required and must be an unsigned integer".to_string()
+                })?;
             let vibe = arguments
                 .get("vibe")
                 .and_then(Value::as_str)
@@ -86,7 +91,10 @@ fn lookup_neighborhood_spot() -> FunctionTool {
                 .filter(|spot| {
                     vibe == "any"
                         || spot.vibe.eq_ignore_ascii_case(&vibe)
-                        || spot.best_for.iter().any(|tag| tag.eq_ignore_ascii_case(&vibe))
+                        || spot
+                            .best_for
+                            .iter()
+                            .any(|tag| tag.eq_ignore_ascii_case(&vibe))
                 })
                 .filter(|spot| {
                     occasion == "outing"
@@ -114,6 +122,65 @@ fn lookup_neighborhood_spot() -> FunctionTool {
     )
 }
 
+/// What the concierge asks before it plans anything.
+///
+/// A concierge that never asks about preferences is a bad concierge, so the
+/// capability is motivated by the example rather than bolted onto it. One
+/// single-select and one multi-select, which is the shape most hosts hit first.
+fn weekend_questions() -> Value {
+    json!([
+        {
+            "kind": "choice", "id": "energy", "header": "Energy",
+            "question": "How much energy does the group have on Friday?",
+            "multi_select": false, "allow_other": true,
+            "options": [
+                {"label": "Up for anything", "description": "Games, noise, moving around.", "default": true},
+                {"label": "Low-key", "description": "Sitting, talking, snacks."}
+            ]
+        },
+        {
+            "kind": "choice", "id": "must_haves", "header": "Must-haves",
+            "question": "What does the evening need?",
+            "multi_select": true, "allow_other": true,
+            "options": [
+                {"label": "Snacks", "description": "Food on site."},
+                {"label": "Desserts", "description": "Something sweet late."},
+                {"label": "Quiet corner", "description": "Somewhere to actually talk."}
+            ]
+        }
+    ])
+}
+
+/// A responder with the answers already decided, so the offline test stays
+/// deterministic. The terminal responder in [`terminal`] is the real one.
+struct ScriptedResponder;
+
+#[async_trait]
+impl AskUser for ScriptedResponder {
+    async fn ask(&self, questions: &[Question]) -> Outcome {
+        let pick = |question: &Question| -> Vec<String> {
+            match question.id.as_deref() {
+                Some("energy") => vec!["Up for anything".to_string()],
+                Some("must_haves") => vec!["Snacks".to_string(), "Desserts".to_string()],
+                _ => Vec::new(),
+            }
+        };
+        Outcome {
+            status: Status::Answered,
+            answered_by: AnsweredBy::User,
+            answers: questions
+                .iter()
+                .map(|question| Answer {
+                    id: question.id.clone().unwrap_or_default(),
+                    selected: pick(question),
+                    other_text: None,
+                    secret_ref: None,
+                })
+                .collect(),
+        }
+    }
+}
+
 pub struct ExampleRun {
     pub tool_names: Vec<String>,
     pub seeded_brief: String,
@@ -123,15 +190,35 @@ pub struct ExampleRun {
     pub tool_calls_count: usize,
     pub transcript: Vec<String>,
     pub event_types: Vec<String>,
+    /// What the host answered, as the model received it.
+    pub answers: Vec<String>,
 }
 
 pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
+    run_weekend_concierge(ScriptedResponder).await
+}
+
+/// The demo, against whichever host answers its questions.
+///
+/// `main.rs` passes [`terminal::TerminalResponder`] for a real terminal; the
+/// test passes [`ScriptedResponder`] so it stays deterministic offline. The
+/// agent is identical either way — swapping who answers is the only difference,
+/// which is the point of the trait.
+pub async fn run_weekend_concierge(
+    responder: impl everruns::ask_user::AskUser + 'static,
+) -> ExampleResult<ExampleRun> {
     let model = Model::simulated_with_config(
         LlmSimConfig::sequence(vec![
-            "Let me check the concierge book before I recommend anything.".into(),
+            "Before I look anything up, two quick questions.".into(),
+            "Let me check the concierge book with that in mind.".into(),
             "Go with Neon Arcade in the West Loop. It fits six people, stays under the budget, and gives the group an easy mix of games and snacks. Backup: Quiet Boardroom Cafe if the team wants something calmer.".into(),
         ])
         .with_tool_call_sequence(vec![
+            vec![ToolCall {
+                id: "call_ask_1".into(),
+                name: "ask_user".into(),
+                arguments: json!({ "questions": weekend_questions() }),
+            }],
             vec![ToolCall {
                 id: "call_spot_1".into(),
                 name: "lookup_neighborhood_spot".into(),
@@ -147,16 +234,17 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
     let agent = Agent::builder()
         .name("weekend-concierge")
         .instructions(
-            "You are a concise local concierge. Use `lookup_neighborhood_spot` for venue facts. Check `/workspace/weekend-brief.md` for the group's constraints before answering.",
+            "You are a concise local concierge. Ask the group about energy and must-haves with `ask_user` before you look anything up. Use `lookup_neighborhood_spot` for venue facts. Check `/workspace/weekend-brief.md` for the group's constraints before answering.",
         )
         .model(model)
         .tool(lookup_neighborhood_spot())
+        .ask_user(responder)
         .readonly_file(
             "/workspace/welcome-note.md",
             "This session is hosted entirely in-process by the embedding application.",
         )
         .file("/workspace/weekend-brief.md", WEEKEND_BRIEF)
-        .max_iterations(6)
+        .max_iterations(8)
         .build()?;
 
     let session = InMemoryEngine::new().create(agent.clone());
@@ -168,14 +256,18 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
         .run("Find a Friday outing for six teammates. Keep it playful, snack-friendly, and under $40 per person.")
         .await?;
     let context = session.inspect().await?;
-    let transcript = context
+    let transcript: Vec<String> = context
         .messages
         .iter()
         .map(|message| format!("[{}] {:?}", message.role, message.content))
         .collect();
     let mut event_types = Vec::new();
+    let mut answers = Vec::new();
     while let Ok(Some(event)) = events.try_recv() {
         event_types.push(event.event_type().to_string());
+        if let Some(found) = answers_from_event(event.canonical_json()) {
+            answers = found;
+        }
     }
 
     Ok(ExampleRun {
@@ -187,7 +279,47 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
         tool_calls_count: turn.tool_calls,
         transcript,
         event_types,
+        answers,
     })
+}
+
+/// Read the answers out of the `ask_user` tool result the model received.
+///
+/// Taken from the emitted event rather than from the responder: this is what
+/// actually reached the model, which is the only thing that can change its
+/// plan. Free text counts — a person who typed something instead of picking is
+/// still answering.
+fn answers_from_event(data: &Value) -> Option<Vec<String>> {
+    if data["data"]["tool_name"].as_str()? != "ask_user" {
+        return None;
+    }
+    let result = parse_tool_result(&data["data"]["result"])?;
+    let mut answers = Vec::new();
+    for answer in result["answers"].as_array()? {
+        for label in answer["selected"].as_array().into_iter().flatten() {
+            if let Some(label) = label.as_str() {
+                answers.push(label.to_string());
+            }
+        }
+        if let Some(text) = answer["other_text"].as_str() {
+            answers.push(format!("{text} (typed)"));
+        }
+    }
+    Some(answers)
+}
+
+/// A tool result arrives as content parts whose `text` is the JSON the tool
+/// returned, so the payload has to be parsed back out of a string:
+///
+/// ```json
+/// [{"text": "{\"status\":\"answered\", ...}", "type": "text"}]
+/// ```
+fn parse_tool_result(result: &Value) -> Option<Value> {
+    result
+        .as_array()?
+        .iter()
+        .filter_map(|part| part["text"].as_str())
+        .find_map(|text| serde_json::from_str(text).ok())
 }
 
 #[cfg(test)]
@@ -201,16 +333,51 @@ mod tests {
             .await
             .expect("example run should succeed");
 
-        assert_eq!(run.tool_names, vec!["lookup_neighborhood_spot"]);
+        assert_eq!(run.tool_names, vec!["ask_user", "lookup_neighborhood_spot"]);
         assert!(run.seeded_brief.contains("Budget: under $40/person"));
         assert!(run.final_response.contains("Neon Arcade"));
         assert!(run.final_response.contains("Quiet Boardroom Cafe"));
         assert!(run.success);
-        assert_eq!(run.iterations, 2);
-        assert_eq!(run.tool_calls_count, 1);
-        assert!(run.transcript.iter().any(|line| line.contains("call_spot_1")));
-        assert!(run.event_types.iter().any(|event| event == "tool.completed"));
-        assert!(run.event_types.iter().any(|event| event == "reason.completed"));
+        assert_eq!(run.iterations, 3);
+        assert_eq!(run.tool_calls_count, 2);
+        assert!(
+            run.transcript
+                .iter()
+                .any(|line| line.contains("call_spot_1"))
+        );
+        assert!(
+            run.event_types
+                .iter()
+                .any(|event| event == "tool.completed")
+        );
+        assert!(
+            run.event_types
+                .iter()
+                .any(|event| event == "reason.completed")
+        );
+    }
+
+    /// The host answered, and what it answered is what reached the model.
+    #[tokio::test]
+    async fn the_hosts_answers_reach_the_model() {
+        let run = run_weekend_concierge_demo()
+            .await
+            .expect("example run should succeed");
+
+        assert!(
+            run.transcript
+                .iter()
+                .any(|line| line.contains("call_ask_1"))
+        );
+        assert_eq!(
+            run.answers,
+            vec![
+                "Up for anything".to_string(),
+                "Snacks".to_string(),
+                "Desserts".to_string(),
+            ]
+        );
+        assert!(!run.answers.iter().any(|label| label == "Quiet corner"));
     }
 
     #[tokio::test]
@@ -221,7 +388,11 @@ mod tests {
             .tool(lookup_neighborhood_spot())
             .build()
             .expect("tool should be valid");
-        let context = InMemoryEngine::new().create(agent.clone()).inspect().await.expect("context");
+        let context = InMemoryEngine::new()
+            .create(agent.clone())
+            .inspect()
+            .await
+            .expect("context");
         assert_eq!(context.tools[0].name, "lookup_neighborhood_spot");
     }
 }

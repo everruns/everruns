@@ -55,6 +55,15 @@ pub struct DeclarativeCapability {
         "mcp_servers": {}
     }))]
     pub definition: DeclarativeCapabilityDefinition,
+    /// Why the stored definition could not be parsed, when it could not be.
+    ///
+    /// Present only for a corrupt row. The capability keeps its identity
+    /// columns so a surface can name what is broken, but `definition` is the
+    /// inert default and `definition.status` reports `retired`, so nothing
+    /// reads it as a usable capability.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "missing field `acts_as` at line 1 column 84")]
+    pub definition_error: Option<String>,
     /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
     /// Timestamp when this resource was last updated (RFC 3339).

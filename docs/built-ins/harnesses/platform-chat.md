@@ -27,6 +27,8 @@ catalog.
 | Capability | What it provides |
 |------------|-----------------|
 | [Platform](/capabilities/platform/) | `discover`, read-only `query`, and mutating `execute` over the authoritative Everruns command catalog |
+| [Ask User](/capabilities/ask-user/) | Ask the operator 1–4 structured questions, or collect a credential, and wait for the answer |
+| Soft Approval | Prompt-level gate asking permission before a destructive, irreversible, or outward-facing action |
 | Loop detection | Stops repeated command/discovery cycles |
 | Error disclosure | Returns actionable command failures to the operator |
 | Compaction | Bounds long management conversations |

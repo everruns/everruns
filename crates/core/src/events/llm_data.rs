@@ -106,6 +106,22 @@ pub struct LlmGenerationMetadata {
     #[cfg_attr(feature = "openapi", schema(example = "anthropic"))]
     pub provider: Option<String>,
 
+    /// Model the provider reported actually serving the request.
+    ///
+    /// `model` is what was *asked for*, which is routinely an alias that
+    /// resolves at request time — `claude-sonnet-4-5` served by
+    /// `claude-sonnet-4-5-20250929`, or an OpenRouter route landing on one
+    /// upstream of several. Collapsing the two loses the only record of which
+    /// weights produced the answer, which is what a regression in output
+    /// quality has to be correlated against.
+    ///
+    /// `None` when the provider reported no model, which is the honest answer:
+    /// consumers fall back to `model` rather than being told the alias was
+    /// confirmed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-5-20250929"))]
+    pub response_model: Option<String>,
+
     /// Token usage statistics
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
@@ -266,6 +282,7 @@ impl LlmGenerationData {
             metadata: LlmGenerationMetadata {
                 model,
                 provider,
+                response_model: None,
                 usage,
                 duration_ms,
                 time_to_first_token_ms,
@@ -302,6 +319,7 @@ impl LlmGenerationData {
             metadata: LlmGenerationMetadata {
                 model,
                 provider,
+                response_model: None,
                 usage,
                 duration_ms,
                 time_to_first_token_ms,
@@ -339,6 +357,7 @@ impl LlmGenerationData {
             metadata: LlmGenerationMetadata {
                 model,
                 provider,
+                response_model: None,
                 usage,
                 duration_ms,
                 time_to_first_token_ms,
@@ -373,6 +392,7 @@ impl LlmGenerationData {
             metadata: LlmGenerationMetadata {
                 model,
                 provider,
+                response_model: None,
                 usage: None,
                 duration_ms,
                 time_to_first_token_ms,
@@ -392,6 +412,16 @@ impl LlmGenerationData {
     /// Call this when context was compacted before a successful retry.
     pub fn with_compaction(mut self, compaction: LlmCompactionInfo) -> Self {
         self.metadata.compaction = Some(compaction);
+        self
+    }
+
+    /// Record the model the provider reported serving, when it reported one.
+    ///
+    /// A builder rather than another positional argument: the `success_*`
+    /// constructors already carry a `too_many_arguments` waiver, and the
+    /// serving model is only known once the completion metadata comes back.
+    pub fn with_response_model(mut self, response_model: Option<String>) -> Self {
+        self.metadata.response_model = response_model;
         self
     }
 

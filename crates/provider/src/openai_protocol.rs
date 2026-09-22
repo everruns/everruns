@@ -17,7 +17,6 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::{Client, Url};
-use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
@@ -483,35 +482,6 @@ fn drop_orphaned_tool_messages(messages: &[Message]) -> Vec<Message> {
         .collect()
 }
 
-/// Non-streaming `chat/completions` response (`stream: false`).
-#[derive(Debug, Deserialize)]
-struct OpenAiChatCompletionResponse {
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    choices: Vec<OpenAiChatChoice>,
-    #[serde(default)]
-    usage: Option<OpenAiUsage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiChatChoice {
-    message: OpenAiChatMessage,
-    #[serde(default)]
-    finish_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAiChatMessage {
-    #[serde(default)]
-    content: Option<OpenAiContent>,
-    #[serde(default)]
-    tool_calls: Vec<OpenAiToolCall>,
-    /// DeepSeek-style non-streamed reasoning payload.
-    #[serde(default)]
-    reasoning_content: Option<String>,
-}
-
 #[async_trait]
 impl ChatDriver for OpenAIProtocolChatDriver {
     fn supports_native_non_streaming(&self) -> bool {
@@ -577,6 +547,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         let body: OpenAiChatCompletionResponse = response.json().await.map_err(|error| {
             AgentLoopError::llm(format!("failed to decode non-streaming response: {error}"))
         })?;
+        let response_model = body.model.clone();
         let (text, tool_calls, reasoning, finish_reason) = match body.choices.into_iter().next() {
             Some(choice) => {
                 let text = match choice.message.content {
@@ -653,6 +624,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 reasoning_tokens,
                 provider_cost_usd: cost,
                 model: Some(config.model.clone()),
+                response_model,
                 finish_reason,
                 retry_metadata: if retry_metadata.had_retries() {
                     Some(retry_metadata)
@@ -742,6 +714,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
 
         let captured_request = Arc::new(capture_request_body(config, &request));
         let model = config.model.clone();
+        let response_model = Arc::new(Mutex::new(Option::<String>::None));
         let completion_tokens = Arc::new(Mutex::new(CompletionTokenCount::default()));
         let prompt_tokens = Arc::new(Mutex::new(0u32));
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
@@ -773,6 +746,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             event_stream
                 .then(move |result| {
                     let model = model.clone();
+                    let response_model = Arc::clone(&response_model);
                     let completion_tokens = Arc::clone(&completion_tokens);
                     let prompt_tokens = Arc::clone(&prompt_tokens);
                     let cache_read_tokens = Arc::clone(&cache_read_tokens);
@@ -804,6 +778,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                             let cached = *cache_read_tokens.lock().unwrap();
                             let reasoning_used = *reasoning_tokens.lock().unwrap();
                             let cost = *provider_cost_usd.lock().unwrap();
+                            let served_model = response_model.lock().unwrap().clone();
                             let resp_id = response_id.lock().unwrap().clone();
                             let mut reason = finish_reason.lock().unwrap().clone();
 
@@ -862,6 +837,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     cache_creation_tokens: None,
                                     provider_cost_usd: cost,
                                     model: Some(model),
+                                    response_model: served_model,
                                     finish_reason: reason.or_else(|| Some("stop".to_string())),
                                     retry_metadata: retry_metadata_for_done
                                         .map(|arc| (*arc).clone()),
@@ -877,6 +853,9 @@ impl ChatDriver for OpenAIProtocolChatDriver {
 
                         match serde_json::from_str::<OpenAiStreamChunk>(&event.data) {
                             Ok(chunk) => {
+                                if chunk.model.is_some() {
+                                    *response_model.lock().unwrap() = chunk.model.clone();
+                                }
                                 // Capture the completion ID from the first chunk that
                                 // carries one. OpenRouter sets this to a "gen-..."
                                 // identifier on every chunk; direct OpenAI uses
@@ -967,86 +946,7 @@ impl std::fmt::Debug for OpenAIProtocolChatDriver {
     }
 }
 
-// ============================================================================
-// Error Detection Helpers
-// ============================================================================
-
-/// Check if the error indicates the model was not found.
-///
-/// OpenAI returns 404 or 400 with `"model_not_found"` code or `"does not exist"` message.
-/// OpenAI can also return 403 with `"model_not_found"` for tier-gated models — these must
-/// be classified as model_unavailable rather than provider_misconfigured.
-/// Also handles Gemini/OpenAI-compatible endpoints with similar patterns.
-pub fn is_openai_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
-    let error_lower = error_text.to_lowercase();
-
-    // OpenAI can return 404, 400, or 403 (tier-gated access) for nonexistent/inaccessible models
-    if status == reqwest::StatusCode::NOT_FOUND
-        || status == reqwest::StatusCode::BAD_REQUEST
-        || status == reqwest::StatusCode::FORBIDDEN
-    {
-        // OpenAI: {"error":{"code":"model_not_found","message":"The model 'x' does not exist"}}
-        if error_lower.contains("model_not_found") {
-            return true;
-        }
-    }
-
-    // 404 with generic model-not-found patterns
-    if status == reqwest::StatusCode::NOT_FOUND {
-        if error_lower.contains("does not exist") {
-            return true;
-        }
-        if error_lower.contains("model") && error_lower.contains("not found") {
-            return true;
-        }
-    }
-
-    false
-}
-
-/// Check if an OpenAI API error indicates the request is too large.
-///
-/// Detects:
-/// - 429 with "Request too large" or token limit messages
-/// - 400 with "context_length_exceeded" code
-/// - Any message about maximum context length being exceeded
-pub fn is_openai_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
-    let error_lower = error_text.to_lowercase();
-
-    // HTTP 429 with token-related errors
-    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        // "Request too large for gpt-4" pattern
-        if error_lower.contains("request too large") {
-            return true;
-        }
-        // Token limit errors: "tokens per min (TPM): Limit X, Requested Y"
-        if error_lower.contains("tokens") && error_lower.contains("limit") {
-            return true;
-        }
-    }
-
-    // HTTP 400 with context length errors
-    if status == reqwest::StatusCode::BAD_REQUEST {
-        // "context_length_exceeded" error code
-        if error_lower.contains("context_length_exceeded") {
-            return true;
-        }
-        // "maximum context length" message
-        if error_lower.contains("maximum context length") {
-            return true;
-        }
-    }
-
-    // Generic patterns that could appear with various status codes
-    if error_lower.contains("tokens must be reduced")
-        || error_lower.contains("reduce the length")
-        || error_lower.contains("input is too long")
-    {
-        return true;
-    }
-
-    false
-}
+pub use crate::openai_errors::{is_openai_model_not_found, is_openai_request_too_large};
 
 /// Drains tool calls that were accumulated but not yet emitted, returning a
 /// final `ToolCalls` event for the `[DONE]` handler. Returns `None` when nothing
@@ -1581,6 +1481,7 @@ mod tests {
     async fn non_streaming_completion_waits_for_full_json_response() {
         let (server, provider) = mock_json_provider(json!({
             "id": "chatcmpl-123",
+            "model": "gpt-5.2-2026-09-01",
             "choices": [{
                 "message": {"role": "assistant", "content": "done"},
                 "finish_reason": "stop"
@@ -1599,6 +1500,10 @@ mod tests {
         assert_eq!(
             response.metadata.response_id.as_deref(),
             Some("chatcmpl-123")
+        );
+        assert_eq!(
+            response.metadata.response_model.as_deref(),
+            Some("gpt-5.2-2026-09-01")
         );
         assert_eq!(response.metadata.prompt_tokens, Some(10));
         assert_eq!(response.metadata.completion_tokens, Some(3));
@@ -1786,6 +1691,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.metadata.response_id, None);
+        assert_eq!(response.metadata.response_model, None);
         assert_eq!(response.metadata.completion_tokens, Some(1));
         assert_eq!(response.metadata.provider_cost_usd, None);
     }
@@ -1842,108 +1748,6 @@ mod tests {
             ("not a URL", false),
         ] {
             assert_eq!(is_azure_openai_api_url(url), azure, "{url}");
-        }
-    }
-
-    #[test]
-    fn request_size_classification_distinguishes_status_gates_and_generic_limits() {
-        for (status, body, expected) in [
-            (
-                429,
-                r#"{"error":{"message":"Request too large for gpt-4o in organization org-xxx on tokens per min (TPM): Limit 500000, Requested 538772."}}"#,
-                true,
-            ),
-            (
-                429,
-                r#"{"error":{"message":"tokens per min (TPM): Limit 500000, Requested 600000"}}"#,
-                true,
-            ),
-            (
-                400,
-                r#"{"error":{"code":"context_length_exceeded","message":"This model's maximum context length is 128000 tokens."}}"#,
-                true,
-            ),
-            (
-                400,
-                r#"{"error":{"message":"This model's maximum context length is 128000 tokens"}}"#,
-                true,
-            ),
-            (
-                400,
-                r#"{"error":{"message":"The input or output tokens must be reduced"}}"#,
-                true,
-            ),
-            (
-                429,
-                r#"{"error":{"message":"Rate limit exceeded: too many requests per minute"}}"#,
-                false,
-            ),
-            (
-                500,
-                r#"{"error":{"message":"Internal server error"}}"#,
-                false,
-            ),
-            (400, r#"{"error":{"message":"Invalid request"}}"#, false),
-            (400, "request too large", false),
-            (429, "context_length_exceeded", false),
-            (500, "tokens limit", false),
-            (400, "REDUCE THE LENGTH", true),
-            (413, "input is too long", true),
-        ] {
-            assert_eq!(
-                is_openai_request_too_large(reqwest::StatusCode::from_u16(status).unwrap(), body),
-                expected,
-                "{status}: {body}"
-            );
-        }
-    }
-
-    #[test]
-    fn model_unavailable_classification_separates_auth_endpoint_and_model_errors() {
-        for (status, body, expected) in [
-            (
-                404,
-                r#"{"error":{"code":"model_not_found","message":"The model 'gpt-99' does not exist or you do not have access to it.","type":"invalid_request_error","param":null}}"#,
-                true,
-            ),
-            (
-                404,
-                r#"{"error":{"message":"The model 'fake-model' does not exist"}}"#,
-                true,
-            ),
-            (404, r#"{"error":{"message":"Model not found"}}"#, true),
-            (
-                400,
-                r#"{"error":{"code":"model_not_found","message":"The requested model 'gpt-99' does not exist.","type":"invalid_request_error","param":"model"}}"#,
-                true,
-            ),
-            (
-                400,
-                r#"{"error":{"code":"invalid_request","message":"Some other error"}}"#,
-                false,
-            ),
-            (404, r#"{"error":{"message":"Endpoint not found"}}"#, false),
-            (
-                403,
-                r#"{"error":{"code":"model_not_found","message":"The model 'gpt-5.4-mini' does not exist or you do not have access to it.","type":"invalid_request_error","param":null}}"#,
-                true,
-            ),
-            (
-                403,
-                r#"{"error":{"message":"Invalid authentication credentials","type":"authentication_error"}}"#,
-                false,
-            ),
-            (401, "model_not_found", false),
-            (500, "model_not_found", false),
-            (400, "model does not exist", false),
-            (403, "model not found", false),
-            (404, "MODEL NOT FOUND", true),
-        ] {
-            assert_eq!(
-                is_openai_model_not_found(reqwest::StatusCode::from_u16(status).unwrap(), body),
-                expected,
-                "{status}: {body}"
-            );
         }
     }
 

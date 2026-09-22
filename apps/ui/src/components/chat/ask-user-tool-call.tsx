@@ -8,6 +8,10 @@ import { Input } from "@/components/ui/input";
 import { submitQuestionAnswers, type SubmittedQuestionAnswer } from "@/lib/api/sessions";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { getFullText } from "@/components/chat/tool-call-utils";
+import {
+  AskUserSecretCard,
+  type AskUserSecretQuestion,
+} from "@/components/chat/ask-user-secret-card";
 
 export interface AskUserOption {
   label: string;
@@ -19,9 +23,36 @@ export interface AskUserQuestion {
   id: string;
   header: string;
   question: string;
+  kind?: "choice" | "secret";
   multi_select?: boolean;
   allow_other?: boolean;
   options: AskUserOption[];
+  secret_name?: string;
+  purpose?: string;
+}
+
+/**
+ * A secret question is validated to be the only question in its call, so one
+ * match settles the whole card. Narrowing on the fields the card needs rather
+ * than on `kind` alone keeps a malformed call off the password path.
+ */
+function secretQuestion(request: AskUserArguments): AskUserSecretQuestion | null {
+  const [question] = request.questions;
+  if (
+    request.questions.length !== 1 ||
+    question?.kind !== "secret" ||
+    !question.secret_name ||
+    !question.purpose
+  ) {
+    return null;
+  }
+  return {
+    id: question.id,
+    header: question.header,
+    question: question.question,
+    secret_name: question.secret_name,
+    purpose: question.purpose,
+  };
 }
 
 export interface AskUserArguments {
@@ -78,7 +109,9 @@ function initialSelections(questions: AskUserQuestion[]): Record<string, Questio
     questions.map((question) => [
       question.id,
       {
-        selected: question.options.filter((option) => option.default).map((option) => option.label),
+        selected: (question.options ?? [])
+          .filter((option) => option.default)
+          .map((option) => option.label),
         otherSelected: false,
         otherText: "",
       },
@@ -121,9 +154,9 @@ function answerLabels(result: AskUserResult): string {
 function defaultLabels(questions: AskUserQuestion[]): string {
   return questions
     .flatMap((question) => {
-      const marked = question.options.filter((option) => option.default);
-      const options = marked.length > 0 ? marked : question.options.slice(0, 1);
-      return options.map((option) => option.label);
+      const options = question.options ?? [];
+      const marked = options.filter((option) => option.default);
+      return (marked.length > 0 ? marked : options.slice(0, 1)).map((option) => option.label);
     })
     .join(", ");
 }
@@ -177,6 +210,7 @@ export function AskUserToolCall({
     [request, requestedAt],
   );
 
+  const secret = useMemo(() => secretQuestion(request), [request]);
   const existingToolResult = toolResultsMap.get(toolCallId);
   const existingResult = parseResult(existingToolResult);
   const completedResult = submittedResult ?? existingResult;
@@ -190,6 +224,18 @@ export function AskUserToolCall({
 
   if (completedResult) {
     return <CompletedAnswer result={completedResult} />;
+  }
+  if (secret && !existingToolResult) {
+    return (
+      <AskUserSecretCard
+        sessionId={sessionId}
+        toolCallId={toolCallId}
+        question={secret}
+        onResolved={(outcome) =>
+          setSubmittedResult({ status: outcome, answered_by: "user", answers: [] })
+        }
+      />
+    );
   }
   if (existingToolResult) {
     return (
@@ -307,7 +353,7 @@ export function AskUserToolCall({
                 {question.question}
               </p>
               <div className="space-y-2">
-                {question.options.map((option) => {
+                {(question.options ?? []).map((option) => {
                   const checked = selection.selected.includes(option.label);
                   return (
                     <label

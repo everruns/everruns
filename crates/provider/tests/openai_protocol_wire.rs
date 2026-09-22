@@ -13,13 +13,41 @@ use everruns_provider::OpenAIProtocolChatDriver;
 use everruns_provider::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message, MessageRole,
 };
-use everruns_provider::{BearerAuth, Provider};
+use everruns_provider::{BearerAuth, LlmRetryConfig, Provider};
 use futures::StreamExt;
+use std::time::Duration;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn config(model: &str) -> LlmCallConfig {
     LlmCallConfig::new(model)
+}
+#[tokio::test]
+async fn provider_reported_model_is_separate_from_the_requested_alias() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"id":"chatcmpl-model","model":"gpt-5.2-2026-09-01","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":"stop"}]}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let response = driver(&server)
+        .chat_completion(
+            vec![Message::text(MessageRole::User, "hi")],
+            &config("gpt-5.2-latest"),
+        )
+        .await
+        .expect("completion should succeed");
+
+    assert_eq!(response.metadata.model.as_deref(), Some("gpt-5.2-latest"));
+    assert_eq!(
+        response.metadata.response_model.as_deref(),
+        Some("gpt-5.2-2026-09-01")
+    );
 }
 
 #[derive(Debug, PartialEq)]
@@ -357,4 +385,44 @@ async fn chat_completions_reasoning_content_reaches_the_reasoning_channel() {
             "reasoning from `{field}` leaked into the answer text: {events:?}"
         );
     }
+}
+
+/// Azure AI Foundry's per-minute quota 429 mentions "tokens" and "limit" but is
+/// transient: the driver must retry it rather than fail the turn as
+/// request-too-large (#3740).
+#[tokio::test]
+async fn foundry_per_minute_quota_429_is_retried() {
+    let server = MockServer::start().await;
+    let quota = r#"{"event_id":null,"error":{"type":"invalid_request_error","message":"{\"error\":{\"code\":\"RateLimitReached\",\"message\":\"Rate limit of 50000 per 60s exceeded for UserByModelByMinuteUncachedInputTokens. Please wait 46 seconds before retrying.\"}}"}}"#;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(429).set_body_raw(quota, "application/json"))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    let body = [
+        r#"data: {"id":"chatcmpl-q","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let driver = OpenAIProtocolChatDriver::new().with_retry_config(LlmRetryConfig {
+        initial_backoff: Duration::from_millis(10),
+        max_backoff: Duration::from_millis(10),
+        ..Default::default()
+    });
+    let response = Provider::new("openai-protocol-test", driver)
+        .base_url(format!("{}/v1/chat/completions", server.uri()))
+        .auth(BearerAuth::new("test-key"))
+        .chat_completion(vec![Message::text(MessageRole::User, "hi")], &config("m"))
+        .await
+        .expect("quota 429 should be retried, not terminal");
+
+    assert_eq!(response.text, "ok");
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
 }

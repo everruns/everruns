@@ -42,4 +42,4 @@ To connect Claude Code, Codex, or Cursor to a deployment via the `everruns` plug
 
 - [URL mode elicitation](/features/mcp-url-elicitation/), tool calls that need a person
 - [Capabilities](/features/capabilities/), how virtual capabilities fit the capability system
-- [Apps](/features/apps/), publishing agents to channels
+- [Slack Integration](/integrations/slack/), publishing an Agent through a messaging endpoint

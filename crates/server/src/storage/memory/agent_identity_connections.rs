@@ -158,4 +158,30 @@ impl InMemoryDatabase {
         connections.retain(|_, c| !(c.agent_identity_id == identity_id && c.provider == provider));
         Ok(connections.len() < before)
     }
+
+    pub async fn invalidate_mcp_service_connection_if_access_token_matches(
+        &self,
+        identity_id: AgentIdentityId,
+        provider: &str,
+        expected_access_token_encrypted: &[u8],
+        org_id: i64,
+        mcp_server_id: Uuid,
+        agent_id: Uuid,
+    ) -> Result<bool> {
+        let mut connections = self.agent_identity_connections.write();
+        let before = connections.len();
+        connections.retain(|_, connection| {
+            connection.agent_identity_id != identity_id
+                || connection.provider != provider
+                || connection.access_token_encrypted.as_deref()
+                    != Some(expected_access_token_encrypted)
+        });
+        let deleted = connections.len() < before;
+        if deleted {
+            self.mcp_service_tool_caches
+                .write()
+                .retain(|key, _| !(key.0 == org_id && key.1 == mcp_server_id && key.2 == agent_id));
+        }
+        Ok(deleted)
+    }
 }

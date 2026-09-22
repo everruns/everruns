@@ -30,7 +30,7 @@ export ANTHROPIC_API_KEY="your-key"
 cargo run -p everruns-framework-support-agent
 ```
 
-The configured model is `claude-opus-5`. Provider access and funded credits are required. Keep keys in your environment, not in source control. Missing credentials, provider errors, and unsuccessful turns exit nonzero.
+The configured model is `claude-opus-5-5`. Provider access and funded credits are required. Keep keys in your environment, not in source control. Missing credentials, provider errors, and unsuccessful turns exit nonzero.
 
 Try another question:
 

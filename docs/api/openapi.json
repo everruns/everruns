@@ -14295,6 +14295,61 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/question-answers": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/question-answers",
+        "description": "Answers the question set an agent raised with `ask_user`, and resumes the\npaused turn.",
+        "operationId": "submit_question_answers",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionAnswersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Answer recorded and workflow resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionAnswersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID, or answers that do not match what was asked"
+          },
+          "404": {
+            "description": "Session or pending question set not found"
+          },
+          "409": {
+            "description": "Session is not waiting for tool results, or the question set was already answered"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/resolved-model": {
       "get": {
         "tags": [
@@ -22278,12 +22333,13 @@
               "object",
               "null"
             ],
-            "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).\n\nTwo hints decide whether a turn may pause for the user rather than talk\npast them: `setup_connection` (the client renders connection setup) and\n`url_elicitation` (the client renders consent for a URL an MCP server\nasks the user to open).",
+            "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).\n\nThree hints decide whether a turn may pause rather than talk past the\nuser: `setup_connection`, `url_elicitation`, and `ask_user` (each names\nthe card the client renders). A pause whose hint is absent does not park\n— an unhinted `ask_user` resolves with the model's defaults (EVE-1057).",
             "additionalProperties": {},
             "propertyNames": {
               "type": "string"
             },
             "example": {
+              "ask_user": true,
               "rich_media": true,
               "setup_connection": true,
               "url_elicitation": true
@@ -22732,6 +22788,14 @@
           "definition": {
             "type": "object",
             "description": "Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata."
+          },
+          "definition_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the stored definition could not be parsed, when it could not be.\n\nPresent only for a corrupt row. The capability keeps its identity\ncolumns so a surface can name what is broken, but `definition` is the\ninert default and `definition.status` reports `retired`, so nothing\nreads it as a usable capability.",
+            "example": "missing field `acts_as` at line 1 column 84"
           },
           "deleted_at": {
             "type": [
@@ -29236,6 +29300,14 @@
                       "type": "object",
                       "description": "Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata."
                     },
+                    "definition_error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Why the stored definition could not be parsed, when it could not be.\n\nPresent only for a corrupt row. The capability keeps its identity\ncolumns so a surface can name what is broken, but `definition` is the\ninert default and `definition.status` reports `retired`, so nothing\nreads it as a usable capability.",
+                      "example": "missing field `acts_as` at line 1 column 84"
+                    },
                     "deleted_at": {
                       "type": [
                         "string",
@@ -30592,6 +30664,14 @@
             ],
             "description": "Unique response identifier from the LLM provider\nRequired for gen-ai semantic conventions",
             "example": "msg_01ABCDef0123456789"
+          },
+          "response_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model the provider reported actually serving the request.\n\n`model` is what was *asked for*, which is routinely an alias that\nresolves at request time — `claude-sonnet-4-5` served by\n`claude-sonnet-4-5-20250929`, or an OpenRouter route landing on one\nupstream of several. Collapsing the two loses the only record of which\nweights produced the answer, which is what a regression in output\nquality has to be correlated against.\n\n`None` when the provider reported no model, which is the honest answer:\nconsumers fall back to `model` rather than being told the alias was\nconfirmed.",
+            "example": "claude-sonnet-4-5-20250929"
           },
           "retry": {
             "oneOf": [
@@ -34886,6 +34966,66 @@
           }
         }
       },
+      "QuestionAnswersRequest": {
+        "type": "object",
+        "description": "Request to answer a pending `ask_user` question set.",
+        "properties": {
+          "answers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubmittedAnswer"
+            },
+            "description": "One answer per asked question, keyed by question id.",
+            "example": [
+              {
+                "id": "target",
+                "other_text": null,
+                "selected": [
+                  "Staging"
+                ]
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/SubmittedStatus",
+            "description": "What the person did. `answered` carries answers; `declined` is a finished\ndecision the model must not re-ask."
+          },
+          "tool_call_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `ask_user` tool call being answered. Optional: when omitted the one\npending question set on the session is used.",
+            "example": "toolu_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "QuestionAnswersResponse": {
+        "type": "object",
+        "description": "Result of answering a pending question set.",
+        "required": [
+          "status",
+          "answered_by",
+          "session_status"
+        ],
+        "properties": {
+          "answered_by": {
+            "type": "string",
+            "description": "Who the server attributed the outcome to.",
+            "example": "user"
+          },
+          "session_status": {
+            "type": "string",
+            "description": "Session status after the answer.",
+            "example": "active"
+          },
+          "status": {
+            "type": "string",
+            "description": "Outcome recorded against the call.",
+            "example": "answered"
+          }
+        }
+      },
       "ReasonCompletedData": {
         "type": "object",
         "description": "Data for reason.completed event",
@@ -38259,6 +38399,49 @@
             "description": "Session status after submission"
           }
         }
+      },
+      "SubmittedAnswer": {
+        "type": "object",
+        "description": "One submitted answer.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Question id, as carried in the `tool.call_requested` payload."
+          },
+          "other_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free text, accepted only when the question allows it."
+          },
+          "secret_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Handle to the stored credential, on a `secret` question only — the value\nitself is never submitted here. Store it with\n`PUT /v1/sessions/{session_id}/storage/secrets` first, then answer with\n`session:{secret_name}`.",
+            "example": "session:STRIPE_API_KEY"
+          },
+          "selected": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Chosen option labels. Must be labels that were actually offered."
+          }
+        }
+      },
+      "SubmittedStatus": {
+        "type": "string",
+        "description": "The outcomes a caller may submit.\n\n`cancelled` and `timed_out` are deliberately absent: they are the server's to\ndecide, from a superseding message and from the deadline sweep. A caller that\ncould assert them could claim a person's silence as their answer.",
+        "enum": [
+          "answered",
+          "declined"
+        ]
       },
       "SuccessResponse": {
         "type": "object",
@@ -42816,6 +42999,14 @@
               "definition": {
                 "type": "object",
                 "description": "Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata."
+              },
+              "definition_error": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Why the stored definition could not be parsed, when it could not be.\n\nPresent only for a corrupt row. The capability keeps its identity\ncolumns so a surface can name what is broken, but `definition` is the\ninert default and `definition.status` reports `retired`, so nothing\nreads it as a usable capability.",
+                "example": "missing field `acts_as` at line 1 column 84"
               },
               "deleted_at": {
                 "type": [

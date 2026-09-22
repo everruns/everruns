@@ -139,6 +139,37 @@ async fn mount_sse(server: &MockServer, body: String) {
         .await;
 }
 
+#[tokio::test]
+async fn provider_reported_model_is_distinct_and_optional() {
+    for reported in [Some("gemini-2.5-flash-2026-09-01"), None] {
+        let server = MockServer::start().await;
+        let mut chunk = serde_json::json!({
+            "candidates": [{
+                "content": {"parts": [{"text": "Hello"}]},
+                "finishReason": "STOP"
+            }]
+        });
+        if let Some(model) = reported {
+            chunk["modelVersion"] = serde_json::json!(model);
+        }
+        mount_sse(&server, format!("data: {chunk}\n\n")).await;
+
+        let response = provider(&server)
+            .chat_completion(
+                vec![Message::text(MessageRole::User, "hi")],
+                &config("gemini-2.5-flash-latest"),
+            )
+            .await
+            .expect("completion should succeed");
+
+        assert_eq!(
+            response.metadata.model.as_deref(),
+            Some("gemini-2.5-flash-latest")
+        );
+        assert_eq!(response.metadata.response_model.as_deref(), reported);
+    }
+}
+
 /// A text-only completion: two content deltas, a STOP finish, and usage. The
 /// golden sequence is the two text deltas followed by a single `Done` carrying
 /// the disjoint token buckets (Gemini's promptTokenCount is cache-inclusive, so
@@ -514,7 +545,11 @@ async fn replayed_request_tolerates_an_identical_replay() {
         drain_golden(stream).await;
     }
 
-    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+    // Two deliberate calls, and a reconnect may add more:
+    // `connect_bytes_with_reconnect` reissues the request on a transport
+    // error, so under CI load this legitimately sees three. Asserting
+    // equality made the very condition the test exists to tolerate fail it.
+    assert!(server.received_requests().await.unwrap().len() >= 2);
     let request = replayed_request(&server).await;
     assert_eq!(
         request.url.path(),

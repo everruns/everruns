@@ -47,7 +47,9 @@ Tool search requires model-level support. Per Anthropic, it is available on:
 
 | Model family | Supported |
 |---|---|
+| Opus 5.5 / 5 (`claude-opus-5-5`, `claude-opus-5`) | Yes |
 | Opus 4.x (`claude-opus-4*`) | Yes |
+| Sonnet 5 (`claude-sonnet-5`) | Yes |
 | Sonnet 4.5 / 4.6 (`claude-sonnet-4-5`, `claude-sonnet-4-6`) | Yes |
 | Haiku 4.5 (`claude-haiku-4-5`) | Yes |
 | Fable 5.1 / 5 (`claude-fable-5-1`, `claude-fable-5`) | Yes |

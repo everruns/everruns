@@ -50,7 +50,7 @@ use everruns_core::{
     session_services::SessionStorageStore,
 };
 use everruns_engine::{
-    ActOutcome, ActivityOutcome, Execution, HostFacts, TurnPlan, TurnState, reason_schedules_act,
+    ActivityOutcome, Execution, HostFacts, TurnPlan, TurnState, reason_schedules_act,
 };
 use everruns_engine::{InputAtomInput, ReasonInput};
 use everruns_provider::driver_registry::DriverRegistry;
@@ -1375,11 +1375,8 @@ impl InProcessRuntime {
                 TurnPlan::ScheduleAct(act_plan) => {
                     tool_calls_count += act_plan.input.tool_calls.len();
                     let act_result = execute_act_activity(self, act_plan.input).await?;
-                    let outcome = ActOutcome {
-                        blocked: act_result.blocked,
-                        waiting_for_tool_results: act_result.waiting_for_tool_results,
-                        waiting_for_url_elicitation: act_result.waiting_for_url_elicitation,
-                    };
+                    let outcome = crate::turn_strategy::act_outcome(&act_result);
+                    let ask_user_calls = crate::turn_strategy::pending_ask_user_calls(&act_result);
                     let hints = crate::turn_strategy::resolve_pause_hints(
                         self, org_id, session_id, outcome,
                     )
@@ -1391,6 +1388,8 @@ impl InProcessRuntime {
                         HostFacts {
                             setup_connection_hint_enabled: hints.setup_connection,
                             url_elicitation_hint_enabled: hints.url_elicitation,
+                            ask_user_hint_enabled: hints.ask_user,
+                            ask_user_calls,
                             ..HostFacts::default()
                         },
                     );
@@ -1955,12 +1954,11 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn tool_context_extensions(
         &self,
-        org_id: i64,
-        session_id: SessionId,
+        request: crate::host::ToolContextRequest<'_>,
     ) -> everruns_core::tool_context::ToolContextExtensions {
         self.tool_context_extensions_factory
             .as_ref()
-            .map(|factory| factory(org_id, session_id))
+            .map(|factory| factory(request.org_id, request.session_id))
             .unwrap_or_default()
     }
 

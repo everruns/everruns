@@ -154,6 +154,7 @@ service WorkerService {
     rpc GetConnectionToken(GetConnectionTokenRequest) returns (GetConnectionTokenResponse);
     // Kept distinct so explicit MCP identity lookup fails closed on older control planes.
     rpc GetMcpConnectionToken(GetMcpConnectionTokenRequest) returns (GetConnectionTokenResponse);
+    rpc InvalidateMcpConnection(InvalidateMcpConnectionRequest) returns (InvalidateMcpConnectionResponse);
     rpc GetConnectionUser(GetConnectionUserRequest) returns (GetConnectionUserResponse);
     rpc GetConnectionTokenForUser(GetConnectionTokenForUserRequest) returns (GetConnectionTokenForUserResponse);
 
@@ -1406,6 +1407,14 @@ message GetMcpConnectionTokenRequest {
 message GetConnectionTokenResponse {
     optional string token = 1;  // Decrypted token, or None if not connected
 }
+message InvalidateMcpConnectionRequest {
+    Uuid session_id = 1;
+    string provider = 2;
+    string acts_as = 3;
+    string rejected_credential_fingerprint = 4;
+}
+
+message InvalidateMcpConnectionResponse {}
 
 message GetConnectionUserRequest {
     Uuid session_id = 1;

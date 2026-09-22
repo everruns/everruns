@@ -364,7 +364,7 @@ export default function OrganizationPage() {
             >
               <SettingsRow
                 label="Default Model"
-                description="Leave empty to use the platform default, GPT-5.6 Terra."
+                description="Leave empty to use the platform default, GPT-6 Luna."
                 htmlFor="default-model"
               >
                 <ModelPicker
@@ -375,7 +375,7 @@ export default function OrganizationPage() {
                     setDefaultModelId(value);
                     scheduleAutoSave("models", nextDraft);
                   }}
-                  placeholder="Platform default · GPT-5.6 Terra"
+                  placeholder="Platform default · GPT-6 Luna"
                   disabled={!canManage}
                   className={CONTROL_CLASS_NAME}
                 />

@@ -289,7 +289,12 @@ async fn oauth_login_discovers_registers_and_verifies_pkce() {
     .await
     .unwrap();
     let code = mock
-        .authorize(challenge(verifier), None, Some("issues.write"))
+        .authorize_with_resource(
+            challenge(verifier),
+            None,
+            Some("issues.write"),
+            Some(&mock.mcp_url()),
+        )
         .unwrap();
     let oauth = OAuthClient::new(&mock, EgressRequestKind::Mcp);
 
@@ -320,7 +325,12 @@ async fn oauth_login_discovers_registers_and_verifies_pkce() {
     .await
     .unwrap();
     let code = mock
-        .authorize(challenge(verifier), None, Some("issues.write"))
+        .authorize_with_resource(
+            challenge(verifier),
+            None,
+            Some("issues.write"),
+            Some(&mock.mcp_url()),
+        )
         .unwrap();
     let tokens = oauth
         .exchange_code(
@@ -390,14 +400,14 @@ fn configurable_actor_and_scope_rejections_are_explicit() {
     let mock = MockMcpOAuthServer::default();
     mock.reject_actor();
     assert_eq!(
-        mock.authorize("challenge", Some("application"), None),
+        mock.authorize("challenge", Some("app"), None),
         Err(MockOAuthError::ActorRejected)
     );
 
     let mock = MockMcpOAuthServer::default();
     mock.reject_scope("admin");
     assert_eq!(
-        mock.authorize("challenge", None, Some("issues.read admin profile")),
+        mock.authorize("challenge", None, Some("read,write,admin")),
         Err(MockOAuthError::ScopeRejected("admin".to_string()))
     );
 }

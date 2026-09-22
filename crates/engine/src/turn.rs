@@ -107,6 +107,21 @@ pub enum TurnLifecycleEffect {
         input_message_id: MessageId,
         data: TurnCompletedData,
     },
+    /// Answer an `ask_user` call the client structurally cannot be asked.
+    ///
+    /// Emitted instead of parking when the session never declared the
+    /// `ask_user` hint — a scheduled run, a trigger, an SDK caller. The host
+    /// completes each call with the declared defaults and
+    /// `answered_by: "unattended"`, and the turn carries on in the same
+    /// iteration (EVE-1057).
+    ResolveAskUserUnattended {
+        /// The turn that asked, so the completion is filed against it rather
+        /// than floating free in the session.
+        turn_id: Option<TurnId>,
+        input_message_id: MessageId,
+        /// The `ask_user` calls to answer, as `(tool_call_id, arguments)`.
+        calls: Vec<(String, serde_json::Value)>,
+    },
     /// Idle the session and emit `session.idled`.
     SessionIdled {
         turn_id: TurnId,
@@ -142,6 +157,9 @@ pub struct ActOutcome {
     /// The pause is a URL mode elicitation consent card, which only a client
     /// that declared `url_elicitation` can answer.
     pub waiting_for_url_elicitation: bool,
+    /// The pause is an `ask_user` question set, which only a client that
+    /// declared `ask_user` can answer (EVE-1057).
+    pub waiting_for_ask_user: bool,
 }
 
 /// Session facts the host pre-resolves for the reason→act scheduling case.
@@ -180,6 +198,11 @@ pub struct HostFacts {
     pub act_scheduling: Option<ActSchedulingFacts>,
     pub setup_connection_hint_enabled: bool,
     pub url_elicitation_hint_enabled: bool,
+    pub ask_user_hint_enabled: bool,
+    /// The `ask_user` calls the act left pending, as `(tool_call_id,
+    /// arguments)`. Carried here rather than on [`ActOutcome`], which is `Copy`
+    /// and cannot hold them. Empty unless the act paused on `ask_user`.
+    pub ask_user_calls: Vec<(String, serde_json::Value)>,
 }
 
 fn preview_final_answer(text: &str) -> Option<String> {
@@ -307,6 +330,8 @@ pub fn plan_next_turn(
             outcome,
             facts.setup_connection_hint_enabled,
             facts.url_elicitation_hint_enabled,
+            facts.ask_user_hint_enabled,
+            facts.ask_user_calls.clone(),
         ),
     }
 }
@@ -472,6 +497,8 @@ pub fn plan_after_act(
     outcome: ActOutcome,
     setup_connection_hint_enabled: bool,
     url_elicitation_hint_enabled: bool,
+    ask_user_hint_enabled: bool,
+    ask_user_calls: Vec<(String, serde_json::Value)>,
 ) -> (TurnPlan, Vec<TurnLifecycleEffect>) {
     if outcome.blocked {
         return (
@@ -488,9 +515,17 @@ pub fn plan_after_act(
     // declared it renders one; everything else rides the `setup_connection`
     // hint as before. Without the matching hint the turn continues and the
     // elicitation reaches the user as an ordinary tool result instead.
+    // An `ask_user` pause needs its own hint for the same reason: a question
+    // nobody can render is not worth holding a turn for (EVE-1057). It does not
+    // ride `setup_connection`, because a client can be able to finish a
+    // connection setup and still have no way to draw a question.
     let should_pause_for_tool_results = outcome.waiting_for_tool_results
-        && (setup_connection_hint_enabled
-            || (outcome.waiting_for_url_elicitation && url_elicitation_hint_enabled));
+        && if outcome.waiting_for_ask_user {
+            ask_user_hint_enabled
+        } else {
+            setup_connection_hint_enabled
+                || (outcome.waiting_for_url_elicitation && url_elicitation_hint_enabled)
+        };
 
     let next = TurnState {
         iteration: state.iteration.saturating_add(1),
@@ -508,9 +543,24 @@ pub fn plan_after_act(
         info!(
             session_id = %state.session_id,
             waiting_for_url_elicitation = outcome.waiting_for_url_elicitation,
+            waiting_for_ask_user = outcome.waiting_for_ask_user,
             "no hint declares this client can answer the pause, continuing turn instead"
         );
     }
 
-    (TurnPlan::ScheduleReason(next), Vec::new())
+    // A URL elicitation continuing unanswered reaches the model as an ordinary
+    // tool result, which reads correctly. An `ask_user` call would instead sit
+    // in the transcript with nothing answering it, so the defaults are applied
+    // here and the model is told plainly that nobody could be asked (EVE-1057).
+    let effects = if outcome.waiting_for_ask_user && !ask_user_calls.is_empty() {
+        vec![TurnLifecycleEffect::ResolveAskUserUnattended {
+            turn_id: state.turn_id,
+            input_message_id: state.input_message_id,
+            calls: ask_user_calls,
+        }]
+    } else {
+        Vec::new()
+    };
+
+    (TurnPlan::ScheduleReason(next), effects)
 }

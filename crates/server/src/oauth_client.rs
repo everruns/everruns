@@ -29,6 +29,17 @@ pub(crate) struct OAuthRefreshRequest {
     pub client_id: String,
     pub client_secret: Option<String>,
     pub refresh_token: String,
+    pub resource: Option<String>,
+}
+
+pub(crate) struct OAuthCodeExchangeRequest<'a> {
+    pub token_endpoint: &'a str,
+    pub client_id: &'a str,
+    pub client_secret: Option<&'a str>,
+    pub redirect_uri: &'a str,
+    pub code: &'a str,
+    pub code_verifier: &'a str,
+    pub resource: Option<&'a str>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OAuthRefreshError {
@@ -66,6 +77,7 @@ impl OAuthRefreshExchange for EgressOAuthRefreshExchange {
             &request.client_id,
             request.client_secret.as_deref(),
             &request.refresh_token,
+            request.resource.as_deref(),
         )
         .await
     }
@@ -73,24 +85,22 @@ impl OAuthRefreshExchange for EgressOAuthRefreshExchange {
 
 pub(crate) async fn exchange_oauth_code(
     egress: &dyn EgressService,
-    token_endpoint: &str,
-    client_id: &str,
-    client_secret: Option<&str>,
-    redirect_uri: &str,
-    code: &str,
-    code_verifier: &str,
+    request: OAuthCodeExchangeRequest<'_>,
 ) -> Result<OAuthTokenResponse, (StatusCode, String)> {
     let mut params = vec![
         ("grant_type", "authorization_code".to_string()),
-        ("client_id", client_id.to_string()),
-        ("redirect_uri", redirect_uri.to_string()),
-        ("code", code.to_string()),
-        ("code_verifier", code_verifier.to_string()),
+        ("client_id", request.client_id.to_string()),
+        ("redirect_uri", request.redirect_uri.to_string()),
+        ("code", request.code.to_string()),
+        ("code_verifier", request.code_verifier.to_string()),
     ];
-    if let Some(secret) = client_secret {
+    if let Some(secret) = request.client_secret {
         params.push(("client_secret", secret.to_string()));
     }
-    exchange_oauth_token(egress, token_endpoint, params).await
+    if let Some(resource) = request.resource {
+        params.push(("resource", resource.to_string()));
+    }
+    exchange_oauth_token(egress, request.token_endpoint, params).await
 }
 
 async fn exchange_oauth_refresh_token(
@@ -99,6 +109,7 @@ async fn exchange_oauth_refresh_token(
     client_id: &str,
     client_secret: Option<&str>,
     refresh_token: &str,
+    resource: Option<&str>,
 ) -> Result<OAuthTokenResponse, OAuthRefreshError> {
     let mut params = vec![
         ("grant_type", "refresh_token".to_string()),
@@ -107,6 +118,9 @@ async fn exchange_oauth_refresh_token(
     ];
     if let Some(secret) = client_secret {
         params.push(("client_secret", secret.to_string()));
+    }
+    if let Some(resource) = resource {
+        params.push(("resource", resource.to_string()));
     }
     validate_safe_url(token_endpoint)
         .map_err(|_| OAuthRefreshError::Failed(StatusCode::BAD_REQUEST))?;
@@ -163,7 +177,7 @@ async fn exchange_oauth_token(
     let body = serde_urlencoded::to_string(&params)
         .map_err(|e| sanitized_bad_gateway("OAuth token body", &e))?
         .into_bytes();
-    egress_oauth_json(
+    let response = send_oauth_request(
         egress,
         "POST",
         token_endpoint,
@@ -173,7 +187,49 @@ async fn exchange_oauth_token(
         )],
         body,
     )
-    .await
+    .await?;
+    if !(200..300).contains(&response.status) {
+        #[derive(Deserialize)]
+        struct OAuthErrorResponse {
+            error: String,
+            #[serde(default)]
+            error_description: Option<String>,
+        }
+
+        tracing::warn!(
+            status = response.status,
+            body_len = response.body.len(),
+            "OAuth external service rejected token request"
+        );
+        let message = serde_json::from_slice::<OAuthErrorResponse>(&response.body)
+            .ok()
+            .map(|response| {
+                let error = sanitized_oauth_error_text(&response.error);
+                match response
+                    .error_description
+                    .as_deref()
+                    .map(sanitized_oauth_error_text)
+                    .filter(|description| !description.is_empty())
+                {
+                    Some(description) => {
+                        format!("OAuth token request was refused: {error} ({description})")
+                    }
+                    None => format!("OAuth token request was refused: {error}"),
+                }
+            })
+            .unwrap_or_else(|| "OAuth token request was refused".to_string());
+        return Err((StatusCode::BAD_REQUEST, message));
+    }
+    serde_json::from_slice(&response.body)
+        .map_err(|e| sanitized_bad_gateway("External service response parse", &e))
+}
+
+fn sanitized_oauth_error_text(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(256)
+        .collect()
 }
 
 /// Send an OAuth request through the host egress boundary with DNS pinning.
@@ -269,6 +325,7 @@ mod tests {
             "client",
             None,
             "refresh",
+            None,
         )
         .await
         .unwrap_err();

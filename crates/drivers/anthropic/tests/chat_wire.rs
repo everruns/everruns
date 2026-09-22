@@ -132,6 +132,44 @@ fn driver(server: &MockServer) -> Provider {
         .auth(StaticHeaderAuth::new("x-api-key", "test-key"))
 }
 
+#[tokio::test]
+async fn provider_reported_model_is_distinct_and_optional() {
+    for reported in [Some("claude-sonnet-4-5-20250929"), None] {
+        let server = MockServer::start().await;
+        let mut start = serde_json::json!({
+            "type": "message_start",
+            "message": {"id": "msg_model", "usage": {"input_tokens": 1}}
+        });
+        if let Some(model) = reported {
+            start["message"]["model"] = serde_json::json!(model);
+        }
+        let body = [
+            sse_event("message_start", &start.to_string()),
+            sse_event(
+                "message_delta",
+                r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}"#,
+            ),
+            sse_event("message_stop", r#"{"type":"message_stop"}"#),
+        ]
+        .concat();
+        mount_sse(&server, body).await;
+
+        let response = driver(&server)
+            .chat_completion(
+                vec![Message::text(MessageRole::User, "hi")],
+                &config("claude-sonnet-latest"),
+            )
+            .await
+            .expect("completion should succeed");
+
+        assert_eq!(
+            response.metadata.model.as_deref(),
+            Some("claude-sonnet-latest")
+        );
+        assert_eq!(response.metadata.response_model.as_deref(), reported);
+    }
+}
+
 /// Text streaming: `message_start` carries input/cache usage, two text deltas
 /// stream, and `message_delta` + `message_stop` close with output tokens. The
 /// golden output is the two text deltas plus a `Done` with disjoint buckets

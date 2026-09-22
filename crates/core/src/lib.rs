@@ -109,6 +109,10 @@ pub mod event_listeners;
 // Error reporter (vendor-neutral embedder hook)
 pub mod error_reporter;
 
+// Shared classification for database failures that strike many subsystems at
+// once, so one incident reports as one incident (EVE-1071).
+pub mod database_failure;
+
 // Observability implementations live behind `everruns-host/observability`
 // (EVE-651, EVE-876): exporter listeners (Braintrust, OpenTelemetry), the
 // CompositeEventListener fan-out, and OpenTelemetry/OTLP initialization. They
@@ -334,6 +338,9 @@ pub use event_listeners::{EventListener, NoopEventListener};
 pub use error_reporter::{
     ErrorReport, ErrorReporter, ErrorScope, ErrorSeverity, NoopErrorReporter, SharedErrorReporter,
 };
+
+// Database failure classification re-exports (EVE-1071).
+pub use database_failure::{DatabaseFailureKind, log_database_failure};
 
 // Outbound egress service re-exports
 pub use egress::{

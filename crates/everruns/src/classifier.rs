@@ -147,7 +147,15 @@ impl Classifier {
     /// The concrete service comes from an integration — for TypeSafe's System
     /// One, `everruns_integrations_typesafe::TypeSafeAI`.
     ///
-    /// ```no_run
+    // `TypeSafeAI` is re-exported only under the `typesafe` feature, which is
+    // not a default one. Compiling this example unconditionally made the bare
+    // `cargo test -p everruns` fail for every contributor while CI, which runs
+    // with the feature on, stayed green (EVE-1080). Marking the block `ignore`
+    // outright would fix that by never compiling it again — including in the
+    // build that can — so gate the fence and keep the example checked wherever
+    // the type it needs actually exists.
+    #[cfg_attr(feature = "typesafe", doc = "```no_run")]
+    #[cfg_attr(not(feature = "typesafe"), doc = "```ignore")]
     /// # use everruns::{Classifier, TypeSafeAI};
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let classifier = Classifier::new("jev-latest", TypeSafeAI::from_env()?);

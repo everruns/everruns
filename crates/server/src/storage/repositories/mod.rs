@@ -45,6 +45,7 @@ mod skills;
 mod user_connections;
 mod user_preferences;
 mod users;
+mod waiting_turn_resolutions;
 mod workspaces;
 
 #[cfg(test)]

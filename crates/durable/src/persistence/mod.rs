@@ -5,6 +5,7 @@
 //! - [`InMemoryWorkflowEventStore`] for testing
 //! - [`PostgresWorkflowEventStore`] for production
 
+mod db_failure;
 mod memory;
 mod postgres;
 mod store;

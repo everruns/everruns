@@ -19,7 +19,7 @@ use everruns_server::storage::{
     CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreateOrgInvitation,
     CreateOrganizationRow, CreatePrincipalRow, CreateProviderRow, CreateSessionRow,
     CreateUsageJournalRow, CreateUsageLedgerRow, CreateUserRow, Database, MESSAGE_SAFETY_LIMIT,
-    Repository, StorageBackend, UpdateAgentTrigger,
+    Repository, StorageBackend, UpdateAgentTrigger, UpdateSession, WaitingTurnResolutionPlan,
 };
 use test_harness::get_database_url;
 
@@ -851,6 +851,149 @@ async fn postgres_repository_conformance() {
     run_repository_conformance(&backend, "postgres", harness_id).await;
     run_agent_trigger_conformance(&backend, "postgres", harness_id).await;
     run_org_invitation_conformance(&backend, "postgres").await;
+}
+
+async fn run_waiting_turn_claim_recovery_conformance(backend: &StorageBackend, label: &str) {
+    let owner = create_test_principal(backend, &format!("waiting-turn-{label}")).await;
+    let session = backend
+        .create_session(session_input(owner, &format!("waiting-turn-{label}")))
+        .await
+        .expect("create waiting-turn session");
+    backend
+        .update_session(
+            DEFAULT_ORG_ID,
+            session.id,
+            UpdateSession {
+                status: Some("waiting_for_tool_results".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("park waiting turn")
+        .expect("waiting-turn session exists");
+
+    let original_plan = WaitingTurnResolutionPlan {
+        kind: "user_message".to_string(),
+        events: Vec::new(),
+        session_values: Vec::new(),
+        response: json!({ "winner": "original" }),
+    };
+    let first = match backend
+        .claim_waiting_turn(DEFAULT_ORG_ID, session.id, original_plan.clone())
+        .await
+        .expect("claim waiting turn")
+    {
+        everruns_server::storage::ClaimWaitingTurnResult::Claimed(claim) => claim,
+        other => panic!("{label}: expected initial claim, got {other:?}"),
+    };
+    assert_eq!(
+        backend
+            .get_session(DEFAULT_ORG_ID, session.id)
+            .await
+            .expect("read claimed session")
+            .expect("claimed session exists")
+            .status,
+        "resolving_tool_results"
+    );
+    backend
+        .abandon_waiting_turn_claim(
+            DEFAULT_ORG_ID,
+            session.id,
+            first.resolution_id,
+            first.claim_token,
+        )
+        .await
+        .expect("expire initial claim");
+    assert_eq!(
+        backend
+            .get_session(DEFAULT_ORG_ID, session.id)
+            .await
+            .expect("read expired claim session")
+            .expect("expired claim session exists")
+            .status,
+        "resolving_tool_results"
+    );
+
+    let replacement_plan = WaitingTurnResolutionPlan {
+        kind: "tool_results".to_string(),
+        events: Vec::new(),
+        session_values: Vec::new(),
+        response: json!({ "winner": "replacement" }),
+    };
+    assert!(matches!(
+        backend
+            .claim_waiting_turn(DEFAULT_ORG_ID, session.id, replacement_plan.clone())
+            .await
+            .expect("reject mismatched resolver"),
+        everruns_server::storage::ClaimWaitingTurnResult::Conflict { .. }
+    ));
+    let recovered = match backend
+        .recover_waiting_turn(DEFAULT_ORG_ID, session.id, replacement_plan)
+        .await
+        .expect("recover waiting turn")
+    {
+        everruns_server::storage::ClaimWaitingTurnResult::Claimed(claim) => claim,
+        other => panic!("{label}: expected recovered claim, got {other:?}"),
+    };
+    assert!(recovered.recovered, "{label}: claim is marked recovered");
+    assert_eq!(recovered.resolution_id, first.resolution_id);
+    assert_ne!(recovered.claim_token, first.claim_token);
+    assert_eq!(recovered.plan, original_plan);
+
+    assert!(
+        !backend
+            .complete_waiting_turn_claim(
+                DEFAULT_ORG_ID,
+                session.id,
+                first.resolution_id,
+                first.claim_token,
+            )
+            .await
+            .expect("reject stale completion"),
+        "{label}: stale owner cannot complete the recovered claim"
+    );
+    backend
+        .abandon_waiting_turn_claim(
+            DEFAULT_ORG_ID,
+            session.id,
+            first.resolution_id,
+            first.claim_token,
+        )
+        .await
+        .expect("ignore stale abandon");
+    assert!(
+        backend
+            .complete_waiting_turn_claim(
+                DEFAULT_ORG_ID,
+                session.id,
+                recovered.resolution_id,
+                recovered.claim_token,
+            )
+            .await
+            .expect("complete recovered claim"),
+        "{label}: recovered owner completes after stale abandon"
+    );
+    assert_eq!(
+        backend
+            .get_session(DEFAULT_ORG_ID, session.id)
+            .await
+            .expect("read completed session")
+            .expect("completed session exists")
+            .status,
+        "active"
+    );
+}
+
+#[tokio::test]
+async fn in_memory_waiting_turn_claim_recovery() {
+    let backend = StorageBackend::in_memory();
+    run_waiting_turn_claim_recovery_conformance(&backend, "memory").await;
+}
+
+#[tokio::test]
+async fn postgres_waiting_turn_claim_recovery() {
+    let backend = create_postgres_backend().await;
+    run_waiting_turn_claim_recovery_conformance(&backend, "postgres").await;
 }
 
 /// EVE-870: the reconciliation half of the checkpoint crash window.

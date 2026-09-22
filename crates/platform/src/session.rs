@@ -99,6 +99,8 @@ impl From<&str> for SessionStatus {
             "active" => SessionStatus::Active,
             "idle" => SessionStatus::Idle,
             "waiting_for_tool_results" => SessionStatus::WaitingForToolResults,
+            // This private claim state stays externally parked while resolution commits.
+            "resolving_tool_results" => SessionStatus::WaitingForToolResults,
             "paused" => SessionStatus::Paused,
             // Handle legacy values during migration
             "running" => SessionStatus::Active,
@@ -816,6 +818,14 @@ mod tests {
             assert_eq!(SessionActivity::parse(activity.as_str()), Some(*activity));
         }
         assert_eq!(SessionActivity::parse("nope"), None);
+    }
+
+    #[test]
+    fn resolving_tool_results_projects_as_waiting() {
+        assert_eq!(
+            SessionStatus::from("resolving_tool_results"),
+            SessionStatus::WaitingForToolResults
+        );
     }
 
     #[test]

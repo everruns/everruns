@@ -1930,6 +1930,7 @@ name = "weekend-concierge-host"
 version = "0.1.0"
 dependencies = [
  "everruns",
+ "libc",
  "serde",
  "serde_json",
  "tokio",

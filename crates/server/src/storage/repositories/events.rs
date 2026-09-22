@@ -142,6 +142,163 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn create_waiting_turn_resolution_event(
+        &self,
+        input: CreateEventRow,
+        resolution_id: Uuid,
+        event_index: i32,
+    ) -> Result<(EventRow, bool)> {
+        let existing = sqlx::query_as::<_, EventRow>(
+            "SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, \
+             created_at FROM events WHERE turn_resolution_id = $1 \
+             AND turn_resolution_event_index = $2",
+        )
+        .bind(resolution_id)
+        .bind(event_index)
+        .fetch_optional(&self.pool)
+        .await?;
+        if let Some(row) = existing {
+            return Ok((row, false));
+        }
+
+        let inserted = sqlx::query_as::<_, EventRow>(
+            r#"
+            INSERT INTO events (
+                session_id, sequence, event_type, ts, context, data, metadata, tags,
+                turn_resolution_id, turn_resolution_event_index
+            )
+            VALUES ($1, allocate_event_sequence($1), $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (turn_resolution_id, turn_resolution_event_index)
+                WHERE turn_resolution_id IS NOT NULL
+                DO NOTHING
+            RETURNING id, session_id, sequence, event_type, ts, context, data, metadata, tags,
+                      created_at
+            "#,
+        )
+        .bind(input.session_id)
+        .bind(&input.event_type)
+        .bind(input.ts)
+        .bind(&input.context)
+        .bind(&input.data)
+        .bind(&input.metadata)
+        .bind(&input.tags)
+        .bind(resolution_id)
+        .bind(event_index)
+        .fetch_optional(&self.pool)
+        .await?;
+        if let Some(row) = inserted {
+            if let Err(error) = sqlx::query(
+                r#"
+                INSERT INTO reporting_outbox (
+                    org_id, source_type, source_id, source_version, reason, status, next_attempt_at
+                )
+                SELECT s.org_id, 'event', $1, $1, 'event_projection', 'pending', NOW()
+                FROM sessions s
+                WHERE s.id = $2
+                ON CONFLICT (org_id, source_type, source_id, source_version, reason)
+                DO NOTHING
+                "#,
+            )
+            .bind(row.id.uuid().to_string())
+            .bind(row.session_id.uuid())
+            .execute(&self.pool)
+            .await
+            {
+                warn!(
+                    event_id = %row.id.uuid(),
+                    session_id = %row.session_id.uuid(),
+                    error = %error,
+                    "reporting outbox enqueue failed for resolution event"
+                );
+            }
+            return Ok((row, true));
+        }
+
+        let row = sqlx::query_as::<_, EventRow>(
+            "SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, \
+             created_at FROM events WHERE turn_resolution_id = $1 \
+             AND turn_resolution_event_index = $2",
+        )
+        .bind(resolution_id)
+        .bind(event_index)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok((row, false))
+    }
+
+    pub async fn claim_slack_approval_card(
+        &self,
+        session_id: SessionId,
+        card_id: &str,
+        turn_id: &str,
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        // Event sequence allocation serializes the claim with every message
+        // insertion for this session, giving freshness checks a total order.
+        let sequence: i32 = sqlx::query_scalar("SELECT allocate_event_sequence($1)")
+            .bind(session_id.uuid())
+            .fetch_one(&mut *tx)
+            .await?;
+        let approval_sequence: Option<i32> = sqlx::query_scalar(
+            r#"
+            SELECT MAX(sequence) FROM events
+            WHERE session_id = $1 AND event_type = 'tool.completed'
+              AND data->>'tool_name' = 'request_approval'
+              AND context->>'turn_id' = $2 AND sequence < $3
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(turn_id)
+        .bind(sequence)
+        .fetch_one(&mut *tx)
+        .await?;
+        let Some(approval_sequence) = approval_sequence else {
+            tx.rollback().await?;
+            return Ok(false);
+        };
+        // Any consumed card inside the window answers *this* approval, so the
+        // check is deliberately not scoped to `card_id`. A card belonging to an
+        // older turn cannot be claimed past this point (its own window would
+        // contain this `request_approval` and block), and a newer turn's
+        // approval trips the `request_approval` arm below. Scoping to `card_id`
+        // would therefore only buy a second claim for a re-rendered card of the
+        // same turn, in the gap before the decision message lands.
+        let blocked: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+                SELECT 1 FROM events
+                WHERE session_id = $1 AND sequence > $2 AND sequence < $3
+                  AND (event_type = 'input.message'
+                    OR (event_type = 'tool.completed' AND data->>'tool_name' = 'request_approval')
+                    OR event_type = 'slack.approval.consumed')
+            )
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(approval_sequence)
+        .bind(sequence)
+        .fetch_one(&mut *tx)
+        .await?;
+        if blocked {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+        sqlx::query(
+            r#"
+            INSERT INTO events (session_id, sequence, event_type, ts, context, data, metadata, tags)
+            VALUES ($1, $2, 'slack.approval.consumed', NOW(), $3, $4, NULL, '{}')
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(sequence)
+        .bind(serde_json::json!({ "turn_id": turn_id }))
+        .bind(serde_json::json!({ "card_id": card_id }))
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
     /// Check if an input.message event with a given slack_ts already exists in a session.
     /// Used for dedup when Slack sends duplicate events (app_mention + message).
     pub async fn has_event_with_slack_ts(

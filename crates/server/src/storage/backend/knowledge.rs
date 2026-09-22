@@ -411,7 +411,26 @@ impl StorageBackend {
     // ============================================
 
     pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
+        #[cfg(test)]
+        self.fail_if_forced("create_event")?;
         dispatch!(self, create_event, input)
+    }
+
+    pub async fn create_waiting_turn_resolution_event(
+        &self,
+        input: CreateEventRow,
+        resolution_id: Uuid,
+        event_index: i32,
+    ) -> Result<(EventRow, bool)> {
+        #[cfg(test)]
+        self.fail_if_forced("create_event")?;
+        dispatch!(
+            self,
+            create_waiting_turn_resolution_event,
+            input,
+            resolution_id,
+            event_index
+        )
     }
 
     /// Check if an input.message event with a given slack_ts already exists in a session.
@@ -422,6 +441,22 @@ impl StorageBackend {
         slack_ts: &str,
     ) -> Result<bool> {
         dispatch!(self, has_event_with_slack_ts, session_id, slack_ts)
+    }
+
+    /// Atomically consume a still-current Slack approval card.
+    pub async fn claim_slack_approval_card(
+        &self,
+        session_id: SessionId,
+        card_id: &str,
+        turn_id: &str,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            claim_slack_approval_card,
+            session_id,
+            card_id,
+            turn_id
+        )
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -113,7 +113,8 @@ Drivers MUST use the following error types from `AgentLoopError`:
 
 ### Error Detection Requirements
 
-Each driver MUST implement provider-specific error detection to classify context-length and token-limit errors as `RequestTooLarge`. See the individual driver crates for the detection logic:
+Each driver MUST implement provider-specific error detection to classify context-length and token-limit errors as `RequestTooLarge`. A per-window quota or rate-limit rejection (a 429 whose request would fit once the window resets) is transient and MUST stay on the retry path, even when its wording mentions tokens and limits; only a request that exceeds the limit on its own is `RequestTooLarge`. See the individual driver crates for the detection logic:
+- `crates/provider/src/openai_errors.rs`, shared OpenAI-compatible (Chat Completions and Responses) detection
 - `crates/drivers/openai/src/`, OpenAI error detection
 - `crates/drivers/anthropic/src/`, Anthropic error detection
 - `crates/drivers/gemini/src/`, Gemini error detection
@@ -271,7 +272,7 @@ replay state (signature / encrypted payload), and identity (provider, item id,
 bound tool call). Only readable text is ever rendered or published; replay state
 is carried verbatim and never leaves the driver boundary.
 
-Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5.x, Opus 5/4.8/4.7, Sonnet 5, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5.x, Opus 5/4.8/4.7, and Sonnet 5 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/model-profiles/src/profiles.rs`.
+Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5.x, Opus 5.5/5/4.8/4.7, Sonnet 5, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5.x, Opus 5.5/5/4.8/4.7, and Sonnet 5 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/model-profiles/src/profiles.rs`.
 
 #### Stream Events
 

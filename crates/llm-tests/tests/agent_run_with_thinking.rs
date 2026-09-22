@@ -31,12 +31,12 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 // ============================================================================
 
 #[rstest]
-// Current Anthropic models only: Fable 5.1, Opus 5 and Sonnet 5 surface
+// Current Anthropic models only: Fable 5.1, Opus 5.5 and Sonnet 5 surface
 // reasoning on the private `thinking` field, which is what this assertion
 // checks. The superseded `claude-opus-4-7` alias returned its reasoning as
 // public response text with an empty private field (observed 6/6 on main).
 #[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
-#[case::anthropic_opus5(ANTHROPIC_OPUS5)]
+#[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
@@ -225,13 +225,15 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 
 #[rstest]
 #[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
-#[case::anthropic_opus5(ANTHROPIC_OPUS5)]
+#[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 // Include GPT-6 Astra in the reasoning-plus-tool-call scenario; its
 // reasoning artifacts can carry opaque replay state without summary text.
 #[case::openai_gpt6_astra(OPENAI_GPT6_ASTRA)]
+#[case::openai_gpt6_sol(OPENAI_GPT6_SOL)]
+#[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 // Gemini binds a thoughtSignature to the function-call part it belongs to;
 // that binding only happens on a reasoning turn that calls a tool.

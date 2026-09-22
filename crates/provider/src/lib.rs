@@ -40,6 +40,8 @@ pub mod model_spec;
 pub mod native_async;
 pub mod openai_compat;
 #[cfg(feature = "http")]
+pub mod openai_errors;
+#[cfg(feature = "http")]
 pub mod openai_protocol;
 #[cfg(feature = "http")]
 mod openai_types;
@@ -115,10 +117,10 @@ pub use runtime_provider::{
     StaticHeaderAuth,
 };
 pub use tool_types::{
-    BuiltinTool, CONFIRM_URL_ELICITATION_TOOL, ClientSideTool, ConnectionRequired,
-    ConnectionRequiredSubject, DeferrablePolicy, SideEffectClass, ToolCall, ToolDefinition,
-    ToolHints, ToolPolicy, ToolResult, ToolResultImage, URL_ELICITATION_REQUIRED_CODE,
-    UrlElicitationRequired,
+    ASK_USER_TOOL_NAME, BuiltinTool, CONFIRM_URL_ELICITATION_TOOL, ClientSideTool,
+    ConnectionRequired, ConnectionRequiredSubject, DeferrablePolicy, SideEffectClass, ToolCall,
+    ToolDefinition, ToolHints, ToolPolicy, ToolResult, ToolResultImage,
+    URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired, unattended_ask_user_result,
 };
 pub use turn_collector::{CollectedTurn, TurnLimits, TurnTiming, collect_turn, limit_stream};
 pub use url_validation::{

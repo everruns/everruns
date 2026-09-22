@@ -29,6 +29,7 @@ fn generation_metadata() -> LlmGenerationMetadata {
     LlmGenerationMetadata {
         model: "test-model".to_string(),
         provider: Some("anthropic".to_string()),
+        response_model: None,
         usage: None,
         duration_ms: None,
         time_to_first_token_ms: None,
@@ -868,4 +869,32 @@ fn test_llm_generation_ttft_omitted_when_none() {
     // Should not appear in JSON when None
     let json = serde_json::to_value(&data).unwrap();
     assert!(json["metadata"].get("time_to_first_token_ms").is_none());
+}
+
+/// The serving model is carried on the wire and omitted when the provider did
+/// not report one. Downstream exporters read this JSON directly, so an
+/// always-present `"response_model": null` would make "unreported" and
+/// "reported as nothing" indistinguishable to them.
+#[test]
+fn response_model_serializes_only_when_the_provider_reported_one() {
+    let unreported = serde_json::to_value(generation_metadata()).unwrap();
+    assert!(
+        unreported.get("response_model").is_none(),
+        "an unreported serving model must not appear at all: {unreported}"
+    );
+
+    let mut meta = generation_metadata();
+    meta.response_model = Some("test-model-20250929".to_string());
+    let reported = serde_json::to_value(&meta).unwrap();
+    assert_eq!(
+        reported.get("response_model").and_then(|v| v.as_str()),
+        Some("test-model-20250929")
+    );
+
+    let round_tripped: LlmGenerationMetadata = serde_json::from_value(reported).unwrap();
+    assert_eq!(
+        round_tripped.response_model.as_deref(),
+        Some("test-model-20250929")
+    );
+    assert_eq!(round_tripped.model, "test-model");
 }

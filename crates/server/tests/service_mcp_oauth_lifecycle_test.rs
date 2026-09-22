@@ -3,6 +3,8 @@
 //! Run with:
 //! `cargo test -p everruns-server --test service_mcp_oauth_lifecycle_test -- --test-threads=1`
 
+#[path = "service_mcp_oauth_lifecycle/linear_mcp_preset_oauth.rs"]
+mod linear_mcp_preset_oauth;
 mod test_harness;
 
 use std::collections::BTreeMap;
@@ -303,7 +305,8 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
                 "oauth": {
                     "authorization_endpoint": "https://8.8.8.8/oauth/authorize",
                     "token_endpoint": TOKEN_URL,
-                    "client_id": "test-client"
+                    "client_id": "test-client",
+                    "resource": MCP_URL
                 }
             })),
         },
@@ -365,8 +368,10 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
-            code: "authorization-code".to_string(),
+            code: Some("authorization-code".to_string()),
             state: Some(oauth_state),
+            error: None,
+            error_description: None,
         }),
     )
     .await
@@ -451,6 +456,12 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
     assert_eq!(oauth_bodies.len(), 2);
     assert!(oauth_bodies[0].contains("grant_type=authorization_code"));
     assert!(oauth_bodies[1].contains("grant_type=refresh_token"));
+    assert!(oauth_bodies.iter().all(|body| {
+        serde_urlencoded::from_str::<BTreeMap<String, String>>(body)
+            .unwrap()
+            .get("resource")
+            .is_some_and(|resource| resource == MCP_URL)
+    }));
     let authorization_headers = remote.mcp_authorization_headers.lock().unwrap().clone();
     assert_eq!(
         authorization_headers,

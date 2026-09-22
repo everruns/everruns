@@ -14,12 +14,9 @@ impl InMemoryDatabase {
     // ============================================
     // Events
     // ============================================
-
-    pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
+    fn insert_event_row(&self, input: CreateEventRow) -> EventRow {
         let now = Self::now();
         let id = EventId::new();
-
-        // Get next sequence for this session
         let sequence = {
             let mut sequences = self.event_sequences.write();
             let seq = sequences.entry(input.session_id).or_insert(0);
@@ -62,6 +59,10 @@ impl InMemoryDatabase {
                 }
             }
         }
+        row
+    }
+
+    async fn enqueue_event_projection(&self, row: &EventRow) -> Result<()> {
         let org_id = {
             let sessions = self.sessions.read();
             sessions.get(&row.session_id).map(|session| session.org_id)
@@ -76,7 +77,108 @@ impl InMemoryDatabase {
             )
             .await?;
         }
+        Ok(())
+    }
+
+    pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
+        // Serialized against `claim_slack_approval_card` so a claim's freshness
+        // check observes a total order of event insertions — the in-memory
+        // counterpart of the sequence-allocation row lock that orders them on
+        // Postgres. Held across the projection enqueue, as it was before main
+        // split the insert out of this method.
+        let _event_write = self.event_write_lock.lock().await;
+        let row = self.insert_event_row(input);
+        self.enqueue_event_projection(&row).await?;
         Ok(row)
+    }
+
+    pub async fn create_waiting_turn_resolution_event(
+        &self,
+        input: CreateEventRow,
+        resolution_id: Uuid,
+        event_index: i32,
+    ) -> Result<(EventRow, bool)> {
+        // Same ordering guarantee as `create_event`: this inserts events too,
+        // so a claim must not interleave with it either.
+        let _event_write = self.event_write_lock.lock().await;
+        let (row, inserted) = {
+            let mut resolution_events = self.waiting_turn_resolution_events.write();
+            if let Some(event_id) = resolution_events
+                .get(&(resolution_id, event_index))
+                .copied()
+            {
+                let row = self.events.read().get(&event_id).cloned().ok_or_else(|| {
+                    anyhow::anyhow!("resolution event index points to a missing event")
+                })?;
+                (row, false)
+            } else {
+                let row = self.insert_event_row(input);
+                resolution_events.insert((resolution_id, event_index), row.id);
+                (row, true)
+            }
+        };
+        if inserted {
+            self.enqueue_event_projection(&row).await?;
+        }
+        Ok((row, inserted))
+    }
+
+    pub async fn claim_slack_approval_card(
+        &self,
+        session_id: SessionId,
+        card_id: &str,
+        turn_id: &str,
+    ) -> Result<bool> {
+        let _event_write = self.event_write_lock.lock().await;
+        let mut events = self.events.write();
+        let approval_sequence = events
+            .values()
+            .filter(|event| {
+                event.session_id == session_id
+                    && event.event_type == "tool.completed"
+                    && event.data.get("tool_name").and_then(|v| v.as_str())
+                        == Some(crate::slack_approvals::REQUEST_APPROVAL_TOOL)
+                    && event.context.get("turn_id").and_then(|v| v.as_str()) == Some(turn_id)
+            })
+            .map(|event| event.sequence)
+            .max();
+        let Some(approval_sequence) = approval_sequence else {
+            return Ok(false);
+        };
+        let blocked = events.values().any(|event| {
+            event.session_id == session_id
+                && event.sequence > approval_sequence
+                && (event.event_type == "input.message"
+                    || (event.event_type == "tool.completed"
+                        && event.data.get("tool_name").and_then(|v| v.as_str())
+                            == Some(crate::slack_approvals::REQUEST_APPROVAL_TOOL))
+                    || event.event_type == "slack.approval.consumed")
+        });
+        if blocked {
+            return Ok(false);
+        }
+
+        let sequence = {
+            let mut sequences = self.event_sequences.write();
+            let next = sequences.entry(session_id).or_insert(0);
+            *next += 1;
+            *next
+        };
+        let now = Self::now();
+        let row = EventRow {
+            id: EventId::new(),
+            session_id,
+            sequence,
+            event_type: "slack.approval.consumed".to_string(),
+            ts: now,
+            context: serde_json::json!({ "turn_id": turn_id }),
+            data: serde_json::json!({ "card_id": card_id }),
+            metadata: None,
+            tags: None,
+            created_at: now,
+        };
+        events.insert(row.id, row);
+        Ok(true)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -667,5 +769,79 @@ impl InMemoryDatabase {
         }
 
         Ok(previews)
+    }
+}
+
+#[cfg(test)]
+mod slack_approval_tests {
+    use super::*;
+    use chrono::Utc;
+
+    async fn append(db: &InMemoryDatabase, session_id: SessionId, kind: &str, turn: &str) {
+        db.create_event(CreateEventRow {
+            session_id,
+            event_type: kind.to_string(),
+            ts: Utc::now(),
+            context: serde_json::json!({ "turn_id": turn }),
+            data: if kind == "tool.completed" {
+                serde_json::json!({ "tool_name": "request_approval" })
+            } else {
+                serde_json::json!({})
+            },
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn approval_card_is_single_use_under_concurrent_clicks() {
+        let db = InMemoryDatabase::default();
+        let session_id = SessionId::new();
+        append(&db, session_id, "tool.completed", "turn_1").await;
+
+        let (first, second) = tokio::join!(
+            db.claim_slack_approval_card(session_id, "card_1", "turn_1"),
+            db.claim_slack_approval_card(session_id, "card_1", "turn_1")
+        );
+        assert_ne!(first.unwrap(), second.unwrap());
+    }
+
+    #[tokio::test]
+    async fn prose_reply_or_later_approval_makes_card_stale() {
+        for later_kind in ["input.message", "tool.completed"] {
+            let db = InMemoryDatabase::default();
+            let session_id = SessionId::new();
+            append(&db, session_id, "tool.completed", "turn_1").await;
+            append(&db, session_id, later_kind, "turn_2").await;
+
+            assert!(
+                !db.claim_slack_approval_card(session_id, "card_1", "turn_1")
+                    .await
+                    .unwrap()
+            );
+        }
+    }
+
+    /// A redelivered `tool.completed` renders a second card for the same turn
+    /// with a fresh id. Answering that approval once has to be enough, so the
+    /// consumed check cannot be scoped to the card id that claimed it.
+    #[tokio::test]
+    async fn a_second_card_for_the_same_turn_cannot_be_claimed_again() {
+        let db = InMemoryDatabase::default();
+        let session_id = SessionId::new();
+        append(&db, session_id, "tool.completed", "turn_1").await;
+
+        assert!(
+            db.claim_slack_approval_card(session_id, "card_1", "turn_1")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !db.claim_slack_approval_card(session_id, "card_2", "turn_1")
+                .await
+                .unwrap()
+        );
     }
 }

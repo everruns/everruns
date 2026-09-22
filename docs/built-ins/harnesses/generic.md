@@ -37,6 +37,8 @@ The **Generic** harness is the recommended default for most use cases. It config
 | [Context Compaction](/advanced/compaction/) | Auto-compacts context at 85% budget via cascading strategies |
 | [Budgeting](/capabilities/budgeting/) | Token budget enforcement with configurable meters and rules |
 | [Self-Budget](/capabilities/self-budget/) | Prompt-only guidance for reasoning about a user-requested indicative budget using session usage data |
+| [Ask User](/capabilities/ask-user/) | Ask the user 1–4 structured questions, or collect a credential, and wait for the answer |
+| Soft Approval | Prompt-level gate asking permission before a destructive, irreversible, or outward-facing action |
 | Tool Output Persistence | Persists full tool output to `/.outputs/` before truncation for lossless retrieval |
 
 Infinity Context and Context Compaction work together to keep long sessions unbounded. See [Context Compaction](/advanced/compaction/#generic-harness-defaults) for details.
