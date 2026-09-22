@@ -1,11 +1,11 @@
 graph LR
     Thread["Slack Thread"] <-->|messages| Bot["Slack Bot"]
-    Bot -->|"POST /v1/apps/{id}/slack/events"| Webhook["Webhook Endpoint"]
-    Webhook -->|"verify HMAC-SHA256"| App
-    App -->|references| Harness
-    App -->|references| Agent
-    App -->|config| SlackConfig["Slack Config<br/>(signing_secret, bot_token,<br/>session_strategy)"]
-    App -->|"find/create by tag"| Session
+    Bot -->|"POST /v1/e/{endpoint_id}/slack/events"| Webhook["Webhook Handler"]
+    Webhook -->|"verify HMAC-SHA256"| Endpoint["Slack Endpoint"]
+    Endpoint -->|belongs to| Agent
+    Agent -->|runs on| Harness
+    Endpoint -->|config| SlackConfig["Slack Config<br/>(signing_secret, bot_token,<br/>session_strategy)"]
+    Endpoint -->|"find/create by tag"| Session
     Session -->|runs| RuntimeAgent["Runtime Agent"]
     RuntimeAgent -->|emits events| Dispatcher["Slack Delivery<br/>Dispatcher"]
     Dispatcher -->|"chat.postMessage<br/>(with retry)"| Bot
@@ -18,6 +18,6 @@ graph LR
 
     class Thread,Bot slack
     class Webhook security
-    class App,SlackConfig app
+    class Endpoint,SlackConfig app
     class Harness,Agent config
     class Session,RuntimeAgent,Dispatcher runtime

@@ -258,6 +258,10 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
+    /// Needed so a message that supersedes a pending `ask_user` question can
+    /// record the cancellation through the same delivery path the card was
+    /// emitted on — otherwise the UI never sees it close (EVE-1054).
+    pub event_service: Arc<crate::services::EventService>,
     pub auth: AuthState,
     /// Response-size cap for the ATIF session export, in bytes. Production
     /// always uses `crate::atif::ATIF_EXPORT_MAX_BYTES`; tests shrink it via
@@ -276,6 +280,10 @@ impl AppState {
         Self {
             db: db.clone(),
             session_service: Arc::new(SessionService::new(db.clone())),
+            event_service: Arc::new(crate::services::EventService::new(
+                db.clone(),
+                event_delivery.clone(),
+            )),
             message_service: Arc::new(MessageService::new(
                 db,
                 runner,
@@ -303,6 +311,7 @@ impl AppState {
         )
         .with_session_service(self.session_service.clone())
         .with_message_service(self.message_service.clone())
+        .with_event_service(self.event_service.clone())
     }
 }
 

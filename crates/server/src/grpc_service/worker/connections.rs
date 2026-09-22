@@ -72,6 +72,34 @@ impl WorkerServiceImpl {
         }))
     }
 
+    pub(crate) async fn handle_invalidate_mcp_connection(
+        &self,
+        request: Request<InvalidateMcpConnectionRequest>,
+    ) -> Result<Response<InvalidateMcpConnectionResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let resolver = self.connection_resolver()?;
+        let acts_as = match req.acts_as.as_str() {
+            value @ ("none" | "service" | "user") => everruns_core::McpServerActsAs::from(value),
+            _ => return Err(Status::invalid_argument("Invalid MCP acts_as value")),
+        };
+
+        resolver
+            .invalidate_mcp_connection(
+                session_id.into(),
+                &req.provider,
+                acts_as,
+                &req.rejected_credential_fingerprint,
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to invalidate MCP connection: {}", e);
+                Status::internal("Failed to invalidate MCP connection")
+            })?;
+
+        Ok(Response::new(InvalidateMcpConnectionResponse {}))
+    }
+
     pub(crate) async fn handle_get_connection_token_for_user(
         &self,
         request: Request<GetConnectionTokenForUserRequest>,

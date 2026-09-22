@@ -740,6 +740,7 @@ fn convert_gemini_stream(byte_stream: ByteStream, state: GeminiStreamState) -> L
 #[derive(Default)]
 struct GeminiStreamState {
     model: String,
+    response_model: Option<String>,
     input_tokens: u32,
     output_tokens: u32,
     cached_tokens: Option<u32>,
@@ -753,6 +754,9 @@ struct GeminiStreamState {
 
 impl GeminiStreamState {
     fn response(&mut self, response: GeminiStreamResponse) {
+        if response.model_version.is_some() {
+            self.response_model = response.model_version;
+        }
         if let Some(usage) = response.usage_metadata {
             if let Some(tokens) = usage.prompt_token_count {
                 self.input_tokens = tokens;
@@ -852,6 +856,7 @@ impl GeminiStreamState {
             metadata.completion_tokens = Some(self.output_tokens);
             metadata.cache_read_tokens = self.cached_tokens;
             metadata.model = Some(self.model.clone());
+            metadata.response_model = self.response_model.clone();
             metadata.finish_reason =
                 Some(self.finish_reason.take().unwrap_or_else(|| "stop".into()));
             metadata.retry_metadata = self.retry_metadata.take();
@@ -1014,6 +1019,8 @@ struct GeminiFunctionDeclaration {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GeminiStreamResponse {
+    #[serde(default)]
+    model_version: Option<String>,
     #[serde(default)]
     candidates: Option<Vec<GeminiCandidate>>,
     #[serde(default)]

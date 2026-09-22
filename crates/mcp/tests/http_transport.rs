@@ -236,6 +236,31 @@ async fn executor_redacts_bound_credential_reflected_in_json_rpc_error() {
 }
 
 #[tokio::test]
+async fn rate_limit_response_is_a_tool_error_not_connection_required() {
+    let executor = McpExecutor::new(
+        Arc::new(McpClient::new(
+            FakeEgress::with_status("rate limited; retry later", 429),
+            Arc::new(NoAuthProvider),
+        )),
+        Arc::new(StaticConnectionResolver::new().with(McpConnection::http("linear", FAKE_URL))),
+    );
+
+    let error = executor
+        .execute_mcp_tool(&ToolCall {
+            id: "call_rate_limited".into(),
+            name: "mcp_linear__create_issue".into(),
+            arguments: json!({}),
+        })
+        .await
+        .expect_err("HTTP 429 must remain an actionable tool error")
+        .to_string();
+
+    assert!(error.contains("429"));
+    assert!(error.contains("rate limited"));
+    assert!(!error.contains("requires an OAuth connection"));
+}
+
+#[tokio::test]
 async fn executor_redacts_bound_credential_reflected_in_http_error_body() {
     let sentinel = "reflected-http-secret";
     let egress = FakeEgress::with_status(format!("request contained {sentinel}"), 500);

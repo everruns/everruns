@@ -429,6 +429,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         // Client-side tool results
         api::tool_results::submit_tool_results,
         api::mcp_url_consent::submit_elicitation_consent,
+        api::question_answers::submit_question_answers,
         // Skills
         api::skills::create_skill,
         api::skills::upload_skill,
@@ -610,6 +611,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::mcp_url_consent::ElicitationConsentRequest,
             api::mcp_url_consent::ConsentAction,
             api::mcp_url_consent::ElicitationConsentResponse,
+            api::question_answers::QuestionAnswersRequest,
+            api::question_answers::QuestionAnswersResponse,
+            api::question_answers::SubmittedAnswer,
+            api::question_answers::SubmittedStatus,
             // MCP Server types
             McpServer, McpServerStatus, McpServerTransportType,
             everruns_core::mcp_server::McpToolAnnotations,

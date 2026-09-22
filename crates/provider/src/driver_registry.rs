@@ -183,16 +183,14 @@ pub enum LlmStreamEvent {
 pub use crate::model_discovery::DiscoveredModel;
 
 /// Metadata about LLM completion
-///
 /// Contains token usage and completion information from the LLM response.
 ///
-/// Token buckets are **disjoint** by convention (see the `TokenUsage` event): drivers
-/// normalize provider wire formats at the boundary so `prompt_tokens` carries
-/// only non-cached input, with `cache_read_tokens` / `cache_creation_tokens`
-/// additive on top. Inclusive providers (OpenAI Responses / Chat Completions,
-/// Gemini) subtract their cached count from the reported prompt total via
-/// [`disjoint_prompt_tokens`]; Anthropic / Bedrock already report disjoint
-/// buckets and pass values through unchanged.
+/// Token buckets are **disjoint** by convention (see the `TokenUsage` event): drivers normalize
+/// provider wire formats at the boundary so `prompt_tokens` carries only non-cached input, with
+/// `cache_read_tokens` / `cache_creation_tokens` additive on top. Inclusive providers (OpenAI
+/// Responses / Chat Completions, Gemini) subtract their cached count from the reported prompt
+/// total via [`disjoint_prompt_tokens`]; Anthropic / Bedrock already report disjoint buckets and
+/// pass values through unchanged.
 ///
 /// `#[non_exhaustive]`: usage and cost dimensions keep being added, so
 /// construct with [`LlmCompletionMetadata::default`] and assign fields.
@@ -221,8 +219,10 @@ pub struct LlmCompletionMetadata {
     /// it inline (e.g. OpenRouter's `usage.cost`). `None` for providers that do
     /// not return a cost.
     pub provider_cost_usd: Option<f64>,
-    /// Model used
+    /// Configured model used for the request.
     pub model: Option<String>,
+    /// Model the provider reported serving, when its response includes one.
+    pub response_model: Option<String>,
     /// Finish reason
     pub finish_reason: Option<String>,
     /// Retry metadata (present if rate limit retries occurred)

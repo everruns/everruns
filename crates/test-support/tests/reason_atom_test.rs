@@ -840,7 +840,6 @@ async fn test_reason_atom_with_fixed_response() {
         )
         .await;
 
-    // Create a driver with a fixed response
     let driver_registry =
         create_custom_driver_registry(LlmSimConfig::fixed("The capital of France is Paris."));
 
@@ -878,23 +877,18 @@ async fn test_reason_atom_with_fixed_response() {
     assert!(!result.has_tool_calls);
     assert!(result.tool_calls.is_empty());
 
-    // Verify the assistant message was emitted as an output.message.completed event
-    // (ReasonAtom stores messages via EventEmitter, not MessageRetriever)
     let events = event_emitter.events().await;
-    let output_completed = events
+    let output = events
         .iter()
-        .find(|e| e.event_type == "output.message.completed");
-    assert!(
-        output_completed.is_some(),
-        "Should emit output.message.completed event"
+        .find_map(|event| match &event.data {
+            everruns_core::EventData::OutputMessageCompleted(data) => Some(data),
+            _ => None,
+        })
+        .expect("output.message.completed event should be emitted");
+    assert_eq!(
+        output.message.text(),
+        Some("The capital of France is Paris.")
     );
-    if let Some(event) = output_completed {
-        if let everruns_core::EventData::OutputMessageCompleted(data) = &event.data {
-            assert_eq!(data.message.text(), Some("The capital of France is Paris."));
-        } else {
-            panic!("Expected OutputMessageCompleted data");
-        }
-    }
 }
 
 #[tokio::test]
@@ -2513,9 +2507,8 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
         )
         .await;
 
-    // Create a driver with a fixed response
     let driver_registry =
-        create_custom_driver_registry(LlmSimConfig::fixed("The capital of France is Paris."));
+        create_custom_driver_registry(LlmSimConfig::fixed("Paris.").with_model("llmsim-v2"));
 
     // Use an in-memory event emitter to capture events
     let event_emitter = InMemoryEventEmitter::new();
@@ -2548,18 +2541,16 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
         .expect("ReasonAtom should succeed");
 
     assert!(result.success);
-    assert_eq!(result.text, "The capital of France is Paris.");
+    assert_eq!(result.text, "Paris.");
 
     // Verify events were emitted
     let events = event_emitter.events().await;
-    assert!(!events.is_empty(), "Events should have been emitted");
 
     // Check for output.message.started event
-    let has_output_started = events
-        .iter()
-        .any(|e| e.event_type == "output.message.started");
     assert!(
-        has_output_started,
+        events
+            .iter()
+            .any(|e| e.event_type == "output.message.started"),
         "Should emit output.message.started event"
     );
 
@@ -2575,7 +2566,7 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
     // Verify the completed event has the correct message
     if let Some(event) = output_completed {
         if let everruns_core::EventData::OutputMessageCompleted(data) = &event.data {
-            assert_eq!(data.message.text(), Some("The capital of France is Paris."));
+            assert_eq!(data.message.text(), Some("Paris."));
             assert_eq!(data.message.role, everruns_core::RuntimeMessageRole::Agent);
         } else {
             panic!("Expected OutputMessageCompleted data");
@@ -2599,9 +2590,18 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
         assert!(data.success, "reason.completed should indicate success");
     }
 
-    // Check for llm.generation event
-    let has_llm_generation = events.iter().any(|e| e.event_type == "llm.generation");
-    assert!(has_llm_generation, "Should emit llm.generation event");
+    let generation = events
+        .iter()
+        .find_map(|event| match &event.data {
+            everruns_core::EventData::LlmGeneration(data) => Some(data),
+            _ => None,
+        })
+        .expect("llm.generation event should be emitted");
+    assert_eq!(generation.metadata.model, "llmsim-test");
+    assert_eq!(
+        generation.metadata.response_model.as_deref(),
+        Some("llmsim-v2")
+    );
 }
 
 #[tokio::test]

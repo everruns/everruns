@@ -62,6 +62,7 @@ pub mod prometheus_recorder;
 pub mod providers;
 pub mod public;
 pub mod public_chat;
+pub mod question_answers;
 pub mod reporting;
 pub mod resolver;
 pub mod schedules;
