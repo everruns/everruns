@@ -16,8 +16,8 @@
 use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use everruns_builtins::ask_user::{
-    ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserResult,
-    AskUserStatus,
+    ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserQuestionKind,
+    AskUserResult, AskUserStatus, session_secret_ref,
 };
 
 /// How far back to look for the question set being answered. The card is emitted
@@ -70,6 +70,38 @@ pub(crate) fn validate_answers(
             .first()
             .ok_or_else(|| format!("question {id:?} was not answered"))?;
 
+        if question.kind == AskUserQuestionKind::Secret {
+            // THREAT[TM-AGENT-016]: the only thing a secret answer may carry is
+            // a reference to a secret that was already stored encrypted. Every
+            // value-bearing field is refused here rather than ignored, so a
+            // client that put the credential in one gets an error instead of a
+            // result that quietly persisted it to the event log.
+            if !answer.selected.is_empty() || answer.other_text.is_some() {
+                return Err(format!(
+                    "question {id:?} is a secret; its answer carries only secret_ref"
+                ));
+            }
+            let expected = session_secret_ref(question.secret_name.as_deref().unwrap_or_default());
+            match answer.secret_ref.as_deref() {
+                Some(reference) if reference == expected => {}
+                Some(_) => {
+                    return Err(format!("question {id:?} was not asked for that secret"));
+                }
+                None => return Err(format!("question {id:?} has no secret_ref")),
+            }
+            validated.push(AskUserAnswer {
+                id: id.to_string(),
+                selected: Vec::new(),
+                other_text: None,
+                secret_ref: Some(expected),
+            });
+            continue;
+        }
+        // A choice answer cannot mint a handle to a secret nobody asked for.
+        if answer.secret_ref.is_some() {
+            return Err(format!("question {id:?} is not a secret question"));
+        }
+
         for label in &answer.selected {
             if !question.options.iter().any(|option| &option.label == label) {
                 return Err(format!(
@@ -112,6 +144,7 @@ pub(crate) fn validate_answers(
             id: id.to_string(),
             selected: answer.selected.clone(),
             other_text: other.map(str::to_string),
+            secret_ref: None,
         });
     }
     Ok(validated)
@@ -250,6 +283,30 @@ pub async fn resolve_question_answers(
     } else {
         Vec::new()
     };
+
+    // A `secret_ref` naming nothing is worse than a decline: the model would
+    // read the question as answered and hand tools a handle that resolves to
+    // empty. The client stores the value first, through the session-secret
+    // endpoint that has always encrypted it, and only then answers the card.
+    if answers.iter().any(|answer| answer.secret_ref.is_some()) {
+        let stored = state
+            .db
+            .list_session_secrets(session_id.uuid())
+            .await
+            .map_err(|error| ResolveError::Internal(error.to_string()))?;
+        for question in &pending.questions {
+            if question.kind != AskUserQuestionKind::Secret {
+                continue;
+            }
+            let name = question.secret_name.as_deref().unwrap_or_default();
+            if !stored.iter().any(|row| row.name == name) {
+                return Err(ResolveError::Invalid(format!(
+                    "secret {name:?} has not been stored on this session"
+                )));
+            }
+        }
+    }
+
     let result = build_result(status, answers);
 
     let turn_id = everruns_provider::typed_id::TurnId::from_uuid(session_id.uuid());
@@ -381,6 +438,13 @@ pub struct SubmittedAnswer {
     /// Free text, accepted only when the question allows it.
     #[serde(default)]
     pub other_text: Option<String>,
+    /// Handle to the stored credential, on a `secret` question only — the value
+    /// itself is never submitted here. Store it with
+    /// `PUT /v1/sessions/{session_id}/storage/secrets` first, then answer with
+    /// `session:{secret_name}`.
+    #[serde(default)]
+    #[schema(example = "session:STRIPE_API_KEY")]
+    pub secret_ref: Option<String>,
 }
 
 /// Result of answering a pending question set.
@@ -451,6 +515,7 @@ pub async fn submit_question_answers(
             id: answer.id,
             selected: answer.selected,
             other_text: answer.other_text,
+            secret_ref: answer.secret_ref,
         })
         .collect();
 
@@ -530,6 +595,22 @@ mod tests {
             multi_select,
             allow_other,
             options: vec![option("Staging"), option("Production")],
+            secret_name: None,
+            purpose: None,
+        }
+    }
+
+    fn secret_question(id: &str, secret_name: &str) -> AskUserQuestion {
+        AskUserQuestion {
+            kind: AskUserQuestionKind::Secret,
+            id: Some(id.to_string()),
+            header: "Stripe key".to_string(),
+            question: "Which Stripe restricted key should I use?".to_string(),
+            multi_select: false,
+            allow_other: false,
+            options: Vec::new(),
+            secret_name: Some(secret_name.to_string()),
+            purpose: Some("Read-only charge lookups.".to_string()),
         }
     }
 
@@ -538,6 +619,16 @@ mod tests {
             id: id.to_string(),
             selected: selected.iter().map(|s| s.to_string()).collect(),
             other_text: other.map(str::to_string),
+            secret_ref: None,
+        }
+    }
+
+    fn secret_answer(id: &str, secret_ref: Option<&str>) -> AskUserAnswer {
+        AskUserAnswer {
+            id: id.to_string(),
+            selected: Vec::new(),
+            other_text: None,
+            secret_ref: secret_ref.map(str::to_string),
         }
     }
 
@@ -665,6 +756,88 @@ mod tests {
         .expect("valid");
         assert_eq!(validated[0].id, "target");
         assert_eq!(validated[1].id, "scope");
+    }
+
+    #[test]
+    fn a_secret_answer_carries_only_the_reference_it_was_asked_for() {
+        let questions = vec![secret_question("stripe_key", "STRIPE_API_KEY")];
+        let validated = validate_answers(
+            &questions,
+            &[secret_answer("stripe_key", Some("session:STRIPE_API_KEY"))],
+        )
+        .expect("the ref for the secret that was asked for");
+        assert_eq!(
+            validated[0].secret_ref.as_deref(),
+            Some("session:STRIPE_API_KEY")
+        );
+        assert!(validated[0].selected.is_empty());
+        assert!(validated[0].other_text.is_none());
+    }
+
+    /// THREAT[TM-AGENT-016]: there must be no path from a typed credential to a
+    /// tool result. A client that put the value in a value-bearing field gets an
+    /// error, not a result that silently persisted it.
+    #[test]
+    fn a_secret_answer_that_carries_a_value_is_refused() {
+        let questions = vec![secret_question("stripe_key", "STRIPE_API_KEY")];
+
+        let mut with_free_text = secret_answer("stripe_key", Some("session:STRIPE_API_KEY"));
+        with_free_text.other_text = Some("rk_live_verysecret".to_string());
+        let error = validate_answers(&questions, &[with_free_text])
+            .expect_err("free text on a secret question");
+        assert!(error.contains("only secret_ref"), "{error}");
+
+        let mut with_selection = secret_answer("stripe_key", Some("session:STRIPE_API_KEY"));
+        with_selection.selected = vec!["rk_live_verysecret".to_string()];
+        let error = validate_answers(&questions, &[with_selection])
+            .expect_err("a selection on a secret question");
+        assert!(error.contains("only secret_ref"), "{error}");
+    }
+
+    /// THREAT[TM-TOOL-036]: the caller does not get to say which secret it was
+    /// asked for, any more than it gets to say which options were offered.
+    #[test]
+    fn a_reference_to_another_secret_is_refused() {
+        let questions = vec![secret_question("stripe_key", "STRIPE_API_KEY")];
+        let error = validate_answers(
+            &questions,
+            &[secret_answer(
+                "stripe_key",
+                Some("session:AWS_SECRET_ACCESS_KEY"),
+            )],
+        )
+        .expect_err("a ref to a secret that was never asked for");
+        assert!(error.contains("not asked for that secret"), "{error}");
+
+        let error = validate_answers(&questions, &[secret_answer("stripe_key", None)])
+            .expect_err("no ref at all");
+        assert!(error.contains("no secret_ref"), "{error}");
+    }
+
+    #[test]
+    fn a_choice_answer_cannot_mint_a_secret_reference() {
+        let questions = vec![question("target", false, true)];
+        let mut smuggled = answer("target", &["Staging"], None);
+        smuggled.secret_ref = Some("session:STRIPE_API_KEY".to_string());
+        let error = validate_answers(&questions, &[smuggled])
+            .expect_err("a secret ref on a choice question");
+        assert!(error.contains("not a secret question"), "{error}");
+    }
+
+    /// The whole result is what reaches the event log and model context. Nothing
+    /// in it may resemble a credential.
+    #[test]
+    fn the_serialized_secret_result_contains_no_value_field() {
+        let questions = vec![secret_question("stripe_key", "STRIPE_API_KEY")];
+        let validated = validate_answers(
+            &questions,
+            &[secret_answer("stripe_key", Some("session:STRIPE_API_KEY"))],
+        )
+        .expect("valid");
+        let encoded =
+            serde_json::to_string(&build_result(AskUserStatus::Answered, validated)).unwrap();
+        assert!(encoded.contains("session:STRIPE_API_KEY"), "{encoded}");
+        assert!(!encoded.contains("value"), "{encoded}");
     }
 
     /// Attribution is the server's to decide. A `cancelled` outcome is the

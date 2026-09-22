@@ -38402,6 +38402,14 @@
             ],
             "description": "Free text, accepted only when the question allows it."
           },
+          "secret_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Handle to the stored credential, on a `secret` question only — the value\nitself is never submitted here. Store it with\n`PUT /v1/sessions/{session_id}/storage/secrets` first, then answer with\n`session:{secret_name}`.",
+            "example": "session:STRIPE_API_KEY"
+          },
           "selected": {
             "type": "array",
             "items": {

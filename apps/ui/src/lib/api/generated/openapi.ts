@@ -16523,6 +16523,14 @@ export interface components {
       id: string;
       /** @description Free text, accepted only when the question allows it. */
       other_text?: string | null;
+      /**
+       * @description Handle to the stored credential, on a `secret` question only — the value
+       *     itself is never submitted here. Store it with
+       *     `PUT /v1/sessions/{session_id}/storage/secrets` first, then answer with
+       *     `session:{secret_name}`.
+       * @example session:STRIPE_API_KEY
+       */
+      secret_ref?: string | null;
       /** @description Chosen option labels. Must be labels that were actually offered. */
       selected?: string[];
     };
