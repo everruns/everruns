@@ -158,7 +158,11 @@ impl DurableScheduler {
                 }
                 _ = poll_interval.tick() => {
                     if let Err(e) = self.process_due_schedules().await {
-                        error!(error = %e, "failed to process due schedules");
+                        everruns_core::log_database_failure(
+                            "durable.scheduler.poll",
+                            "failed to process due schedules",
+                            &e.to_string(),
+                        );
                     }
                 }
                 _ = heartbeat_interval.tick() => {

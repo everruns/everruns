@@ -14,6 +14,7 @@ use sqlx::{PgPool, Row};
 use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
 
+use super::db_failure::store_failure;
 use super::store::{
     CapacitySnapshot, CircuitBreakerState, ClaimedTask, CreateScheduleRow, DeadTaskInfo, DlqEntry,
     DlqFilter, HeartbeatResponse, Pagination, ReclaimResult, ScheduleExecutionFilter,
@@ -891,10 +892,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         .bind(worker_id)
         .fetch_all(&mut *tx)
         .await
-        .map_err(|e| {
-            error!("Failed to claim tasks: {}", e);
-            StoreError::Database(e.to_string())
-        })?;
+        .map_err(|e| store_failure("durable.tasks.claim", "Failed to claim tasks", e))?;
 
         let mut claimed = Vec::with_capacity(rows.len());
         // EVE-639: only record ActivityStarted on the FIRST attempt of a task,
@@ -3253,10 +3251,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         .bind(limit as i32)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| {
-            error!("Failed to claim due schedules: {}", e);
-            StoreError::Database(e.to_string())
-        })?;
+        .map_err(|e| store_failure("durable.schedules.claim", "claim due schedules failed", e))?;
 
         let schedules: Result<Vec<_>, _> = rows.into_iter().map(parse_schedule_row).collect();
         let schedules = schedules?;

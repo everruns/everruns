@@ -20,7 +20,7 @@
 1785 crates/drivers/llmsim/src/lib.rs
 2285 crates/durable/src/engine/executor.rs
 3714 crates/durable/src/persistence/memory.rs
-3921 crates/durable/src/persistence/postgres.rs
+3916 crates/durable/src/persistence/postgres.rs
 2444 crates/durable/tests/postgres_integration_test.rs
 3329 crates/engine/src/execution/act.rs
 2885 crates/engine/src/execution/reason.rs
