@@ -401,6 +401,17 @@ impl RuntimeProvider {
         messages: Vec<crate::driver_registry::Message>,
         config: &crate::driver_registry::LlmCallConfig,
     ) -> Result<crate::driver_registry::LlmResponse> {
+        if !config.limits.is_unbounded() {
+            // Native JSON responses cannot enforce a byte cap before buffering
+            // the body. Route bounded calls through the streaming collector so
+            // every advertised limit is applied while bytes are arriving.
+            let stream = self.chat_completion_stream(messages, config).await?;
+            return Ok(
+                crate::turn_collector::collect_turn(stream, &config.limits, |_| {})
+                    .await?
+                    .into_response(),
+            );
+        }
         self.driver
             .chat_completion_non_streaming(&self.endpoint, messages, config)
             .await
@@ -623,6 +634,8 @@ impl fmt::Debug for RuntimeProviderRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
 
     struct Noop;
     #[async_trait]
@@ -664,6 +677,60 @@ mod tests {
         }
     }
 
+    struct NativeNonStreaming {
+        native_called: Arc<AtomicBool>,
+        connect_delay: Duration,
+        event_delay: Duration,
+        response: String,
+    }
+
+    #[async_trait]
+    impl ChatDriver for NativeNonStreaming {
+        fn supports_native_non_streaming(&self) -> bool {
+            true
+        }
+
+        async fn chat_completion_stream(
+            &self,
+            _endpoint: &ProviderEndpoint,
+            _messages: Vec<crate::Message>,
+            _config: &crate::LlmCallConfig,
+        ) -> Result<crate::LlmResponseStream> {
+            tokio::time::sleep(self.connect_delay).await;
+            let events = vec![
+                (
+                    Duration::ZERO,
+                    Ok(crate::LlmStreamEvent::TextDelta(self.response.clone())),
+                ),
+                (
+                    self.event_delay,
+                    Ok(crate::LlmStreamEvent::Done(Box::default())),
+                ),
+            ];
+            Ok(Box::pin(futures::stream::iter(events).then(
+                |(delay, event)| async move {
+                    tokio::time::sleep(delay).await;
+                    event
+                },
+            )))
+        }
+
+        async fn chat_completion_non_streaming(
+            &self,
+            _endpoint: &ProviderEndpoint,
+            _messages: Vec<crate::Message>,
+            _config: &crate::LlmCallConfig,
+        ) -> Result<crate::LlmResponse> {
+            self.native_called.store(true, Ordering::SeqCst);
+            Ok(crate::LlmResponse {
+                text: self.response.clone(),
+                reasoning: vec![],
+                tool_calls: None,
+                metadata: Default::default(),
+            })
+        }
+    }
+
     #[test]
     fn the_driver_kind_falls_back_to_the_runtime_key() {
         assert_eq!(
@@ -702,6 +769,80 @@ mod tests {
                 .expect("catalog request")
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn bounded_non_streaming_calls_enforce_the_total_timeout_before_headers() {
+        let native_called = Arc::new(AtomicBool::new(false));
+        let provider = RuntimeProvider::new(
+            "bounded",
+            NativeNonStreaming {
+                native_called: Arc::clone(&native_called),
+                connect_delay: Duration::from_millis(100),
+                event_delay: Duration::ZERO,
+                response: "done".into(),
+            },
+        );
+        let mut config = crate::LlmCallConfig::new("model");
+        config.limits =
+            crate::turn_collector::TurnLimits::default().with_total(Duration::from_millis(10));
+
+        let error = provider
+            .chat_completion_non_streaming(vec![], &config)
+            .await
+            .expect_err("the call must time out");
+
+        assert!(error.to_string().contains("did not finish"));
+        assert!(!native_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn bounded_non_streaming_calls_enforce_the_total_timeout_during_the_body() {
+        let native_called = Arc::new(AtomicBool::new(false));
+        let provider = RuntimeProvider::new(
+            "bounded",
+            NativeNonStreaming {
+                native_called: Arc::clone(&native_called),
+                connect_delay: Duration::ZERO,
+                event_delay: Duration::from_millis(100),
+                response: "partial".into(),
+            },
+        );
+        let mut config = crate::LlmCallConfig::new("model");
+        config.limits =
+            crate::turn_collector::TurnLimits::default().with_total(Duration::from_millis(10));
+
+        let error = provider
+            .chat_completion_non_streaming(vec![], &config)
+            .await
+            .expect_err("the body must time out");
+
+        assert!(error.to_string().contains("did not finish"));
+        assert!(!native_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn bounded_non_streaming_calls_reject_oversized_responses() {
+        let native_called = Arc::new(AtomicBool::new(false));
+        let provider = RuntimeProvider::new(
+            "bounded",
+            NativeNonStreaming {
+                native_called: Arc::clone(&native_called),
+                connect_delay: Duration::ZERO,
+                event_delay: Duration::ZERO,
+                response: "too large".into(),
+            },
+        );
+        let mut config = crate::LlmCallConfig::new("model");
+        config.limits = crate::turn_collector::TurnLimits::default().with_max_response_bytes(3);
+
+        let error = provider
+            .chat_completion_non_streaming(vec![], &config)
+            .await
+            .expect_err("the response must exceed the cap");
+
+        assert!(error.to_string().contains("3-byte limit"));
+        assert!(!native_called.load(Ordering::SeqCst));
     }
 
     #[test]
