@@ -16,11 +16,12 @@ use everruns_core::{
     provider_resolution::ProviderStore, session_files::SessionFileSystem,
     tool_execution::PaymentAuthority,
 };
-use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter};
+use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter, ToolContextRequest};
 use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
 };
 use everruns_platform::SessionMutator;
+use everruns_platform::capabilities::PLATFORM_CAPABILITY_ID;
 use everruns_platform::{
     DurableToolResultStoreExt, KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt,
     PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
@@ -429,17 +430,29 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Some(self.adapters.connection_resolver())
     }
 
-    fn tool_context_extensions(&self, org_id: i64, session_id: SessionId) -> ToolContextExtensions {
+    fn tool_context_extensions(&self, request: ToolContextRequest<'_>) -> ToolContextExtensions {
+        let ToolContextRequest {
+            org_id,
+            session_id,
+            resolved_capabilities,
+        } = request;
         let mut extensions = ToolContextExtensions::default();
         let platform_store = self.adapters.platform_store(org_id, session_id);
-        // The `everruns` command in the session's own shell. Inserted for every
-        // session: the shell only installs the builtin when a source is present,
-        // and a harness without a shell never asks. A shell-surface harness has
-        // no `execute` tool to forward to, so this is how it reaches the catalog
-        // at all.
-        extensions.insert(Arc::new(crate::catalog_cli::CatalogCommandSource::handle(
-            platform_store.clone(),
-        )));
+        // Shell-surface platform harnesses omit the forwarding tools, so install
+        // their catalog directly. Never expose it to a shell-only harness: the
+        // `everruns` builtin is the whole platform surface, so a session without
+        // the capability that grants it must not receive a command source.
+        // Read from the resolved set, not the declared one — `platform` can
+        // arrive by dependency expansion or under an alias, and the server-side
+        // gate on InvokePlatformCommandSurface resolves the same way.
+        let has_platform_capability = resolved_capabilities
+            .iter()
+            .any(|capability| capability.capability_id() == PLATFORM_CAPABILITY_ID);
+        if has_platform_capability {
+            extensions.insert(Arc::new(crate::catalog_cli::CatalogCommandSource::handle(
+                platform_store.clone(),
+            )));
+        }
         extensions.insert(Arc::new(PlatformStoreExt(platform_store)));
         if let Some(store) = self.adapters.knowledge_store() {
             extensions.insert(Arc::new(KnowledgeStoreExt(store)));

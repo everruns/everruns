@@ -1955,12 +1955,11 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn tool_context_extensions(
         &self,
-        org_id: i64,
-        session_id: SessionId,
+        request: crate::host::ToolContextRequest<'_>,
     ) -> everruns_core::tool_context::ToolContextExtensions {
         self.tool_context_extensions_factory
             .as_ref()
-            .map(|factory| factory(org_id, session_id))
+            .map(|factory| factory(request.org_id, request.session_id))
             .unwrap_or_default()
     }
 
