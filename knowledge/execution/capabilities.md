@@ -80,6 +80,24 @@ Security constraints:
 - Declarative dependencies cannot point to other declarative capabilities,
   avoiding persisted dependency cycles across org data.
 
+A stored definition that no longer deserializes is corrupt data, not an empty
+capability (EVE-1079). Reads and runtime hydration take the same parse path and
+split on the failure rather than substituting `Default`, whose `Available`
+status with no contributions made a broken row look like a working one:
+
+- Runtime hydration fails closed with the capability named. An agent stops with
+  a cause it can report instead of running on silently to lose the tools, prompt
+  and MCP servers the capability was attached to supply. Same contract as
+  EVE-1029.
+- Read surfaces keep the row's identity, force the definition inert
+  (`status: retired`) and carry the parse error in `definitionError`, so a
+  corrupt capability is visibly broken rather than plausibly empty.
+- A failed read never rewrites or drops the row; the stored bytes are what makes
+  it diagnosable. The corruption is logged once per row, not once per read.
+
+This is what makes a policy like EVE-1034's — preserve the record, block
+activation, surface it — expressible at all.
+
 ### Concept
 
 A Capability is an abstraction that defines added functionality for an Agent:
