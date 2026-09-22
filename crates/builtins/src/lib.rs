@@ -76,7 +76,8 @@ pub use ask_user::{
     AskUserCapability, AskUserOption, AskUserQuestion, AskUserQuestionKind, AskUserRequest,
     AskUserResult, AskUserStatus, DEFAULT_ASK_USER_TIMEOUT_SECONDS, DefaultsResponder,
     MAX_ASK_USER_HEADER_CHARS, MAX_ASK_USER_OPTIONS, MAX_ASK_USER_QUESTIONS,
-    normalize_ask_user_arguments, validate_ask_user_request,
+    MAX_ASK_USER_SECRET_NAME_CHARS, SESSION_SECRET_REF_PREFIX, normalize_ask_user_arguments,
+    session_secret_ref, validate_ask_user_request,
 };
 pub(crate) use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityRegistry, CapabilityStatus, Fact, FactsContext,
