@@ -3,7 +3,9 @@
 // Decision: timeout is 5 minutes per knowledge/execution/client-side-tools.md, configurable via env var.
 
 use crate::services::EventService;
+use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::StorageBackend;
+use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use chrono::Utc;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, ToolCompletedData, deserialize_event_data,
@@ -93,73 +95,49 @@ async fn timeout_session(
     session_id: SessionId,
     org_id: i64,
 ) -> anyhow::Result<()> {
-    // Find pending tool call IDs from the most recent tool.call_requested event
     let tool_call_ids = find_pending_tool_call_ids(db, session_id).await?;
-
     if tool_call_ids.is_empty() {
         tracing::warn!(
             session_id = %session_id,
-            "No tool.call_requested event found for timed-out session, resetting status"
+            "No tool.call_requested event found for timed-out session"
         );
     }
-
     let turn_id = TurnId::from_uuid(session_id.uuid());
     let message_id = MessageId::from_uuid(session_id.uuid());
-
-    // Emit timeout error events for each pending tool call
-    for tool_call_id in &tool_call_ids {
-        let error_result = ToolCompletedData::failure(
-            tool_call_id.clone(),
-            String::new(),
-            "timeout".to_string(),
-            "Timed out waiting for client tool results".to_string(),
-            None,
-        );
-
-        let event = EventRequest::new(
-            session_id,
-            EventContext::turn(turn_id, message_id),
-            error_result,
-        );
-
-        if let Err(e) = event_service.emit(event).await {
-            tracing::warn!(
-                session_id = %session_id,
-                tool_call_id = %tool_call_id,
-                error = %e,
-                "Failed to emit timeout tool.completed event"
-            );
+    let events = tool_call_ids
+        .into_iter()
+        .map(|tool_call_id| {
+            EventRequest::new(
+                session_id,
+                EventContext::turn(turn_id, message_id),
+                ToolCompletedData::failure(
+                    tool_call_id,
+                    String::new(),
+                    "timeout".to_string(),
+                    "Timed out waiting for client tool results".to_string(),
+                    None,
+                ),
+            )
+        })
+        .collect();
+    let plan = WaitingTurnResolutionPlan {
+        kind: "timeout".to_string(),
+        events,
+        session_values: Vec::new(),
+        response: serde_json::Value::Null,
+    };
+    let claim = match db.recover_waiting_turn(org_id, session_id, plan).await? {
+        ClaimWaitingTurnResult::Claimed(claim) => claim,
+        ClaimWaitingTurnResult::Conflict { .. } | ClaimWaitingTurnResult::SessionNotFound => {
+            return Ok(());
         }
-    }
-
-    // Update session status to active
-    let caller = everruns_core::Caller::internal(org_id);
-    let session_service = crate::domains::sessions::SessionService::new(db.clone());
-    if let Err(e) = session_service
-        .update_status(&caller, session_id.uuid(), "active".to_string())
-        .await
-    {
-        tracing::warn!(session_id = %session_id, error = %e, "Failed to reset session status");
-    }
-
-    // Resume the workflow
-    let runner = runner.clone();
-    let sid = session_id;
-    tokio::spawn(async move {
-        if let Err(e) = runner.resume_after_tool_results(sid).await {
-            tracing::warn!(
-                session_id = %sid,
-                error = %e,
-                "Failed to resume workflow after tool result timeout"
-            );
-        } else {
-            tracing::info!(
-                session_id = %sid,
-                "Workflow resumed after tool result timeout"
-            );
-        }
-    });
-
+    };
+    execute_waiting_turn_resolution(db, event_service, runner, org_id, session_id, &claim).await?;
+    tracing::info!(
+        session_id = %session_id,
+        resolution_kind = %claim.plan.kind,
+        "Workflow resumed after parked-turn recovery"
+    );
     Ok(())
 }
 

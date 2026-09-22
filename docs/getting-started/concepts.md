@@ -1,6 +1,6 @@
 ---
 title: Concepts
-description: How harnesses, agents, sessions, turns, events, capabilities, tools, apps, and files fit together in the execution model.
+description: How harnesses, agents, endpoints, sessions, turns, events, capabilities, tools, and files fit together in the execution model.
 ---
 
 This page is the **concept cheat-sheet**: short definitions of every entity, organised into three layers (high-level execution model, session internals, and settings). For the design rationale behind each entity, read [Core concepts](/explanation/concepts/) under Explanation.
@@ -70,16 +70,17 @@ A Tool is a function the agent can invoke during execution. Tools are provided b
 - MCP tools are prefixed: `mcp_{server_name}__{tool_name}`
 - Executed during the act phase of a turn
 
-### App
+### Endpoint
 
-An App is a deployable unit that binds a Harness and Agent to a distribution channel such as Slack. Apps provide a publish/unpublish lifecycle, only published apps accept incoming requests from their configured channel.
+An Endpoint is an Agent-owned way for an external caller to reach that Agent. Slack, AG-UI, A2A, FCP, and Public Chat each use an endpoint with transport-specific configuration.
 
-- Each app references exactly one Harness and one Agent
-- Each app has a channel type (e.g., `slack`) with channel-specific configuration
-- Lifecycle: `draft` → `published` → `draft` (or `archived`)
-- Incoming messages are routed to sessions based on a configurable strategy (e.g., per-thread, per-channel, per-user)
+- Each endpoint belongs to exactly one Agent.
+- Each endpoint has its own publish state, credentials, identity, and version policy.
+- Lifecycle: `draft` → `live` → `draft`.
+- Incoming messages route to sessions by the endpoint's session strategy.
+- An Agent can own multiple independently published endpoints.
 
-See [Apps](/features/apps/) for setup and configuration.
+Open an Agent's **Integrations** tab to create and manage endpoints. See [Slack Integration](/integrations/slack/) for a complete example.
 
 ---
 

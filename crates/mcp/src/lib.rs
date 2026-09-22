@@ -58,7 +58,7 @@ pub use elicitation::{
 };
 pub use executor::{McpConnectionResolver, McpExecutor, StaticConnectionResolver};
 pub use http::{
-    HttpToolsList, HttpTransport, http_call_tool, http_list_tools,
+    HttpToolsList, HttpTransport, McpHttpStatusError, http_call_tool, http_list_tools,
     http_list_tools_with_cache_hints, http_send_rpc,
 };
 pub use protocol::{CacheHints, CacheScope, ClientCapabilities, Negotiated};

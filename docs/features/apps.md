@@ -1,85 +1,51 @@
 ---
-title: Apps
-description: Apps bind a Harness and Agent to inbound distribution channels and expose a publish/unpublish lifecycle.
+title: Apps Compatibility
+description: Understand the retired App model, permanent route compatibility, and the Agent-owned endpoint model that replaces it.
 ---
 
-An **App** turns a Harness + Agent pair into a deployed service that responds to external messages. The App owns the channel-specific binding (such as Slack, webhook, or AG-UI), the inbound auth, the session-routing strategy, and the publish/unpublish lifecycle.
+Apps are retired from Everruns management. New integrations belong directly to an Agent as **endpoints** or **triggers**.
 
-The same agent can back multiple apps (e.g., a Slack deployment and a webhook deployment), and each app's lifecycle is independent.
+- Use an **endpoint** when an external peer sends a request and waits for a reply. Slack, AG-UI, A2A, FCP, and Public Chat use endpoints.
+- Use a **trigger** when a schedule or event starts Agent work without a reply channel.
 
-![App Architecture](../images/apps/architecture.svg)
+Create and manage both from the Agent's **Integrations** tab.
 
-## How it works
+![Agent Endpoint Architecture](../images/apps/architecture.svg)
 
-1. An external channel sends a request to the app's endpoint.
-2. The app verifies the request using channel-specific auth (signing secret, OIDC, mTLS, etc.).
-3. A session is found or created according to the session strategy.
-4. The agent processes the message and the response flows back through the channel.
+## Existing Apps
 
-## Channels
+Everruns keeps existing App records for historical attribution and compatibility. Existing installs continue to serve traffic, but the App list, detail page, create flow, and management API are retired.
 
-| Channel | Status | What it does |
-|---|---|---|
-| Slack | Available | Deploy as a Slack bot |
-| AG-UI | Available | AG-UI inbound channel |
-| Schedule | Deprecated | New channels are rejected; use [Agent triggers](/features/agent-triggers/) |
-| Webhook | Available | HTTP-triggered invocation |
-| WhatsApp | Planned |, |
-| Web Widget | Planned |, |
+The old `/v1/apps/{app_id}/…` ingress paths remain permanent aliases. They resolve to the migrated endpoint and continue to work. Do not rewrite a working existing installation only to change its URL.
 
-See [Slack Integration](/integrations/slack/) for the Slack-side setup.
+New integrations use endpoint-scoped canonical paths:
 
-## Session routing
-
-Each channel chooses how incoming messages map to sessions:
-
-| Strategy | Behaviour | Use when |
-|---|---|---|
-| `per_thread` (default) | Each thread is its own session | Support bots, Q&A |
-| `per_channel` | One session per channel | Persistent channel assistant |
-| `per_user` | One session per user | Personal assistant |
-
-Webhook channels use their own routing model (shared session vs. per-invocation). Agent triggers provide the same choice for scheduled runs.
-
-## Migrating App schedules
-
-Agent triggers are now the home for proactive scheduled execution. Existing agent-bound App schedule channels are migrated automatically with their cron expression, timezone, session mode, message, durable execution identity, and history preserved. Existing Apps without an agent are grandfathered and remain compatible.
-
-For new scheduled work, create a trigger from the agent's **Triggers** tab. See [Agent triggers](/features/agent-triggers/#migrate-from-app-schedule-channels) for the migration details and the distinction between agent triggers, App webhooks, and session schedules.
-
-## Lifecycle
-
-```
-draft → published → draft → archived
+```text
+/v1/e/{endpoint_id}/slack/events
+/v1/e/{endpoint_id}/ag-ui
+/v1/e/{endpoint_id}/a2a
+/v1/e/{endpoint_id}/fcp
 ```
 
-- **Draft**: configured but does not accept incoming requests.
-- **Published**: live; webhook requests are processed.
-- **Archived**: soft-deleted and hidden from listings.
+## Endpoint Lifecycle
 
-Unpublishing stops new message processing; existing sessions remain accessible.
+Each endpoint has its own lifecycle:
 
-## Reference
+```text
+Draft ⇄ Live
+Draft → Disabled
+Live → Disabled
+Disabled → Draft
+```
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/v1/apps` | Create app |
-| GET | `/v1/apps` | List apps |
-| GET | `/v1/apps/{app_id}` | Get app |
-| PATCH | `/v1/apps/{app_id}` | Update app |
-| DELETE | `/v1/apps/{app_id}` | Archive |
-| POST | `/v1/apps/{app_id}/publish` | Publish |
-| POST | `/v1/apps/{app_id}/unpublish` | Unpublish |
+- **Draft**: Configured but does not accept ingress traffic.
+- **Live**: Published and able to accept traffic while its Agent is active and exposures are not suspended.
+- **Disabled**: Kept for configuration but rejects ingress traffic and does not invoke the Agent.
 
-Full request/response schemas in the [API reference](/api/).
+Publishing or unpublishing one endpoint does not change another endpoint on the same Agent.
 
-## Do something
+## Where to Go
 
-- [Publish an agent as a Slack app](/how-to/publish-to-slack/), end-to-end deployment.
-- [Slack Integration](/integrations/slack/), Slack-side manifest and OAuth setup.
-
-## See also
-
-- [Agent Versions](/features/agent-versions/), pin an app to a specific agent version.
-- [Agent triggers](/features/agent-triggers/), run an agent proactively without an App schedule channel.
-- [Concepts: Apps](/explanation/concepts/#apps-connect-agents-to-the-outside-world)
+- [Slack Integration](/integrations/slack/), create and publish a Slack endpoint.
+- [Agent Triggers](/features/agent-triggers/), configure proactive scheduled work.
+- [Agent Versions](/features/agent-versions/), select which Agent version an endpoint uses.

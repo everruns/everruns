@@ -50,11 +50,11 @@ impl BadRequestError {
 
 #[derive(Debug, Error)]
 #[error("{message}")]
-pub struct ResourceLimitError {
+pub struct ConflictError {
     message: String,
 }
 
-impl ResourceLimitError {
+impl ConflictError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -65,6 +65,8 @@ impl ResourceLimitError {
         &self.message
     }
 }
+
+pub type ResourceLimitError = ConflictError;
 
 #[derive(Debug, Error)]
 #[error("{resource} not found")]

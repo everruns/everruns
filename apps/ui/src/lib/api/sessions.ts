@@ -436,17 +436,27 @@ export interface SubmittedQuestionAnswer {
   other_text: string | null;
 }
 
-export interface QuestionAnswersRequest {
-  tool_call_id: string;
-  status: "answered" | "declined";
-  answers: SubmittedQuestionAnswer[];
+/**
+ * Store a credential on the session, encrypted at rest.
+ *
+ * The only place a value typed into an `ask_user` secret question is ever sent.
+ * The question itself is then answered with a `session:{name}` reference, so the
+ * value never reaches the event log or model context (TM-AGENT-016).
+ */
+export async function setSessionSecret(
+  sessionId: string,
+  name: string,
+  value: string,
+): Promise<void> {
+  await api.put(`/v1/sessions/${sessionId}/storage/secrets`, {
+    secrets: { [name]: value },
+  });
 }
 
-export interface QuestionAnswersResponse {
-  answered_by: string;
-  session_status: string;
-  status: string;
-}
+// Hand-written against the planned contract before the endpoint existed; the
+// generated pair is now authoritative and carries the same names, so keeping
+// both made `lib/api/index.ts` re-export an ambiguous symbol.
+import type { QuestionAnswersRequest, QuestionAnswersResponse } from "./schema-types";
 
 export async function submitQuestionAnswers(
   sessionId: string,

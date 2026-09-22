@@ -748,7 +748,11 @@ impl AgentRunner for DurableRunner {
         Ok(())
     }
 
-    async fn resume_after_tool_results(&self, session_id: SessionId) -> Result<()> {
+    async fn resume_after_tool_results(
+        &self,
+        session_id: SessionId,
+        resolution_id: Uuid,
+    ) -> Result<()> {
         let workflow_id = session_id.uuid();
         let mut store = self.store.lock().await;
 
@@ -756,11 +760,6 @@ impl AgentRunner for DurableRunner {
             .get_workflow_status(workflow_id)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get workflow status: {e}"))?;
-        if status != WorkflowStatus::Completed {
-            return Err(anyhow::anyhow!(
-                "Cannot resume: workflow {workflow_id} is not in Completed status (status: {status:?})"
-            ));
-        }
 
         let saved_value = result_json.ok_or_else(|| {
             anyhow::anyhow!(
@@ -771,15 +770,30 @@ impl AgentRunner for DurableRunner {
             .map_err(|e| anyhow::anyhow!("Failed to parse saved turn input: {e}"))?;
 
         let input_json = serde_json::to_value(&turn_input)?;
-        store
-            .update_workflow_status(workflow_id, WorkflowStatus::Pending, None, None)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to reset workflow status: {e}"))?;
+        match status {
+            WorkflowStatus::Completed => {
+                store
+                    .update_workflow_status(
+                        workflow_id,
+                        WorkflowStatus::Pending,
+                        Some(serde_json::to_value(&turn_input)?),
+                        None,
+                    )
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to reset workflow status: {e}"))?;
+            }
+            WorkflowStatus::Pending | WorkflowStatus::Running => {}
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Cannot resume workflow {workflow_id} from status {status:?}"
+                ));
+            }
+        }
 
         if let Err(error) = store
             .enqueue_task(
                 workflow_id,
-                format!("reason_{}", Uuid::now_v7()),
+                format!("waiting_turn_resolution_{resolution_id}"),
                 "reason".to_string(),
                 input_json,
             )
@@ -1076,10 +1090,15 @@ mod tests {
             .expect("mark completed");
 
         let runner = DurableRunner::new_with_shared_store(shared.clone());
+        let resolution_id = Uuid::now_v7();
         runner
-            .resume_after_tool_results(session_id)
+            .resume_after_tool_results(session_id, resolution_id)
             .await
             .expect("resume should enqueue reason");
+        runner
+            .resume_after_tool_results(session_id, resolution_id)
+            .await
+            .expect("retry should reuse the reason task");
 
         assert_eq!(
             shared
@@ -1142,7 +1161,7 @@ mod tests {
         let runner = DurableRunner::new_with_shared_store(shared.clone())
             .with_task_notifier(notifier.clone());
         runner
-            .resume_after_tool_results(session_id)
+            .resume_after_tool_results(session_id, Uuid::now_v7())
             .await
             .expect("resume should enqueue reason");
 

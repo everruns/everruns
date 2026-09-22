@@ -69,8 +69,10 @@ A message log can't carry that. An event log can, and you can derive a message l
 
 See [Events as the primary store](/explanation/events/) for the consequences.
 
-## Apps connect agents to the outside world
+## Endpoints connect Agents to the outside world
 
-A bare agent has no way to receive messages from users. An **App** wires a harness + agent pair to an inbound channel (such as Slack, webhook, or AG-UI) and exposes a publish/unpublish lifecycle. The App owns the inbound auth, the session-routing strategy (per-thread, per-channel, per-user), and the channel-specific config. For proactive scheduled work, use [agent triggers](/features/agent-triggers/) instead of the deprecated App schedule channel.
+A bare Agent has no way to receive messages from external users. An **Endpoint** belongs to one Agent and exposes it through a transport such as Slack, AG-UI, A2A, FCP, or Public Chat.
 
-This is why apps are a separate concept from agents: the same agent can be deployed to multiple channels, and you want to publish and revoke those deployments independently.
+Each endpoint owns its inbound authentication, session-routing strategy, transport configuration, version policy, and publish state. One Agent can have several endpoints, and each endpoint can be published or revoked independently. Create and manage them from the Agent's **Integrations** tab.
+
+For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead of an endpoint.

@@ -107,6 +107,14 @@ type PinnedSessionData = (i64, DateTime<Utc>);
 type ReportingOutboxKey = (i64, String, String, String, String);
 type McpServiceToolCacheKey = (i64, Uuid, Uuid, String, String);
 
+#[derive(Clone)]
+struct WaitingTurnResolutionState {
+    resolution_id: Uuid,
+    claim_token: Uuid,
+    lease_expires_at: DateTime<Utc>,
+    plan: WaitingTurnResolutionPlan,
+}
+
 /// All data is stored in memory and lost on restart
 pub struct InMemoryDatabase {
     // TODO: Used in Phase 3 when org APIs are implemented
@@ -123,8 +131,10 @@ pub struct InMemoryDatabase {
     agent_mcp_secret_bindings: RwLock<HashMap<Uuid, AgentMcpSecretBindingRow>>,
     agent_versions: RwLock<HashMap<AgentVersionId, AgentVersionRow>>,
     sessions: RwLock<HashMap<SessionId, SessionRow>>,
+    waiting_turn_resolutions: RwLock<HashMap<SessionId, WaitingTurnResolutionState>>,
     session_participants: RwLock<HashMap<SessionParticipantId, SessionParticipantRow>>,
     events: RwLock<HashMap<EventId, EventRow>>,
+    waiting_turn_resolution_events: RwLock<HashMap<(Uuid, i32), EventId>>,
     compaction_checkpoints:
         RwLock<HashMap<(SessionId, String, String, i32), CompactionCheckpointRow>>,
     providers: RwLock<HashMap<ProviderId, ProviderRow>>,
@@ -298,8 +308,10 @@ impl Default for InMemoryDatabase {
             agent_mcp_secret_bindings: RwLock::new(HashMap::new()),
             agent_versions: RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
+            waiting_turn_resolutions: RwLock::new(HashMap::new()),
             session_participants: RwLock::new(HashMap::new()),
             events: RwLock::new(HashMap::new()),
+            waiting_turn_resolution_events: RwLock::new(HashMap::new()),
             compaction_checkpoints: RwLock::new(HashMap::new()),
             providers: RwLock::new(HashMap::new()),
             models: RwLock::new(HashMap::new()),
