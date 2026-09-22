@@ -124,7 +124,7 @@ for the pattern it enables.
 Running the Everruns Framework in your own application rather than on the
 platform? The same capability attaches to an agent you build yourself, and the
 decisions is also callable directly with no agent at all. See
-[Direct decision](/framework/direct-decision/).
+[Direct decision](/framework/direct-decisions/).
 
 ## Guardrails
 
