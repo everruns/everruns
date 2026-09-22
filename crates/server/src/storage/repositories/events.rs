@@ -256,6 +256,13 @@ impl Database {
             tx.rollback().await?;
             return Ok(false);
         };
+        // Any consumed card inside the window answers *this* approval, so the
+        // check is deliberately not scoped to `card_id`. A card belonging to an
+        // older turn cannot be claimed past this point (its own window would
+        // contain this `request_approval` and block), and a newer turn's
+        // approval trips the `request_approval` arm below. Scoping to `card_id`
+        // would therefore only buy a second claim for a re-rendered card of the
+        // same turn, in the gap before the decision message lands.
         let blocked: bool = sqlx::query_scalar(
             r#"
             SELECT EXISTS (
@@ -263,14 +270,13 @@ impl Database {
                 WHERE session_id = $1 AND sequence > $2 AND sequence < $3
                   AND (event_type = 'input.message'
                     OR (event_type = 'tool.completed' AND data->>'tool_name' = 'request_approval')
-                    OR (event_type = 'slack.approval.consumed' AND data->>'card_id' = $4))
+                    OR event_type = 'slack.approval.consumed')
             )
             "#,
         )
         .bind(session_id.uuid())
         .bind(approval_sequence)
         .bind(sequence)
-        .bind(card_id)
         .fetch_one(&mut *tx)
         .await?;
         if blocked {

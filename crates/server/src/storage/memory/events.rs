@@ -152,8 +152,7 @@ impl InMemoryDatabase {
                     || (event.event_type == "tool.completed"
                         && event.data.get("tool_name").and_then(|v| v.as_str())
                             == Some(crate::slack_approvals::REQUEST_APPROVAL_TOOL))
-                    || (event.event_type == "slack.approval.consumed"
-                        && event.data.get("card_id").and_then(|v| v.as_str()) == Some(card_id)))
+                    || event.event_type == "slack.approval.consumed")
         });
         if blocked {
             return Ok(false);
@@ -823,5 +822,26 @@ mod slack_approval_tests {
                     .unwrap()
             );
         }
+    }
+
+    /// A redelivered `tool.completed` renders a second card for the same turn
+    /// with a fresh id. Answering that approval once has to be enough, so the
+    /// consumed check cannot be scoped to the card id that claimed it.
+    #[tokio::test]
+    async fn a_second_card_for_the_same_turn_cannot_be_claimed_again() {
+        let db = InMemoryDatabase::default();
+        let session_id = SessionId::new();
+        append(&db, session_id, "tool.completed", "turn_1").await;
+
+        assert!(
+            db.claim_slack_approval_card(session_id, "card_1", "turn_1")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !db.claim_slack_approval_card(session_id, "card_2", "turn_1")
+                .await
+                .unwrap()
+        );
     }
 }
