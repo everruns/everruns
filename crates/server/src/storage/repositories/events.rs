@@ -142,6 +142,90 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn create_waiting_turn_resolution_event(
+        &self,
+        input: CreateEventRow,
+        resolution_id: Uuid,
+        event_index: i32,
+    ) -> Result<(EventRow, bool)> {
+        let existing = sqlx::query_as::<_, EventRow>(
+            "SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, \
+             created_at FROM events WHERE turn_resolution_id = $1 \
+             AND turn_resolution_event_index = $2",
+        )
+        .bind(resolution_id)
+        .bind(event_index)
+        .fetch_optional(&self.pool)
+        .await?;
+        if let Some(row) = existing {
+            return Ok((row, false));
+        }
+
+        let inserted = sqlx::query_as::<_, EventRow>(
+            r#"
+            INSERT INTO events (
+                session_id, sequence, event_type, ts, context, data, metadata, tags,
+                turn_resolution_id, turn_resolution_event_index
+            )
+            VALUES ($1, allocate_event_sequence($1), $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (turn_resolution_id, turn_resolution_event_index)
+                WHERE turn_resolution_id IS NOT NULL
+                DO NOTHING
+            RETURNING id, session_id, sequence, event_type, ts, context, data, metadata, tags,
+                      created_at
+            "#,
+        )
+        .bind(input.session_id)
+        .bind(&input.event_type)
+        .bind(input.ts)
+        .bind(&input.context)
+        .bind(&input.data)
+        .bind(&input.metadata)
+        .bind(&input.tags)
+        .bind(resolution_id)
+        .bind(event_index)
+        .fetch_optional(&self.pool)
+        .await?;
+        if let Some(row) = inserted {
+            if let Err(error) = sqlx::query(
+                r#"
+                INSERT INTO reporting_outbox (
+                    org_id, source_type, source_id, source_version, reason, status, next_attempt_at
+                )
+                SELECT s.org_id, 'event', $1, $1, 'event_projection', 'pending', NOW()
+                FROM sessions s
+                WHERE s.id = $2
+                ON CONFLICT (org_id, source_type, source_id, source_version, reason)
+                DO NOTHING
+                "#,
+            )
+            .bind(row.id.uuid().to_string())
+            .bind(row.session_id.uuid())
+            .execute(&self.pool)
+            .await
+            {
+                warn!(
+                    event_id = %row.id.uuid(),
+                    session_id = %row.session_id.uuid(),
+                    error = %error,
+                    "reporting outbox enqueue failed for resolution event"
+                );
+            }
+            return Ok((row, true));
+        }
+
+        let row = sqlx::query_as::<_, EventRow>(
+            "SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, \
+             created_at FROM events WHERE turn_resolution_id = $1 \
+             AND turn_resolution_event_index = $2",
+        )
+        .bind(resolution_id)
+        .bind(event_index)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok((row, false))
+    }
+
     /// Check if an input.message event with a given slack_ts already exists in a session.
     /// Used for dedup when Slack sends duplicate events (app_mention + message).
     pub async fn has_event_with_slack_ts(

@@ -70,6 +70,7 @@ mod runtime_context;
 mod session_file_system_factory;
 pub mod session_services;
 mod turn_strategy;
+mod turn_tool_context;
 // The utility LLM client needs `everruns-provider/http`, which only the
 // `utility-llm` feature turns on. Leaving the module ungated made the crate
 // fail to compile under any feature selection without it.
@@ -118,9 +119,9 @@ pub use capabilities::{
     compose_runtime_capability_registry, runtime_capability_registry, runtime_egress_service,
 };
 pub use host::{
-    ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, detect_dependency_blocker,
-    execute_act_activity, execute_input_activity, execute_reason_activity,
-    execute_reason_activity_with_prompt_messages,
+    ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, ToolContextRequest,
+    detect_dependency_blocker, execute_act_activity, execute_input_activity,
+    execute_reason_activity, execute_reason_activity_with_prompt_messages,
 };
 pub use in_memory::{
     InMemoryAgentStore, InMemoryCompactionCheckpointStore, InMemoryHarnessStore,

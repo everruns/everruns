@@ -411,7 +411,26 @@ impl StorageBackend {
     // ============================================
 
     pub async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
+        #[cfg(test)]
+        self.fail_if_forced("create_event")?;
         dispatch!(self, create_event, input)
+    }
+
+    pub async fn create_waiting_turn_resolution_event(
+        &self,
+        input: CreateEventRow,
+        resolution_id: Uuid,
+        event_index: i32,
+    ) -> Result<(EventRow, bool)> {
+        #[cfg(test)]
+        self.fail_if_forced("create_event")?;
+        dispatch!(
+            self,
+            create_waiting_turn_resolution_event,
+            input,
+            resolution_id,
+            event_index
+        )
     }
 
     /// Check if an input.message event with a given slack_ts already exists in a session.

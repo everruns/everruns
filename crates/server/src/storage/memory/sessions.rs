@@ -388,7 +388,12 @@ impl InMemoryDatabase {
             },
             active_now: matched
                 .iter()
-                .filter(|s| matches!(s.status.as_str(), "active" | "waiting_for_tool_results"))
+                .filter(|s| {
+                    matches!(
+                        s.status.as_str(),
+                        "active" | "waiting_for_tool_results" | RESOLVING_TOOL_RESULTS_STATUS
+                    )
+                })
                 .count() as i64,
             failed_today: matched
                 .iter()
@@ -484,7 +489,12 @@ impl InMemoryDatabase {
         let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
         for s in sessions.values() {
             if s.org_id == org_id {
-                *counts.entry(s.status.clone()).or_default() += 1;
+                let status = if s.status == RESOLVING_TOOL_RESULTS_STATUS {
+                    "waiting_for_tool_results".to_string()
+                } else {
+                    s.status.clone()
+                };
+                *counts.entry(status).or_default() += 1;
             }
         }
         Ok(counts.into_iter().collect())
@@ -499,7 +509,12 @@ impl InMemoryDatabase {
                 s.org_id == org_id
                     && matches!(
                         s.status.as_str(),
-                        "active" | "idle" | "started" | "waiting_for_tool_results" | "paused"
+                        "active"
+                            | "idle"
+                            | "started"
+                            | "waiting_for_tool_results"
+                            | RESOLVING_TOOL_RESULTS_STATUS
+                            | "paused"
                     )
             })
             .count();
@@ -516,29 +531,74 @@ impl InMemoryDatabase {
         Ok(count as i64)
     }
 
-    /// Atomically reserve active-turn capacity by marking the accepted
-    /// session active before the user message is persisted.
+    /// Atomically reserve active-turn capacity for a new turn, or claim a
+    /// parked turn for exclusive resolution without a new reservation.
     pub async fn reserve_active_turn_slot_for_org(
         &self,
         org_id: i64,
         session_id: SessionId,
         max_active_turns: i64,
+        resolution_plan: WaitingTurnResolutionPlan,
     ) -> Result<ReserveActiveTurnSlotResult> {
         let mut sessions = self.sessions.write();
-
-        // Existence/ownership before capacity (mirror Postgres): capture the
-        // prior status for release, and report a missing/foreign session as
-        // SessionNotFound rather than AtCapacity.
         let previous_status = match sessions.get(&session_id) {
             Some(session) if session.org_id == org_id => session.status.clone(),
             _ => return Ok(ReserveActiveTurnSlotResult::SessionNotFound),
         };
+        if previous_status == "waiting_for_tool_results" {
+            let resolution_id = Uuid::now_v7();
+            let claim_token = Uuid::now_v7();
+            self.waiting_turn_resolutions.write().insert(
+                session_id,
+                super::WaitingTurnResolutionState {
+                    resolution_id,
+                    claim_token,
+                    lease_expires_at: waiting_turn_claim_lease_expires_at(),
+                    plan: resolution_plan.clone(),
+                },
+            );
+            let session = sessions
+                .get_mut(&session_id)
+                .expect("session presence checked above");
+            session.status = RESOLVING_TOOL_RESULTS_STATUS.to_string();
+            session.updated_at = Self::now();
+            return Ok(ReserveActiveTurnSlotResult::Accepted {
+                previous_status,
+                resolution_claim: Some(WaitingTurnResolutionClaim {
+                    resolution_id,
+                    claim_token,
+                    plan: resolution_plan,
+                    recovered: false,
+                }),
+            });
+        }
+        if previous_status == RESOLVING_TOOL_RESULTS_STATUS {
+            let mut resolutions = self.waiting_turn_resolutions.write();
+            if let Some(resolution) = resolutions.get_mut(&session_id)
+                && resolution.lease_expires_at <= Self::now()
+                && resolution.plan.kind == resolution_plan.kind
+            {
+                resolution.claim_token = Uuid::now_v7();
+                resolution.lease_expires_at = waiting_turn_claim_lease_expires_at();
+                return Ok(ReserveActiveTurnSlotResult::Accepted {
+                    previous_status: "waiting_for_tool_results".to_string(),
+                    resolution_claim: Some(WaitingTurnResolutionClaim {
+                        resolution_id: resolution.resolution_id,
+                        claim_token: resolution.claim_token,
+                        plan: resolution.plan.clone(),
+                        recovered: true,
+                    }),
+                });
+            }
+            return Ok(ReserveActiveTurnSlotResult::Conflict {
+                current_status: "waiting_for_tool_results".to_string(),
+            });
+        }
 
         let active_turns = sessions
             .values()
             .filter(|s| s.org_id == org_id && s.status == "active")
             .count() as i64;
-
         if active_turns >= max_active_turns {
             return Ok(ReserveActiveTurnSlotResult::AtCapacity { active_turns });
         }
@@ -548,11 +608,149 @@ impl InMemoryDatabase {
             .expect("session presence checked above");
         session.status = "active".to_string();
         session.updated_at = Self::now();
-        Ok(ReserveActiveTurnSlotResult::Reserved { previous_status })
+        Ok(ReserveActiveTurnSlotResult::Accepted {
+            previous_status,
+            resolution_claim: None,
+        })
     }
 
-    /// Release a previously reserved active-turn slot by restoring the prior
-    /// status. Best-effort: only reverts a session still in `active`.
+    pub async fn claim_waiting_turn(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        resolution_plan: WaitingTurnResolutionPlan,
+    ) -> Result<ClaimWaitingTurnResult> {
+        self.claim_waiting_turn_inner(org_id, session_id, resolution_plan, false)
+            .await
+    }
+
+    pub async fn recover_waiting_turn(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        resolution_plan: WaitingTurnResolutionPlan,
+    ) -> Result<ClaimWaitingTurnResult> {
+        self.claim_waiting_turn_inner(org_id, session_id, resolution_plan, true)
+            .await
+    }
+
+    async fn claim_waiting_turn_inner(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        resolution_plan: WaitingTurnResolutionPlan,
+        recover_existing: bool,
+    ) -> Result<ClaimWaitingTurnResult> {
+        let mut sessions = self.sessions.write();
+        let Some(session) = sessions
+            .get_mut(&session_id)
+            .filter(|session| session.org_id == org_id)
+        else {
+            return Ok(ClaimWaitingTurnResult::SessionNotFound);
+        };
+        if session.status == RESOLVING_TOOL_RESULTS_STATUS {
+            let mut resolutions = self.waiting_turn_resolutions.write();
+            if let Some(resolution) = resolutions.get_mut(&session_id)
+                && resolution.lease_expires_at <= Self::now()
+                && (recover_existing || resolution.plan.kind == resolution_plan.kind)
+            {
+                resolution.claim_token = Uuid::now_v7();
+                resolution.lease_expires_at = waiting_turn_claim_lease_expires_at();
+                return Ok(ClaimWaitingTurnResult::Claimed(
+                    WaitingTurnResolutionClaim {
+                        resolution_id: resolution.resolution_id,
+                        claim_token: resolution.claim_token,
+                        plan: resolution.plan.clone(),
+                        recovered: true,
+                    },
+                ));
+            }
+            return Ok(ClaimWaitingTurnResult::Conflict {
+                current_status: "waiting_for_tool_results".to_string(),
+            });
+        }
+        if session.status != "waiting_for_tool_results" {
+            return Ok(ClaimWaitingTurnResult::Conflict {
+                current_status: session.status.clone(),
+            });
+        }
+
+        let resolution_id = Uuid::now_v7();
+        let claim_token = Uuid::now_v7();
+        self.waiting_turn_resolutions.write().insert(
+            session_id,
+            super::WaitingTurnResolutionState {
+                resolution_id,
+                claim_token,
+                lease_expires_at: waiting_turn_claim_lease_expires_at(),
+                plan: resolution_plan.clone(),
+            },
+        );
+        session.status = RESOLVING_TOOL_RESULTS_STATUS.to_string();
+        session.updated_at = Self::now();
+        Ok(ClaimWaitingTurnResult::Claimed(
+            WaitingTurnResolutionClaim {
+                resolution_id,
+                claim_token,
+                plan: resolution_plan,
+                recovered: false,
+            },
+        ))
+    }
+
+    pub async fn complete_waiting_turn_claim(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        resolution_id: Uuid,
+        claim_token: Uuid,
+    ) -> Result<bool> {
+        let mut sessions = self.sessions.write();
+        let mut resolutions = self.waiting_turn_resolutions.write();
+        let owns_claim = resolutions.get(&session_id).is_some_and(|resolution| {
+            resolution.resolution_id == resolution_id && resolution.claim_token == claim_token
+        });
+        let Some(session) = sessions.get_mut(&session_id).filter(|session| {
+            let worker_advanced = matches!(session.status.as_str(), "active" | "idle" | "paused");
+            let lease_valid = resolutions
+                .get(&session_id)
+                .is_some_and(|resolution| resolution.lease_expires_at > Self::now());
+            session.org_id == org_id
+                && owns_claim
+                && (session.status == RESOLVING_TOOL_RESULTS_STATUS || worker_advanced)
+                && (lease_valid || worker_advanced)
+        }) else {
+            return Ok(false);
+        };
+        if session.status == RESOLVING_TOOL_RESULTS_STATUS {
+            session.status = "active".to_string();
+        }
+        session.updated_at = Self::now();
+        resolutions.remove(&session_id);
+        Ok(true)
+    }
+
+    pub async fn abandon_waiting_turn_claim(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        resolution_id: Uuid,
+        claim_token: Uuid,
+    ) -> Result<()> {
+        let sessions = self.sessions.read();
+        if sessions.get(&session_id).is_some_and(|session| {
+            session.org_id == org_id && session.status == RESOLVING_TOOL_RESULTS_STATUS
+        }) && let Some(resolution) = self.waiting_turn_resolutions.write().get_mut(&session_id)
+            && resolution.resolution_id == resolution_id
+            && resolution.claim_token == claim_token
+        {
+            resolution.lease_expires_at = Self::now();
+        }
+        Ok(())
+    }
+
+    /// Release a turn reservation or parked-turn claim by restoring its prior
+    /// status without clobbering worker progress.
     pub async fn release_active_turn_slot_for_org(
         &self,
         org_id: i64,
@@ -560,9 +758,14 @@ impl InMemoryDatabase {
         previous_status: &str,
     ) -> Result<()> {
         let mut sessions = self.sessions.write();
+        let current_status = if previous_status == "waiting_for_tool_results" {
+            RESOLVING_TOOL_RESULTS_STATUS
+        } else {
+            "active"
+        };
         if let Some(session) = sessions.get_mut(&session_id)
             && session.org_id == org_id
-            && session.status == "active"
+            && session.status == current_status
         {
             session.status = previous_status.to_string();
             session.updated_at = Self::now();
@@ -592,7 +795,9 @@ impl InMemoryDatabase {
                 "active" => stats.active_session_count += 1,
                 "idle" => stats.idle_session_count += 1,
                 "started" => stats.started_session_count += 1,
-                "waiting_for_tool_results" => stats.waiting_for_tool_results_session_count += 1,
+                "waiting_for_tool_results" | RESOLVING_TOOL_RESULTS_STATUS => {
+                    stats.waiting_for_tool_results_session_count += 1
+                }
                 _ => {}
             }
 
@@ -654,15 +859,22 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
-    /// Find sessions in `waiting_for_tool_results` with updated_at before cutoff.
+    /// Find timed-out parked turns and expired in-progress resolution leases.
     pub async fn list_sessions_waiting_tool_results_before(
         &self,
         cutoff: DateTime<Utc>,
     ) -> Result<Vec<(SessionId, i64)>> {
         let sessions = self.sessions.read();
+        let resolutions = self.waiting_turn_resolutions.read();
         let result: Vec<_> = sessions
             .values()
-            .filter(|s| s.status == "waiting_for_tool_results" && s.updated_at < cutoff)
+            .filter(|session| {
+                (session.status == "waiting_for_tool_results" && session.updated_at < cutoff)
+                    || (session.status == RESOLVING_TOOL_RESULTS_STATUS
+                        && resolutions
+                            .get(&session.id)
+                            .is_some_and(|resolution| resolution.lease_expires_at <= Self::now()))
+            })
             .map(|s| (s.id, s.org_id))
             .collect();
         Ok(result)

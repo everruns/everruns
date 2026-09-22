@@ -33,7 +33,10 @@ use utoipa::ToSchema;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse};
 use super::tool_results::AppState;
-use crate::storage::models::UpsertSessionKeyValue;
+use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::storage::models::{
+    ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
+};
 use everruns_core::Caller;
 use everruns_provider::tool_types::CONFIRM_URL_ELICITATION_TOOL;
 
@@ -141,28 +144,20 @@ pub async fn submit_elicitation_consent(
         .await
         .log_internal_error_json("read session events")?
         .ok_or_not_found_json("Pending URL elicitation")?;
-
-    // Record before resuming. The tool call that reads this consent can start
-    // as soon as the workflow is running again, so a consent written after the
-    // resume could arrive too late to be seen.
-    if req.action == ConsentAction::Accept {
+    let session_values = if req.action == ConsentAction::Accept {
         let record = StoredConsent::new(
             &pending.server,
             &pending.tool,
             &pending.host,
             chrono::Utc::now(),
         );
-        state
-            .db
-            .upsert_session_key_value(UpsertSessionKeyValue {
-                session_id,
-                key: consent_storage_key(&pending.server, &pending.tool),
-                value: serde_json::to_string(&record).unwrap_or_default(),
-            })
-            .await
-            .log_internal_error_json("record elicitation consent")?;
-    }
-
+        vec![WaitingTurnSessionValue {
+            key: consent_storage_key(&pending.server, &pending.tool),
+            value: serde_json::to_string(&record).unwrap_or_default(),
+        }]
+    } else {
+        Vec::new()
+    };
     let turn_id = TurnId::from_uuid(session_id.uuid());
     let event_message_id = MessageId::from_uuid(session_id.uuid());
 
@@ -226,71 +221,67 @@ pub async fn submit_elicitation_consent(
     // the other provider's response ids with it.
     let mut message = everruns_core::message::RuntimeMessage::user(spoken);
     message.controls = latest_user_controls(&state, session_id).await;
-
-    if let Err(e) = state
-        .event_service
-        .emit(EventRequest::new(
-            session_id,
-            EventContext::empty(),
-            everruns_core::events::InputMessageData::new(message),
-        ))
+    let plan = WaitingTurnResolutionPlan {
+        kind: "url_consent".to_string(),
+        events: vec![
+            EventRequest::new(
+                session_id,
+                EventContext::empty(),
+                everruns_core::events::InputMessageData::new(message),
+            ),
+            EventRequest::new(
+                session_id,
+                EventContext::turn(turn_id, event_message_id),
+                completed,
+            ),
+        ],
+        session_values,
+        response: serde_json::json!({ "host": pending.host }),
+    };
+    let claim = match state
+        .db
+        .claim_waiting_turn(org.org_id, session_id, plan)
         .await
+        .log_internal_error_json("claim waiting turn")?
     {
-        tracing::warn!(
-            session_id = %session_id,
-            error = %e,
-            "Failed to record the elicitation decision as a message"
-        );
-    }
-
-    if let Err(e) = state
-        .event_service
-        .emit(EventRequest::new(
-            session_id,
-            EventContext::turn(turn_id, event_message_id),
-            completed,
-        ))
-        .await
-    {
-        tracing::warn!(
-            session_id = %session_id,
-            tool_call_id = %req.tool_call_id,
-            error = %e,
-            "Failed to emit tool.completed event for elicitation consent"
-        );
-    }
-
-    if let Err(e) = state
-        .session_service
-        .update_status(&caller, session_id.uuid(), "active".to_string())
-        .await
-    {
-        tracing::warn!(error = %e, "Failed to set session status to active");
-    }
+        ClaimWaitingTurnResult::Claimed(claim) => claim,
+        ClaimWaitingTurnResult::Conflict { current_status } => {
+            return Err(ErrorResponse::new(format!(
+                "Session is not waiting for tool results (current status: {current_status})"
+            ))
+            .into_response(StatusCode::CONFLICT));
+        }
+        ClaimWaitingTurnResult::SessionNotFound => {
+            return Err(ErrorResponse::not_found("Session"));
+        }
+    };
+    let result = execute_waiting_turn_resolution(
+        &state.db,
+        &state.event_service,
+        &state.runner,
+        org.org_id,
+        session_id,
+        &claim,
+    )
+    .await;
+    let host = claim.plan.response["host"]
+        .as_str()
+        .unwrap_or(&pending.host)
+        .to_string();
+    result.log_internal_error_json("resolve URL elicitation consent")?;
 
     tracing::info!(
         session_id = %session_id,
         server = %pending.server,
         tool = %pending.tool,
-        host = %pending.host,
+        host = %host,
         url = %pending.url,
         action = ?req.action,
         "URL elicitation consent recorded"
     );
 
-    let runner = state.runner.clone();
-    tokio::spawn(async move {
-        if let Err(e) = runner.resume_after_tool_results(session_id).await {
-            tracing::error!(
-                session_id = %session_id,
-                error = %e,
-                "Failed to resume workflow after elicitation consent"
-            );
-        }
-    });
-
     Ok(Json(ElicitationConsentResponse {
-        host: pending.host,
+        host,
         status: "active".to_string(),
     }))
 }

@@ -13,6 +13,8 @@
 // call is engine-authored; adding one here would put words in the user's mouth
 // that they never said.
 
+use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use everruns_builtins::ask_user::{
     ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserResult,
     AskUserStatus,
@@ -190,6 +192,8 @@ pub enum ResolveError {
     AlreadyResolved,
     /// The submitted answers do not match what was asked.
     Invalid(String),
+    /// Persistence or durable resume failed.
+    Internal(String),
 }
 
 /// Resolve the pending question set on a session with this outcome.
@@ -204,9 +208,7 @@ pub struct QuestionResolver<'a> {
     pub(crate) db: &'a std::sync::Arc<crate::storage::StorageBackend>,
     pub(crate) session_service: &'a crate::domains::sessions::SessionService,
     pub(crate) event_service: &'a crate::services::EventService,
-    /// Absent in contexts that cannot resume a turn. The result is still
-    /// recorded; only the resume is skipped.
-    pub(crate) runner: Option<std::sync::Arc<dyn everruns_worker::AgentRunner>>,
+    pub(crate) runner: std::sync::Arc<dyn everruns_worker::AgentRunner>,
 }
 
 pub async fn resolve_question_answers(
@@ -217,15 +219,12 @@ pub async fn resolve_question_answers(
     status: AskUserStatus,
     submitted: &[AskUserAnswer],
 ) -> Result<AskUserResult, ResolveError> {
-    let session = state
+    state
         .session_service
         .get(caller, session_id.uuid(), None)
         .await
-        .map_err(|error| ResolveError::NotWaiting(error.to_string()))?
+        .map_err(|error| ResolveError::Internal(error.to_string()))?
         .ok_or(ResolveError::NoPendingQuestions)?;
-    if session.status != everruns_platform::SessionStatus::WaitingForToolResults {
-        return Err(ResolveError::NotWaiting(session.status.to_string()));
-    }
 
     let requested = state
         .db
@@ -239,35 +238,9 @@ pub async fn resolve_question_answers(
             Some(QUESTION_LOOKBACK_EVENTS),
         )
         .await
-        .map_err(|error| ResolveError::NotWaiting(error.to_string()))?;
+        .map_err(|error| ResolveError::Internal(error.to_string()))?;
     let pending =
         pending_from_events(&requested, tool_call_id).ok_or(ResolveError::NoPendingQuestions)?;
-
-    // Idempotency. Two clicks, or a browser racing the deadline sweep, must not
-    // produce two results — a second `tool.completed` for one call is a
-    // malformed transcript, not a late duplicate the engine can ignore.
-    //
-    // The status check above is the primary guard and closes as soon as the
-    // first writer flips the session to active; this catches the case where
-    // both readers passed it before either wrote.
-    let completed = state
-        .db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["tool.completed".to_string()],
-            &[],
-            None,
-            Some(QUESTION_LOOKBACK_EVENTS),
-        )
-        .await
-        .map_err(|error| ResolveError::NotWaiting(error.to_string()))?;
-    if completed.iter().any(|event| {
-        event.data.get("tool_call_id").and_then(|v| v.as_str()) == Some(&pending.tool_call_id)
-    }) {
-        return Err(ResolveError::AlreadyResolved);
-    }
 
     let answers = if status == AskUserStatus::Answered {
         validate_answers(&pending.questions, submitted).map_err(ResolveError::Invalid)?
@@ -291,43 +264,71 @@ pub async fn resolve_question_answers(
         )],
         None,
     );
-    state
-        .event_service
-        .emit(everruns_core::events::EventRequest::new(
+    let plan = WaitingTurnResolutionPlan {
+        kind: "question_answers".to_string(),
+        events: vec![everruns_core::events::EventRequest::new(
             session_id,
             everruns_core::events::EventContext::turn(turn_id, event_message_id),
             completed_event,
-        ))
+        )],
+        session_values: Vec::new(),
+        response: serde_json::to_value(&result)
+            .map_err(|error| ResolveError::Internal(error.to_string()))?,
+    };
+    let claim = match state
+        .db
+        .claim_waiting_turn(caller.org_id, session_id, plan)
         .await
-        .map_err(|error| ResolveError::NotWaiting(error.to_string()))?;
-
-    if let Err(error) = state
-        .session_service
-        .update_status(caller, session_id.uuid(), "active".to_string())
-        .await
+        .map_err(|error| ResolveError::Internal(error.to_string()))?
     {
-        tracing::warn!(error = %error, "Failed to set session status to active");
-    }
+        ClaimWaitingTurnResult::Claimed(claim) => claim,
+        ClaimWaitingTurnResult::Conflict { current_status } => {
+            let completed = state
+                .db
+                .list_events(
+                    session_id,
+                    None,
+                    None,
+                    &["tool.completed".to_string()],
+                    &[],
+                    None,
+                    Some(QUESTION_LOOKBACK_EVENTS),
+                )
+                .await
+                .map_err(|error| ResolveError::Internal(error.to_string()))?;
+            if completed.iter().any(|event| {
+                event.data.get("tool_call_id").and_then(|v| v.as_str())
+                    == Some(&pending.tool_call_id)
+            }) {
+                return Err(ResolveError::AlreadyResolved);
+            }
+            return Err(ResolveError::NotWaiting(current_status));
+        }
+        ClaimWaitingTurnResult::SessionNotFound => {
+            return Err(ResolveError::NoPendingQuestions);
+        }
+    };
+    execute_waiting_turn_resolution(
+        state.db,
+        state.event_service,
+        &state.runner,
+        caller.org_id,
+        session_id,
+        &claim,
+    )
+    .await
+    .map_err(|error| ResolveError::Internal(error.to_string()))?;
+    let result = serde_json::from_value(claim.plan.response)
+        .map_err(|error| ResolveError::Internal(error.to_string()))?;
 
     tracing::info!(
         session_id = %session_id,
         tool_call_id = %pending.tool_call_id,
         status = ?status,
         questions = pending.questions.len(),
+        recovered = claim.recovered,
         "ask_user question set resolved"
     );
-
-    if let Some(runner) = state.runner.clone() {
-        tokio::spawn(async move {
-            if let Err(error) = runner.resume_after_tool_results(session_id).await {
-                tracing::error!(
-                    session_id = %session_id,
-                    error = %error,
-                    "Failed to resume workflow after question answers"
-                );
-            }
-        });
-    }
 
     Ok(result)
 }
@@ -454,7 +455,7 @@ pub async fn submit_question_answers(
         db: &state.db,
         session_service: &state.session_service,
         event_service: &state.event_service,
-        runner: Some(state.runner.clone()),
+        runner: state.runner.clone(),
     };
     let result = resolve_question_answers(
         &resolver,
@@ -480,6 +481,11 @@ pub async fn submit_question_answers(
         }
         ResolveError::Invalid(detail) => super::common::ErrorResponse::new(detail)
             .into_response(axum::http::StatusCode::BAD_REQUEST),
+        ResolveError::Internal(detail) => {
+            tracing::error!(error = %detail, "Failed to resolve question answers");
+            super::common::ErrorResponse::new("Internal server error".to_string())
+                .into_response(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
     })?;
 
     Ok(axum::Json(QuestionAnswersResponse {

@@ -12,6 +12,8 @@ mod worker_service_impl;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_platform_command_surface;
+#[cfg(test)]
 mod tests_sqldb_sharing;
 
 use crate::domains::mcp_servers::McpServerService;

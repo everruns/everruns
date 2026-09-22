@@ -39,6 +39,7 @@ pub mod session_schedule_store;
 pub mod session_storage_store;
 pub mod session_store;
 pub mod session_task_store;
+mod session_turn_claim;
 pub mod subagent_spawn_handles;
 
 #[cfg(test)]

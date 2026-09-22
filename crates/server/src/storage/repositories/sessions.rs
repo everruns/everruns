@@ -22,7 +22,7 @@ const SESSION_COLUMNS: &str = "id, org_id, workspace_id, app_id, endpoint_id, ha
 /// together; `activity_derivation_truth_table` in `everruns_core::session`
 /// spells out the shared contract.
 const ACTIVITY_SQL: &str = "CASE \
-     WHEN status IN ('active', 'waiting_for_tool_results') THEN 'running' \
+     WHEN status IN ('active', 'waiting_for_tool_results', 'resolving_tool_results') THEN 'running' \
      WHEN status = 'paused' THEN 'paused' \
      WHEN last_turn_status IN ('failed', 'cancelled') THEN 'failed' \
      WHEN last_turn_status = 'completed' THEN 'completed' \
@@ -48,6 +48,13 @@ struct SessionFilterSql {
     /// First unused positional parameter (LIMIT/OFFSET start here).
     next_param_idx: usize,
 }
+
+type WaitingTurnResolutionRow = (
+    String,
+    Option<Uuid>,
+    Option<DateTime<Utc>>,
+    Option<serde_json::Value>,
+);
 
 /// Binds the filter values in the exact order `SessionFilterSql::build`
 /// assigned their positional parameters. `$1` (org_id) is bound by the caller.
@@ -586,7 +593,7 @@ impl Database {
             r#"
             SELECT
                 COUNT(*) FILTER (
-                    WHERE status IN ('active', 'waiting_for_tool_results')
+                    WHERE status IN ('active', 'waiting_for_tool_results', 'resolving_tool_results')
                 )::bigint AS active_now,
                 COUNT(*) FILTER (
                     WHERE last_turn_status IN ('failed', 'cancelled')
@@ -711,10 +718,15 @@ impl Database {
     pub async fn count_sessions_by_status(&self, org_id: i64) -> Result<Vec<(String, i64)>> {
         let rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
-            SELECT status, COUNT(*) as count
+            SELECT
+                CASE
+                    WHEN status = 'resolving_tool_results' THEN 'waiting_for_tool_results'
+                    ELSE status
+                END AS status,
+                COUNT(*) AS count
             FROM sessions
             WHERE org_id = $1
-            GROUP BY status
+            GROUP BY 1
             "#,
         )
         .bind(org_id)
@@ -727,7 +739,7 @@ impl Database {
     /// Count non-finished sessions for an org (EVE-508 concurrent session cap).
     pub async fn count_active_sessions_for_org(&self, org_id: i64) -> Result<i64> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status IN ('active', 'idle', 'started', 'waiting_for_tool_results', 'paused')",
+            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status IN ('active', 'idle', 'started', 'waiting_for_tool_results', 'resolving_tool_results', 'paused')",
         )
         .bind(org_id)
         .fetch_one(&self.pool)
@@ -746,13 +758,14 @@ impl Database {
         Ok(row.0)
     }
 
-    /// Atomically reserve active-turn capacity by marking the accepted
-    /// session active before the user message is persisted.
+    /// Atomically reserve active-turn capacity for a new turn, or claim a
+    /// parked turn for exclusive resolution without a new reservation.
     pub async fn reserve_active_turn_slot_for_org(
         &self,
         org_id: i64,
         session_id: SessionId,
         max_active_turns: i64,
+        resolution_plan: WaitingTurnResolutionPlan,
     ) -> Result<ReserveActiveTurnSlotResult> {
         let mut tx = self.pool.begin().await?;
 
@@ -763,20 +776,89 @@ impl Database {
             .execute(&mut *tx)
             .await?;
 
-        // Verify the session exists and belongs to the org *before* the capacity
-        // check, so a missing/foreign session returns SessionNotFound rather
-        // than a misleading AtCapacity, and capture its prior status so the
-        // reservation can be released on a later failure.
-        let existing: Option<(String,)> =
-            sqlx::query_as("SELECT status FROM sessions WHERE org_id = $1 AND id = $2")
-                .bind(org_id)
-                .bind(session_id)
-                .fetch_optional(&mut *tx)
-                .await?;
-        let Some((previous_status,)) = existing else {
+        let existing: Option<WaitingTurnResolutionRow> = sqlx::query_as(
+            "SELECT status, turn_resolution_id, turn_resolution_lease_expires_at, \
+             turn_resolution_plan FROM sessions WHERE org_id = $1 AND id = $2 FOR UPDATE",
+        )
+        .bind(org_id)
+        .bind(session_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((previous_status, existing_resolution_id, lease_expires_at, existing_plan)) =
+            existing
+        else {
             tx.commit().await?;
             return Ok(ReserveActiveTurnSlotResult::SessionNotFound);
         };
+        if previous_status == "waiting_for_tool_results" {
+            let resolution_id = Uuid::now_v7();
+            let claim_token = Uuid::now_v7();
+            sqlx::query(
+                "UPDATE sessions SET status = $3, turn_resolution_id = $4, \
+                 turn_resolution_claim_token = $5, turn_resolution_lease_expires_at = $6, \
+                 turn_resolution_plan = $7, updated_at = NOW() \
+                 WHERE org_id = $1 AND id = $2",
+            )
+            .bind(org_id)
+            .bind(session_id)
+            .bind(RESOLVING_TOOL_RESULTS_STATUS)
+            .bind(resolution_id)
+            .bind(claim_token)
+            .bind(waiting_turn_claim_lease_expires_at())
+            .bind(serde_json::to_value(&resolution_plan)?)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Ok(ReserveActiveTurnSlotResult::Accepted {
+                previous_status,
+                resolution_claim: Some(WaitingTurnResolutionClaim {
+                    resolution_id,
+                    claim_token,
+                    plan: resolution_plan,
+                    recovered: false,
+                }),
+            });
+        }
+        if previous_status == RESOLVING_TOOL_RESULTS_STATUS {
+            if lease_expires_at.is_some_and(|expires_at| expires_at <= Utc::now())
+                && let (Some(resolution_id), Some(plan_json)) =
+                    (existing_resolution_id, existing_plan)
+            {
+                let plan: WaitingTurnResolutionPlan = serde_json::from_value(plan_json)?;
+                if plan.kind != resolution_plan.kind {
+                    tx.commit().await?;
+                    return Ok(ReserveActiveTurnSlotResult::Conflict {
+                        current_status: "waiting_for_tool_results".to_string(),
+                    });
+                }
+                let claim_token = Uuid::now_v7();
+                sqlx::query(
+                    "UPDATE sessions SET turn_resolution_claim_token = $3, \
+                     turn_resolution_lease_expires_at = $4, updated_at = NOW() \
+                     WHERE org_id = $1 AND id = $2",
+                )
+                .bind(org_id)
+                .bind(session_id)
+                .bind(claim_token)
+                .bind(waiting_turn_claim_lease_expires_at())
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                return Ok(ReserveActiveTurnSlotResult::Accepted {
+                    previous_status: "waiting_for_tool_results".to_string(),
+                    resolution_claim: Some(WaitingTurnResolutionClaim {
+                        resolution_id,
+                        claim_token,
+                        plan,
+                        recovered: true,
+                    }),
+                });
+            }
+            tx.commit().await?;
+            return Ok(ReserveActiveTurnSlotResult::Conflict {
+                current_status: "waiting_for_tool_results".to_string(),
+            });
+        }
 
         let active_turns: (i64,) = sqlx::query_as(
             "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status = 'active'",
@@ -800,25 +882,33 @@ impl Database {
 
         tx.commit().await?;
 
-        Ok(ReserveActiveTurnSlotResult::Reserved { previous_status })
+        Ok(ReserveActiveTurnSlotResult::Accepted {
+            previous_status,
+            resolution_claim: None,
+        })
     }
 
-    /// Release a previously reserved active-turn slot by restoring the session's
-    /// prior status. Best-effort and idempotent: only reverts a session that is
-    /// still `active`, so it never clobbers a status a worker legitimately
-    /// advanced to after the reservation.
+    /// Release a turn reservation or parked-turn claim by restoring its prior
+    /// status. The expected current state prevents clobbering worker progress.
     pub async fn release_active_turn_slot_for_org(
         &self,
         org_id: i64,
         session_id: SessionId,
         previous_status: &str,
     ) -> Result<()> {
+        let current_status = if previous_status == "waiting_for_tool_results" {
+            RESOLVING_TOOL_RESULTS_STATUS
+        } else {
+            "active"
+        };
         sqlx::query(
-            "UPDATE sessions SET status = $3 WHERE org_id = $1 AND id = $2 AND status = 'active'",
+            "UPDATE sessions SET status = $3, updated_at = NOW() \
+             WHERE org_id = $1 AND id = $2 AND status = $4",
         )
         .bind(org_id)
         .bind(session_id)
         .bind(previous_status)
+        .bind(current_status)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -853,7 +943,9 @@ impl Database {
                 COUNT(*) FILTER (WHERE status = 'active')::bigint AS active_session_count,
                 COUNT(*) FILTER (WHERE status = 'idle')::bigint AS idle_session_count,
                 COUNT(*) FILTER (WHERE status = 'started')::bigint AS started_session_count,
-                COUNT(*) FILTER (WHERE status = 'waiting_for_tool_results')::bigint AS waiting_for_tool_results_session_count,
+                COUNT(*) FILTER (
+                    WHERE status IN ('waiting_for_tool_results', 'resolving_tool_results')
+                )::bigint AS waiting_for_tool_results_session_count,
                 COALESCE((SELECT execution_count FROM turn_stats), 0)::bigint AS execution_count,
                 COALESCE(SUM(GREATEST((EXTRACT(EPOCH FROM (COALESCE(finished_at, updated_at) - COALESCE(started_at, created_at))) * 1000)::bigint, 0)), 0)::bigint AS total_session_duration_ms,
                 COALESCE(SUM(total_input_tokens), 0)::bigint AS total_input_tokens,
@@ -1012,8 +1104,7 @@ impl Database {
         Ok(rows)
     }
 
-    /// Find sessions in `waiting_for_tool_results` with updated_at before the
-    /// given cutoff. Returns lightweight `(session_id, org_id)` pairs.
+    /// Find timed-out parked turns and expired in-progress resolution leases.
     pub async fn list_sessions_waiting_tool_results_before(
         &self,
         cutoff: DateTime<Utc>,
@@ -1022,8 +1113,11 @@ impl Database {
             r#"
             SELECT id, org_id
             FROM sessions
-            WHERE status = 'waiting_for_tool_results'
-              AND updated_at < $1
+            WHERE (status = 'waiting_for_tool_results' AND updated_at < $1)
+               OR (
+                    status = 'resolving_tool_results'
+                    AND turn_resolution_lease_expires_at <= NOW()
+               )
             "#,
         )
         .bind(cutoff)

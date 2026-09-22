@@ -183,6 +183,40 @@ impl EventService {
         self.emit_durable(request).await
     }
 
+    pub async fn emit_waiting_turn_resolution(
+        &self,
+        mut request: EventRequest,
+        resolution_id: Uuid,
+        event_index: i32,
+    ) -> Result<Event> {
+        self.prepare_request(&mut request).await?;
+        let create_row = CreateEventRow {
+            session_id: request.session_id,
+            event_type: request.event_type,
+            ts: request.ts,
+            context: serde_json::to_value(&request.context)?,
+            data: serde_json::to_value(&request.data)?,
+            metadata: request.metadata,
+            tags: request.tags,
+        };
+        let (row, inserted) = self
+            .db
+            .create_waiting_turn_resolution_event(create_row, resolution_id, event_index)
+            .await?;
+        let event = Self::row_to_event(row);
+        if inserted {
+            if let Err(error) = self.event_delivery.publish(&event).await {
+                tracing::warn!(
+                    error = %error,
+                    event_type = %event.event_type,
+                    "Failed to publish durable event to delivery backend"
+                );
+            }
+            self.notify_listeners(&event).await;
+        }
+        Ok(event)
+    }
+
     async fn prepare_request(&self, request: &mut EventRequest) -> Result<()> {
         self.attach_agent_version_metadata(request).await;
         self.attach_session_participant_metadata(request).await;

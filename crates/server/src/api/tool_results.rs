@@ -20,11 +20,12 @@ use axum::{
 };
 use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_core::message::ContentPart;
-use everruns_platform::SessionStatus;
 use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use everruns_worker::AgentRunner;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
+use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use everruns_core::Caller;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -147,107 +148,95 @@ pub async fn submit_tool_results(
 
     // Get session and verify status
     let caller = Caller::from(&org);
-    let session = state
+    state
         .session_service
         .get(&caller, session_id.uuid(), None)
         .await
         .log_internal_error_json("get session")?
         .ok_or_not_found_json("Session")?;
-
-    if session.status != SessionStatus::WaitingForToolResults {
-        return Err(ErrorResponse::new(format!(
-            "Session is not waiting for tool results (current status: {})",
-            session.status
-        ))
-        .into_response(StatusCode::CONFLICT));
-    }
-
-    // Use session_id as turn_id (matches how DurableRunner uses workflow_id = session_id)
     let turn_id = TurnId::from_uuid(session_id.uuid());
-    // Use a deterministic MessageId for event context only (not passed to InputAtom).
     let event_message_id = MessageId::from_uuid(session_id.uuid());
 
     let accepted = req.tool_results.len();
-
-    // Emit tool.completed events for each result
-    for client_result in &req.tool_results {
-        let tool_result = if let Some(ref error) = client_result.error {
-            ToolCompletedData::failure(
-                client_result.tool_call_id.clone(),
-                String::new(), // tool name not available from client
-                "error".to_string(),
-                error.clone(),
-                None,
+    let events = req
+        .tool_results
+        .iter()
+        .map(|client_result| {
+            let tool_result = if let Some(ref error) = client_result.error {
+                ToolCompletedData::failure(
+                    client_result.tool_call_id.clone(),
+                    String::new(),
+                    "error".to_string(),
+                    error.clone(),
+                    None,
+                )
+            } else {
+                let result_content = client_result
+                    .result
+                    .as_ref()
+                    .map(|result| vec![ContentPart::tool_result_text(result)])
+                    .unwrap_or_default();
+                ToolCompletedData::success(
+                    client_result.tool_call_id.clone(),
+                    String::new(),
+                    result_content,
+                    None,
+                )
+            };
+            EventRequest::new(
+                session_id,
+                EventContext::turn(turn_id, event_message_id),
+                tool_result,
             )
-        } else {
-            let result_content = client_result
-                .result
-                .as_ref()
-                .map(|r| vec![ContentPart::tool_result_text(r)])
-                .unwrap_or_default();
-            ToolCompletedData::success(
-                client_result.tool_call_id.clone(),
-                String::new(), // tool name not available from client
-                result_content,
-                None,
-            )
-        };
-
-        let event = EventRequest::new(
-            session_id,
-            EventContext::turn(turn_id, event_message_id),
-            tool_result,
-        );
-
-        if let Err(e) = state.event_service.emit(event).await {
-            tracing::warn!(
-                session_id = %session_id,
-                tool_call_id = %client_result.tool_call_id,
-                error = %e,
-                "Failed to emit tool.completed event for client tool result"
-            );
-        }
-    }
-
-    // Set session status back to active
-    if let Err(e) = state
-        .session_service
-        .update_status(&caller, session_id.uuid(), "active".to_string())
+        })
+        .collect();
+    let plan = WaitingTurnResolutionPlan {
+        kind: "tool_results".to_string(),
+        events,
+        session_values: Vec::new(),
+        response: serde_json::json!({ "accepted": accepted }),
+    };
+    let claim = match state
+        .db
+        .claim_waiting_turn(org.org_id, session_id, plan)
         .await
+        .log_internal_error_json("claim waiting turn")?
     {
-        tracing::warn!(error = %e, "Failed to set session status to active");
-    }
-
-    // Resume the workflow by enqueueing a reason activity directly.
-    // This skips InputAtom (there is no new user message) and uses the
-    // DurableTurnInput saved when the workflow paused for connection_required.
-    let runner = state.runner.clone();
-    tokio::spawn(async move {
-        if let Err(e) = runner.resume_after_tool_results(session_id).await {
-            tracing::error!(
-                session_id = %session_id,
-                error = %e,
-                "Failed to resume workflow after tool results"
-            );
-        } else {
-            tracing::info!(
-                session_id = %session_id,
-                "Workflow resumed after client tool results"
-            );
+        ClaimWaitingTurnResult::Claimed(claim) => claim,
+        ClaimWaitingTurnResult::Conflict { current_status } => {
+            return Err(ErrorResponse::new(format!(
+                "Session is not waiting for tool results (current status: {current_status})"
+            ))
+            .into_response(StatusCode::CONFLICT));
         }
-    });
-
-    Ok(Json(SubmitToolResultsResponse {
+        ClaimWaitingTurnResult::SessionNotFound => {
+            return Err(ErrorResponse::not_found("Session"));
+        }
+    };
+    let accepted = claim.plan.response["accepted"]
+        .as_u64()
+        .unwrap_or(accepted as u64) as usize;
+    let result = execute_waiting_turn_resolution(
+        &state.db,
+        &state.event_service,
+        &state.runner,
+        org.org_id,
+        session_id,
+        &claim,
+    )
+    .await
+    .map(|_| SubmitToolResultsResponse {
         accepted,
         status: "active".to_string(),
-    }))
+    });
+    Ok(Json(
+        result.log_internal_error_json("resolve client tool results")?,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_submit_tool_results_request_with_error() {
