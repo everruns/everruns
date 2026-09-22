@@ -29,6 +29,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
 | [Current Time](/capabilities/current-time/) | `current_time` | 1 |
 | [Message Metadata](/capabilities/message-metadata/) | `message_metadata` | 0 |
+| [Ask User](/capabilities/ask-user/) | `ask_user` | 1 |
 | [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 1 |
 | [Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 |
 | [Auto-Continue After Usage Limit](/capabilities/usage-limit-auto-continue/) | `usage_limit_auto_continue` | 0 |
