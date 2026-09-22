@@ -196,6 +196,7 @@ export default defineConfig({
                     { label: "Events and Cancellation", slug: "framework/events-and-cancellation" },
                     { label: "Canonical Events", slug: "framework/canonical-events" },
                     { label: "Lifecycle Hooks", slug: "framework/lifecycle-hooks" },
+                    { label: "Answer Agent Questions", slug: "framework/ask-user" },
                     { label: "Persistence", slug: "framework/persistence" },
                   ],
                 },
@@ -254,6 +255,7 @@ export default defineConfig({
                         { label: "Web Fetch", slug: "capabilities/web-fetch" },
                         { label: "Current Time", slug: "capabilities/current-time" },
                         { label: "Message Metadata", slug: "capabilities/message-metadata" },
+                        { label: "Ask User", slug: "capabilities/ask-user" },
                         { label: "Task Management", slug: "capabilities/task-management" },
                         { label: "Schedules", slug: "capabilities/session-schedules" },
                         {

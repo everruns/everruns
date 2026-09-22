@@ -58,6 +58,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Session History and Resume](/framework/session-history/), bounded transcript pages and typed continuation.
 - [Events and cancellation](/framework/events-and-cancellation/), observe a live turn and stop work cooperatively.
 - [Lifecycle hooks](/framework/lifecycle-hooks/), run awaited application behavior at execution boundaries.
+- [Answer agent questions](/framework/ask-user/), implement `AskUser` so your application answers the agent's structured questions.
 - [Canonical events](/framework/canonical-events/), render or record bounded canonical event envelopes.
 - [Persistence](/framework/persistence/), Engine-lifetime memory and crash-durable local state.
 

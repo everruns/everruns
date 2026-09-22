@@ -282,3 +282,8 @@ application boundaries, and never place secrets in capability or tool metadata.
 
 For a complete provider-backed program, run the
 [`advanced_capability` example](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/advanced_capability.rs).
+
+Some built-ins expect the application to supply behavior rather than
+configuration. `ask_user` is one: it needs someone to answer, so
+`AgentBuilder::ask_user` takes a responder instead of a config value. See
+[Answer agent questions](/framework/ask-user/).
