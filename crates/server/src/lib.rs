@@ -11,6 +11,9 @@
 // Shared low-level security primitives (constant-time comparison, etc.)
 pub mod security;
 
+// Deterministic credential-format detection for text a person typed.
+pub mod credential_shape;
+
 // API routes and types (shared for OpenAPI generation)
 pub mod api;
 

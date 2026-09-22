@@ -128,6 +128,16 @@ pub(crate) fn validate_answers(
             return Err(format!("question {id:?} does not allow free text"));
         }
 
+        // EVE-1059: refuse before persistence, never redact after. This text
+        // becomes a tool result — written to `events` and replayed into model
+        // context every turn — and there is no un-persisting an event, so the
+        // only place this check works is here, ahead of the write.
+        if let Some(text) = other
+            && let Some(label) = crate::credential_shape::credential_format(text)
+        {
+            return Err(crate::credential_shape::credential_rejection(id, label));
+        }
+
         // An answer has to say something. Free text stands in for a selection,
         // which is the whole point of `allow_other`.
         if answer.selected.is_empty() && other.is_none() {
@@ -772,6 +782,53 @@ mod tests {
         );
         assert!(validated[0].selected.is_empty());
         assert!(validated[0].other_text.is_none());
+    }
+
+    /// THREAT[TM-AGENT-016] through the *other* door (EVE-1059). The secret
+    /// kind is not the only way a credential can be typed: an ordinary choice
+    /// question with `allow_other` renders a free-text box, and that text is
+    /// persisted and replayed. The refusal has to happen in `validate_answers`,
+    /// which `resolve_question_answers` calls before it builds any event, so
+    /// there is no run in which the value reaches `events` first.
+    #[test]
+    fn a_credential_pasted_into_a_free_text_box_is_refused() {
+        let questions = vec![question("target", false, true)];
+
+        for secret in [
+            "sk-abcdefghijklmnopqrstuvwxyz012345",
+            "ghp_abcdefghijklmnopqrstuvwxyz0123456789AB",
+            "AKIAIOSFODNN7EXAMPLE",
+            "-----BEGIN RSA PRIVATE KEY-----",
+            "the key is xoxb-123456789012-abcdefghijkl, use that",
+        ] {
+            let error = validate_answers(&questions, &[answer("target", &[], Some(secret))])
+                .expect_err("a credential-shaped answer must be refused");
+
+            // Actionable, and it must not echo the value into an error body.
+            assert!(error.contains("secret"), "no path forward: {error}");
+            assert!(
+                !error.contains(secret),
+                "the error leaked the value: {error}"
+            );
+        }
+    }
+
+    /// The tuning bar from EVE-1059: blocking an ordinary answer is worse than
+    /// missing an exotic key format, because it is a dead end mid-conversation.
+    #[test]
+    fn ordinary_free_text_is_untouched() {
+        let questions = vec![question("target", false, true)];
+
+        for text in [
+            "Staging, but roll back if the smoke test fails",
+            "order 9f8e7d6c5b4a39281706fedcba9876543210fedcba9876543210fedcba987654",
+            "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "ask-user-capability-contract-schema-and-knowledge-spec",
+        ] {
+            let validated = validate_answers(&questions, &[answer("target", &[], Some(text))])
+                .unwrap_or_else(|error| panic!("rejected an ordinary answer {text:?}: {error}"));
+            assert_eq!(validated[0].other_text.as_deref(), Some(text));
+        }
     }
 
     /// THREAT[TM-AGENT-016]: there must be no path from a typed credential to a
