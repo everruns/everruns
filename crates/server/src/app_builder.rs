@@ -1799,10 +1799,6 @@ impl ServerAppBuilder {
             },
         ));
 
-        // RequestIdLayer must be outer (run first) so TraceLayer can read the ID when
-        // creating the span above. See knowledge/operations/correlation-ids.md.
-        let app = app.layer(RequestIdLayer);
-
         // Per-request access log: applied as route_layer so axum's MatchedPath
         // extractor is available for low-cardinality `route` labels. Emits one
         // tracing event per request with method, route, status, latency_ms,
@@ -1821,6 +1817,16 @@ impl ServerAppBuilder {
         } else {
             app
         };
+
+        // RequestIdLayer must be applied LAST of this group, because each call
+        // wraps outside what came before: it has to run first so TraceLayer's
+        // span and the access log above can both read the ID it inserts.
+        // EVE-1075 was exactly this — applied before the access log, it ended
+        // up inside it, and every production access-log line carried
+        // `request_id=""`. `the_logged_request_id_is_the_one_the_response_echoes`
+        // in `middleware/access_log.rs` pins the order.
+        // See knowledge/operations/correlation-ids.md.
+        let app = app.layer(RequestIdLayer);
 
         // =====================================================================
         // Phase 7: Background tasks
