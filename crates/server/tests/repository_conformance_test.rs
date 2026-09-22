@@ -873,7 +873,7 @@ async fn run_waiting_turn_claim_recovery_conformance(backend: &StorageBackend, l
         .expect("waiting-turn session exists");
 
     let original_plan = WaitingTurnResolutionPlan {
-        kind: "original".to_string(),
+        kind: "user_message".to_string(),
         events: Vec::new(),
         session_values: Vec::new(),
         response: json!({ "winner": "original" }),
@@ -915,13 +915,20 @@ async fn run_waiting_turn_claim_recovery_conformance(backend: &StorageBackend, l
     );
 
     let replacement_plan = WaitingTurnResolutionPlan {
-        kind: "replacement".to_string(),
+        kind: "tool_results".to_string(),
         events: Vec::new(),
         session_values: Vec::new(),
         response: json!({ "winner": "replacement" }),
     };
+    assert!(matches!(
+        backend
+            .claim_waiting_turn(DEFAULT_ORG_ID, session.id, replacement_plan.clone())
+            .await
+            .expect("reject mismatched resolver"),
+        everruns_server::storage::ClaimWaitingTurnResult::Conflict { .. }
+    ));
     let recovered = match backend
-        .claim_waiting_turn(DEFAULT_ORG_ID, session.id, replacement_plan)
+        .recover_waiting_turn(DEFAULT_ORG_ID, session.id, replacement_plan)
         .await
         .expect("recover waiting turn")
     {

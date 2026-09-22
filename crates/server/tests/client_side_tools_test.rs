@@ -21,6 +21,7 @@ use axum::http::StatusCode;
 use everruns_builtins::normalize_ask_user_arguments;
 use everruns_platform::{Agent, Session};
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use everruns_worker::AgentRunner;
 use serde_json::json;
 use test_harness::TestServer;
@@ -775,6 +776,71 @@ async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -
         .await
         .expect("emit pending client tool call");
     session
+}
+
+async fn abandon_message_resolution(server: &TestServer, session_id: SessionId) {
+    let result = server
+        .db
+        .reserve_active_turn_slot_for_org(
+            1,
+            session_id,
+            1,
+            WaitingTurnResolutionPlan {
+                kind: "user_message".to_string(),
+                events: Vec::new(),
+                session_values: Vec::new(),
+                response: json!({}),
+            },
+        )
+        .await
+        .expect("reserve message resolution");
+    let claim = match result {
+        ReserveActiveTurnSlotResult::Accepted {
+            resolution_claim: Some(claim),
+            ..
+        } => claim,
+        other => panic!("expected parked-turn claim, got {other:?}"),
+    };
+    server
+        .db
+        .abandon_waiting_turn_claim(1, session_id, claim.resolution_id, claim.claim_token)
+        .await
+        .expect("expire message resolution claim");
+}
+
+#[tokio::test]
+async fn expired_message_resolution_rejects_tool_results_without_acknowledging_them() {
+    let server = TestServer::in_memory().await;
+    let session = create_waiting_client_tool_session(&server, "stale-message-result").await;
+    abandon_message_resolution(&server, session.id).await;
+
+    server
+        .post(
+            &format!("/v1/sessions/{}/tool-results", session.id),
+            json!({
+                "tool_results": [{
+                    "tool_call_id": "call_stale-message-result",
+                    "result": { "answer": "discarded" }
+                }]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CONFLICT);
+
+    let completions = server
+        .db
+        .list_events(
+            session.id,
+            None,
+            None,
+            &["tool.completed".to_string()],
+            &[],
+            None,
+            None,
+        )
+        .await
+        .expect("list completions");
+    assert!(completions.is_empty());
 }
 
 #[tokio::test]

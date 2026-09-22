@@ -126,7 +126,7 @@ async fn timeout_session(
         session_values: Vec::new(),
         response: serde_json::Value::Null,
     };
-    let claim = match db.claim_waiting_turn(org_id, session_id, plan).await? {
+    let claim = match db.recover_waiting_turn(org_id, session_id, plan).await? {
         ClaimWaitingTurnResult::Claimed(claim) => claim,
         ClaimWaitingTurnResult::Conflict { .. } | ClaimWaitingTurnResult::SessionNotFound => {
             return Ok(());
