@@ -58,19 +58,33 @@ ENV_ENTRY = re.compile(r"^\s{2}([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$")
 UNBROKEN_RUN = re.compile(r"[A-Za-z0-9]{16,}")
 VALUE_SHAPE = re.compile(r"[A-Za-z0-9+/=_\-.:]+")
 
+# A credential begins at a token boundary. Without this, `sk-` matched inside
+# the ordinary word "ask-", so a PR body linking
+# linear.app/.../EVE-1053/ask-user-capability-contract-schema-and-knowledge-spec
+# reported as an OpenAI key and turned the hourly sweep red on every branch of a
+# nine-issue project. A real credential is never preceded by a word character,
+# so this costs no detection.
+TOKEN_START = r"(?<![A-Za-z0-9_\-])"
+
 # Formats that are a credential wherever they appear. `sk-` excludes `sk-ant-`
 # so an Anthropic key reports once, under its own name.
 PREFIX_RULES = [
-    ("anthropic", re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}")),
-    ("openai", re.compile(r"sk-(?!ant-)[A-Za-z0-9_\-]{20,}")),
-    ("github-pat", re.compile(r"gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,}")),
+    ("anthropic", r"sk-ant-[A-Za-z0-9_\-]{20,}"),
+    ("openai", r"sk-(?!ant-)[A-Za-z0-9_\-]{20,}"),
+    ("github-pat", r"gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,}"),
     # Doppler tokens carry a config segment: dp.st.<config>.<random>.
-    ("doppler", re.compile(r"dp\.(st|pt|sa|ct|scim)\.[A-Za-z0-9_.\-]{20,}")),
-    ("slack", re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,}")),
-    ("aws", re.compile(r"AKIA[0-9A-Z]{16}")),
-    ("gitlab", re.compile(r"glpat-[A-Za-z0-9_\-]{20,}")),
-    ("typesafe", re.compile(r"apikey_[A-Za-z0-9]{24,}")),
-    ("everruns", re.compile(r"evr_(pat|a2a|app)_[A-Za-z0-9]{16,}")),
+    ("doppler", r"dp\.(st|pt|sa|ct|scim)\.[A-Za-z0-9_.\-]{20,}"),
+    ("slack", r"xox[baprs]-[A-Za-z0-9\-]{10,}"),
+    ("aws", r"AKIA[0-9A-Z]{16}"),
+    ("gitlab", r"glpat-[A-Za-z0-9_\-]{20,}"),
+    ("typesafe", r"apikey_[A-Za-z0-9]{24,}"),
+    ("everruns", r"evr_(pat|a2a|app)_[A-Za-z0-9]{16,}"),
+]
+
+# Anchored at a token start. The alternation in `github-pat` is grouped so the
+# boundary applies to both spellings rather than only the first.
+PREFIX_RULES = [
+    (label, re.compile(f"{TOKEN_START}(?:{pattern})")) for label, pattern in PREFIX_RULES
 ]
 
 
