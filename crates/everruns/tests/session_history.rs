@@ -237,6 +237,45 @@ async fn local_profile_resumes_empty_and_multi_turn_sessions_across_agents() {
 
 #[cfg(feature = "local")]
 #[tokio::test]
+async fn local_profile_requires_bound_harness_after_restart() {
+    let root = tempfile::tempdir().unwrap();
+    let harness = Harness::builder("filesystem")
+        .capability("session_file_system")
+        .build()
+        .unwrap();
+    let session_id = {
+        let engine = Engine::new();
+        let session = engine
+            .create(local_agent(root.path()))
+            .harness(harness.clone())
+            .start()
+            .await
+            .unwrap();
+        session.inspect().await.unwrap();
+        session.session_id()
+    };
+
+    let engine = Engine::new();
+    assert_eq!(
+        engine.attach(session_id, local_agent(root.path())).await,
+        Err(ResumeError::HarnessRequired)
+    );
+    engine
+        .attach_with_harness(session_id, local_agent(root.path()), harness)
+        .await
+        .unwrap();
+    let context = engine
+        .resume(session_id)
+        .await
+        .unwrap()
+        .inspect()
+        .await
+        .unwrap();
+    assert!(context.tools.iter().any(|tool| tool.name == "read_file"));
+}
+
+#[cfg(feature = "local")]
+#[tokio::test]
 async fn local_profile_is_coherent_across_live_engines() {
     let root = tempfile::tempdir().unwrap();
     let first_engine = Engine::new();

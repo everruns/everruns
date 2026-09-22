@@ -14,6 +14,8 @@
 // Data source: https://github.com/sst/models.dev/tree/dev/providers
 // Cross-referenced with official Anthropic and OpenAI documentation
 
+mod gpt6;
+
 use crate::types::{
     CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
     ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue, ServiceKind, Speed, SpeedConfig,
@@ -134,23 +136,6 @@ fn reasoning_effort_gpt52_pro() -> ReasoningEffortConfig {
     }
 }
 
-/// Reasoning effort for gpt-6-astra
-/// Default: medium, supports: low, medium, high, xhigh, max (no `none` — this
-/// is a pure reasoning model). Verified live against `/v1/responses`: `low`
-/// through `max` are all accepted (2026-09-04).
-fn reasoning_effort_gpt6_astra() -> ReasoningEffortConfig {
-    ReasoningEffortConfig {
-        values: vec![
-            effort(ReasoningEffort::Low, "Low"),
-            effort(ReasoningEffort::Medium, "Medium"),
-            effort(ReasoningEffort::High, "High"),
-            effort(ReasoningEffort::Xhigh, "Extra High"),
-            effort(ReasoningEffort::Max, "Max"),
-        ],
-        default: ReasoningEffort::Medium,
-    }
-}
-
 /// Extended thinking config for Anthropic Claude models
 /// Maps to thinking budget_tokens: low=1024, medium=4096, high=16384, xhigh=32768
 fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
@@ -166,7 +151,7 @@ fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
 }
 
 /// Adaptive thinking config for recent Claude reasoning models
-/// (Fable 5.1, Fable 5, Opus 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
+/// (Fable 5.1, Fable 5, Opus 5.5, Opus 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
 /// Uses thinking.type="adaptive" with effort parameter instead of budget_tokens
 /// Default: high, supports: low, medium, high, max (mapped to xhigh)
 fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
@@ -381,9 +366,12 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["gpt-5.6-terra"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-5.6-luna"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-6-astra"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-6-sol"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-6-luna"], ModelVendor::OpenAi, OPENAI),
     // Anthropic
     md(&["claude-fable-5-1"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-5-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-8"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7"], ModelVendor::Anthropic, ANTHROPIC),
@@ -394,6 +382,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     // `anthropic_1m_variant` for how their profiles are derived.
     md(&["claude-fable-5-1[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-5-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-8[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7[1m]"], ModelVendor::Anthropic, ANTHROPIC),
@@ -831,6 +820,7 @@ fn openai_embedding_profile(name: &str, family: &str, input_cost: f64) -> ModelP
 
 fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id {
+        "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna" => gpt6::profile_data(model_id),
         "text-embedding-3-small" => Some(openai_embedding_profile(
             "Text Embedding 3 Small",
             "text-embedding-3-small",
@@ -1739,64 +1729,6 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supports_phases: true,
         }),
 
-        // GPT-6 Astra: current flagship, publicly released 2026-09-04
-        // (limited preview 2026-09-03). Source: developers.openai.com/api/docs/
-        // models/gpt-6-astra (models.dev did not yet list it at the time of
-        // addition; refresh once it catches up). Same 1.05M/128K context/output
-        // shape and tiered pricing structure as the GPT-5.6 series, but priced
-        // higher ($10/$50, cache read $1) with the 2x/1.5x tier at 272K input
-        // tokens (cache read 2x). `reasoning.effort` adds a `max` tier above
-        // `xhigh` — verified live against `/v1/responses` (2026-09-04).
-        //
-        // Live-verified quirk: unlike GPT-5.x, GPT-6 Astra's reasoning item
-        // never carries readable summary content (`content: []`) even with
-        // `summary: "auto"`/`"concise"` — only `encrypted_content`. It is
-        // therefore excluded from the extended-thinking transcript test in
-        // `crates/llm-tests`, which asserts on readable reasoning text.
-        "gpt-6-astra" => Some(ModelProfile {
-            name: "GPT-6 Astra".into(),
-            family: "gpt-6-astra".into(),
-            description: Some("OpenAI's most capable model, built for the hardest end-to-end work: complex reasoning, coding, computer use, research, and document creation.".into()),
-            release_date: Some("2026-09-04".into()),
-            last_updated: Some("2026-09-04".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: Some("2026-04-30".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 10.00,
-                output: 50.00,
-                cache_read: Some(1.00),
-                cache_write: Some(12.5),
-                cost_tiers: vec![CostTier {
-                    above_tokens: 272_000,
-                    input: 20.00,
-                    output: 75.00,
-                    cache_read: Some(2.00),
-                    cache_write: Some(25.0),
-                }],
-            }),
-            limits: Some(ModelLimits {
-                context: 1_050_000,
-                input: None,
-                output: 128_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_gpt6_astra()),
-            speed: Some(speed_flex_priority()),
-            verbosity: Some(verbosity_standard()),
-            tool_search: true,
-            supported_parameters: Vec::new(),
-            supports_phases: true,
-        }),
-
         // GPT-5.5 family: flagship reasoning models. Released 2026-04-23.
         // Flat pricing (no 200K context tiers, unlike 5.4).
         // Source: developers.openai.com/api/docs/models/gpt-5.5 and .../gpt-5.5-pro
@@ -2611,6 +2543,7 @@ fn anthropic_family_supports_tool_search(family: &str) -> bool {
         family,
         "claude-fable-5-1"
             | "claude-fable-5"
+            | "claude-opus-5-5"
             | "claude-opus-5"
             | "claude-opus-4-8"
             | "claude-opus-4-7"
@@ -2734,7 +2667,54 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             supports_phases: false,
         }),
 
-        // Claude Opus 5 (current Opus; below Fable 5.1, above Opus 4.8)
+        // Claude Opus 5.5 (current Opus; successor to Opus 5 at a lower price)
+        // Source: Anthropic model card (claude-api skill). Same 200K/1M-twin context,
+        // 128K output, and tokenizer as Opus 5 at $4/$20 (cache-read $0.20).
+        // Thinking cannot be disabled (adaptive only; omitting `thinking` still
+        // runs adaptive), sampling parameters are removed (`temperature: false`),
+        // and forced `tool_choice` any/tool returns 400 — the driver only sends
+        // `auto`. The API's default effort is `medium`, one below Opus 5's `high`;
+        // the profile keeps `high` so effort is always sent explicitly.
+        "claude-opus-5-5" => Some(ModelProfile {
+            name: "Claude Opus 5.5".into(),
+            family: "claude-opus-5-5".into(),
+            description: None,
+            release_date: None,
+            last_updated: None,
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 4.00,
+                output: 20.00,
+                cache_read: Some(0.20),
+                cache_write: None,
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                // Bare id is the 200K profile; `claude-opus-5-5[1m]` is the 1M twin.
+                context: 200_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
+
+        // Claude Opus 5 (previous Opus; below Opus 5.5, above Opus 4.8)
         // Source: Anthropic model card (claude-api skill `shared/models.md`) and
         // docs.claude.com — Opus 5 is not yet in models.dev. A drop-in upgrade at
         // Opus 4.8's pricing ($5/$25, cache-read $0.50) with the same 200K/1M-twin
@@ -2915,6 +2895,9 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             anthropic_profile_data("claude-fable-5-1").map(anthropic_1m_variant)
         }
         "claude-fable-5[1m]" => anthropic_profile_data("claude-fable-5").map(anthropic_1m_variant),
+        "claude-opus-5-5[1m]" => {
+            anthropic_profile_data("claude-opus-5-5").map(anthropic_1m_variant)
+        }
         "claude-opus-5[1m]" => anthropic_profile_data("claude-opus-5").map(anthropic_1m_variant),
         "claude-opus-4-8[1m]" => {
             anthropic_profile_data("claude-opus-4-8").map(anthropic_1m_variant)
@@ -3503,6 +3486,10 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
 }
 
 #[cfg(test)]
+#[path = "profiles_claude_tests.rs"]
+mod claude_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -3575,6 +3562,10 @@ mod tests {
             ("openai", "gpt-5.6-sol-2026-07-09", "gpt-5.6-sol"),
             ("openai", "gpt-6-astra", "gpt-6-astra"),
             ("openai", "gpt-6-astra-2026-09-04", "gpt-6-astra"),
+            ("openai", "gpt-6-sol", "gpt-6-sol"),
+            ("openai", "gpt-6-sol-2026-09-22", "gpt-6-sol"),
+            ("openai", "gpt-6-luna", "gpt-6-luna"),
+            ("openai", "gpt-6-luna-2026-09-22", "gpt-6-luna"),
             ("openai", "o3", "o3"),
             ("openai", "o3-2025-04-16", "o3"),
             ("openai", "o3-pro", "o3-pro"),
@@ -3604,6 +3595,8 @@ mod tests {
     fn cache_write_pricing_uses_disjoint_buckets_and_context_tier() {
         for (model, input) in [
             ("gpt-6-astra", 10.0),
+            ("gpt-6-sol", 2.0),
+            ("gpt-6-luna", 0.1),
             ("gpt-5.6-sol", 5.0),
             ("gpt-5.6-terra", 2.5),
             ("gpt-5.6-luna", 1.0),
@@ -3825,6 +3818,8 @@ mod tests {
         use Speed::*;
         // Flex + priority pricing rows.
         for model in [
+            "gpt-6-sol",
+            "gpt-6-luna",
             "gpt-5.6-sol",
             "gpt-5.6-terra",
             "gpt-5.6-luna",
@@ -4116,52 +4111,6 @@ mod tests {
     }
 
     #[test]
-    fn test_gpt6_astra_profile() {
-        let profile = get_model_profile("openai", "gpt-6-astra").unwrap();
-        assert_eq!(profile.name, "GPT-6 Astra");
-        assert_eq!(profile.family, "gpt-6-astra");
-        assert!(profile.reasoning);
-        assert!(!profile.temperature);
-        assert!(profile.tool_call);
-        assert!(profile.structured_output);
-        assert!(profile.tool_search);
-        assert!(profile.supports_phases);
-        assert_eq!(profile.knowledge.as_deref(), Some("2026-04-30"));
-
-        let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 1_050_000);
-        assert_eq!(limits.output, 128_000);
-
-        let cost = profile.cost.unwrap();
-        assert!((cost.input - 10.00).abs() < f64::EPSILON);
-        assert!((cost.output - 50.00).abs() < f64::EPSILON);
-        assert!((cost.cache_read.unwrap() - 1.00).abs() < f64::EPSILON);
-        assert_eq!(cost.cost_tiers.len(), 1);
-        let tier = &cost.cost_tiers[0];
-        assert_eq!(tier.above_tokens, 272_000);
-        assert!((tier.input - 20.00).abs() < f64::EPSILON);
-        assert!((tier.output - 75.00).abs() < f64::EPSILON);
-        assert!((tier.cache_read.unwrap() - 2.00).abs() < f64::EPSILON);
-
-        // Adds a `max` tier above `xhigh`, unlike every earlier GPT-5.x series.
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, ReasoningEffort::Medium);
-        assert_eq!(
-            effort.values.iter().map(|v| v.value).collect::<Vec<_>>(),
-            vec![
-                ReasoningEffort::Low,
-                ReasoningEffort::Medium,
-                ReasoningEffort::High,
-                ReasoningEffort::Xhigh,
-                ReasoningEffort::Max,
-            ]
-        );
-
-        assert!(profile.verbosity.is_some());
-        assert!(profile.speed.is_some());
-    }
-
-    #[test]
     fn test_gpt54_profile() {
         let profile = get_model_profile("openai", "gpt-5.4").unwrap();
         assert_eq!(profile.name, "GPT-5.4");
@@ -4386,108 +4335,7 @@ mod tests {
 
     // Newly added flagship model profiles
 
-    #[test]
-    fn test_claude_opus_4_8_1m_variant() {
-        // `[1m]` is the large-context twin: same flat pricing, 1M context,
-        // "(1M)" display suffix, shared family for grouping.
-        let base = get_model_profile("anthropic", "claude-opus-4-8").unwrap();
-        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
-
-        let m1 = get_model_profile("anthropic", "claude-opus-4-8[1m]").unwrap();
-        assert_eq!(m1.name, "Claude Opus 4.8 (1M)");
-        assert_eq!(m1.family, "claude-opus-4-8");
-        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-        assert_eq!(m1.limits.as_ref().unwrap().output, 128_000);
-
-        // Flat standard pricing — Anthropic serves the 1M window with no
-        // long-context premium, so cost matches the 200K base exactly.
-        let (base_cost, m1_cost) = (base.cost.unwrap(), m1.cost.unwrap());
-        assert_eq!(m1_cost.input, base_cost.input);
-        assert_eq!(m1_cost.output, base_cost.output);
-        assert_eq!(m1_cost.cache_read, base_cost.cache_read);
-        assert!(m1_cost.cost_tiers.is_empty());
-    }
-
-    #[test]
-    fn test_claude_opus_5_1m_variant() {
-        let base = get_model_profile("anthropic", "claude-opus-5").unwrap();
-        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
-
-        let m1 = get_model_profile("anthropic", "claude-opus-5[1m]").unwrap();
-        assert_eq!(m1.name, "Claude Opus 5 (1M)");
-        assert_eq!(m1.family, "claude-opus-5");
-        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-        assert_eq!(m1.limits.as_ref().unwrap().output, 128_000);
-
-        // Flat standard pricing — the 1M window carries no long-context premium,
-        // so cost matches the 200K base exactly.
-        let (base_cost, m1_cost) = (base.cost.unwrap(), m1.cost.unwrap());
-        assert_eq!(m1_cost.input, base_cost.input);
-        assert_eq!(m1_cost.output, base_cost.output);
-        assert_eq!(m1_cost.cache_read, base_cost.cache_read);
-        assert!(m1_cost.cost_tiers.is_empty());
-    }
-
-    #[test]
-    fn test_claude_fable_5_1m_variant() {
-        let base = get_model_profile("anthropic", "claude-fable-5").unwrap();
-        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
-
-        let m1 = get_model_profile("anthropic", "claude-fable-5[1m]").unwrap();
-        assert_eq!(m1.name, "Claude Fable 5 (1M)");
-        assert_eq!(m1.family, "claude-fable-5");
-        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-        assert_eq!(m1.cost.unwrap().input, base.cost.unwrap().input);
-    }
-
-    #[test]
-    fn test_claude_fable_5_1_profile_and_1m_variant() {
-        // `claude-fable-5-1` is its own family: the `-1` is not a version
-        // suffix, so it must not fall back to the Fable 5 descriptor.
-        let base = get_model_profile("anthropic", "claude-fable-5-1").unwrap();
-        assert_eq!(base.name, "Claude Fable 5.1");
-        assert_eq!(base.family, "claude-fable-5-1");
-        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
-        assert!(base.reasoning);
-        assert!(!base.temperature);
-        assert!(base.tool_search);
-        let base_cost = base.cost.as_ref().unwrap();
-        let fable_5_cost = get_model_profile("anthropic", "claude-fable-5")
-            .unwrap()
-            .cost
-            .unwrap();
-        // Same per-token price as Fable 5; cache reads are a quarter of it.
-        assert_eq!(base_cost.input, fable_5_cost.input);
-        assert_eq!(base_cost.output, fable_5_cost.output);
-        assert_eq!(base_cost.cache_read, Some(0.25));
-
-        let m1 = get_model_profile("anthropic", "claude-fable-5-1[1m]").unwrap();
-        assert_eq!(m1.name, "Claude Fable 5.1 (1M)");
-        assert_eq!(m1.family, "claude-fable-5-1");
-        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-        assert_eq!(m1.cost.unwrap().input, base_cost.input);
-    }
-
-    #[test]
-    fn test_claude_opus_4_7_and_4_6_have_1m_variants() {
-        for id in ["claude-opus-4-7[1m]", "claude-opus-4-6[1m]"] {
-            let m1 = get_model_profile("anthropic", id).unwrap();
-            assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-            assert!(m1.name.ends_with("(1M)"));
-        }
-    }
-
-    #[test]
-    fn test_claude_sonnet_5_1m_variant() {
-        let base = get_model_profile("anthropic", "claude-sonnet-5").unwrap();
-        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
-
-        let m1 = get_model_profile("anthropic", "claude-sonnet-5[1m]").unwrap();
-        assert_eq!(m1.name, "Claude Sonnet 5 (1M)");
-        assert_eq!(m1.family, "claude-sonnet-5");
-        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
-        assert_eq!(m1.cost.unwrap().input, base.cost.unwrap().input);
-    }
+    // Claude `[1m]` twin tests live in `profiles_claude_tests.rs`.
 
     #[test]
     fn test_gemini_3_1_pro_preview_profile() {
@@ -4629,6 +4477,7 @@ mod tests {
         for id in [
             "claude-fable-5-1",
             "claude-fable-5",
+            "claude-opus-5-5",
             "claude-opus-5",
             "claude-opus-4-8",
             "claude-opus-4-7",

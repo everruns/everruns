@@ -171,6 +171,7 @@ mod tests {
         assert!(model_supports_native_tool_search("claude-haiku-4-5"));
         assert!(model_supports_native_tool_search("claude-fable-5"));
         assert!(model_supports_native_tool_search("claude-fable-5-1"));
+        assert!(model_supports_native_tool_search("claude-opus-5-5"));
         assert!(!model_supports_native_tool_search("claude-3-5-haiku"));
         // Unknown / non-Anthropic models are not native.
         assert!(!model_supports_native_tool_search("gpt-5.5"));

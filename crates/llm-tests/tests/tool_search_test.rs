@@ -29,6 +29,7 @@ use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_integrations_filesystem::FileSystemCapability;
 use everruns_platform::capabilities::SessionCapability;
 use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
+use rstest::rstest;
 
 async fn assert_hosted_tool_search_was_enabled(runner: &InMemoryAgenticLoop) {
     let generations = runner.events_by_type(LLM_GENERATION).await;
@@ -430,17 +431,21 @@ async fn test_anthropic_claude_tool_search_low_threshold() {
     }
 }
 
-/// Tests model-adaptive hosted resolution on Claude Haiku 4.5.
+/// Tests model-adaptive hosted resolution on Claude Haiku 4.5 and on Opus 5.5,
+/// the recommended Opus.
 ///
 /// On a native Claude model, `auto_tool_search` must resolve (at
 /// capability-collection time, via `Capability::resolve_for_model`) to the hosted
 /// Anthropic mechanism — not the client-side fallback. The hosted mechanism adds
 /// *no* client-side `tool_search` tool, so its absence from the model's tool list
 /// proves hosted resolution, independent of whether a tool was called on a turn.
+#[rstest]
+#[case::anthropic_haiku(ANTHROPIC_HAIKU)]
+#[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[tokio::test]
-async fn test_anthropic_auto_tool_search_resolves_to_hosted() {
-    let Some(model) = ANTHROPIC_HAIKU.model() else {
-        eprintln!("Skipping: {} not set", ANTHROPIC_HAIKU.label());
+async fn test_anthropic_auto_tool_search_resolves_to_hosted(#[case] config: ProviderModelConfig) {
+    let Some(model) = config.model() else {
+        eprintln!("Skipping: {} not set", config.label());
         return;
     };
 
@@ -451,7 +456,7 @@ async fn test_anthropic_auto_tool_search_resolves_to_hosted() {
         .driver_registry(all_providers_registry())
         .capability(TestMathCapability)
         .capability(CurrentTimeCapability)
-        // Model-adaptive: on Claude 4.5 this must resolve to the hosted mechanism.
+        // Model-adaptive: on native Claude this must resolve to the hosted mechanism.
         .capability(AutoToolSearchCapability::with_threshold(3))
         .max_iterations(6)
         .build()
@@ -474,7 +479,7 @@ async fn test_anthropic_auto_tool_search_resolves_to_hosted() {
         };
         assert!(
             !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
-            "auto_tool_search on Claude 4.5 must resolve to hosted: the client-side \
+            "auto_tool_search on {config} must resolve to hosted: the client-side \
              `{TOOL_SEARCH_TOOL_NAME}` tool must not be offered to the model"
         );
     }
@@ -483,11 +488,17 @@ async fn test_anthropic_auto_tool_search_resolves_to_hosted() {
 /// Reproduces the production surface where Opus 5 invented `bash_run` after
 /// Bash's schema was deferred. Bash is a hot-path exception now, so hosted
 /// search remains active for the rest of the tool set while the model always
-/// receives Bash's exact `bash` / `commands` contract.
+/// receives Bash's exact `bash` / `commands` contract. Also pinned on Opus 5.5,
+/// which replaced Opus 5 as the recommended Opus.
+#[rstest]
+#[case::anthropic_opus5(ANTHROPIC_OPUS5)]
+#[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[tokio::test]
-async fn test_anthropic_opus5_hosted_search_calls_bash_contract() {
-    let Some(model) = ANTHROPIC_OPUS5.model() else {
-        eprintln!("Skipping: {} not set", ANTHROPIC_OPUS5.label());
+async fn test_anthropic_opus_hosted_search_calls_bash_contract(
+    #[case] config: ProviderModelConfig,
+) {
+    let Some(model) = config.model() else {
+        eprintln!("Skipping: {} not set", config.label());
         return;
     };
 
@@ -526,7 +537,10 @@ async fn test_anthropic_opus5_hosted_search_calls_bash_contract() {
         .filter(|call| call.name == "bash")
         .collect();
 
-    assert!(!bash_calls.is_empty(), "Opus 5 should call the `bash` tool");
+    assert!(
+        !bash_calls.is_empty(),
+        "{config} should call the `bash` tool"
+    );
     assert!(bash_calls.iter().all(|call| {
         call.arguments.get("commands").is_some() && call.arguments.get("command").is_none()
     }));

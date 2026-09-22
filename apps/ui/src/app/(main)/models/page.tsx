@@ -119,7 +119,7 @@ export default function ModelsPage() {
   const selectedDefaultModelName = org?.default_model_id
     ? (allEnabledModels.find((model) => model.id === org.default_model_id)?.display_name ??
       "Unknown model")
-    : "Platform default · GPT-5.6 Terra";
+    : "Platform default · GPT-6 Luna";
 
   // Provider usage counts across all models, for the rail facet.
   const providerFacets = useMemo(() => {
@@ -355,12 +355,12 @@ export default function ModelsPage() {
                       disabled={updateOrg.isPending}
                     >
                       <SelectTrigger className="w-full max-w-md" id="default-model">
-                        <SelectValue placeholder="Platform default · GPT-5.6 Terra">
+                        <SelectValue placeholder="Platform default · GPT-6 Luna">
                           {selectedDefaultModelName}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">Platform default · GPT-5.6 Terra</SelectItem>
+                        <SelectItem value="none">Platform default · GPT-6 Luna</SelectItem>
                         {allEnabledModels.map((model) => (
                           <SelectItem key={model.id} value={model.id}>
                             <div className="flex items-center gap-2">

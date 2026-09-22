@@ -116,6 +116,13 @@ pub struct HostBackends {
     pub tool_augmentor: Option<Arc<dyn crate::HostToolAugmentor>>,
 }
 
+impl std::fmt::Debug for HostBackends {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Backends are trait objects; report the shape only.
+        f.debug_struct("HostBackends").finish_non_exhaustive()
+    }
+}
+
 impl HostBackends {
     /// Backend bundle with in-memory implementations for every store.
     ///

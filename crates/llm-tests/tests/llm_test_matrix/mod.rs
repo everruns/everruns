@@ -235,7 +235,11 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
 );
 
 // Current Anthropic tiers only; superseded Opus 4.7 / Sonnet 4.6 entries were
-// dropped when Opus 5 / Sonnet 5 took their matrix rows.
+// dropped when Opus 5 / Sonnet 5 took their matrix rows, and Opus 5.5 took the
+// Opus row from Opus 5. `ANTHROPIC_OPUS5` stays for the Opus 5-specific
+// regression in `tool_search_test.rs` and as a label in this module's tests.
+pub const ANTHROPIC_OPUS55: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-5-5", "ANTHROPIC_API_KEY");
 pub const ANTHROPIC_OPUS5: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-5", "ANTHROPIC_API_KEY");
 
@@ -250,6 +254,15 @@ pub const OPENAI_GPT56_LUNA: ProviderModelConfig =
 // Its reasoning can carry opaque encrypted replay state without readable text.
 pub const OPENAI_GPT6_ASTRA: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-astra", "OPENAI_API_KEY");
+
+// GPT-6 Luna is the platform default model; Sol is the balanced GPT-6 tier.
+// Both run the basic, tool, schema, and reasoning-plus-tool-call scenarios,
+// which accept readable reasoning or opaque replay state alike.
+pub const OPENAI_GPT6_SOL: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-sol", "OPENAI_API_KEY");
+
+pub const OPENAI_GPT6_LUNA: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-luna", "OPENAI_API_KEY");
 
 pub const OPENAI_GPT52: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.2", "OPENAI_API_KEY").reasoning_as_text();
@@ -281,6 +294,14 @@ pub const OPENROUTER_GPT56_LUNA: ProviderModelConfig = ProviderModelConfig::new(
     "OPENROUTER_API_KEY",
 )
 .reasoning_as_text();
+
+// GPT-6 Luna through OpenRouter keeps live coverage of the platform default
+// model independent of the direct OpenAI account's credit balance.
+pub const OPENROUTER_GPT6_LUNA: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenRouter,
+    "openai/gpt-6-luna",
+    "OPENROUTER_API_KEY",
+);
 
 // Fireworks AI serves open models via an OpenAI-compatible Chat Completions
 // API. The point of this case is to exercise our OpenAI-protocol driver's

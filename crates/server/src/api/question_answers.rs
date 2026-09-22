@@ -35,6 +35,12 @@ pub(crate) const QUESTION_LOOKBACK_EVENTS: i32 = 200;
 pub(crate) struct PendingQuestions {
     pub(crate) tool_call_id: String,
     pub(crate) questions: Vec<AskUserQuestion>,
+    /// The deadline normalization stamped on this call (EVE-1056).
+    ///
+    /// `None` only for a call recorded before the server emitted deadlines;
+    /// the sweep falls back to the generic timeout for those rather than
+    /// resolving them on a deadline nobody wrote down.
+    pub(crate) expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Check a submitted answer set against what was asked.
@@ -174,10 +180,13 @@ pub(crate) fn build_result(status: AskUserStatus, answers: Vec<AskUserAnswer>) -
     AskUserResult {
         status,
         answered_by,
-        // Only an `answered` outcome carries answers. A decline that shipped the
-        // options the person refused to choose between would read to the model
-        // as a choice.
-        answers: if status == AskUserStatus::Answered {
+        // `answered` and `timed_out` carry answers; `declined` and `cancelled`
+        // do not. A decline that shipped the options the person refused to
+        // choose between would read to the model as a choice, but a timeout
+        // *is* the declared defaults being applied (EVE-1056) — dropping them
+        // would leave the model with no value at all. `answered_by: timeout`
+        // is what tells it no human spoke, so the value is not consent.
+        answers: if matches!(status, AskUserStatus::Answered | AskUserStatus::TimedOut) {
             answers
         } else {
             Vec::new()
@@ -214,9 +223,15 @@ pub(crate) fn pending_from_events(
         let arguments = call.get("arguments")?;
         let questions: Vec<AskUserQuestion> =
             serde_json::from_value(arguments.get("questions")?.clone()).ok()?;
+        let expires_at = arguments
+            .get("expires_at")
+            .and_then(|value| value.as_str())
+            .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+            .map(|value| value.with_timezone(&chrono::Utc));
         return Some(PendingQuestions {
             tool_call_id: id.to_string(),
             questions,
+            expires_at,
         });
     }
     None
@@ -288,7 +303,11 @@ pub async fn resolve_question_answers(
     let pending =
         pending_from_events(&requested, tool_call_id).ok_or(ResolveError::WrongPendingCall)?;
 
-    let answers = if status == AskUserStatus::Answered {
+    // A timeout's defaults are validated on the same path as a human answer.
+    // They are generated from the question's own options, so they must pass —
+    // and if they ever do not, the sweep has produced something the model
+    // would have read as a legal choice.
+    let answers = if matches!(status, AskUserStatus::Answered | AskUserStatus::TimedOut) {
         validate_answers(&pending.questions, submitted).map_err(ResolveError::Invalid)?
     } else {
         Vec::new()
@@ -587,6 +606,32 @@ pub async fn submit_question_answers(
 mod tests {
     use super::*;
     use everruns_builtins::ask_user::{AskUserOption, AskUserQuestionKind};
+
+    /// A `tool.call_requested` row carrying one `ask_user` call, shaped the way
+    /// the event stream stores it.
+    fn event_with_ask_user_arguments(
+        arguments: serde_json::Value,
+    ) -> crate::storage::models::EventRow {
+        let now = chrono::Utc::now();
+        crate::storage::models::EventRow {
+            id: everruns_provider::typed_id::EventId::new(),
+            session_id: everruns_provider::typed_id::SessionId::new(),
+            sequence: 1,
+            event_type: "tool.call_requested".to_string(),
+            ts: now,
+            context: serde_json::json!({}),
+            data: serde_json::json!({
+                "tool_calls": [{
+                    "id": "call_1",
+                    "name": ASK_USER_TOOL_NAME,
+                    "arguments": arguments,
+                }]
+            }),
+            metadata: None,
+            tags: None,
+            created_at: now,
+        }
+    }
 
     fn option(label: &str) -> AskUserOption {
         AskUserOption {
@@ -921,7 +966,7 @@ mod tests {
     }
 
     #[test]
-    fn only_an_answered_outcome_carries_answers() {
+    fn only_a_chosen_or_defaulted_outcome_carries_answers() {
         let answers = vec![answer("target", &["Staging"], None)];
         assert_eq!(
             build_result(AskUserStatus::Answered, answers.clone())
@@ -929,6 +974,11 @@ mod tests {
                 .len(),
             1
         );
+        // A timeout applies the declared defaults (EVE-1056), so it carries
+        // them. `answered_by: timeout` is what tells the model no human spoke.
+        let timed_out = build_result(AskUserStatus::TimedOut, answers.clone());
+        assert_eq!(timed_out.answers.len(), 1);
+        assert_eq!(timed_out.answered_by, AskUserAnsweredBy::Timeout);
         // A decline that shipped the options would read to the model as a choice.
         assert!(
             build_result(AskUserStatus::Declined, answers.clone())
@@ -940,5 +990,51 @@ mod tests {
                 .answers
                 .is_empty()
         );
+    }
+
+    /// The sweep reads the deadline off the same parse every answer surface
+    /// uses, so a call recorded before the server stamped deadlines has to come
+    /// back as `None` rather than as some invented instant.
+    #[test]
+    fn the_pending_call_carries_its_stamped_deadline() {
+        let stamped = pending_from_events(
+            &[event_with_ask_user_arguments(serde_json::json!({
+                "questions": [{
+                    "id": "target",
+                    "header": "Target",
+                    "question": "Which environment?",
+                    "options": [
+                        {"label": "Staging", "description": "staging", "default": true},
+                        {"label": "Prod", "description": "prod", "default": false}
+                    ]
+                }],
+                "timeout_seconds": 300,
+                "expires_at": "2099-01-01T00:00:00Z",
+            }))],
+            None,
+        )
+        .expect("the ask_user call is pending");
+        assert_eq!(
+            stamped.expires_at.map(|at| at.to_rfc3339()),
+            Some("2099-01-01T00:00:00+00:00".to_string())
+        );
+
+        let unstamped = pending_from_events(
+            &[event_with_ask_user_arguments(serde_json::json!({
+                "questions": [{
+                    "id": "target",
+                    "header": "Target",
+                    "question": "Which environment?",
+                    "options": [
+                        {"label": "Staging", "description": "staging", "default": true},
+                        {"label": "Prod", "description": "prod", "default": false}
+                    ]
+                }],
+                "timeout_seconds": 300,
+            }))],
+            None,
+        )
+        .expect("the ask_user call is pending");
+        assert_eq!(unstamped.expires_at, None);
     }
 }

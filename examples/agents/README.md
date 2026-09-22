@@ -11,7 +11,7 @@ catalog](../README.md) for expected outcomes and limits.
 | Example | Run | Production model profile |
 | --- | --- | --- |
 | [Support](../support-agent) | `cargo run -p everruns-support-agent` | `gpt-5.6-terra` |
-| [Everruns Support](../everruns-support-agent) | `cargo run -p everruns-framework-support-agent` | `claude-opus-5` |
+| [Everruns Support](../everruns-support-agent) | `cargo run -p everruns-framework-support-agent` | `claude-opus-5-5` |
 | [Coding Review](../coding-review-agent) | `cargo run -p everruns-coding-review-agent` | `claude-sonnet-5` |
 | [Research](../research-agent) | `cargo run -p everruns-research-agent` | `z-ai/glm-5.2` |
 | [Incident Commander](../incident-commander-agent) | `cargo run -p everruns-incident-commander-agent` | `muse-spark-1.3` |
@@ -35,7 +35,7 @@ your organization's model list before using the CLI).
 | Agent | Primary model profile | Why | Required provider |
 | --- | --- | --- | --- |
 | [Support Agent](customer-support-agent.md) | `gpt-5.6-terra` | Reliable interactive support and tool use | OpenAI |
-| [Everruns Support Agent](everruns-support-agent.md) | `claude-opus-5` | Deep troubleshooting across docs and evidence | Anthropic |
+| [Everruns Support Agent](everruns-support-agent.md) | `claude-opus-5-5` | Deep troubleshooting across docs and evidence | Anthropic |
 | [Coding Review Agent](coding-review-agent.md) | `claude-sonnet-5` | Strong repository reasoning with a practical review loop | Anthropic |
 | [Research Agent](research-agent.md) | `z-ai/glm-5.2` | Long-context, multi-step research via OpenRouter | OpenRouter |
 | [Incident Commander Agent](incident-commander-agent.md) | `muse-spark-1.3` | Long-horizon incident coordination with a large context window | Meta Model API |

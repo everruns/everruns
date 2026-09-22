@@ -33,8 +33,35 @@ pub fn session_secret_ref(name: &str) -> String {
     format!("{SESSION_SECRET_REF_PREFIX}{name}")
 }
 
+/// How long before `expires_at` the card starts counting down, at the default
+/// timeout. Shorter windows scale this down rather than nudging before the
+/// question was even asked; see `deadlines_for`.
+pub const ASK_USER_NUDGE_LEAD_SECONDS: u64 = 60;
+
 fn default_timeout_seconds() -> u64 {
     DEFAULT_ASK_USER_TIMEOUT_SECONDS
+}
+
+/// The three deadlines the server stamps on a normalized `ask_user` call.
+///
+/// Emitted server-side (EVE-1056) rather than derived by each surface: the
+/// sweep resolves the call at `expires_at`, so a client that guessed its own
+/// deadline would render a countdown the server never agreed to.
+///
+/// The nudge keeps its shipped shape at the default 300s timeout — 60s before
+/// expiry, the intended four-minute mark — but scales with the window below
+/// that, because a fixed 60s lead on a 10s timeout would put the nudge before
+/// `asked_at`.
+pub fn deadlines_for(
+    asked_at: chrono::DateTime<chrono::Utc>,
+    timeout_seconds: u64,
+) -> (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) {
+    let seconds = timeout_seconds.min(i64::MAX as u64) as i64;
+    let expires_at = asked_at + chrono::Duration::seconds(seconds);
+    // `div_ceil` keeps a 1s timeout from collapsing the lead to zero.
+    let lead = ASK_USER_NUDGE_LEAD_SECONDS.min(timeout_seconds.div_ceil(5)) as i64;
+    let nudge_at = expires_at - chrono::Duration::seconds(lead);
+    (nudge_at, expires_at)
 }
 
 fn default_allow_other() -> bool {
@@ -93,6 +120,20 @@ pub struct AskUserRequest {
     pub questions: Vec<AskUserQuestion>,
     #[serde(default = "default_timeout_seconds")]
     pub timeout_seconds: u64,
+    /// When the question was asked. Stamped by normalization.
+    ///
+    /// These three are server-authoritative: whatever the model sent is
+    /// discarded and overwritten, because the deadline the sweep acts on must
+    /// not be one the caller chose for itself. They are `Option` only so a
+    /// pre-normalization payload deserializes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asked_at: Option<String>,
+    /// When the surface should start warning that time is running out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nudge_at: Option<String>,
+    /// When the server resolves the call with declared defaults (EVE-1056).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -166,32 +207,42 @@ impl AskUser for DefaultsResponder {
                 answers: Vec::new(),
             };
         }
-        let answers = questions
-            .iter()
-            .map(|question| {
-                let mut selected = question
-                    .options
-                    .iter()
-                    .filter(|option| option.is_default)
-                    .map(|option| option.label.clone())
-                    .collect::<Vec<_>>();
-                if selected.is_empty() {
-                    selected.extend(question.options.first().map(|option| option.label.clone()));
-                }
-                AskUserAnswer {
-                    id: question.id.clone().unwrap_or_default(),
-                    selected,
-                    other_text: None,
-                    secret_ref: None,
-                }
-            })
-            .collect();
         AskUserResult {
             status: AskUserStatus::Answered,
             answered_by: AskUserAnsweredBy::Unattended,
-            answers,
+            answers: declared_defaults(questions),
         }
     }
+}
+
+/// The answers an unanswered batch resolves to: each question's declared
+/// default, or its first option when the model declared none.
+///
+/// Shared by the unattended responder and the deadline sweep (EVE-1056) so the
+/// two cannot drift. Callers must check [`questions_ask_for_a_secret`] first —
+/// a credential has no default, and this would hand back an empty `selected`
+/// that reads as an answer.
+pub fn declared_defaults(questions: &[AskUserQuestion]) -> Vec<AskUserAnswer> {
+    questions
+        .iter()
+        .map(|question| {
+            let mut selected = question
+                .options
+                .iter()
+                .filter(|option| option.is_default)
+                .map(|option| option.label.clone())
+                .collect::<Vec<_>>();
+            if selected.is_empty() {
+                selected.extend(question.options.first().map(|option| option.label.clone()));
+            }
+            AskUserAnswer {
+                id: question.id.clone().unwrap_or_default(),
+                selected,
+                other_text: None,
+                secret_ref: None,
+            }
+        })
+        .collect()
 }
 
 /// Whether any question in a batch collects a credential.
@@ -353,6 +404,14 @@ pub fn normalize_ask_user_arguments(arguments: &Value) -> Result<Value, String> 
         used_ids.insert(generated.clone());
         question.id = Some(generated);
     }
+
+    // Stamped last and unconditionally, so a model that supplied its own
+    // deadlines does not get to keep them.
+    let asked_at = chrono::Utc::now();
+    let (nudge_at, expires_at) = deadlines_for(asked_at, request.timeout_seconds);
+    request.asked_at = Some(asked_at.to_rfc3339());
+    request.nudge_at = Some(nudge_at.to_rfc3339());
+    request.expires_at = Some(expires_at.to_rfc3339());
 
     let mut normalized = serde_json::to_value(request)
         .map_err(|error| format!("failed to normalize ask_user arguments: {error}"))?;
@@ -643,6 +702,28 @@ fn ask_user_parameters_schema() -> Value {
                 "maximum": DEFAULT_ASK_USER_TIMEOUT_SECONDS,
                 "default": DEFAULT_ASK_USER_TIMEOUT_SECONDS,
                 "description": "How long the client waits before applying a default. May shorten but not exceed the platform ceiling."
+            },
+            // Declared because the schema validates the *normalized* call, which
+            // carries the deadlines normalization stamped on it (EVE-1056), and
+            // `additionalProperties: false` would otherwise reject it. They are
+            // read-only: anything supplied here is discarded and replaced.
+            "asked_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true,
+                "description": "Set by the server. When the question was asked; ignored if supplied."
+            },
+            "nudge_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true,
+                "description": "Set by the server. When the surface starts warning time is short; ignored if supplied."
+            },
+            "expires_at": {
+                "type": "string",
+                "format": "date-time",
+                "readOnly": true,
+                "description": "Set by the server. When the declared defaults are applied; ignored if supplied."
             }
         },
         "required": ["questions"],
@@ -653,6 +734,7 @@ fn ask_user_parameters_schema() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Datelike;
 
     fn option(label: &str, is_default: bool) -> Value {
         json!({
@@ -672,6 +754,149 @@ mod tests {
 
     fn request(question: Value) -> Value {
         json!({"questions": [question]})
+    }
+
+    fn parse_stamp(normalized: &Value, field: &str) -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::parse_from_rfc3339(normalized[field].as_str().unwrap())
+            .unwrap()
+            .with_timezone(&chrono::Utc)
+    }
+
+    /// The shipped card derived the nudge as `expires_at - 60s`, which at the
+    /// default timeout is the intended four-minute mark. Emitting the deadline
+    /// server-side must not move it.
+    #[test]
+    fn the_default_timeout_keeps_its_four_minute_nudge() {
+        let asked_at = chrono::Utc::now();
+        let (nudge_at, expires_at) = deadlines_for(asked_at, DEFAULT_ASK_USER_TIMEOUT_SECONDS);
+
+        assert_eq!(expires_at - asked_at, chrono::Duration::seconds(300));
+        assert_eq!(expires_at - nudge_at, chrono::Duration::seconds(60));
+        assert_eq!(nudge_at - asked_at, chrono::Duration::seconds(240));
+    }
+
+    /// A fixed 60s lead on a short window would put the nudge at or before the
+    /// moment the question was asked, so the card would open already warning.
+    #[test]
+    fn a_short_timeout_scales_the_nudge_instead_of_preceding_the_question() {
+        for timeout_seconds in [1, 2, 5, 10, 60, 120, 299] {
+            let asked_at = chrono::Utc::now();
+            let (nudge_at, expires_at) = deadlines_for(asked_at, timeout_seconds);
+
+            assert!(
+                nudge_at >= asked_at,
+                "{timeout_seconds}s nudged before the question was asked"
+            );
+            assert!(
+                nudge_at < expires_at,
+                "{timeout_seconds}s left no countdown at all"
+            );
+        }
+    }
+
+    #[test]
+    fn normalization_stamps_the_deadlines_the_server_will_act_on() {
+        let before = chrono::Utc::now();
+        let normalized = normalize_ask_user_arguments(&json!({
+            "questions": [question(vec![option("Staging", false), option("Prod", false)])],
+            "timeout_seconds": 120,
+        }))
+        .unwrap();
+        let after = chrono::Utc::now();
+
+        let asked_at = parse_stamp(&normalized, "asked_at");
+        let nudge_at = parse_stamp(&normalized, "nudge_at");
+        let expires_at = parse_stamp(&normalized, "expires_at");
+
+        assert!(asked_at >= before && asked_at <= after);
+        assert_eq!(expires_at - asked_at, chrono::Duration::seconds(120));
+        assert!(nudge_at > asked_at && nudge_at < expires_at);
+    }
+
+    /// The sweep resolves the call at `expires_at`, so a model that sets its
+    /// own would be choosing when it stops waiting for a human.
+    #[test]
+    fn a_model_supplied_deadline_is_overwritten() {
+        let normalized = normalize_ask_user_arguments(&json!({
+            "questions": [question(vec![option("Staging", false), option("Prod", false)])],
+            "timeout_seconds": 60,
+            "asked_at": "2000-01-01T00:00:00Z",
+            "nudge_at": "2000-01-01T00:00:00Z",
+            "expires_at": "2099-01-01T00:00:00Z",
+        }))
+        .unwrap();
+
+        let asked_at = parse_stamp(&normalized, "asked_at");
+        let expires_at = parse_stamp(&normalized, "expires_at");
+
+        assert!(asked_at.year() > 2000, "asked_at kept the model's value");
+        assert_eq!(expires_at - asked_at, chrono::Duration::seconds(60));
+    }
+
+    /// A normalized call has to survive a round trip, because that is exactly
+    /// what every reader of the persisted event does. `deny_unknown_fields`
+    /// makes this the test that catches a stamped field nobody declared.
+    #[test]
+    fn a_normalized_call_deserializes_again() {
+        let normalized = normalize_ask_user_arguments(&request(question(vec![
+            option("Staging", false),
+            option("Prod", false),
+        ])))
+        .unwrap();
+
+        let parsed: AskUserRequest = serde_json::from_value(normalized).unwrap();
+        assert!(parsed.expires_at.is_some());
+    }
+
+    /// The parameters schema is `additionalProperties: false` and validates the
+    /// *normalized* call, not just what the model wrote. A field stamped by
+    /// normalization but not declared there gets the whole call rejected before
+    /// the tool ever runs, which is silent from the model's side.
+    #[test]
+    fn every_normalized_field_is_declared_in_the_schema() {
+        let normalized = normalize_ask_user_arguments(&request(question(vec![
+            option("Staging", false),
+            option("Prod", false),
+        ])))
+        .unwrap();
+        let schema = ask_user_parameters_schema();
+        let declared = schema["properties"].as_object().unwrap();
+
+        assert_eq!(schema["additionalProperties"], json!(false));
+        for field in normalized.as_object().unwrap().keys() {
+            assert!(
+                declared.contains_key(field),
+                "normalization stamps {field:?}, which the schema would reject"
+            );
+        }
+        for field in ["asked_at", "nudge_at", "expires_at"] {
+            assert_eq!(
+                declared[field]["readOnly"],
+                json!(true),
+                "{field} is server-owned and must say so"
+            );
+        }
+    }
+
+    #[test]
+    fn declared_defaults_prefer_the_declared_option_then_the_first() {
+        let normalized = normalize_ask_user_arguments(&json!({
+            "questions": [
+                question(vec![option("Staging", false), option("Prod", true)]),
+                question(vec![option("Alpha", false), option("Beta", false)]),
+            ]
+        }))
+        .unwrap();
+        let request: AskUserRequest = serde_json::from_value(normalized).unwrap();
+
+        let answers = declared_defaults(&request.questions);
+
+        assert_eq!(answers.len(), 2);
+        assert_eq!(answers[0].selected, vec!["Prod".to_string()]);
+        assert_eq!(answers[1].selected, vec!["Alpha".to_string()]);
+        // A default answer never carries free text or a credential handle.
+        assert!(answers.iter().all(|answer| answer.other_text.is_none()));
+        assert!(answers.iter().all(|answer| answer.secret_ref.is_none()));
     }
 
     #[test]
