@@ -25,7 +25,6 @@
 3329 crates/engine/src/execution/act.rs
 2885 crates/engine/src/execution/reason.rs
 1827 crates/everruns/src/agent.rs
-1655 crates/everruns/src/session.rs
 1741 crates/host/src/events.rs
 1725 crates/host/src/host.rs
 3996 crates/host/src/observability/braintrust.rs
