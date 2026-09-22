@@ -526,7 +526,11 @@ impl WorkerPool {
                         }
                     }
                     Err(e) => {
-                        error!("Poll error: {}", e);
+                        everruns_core::log_database_failure(
+                            "durable.worker.poll",
+                            "worker poll failed",
+                            &e.to_string(),
+                        );
                     }
                 }
 
@@ -562,7 +566,11 @@ impl WorkerPool {
                             && !backpressure.is_resource_pressured();
 
                         if let Err(e) = store.worker_heartbeat(&worker_id, load, accepting).await {
-                            error!("Heartbeat failed: {}", e);
+                            everruns_core::log_database_failure(
+                                "durable.worker.heartbeat",
+                                "worker heartbeat failed",
+                                &e.to_string(),
+                            );
                         }
 
                         // EVE-639: refresh the cached capacity snapshot here so the
@@ -723,7 +731,11 @@ impl WorkerPool {
                                 }
                             }
                             Err(e) => {
-                                error!("Stale task reclamation failed: {}", e);
+                                everruns_core::log_database_failure(
+                                    "durable.worker.reclaim_stale",
+                                    "stale task reclamation failed",
+                                    &e.to_string(),
+                                );
                             }
                         }
                     }

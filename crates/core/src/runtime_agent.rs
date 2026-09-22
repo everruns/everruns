@@ -302,7 +302,7 @@ impl RuntimeAgentBuilder {
         let resolved_configs = match resolve_capability_configs(capability_configs, registry) {
             Ok(resolved) => resolved,
             Err(e) => {
-                tracing::warn!("Failed to resolve capability dependencies: {}", e);
+                tracing::warn!(error = %e, "Failed to resolve capability dependencies");
                 capability_configs.to_vec()
             }
         };
