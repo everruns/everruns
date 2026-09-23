@@ -326,7 +326,13 @@ impl Tool for SandboxExecTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command inside the session-managed sandbox."
+        "Execute a shell command inside the session-managed sandbox. The sandbox \
+         is started or resumed first if it is not running, and its filesystem is \
+         checkpointed after the command, so files persist across calls in this \
+         session. Returns stdout, stderr, exit_code, and success; long output is \
+         truncated (see `truncated`, `total_lines`, and `hint`). `cwd` sets the \
+         working directory for this call only. Use the sandbox file tools to read \
+         or write whole files."
     }
 
     fn parameters_schema(&self) -> Value {

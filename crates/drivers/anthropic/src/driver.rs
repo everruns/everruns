@@ -842,7 +842,22 @@ impl ChatDriver for AnthropicChatDriver {
         // `output_config.effort`. On Fable 5.x and Opus 5.5/5/4.8/4.7 the budget-based
         // `thinking: {type: "enabled", budget_tokens}` form is removed and
         // returns 400, so this split is load-bearing, not stylistic.
-        let (thinking, output_config) = match config.reasoning_effort {
+        // Opus 5.5 and Fable 5.x think whether or not `thinking` is sent, and
+        // Opus 5.5's API default effort (`medium`) sits below the profile's.
+        // With no caller effort, send the profile default so effort is always
+        // explicit instead of silently falling back to the API's.
+        let reasoning_effort = config.reasoning_effort.or_else(|| {
+            thinking_always_on(wire_model)
+                .then(|| {
+                    profile
+                        .as_ref()?
+                        .reasoning_effort
+                        .as_ref()
+                        .map(|r| r.default)
+                })
+                .flatten()
+        });
+        let (thinking, output_config) = match reasoning_effort {
             Some(effort) if uses_adaptive_thinking(wire_model) => {
                 match adaptive_effort_level(effort) {
                     Some(level) => (
@@ -1699,6 +1714,18 @@ fn uses_adaptive_thinking(model_id: &str) -> bool {
         .any(|f| family.eq_ignore_ascii_case(f))
 }
 
+/// Families where thinking cannot be disabled: omitting `thinking` still runs
+/// adaptive thinking at the API's default effort.
+const THINKING_ALWAYS_ON_FAMILIES: &[&str] =
+    &["claude-fable-5-1", "claude-fable-5", "claude-opus-5-5"];
+
+fn thinking_always_on(model_id: &str) -> bool {
+    let family = normalize_anthropic_id(model_id);
+    THINKING_ALWAYS_ON_FAMILIES
+        .iter()
+        .any(|f| family.eq_ignore_ascii_case(f))
+}
+
 /// Map an everruns reasoning-effort level to the `output_config.effort` value
 /// used with adaptive thinking. `xhigh` is surfaced as "Max" in the model
 /// profiles and maps to the API's `max` level.
@@ -2462,6 +2489,29 @@ mod tests {
                 }
                 assert_contract_request(config, false, expected).await;
             }
+        }
+    }
+
+    /// Opus 5.5 thinks even when `thinking` is omitted, at an API default
+    /// effort (`medium`) below the profile's. With no caller effort the
+    /// request must carry the profile default; models where omitting
+    /// `thinking` turns it off keep sending nothing.
+    #[tokio::test]
+    async fn thinking_always_on_models_send_the_profile_default_effort() {
+        for (model, sends_default) in [
+            ("claude-opus-5-5", true),
+            ("claude-fable-5-1", true),
+            ("claude-opus-4-8", false),
+        ] {
+            let config = contract_config(model, Some(1));
+            assert!(config.reasoning_effort.is_none());
+            let mut expected = json!({"model":model,"max_tokens":1,"stream":true,
+                "messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]});
+            if sends_default {
+                expected["thinking"] = json!({"type":"adaptive","display":"summarized"});
+                expected["output_config"] = json!({"effort":"high"});
+            }
+            assert_contract_request(config, false, expected).await;
         }
     }
 

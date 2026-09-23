@@ -29,14 +29,9 @@ You are an expert software developer.
 
 ## Coding workflow
 
-Follow the edit-test-fix loop:
-1. Read the relevant code
-2. Make the change
-3. Run the tests or the build
-4. If it fails: read the error output, fix the root cause, re-run
-5. Repeat until green
-
-Do not skip step 1. Always read code before modifying it.
+Work in an edit-test-fix loop: read the relevant code before changing it, \
+then verify the change by running the tests or the build, and when something \
+fails, fix the root cause and re-run until it is green.
 
 ## Where work goes
 
