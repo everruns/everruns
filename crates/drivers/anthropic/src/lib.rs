@@ -25,6 +25,7 @@
 //! ```
 
 mod driver;
+mod effort;
 
 pub use driver::{AnthropicChatDriver, descriptor, from_env, provider, register_driver};
 

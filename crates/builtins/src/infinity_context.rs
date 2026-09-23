@@ -1191,10 +1191,7 @@ mod tests {
             extract_text_content(&messages[MAX_KEEP_FIRST_MESSAGES - 1]),
             format!("message {}", MAX_KEEP_FIRST_MESSAGES - 1)
         );
-        assert!(
-            extract_text_content(&messages[MAX_KEEP_FIRST_MESSAGES])
-                .contains("not in this context")
-        );
+        assert!(extract_text_content(&messages[MAX_KEEP_FIRST_MESSAGES]).contains("are not in"));
         assert_eq!(extract_text_content(messages.last().unwrap()), "message 19");
     }
 
