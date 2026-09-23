@@ -211,10 +211,9 @@ impl CapabilityService {
                     &row.name,
                     &row.definition,
                 )
-                .unwrap_or_else(|_| {
-                    let mut definition = DeclarativeCapabilityDefinition::default();
-                    definition.status = CapabilityStatus::Retired;
-                    definition
+                .unwrap_or_else(|_| DeclarativeCapabilityDefinition {
+                    status: CapabilityStatus::Retired,
+                    ..Default::default()
                 });
             definition.name = row.name.clone();
             definition.display_name = row.display_name.clone();
@@ -241,15 +240,15 @@ impl CapabilityService {
                     &row.name,
                     &row.definition,
                 )
-                .unwrap_or_else(|_| {
-                    let mut definition = DeclarativeCapabilityDefinition::default();
-                    definition.status = CapabilityStatus::Retired;
-                    definition
+                .unwrap_or_else(|_| DeclarativeCapabilityDefinition {
+                    status: CapabilityStatus::Retired,
+                    ..Default::default()
                 })
             } else {
-                let mut definition = DeclarativeCapabilityDefinition::default();
-                definition.status = CapabilityStatus::NeedsIdentity;
-                definition
+                DeclarativeCapabilityDefinition {
+                    status: CapabilityStatus::NeedsIdentity,
+                    ..Default::default()
+                }
             };
             definition.name = row.name.clone();
             // Override display_name from manifest when the definition doesn't declare one.
@@ -411,10 +410,9 @@ impl CapabilityService {
                         &row.name,
                         &row.definition,
                     )
-                    .unwrap_or_else(|_| {
-                        let mut definition = DeclarativeCapabilityDefinition::default();
-                        definition.status = CapabilityStatus::Retired;
-                        definition
+                    .unwrap_or_else(|_| DeclarativeCapabilityDefinition {
+                        status: CapabilityStatus::Retired,
+                        ..Default::default()
                     });
                 definition.name = row.name;
                 definition.display_name = row.display_name;
@@ -454,15 +452,15 @@ impl CapabilityService {
                         &row.name,
                         &row.definition,
                     )
-                    .unwrap_or_else(|_| {
-                        let mut definition = DeclarativeCapabilityDefinition::default();
-                        definition.status = CapabilityStatus::Retired;
-                        definition
+                    .unwrap_or_else(|_| DeclarativeCapabilityDefinition {
+                        status: CapabilityStatus::Retired,
+                        ..Default::default()
                     })
                 } else {
-                    let mut definition = DeclarativeCapabilityDefinition::default();
-                    definition.status = CapabilityStatus::NeedsIdentity;
-                    definition
+                    DeclarativeCapabilityDefinition {
+                        status: CapabilityStatus::NeedsIdentity,
+                        ..Default::default()
+                    }
                 };
                 definition.name = row.name;
                 if definition.display_name.is_none() {
