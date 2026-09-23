@@ -1,5 +1,12 @@
-// URL mode elicitation for Everruns' own MCP server endpoint
-// (spec: knowledge/integrations/mcp.md, "URL mode elicitation").
+// Elicitation for Everruns' own MCP server endpoint
+// (spec: knowledge/integrations/mcp.md, "URL mode elicitation" and
+// "Form mode elicitation").
+//
+// Two modes ride the same machinery. URL mode sends a human off to a page
+// Everruns renders; form mode (EVE-1060) puts an `ask_user` question set in
+// front of the client as a `requestedSchema`. The signed intent token, the
+// capability probe, and the response reader below are shared; the form-mode
+// schema and answer mapping live in `form_elicitation`.
 //
 // Some things an MCP client must never be asked for. A session secret and a
 // third-party connection are both credentials: routed through `tools/call`
@@ -97,29 +104,39 @@ impl ElicitationIntent {
     }
 }
 
-/// The signed intent, bound to a principal and an expiry.
+/// Form mode's intent (EVE-1060): the `ask_user` question set a client was
+/// handed. Signed for the same reason a URL intent is — MRTR hands
+/// `requestState` back through the client, so the retry must prove it is
+/// answering the question set *this* principal was actually shown, not one it
+/// named itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ElicitationToken {
+pub struct QuestionSetIntent {
+    pub session_id: String,
+    pub tool_call_id: String,
+}
+
+/// The signed intent, bound to a principal and an expiry.
+///
+/// Generic over the intent so form mode reuses the signing, expiry and
+/// principal binding verbatim rather than growing a second, subtly different
+/// copy. `I` defaults to the URL-mode intent, which is every pre-EVE-1060 use.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ElicitationToken<I = ElicitationIntent> {
     /// Authenticated principal that started the elicitation. The page refuses
     /// to act for anyone else, and `requestState` presented by another
     /// principal is rejected.
     pub user_id: Uuid,
     /// Organization the call resolved to.
     pub org_id: String,
-    pub intent: ElicitationIntent,
+    pub intent: I,
     /// Unix seconds after which the token is dead.
     pub expires_at: i64,
     /// Makes each token unique so two identical intents do not collide.
     pub nonce: String,
 }
 
-impl ElicitationToken {
-    pub fn new(
-        user_id: Uuid,
-        org_id: impl Into<String>,
-        intent: ElicitationIntent,
-        now: i64,
-    ) -> Self {
+impl<I> ElicitationToken<I> {
+    pub fn new(user_id: Uuid, org_id: impl Into<String>, intent: I, now: i64) -> Self {
         Self {
             user_id,
             org_id: org_id.into(),
@@ -156,7 +173,7 @@ impl TokenError {
 
 /// Sign a token into the opaque `payload.signature` string used as both the
 /// URL parameter and `requestState`.
-pub fn sign_token(token: &ElicitationToken, secret: &str) -> String {
+pub fn sign_token<I: Serialize>(token: &ElicitationToken<I>, secret: &str) -> String {
     let payload = serde_json::to_vec(token).expect("elicitation token serializes");
     let mut mac =
         HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts keys of any length");
@@ -173,12 +190,12 @@ pub fn sign_token(token: &ElicitationToken, secret: &str) -> String {
 /// `presented_by` is the principal making the *current* request — the MCP
 /// caller on a retry, or the browser session on the page. Rejecting a mismatch
 /// is what stops one user's elicitation from being completed by another.
-pub fn verify_token(
+pub fn verify_token<I: serde::de::DeserializeOwned>(
     value: &str,
     secret: &str,
     presented_by: Uuid,
     now: i64,
-) -> Result<ElicitationToken, TokenError> {
+) -> Result<ElicitationToken<I>, TokenError> {
     let (payload, signature) = value.split_once('.').ok_or(TokenError::Malformed)?;
     let payload = URL_SAFE_NO_PAD
         .decode(payload)
@@ -191,7 +208,7 @@ pub fn verify_token(
     mac.update(&payload);
     mac.verify_slice(&signature)
         .map_err(|_| TokenError::BadSignature)?;
-    let token: ElicitationToken =
+    let token: ElicitationToken<I> =
         serde_json::from_slice(&payload).map_err(|_| TokenError::Malformed)?;
     if token.expires_at <= now {
         return Err(TokenError::Expired);
@@ -263,6 +280,23 @@ pub(super) fn url_elicitation_result(intent: &ElicitationIntent, url: &str, sign
     })
 }
 
+/// True when this request's `_meta` declares elicitation at all.
+///
+/// The base capability, which is form mode; `elicitation.url` is a mode layered
+/// on top of it, so a client that declared the URL mode declared this too.
+///
+/// EVE-1060 gates form mode on this and nothing else. Unlike URL mode it never
+/// escalates a missing declaration to `MissingRequiredClientCapability`: an
+/// unanswerable question is not a failed call, and a client that cannot be
+/// asked gets the model's declared defaults (EVE-1057) instead of an error.
+pub(super) fn client_supports_elicitation(params: &Value) -> bool {
+    params
+        .get("_meta")
+        .and_then(|meta| meta.get(CLIENT_CAPABILITIES_META_KEY))
+        .and_then(|caps| caps.get("elicitation"))
+        .is_some()
+}
+
 /// `data` payload for a `MissingRequiredClientCapability` error, naming what
 /// the client would have to declare.
 pub(super) fn missing_capability_data() -> Value {
@@ -276,17 +310,234 @@ pub(super) fn request_state(params: &Value) -> Option<&str> {
     params.get("requestState").and_then(Value::as_str)
 }
 
+/// The elicitation response a client echoed back under `key`, if any.
+///
+/// One reader for both modes: URL mode only needs the accept/not-accept bit,
+/// form mode needs the whole trichotomy plus the submitted `content`.
+pub(super) fn input_response<'a>(params: &'a Value, key: &str) -> Option<&'a Value> {
+    params.get("inputResponses")?.get(key)
+}
+
 /// Whether the client accepted the elicitation it was handed under `key`.
 ///
 /// A `decline` or `cancel` is a real answer, not an error: the caller reports
 /// it as a tool result so the model can tell the user nothing was stored.
 pub(super) fn accepted(params: &Value, key: &str) -> Option<bool> {
-    let action = params
-        .get("inputResponses")?
-        .get(key)?
-        .get("action")?
-        .as_str()?;
+    let action = input_response(params, key)?.get("action")?.as_str()?;
     Some(action == "accept")
+}
+
+// ---------------------------------------------------------------------------
+// Serving a URL mode elicitation
+// ---------------------------------------------------------------------------
+//
+// The handler lives beside the token it mints rather than in the endpoint's
+// dispatcher, so one file holds the whole mode: what is asked, how the state is
+// signed, and what a returning answer means. `form_elicitation` is its twin for
+// `ask_user` question sets.
+
+use super::{
+    AppState, AuthUser, JsonRpcResponse, ResolvedOrg, classify_mcp_execute_error,
+    error_result_payload, json_result_payload, mcp_ctx, resolve_org_override, tool_registry,
+};
+// `Command::run` on the session-storage query the `session_set_secret` check uses.
+use crate::domains::common::Command;
+
+/// Serve a tool whose answer may be a URL mode elicitation
+/// (`session_set_secret`, `connect`).
+///
+/// The flow is the same for both, and is driven entirely by the request — the
+/// endpoint stores nothing between rounds:
+///
+/// 1. If the thing already exists (the secret is stored, the connection is
+///    live), answer normally. A retry after a completed interaction lands here,
+///    which is how the client learns it worked.
+/// 2. If the client echoed a `requestState`, verify it — MRTR treats it as
+///    attacker-controlled input — and honor a `decline`/`cancel` as a real
+///    answer rather than asking again.
+/// 3. Otherwise elicit: mint a signed intent token, and hand back the URL of
+///    the page that collects it. A client that never declared URL mode
+///    elicitation gets `MissingRequiredClientCapability` instead, because the
+///    only other way to serve the call would be to ask it for the credential.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn handle_elicited_tool(
+    id: Option<Value>,
+    tool_name: &str,
+    params: &Value,
+    arguments: &Value,
+    auth_user: &AuthUser,
+    org: &ResolvedOrg,
+    state: &AppState,
+    protocol_version: &str,
+) -> JsonRpcResponse {
+    if !tool_registry::supports_url_elicitation(protocol_version) {
+        return JsonRpcResponse::method_not_found(id);
+    }
+    let Some(base_url) = state.elicitation_base_url.clone() else {
+        let msg = "URL elicitation is not configured on this deployment";
+        return JsonRpcResponse::success(id, error_result_payload(msg, None));
+    };
+    let org = match resolve_org_override(arguments, auth_user, org, state).await {
+        Ok(org) => org,
+        Err(e) => return JsonRpcResponse::invalid_params(id, e),
+    };
+    let intent = match elicitation_intent(tool_name, arguments) {
+        Ok(intent) => intent,
+        Err(e) => return JsonRpcResponse::invalid_params(id, e),
+    };
+
+    match elicitation_satisfied(&intent, auth_user, &org, state).await {
+        Ok(true) => return JsonRpcResponse::success(id, satisfied_payload(&intent)),
+        Ok(false) => {}
+        Err(msg) => {
+            let envelope = classify_mcp_execute_error(&msg);
+            return JsonRpcResponse::success(id, error_result_payload(&msg, Some(&envelope)));
+        }
+    }
+
+    let signing_secret = state.auth.config.jwt.secret.clone();
+    if let Some(request_state) = request_state(params) {
+        let verified = verify_token::<ElicitationIntent>(
+            request_state,
+            &signing_secret,
+            auth_user.id,
+            chrono::Utc::now().timestamp(),
+        );
+        match verified {
+            // Only an answer to *this* elicitation counts. State for another
+            // intent is stale, not fatal: fall through and elicit afresh.
+            Ok(token) if token.intent == intent => {
+                if accepted(params, intent.request_key()) == Some(false) {
+                    return JsonRpcResponse::success(id, declined_payload(&intent));
+                }
+            }
+            Ok(_) => {}
+            Err(error) => {
+                return JsonRpcResponse::invalid_params(id, error.message());
+            }
+        }
+    }
+
+    if !client_supports_url_elicitation(params) {
+        let mut response = JsonRpcResponse::error(
+            id,
+            MISSING_CAPABILITY_ERROR_CODE,
+            "This tool collects a credential, which requires URL mode elicitation. \
+             Declare elicitation.url in clientCapabilities, or have the user set the \
+             value in the Everruns web app.",
+        );
+        if let Some(error) = response.error.as_mut() {
+            error.data = Some(missing_capability_data());
+        }
+        return response;
+    }
+
+    let token = ElicitationToken::new(
+        auth_user.id,
+        org.public_id.clone(),
+        intent.clone(),
+        chrono::Utc::now().timestamp(),
+    );
+    let signed = sign_token(&token, &signing_secret);
+    let url = elicitation_url(&base_url, &intent, &signed);
+    tracing::info!(
+        mcp.tool = %tool_name,
+        org.id = %org.public_id,
+        "MCP URL elicitation issued"
+    );
+    JsonRpcResponse::success(id, url_elicitation_result(&intent, &url, &signed))
+}
+
+/// Read the intent out of a tool call's arguments. Neither tool has a parameter
+/// that could carry a credential — that is the point — so this only names the
+/// subject.
+fn elicitation_intent(tool_name: &str, arguments: &Value) -> Result<ElicitationIntent, String> {
+    let string_arg = |key: &str| {
+        arguments
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| format!("Missing '{key}' in arguments"))
+    };
+    match tool_name {
+        "session_set_secret" => Ok(ElicitationIntent::SessionSecret {
+            session_id: string_arg("session_id")?,
+            name: string_arg("name")?,
+        }),
+        "connect" => Ok(ElicitationIntent::Connect {
+            provider: string_arg("provider")?,
+        }),
+        other => Err(format!("Unknown tool: {other}")),
+    }
+}
+
+/// Is the thing the elicitation would collect already in place?
+async fn elicitation_satisfied(
+    intent: &ElicitationIntent,
+    auth_user: &AuthUser,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> Result<bool, String> {
+    match intent {
+        ElicitationIntent::SessionSecret { session_id, name } => {
+            let secrets = crate::domains::session_storage::ListSessionSecrets {
+                session_id: session_id.clone(),
+            }
+            .run(&mcp_ctx(org, state))
+            .await
+            .map_err(|e| e.to_string())?;
+            Ok(secrets.iter().any(|secret| &secret.name == name))
+        }
+        ElicitationIntent::Connect { provider } => {
+            // The connection belongs to the authenticated user, not the org:
+            // it is that person's authorization at the third party.
+            let connection = state
+                .db
+                .get_user_connection(auth_user.id, provider)
+                .await
+                .map_err(|e| format!("Failed to check connection: {e}"))?;
+            Ok(connection.is_some())
+        }
+    }
+}
+
+/// Structured result for an intent that is already satisfied.
+fn satisfied_payload(intent: &ElicitationIntent) -> Value {
+    let structured = match intent {
+        ElicitationIntent::SessionSecret { session_id, name } => json!({
+            "name": name,
+            "session_id": session_id,
+            "stored": true,
+            "message": format!("Secret '{name}' is stored for session {session_id}."),
+        }),
+        ElicitationIntent::Connect { provider } => json!({
+            "provider": provider,
+            "connected": true,
+            "message": format!("'{provider}' is connected for this user."),
+        }),
+    };
+    json_result_payload(&structured)
+}
+
+/// Structured result for an elicitation the user turned down. Not an error:
+/// the model should tell the user nothing was stored, not retry.
+fn declined_payload(intent: &ElicitationIntent) -> Value {
+    let structured = match intent {
+        ElicitationIntent::SessionSecret { session_id, name } => json!({
+            "name": name,
+            "session_id": session_id,
+            "stored": false,
+            "message": "The user declined to open the secure form, so nothing was stored.",
+        }),
+        ElicitationIntent::Connect { provider } => json!({
+            "provider": provider,
+            "connected": false,
+            "message": "The user declined to open the connection page, so nothing was connected.",
+        }),
+    };
+    json_result_payload(&structured)
 }
 
 #[cfg(test)]
@@ -308,7 +559,10 @@ mod tests {
         let user = Uuid::new_v4();
         let token = ElicitationToken::new(user, "org_1", intent(), NOW);
         let signed = sign_token(&token, SECRET);
-        assert_eq!(verify_token(&signed, SECRET, user, NOW).unwrap(), token);
+        assert_eq!(
+            verify_token::<ElicitationIntent>(&signed, SECRET, user, NOW).unwrap(),
+            token
+        );
     }
 
     #[test]
@@ -318,7 +572,7 @@ mod tests {
 
         // A different signing key, i.e. a forged or replayed-from-elsewhere state.
         assert_eq!(
-            verify_token(&signed, "other-secret", user, NOW),
+            verify_token::<ElicitationIntent>(&signed, "other-secret", user, NOW),
             Err(TokenError::BadSignature)
         );
         // Payload edited in place: the signature no longer covers it.
@@ -331,21 +585,21 @@ mod tests {
             URL_SAFE_NO_PAD.encode(serde_json::to_vec(&decoded).unwrap())
         );
         assert_eq!(
-            verify_token(&tampered, SECRET, user, NOW),
+            verify_token::<ElicitationIntent>(&tampered, SECRET, user, NOW),
             Err(TokenError::BadSignature)
         );
         // Past its TTL.
         assert_eq!(
-            verify_token(&signed, SECRET, user, NOW + TOKEN_TTL_SECONDS + 1),
+            verify_token::<ElicitationIntent>(&signed, SECRET, user, NOW + TOKEN_TTL_SECONDS + 1),
             Err(TokenError::Expired)
         );
         // The phishing case: someone else opened the link.
         assert_eq!(
-            verify_token(&signed, SECRET, Uuid::new_v4(), NOW),
+            verify_token::<ElicitationIntent>(&signed, SECRET, Uuid::new_v4(), NOW),
             Err(TokenError::WrongPrincipal)
         );
         assert_eq!(
-            verify_token("not-a-token", SECRET, user, NOW),
+            verify_token::<ElicitationIntent>("not-a-token", SECRET, user, NOW),
             Err(TokenError::Malformed)
         );
     }
@@ -364,6 +618,46 @@ mod tests {
         assert!(!client_supports_url_elicitation(&form_only));
         assert!(!client_supports_url_elicitation(&json!({ "_meta": {} })));
         assert!(!client_supports_url_elicitation(&json!({})));
+    }
+
+    /// Form mode rides the base capability, so both shapes declare it.
+    #[test]
+    fn form_mode_accepts_any_elicitation_declaration() {
+        let form_only = json!({ "_meta": { CLIENT_CAPABILITIES_META_KEY: {
+            "elicitation": {}
+        }}});
+        assert!(client_supports_elicitation(&form_only));
+        let with_url = json!({ "_meta": { CLIENT_CAPABILITIES_META_KEY: {
+            "elicitation": { "url": {} }
+        }}});
+        assert!(client_supports_elicitation(&with_url));
+        assert!(!client_supports_elicitation(&json!({ "_meta": {
+            CLIENT_CAPABILITIES_META_KEY: { "sampling": {} }
+        }})));
+        assert!(!client_supports_elicitation(&json!({})));
+    }
+
+    /// A question-set token is signed and principal-bound exactly like a URL
+    /// one, and state minted for another question set does not verify as this
+    /// one.
+    #[test]
+    fn round_trips_a_question_set_token() {
+        let user = Uuid::new_v4();
+        let intent = QuestionSetIntent {
+            session_id: "session_1".to_string(),
+            tool_call_id: "call_1".to_string(),
+        };
+        let signed = sign_token(
+            &ElicitationToken::new(user, "org_1", intent.clone(), NOW),
+            SECRET,
+        );
+        let verified: ElicitationToken<QuestionSetIntent> =
+            verify_token(&signed, SECRET, user, NOW).unwrap();
+        assert_eq!(verified.intent, intent);
+        assert_eq!(
+            verify_token::<QuestionSetIntent>(&signed, SECRET, Uuid::new_v4(), NOW),
+            Err(TokenError::WrongPrincipal)
+        );
     }
 
     #[test]

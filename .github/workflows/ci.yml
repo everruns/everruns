@@ -1307,6 +1307,7 @@ jobs:
         run: |
           cargo test -p everruns-server \
             --lib \
+            --test mcp_form_elicitation_test \
             --test mcp_url_consent_test \
             --test mcp_url_elicitation_test \
             --test question_answers_test \
