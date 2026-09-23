@@ -664,12 +664,12 @@ pub struct LlmCallConfig {
     /// Number of trailing messages that are volatile (regenerated every turn)
     /// and must not anchor a message-level prompt-cache breakpoint.
     ///
-    /// `ReasonAtom` sets this to the count of live `<facts>` messages it appends
-    /// at the conversation tail. Drivers that place a message cache breakpoint
-    /// on the last block (Anthropic) skip this many trailing messages so the
-    /// breakpoint lands on the last *stable* block — otherwise a tail that
-    /// changes each turn would evict the conversation-history cache. `0` (the
-    /// default) preserves the previous behavior exactly.
+    /// `ReasonAtom` sets it to 1 only when a `<facts>` message trails an answer
+    /// (a continuation) and so will not be replayed. Drivers that place a
+    /// message cache breakpoint on the last block (Anthropic) skip this many
+    /// trailing messages so the breakpoint lands on the last *stable* block —
+    /// otherwise a tail that changes each turn would evict the
+    /// conversation-history cache. `0` (the default) changes nothing.
     pub volatile_suffix_len: usize,
     /// Extra HTTP headers to attach to every provider request made for this
     /// call.
