@@ -842,7 +842,7 @@ impl ChatDriver for AnthropicChatDriver {
         // `output_config.effort`. On Fable 5.x and Opus 5.5/5/4.8/4.7 the budget-based
         // `thinking: {type: "enabled", budget_tokens}` form is removed and
         // returns 400, so this split is load-bearing, not stylistic.
-        let (thinking, output_config) = match config.reasoning_effort {
+        let (thinking, output_config) = match crate::effort::resolve(config, wire_model, &profile) {
             Some(effort) if uses_adaptive_thinking(wire_model) => {
                 match adaptive_effort_level(effort) {
                     Some(level) => (
@@ -2094,7 +2094,7 @@ struct AnthropicModelCapabilities {
 
 /// Normalize Anthropic model ID to a family base name by stripping trailing
 /// date suffix (e.g., "claude-opus-4-5-20251101" -> "claude-opus-4-5").
-fn normalize_anthropic_id(model_id: &str) -> &str {
+pub(crate) fn normalize_anthropic_id(model_id: &str) -> &str {
     // Anthropic date suffixes are always -YYYYMMDD (8 digits after a dash)
     if let Some((base, suffix)) = model_id.rsplit_once('-')
         && !base.is_empty()

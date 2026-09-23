@@ -2674,7 +2674,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
         // runs adaptive), sampling parameters are removed (`temperature: false`),
         // and forced `tool_choice` any/tool returns 400 — the driver only sends
         // `auto`. The API's default effort is `medium`, one below Opus 5's `high`;
-        // the profile keeps `high` so effort is always sent explicitly.
+        // the driver sends this profile's `high` when the caller picks no effort.
         "claude-opus-5-5" => Some(ModelProfile {
             name: "Claude Opus 5.5".into(),
             family: "claude-opus-5-5".into(),
