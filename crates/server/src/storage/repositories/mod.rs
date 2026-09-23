@@ -59,11 +59,11 @@ use sqlx::postgres::PgPoolOptions;
 /// Database pool configuration loaded from environment variables.
 ///
 /// Two pools, not one (EVE-1081). The request pool is sized for HTTP handlers
-/// and fails fast, because a caller is waiting on the other end of every
-/// acquire. The background pool is small and patient, because nobody is
-/// waiting on a sweep and the next tick would only retry into the same
-/// contention. Sharing one pool made saturation from any source fail every
-/// consumer at the same instant; see `Database::connect_with_config`.
+/// and uses a shorter bounded acquire timeout, because a caller is waiting on
+/// the other end of every acquire. The background pool is small and patient,
+/// because nobody is waiting on a sweep and the next tick would only retry into
+/// the same contention. Sharing one pool made saturation from any source fail
+/// every consumer at the same instant; see `Database::connect_with_config`.
 pub struct DatabasePoolConfig {
     pub max_connections: u32,
     pub min_connections: u32,

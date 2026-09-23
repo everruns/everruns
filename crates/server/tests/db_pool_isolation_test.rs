@@ -16,9 +16,14 @@
 //! background acquire together, and the dedicated background pool really does
 //! keep them running through the same burst.
 
+use axum::{Json, Router, extract::State, routing::get};
+use everruns_server::api::common::ErrorResponse;
+use everruns_server::domains::common::classify_anyhow;
 use everruns_server::storage::repositories::{Database, DatabasePoolConfig};
+use http_body_util::BodyExt;
 use sqlx::Row;
 use std::time::Duration;
+use tower::ServiceExt;
 
 fn database_url() -> String {
     std::env::var("DATABASE_URL").unwrap_or_else(|_| {
@@ -135,10 +140,10 @@ async fn dedicated_background_pool_survives_a_request_burst() {
     );
 }
 
-/// The request pool still fails fast while the burst is in flight — the fix
-/// must not paper over saturation on the path where a caller is waiting.
+/// The request pool still reaches its configured timeout while the burst is in
+/// flight.
 #[tokio::test(flavor = "multi_thread")]
-async fn request_pool_still_fails_fast_under_the_same_burst() {
+async fn request_pool_still_times_out_under_the_same_burst() {
     let db = Database::connect_with_config(&database_url(), scaled_config(2))
         .await
         .expect("connect");
@@ -150,4 +155,51 @@ async fn request_pool_still_fails_fast_under_the_same_burst() {
         results.iter().all(|r| r.is_err()),
         "request-path acquires must still time out, got {results:?}"
     );
+}
+
+async fn request_handler(
+    State(db): State<Database>,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<ErrorResponse>)> {
+    let one: i32 = sqlx::query_scalar("SELECT 1")
+        .fetch_one(db.pool())
+        .await
+        .map_err(|error| classify_anyhow(error.into()))?;
+    Ok(Json(serde_json::json!({ "one": one })))
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn saturated_request_pool_returns_retryable_service_unavailable_after_acquire_timeout() {
+    let db = Database::connect_with_config(&database_url(), scaled_config(2))
+        .await
+        .expect("connect");
+    let _burst = saturate(db.pool(), 4).await;
+    let app = Router::new()
+        .route("/request", get(request_handler))
+        .with_state(db);
+
+    let started = std::time::Instant::now();
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/request")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("request");
+    let elapsed = started.elapsed();
+
+    assert_eq!(
+        response.status(),
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert!(
+        elapsed >= Duration::from_millis(450),
+        "request returned before the configured acquire timeout: {elapsed:?}"
+    );
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["status"], 503);
+    assert_eq!(body["code"], "database_pool_exhausted");
+    assert_eq!(body["retry_after_seconds"], 1);
 }

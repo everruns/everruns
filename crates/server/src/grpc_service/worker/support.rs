@@ -138,6 +138,7 @@ pub(crate) fn command_error_kind(error: &crate::domains::common::CommandError) -
         CommandErrorKind::NotFound(_) => 3,
         CommandErrorKind::Conflict(_) => 4,
         CommandErrorKind::RateLimited(_) => 1,
+        CommandErrorKind::Unavailable(_) => 6,
         CommandErrorKind::Internal(_) => 5,
     }
 }
@@ -168,6 +169,7 @@ pub(crate) fn command_error_to_status(error: crate::domains::common::CommandErro
         CommandErrorKind::NotFound(message) => Status::not_found(message),
         CommandErrorKind::Conflict(message) => Status::failed_precondition(message),
         CommandErrorKind::RateLimited(message) => Status::resource_exhausted(message),
+        CommandErrorKind::Unavailable(message) => Status::unavailable(message),
         // THREAT[TM-API-005]: mirror command_error_to_proto — the caller gets no diagnostics.
         CommandErrorKind::Internal(inner) => internal_status("Internal server error", inner),
     }
@@ -264,7 +266,8 @@ mod tests {
     }
     use super::{
         DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT, MAX_TURN_CONTEXT_MESSAGE_LIMIT, command_error_to_proto,
-        internal_status, normalize_turn_context_message_limit, resolved_mcp_server_to_proto,
+        command_error_to_status, internal_status, normalize_turn_context_message_limit,
+        resolved_mcp_server_to_proto,
     };
 
     const RAW_STORAGE_ERROR: &str = "error returned from database: relation \"agents\" does not \
@@ -336,6 +339,21 @@ mod tests {
         ));
         assert_eq!(proto.message, "Internal server error");
         assert!(!proto.message.contains(raw));
+    }
+
+    #[test]
+    fn command_error_transports_preserve_unavailable_semantics() {
+        let proto = command_error_to_proto(crate::domains::common::CommandError::unavailable(
+            "temporarily unavailable",
+        ));
+        assert_eq!(proto.kind, 6);
+        assert_eq!(proto.message, "temporarily unavailable");
+
+        let status = command_error_to_status(crate::domains::common::CommandError::unavailable(
+            "temporarily unavailable",
+        ));
+        assert_eq!(status.code(), tonic::Code::Unavailable);
+        assert_eq!(status.message(), "temporarily unavailable");
     }
 
     #[test]
