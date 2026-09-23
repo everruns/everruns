@@ -163,6 +163,94 @@ export interface paths {
     patch: operations["update_agent"];
     trace?: never;
   };
+  "/v1/agents/{agent_id}/channels": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List ingress channels owned by an Agent. */
+    get: operations["list_agent_channels"];
+    put?: never;
+    /** @description Create an ingress channel owned by an Agent. */
+    post: operations["create_agent_channel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/channels/{channel_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get one ingress channel owned by an Agent. */
+    get: operations["get_agent_channel"];
+    put?: never;
+    post?: never;
+    /** @description Delete an ingress channel owned by an Agent. */
+    delete: operations["delete_agent_channel"];
+    options?: never;
+    head?: never;
+    /** @description Update an ingress channel owned by an Agent. */
+    patch: operations["update_agent_channel"];
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/channels/{channel_id}/publish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Publish an Agent channel so it can accept ingress traffic. */
+    post: operations["publish_agent_channel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/channels/{channel_id}/trigger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Run a published Agent schedule channel now. */
+    post: operations["trigger_agent_channel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/channels/{channel_id}/unpublish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Unpublish an Agent channel so it no longer accepts ingress traffic. */
+    post: operations["unpublish_agent_channel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/copy": {
     parameters: {
       query?: never;
@@ -220,94 +308,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/agents/{agent_id}/endpoints": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** @description List ingress endpoints owned by an Agent. */
-    get: operations["list_agent_endpoints"];
-    put?: never;
-    /** @description Create an ingress endpoint owned by an Agent. */
-    post: operations["create_agent_endpoint"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/endpoints/{endpoint_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** @description Get one ingress endpoint owned by an Agent. */
-    get: operations["get_agent_endpoint"];
-    put?: never;
-    post?: never;
-    /** @description Delete an ingress endpoint owned by an Agent. */
-    delete: operations["delete_agent_endpoint"];
-    options?: never;
-    head?: never;
-    /** @description Update an ingress endpoint owned by an Agent. */
-    patch: operations["update_agent_endpoint"];
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Publish an Agent endpoint so it can accept ingress traffic. */
-    post: operations["publish_agent_endpoint"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Run a published Agent schedule endpoint now. */
-    post: operations["trigger_agent_endpoint"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** @description Unpublish an Agent endpoint so it no longer accepts ingress traffic. */
-    post: operations["unpublish_agent_endpoint"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/agents/{agent_id}/export": {
     parameters: {
       query?: never;
@@ -334,7 +334,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/agents/{agent_id}/exposures/resume - Let live endpoints serve again */
+    /** POST /v1/agents/{agent_id}/exposures/resume - Let live channels serve again */
     post: operations["resume_agent_exposures"];
     delete?: never;
     options?: never;
@@ -351,7 +351,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline */
+    /** POST /v1/agents/{agent_id}/exposures/suspend - Take every channel offline */
     post: operations["suspend_agent_exposures"];
     delete?: never;
     options?: never;
@@ -1487,7 +1487,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration. */
+    /** @description Invoke a published A2A channel with JSON-RPC 2.0. Authentication follows the channel configuration. */
     post: operations["invoke_a2a_endpoint"];
     delete?: never;
     options?: never;
@@ -1502,7 +1502,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get the public Agent Card for a published A2A endpoint. */
+    /** @description Get the public Agent Card for a published A2A channel. */
     get: operations["agent_card_endpoint"];
     put?: never;
     post?: never;
@@ -1521,7 +1521,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token. */
+    /** @description Send a message to a published FCP channel. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the channel requires a token. */
     post: operations["message_endpoint"];
     delete?: never;
     options?: never;
@@ -1606,7 +1606,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token. */
+    /** @description Invoke a published webhook channel. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token. */
     post: operations["invoke_webhook_endpoint"];
     delete?: never;
     options?: never;
@@ -4485,14 +4485,14 @@ export interface components {
        */
       display_name?: string | null;
       /**
-       * @description Whether any endpoint on this agent is currently live. Derived from the
-       *     endpoint rows on read and never stored: a stored flag would be a second
-       *     writer for state the endpoints already own.
+       * @description Whether any channel on this agent is currently live. Derived from the
+       *     channel rows on read and never stored: a stored flag would be a second
+       *     writer for state the channels already own.
        */
       exposed?: boolean;
       /**
-       * @description Incident switch: when true, no endpoint on this agent accepts traffic
-       *     (EVE-1007). Distinct from archiving — it leaves per-endpoint status
+       * @description Incident switch: when true, no channel on this agent accepts traffic
+       *     (EVE-1007). Distinct from archiving — it leaves per-channel status
        *     untouched so clearing it restores exactly the previously live set.
        */
       exposures_suspended?: boolean;
@@ -5124,7 +5124,7 @@ export interface components {
      *     Each channel has its own type, config, and lifecycle status.
      */
     AppChannel: {
-      auth?: null | components["schemas"]["AppEndpointAuthConfig"];
+      auth?: null | components["schemas"]["ChannelAuthConfig"];
       /** @description Channel-specific configuration (validated per channel type). */
       channel_config?: unknown;
       /** @description Channel type (e.g. slack). */
@@ -5142,114 +5142,15 @@ export interface components {
        */
       id: string;
       /**
-       * @description Per-endpoint lifecycle. Authoritative for ingress (EVE-1007); `enabled`
+       * @description Per-channel lifecycle. Authoritative for ingress (EVE-1007); `enabled`
        *     is retained for the App API's existing shape.
        */
-      status?: components["schemas"]["EndpointStatus"];
+      status?: components["schemas"]["ChannelStatus"];
       /**
        * Format: date-time
        * @description Timestamp when this channel was last updated.
        */
       updated_at: string;
-    };
-    /**
-     * @description Authentication config for one App endpoint/channel.
-     * @example {
-     *       "mode": "api_key",
-     *       "requirements": {
-     *         "audiences": [
-     *           "everruns-api"
-     *         ],
-     *         "scopes": [
-     *           "app:invoke"
-     *         ]
-     *       }
-     *     }
-     */
-    AppEndpointAuthConfig: {
-      mode: components["schemas"]["AppEndpointAuthMode"];
-      provider?: null | components["schemas"]["AppEndpointAuthProviderConfig"];
-      requirements?: components["schemas"]["AppEndpointAuthRequirements"];
-    };
-    /**
-     * @description App-published endpoint authentication mode.
-     *
-     *     Stored on `AppChannel.auth` so users can protect one endpoint without first
-     *     creating org-level identity-provider state.
-     * @enum {string}
-     */
-    AppEndpointAuthMode:
-      | "anonymous"
-      | "shared_secret"
-      | "api_key"
-      | "google_oidc"
-      | "oidc"
-      | "oauth2_introspection"
-      | "http_basic"
-      | "mtls";
-    /** @description OIDC/OAuth/basic/mTLS provider details for one App endpoint. */
-    AppEndpointAuthProviderConfig:
-      | {
-          allowed_domains?: string[];
-          client_id: string;
-          /** @enum {string} */
-          type: "google_oidc";
-        }
-      | {
-          issuer: string;
-          jwks_url?: string | null;
-          /** @enum {string} */
-          type: "oidc";
-        }
-      | {
-          client_id?: string | null;
-          client_secret?: string | null;
-          client_secret_configured?: boolean;
-          introspection_url: string;
-          /** @enum {string} */
-          type: "oauth2_introspection";
-        }
-      | {
-          password?: string | null;
-          password_configured?: boolean;
-          password_hash?: string | null;
-          /** @enum {string} */
-          type: "http_basic";
-          username: string;
-        }
-      | {
-          allowed_values?: string[];
-          header_name: string;
-          /**
-           * @description Shared secret the trusted proxy includes in `proxy_secret_header`.
-           *     Write-only: redacted in GET responses. See TM-AUTH-021.
-           */
-          proxy_secret?: string | null;
-          proxy_secret_configured?: boolean;
-          /**
-           * @description Header the trusted reverse proxy uses to prove its identity.
-           *     Required. Configs without this field fail closed at verification time.
-           */
-          proxy_secret_header?: string | null;
-          /** @enum {string} */
-          type: "mtls";
-        };
-    /** @description Claim and credential requirements common to App endpoint auth providers. */
-    AppEndpointAuthRequirements: {
-      /** @description JWT `aud` values to require on inbound tokens. Empty list disables audience checking. */
-      audiences?: string[];
-      /** @description Arbitrary claim equality predicates. Empty map disables claim filtering. */
-      claims?: {
-        [key: string]: unknown;
-      };
-      /** @description Allowlist of email/identifier domains. Empty list disables domain filtering. */
-      domains?: string[];
-      /** @description Allowlist of group memberships (from `groups` claim). Empty list disables group filtering. */
-      groups?: string[];
-      /** @description OAuth scope strings to require (space-delimited per scope entry). Empty list disables scope checking. */
-      scopes?: string[];
-      /** @description Allowlist of `sub` claim values. Empty list disables subject filtering. */
-      subjects?: string[];
     };
     /**
      * @description App lifecycle status.
@@ -5451,7 +5352,7 @@ export interface components {
       | "organization"
       | "app"
       | "app_channel"
-      | "agent_endpoint";
+      | "agent_channel";
     /**
      * @description Built-in tool configuration
      *
@@ -5671,6 +5572,120 @@ export interface components {
       /** @description Discriminator for the kind of usage being recorded (e.g. `tool_call`, `subagent_spawn`). */
       usage_kind: components["schemas"]["CapabilityUsageKind"];
     };
+    /**
+     * @description Authentication config for one channel.
+     * @example {
+     *       "mode": "api_key",
+     *       "requirements": {
+     *         "audiences": [
+     *           "everruns-api"
+     *         ],
+     *         "scopes": [
+     *           "app:invoke"
+     *         ]
+     *       }
+     *     }
+     */
+    ChannelAuthConfig: {
+      mode: components["schemas"]["ChannelAuthMode"];
+      provider?: null | components["schemas"]["ChannelAuthProviderConfig"];
+      requirements?: components["schemas"]["ChannelAuthRequirements"];
+    };
+    /**
+     * @description Channel authentication mode.
+     *
+     *     Stored on `AppChannel.auth` so users can protect one channel without first
+     *     creating org-level identity-provider state.
+     * @enum {string}
+     */
+    ChannelAuthMode:
+      | "anonymous"
+      | "shared_secret"
+      | "api_key"
+      | "google_oidc"
+      | "oidc"
+      | "oauth2_introspection"
+      | "http_basic"
+      | "mtls";
+    /** @description OIDC/OAuth/basic/mTLS provider details for one channel. */
+    ChannelAuthProviderConfig:
+      | {
+          allowed_domains?: string[];
+          client_id: string;
+          /** @enum {string} */
+          type: "google_oidc";
+        }
+      | {
+          issuer: string;
+          jwks_url?: string | null;
+          /** @enum {string} */
+          type: "oidc";
+        }
+      | {
+          client_id?: string | null;
+          client_secret?: string | null;
+          client_secret_configured?: boolean;
+          introspection_url: string;
+          /** @enum {string} */
+          type: "oauth2_introspection";
+        }
+      | {
+          password?: string | null;
+          password_configured?: boolean;
+          password_hash?: string | null;
+          /** @enum {string} */
+          type: "http_basic";
+          username: string;
+        }
+      | {
+          allowed_values?: string[];
+          header_name: string;
+          /**
+           * @description Shared secret the trusted proxy includes in `proxy_secret_header`.
+           *     Write-only: redacted in GET responses. See TM-AUTH-021.
+           */
+          proxy_secret?: string | null;
+          proxy_secret_configured?: boolean;
+          /**
+           * @description Header the trusted reverse proxy uses to prove its identity.
+           *     Required. Configs without this field fail closed at verification time.
+           */
+          proxy_secret_header?: string | null;
+          /** @enum {string} */
+          type: "mtls";
+        };
+    /** @description Claim and credential requirements common to channel auth providers. */
+    ChannelAuthRequirements: {
+      /** @description JWT `aud` values to require on inbound tokens. Empty list disables audience checking. */
+      audiences?: string[];
+      /** @description Arbitrary claim equality predicates. Empty map disables claim filtering. */
+      claims?: {
+        [key: string]: unknown;
+      };
+      /** @description Allowlist of email/identifier domains. Empty list disables domain filtering. */
+      domains?: string[];
+      /** @description Allowlist of group memberships (from `groups` claim). Empty list disables group filtering. */
+      groups?: string[];
+      /** @description OAuth scope strings to require (space-delimited per scope entry). Empty list disables scope checking. */
+      scopes?: string[];
+      /** @description Allowlist of `sub` claim values. Empty list disables subject filtering. */
+      subjects?: string[];
+    };
+    /**
+     * @description Per-channel lifecycle (EVE-1007).
+     *
+     *     This is the authority for whether an exposure accepts traffic. It replaced
+     *     the two-dimensional `App.status × AppChannel.enabled` matrix, which could
+     *     express "published App, disabled channel" and forced publishing a whole App —
+     *     and therefore every sibling channel on it — to make one channel reachable.
+     *
+     *     Liveness is not this value alone; see `channel_is_live` in
+     *     `crates/server/src/api/app_ingress.rs` for the agent-level terms, which are
+     *     folded in at resolution time rather than stored here.
+     * @example live
+     * @enum {string}
+     */
+    ChannelStatus: "draft" | "live" | "disabled";
     /**
      * @description Supported channel types for app distribution.
      * @example webhook
@@ -6355,6 +6370,15 @@ export interface components {
        */
       output: number;
     };
+    /** @description Request to create an ingress channel owned by an Agent. */
+    CreateAgentChannelRequest: {
+      /** @description Transport-specific channel configuration. */
+      channel_config?: unknown;
+      /** @description Transport used by the channel. */
+      channel_type: components["schemas"]["ChannelType"];
+      /** @description Whether the channel can accept ingress traffic. */
+      enabled?: boolean;
+    };
     /** @description Declare a credential requirement for an agent's attached MCP tool. */
     CreateAgentCredentialBinding: {
       /**
@@ -6387,15 +6411,6 @@ export interface components {
        * @example visti_send
        */
       tool_name: string;
-    };
-    /** @description Request to create an ingress endpoint owned by an Agent. */
-    CreateAgentEndpointRequest: {
-      /** @description Transport-specific endpoint configuration. */
-      channel_config?: unknown;
-      /** @description Transport used by the endpoint. */
-      channel_type: components["schemas"]["ChannelType"];
-      /** @description Whether the endpoint can accept ingress traffic. */
-      enabled?: boolean;
     };
     /** @description Request to create a new agent */
     CreateAgentRequest: {
@@ -6538,7 +6553,7 @@ export interface components {
     };
     /** @description Request to create a trigger on an agent. */
     CreateAgentTriggerRequest: {
-      /** @description Shared endpoint auth is not supported by webhook triggers. */
+      /** @description Shared channel auth is not supported by webhook triggers. */
       auth?: unknown;
       /**
        * @description Cron expression that drives the durable schedule. Accepts 5-field
@@ -7737,21 +7752,6 @@ export interface components {
       /** @description Session status after the decision. */
       status: string;
     };
-    /**
-     * @description Per-endpoint lifecycle (EVE-1007).
-     *
-     *     This is the authority for whether an exposure accepts traffic. It replaced
-     *     the two-dimensional `App.status × AppChannel.enabled` matrix, which could
-     *     express "published App, disabled channel" and forced publishing a whole App —
-     *     and therefore every sibling endpoint on it — to make one endpoint reachable.
-     *
-     *     Liveness is not this value alone; see `endpoint_is_live` in
-     *     `crates/server/src/api/app_ingress.rs` for the agent-level terms, which are
-     *     folded in at resolution time rather than stored here.
-     * @example live
-     * @enum {string}
-     */
-    EndpointStatus: "draft" | "live" | "disabled";
     /** @description Options for enqueuing a standalone task */
     EnqueueTaskOptions: {
       /**
@@ -9843,14 +9843,14 @@ export interface components {
          */
         display_name?: string | null;
         /**
-         * @description Whether any endpoint on this agent is currently live. Derived from the
-         *     endpoint rows on read and never stored: a stored flag would be a second
-         *     writer for state the endpoints already own.
+         * @description Whether any channel on this agent is currently live. Derived from the
+         *     channel rows on read and never stored: a stored flag would be a second
+         *     writer for state the channels already own.
          */
         exposed?: boolean;
         /**
-         * @description Incident switch: when true, no endpoint on this agent accepts traffic
-         *     (EVE-1007). Distinct from archiving — it leaves per-endpoint status
+         * @description Incident switch: when true, no channel on this agent accepts traffic
+         *     (EVE-1007). Distinct from archiving — it leaves per-channel status
          *     untouched so clearing it restores exactly the previously live set.
          */
         exposures_suspended?: boolean;
@@ -17245,8 +17245,8 @@ export interface components {
       /** @description The tool name, if known. */
       tool_name?: string | null;
     };
-    /** @description Result of running an Agent schedule endpoint immediately. */
-    TriggerAgentEndpointOutput: {
+    /** @description Result of running an Agent schedule channel immediately. */
+    TriggerAgentChannelOutput: {
       /** @description Whether the invocation created a new session. */
       created_session: boolean;
       /** @description Session started or reused by the invocation. */
@@ -17419,11 +17419,11 @@ export interface components {
      * @enum {string}
      */
     TurnWaitStatus: "completed" | "failed" | "timeout";
-    /** @description Request to update an ingress endpoint owned by an Agent. */
-    UpdateAgentEndpointRequest: {
-      /** @description Replacement transport-specific endpoint configuration. */
+    /** @description Request to update an ingress channel owned by an Agent. */
+    UpdateAgentChannelRequest: {
+      /** @description Replacement transport-specific channel configuration. */
       channel_config?: unknown;
-      /** @description Whether the endpoint can accept ingress traffic. */
+      /** @description Whether the channel can accept ingress traffic. */
       enabled?: boolean | null;
     };
     /** @description Request to update an agent. Only provided fields will be updated. */
@@ -17557,7 +17557,7 @@ export interface components {
      *     preserved from the stored config.
      */
     UpdateAgentTriggerRequest: {
-      /** @description Shared endpoint auth is not supported by webhook triggers. */
+      /** @description Shared channel auth is not supported by webhook triggers. */
       auth?: unknown;
       /** @description Replacement cron expression. */
       cron_expression?: string | null;
@@ -18590,14 +18590,14 @@ export interface components {
        */
       display_name?: string | null;
       /**
-       * @description Whether any endpoint on this agent is currently live. Derived from the
-       *     endpoint rows on read and never stored: a stored flag would be a second
-       *     writer for state the endpoints already own.
+       * @description Whether any channel on this agent is currently live. Derived from the
+       *     channel rows on read and never stored: a stored flag would be a second
+       *     writer for state the channels already own.
        */
       exposed?: boolean;
       /**
-       * @description Incident switch: when true, no endpoint on this agent accepts traffic
-       *     (EVE-1007). Distinct from archiving — it leaves per-endpoint status
+       * @description Incident switch: when true, no channel on this agent accepts traffic
+       *     (EVE-1007). Distinct from archiving — it leaves per-channel status
        *     untouched so clearing it restores exactly the previously live set.
        */
       exposures_suspended?: boolean;
@@ -20825,6 +20825,307 @@ export interface operations {
       };
     };
   };
+  list_agent_channels: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent channels */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"][];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  create_agent_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAgentChannelRequest"];
+      };
+    };
+    responses: {
+      /** @description Channel created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Invalid channel */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_agent_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent channel */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  delete_agent_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Channel deleted */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_agent_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateAgentChannelRequest"];
+      };
+    };
+    responses: {
+      /** @description Channel updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Invalid channel */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  publish_agent_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Channel published */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  trigger_agent_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Channel triggered */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TriggerAgentChannelOutput"];
+        };
+      };
+      /** @description Channel cannot run */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  unpublish_agent_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID or name */
+        agent_id: string;
+        /** @description Channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Channel unpublished */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AppChannel"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   copy_agent: {
     parameters: {
       query?: never;
@@ -20976,307 +21277,6 @@ export interface operations {
         content?: never;
       };
       /** @description Credential binding not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  list_agent_endpoints: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID or name */
-        agent_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Agent endpoints */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppChannel"][];
-        };
-      };
-      /** @description Agent not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  create_agent_endpoint: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID or name */
-        agent_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateAgentEndpointRequest"];
-      };
-    };
-    responses: {
-      /** @description Endpoint created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppChannel"];
-        };
-      };
-      /** @description Invalid endpoint */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_agent_endpoint: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID or name */
-        agent_id: string;
-        /** @description Endpoint ID */
-        endpoint_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Agent endpoint */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppChannel"];
-        };
-      };
-      /** @description Endpoint not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  delete_agent_endpoint: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID or name */
-        agent_id: string;
-        /** @description Endpoint ID */
-        endpoint_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Endpoint deleted */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Endpoint not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  update_agent_endpoint: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID or name */
-        agent_id: string;
-        /** @description Endpoint ID */
-        endpoint_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UpdateAgentEndpointRequest"];
-      };
-    };
-    responses: {
-      /** @description Endpoint updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppChannel"];
-        };
-      };
-      /** @description Invalid endpoint */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Endpoint not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  publish_agent_endpoint: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID or name */
-        agent_id: string;
-        /** @description Endpoint ID */
-        endpoint_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Endpoint published */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppChannel"];
-        };
-      };
-      /** @description Endpoint not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  trigger_agent_endpoint: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID or name */
-        agent_id: string;
-        /** @description Endpoint ID */
-        endpoint_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Endpoint triggered */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["TriggerAgentEndpointOutput"];
-        };
-      };
-      /** @description Endpoint cannot run */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Endpoint not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  unpublish_agent_endpoint: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Agent ID or name */
-        agent_id: string;
-        /** @description Endpoint ID */
-        endpoint_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Endpoint unpublished */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AppChannel"];
-        };
-      };
-      /** @description Endpoint not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -22644,7 +22644,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Markdown handshake describing the FCP endpoint and how to authenticate. Always `text/markdown`. */
+      /** @description Markdown handshake describing the FCP channel and how to authenticate. Always `text/markdown`. */
       200: {
         headers: {
           [name: string]: unknown;
@@ -22653,7 +22653,7 @@ export interface operations {
           "text/markdown": unknown;
         };
       };
-      /** @description No FCP endpoint at this URL. Single sanitized body covers unknown apps, unpublished apps, apps without an FCP channel, and disabled FCP channels — operator state is never disclosed. */
+      /** @description No FCP channel at this URL. Single sanitized body covers unknown apps, unpublished apps, apps without an FCP channel, and disabled FCP channels — operator state is never disclosed. */
       404: {
         headers: {
           [name: string]: unknown;
@@ -24502,7 +24502,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description A2A endpoint channel ID */
+        /** @description A2A channel ID */
         channel_id: string;
       };
       cookie?: never;
@@ -24527,7 +24527,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid channel credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -24536,7 +24536,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Endpoint not found, app not published, or channel disabled */
+      /** @description Channel not found, app not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;
@@ -24561,7 +24561,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description A2A endpoint channel ID */
+        /** @description A2A channel ID */
         channel_id: string;
       };
       cookie?: never;
@@ -24575,7 +24575,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Endpoint not found, app not published, or channel disabled */
+      /** @description Channel not found, app not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;
@@ -24591,7 +24591,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description FCP endpoint channel ID */
+        /** @description FCP channel ID */
         channel_id: string;
       };
       cookie?: never;
@@ -24630,7 +24630,7 @@ export interface operations {
           "text/markdown": unknown;
         };
       };
-      /** @description Endpoint not found, app not published, or channel disabled */
+      /** @description Channel not found, app not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;
@@ -24702,7 +24702,7 @@ export interface operations {
           "application/json": components["schemas"]["SessionRef"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid channel credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -24720,7 +24720,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Endpoint not found */
+      /** @description Channel not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -24763,7 +24763,7 @@ export interface operations {
           "application/json": components["schemas"]["SessionStatus"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid channel credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -24781,7 +24781,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Endpoint or session not found, or session not owned by this channel */
+      /** @description Channel or session not found, or session not owned by this channel */
       404: {
         headers: {
           [name: string]: unknown;
@@ -24824,7 +24824,7 @@ export interface operations {
           "application/json": components["schemas"]["SessionRef"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid channel credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -24842,7 +24842,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Endpoint or session not found, or session not owned by this channel */
+      /** @description Channel or session not found, or session not owned by this channel */
       404: {
         headers: {
           [name: string]: unknown;
@@ -24889,7 +24889,7 @@ export interface operations {
           "application/json": components["schemas"]["SessionRef"];
         };
       };
-      /** @description Missing or invalid endpoint credentials */
+      /** @description Missing or invalid channel credentials */
       401: {
         headers: {
           [name: string]: unknown;
@@ -24907,7 +24907,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Endpoint or session not found, or session not owned by this channel */
+      /** @description Channel or session not found, or session not owned by this channel */
       404: {
         headers: {
           [name: string]: unknown;
@@ -24932,7 +24932,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Webhook endpoint channel ID */
+        /** @description Webhook channel ID */
         channel_id: string;
       };
       cookie?: never;
@@ -24961,7 +24961,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Endpoint not found, app not published, or channel disabled */
+      /** @description Channel not found, app not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;

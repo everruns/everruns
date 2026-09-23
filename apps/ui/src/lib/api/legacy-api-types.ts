@@ -2,7 +2,7 @@
 
 // Enums that stay generated (closed sets the server owns) while the entity they
 // annotate is still hand-maintained here.
-import type { EndpointStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
+import type { ChannelStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
 
 // Agent Identity types
 export type AgentIdentityStatus = "active" | "archived" | "deleted";
@@ -793,7 +793,7 @@ export interface AppChannel {
    * retained for the App API's existing shape. Typed from the generated schema
    * so the two cannot drift.
    */
-  status?: EndpointStatus;
+  status?: ChannelStatus;
   next_run_at?: string | null;
   last_invoked_at?: string | null;
   created_at: string;

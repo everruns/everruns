@@ -644,6 +644,436 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/channels": {
+      "get": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "List ingress channels owned by an Agent.",
+        "operationId": "list_agent_channels",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent channels",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppChannel"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "Create an ingress channel owned by an Agent.",
+        "operationId": "create_agent_channel",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentChannelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Channel created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/channels/{channel_id}": {
+      "get": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "Get one ingress channel owned by an Agent.",
+        "operationId": "get_agent_channel",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "Channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "Delete an ingress channel owned by an Agent.",
+        "operationId": "delete_agent_channel",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "Channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Channel deleted"
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "Update an ingress channel owned by an Agent.",
+        "operationId": "update_agent_channel",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "Channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentChannelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Channel updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/channels/{channel_id}/publish": {
+      "post": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "Publish an Agent channel so it can accept ingress traffic.",
+        "operationId": "publish_agent_channel",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "Channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Channel published",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/channels/{channel_id}/trigger": {
+      "post": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "Run a published Agent schedule channel now.",
+        "operationId": "trigger_agent_channel",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "Channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Channel triggered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerAgentChannelOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Channel cannot run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/channels/{channel_id}/unpublish": {
+      "post": {
+        "tags": [
+          "agent-channels"
+        ],
+        "description": "Unpublish an Agent channel so it no longer accepts ingress traffic.",
+        "operationId": "unpublish_agent_channel",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "Channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Channel unpublished",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppChannel"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/copy": {
       "post": {
         "tags": [
@@ -874,436 +1304,6 @@
         }
       }
     },
-    "/v1/agents/{agent_id}/endpoints": {
-      "get": {
-        "tags": [
-          "agent-endpoints"
-        ],
-        "description": "List ingress endpoints owned by an Agent.",
-        "operationId": "list_agent_endpoints",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Agent endpoints",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/AppChannel"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "agent-endpoints"
-        ],
-        "description": "Create an ingress endpoint owned by an Agent.",
-        "operationId": "create_agent_endpoint",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateAgentEndpointRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Endpoint created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppChannel"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid endpoint",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/endpoints/{endpoint_id}": {
-      "get": {
-        "tags": [
-          "agent-endpoints"
-        ],
-        "description": "Get one ingress endpoint owned by an Agent.",
-        "operationId": "get_agent_endpoint",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "endpoint_id",
-            "in": "path",
-            "description": "Endpoint ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Agent endpoint",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppChannel"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Endpoint not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "agent-endpoints"
-        ],
-        "description": "Delete an ingress endpoint owned by an Agent.",
-        "operationId": "delete_agent_endpoint",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "endpoint_id",
-            "in": "path",
-            "description": "Endpoint ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Endpoint deleted"
-          },
-          "404": {
-            "description": "Endpoint not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "agent-endpoints"
-        ],
-        "description": "Update an ingress endpoint owned by an Agent.",
-        "operationId": "update_agent_endpoint",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "endpoint_id",
-            "in": "path",
-            "description": "Endpoint ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateAgentEndpointRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Endpoint updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppChannel"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid endpoint",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Endpoint not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish": {
-      "post": {
-        "tags": [
-          "agent-endpoints"
-        ],
-        "description": "Publish an Agent endpoint so it can accept ingress traffic.",
-        "operationId": "publish_agent_endpoint",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "endpoint_id",
-            "in": "path",
-            "description": "Endpoint ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Endpoint published",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppChannel"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Endpoint not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger": {
-      "post": {
-        "tags": [
-          "agent-endpoints"
-        ],
-        "description": "Run a published Agent schedule endpoint now.",
-        "operationId": "trigger_agent_endpoint",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "endpoint_id",
-            "in": "path",
-            "description": "Endpoint ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Endpoint triggered",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TriggerAgentEndpointOutput"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Endpoint cannot run",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Endpoint not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish": {
-      "post": {
-        "tags": [
-          "agent-endpoints"
-        ],
-        "description": "Unpublish an Agent endpoint so it no longer accepts ingress traffic.",
-        "operationId": "unpublish_agent_endpoint",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "endpoint_id",
-            "in": "path",
-            "description": "Endpoint ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Endpoint unpublished",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppChannel"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Endpoint not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/agents/{agent_id}/export": {
       "get": {
         "tags": [
@@ -1346,7 +1346,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/agents/{agent_id}/exposures/resume - Let live endpoints serve again",
+        "summary": "POST /v1/agents/{agent_id}/exposures/resume - Let live channels serve again",
         "operationId": "resume_agent_exposures",
         "parameters": [
           {
@@ -1388,7 +1388,7 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline",
+        "summary": "POST /v1/agents/{agent_id}/exposures/suspend - Take every channel offline",
         "operationId": "suspend_agent_exposures",
         "parameters": [
           {
@@ -3175,13 +3175,13 @@
         ],
         "responses": {
           "200": {
-            "description": "Markdown handshake describing the FCP endpoint and how to authenticate. Always `text/markdown`.",
+            "description": "Markdown handshake describing the FCP channel and how to authenticate. Always `text/markdown`.",
             "content": {
               "text/markdown": {}
             }
           },
           "404": {
-            "description": "No FCP endpoint at this URL. Single sanitized body covers unknown apps, unpublished apps, apps without an FCP channel, and disabled FCP channels — operator state is never disclosed.",
+            "description": "No FCP channel at this URL. Single sanitized body covers unknown apps, unpublished apps, apps without an FCP channel, and disabled FCP channels — operator state is never disclosed.",
             "content": {
               "text/markdown": {}
             }
@@ -5508,13 +5508,13 @@
         "tags": [
           "apps"
         ],
-        "description": "Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.",
+        "description": "Invoke a published A2A channel with JSON-RPC 2.0. Authentication follows the channel configuration.",
         "operationId": "invoke_a2a_endpoint",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "A2A endpoint channel ID",
+            "description": "A2A channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -5537,7 +5537,7 @@
             "description": "Invalid JSON-RPC request"
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid channel credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -5547,7 +5547,7 @@
             }
           },
           "404": {
-            "description": "Endpoint not found, app not published, or channel disabled",
+            "description": "Channel not found, app not published, or channel disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -5574,13 +5574,13 @@
         "tags": [
           "apps"
         ],
-        "description": "Get the public Agent Card for a published A2A endpoint.",
+        "description": "Get the public Agent Card for a published A2A channel.",
         "operationId": "agent_card_endpoint",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "A2A endpoint channel ID",
+            "description": "A2A channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -5592,7 +5592,7 @@
             "description": "Agent Card JSON"
           },
           "404": {
-            "description": "Endpoint not found, app not published, or channel disabled",
+            "description": "Channel not found, app not published, or channel disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -5609,13 +5609,13 @@
         "tags": [
           "apps"
         ],
-        "description": "Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token.",
+        "description": "Send a message to a published FCP channel. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the channel requires a token.",
         "operationId": "message_endpoint",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "FCP endpoint channel ID",
+            "description": "FCP channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -5653,7 +5653,7 @@
             }
           },
           "404": {
-            "description": "Endpoint not found, app not published, or channel disabled",
+            "description": "Channel not found, app not published, or channel disabled",
             "content": {
               "text/markdown": {}
             }
@@ -5725,7 +5725,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid channel credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -5745,7 +5745,7 @@
             }
           },
           "404": {
-            "description": "Endpoint not found",
+            "description": "Channel not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -5806,7 +5806,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid channel credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -5826,7 +5826,7 @@
             }
           },
           "404": {
-            "description": "Endpoint or session not found, or session not owned by this channel",
+            "description": "Channel or session not found, or session not owned by this channel",
             "content": {
               "application/json": {
                 "schema": {
@@ -5887,7 +5887,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid channel credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -5907,7 +5907,7 @@
             }
           },
           "404": {
-            "description": "Endpoint or session not found, or session not owned by this channel",
+            "description": "Channel or session not found, or session not owned by this channel",
             "content": {
               "application/json": {
                 "schema": {
@@ -5978,7 +5978,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid endpoint credentials",
+            "description": "Missing or invalid channel credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -5998,7 +5998,7 @@
             }
           },
           "404": {
-            "description": "Endpoint or session not found, or session not owned by this channel",
+            "description": "Channel or session not found, or session not owned by this channel",
             "content": {
               "application/json": {
                 "schema": {
@@ -6025,13 +6025,13 @@
         "tags": [
           "apps"
         ],
-        "description": "Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.",
+        "description": "Invoke a published webhook channel. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.",
         "operationId": "invoke_webhook_endpoint",
         "parameters": [
           {
             "name": "channel_id",
             "in": "path",
-            "description": "Webhook endpoint channel ID",
+            "description": "Webhook channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -6070,7 +6070,7 @@
             }
           },
           "404": {
-            "description": "Endpoint not found, app not published, or channel disabled",
+            "description": "Channel not found, app not published, or channel disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -17381,11 +17381,11 @@
           },
           "exposed": {
             "type": "boolean",
-            "description": "Whether any endpoint on this agent is currently live. Derived from the\nendpoint rows on read and never stored: a stored flag would be a second\nwriter for state the endpoints already own."
+            "description": "Whether any channel on this agent is currently live. Derived from the\nchannel rows on read and never stored: a stored flag would be a second\nwriter for state the channels already own."
           },
           "exposures_suspended": {
             "type": "boolean",
-            "description": "Incident switch: when true, no endpoint on this agent accepts traffic\n(EVE-1007). Distinct from archiving — it leaves per-endpoint status\nuntouched so clearing it restores exactly the previously live set."
+            "description": "Incident switch: when true, no channel on this agent accepts traffic\n(EVE-1007). Distinct from archiving — it leaves per-channel status\nuntouched so clearing it restores exactly the previously live set."
           },
           "forked_from_agent_id": {
             "type": [
@@ -18508,8 +18508,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/AppEndpointAuthConfig",
-                "description": "Authentication policy for this endpoint."
+                "$ref": "#/components/schemas/ChannelAuthConfig",
+                "description": "Authentication policy for this channel."
               }
             ]
           },
@@ -18535,272 +18535,13 @@
             "example": "appchan_01933b5a000070008000000000000001"
           },
           "status": {
-            "$ref": "#/components/schemas/EndpointStatus",
-            "description": "Per-endpoint lifecycle. Authoritative for ingress (EVE-1007); `enabled`\nis retained for the App API's existing shape."
+            "$ref": "#/components/schemas/ChannelStatus",
+            "description": "Per-channel lifecycle. Authoritative for ingress (EVE-1007); `enabled`\nis retained for the App API's existing shape."
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when this channel was last updated."
-          }
-        }
-      },
-      "AppEndpointAuthConfig": {
-        "type": "object",
-        "description": "Authentication config for one App endpoint/channel.",
-        "required": [
-          "mode"
-        ],
-        "properties": {
-          "mode": {
-            "$ref": "#/components/schemas/AppEndpointAuthMode"
-          },
-          "provider": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AppEndpointAuthProviderConfig"
-              }
-            ]
-          },
-          "requirements": {
-            "$ref": "#/components/schemas/AppEndpointAuthRequirements"
-          }
-        },
-        "example": {
-          "mode": "api_key",
-          "requirements": {
-            "audiences": [
-              "everruns-api"
-            ],
-            "scopes": [
-              "app:invoke"
-            ]
-          }
-        }
-      },
-      "AppEndpointAuthMode": {
-        "type": "string",
-        "description": "App-published endpoint authentication mode.\n\nStored on `AppChannel.auth` so users can protect one endpoint without first\ncreating org-level identity-provider state.",
-        "enum": [
-          "anonymous",
-          "shared_secret",
-          "api_key",
-          "google_oidc",
-          "oidc",
-          "oauth2_introspection",
-          "http_basic",
-          "mtls"
-        ]
-      },
-      "AppEndpointAuthProviderConfig": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "client_id",
-              "type"
-            ],
-            "properties": {
-              "allowed_domains": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "client_id": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "google_oidc"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "issuer",
-              "type"
-            ],
-            "properties": {
-              "issuer": {
-                "type": "string"
-              },
-              "jwks_url": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "oidc"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "introspection_url",
-              "type"
-            ],
-            "properties": {
-              "client_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "client_secret": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "client_secret_configured": {
-                "type": "boolean"
-              },
-              "introspection_url": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "oauth2_introspection"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "username",
-              "type"
-            ],
-            "properties": {
-              "password": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "password_configured": {
-                "type": "boolean"
-              },
-              "password_hash": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "http_basic"
-                ]
-              },
-              "username": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "header_name",
-              "type"
-            ],
-            "properties": {
-              "allowed_values": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "header_name": {
-                "type": "string"
-              },
-              "proxy_secret": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Shared secret the trusted proxy includes in `proxy_secret_header`.\nWrite-only: redacted in GET responses. See TM-AUTH-021."
-              },
-              "proxy_secret_configured": {
-                "type": "boolean"
-              },
-              "proxy_secret_header": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Header the trusted reverse proxy uses to prove its identity.\nRequired. Configs without this field fail closed at verification time."
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "mtls"
-                ]
-              }
-            }
-          }
-        ],
-        "description": "OIDC/OAuth/basic/mTLS provider details for one App endpoint."
-      },
-      "AppEndpointAuthRequirements": {
-        "type": "object",
-        "description": "Claim and credential requirements common to App endpoint auth providers.",
-        "properties": {
-          "audiences": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "JWT `aud` values to require on inbound tokens. Empty list disables audience checking."
-          },
-          "claims": {
-            "type": "object",
-            "description": "Arbitrary claim equality predicates. Empty map disables claim filtering.",
-            "additionalProperties": {},
-            "propertyNames": {
-              "type": "string"
-            }
-          },
-          "domains": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Allowlist of email/identifier domains. Empty list disables domain filtering."
-          },
-          "groups": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Allowlist of group memberships (from `groups` claim). Empty list disables group filtering."
-          },
-          "scopes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "OAuth scope strings to require (space-delimited per scope entry). Empty list disables scope checking."
-          },
-          "subjects": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Allowlist of `sub` claim values. Empty list disables subject filtering."
           }
         }
       },
@@ -19242,7 +18983,7 @@
           "organization",
           "app",
           "app_channel",
-          "agent_endpoint"
+          "agent_channel"
         ]
       },
       "BuiltinTool": {
@@ -19587,6 +19328,275 @@
             "description": "Discriminator for the kind of usage being recorded (e.g. `tool_call`, `subagent_spawn`)."
           }
         }
+      },
+      "ChannelAuthConfig": {
+        "type": "object",
+        "description": "Authentication config for one channel.",
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ChannelAuthMode"
+          },
+          "provider": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChannelAuthProviderConfig"
+              }
+            ]
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/ChannelAuthRequirements"
+          }
+        },
+        "example": {
+          "mode": "api_key",
+          "requirements": {
+            "audiences": [
+              "everruns-api"
+            ],
+            "scopes": [
+              "app:invoke"
+            ]
+          }
+        }
+      },
+      "ChannelAuthMode": {
+        "type": "string",
+        "description": "Channel authentication mode.\n\nStored on `AppChannel.auth` so users can protect one channel without first\ncreating org-level identity-provider state.",
+        "enum": [
+          "anonymous",
+          "shared_secret",
+          "api_key",
+          "google_oidc",
+          "oidc",
+          "oauth2_introspection",
+          "http_basic",
+          "mtls"
+        ]
+      },
+      "ChannelAuthProviderConfig": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "client_id",
+              "type"
+            ],
+            "properties": {
+              "allowed_domains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "client_id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "google_oidc"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "issuer",
+              "type"
+            ],
+            "properties": {
+              "issuer": {
+                "type": "string"
+              },
+              "jwks_url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "oidc"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "introspection_url",
+              "type"
+            ],
+            "properties": {
+              "client_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "client_secret": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "client_secret_configured": {
+                "type": "boolean"
+              },
+              "introspection_url": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "oauth2_introspection"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "username",
+              "type"
+            ],
+            "properties": {
+              "password": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "password_configured": {
+                "type": "boolean"
+              },
+              "password_hash": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "http_basic"
+                ]
+              },
+              "username": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "header_name",
+              "type"
+            ],
+            "properties": {
+              "allowed_values": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "header_name": {
+                "type": "string"
+              },
+              "proxy_secret": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Shared secret the trusted proxy includes in `proxy_secret_header`.\nWrite-only: redacted in GET responses. See TM-AUTH-021."
+              },
+              "proxy_secret_configured": {
+                "type": "boolean"
+              },
+              "proxy_secret_header": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Header the trusted reverse proxy uses to prove its identity.\nRequired. Configs without this field fail closed at verification time."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "mtls"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "OIDC/OAuth/basic/mTLS provider details for one channel."
+      },
+      "ChannelAuthRequirements": {
+        "type": "object",
+        "description": "Claim and credential requirements common to channel auth providers.",
+        "properties": {
+          "audiences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "JWT `aud` values to require on inbound tokens. Empty list disables audience checking."
+          },
+          "claims": {
+            "type": "object",
+            "description": "Arbitrary claim equality predicates. Empty map disables claim filtering.",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowlist of email/identifier domains. Empty list disables domain filtering."
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowlist of group memberships (from `groups` claim). Empty list disables group filtering."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "OAuth scope strings to require (space-delimited per scope entry). Empty list disables scope checking."
+          },
+          "subjects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowlist of `sub` claim values. Empty list disables subject filtering."
+          }
+        }
+      },
+      "ChannelStatus": {
+        "type": "string",
+        "description": "Per-channel lifecycle (EVE-1007).\n\nThis is the authority for whether an exposure accepts traffic. It replaced\nthe two-dimensional `App.status × AppChannel.enabled` matrix, which could\nexpress \"published App, disabled channel\" and forced publishing a whole App —\nand therefore every sibling channel on it — to make one channel reachable.\n\nLiveness is not this value alone; see `channel_is_live` in\n`crates/server/src/api/app_ingress.rs` for the agent-level terms, which are\nfolded in at resolution time rather than stored here.",
+        "enum": [
+          "draft",
+          "live",
+          "disabled"
+        ],
+        "example": "live"
       },
       "ChannelType": {
         "type": "string",
@@ -20814,6 +20824,26 @@
           }
         }
       },
+      "CreateAgentChannelRequest": {
+        "type": "object",
+        "description": "Request to create an ingress channel owned by an Agent.",
+        "required": [
+          "channel_type"
+        ],
+        "properties": {
+          "channel_config": {
+            "description": "Transport-specific channel configuration."
+          },
+          "channel_type": {
+            "$ref": "#/components/schemas/ChannelType",
+            "description": "Transport used by the channel."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the channel can accept ingress traffic."
+          }
+        }
+      },
       "CreateAgentCredentialBinding": {
         "type": "object",
         "description": "Declare a credential requirement for an agent's attached MCP tool.",
@@ -20856,26 +20886,6 @@
             "type": "string",
             "description": "MCP tool whose outbound call requires the credential.",
             "example": "visti_send"
-          }
-        }
-      },
-      "CreateAgentEndpointRequest": {
-        "type": "object",
-        "description": "Request to create an ingress endpoint owned by an Agent.",
-        "required": [
-          "channel_type"
-        ],
-        "properties": {
-          "channel_config": {
-            "description": "Transport-specific endpoint configuration."
-          },
-          "channel_type": {
-            "$ref": "#/components/schemas/ChannelType",
-            "description": "Transport used by the endpoint."
-          },
-          "enabled": {
-            "type": "boolean",
-            "description": "Whether the endpoint can accept ingress traffic."
           }
         }
       },
@@ -21076,7 +21086,7 @@
         ],
         "properties": {
           "auth": {
-            "description": "Shared endpoint auth is not supported by webhook triggers."
+            "description": "Shared channel auth is not supported by webhook triggers."
           },
           "cron_expression": {
             "type": [
@@ -23072,16 +23082,6 @@
             "description": "Session status after the decision."
           }
         }
-      },
-      "EndpointStatus": {
-        "type": "string",
-        "description": "Per-endpoint lifecycle (EVE-1007).\n\nThis is the authority for whether an exposure accepts traffic. It replaced\nthe two-dimensional `App.status × AppChannel.enabled` matrix, which could\nexpress \"published App, disabled channel\" and forced publishing a whole App —\nand therefore every sibling endpoint on it — to make one endpoint reachable.\n\nLiveness is not this value alone; see `endpoint_is_live` in\n`crates/server/src/api/app_ingress.rs` for the agent-level terms, which are\nfolded in at resolution time rather than stored here.",
-        "enum": [
-          "draft",
-          "live",
-          "disabled"
-        ],
-        "example": "live"
       },
       "EnqueueTaskOptions": {
         "type": "object",
@@ -26896,11 +26896,11 @@
                 },
                 "exposed": {
                   "type": "boolean",
-                  "description": "Whether any endpoint on this agent is currently live. Derived from the\nendpoint rows on read and never stored: a stored flag would be a second\nwriter for state the endpoints already own."
+                  "description": "Whether any channel on this agent is currently live. Derived from the\nchannel rows on read and never stored: a stored flag would be a second\nwriter for state the channels already own."
                 },
                 "exposures_suspended": {
                   "type": "boolean",
-                  "description": "Incident switch: when true, no endpoint on this agent accepts traffic\n(EVE-1007). Distinct from archiving — it leaves per-endpoint status\nuntouched so clearing it restores exactly the previously live set."
+                  "description": "Incident switch: when true, no channel on this agent accepts traffic\n(EVE-1007). Distinct from archiving — it leaves per-channel status\nuntouched so clearing it restores exactly the previously live set."
                 },
                 "forked_from_agent_id": {
                   "type": [
@@ -39723,9 +39723,9 @@
           }
         }
       },
-      "TriggerAgentEndpointOutput": {
+      "TriggerAgentChannelOutput": {
         "type": "object",
-        "description": "Result of running an Agent schedule endpoint immediately.",
+        "description": "Result of running an Agent schedule channel immediately.",
         "required": [
           "session_id",
           "created_session"
@@ -40079,19 +40079,19 @@
         ],
         "example": "completed"
       },
-      "UpdateAgentEndpointRequest": {
+      "UpdateAgentChannelRequest": {
         "type": "object",
-        "description": "Request to update an ingress endpoint owned by an Agent.",
+        "description": "Request to update an ingress channel owned by an Agent.",
         "properties": {
           "channel_config": {
-            "description": "Replacement transport-specific endpoint configuration."
+            "description": "Replacement transport-specific channel configuration."
           },
           "enabled": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Whether the endpoint can accept ingress traffic."
+            "description": "Whether the channel can accept ingress traffic."
           }
         }
       },
@@ -40315,7 +40315,7 @@
         "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
         "properties": {
           "auth": {
-            "description": "Shared endpoint auth is not supported by webhook triggers."
+            "description": "Shared channel auth is not supported by webhook triggers."
           },
           "cron_expression": {
             "type": [
@@ -42330,11 +42330,11 @@
               },
               "exposed": {
                 "type": "boolean",
-                "description": "Whether any endpoint on this agent is currently live. Derived from the\nendpoint rows on read and never stored: a stored flag would be a second\nwriter for state the endpoints already own."
+                "description": "Whether any channel on this agent is currently live. Derived from the\nchannel rows on read and never stored: a stored flag would be a second\nwriter for state the channels already own."
               },
               "exposures_suspended": {
                 "type": "boolean",
-                "description": "Incident switch: when true, no endpoint on this agent accepts traffic\n(EVE-1007). Distinct from archiving — it leaves per-endpoint status\nuntouched so clearing it restores exactly the previously live set."
+                "description": "Incident switch: when true, no channel on this agent accepts traffic\n(EVE-1007). Distinct from archiving — it leaves per-channel status\nuntouched so clearing it restores exactly the previously live set."
               },
               "forked_from_agent_id": {
                 "type": [

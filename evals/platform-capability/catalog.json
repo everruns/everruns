@@ -1792,6 +1792,72 @@
     "read_only": false
   },
   {
+    "category": "agent_channels",
+    "cli": null,
+    "description": "Create an ingress channel for an agent.",
+    "input_schema": {
+      "$defs": {
+        "ChannelType": {
+          "description": "Supported channel types for app distribution.",
+          "enum": [
+            "slack",
+            "ag_ui",
+            "schedule",
+            "webhook",
+            "a2a",
+            "fcp",
+            "api_endpoint",
+            "public_chat"
+          ],
+          "example": "webhook",
+          "type": "string"
+        },
+        "CreateAgentChannelRequest": {
+          "description": "Request to create an ingress channel owned by an Agent.",
+          "properties": {
+            "channel_config": {
+              "description": "Transport-specific channel configuration."
+            },
+            "channel_type": {
+              "$ref": "#/$defs/ChannelType",
+              "description": "Transport used by the channel."
+            },
+            "enabled": {
+              "description": "Whether the channel can accept ingress traffic.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "channel_type"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CreateAgentChannelRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "create_agent_channel",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/channels",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agents",
     "cli": null,
     "description": "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
@@ -1844,72 +1910,6 @@
     "name": "create_agent_credential_binding",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/credentials",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "agent_endpoints",
-    "cli": null,
-    "description": "Create an ingress endpoint for an agent.",
-    "input_schema": {
-      "$defs": {
-        "ChannelType": {
-          "description": "Supported channel types for app distribution.",
-          "enum": [
-            "slack",
-            "ag_ui",
-            "schedule",
-            "webhook",
-            "a2a",
-            "fcp",
-            "api_endpoint",
-            "public_chat"
-          ],
-          "example": "webhook",
-          "type": "string"
-        },
-        "CreateAgentEndpointRequest": {
-          "description": "Request to create an ingress endpoint owned by an Agent.",
-          "properties": {
-            "channel_config": {
-              "description": "Transport-specific endpoint configuration."
-            },
-            "channel_type": {
-              "$ref": "#/$defs/ChannelType",
-              "description": "Transport used by the endpoint."
-            },
-            "enabled": {
-              "description": "Whether the endpoint can accept ingress traffic.",
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "channel_type"
-          ],
-          "type": "object"
-        }
-      },
-      "allOf": [
-        {
-          "$ref": "#/$defs/CreateAgentEndpointRequest"
-        },
-        {
-          "properties": {
-            "agent_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "agent_id"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "method": "POST",
-    "name": "create_agent_endpoint",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints",
     "positional_arg": null,
     "read_only": false
   },
@@ -1982,7 +1982,7 @@
           "description": "Request to create a trigger on an agent.",
           "properties": {
             "auth": {
-              "description": "Shared endpoint auth is not supported by webhook triggers."
+              "description": "Shared channel auth is not supported by webhook triggers."
             },
             "cron_expression": {
               "description": "Cron expression that drives the durable schedule. Accepts 5-field\n(min hour day month weekday) or 7-field (sec … year) form.",
@@ -6819,6 +6819,32 @@
     "read_only": false
   },
   {
+    "category": "agent_channels",
+    "cli": null,
+    "description": "Delete an agent ingress channel.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "channel_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "channel_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "delete_agent_channel",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agents",
     "cli": null,
     "description": "Delete an agent check rule (built-in override or custom rule).",
@@ -6838,32 +6864,6 @@
     "name": "delete_agent_check_rule",
     "output_shape": "unknown",
     "path": "/v1/agents/check-rules/{rule_id}",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "agent_endpoints",
-    "cli": null,
-    "description": "Delete an agent ingress endpoint.",
-    "input_schema": {
-      "properties": {
-        "agent_id": {
-          "type": "string"
-        },
-        "endpoint_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "agent_id",
-        "endpoint_id"
-      ],
-      "type": "object"
-    },
-    "method": "DELETE",
-    "name": "delete_agent_endpoint",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -8425,28 +8425,28 @@
     "read_only": true
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Get an agent ingress endpoint.",
+    "description": "Get an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "GET",
-    "name": "get_agent_endpoint",
+    "name": "get_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -10831,24 +10831,9 @@
     "read_only": false
   },
   {
-    "category": "agents",
+    "category": "agent_channels",
     "cli": null,
-    "description": "List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules.",
-    "input_schema": {
-      "description": "List the org's effective check-rule configuration (built-ins + custom).",
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "list_agent_check_rules",
-    "output_shape": "unknown",
-    "path": "/v1/agents/check-rules",
-    "positional_arg": null,
-    "read_only": true
-  },
-  {
-    "category": "agent_endpoints",
-    "cli": null,
-    "description": "List an agent's ingress endpoints.",
+    "description": "List an agent's ingress channels.",
     "input_schema": {
       "properties": {
         "agent_id": {
@@ -10861,9 +10846,24 @@
       "type": "object"
     },
     "method": "GET",
-    "name": "list_agent_endpoints",
+    "name": "list_agent_channels",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints",
+    "path": "/v1/agents/{agent_id}/channels",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": null,
+    "description": "List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules.",
+    "input_schema": {
+      "description": "List the org's effective check-rule configuration (built-ins + custom).",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_check_rules",
+    "output_shape": "unknown",
+    "path": "/v1/agents/check-rules",
     "positional_arg": null,
     "read_only": true
   },
@@ -13703,28 +13703,28 @@
     "read_only": true
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Publish an agent ingress endpoint.",
+    "description": "Publish an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "POST",
-    "name": "publish_agent_endpoint",
+    "name": "publish_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/publish",
     "positional_arg": null,
     "read_only": false
   },
@@ -13754,7 +13754,7 @@
   {
     "category": "agents",
     "cli": "agents exposures resume",
-    "description": "Let an agent's live endpoints accept traffic again.",
+    "description": "Let an agent's live channels accept traffic again.",
     "input_schema": {
       "description": "Clear the agent-level exposure suspend, restoring the previously live set.",
       "properties": {
@@ -14299,9 +14299,9 @@
   {
     "category": "agents",
     "cli": "agents exposures suspend",
-    "description": "Stop every endpoint on an agent from accepting traffic.",
+    "description": "Stop every channel on an agent from accepting traffic.",
     "input_schema": {
-      "description": "Take every endpoint on an agent off the internet in one action (EVE-1007).\n\nThis is the incident control, and is deliberately separate from archiving and\nfrom per-endpoint publish: it leaves every endpoint's own `status` untouched,\nso resuming restores exactly the set that was live before — which is what\nmakes it safe to reach for under pressure.",
+      "description": "Take every channel on an agent off the internet in one action (EVE-1007).\n\nThis is the incident control, and is deliberately separate from archiving and\nfrom per-channel publish: it leaves every channel's own `status` untouched,\nso resuming restores exactly the set that was live before — which is what\nmakes it safe to reach for under pressure.",
       "properties": {
         "agent_id": {
           "description": "Agent's prefixed public identifier.",
@@ -14470,28 +14470,28 @@
     "read_only": false
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Run an agent schedule endpoint now.",
+    "description": "Run an agent schedule channel now.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "POST",
-    "name": "trigger_agent_endpoint",
+    "name": "trigger_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
     "positional_arg": null,
     "read_only": false
   },
@@ -14640,28 +14640,28 @@
     "read_only": false
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Unpublish an agent ingress endpoint.",
+    "description": "Unpublish an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "POST",
-    "name": "unpublish_agent_endpoint",
+    "name": "unpublish_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
     "positional_arg": null,
     "read_only": false
   },
@@ -15437,19 +15437,19 @@
     "read_only": false
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Update an agent ingress endpoint.",
+    "description": "Update an agent ingress channel.",
     "input_schema": {
       "$defs": {
-        "UpdateAgentEndpointRequest": {
-          "description": "Request to update an ingress endpoint owned by an Agent.",
+        "UpdateAgentChannelRequest": {
+          "description": "Request to update an ingress channel owned by an Agent.",
           "properties": {
             "channel_config": {
-              "description": "Replacement transport-specific endpoint configuration."
+              "description": "Replacement transport-specific channel configuration."
             },
             "enabled": {
-              "description": "Whether the endpoint can accept ingress traffic.",
+              "description": "Whether the channel can accept ingress traffic.",
               "type": [
                 "boolean",
                 "null"
@@ -15461,29 +15461,29 @@
       },
       "allOf": [
         {
-          "$ref": "#/$defs/UpdateAgentEndpointRequest"
+          "$ref": "#/$defs/UpdateAgentChannelRequest"
         },
         {
           "properties": {
             "agent_id": {
               "type": "string"
             },
-            "endpoint_id": {
+            "channel_id": {
               "type": "string"
             }
           },
           "required": [
             "agent_id",
-            "endpoint_id"
+            "channel_id"
           ],
           "type": "object"
         }
       ]
     },
     "method": "PATCH",
-    "name": "update_agent_endpoint",
+    "name": "update_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -15599,7 +15599,7 @@
           "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
           "properties": {
             "auth": {
-              "description": "Shared endpoint auth is not supported by webhook triggers."
+              "description": "Shared channel auth is not supported by webhook triggers."
             },
             "cron_expression": {
               "description": "Replacement cron expression.",
