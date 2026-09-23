@@ -1159,10 +1159,7 @@ pub async fn invoke_webhook_agent_trigger(
             "id": trigger.id.to_string(),
             "type": "webhook",
         },
-        // `endpoint` predates the Endpoint -> Channel rename; saved trigger
-        // templates may still reference `{{endpoint.id}}`, so it stays beside
-        // `channel`.
-        "endpoint": {
+        "endpoint": { // Pre-rename alias kept for saved `{{endpoint.id}}` templates.
             "id": req.ingress_id,
             "type": "webhook",
         },
