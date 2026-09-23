@@ -51,7 +51,7 @@ use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, evaluate_guardrails,
-    evaluate_post_generation_guardrails, post_generation_guardrail_text,
+    evaluate_post_generation_guardrails,
 };
 use crate::phase_effects::{PhaseEffectEmitter, PhaseEffectSink};
 use crate::runtime_context::{AssembledTurnContext, TurnContextRequest, TurnContextResolver};
@@ -88,44 +88,13 @@ use error_policy::{
     resolve_error_disclosure,
 };
 use observability::{build_request_options, capability_usage_snapshot_records};
-use output_hooks::collect_output_hooks;
+use output_hooks::{client_visible_guardrail_text, collect_output_hooks};
 use request_controls::resolve_request_controls;
 use stream_state::{
     StreamReplayState, StreamTermination, advances_stall_deadline, append_guarded_thinking_delta,
     inspect_guarded_reasoning_item, merge_retry_metadata,
 };
 use transcript::repair_dangling_tool_calls;
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-fn client_visible_guardrail_text(
-    text: &str,
-    streamed_reasoning: &str,
-    reasoning: &[ReasoningContentPart],
-    citation_annotations: &[crate::message::TextAnnotation],
-) -> String {
-    let mut guarded = streamed_reasoning.to_string();
-    if guarded.is_empty() {
-        for item_text in reasoning
-            .iter()
-            .filter_map(ReasoningContentPart::display_text)
-        {
-            if !guarded.is_empty() {
-                guarded.push_str("\n\n");
-            }
-            guarded.push_str(&item_text);
-        }
-    }
-
-    let prose = post_generation_guardrail_text(text, citation_annotations);
-    if !guarded.is_empty() && !prose.is_empty() {
-        guarded.push_str("\n\n");
-    }
-    guarded.push_str(&prose);
-    guarded
-}
 
 fn unix_now_secs() -> u64 {
     std::time::SystemTime::now()

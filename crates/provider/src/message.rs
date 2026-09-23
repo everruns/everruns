@@ -15,7 +15,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ProviderOpaqueContent {
+    /// Provider that owns and can replay this content.
     pub provider: String,
+    /// Original provider-native assistant content.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub content: serde_json::Value,
 }
