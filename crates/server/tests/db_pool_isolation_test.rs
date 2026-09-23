@@ -18,25 +18,22 @@
 
 use chrono::Utc;
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore, WorkflowStatus};
 use everruns_platform::SessionSource;
-use everruns_provider::typed_id::{MessageId, PrincipalId, SessionId, TurnId};
-use everruns_server::EventDelivery;
-use everruns_server::domains::session_schedules::SessionScheduleService;
-use everruns_server::services::EventService;
-use everruns_server::services::waiting_turn_resolution::execute_waiting_turn_resolution;
+use everruns_provider::typed_id::{MessageId, PrincipalId, SessionId};
+use everruns_server::app_builder::{ServerAppBuilder, ServerContext};
+use everruns_server::server::ServerConfig;
 use everruns_server::storage::StorageBackend;
 use everruns_server::storage::models::{
-    ClaimWaitingTurnResult, CreateHarnessRow, CreatePrincipalRow, CreateSessionRow,
-    CreateSessionScheduleRow, UpdateSession, WaitingTurnResolutionPlan,
+    CreateEventRow, CreateHarnessRow, CreatePrincipalRow, CreateSessionRow,
+    CreateSessionScheduleRow, UpdateSession,
 };
 use everruns_server::storage::repositories::{Database, DatabasePoolConfig};
-use everruns_worker::{RunnerBackend, create_runner_with_backend};
 use serde_json::json;
 use sqlx::Row;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 fn database_url() -> String {
@@ -111,22 +108,48 @@ async fn run_sweeps(db: &Database, label: &str) -> Vec<Result<(), String>> {
     out
 }
 
-async fn background_runtime() -> (
-    Database,
-    Arc<StorageBackend>,
-    Arc<StorageBackend>,
-    Arc<dyn everruns_worker::AgentRunner>,
-) {
-    let database = Database::connect_with_config(&database_url(), scaled_config(2))
-        .await
-        .expect("connect");
-    let request_db = Arc::new(StorageBackend::Postgres(database.clone()));
-    let background_db = Arc::new(request_db.for_background());
-    let runner =
-        create_runner_with_backend(RunnerBackend::Postgres(database.background_pool().clone()))
-            .await
-            .expect("create background runner");
-    (database, request_db, background_db, runner)
+fn configure_server_environment() {
+    // SAFETY: this integration binary is run with `--test-threads=1`; all
+    // server configuration is installed before the application task starts.
+    unsafe {
+        std::env::set_var("DATABASE_URL", database_url());
+        std::env::set_var("DATABASE_POOL_MAX", "4");
+        std::env::set_var("DATABASE_POOL_MIN", "1");
+        std::env::set_var("DATABASE_ACQUIRE_TIMEOUT_SECS", "1");
+        std::env::set_var("DATABASE_BACKGROUND_POOL_MAX", "8");
+        std::env::set_var("DATABASE_BACKGROUND_ACQUIRE_TIMEOUT_SECS", "10");
+        std::env::set_var("DEPLOYMENT_GRADE", "dev");
+        std::env::set_var("AUTH_MODE", "none");
+        std::env::set_var("WORKER_GRPC_AUTH_TOKEN", "db-pool-isolation-test");
+        std::env::set_var("TOOL_RESULT_TIMEOUT_SECS", "0");
+    }
+}
+
+async fn start_real_server() -> (JoinHandle<anyhow::Result<()>>, ServerContext) {
+    configure_server_environment();
+    let config = ServerConfig {
+        dev_mode: false,
+        no_migrations: true,
+        api_prefix: String::new(),
+        cors_origins: vec![],
+        addr: "127.0.0.1:0".to_string(),
+        grpc_addr: "127.0.0.1:0".to_string(),
+    };
+    let (context_tx, context_rx) = tokio::sync::oneshot::channel();
+    let mut server = tokio::spawn(
+        ServerAppBuilder::new(config)
+            .background_task(move |context| async move {
+                let _ = context_tx.send(context);
+                futures::future::pending::<()>().await;
+            })
+            .run(),
+    );
+    let context = tokio::select! {
+        context = context_rx => context.expect("server context sender dropped"),
+        result = &mut server => panic!("server exited during startup: {result:?}"),
+        _ = tokio::time::sleep(Duration::from_secs(30)) => panic!("server startup timed out"),
+    };
+    (server, context)
 }
 
 async fn create_background_test_session(
@@ -204,26 +227,72 @@ async fn create_background_test_session(
     .expect("create test session")
 }
 
-async fn wait_for_task(pool: &sqlx::PgPool, session_id: SessionId, activity_type: &str) {
-    let deadline = Instant::now() + Duration::from_secs(5);
+async fn wait_for_server_sweeps(
+    pool: &sqlx::PgPool,
+    schedule_id: Uuid,
+    scheduled_session_id: SessionId,
+    timeout_session_id: SessionId,
+    tool_call_id: &str,
+) {
+    let deadline = Instant::now() + Duration::from_secs(40);
     loop {
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM durable_task_queue \
-             WHERE workflow_id = $1 AND activity_type = $2 AND status = 'pending')",
+        let outcomes: (bool, bool, bool, bool, bool, bool) = sqlx::query_as(
+            r#"
+            SELECT
+                EXISTS(
+                    SELECT 1 FROM session_schedules
+                    WHERE id = $1 AND trigger_count = 1 AND enabled = false
+                ),
+                EXISTS(
+                    SELECT 1 FROM events
+                    WHERE session_id = $2 AND event_type = 'input.message'
+                ),
+                EXISTS(
+                    SELECT 1 FROM durable_task_queue
+                    WHERE workflow_id = $2
+                      AND activity_type = 'process_input'
+                      AND status = 'pending'
+                ),
+                EXISTS(
+                    SELECT 1 FROM events
+                    WHERE session_id = $3
+                      AND event_type = 'tool.completed'
+                      AND data->>'tool_call_id' = $4
+                ),
+                EXISTS(
+                    SELECT 1 FROM durable_task_queue
+                    WHERE workflow_id = $3
+                      AND activity_type = 'reason'
+                      AND status = 'pending'
+                ),
+                EXISTS(
+                    SELECT 1 FROM sessions
+                    WHERE id = $3 AND status = 'active'
+                )
+            "#,
         )
-        .bind(session_id.uuid())
-        .bind(activity_type)
+        .bind(schedule_id)
+        .bind(scheduled_session_id.uuid())
+        .bind(timeout_session_id.uuid())
+        .bind(tool_call_id)
         .fetch_one(pool)
         .await
-        .expect("query durable task");
-        if exists {
+        .expect("query background sweep outcomes");
+        if outcomes == (true, true, true, true, true, true) {
             return;
         }
         assert!(
             Instant::now() < deadline,
-            "{activity_type} task was not enqueued for {session_id}"
+            "built-in sweep outcomes incomplete: schedule_triggered={}, input_event={}, \
+             process_input_task={}, timeout_event={}, reason_task={}, timeout_session_active={}",
+            outcomes.0,
+            outcomes.1,
+            outcomes.2,
+            outcomes.3,
+            outcomes.4,
+            outcomes.5,
         );
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }
 
@@ -287,16 +356,24 @@ async fn request_pool_still_fails_fast_under_the_same_burst() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn scheduled_enqueue_survives_a_saturated_request_pool() {
-    let (database, request_db, background_db, runner) = background_runtime().await;
-    let session = create_background_test_session(&request_db, "scheduled-background").await;
-    let schedule = background_db
+#[tokio::test]
+async fn built_in_background_sweeps_survive_a_saturated_request_pool() {
+    let (server, context) = start_real_server().await;
+    let observer = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url())
+        .await
+        .expect("connect observer pool");
+
+    let scheduled_session =
+        create_background_test_session(&context.db, "scheduled-background").await;
+    let schedule = context
+        .db
         .create_session_schedule(CreateSessionScheduleRow {
             org_id: DEFAULT_ORG_ID,
-            session_id: session.id,
-            owner_principal_id: session.owner_principal_id,
-            resolved_owner_user_id: session.resolved_owner_user_id,
+            session_id: scheduled_session.id,
+            owner_principal_id: scheduled_session.owner_principal_id,
+            resolved_owner_user_id: scheduled_session.resolved_owner_user_id,
             description: "Run from the reserved pool".to_string(),
             cron_expression: None,
             scheduled_at: Some(Utc::now() - chrono::Duration::minutes(1)),
@@ -305,56 +382,13 @@ async fn scheduled_enqueue_survives_a_saturated_request_pool() {
         })
         .await
         .expect("create overdue schedule");
-    let event_service = Arc::new(EventService::with_listeners(
-        background_db.clone(),
-        EventDelivery::in_memory(),
-        vec![],
-    ));
-    let schedule_service = Arc::new(SessionScheduleService::new(background_db.clone()));
 
-    let _burst = saturate(database.pool(), 4).await;
-    let scheduler = everruns_server::session_scheduler::spawn_session_scheduler(
-        background_db.clone(),
-        schedule_service,
-        event_service,
-        runner,
-        None,
-        Duration::from_millis(10),
-    );
-
-    wait_for_task(database.background_pool(), session.id, "process_input").await;
-    scheduler.abort();
-
-    let updated = background_db
-        .get_session_schedule(DEFAULT_ORG_ID, schedule.id)
-        .await
-        .expect("load fired schedule")
-        .expect("schedule exists");
-    assert_eq!(updated.trigger_count, 1);
-    assert!(!updated.enabled);
-    let events = background_db
-        .list_events(
-            session.id,
-            None,
-            None,
-            &["input.message".to_string()],
-            &[],
-            None,
-            Some(10),
-        )
-        .await
-        .expect("load scheduled input event");
-    assert_eq!(events.len(), 1);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn timeout_resolution_survives_a_saturated_request_pool() {
-    let (database, request_db, background_db, runner) = background_runtime().await;
-    let session = create_background_test_session(&request_db, "timeout-background").await;
-    background_db
+    let timeout_session = create_background_test_session(&context.db, "timeout-background").await;
+    context
+        .db
         .update_session(
             DEFAULT_ORG_ID,
-            session.id,
+            timeout_session.id,
             UpdateSession {
                 status: Some("waiting_for_tool_results".to_string()),
                 ..Default::default()
@@ -363,11 +397,31 @@ async fn timeout_resolution_survives_a_saturated_request_pool() {
         .await
         .expect("park session")
         .expect("session exists");
+    let tool_call_id = format!("call_{}", Uuid::now_v7());
+    context
+        .db
+        .create_event(CreateEventRow {
+            session_id: timeout_session.id,
+            event_type: "tool.call_requested".to_string(),
+            ts: Utc::now() - chrono::Duration::minutes(10),
+            context: json!({}),
+            data: json!({
+                "tool_calls": [{
+                    "id": tool_call_id,
+                    "name": "client_tool",
+                    "arguments": {}
+                }]
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("record pending client tool call");
 
     let saved_turn = json!({
         "org_id": DEFAULT_ORG_ID,
-        "session_id": session.id,
-        "harness_id": session.harness_id.expect("test session harness"),
+        "session_id": timeout_session.id,
+        "harness_id": timeout_session.harness_id.expect("test session harness"),
         "agent_id": null,
         "input_message_id": MessageId::new(),
         "turn_id": null,
@@ -382,89 +436,45 @@ async fn timeout_resolution_survives_a_saturated_request_pool() {
         "final_message_id": null,
         "final_answer_preview": null
     });
-    let durable_store = PostgresWorkflowEventStore::new(database.background_pool().clone());
+    let durable_store = PostgresWorkflowEventStore::new(observer.clone());
     durable_store
-        .create_workflow(session.id.uuid(), "turn_workflow", saved_turn.clone(), None)
+        .create_workflow(
+            timeout_session.id.uuid(),
+            "turn_workflow",
+            saved_turn.clone(),
+            None,
+        )
         .await
         .expect("create parked workflow");
     durable_store
         .update_workflow_status(
-            session.id.uuid(),
+            timeout_session.id.uuid(),
             WorkflowStatus::Completed,
             Some(saved_turn),
             None,
         )
         .await
         .expect("save parked turn input");
-
-    let tool_call_id = format!("call_{}", Uuid::now_v7());
-    let event = EventRequest::new(
-        session.id,
-        EventContext::turn(
-            TurnId::from_uuid(session.id.uuid()),
-            MessageId::from_uuid(session.id.uuid()),
-        ),
-        ToolCompletedData::failure(
-            tool_call_id.clone(),
-            String::new(),
-            "timeout".to_string(),
-            "Timed out waiting for client tool results".to_string(),
-            None,
-        ),
-    );
-    let claim = match background_db
-        .recover_waiting_turn(
-            DEFAULT_ORG_ID,
-            session.id,
-            WaitingTurnResolutionPlan {
-                kind: "timeout".to_string(),
-                events: vec![event],
-                session_values: vec![],
-                response: serde_json::Value::Null,
-            },
-        )
+    let _burst = saturate(context.db.pool().expect("request pool"), 4).await;
+    let request_error = context
+        .db
+        .get_session(DEFAULT_ORG_ID, scheduled_session.id)
         .await
-        .expect("claim waiting turn")
-    {
-        ClaimWaitingTurnResult::Claimed(claim) => claim,
-        other => panic!("expected waiting-turn claim, got {other:?}"),
-    };
-    let event_service = EventService::new(background_db.clone(), EventDelivery::in_memory());
+        .expect_err("request-backed reads must remain subject to saturation");
+    assert!(
+        request_error.to_string().contains("pool timed out"),
+        "expected request-pool timeout, got {request_error}"
+    );
 
-    let _burst = saturate(database.pool(), 4).await;
-    execute_waiting_turn_resolution(
-        &background_db,
-        &event_service,
-        &runner,
-        DEFAULT_ORG_ID,
-        session.id,
-        &claim,
+    wait_for_server_sweeps(
+        &observer,
+        schedule.id.uuid(),
+        scheduled_session.id,
+        timeout_session.id,
+        &tool_call_id,
     )
-    .await
-    .expect("resolve timed-out turn through background pool");
+    .await;
 
-    wait_for_task(database.background_pool(), session.id, "reason").await;
-    let events = background_db
-        .list_events(
-            session.id,
-            None,
-            None,
-            &["tool.completed".to_string()],
-            &[],
-            None,
-            Some(10),
-        )
-        .await
-        .expect("load timeout event");
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0].data["tool_call_id"], tool_call_id);
-    assert_eq!(
-        background_db
-            .get_session(DEFAULT_ORG_ID, session.id)
-            .await
-            .expect("load resumed session")
-            .expect("session exists")
-            .status,
-        "active"
-    );
+    server.abort();
+    let _ = server.await;
 }
