@@ -272,6 +272,7 @@ require(
 # textually, because the failure mode is logic, not wording.
 import contextlib
 import io
+import os
 import re
 import textwrap
 import urllib.request
@@ -304,17 +305,49 @@ def _fake_urlopen(url, timeout=None):
     return _FakeResponse("\n".join(json.dumps({"vers": v}) for v in sorted(versions)))
 
 
-def release_plan(packages: dict[str, str], registry: dict[str, set[str]]) -> list[str]:
-    """Run the workflow's own plan script against a stubbed crates.io index."""
+HEAD_SHA = "c" * 40
+OLDER_SHA = "d" * 40
+
+
+def release_plan(
+    packages: dict[str, str],
+    registry: dict[str, set[str]],
+    deps: dict[str, list[str]] | None = None,
+    tags: dict[str, str] | None = None,
+) -> list[str]:
+    """Run the workflow's own plan script against a stubbed index and tag store.
+
+    `tags` maps a crate/<name>/v<version> tag to the commit it anchors, which is
+    how the plan tells a cascade resumed at this commit from a platform version
+    cut at an earlier one.
+    """
+    deps = deps or {}
+    tags = tags or {}
     plan_state["registry"] = registry
     plan_state["lookup"] = {n.lower(): n for n in packages}
     meta = {"packages": [
-        {"name": n, "version": v, "dependencies": []} for n, v in packages.items()
+        {
+            "name": n,
+            "version": v,
+            "dependencies": [{"name": d, "kind": None} for d in deps.get(n, [])],
+        }
+        for n, v in packages.items()
     ]}
+
+    def _fake_check_output(args, *a, **k):
+        if args[0] == "git":
+            tag = args[-1].removesuffix("^{commit}")
+            if tag not in tags:
+                raise subprocess.CalledProcessError(128, args)
+            return tags[tag]
+        return json.dumps(meta)
+
     original_urlopen = urllib.request.urlopen
     original_check_output = subprocess.check_output
+    original_sha = os.environ.get("GITHUB_SHA")
     urllib.request.urlopen = _fake_urlopen
-    subprocess.check_output = lambda *a, **k: json.dumps(meta)
+    subprocess.check_output = _fake_check_output
+    os.environ["GITHUB_SHA"] = HEAD_SHA
     captured = io.StringIO()
     try:
         with contextlib.redirect_stdout(captured):
@@ -322,6 +355,10 @@ def release_plan(packages: dict[str, str], registry: dict[str, set[str]]) -> lis
     finally:
         urllib.request.urlopen = original_urlopen
         subprocess.check_output = original_check_output
+        if original_sha is None:
+            os.environ.pop("GITHUB_SHA", None)
+        else:
+            os.environ["GITHUB_SHA"] = original_sha
     return [entry["package"] for entry in json.loads(captured.getvalue())]
 
 
@@ -345,6 +382,45 @@ require(
     "a new crate must publish with the platform version being cut",
 )
 require(resumed == ["everruns-host"], "a re-run must still finish a partially published cascade")
+
+# Re-running a half-finished cascade is not a late join. Attempt 1 of the v0.30.0
+# release published everruns-core from this commit and then died on a crates.io
+# network error; the re-run read those siblings as an already-cut version, held
+# everruns-integrations-openrouter back as "new", and left everruns-platform in
+# the plan still pinning it -- so the platform publish failed to resolve it. The
+# release tag is what separates the two cases: it names the commit the sibling
+# was published from.
+with contextlib.redirect_stderr(io.StringIO()):
+    resumed_with_new_crate = release_plan(
+        {
+            "everruns-core": "0.30.0",
+            "everruns-integrations-openrouter": "0.30.0",
+            "everruns-platform": "0.30.0",
+        },
+        {"everruns-core": {"0.29.0", "0.30.0"}, "everruns-platform": {"0.29.0"}},
+        deps={"everruns-platform": ["everruns-integrations-openrouter"]},
+        tags={"crate/everruns-core/v0.30.0": HEAD_SHA},
+    )
+    late_join = release_plan(
+        {
+            "everruns-core": "0.30.0",
+            "everruns-integrations-openrouter": "0.30.0",
+            "everruns-platform": "0.30.0",
+        },
+        {"everruns-core": {"0.29.0", "0.30.0"}, "everruns-platform": {"0.29.0"}},
+        deps={"everruns-platform": ["everruns-integrations-openrouter"]},
+        tags={"crate/everruns-core/v0.30.0": OLDER_SHA},
+    )
+require(
+    resumed_with_new_crate == ["everruns-integrations-openrouter", "everruns-platform"],
+    "a cascade resumed at this commit must still publish its new crates, and "
+    f"their dependants, in dependency order, got: {resumed_with_new_crate}",
+)
+require(
+    late_join == [],
+    "a crate pinning one held back to the next platform version must be held "
+    f"back too, not dispatched into a publish it cannot resolve, got: {late_join}",
+)
 
 legacy_macros = repo / "crates/everruns-macros"
 require(not legacy_macros.exists(), "legacy crates/everruns-macros path must not exist")
