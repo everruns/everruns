@@ -56,7 +56,7 @@
   },
   "devDependencies": {
     "@ag-ui/core": "^0.0.59",
-    "@google/design.md": "0.3.0",
+    "@google/design.md": "0.4.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^6.9.1",
