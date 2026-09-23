@@ -13,7 +13,7 @@ use std::collections::HashMap;
 /// Default utility model. A deployment can override it (see
 /// `everruns-host`'s `UTILITY_LLM_MODEL` environment variable); the model is
 /// chosen once per deployment and never by a caller, agent, or session.
-pub const UTILITY_LLM_MODEL: &str = "gpt-5.6-luna";
+pub const UTILITY_LLM_MODEL: &str = "gpt-6-luna";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UtilityLlmReasoningEffort {
@@ -180,7 +180,7 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, MessageRole::User);
         assert_eq!(messages[0].content_as_text(), "summarize α");
-        assert_eq!(config.model, "gpt-5.6-luna");
+        assert_eq!(config.model, "gpt-6-luna");
         assert_eq!(config.reasoning_effort, None);
         assert_eq!(config.temperature, None);
         assert_eq!(config.max_tokens, None);
@@ -240,16 +240,16 @@ mod tests {
                     ("request".into(), "request_1".into())
                 ])
             );
-            assert_eq!(config.model, "gpt-5.6-luna");
+            assert_eq!(config.model, "gpt-6-luna");
         }
     }
 
     #[test]
     fn model_comes_from_the_host_service_not_the_request() {
         let (_, config) = UtilityLlmRequest::user_text("summarize α")
-            .into_driver_request("openai/gpt-5.6-luna")
+            .into_driver_request("openai/gpt-6-luna")
             .unwrap();
-        assert_eq!(config.model, "openai/gpt-5.6-luna");
+        assert_eq!(config.model, "openai/gpt-6-luna");
     }
 
     #[test]

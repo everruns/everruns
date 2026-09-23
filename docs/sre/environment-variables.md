@@ -377,7 +377,7 @@ platform uses for its own internal work.
 |----------|--------|-------------|
 | `UTILITY_OPENAI_API_KEY` | Agent Analyze/Health checks, and guardrail checks with `engine: "utility_llm"` (the default), called directly against OpenAI | Those checks are skipped; Analyze and Health are unavailable |
 | `UTILITY_OPENROUTER_API_KEY` | The same work, routed through OpenRouter instead. Setting it selects OpenRouter; it wins when both keys are set, and the startup log says so | The utility LLM falls back to `UTILITY_OPENAI_API_KEY` |
-| `UTILITY_LLM_MODEL` | The model the utility LLM calls on whichever backend was selected | Defaults to `gpt-5.6-luna` on OpenAI, `openai/gpt-5.6-luna` on OpenRouter |
+| `UTILITY_LLM_MODEL` | The model the utility LLM calls on whichever backend was selected | Defaults to `gpt-6-luna` on OpenAI, `openai/gpt-6-luna` on OpenRouter |
 | `UTILITY_TYPESAFE_API_KEY` | Guardrail checks with `engine: "jev"` | Those checks are skipped with a warning and the turn proceeds |
 
 The keys are read from the process environment at startup. Missing keys **fail
@@ -395,7 +395,7 @@ so override `UTILITY_LLM_MODEL` with an id that backend accepts
 UTILITY_OPENAI_API_KEY=sk-...
 # ...or route the utility LLM through OpenRouter instead:
 UTILITY_OPENROUTER_API_KEY=sk-or-...
-UTILITY_LLM_MODEL=openai/gpt-5.6-luna
+UTILITY_LLM_MODEL=openai/gpt-6-luna
 UTILITY_TYPESAFE_API_KEY=ts-...
 ```
 
