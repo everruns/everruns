@@ -6,7 +6,7 @@
 //! `slack_delivery` is on the file-size ratchet.
 //!
 //! Every method here shares one envelope: `ok: false` with an `error` code, and
-//! a `Retry-After` header on a rate limit. Classification therefore lives in one
+//! a `Retry-After` header on a rate limit. Decision therefore lives in one
 //! place (EVE-974) rather than being rewritten per endpoint.
 
 use crate::slack_api_error::{SlackApiError, parse_retry_after};

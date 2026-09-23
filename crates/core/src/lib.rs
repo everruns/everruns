@@ -82,7 +82,7 @@ pub mod lifecycle_hooks;
 pub mod user_hook_types;
 
 // Deployment configuration
-pub mod classifier;
+pub mod decisions;
 pub mod deployment;
 pub mod egress;
 pub mod exec_tool_result;
@@ -353,9 +353,9 @@ pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllow
 // email delivery is a hosted product side effect, never consumed during a
 // turn. The OAuth 2.1 protocol client moved to `everruns-mcp` (its only
 // consumer), and the connector catalog moved to `everruns-platform`.
-pub use classifier::{
-    ClassificationAnswer, ClassificationOutcome, ClassificationQuestion, ClassificationRequest,
-    ClassificationUsage, ClassifierService, DisabledClassifierService,
+pub use decisions::{
+    DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionUsage,
+    DecisionsService, DisabledDecisionsService,
 };
 pub use utility_llm::{
     DisabledUtilityLlmService, UTILITY_LLM_MODEL, UtilityLlmReasoningEffort, UtilityLlmRequest,

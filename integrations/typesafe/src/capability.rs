@@ -29,7 +29,7 @@ pub const CONNECTOR_PLUGINS: &[everruns_platform::connector::ConnectorPlugin] =
         factory: || Box::new(crate::TypeSafeAIConnector),
     }];
 
-const SYSTEM_PROMPT_ADDITION: &str = "`jev_evaluate` answers typed questions about content \
+const SYSTEM_PROMPT_ADDITION: &str = "`jev_decision` answers typed questions about content \
     with calibrated numbers: a probability for yes/no, a selected option with its distribution, or \
     a position along levels you define. Prefer it over judging by impression when a decision \
     depends on the answer — verification, rating, routing, or severity — and ask every question you \
@@ -44,7 +44,7 @@ impl Capability for JevCapability {
     }
 
     fn name(&self) -> &str {
-        "[Experimental] Jev Classifications"
+        "[Experimental] Jev Decisions"
     }
 
     fn description(&self) -> &str {
@@ -70,7 +70,7 @@ impl Capability for JevCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(JevEvaluateTool)]
+        vec![Box::new(JevDecisionTool)]
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
@@ -124,11 +124,11 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
     ))
 }
 
-/// The `jev_evaluate` tool.
-pub struct JevEvaluateTool;
+/// The `jev_decision` tool.
+pub struct JevDecisionTool;
 
 #[async_trait]
-impl Tool for JevEvaluateTool {
+impl Tool for JevDecisionTool {
     fn name(&self) -> &str {
         evaluate::TOOL_NAME
     }
@@ -151,7 +151,7 @@ impl Tool for JevEvaluateTool {
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
-            "jev_evaluate requires context. This tool must be executed with session context.",
+            "jev_decision requires context. This tool must be executed with session context.",
         )
     }
 
@@ -164,7 +164,7 @@ impl Tool for JevEvaluateTool {
             Ok(input) => input,
             Err(error) => {
                 return ToolExecutionResult::tool_error(format!(
-                    "Invalid jev_evaluate arguments: {error}"
+                    "Invalid jev_decision arguments: {error}"
                 ));
             }
         };
@@ -295,7 +295,7 @@ mod tests {
         assert_eq!(capability.id(), "jev");
         let tools = capability.tools();
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "jev_evaluate");
+        assert_eq!(tools[0].name(), "jev_decision");
         assert_eq!(tools[0].hints().readonly, Some(true));
         assert_eq!(tools[0].hints().requires_secrets, Some(true));
         assert!(tools[0].requires_context());
@@ -303,18 +303,18 @@ mod tests {
 
     #[tokio::test]
     async fn execute_without_context_is_rejected() {
-        let result = JevEvaluateTool.execute(json!({})).await;
+        let result = JevDecisionTool.execute(json!({})).await;
         assert!(format!("{result:?}").contains("requires context"));
     }
 
     #[tokio::test]
     async fn malformed_arguments_never_reach_the_network() {
         let context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
-        let result = JevEvaluateTool
+        let result = JevDecisionTool
             .execute_with_context(json!({"state": "x"}), &context)
             .await;
         assert!(
-            format!("{result:?}").contains("Invalid jev_evaluate arguments"),
+            format!("{result:?}").contains("Invalid jev_decision arguments"),
             "{result:?}"
         );
     }
@@ -322,7 +322,7 @@ mod tests {
     #[tokio::test]
     async fn missing_credentials_explain_how_to_configure_them() {
         let context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
-        let result = JevEvaluateTool
+        let result = JevDecisionTool
             .execute_with_context(
                 json!({
                     "state": "a joke",

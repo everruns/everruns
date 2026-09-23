@@ -136,7 +136,7 @@ driver; provider keys and endpoints are never serializable kernel values.
 
 `CommandTurnContext` now exposes `session_id` directly instead of an
 `ExecutionSession`. Commands retain the same filtered messages, effective
-prompt, locale, model, streaming, and error-classification behavior without
+prompt, locale, model, streaming, and error-decision behavior without
 receiving a session record.
 
 ## Persisted records

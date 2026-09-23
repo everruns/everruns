@@ -337,7 +337,7 @@ async fn git(repository: &Path, args: &[&str], limit: usize) -> String {
     }
 }
 
-/// One worker as the classifier sees it.
+/// One worker as the decision service sees it.
 #[derive(Clone, Debug, Serialize)]
 pub struct WorkerView {
     worker_id: String,

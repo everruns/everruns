@@ -1,20 +1,20 @@
 //! Ask for a judgment directly — no agent, no session, no history.
 //!
 //! The counterpart to `direct_llm`: same shape, different contract. A model
-//! answers in prose you have to parse; a classifier answers in numbers your code
+//! answers in prose you have to parse; a decision service answers in numbers your code
 //! can act on.
 //!
 //! Offline (no API key):
 //! ```text
-//! cargo run -p everruns --example direct_classification
+//! cargo run -p everruns --example direct_decisions
 //! ```
 //! TypeSafe System One (requires TYPESAFE_API_KEY):
 //! ```text
-//! cargo run -p everruns --features typesafe --example direct_classification -- --live
+//! cargo run -p everruns --features typesafe --example direct_decisions -- --live
 //! ```
 //! An optional positional argument replaces the content being classified.
 
-use everruns::Classifier;
+use everruns::Decisions;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,27 +28,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into()
     });
     if args.next().is_some() || content.trim().is_empty() {
-        return Err("Usage: direct_classification [--live] [CONTENT]".into());
+        return Err("Usage: direct_decisions [--live] [CONTENT]".into());
     }
 
-    let classifier = if live {
+    let decisions = if live {
         #[cfg(feature = "typesafe")]
         {
             println!("TypeSafe System One over HTTP.\n");
-            Classifier::new("jev-latest", everruns::TypeSafeAI::from_env()?)
+            Decisions::new("jev-latest", everruns::TypeSafeAI::from_env()?)
         }
         #[cfg(not(feature = "typesafe"))]
         {
-            return Err("Live mode requires: cargo run -p everruns --features typesafe --example direct_classification -- --live".into());
+            return Err("Live mode requires: cargo run -p everruns --features typesafe --example direct_decisions -- --live".into());
         }
     } else {
         println!("Offline simulator: fixed answers; no model inference.\n");
-        Classifier::simulated(0.87)
+        Decisions::simulated(0.87)
     };
 
     // One question, one number. This is the whole API for the common case.
     println!("> {content}");
-    let urgency = classifier
+    let urgency = decisions
         .probability("Does this convey urgency?", content.clone())
         .await?;
     println!("urgency: {urgency:.2}\n");
@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Independent questions ride one request and answer in parallel, so asking
     // several is the cheap path. Ids label answers for this code and are never
     // shown to the model, so each question reads on its own.
-    let answers = classifier
+    let answers = decisions
         .about(content)
         .noul("urgent", "Does this convey urgency?")
         .score(

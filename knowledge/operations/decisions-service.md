@@ -1,12 +1,12 @@
 ---
 type: Specification
-title: "Classification Service"
-description: "Internal typed-classifier for capability internals."
+title: "Decision Service"
+description: "Internal typed-decisions for capability internals."
 tags:
   - everruns
   - operations
 ---
-# Classification Service
+# Decision Service
 
 <!-- Design Decisions:
   - Modeled on the utility LLM service rather than as a model provider: same
@@ -45,7 +45,7 @@ carries a prompt that begs for JSON, a parser, and a fallback for when the
 parse fails. In a guardrail that fallback is fail-open — a malformed verdict
 reads as *allow*.
 
-A classifier removes that class outright, and adds two things a chat
+A decisions removes that class outright, and adds two things a chat
 model cannot give cheaply:
 
 - **Calibrated probabilities.** Guardrail moderation already asked the utility
@@ -60,20 +60,20 @@ model cannot give cheaply:
 
 ## Core Contract
 
-`everruns-core` owns the abstraction ([`crates/core/src/classifier.rs`](../../crates/core/src/classifier.rs)):
+`everruns-core` owns the abstraction ([`crates/core/src/decisions.rs`](../../crates/core/src/decisions.rs)):
 
-- `ClassifierService` is the async trait used by capability internals.
-- `ClassificationQuestion` is one of three primitives — `Noul` (probability of yes),
+- `DecisionsService` is the async trait used by capability internals.
+- `DecisionQuestion` is one of three primitives — `Noul` (probability of yes),
   `Choice` (one option plus its distribution), `Score` (a position across
   ordered levels plus its distribution).
-- `ClassificationRequest` carries the state, an ordered list of `(id, question)`,
+- `DecisionRequest` carries the state, an ordered list of `(id, question)`,
   an optional model name, and attribution metadata. Ids are for the caller's
   code and never reach the model, so every question must carry its full
   meaning.
-- `ClassificationAnswer` exposes `probability_yes`, `confidence`, and
+- `DecisionAnswer` exposes `probability_yes`, `confidence`, and
   `probability_at_or_above` — the last is the honest reading for a
   "did anything serious happen" rule.
-- `ClassifierService::is_configured()` reports whether the deployment enabled it.
+- `DecisionsService::is_configured()` reports whether the deployment enabled it.
 - `HostComposition` carries the active service; `ToolContext` and
   `PostGenerationOutputContext` thread it to capability hooks, alongside the
   utility LLM service.
@@ -85,7 +85,7 @@ separate confidence because the probability already is one.
 ## Implementation
 
 [`integrations/typesafe`](../../integrations/typesafe/README.md) owns the
-concrete service ([`src/classifier.rs`](../../integrations/typesafe/src/classifier.rs))
+concrete service ([`src/decisions.rs`](../../integrations/typesafe/src/decisions.rs))
 and the vendor client it calls ([`src/client`](../../integrations/typesafe/src/client/)).
 Nothing above core learns the vendor.
 
@@ -108,7 +108,7 @@ halves through one import, exactly as it does for OpenAI.
 the company and the account that issues the key; **System One is a class of
 model**, not a product — models built to return typed decisions and calibrated
 probabilities rather than text, the way "LLM" names a class; and Jev is
-TypeSafe's flagship model and the first System One model. `ClassifierService` is
+TypeSafe's flagship model and the first System One model. `DecisionsService` is
 this repo's vendor-neutral name for that class, which is why its primitives are
 System One's three and why core can name no vendor.
 
@@ -120,17 +120,17 @@ names moved; the `TYPESAFE_API_KEY` variables, the `typesafe` feature and crate,
 and the stored `typesafe` connection provider are not type positions. The model
 is a string id (`jev-latest`, `jev-1.13.0`), the way `gpt-5.6-terra` is. Jev
 gets no type because Jev is a model. What an agent sees stays model-named, since a model
-is what answers it: the `Jev` capability, the `jev_evaluate` tool, and the `jev`
+is what answers it: the `Jev` capability, the `jev_decision` tool, and the `jev`
 guardrail engine.
 
-- The model is named, not defaulted. `Classifier::new` takes it up front the
+- The model is named, not defaulted. `Decisions::new` takes it up front the
   way `Model::new` does, because the service is transport and the model is what
-  answers; `ClassificationRequest::model` overrides it for one call. This is the
+  answers; `DecisionRequest::model` overrides it for one call. This is the
   difference from the utility LLM service, whose model is fixed: there will be
-  other classifiers and other versions of this one, and a threshold calibrated
+  other decision services and other versions of this one, and a threshold calibrated
   against one version is not evidence about the next, so inheriting a vendor
   default silently is the wrong default. The service keeps its own default for
-  the wire contract — `ClassificationRequest::model` stays optional — which is
+  the wire contract — `DecisionRequest::model` stays optional — which is
   how the platform composes a request that names no model: the knob is absent
   from the guardrail config an agent author writes, rather than absent from the
   type (THREAT[TM-LLM-037]).
@@ -141,10 +141,10 @@ guardrail engine.
   `Unknown model`. Mapping `jev` to `jev-latest` here would invent an id the
   vendor does not know, so a value copied out of our docs into the vendor's own
   API would fail, and an answer would report a version for an id never sent.
-- Two credentials, two audiences: `SystemClassifierConfig::from_env` reads the
+- Two credentials, two audiences: `SystemDecisionsConfig::from_env` reads the
   platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafeAI::from_env`
   reads an embedding application's own `TYPESAFE_API_KEY` — the latter is what
-  [`Classifier`](../framework/application-api.md#direct-classification-boundary) uses outside the platform.
+  [`Decisions`](../framework/application-api.md#direct-decision-boundary) uses outside the platform.
 - Configured from process environment: `UTILITY_TYPESAFE_API_KEY`. Unset or
   empty means the service is disabled and `is_configured()` is false. The name
   mirrors `UTILITY_OPENAI_API_KEY`: both are platform-owned credentials for

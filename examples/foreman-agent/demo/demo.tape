@@ -1,4 +1,4 @@
-# Record a real run: a scripted worker, a real classifier watching it.
+# Record a real run: a scripted worker, a real decision service watching it.
 # record.sh supplies TYPESAFE_API_KEY through Doppler.
 Output examples/foreman-agent/demo/.demo.tmp.gif
 Set Shell "bash"

@@ -3,7 +3,7 @@
 //! `foreman demo` is a real run, so CI cannot use it: a live worker costs money
 //! and is free to go a different way each time. This is the same run with both
 //! ends replaced — a scripted worker that really edits the fixture through the
-//! same Bashkit capability, and a classifier service that answers from a table.
+//! same Bashkit capability, and a decision service that answers from a table.
 //! Everything between them is the code a live run executes, so what this pins
 //! is the finish path: worker, independent verification, FINISH, and a
 //! repository that actually changed.
@@ -18,8 +18,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns::{
-    AgentLoopError, ClassificationAnswer, ClassificationOutcome, ClassificationRequest, Classifier,
-    ClassifierService, LlmSimConfig, Model, SimToolCall, SimTurn,
+    AgentLoopError, DecisionAnswer, DecisionOutcome, DecisionRequest, Decisions, DecisionsService,
+    LlmSimConfig, Model, SimToolCall, SimTurn,
 };
 use serde_json::Value;
 
@@ -129,7 +129,7 @@ pub fn verifier() -> Model {
 
 /// The demo's answers, as a service rather than a fork in the code.
 ///
-/// [`ClassifierService`] is the Framework's seam for "answer these questions
+/// [`DecisionsService`] is the Framework's seam for "answer these questions
 /// without asking a vendor", so the demo uses it instead of teaching
 /// [`Foreman`](crate::foreman::Foreman) about a second kind of supervisor. The
 /// code under test is then exactly the code a live run executes: the same nine
@@ -156,9 +156,9 @@ impl Readings {
             .map(|readings| Self { readings })
     }
 
-    /// A classifier backed by this service, ready for a `Foreman`.
-    pub fn classifier() -> Result<Classifier, serde_json::Error> {
-        Ok(Classifier::new(READINGS_MODEL, Self::load()?))
+    /// A decision service backed by this service, ready for a `Foreman`.
+    pub fn decisions() -> Result<Decisions, serde_json::Error> {
+        Ok(Decisions::new(READINGS_MODEL, Self::load()?))
     }
 
     /// Which reading the floor calls for.
@@ -186,7 +186,7 @@ impl Readings {
 }
 
 #[async_trait]
-impl ClassifierService for Readings {
+impl DecisionsService for Readings {
     fn is_configured(&self) -> bool {
         true
     }
@@ -195,10 +195,7 @@ impl ClassifierService for Readings {
         READINGS_MODEL
     }
 
-    async fn evaluate(
-        &self,
-        request: ClassificationRequest,
-    ) -> Result<ClassificationOutcome, AgentLoopError> {
+    async fn evaluate(&self, request: DecisionRequest) -> Result<DecisionOutcome, AgentLoopError> {
         let phase = Self::phase(&request.state);
         let reading = self.readings.get(phase).ok_or_else(|| {
             AgentLoopError::llm(format!("readings.json has no entry for '{phase}'"))
@@ -210,13 +207,13 @@ impl ClassifierService for Readings {
                 let probability = reading.get(id).copied().ok_or_else(|| {
                     AgentLoopError::llm(format!("readings.json '{phase}' has no '{id}'"))
                 })?;
-                Ok((id.clone(), ClassificationAnswer::Noul { probability }))
+                Ok((id.clone(), DecisionAnswer::Noul { probability }))
             })
             .collect::<Result<BTreeMap<_, _>, AgentLoopError>>()?;
-        Ok(ClassificationOutcome {
+        Ok(DecisionOutcome {
             model: READINGS_MODEL.to_owned(),
             answers,
-            ..ClassificationOutcome::default()
+            ..DecisionOutcome::default()
         })
     }
 }
@@ -250,7 +247,7 @@ fn every_reading_answers_every_question() {
 
 #[tokio::test]
 async fn the_readings_service_answers_the_nine_questions() {
-    let foreman = Foreman::new(Readings::classifier().unwrap(), Duration::from_secs(5));
+    let foreman = Foreman::new(Readings::decisions().unwrap(), Duration::from_secs(5));
     let assessment = foreman.assess(&Observation::sample()).await.unwrap();
     // The sample observation has a worker on the floor and nothing changed
     // yet, so this is the opening reading.
@@ -307,7 +304,7 @@ async fn the_factory_finishes_after_verifying_its_own_work() {
         fixture::JOB,
         &root,
         crew,
-        Foreman::new(Readings::classifier().unwrap(), config().assessment_budget),
+        Foreman::new(Readings::decisions().unwrap(), config().assessment_budget),
         config(),
     )
     .run()

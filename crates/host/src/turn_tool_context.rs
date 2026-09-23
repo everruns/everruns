@@ -42,7 +42,7 @@ pub(crate) fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         image_store: adapter.image_artifact_store(org_id),
         provider_credential_store: adapter.provider_credential_store(org_id),
         utility_llm_service: adapter.utility_llm_service(),
-        classifier: adapter.classifier(),
+        decisions: adapter.decisions(),
         mcp_invoker,
         egress_service: adapter.egress_service(),
         message_retriever: Some(adapter.message_store()),

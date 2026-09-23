@@ -289,7 +289,7 @@ async fn store_host_completion_stream_emits_progressive_deltas() {
         .await
         .unwrap();
 
-    // Classification context mirrors the non-streaming error path.
+    // Decision context mirrors the non-streaming error path.
     assert_eq!(stream.context.provider.as_deref(), Some("llmsim"));
     assert_eq!(stream.context.model_id.as_deref(), Some("llmsim-model"));
 

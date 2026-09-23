@@ -111,14 +111,14 @@ And when the answer is a number rather than prose — *does this hold, how sever
 is it, which of these* — ask for a judgment instead of parsing one out of text:
 
 ```rust
-use everruns::{Classifier, TypeSafeAI};
+use everruns::{Decisions, TypeSafeAI};
 
-let judge = Classifier::new("jev-latest", TypeSafeAI::from_env()?);
+let judge = Decisions::new("jev-latest", TypeSafeAI::from_env()?);
 let spam = judge.probability("Is this message spam?", text).await?;
 ```
 
 The threshold stays in your code, so there is no written verdict to misparse.
-See [Direct classification](https://docs.everruns.com/framework/direct-classification/).
+See [Direct decision](https://docs.everruns.com/framework/direct-decisions/).
 
 ## Credentials come from your vendor's own variables
 
@@ -218,7 +218,7 @@ opt-in.
 | Feature | Adds |
 | --- | --- |
 | `openai` | OpenAI Responses API provider configuration |
-| `typesafe` | TypeSafe classifier provider and the `jev` capability |
+| `typesafe` | TypeSafe decisions provider and the `jev` capability |
 | `bashkit` | Sandboxed shell execution |
 | `web-fetch` | HTTP content fetching |
 | `duckduckgo` | DuckDuckGo search |
@@ -287,7 +287,7 @@ includes the exact command for each one.
 - [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Direct model calls](https://docs.everruns.com/framework/direct-model-calls/)
 - [Model catalogs](https://docs.everruns.com/framework/model-catalogs/)
-- [Direct classification](https://docs.everruns.com/framework/direct-classification/)
+- [Direct decision](https://docs.everruns.com/framework/direct-decisions/)
 - [Credentials](https://docs.everruns.com/framework/credentials/)
 - [Sessions](https://docs.everruns.com/framework/sessions/)
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)

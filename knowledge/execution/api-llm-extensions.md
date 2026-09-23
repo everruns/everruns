@@ -56,7 +56,7 @@ fields that are present.
 Tagging is not exhaustive for preference/error/supersession hints. An LLM
 client treats absent side-effect and preference tags as
 "irreversible / neutral" by default, then uses explicit tags to relax
-that classification when safe.
+that decision when safe.
 
 ## utoipa wiring
 

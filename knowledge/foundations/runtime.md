@@ -209,7 +209,7 @@ Required behavior:
    not persist a second user message, schedule another act for already-completed
    tools, or discard provider continuation state that remains valid. Terminal
    transient exhaustion is reported as safe to resume from persisted history;
-   permanent provider failures retain their precise classification.
+   permanent provider failures retain their precise decision.
 
 ## Shared Context Assembly
 
