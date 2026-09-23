@@ -93,6 +93,8 @@ fn test_clear_at_capability_is_profile_gated() {
         "claude-opus-5",
         "claude-opus-4-8",
         "claude-opus-5-5[1m]",
+        "claude-opus-5-5-20260101[1m]",
+        "claude-fable-5-1-20260901[1m]",
     ] {
         let profile = get_model_profile("anthropic", id).unwrap();
         assert!(
@@ -100,6 +102,14 @@ fn test_clear_at_capability_is_profile_gated() {
             "{id}"
         );
         assert!(profile.supports_parameter(CLEAR_AT_PARAMETER), "{id}");
+    }
+
+    for id in [
+        "claude-opus-5-5-20260101[1m]",
+        "claude-fable-5-1-20260901[1m]",
+    ] {
+        let profile = get_model_profile("anthropic", id).unwrap();
+        assert_eq!(profile.limits.unwrap().context, 1_000_000, "{id}");
     }
 
     for id in [

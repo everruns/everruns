@@ -524,8 +524,7 @@ async fn cache_diagnostics_absent_when_not_requested() {
     );
 }
 
-#[tokio::test]
-async fn clear_at_tool_loop_keeps_the_wire_prefix_append_only() {
+async fn assert_clear_at_tool_loop_wire(model: &str) {
     let server = MockServer::start().await;
     let body = [
         sse_event(
@@ -549,7 +548,7 @@ async fn clear_at_tool_loop_keeps_the_wire_prefix_append_only() {
         facts,
     ];
     let stream = driver(&server)
-        .chat_completion_stream(turn_one.clone(), &config("claude-opus-5-5"))
+        .chat_completion_stream(turn_one.clone(), &config(model))
         .await
         .expect("first stream should start");
     let _ = drain_golden(stream).await;
@@ -569,7 +568,7 @@ async fn clear_at_tool_loop_keeps_the_wire_prefix_append_only() {
     let mut turn_two = turn_one;
     turn_two.extend([assistant, result, next_facts, warning]);
     let stream = driver(&server)
-        .chat_completion_stream(turn_two, &config("claude-opus-5-5"))
+        .chat_completion_stream(turn_two, &config(model))
         .await
         .expect("second stream should start");
     let _ = drain_golden(stream).await;
@@ -601,6 +600,10 @@ async fn clear_at_tool_loop_keeps_the_wire_prefix_append_only() {
             .unwrap();
         assert!(beta.contains("mid-conversation-system-clear-at-2026-08-21"));
         assert!(beta.contains("thinking-binding-controls-2026-08-01"));
+        if let Some(wire_model) = model.strip_suffix("[1m]") {
+            assert!(beta.contains("context-1m-2025-08-07"));
+            assert_eq!(payload["model"], wire_model);
+        }
         assert_eq!(
             payload["thinking"]["block_binding"]["prefix_mismatch_behavior"],
             "drop_block"
@@ -608,6 +611,20 @@ async fn clear_at_tool_loop_keeps_the_wire_prefix_append_only() {
     }
 }
 
+#[tokio::test]
+async fn clear_at_tool_loop_keeps_the_wire_prefix_append_only() {
+    assert_clear_at_tool_loop_wire("claude-opus-5-5").await;
+}
+
+#[tokio::test]
+async fn dated_1m_models_keep_clear_at_on_the_wire() {
+    for model in [
+        "claude-opus-5-5-20260101[1m]",
+        "claude-fable-5-1-20260901[1m]",
+    ] {
+        assert_clear_at_tool_loop_wire(model).await;
+    }
+}
 /// Interleaved thinking: two thinking blocks in one response, each signed
 /// separately, with a tool call between them.
 ///
