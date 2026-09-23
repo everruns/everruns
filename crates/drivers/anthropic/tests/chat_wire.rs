@@ -373,6 +373,73 @@ async fn fragmented_tool_use_golden_events() {
     );
 }
 
+#[tokio::test]
+async fn hosted_tool_search_content_is_captured_verbatim_in_stream_order() {
+    let server = MockServer::start().await;
+    let events = [
+        ("message_start", r#"{"type":"message_start","message":{"id":"msg_search","usage":{"input_tokens":12}}}"#),
+        ("content_block_start", r#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#),
+        ("content_block_delta", r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"first"}}"#),
+        ("content_block_delta", r#"{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig-1"}}"#),
+        ("content_block_stop", r#"{"type":"content_block_stop","index":0}"#),
+        ("content_block_start", r#"{"type":"content_block_start","index":1,"content_block":{"type":"server_tool_use","id":"srv_1","name":"tool_search_tool_bm25","input":{}}}"#),
+        ("content_block_delta", r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"query\":\"weather\"}"}}"#),
+        ("content_block_stop", r#"{"type":"content_block_stop","index":1}"#),
+        ("content_block_start", r#"{"type":"content_block_start","index":2,"content_block":{"type":"tool_search_tool_result","tool_use_id":"srv_1","content":{"type":"tool_search_tool_result_error","error_code":"too_many_requests"}}}"#),
+        ("content_block_stop", r#"{"type":"content_block_stop","index":2}"#),
+        ("content_block_start", r#"{"type":"content_block_start","index":3,"content_block":{"type":"thinking","thinking":""}}"#),
+        ("content_block_delta", r#"{"type":"content_block_delta","index":3,"delta":{"type":"thinking_delta","thinking":"second"}}"#),
+        ("content_block_delta", r#"{"type":"content_block_delta","index":3,"delta":{"type":"signature_delta","signature":"sig-2"}}"#),
+        ("content_block_stop", r#"{"type":"content_block_stop","index":3}"#),
+        ("content_block_start", r#"{"type":"content_block_start","index":4,"content_block":{"type":"text","text":""}}"#),
+        ("content_block_delta", r#"{"type":"content_block_delta","index":4,"delta":{"type":"text_delta","text":"Calling the selected tool."}}"#),
+        ("content_block_stop", r#"{"type":"content_block_stop","index":4}"#),
+        ("content_block_start", r#"{"type":"content_block_start","index":5,"content_block":{"type":"tool_use","id":"toolu_1","name":"get_weather","input":{}}}"#),
+        ("content_block_delta", r#"{"type":"content_block_delta","index":5,"delta":{"type":"input_json_delta","partial_json":"{\"city\":\"Paris\"}"}}"#),
+        ("content_block_stop", r#"{"type":"content_block_stop","index":5}"#),
+        ("message_delta", r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}"#),
+        ("message_stop", r#"{"type":"message_stop"}"#),
+    ];
+    mount_sse(
+        &server,
+        events
+            .into_iter()
+            .map(|(event, data)| sse_event(event, data))
+            .collect(),
+    )
+    .await;
+
+    let mut stream = driver(&server)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "weather?")],
+            &config("claude-opus-5"),
+        )
+        .await
+        .expect("stream should start");
+    let mut metadata = None;
+    while let Some(item) = stream.next().await {
+        if let LlmStreamEvent::Done(done) = item.expect("stream event should succeed") {
+            metadata = Some(*done);
+        }
+    }
+
+    assert_eq!(
+        metadata
+            .expect("stream should finish")
+            .provider_opaque_content
+            .expect("Anthropic content should be retained")
+            .content,
+        serde_json::json!([
+            {"type":"thinking","thinking":"first","signature":"sig-1"},
+            {"type":"server_tool_use","id":"srv_1","name":"tool_search_tool_bm25","input":{"query":"weather"}},
+            {"type":"tool_search_tool_result","tool_use_id":"srv_1","content":{"type":"tool_search_tool_result_error","error_code":"too_many_requests"}},
+            {"type":"thinking","thinking":"second","signature":"sig-2"},
+            {"type":"text","text":"Calling the selected tool."},
+            {"type":"tool_use","id":"toolu_1","name":"get_weather","input":{"city":"Paris"}}
+        ])
+    );
+}
+
 /// Cache diagnostics (`cache-diagnosis` beta) and caller-supplied headers.
 ///
 /// The request must carry the beta flag, an explicit `diagnostics` object with

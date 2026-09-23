@@ -2682,6 +2682,49 @@ mod tests {
     }
 
     #[test]
+    fn preserved_assistant_content_replays_verbatim_in_original_order() {
+        let preserved = json!([
+            {"type":"thinking","thinking":"first","signature":"sig-1"},
+            {"type":"server_tool_use","id":"srv_1","name":"tool_search_tool_bm25","input":{"query":"weather"}},
+            {"type":"tool_search_tool_result","tool_use_id":"srv_1","content":{"type":"tool_search_tool_result_error","error_code":"too_many_requests"}},
+            {"type":"thinking","thinking":"second","signature":"sig-2"},
+            {"type":"text","text":"Calling the selected tool."},
+            {"type":"tool_use","id":"toolu_1","name":"get_weather","input":{"city":"Paris"}}
+        ]);
+        let mut assistant = Message::parts(
+            MessageRole::Assistant,
+            vec![
+                LlmContentPart::ProviderOpaque(ProviderOpaqueContent::new(
+                    "anthropic",
+                    preserved.clone(),
+                )),
+                LlmContentPart::Text {
+                    text: "reconstructed text".into(),
+                },
+            ],
+        );
+        assistant.reasoning.push(
+            ReasoningContentPart::opaque("anthropic")
+                .with_text(ReasoningText::Plain {
+                    text: "reconstructed thinking".into(),
+                })
+                .with_signature("wrong-signature"),
+        );
+        assistant.tool_calls = Some(vec![ToolCall {
+            id: "wrong-id".into(),
+            name: "wrong-tool".into(),
+            arguments: json!({"wrong":true}),
+        }]);
+
+        let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant], true, 0);
+
+        assert_eq!(
+            serde_json::to_value(converted).unwrap(),
+            json!([{"role":"assistant","content":preserved}])
+        );
+    }
+
+    #[test]
     fn tool_search_preserves_complete_schemas_and_cache_thresholds() {
         let tools = [
             contract_tool("automatic", DeferrablePolicy::Automatic),
