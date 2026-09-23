@@ -1263,6 +1263,7 @@ pub fn patch_dangling_tool_calls(messages: &[RuntimeMessage]) -> Vec<RuntimeMess
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::driver_registry::{LlmContentPart, MessageContent};
     use crate::tool_types::ToolCall;
     use serde_json::json;
 
@@ -1306,6 +1307,46 @@ mod tests {
         let llm = crate::llm_conversions::llm_message_from_message(&restored);
         assert_eq!(llm.native_tool_calls, vec![native]);
         assert_eq!(llm.tool_calls.unwrap()[0].id, "original-call");
+    }
+    #[test]
+    fn provider_opaque_content_persists_internally_and_is_removed_from_public_messages() {
+        let opaque = ProviderOpaqueContent::new(
+            "anthropic",
+            json!([{"type": "thinking", "signature": "PRIVATE-SIGNATURE"}]),
+        );
+        let mut message = RuntimeMessage::assistant("answer");
+        message
+            .content
+            .push(ContentPart::ProviderOpaque(opaque.clone()));
+
+        let restored: RuntimeMessage =
+            serde_json::from_slice(&serde_json::to_vec(&message).unwrap()).unwrap();
+        assert!(
+            restored
+                .content
+                .contains(&ContentPart::ProviderOpaque(opaque.clone()))
+        );
+        let llm = crate::llm_conversions::llm_message_from_message(&restored);
+        let MessageContent::Parts(parts) = llm.content else {
+            panic!("opaque replay content must use multipart provider content");
+        };
+        assert_eq!(
+            parts,
+            vec![
+                LlmContentPart::ProviderOpaque(opaque),
+                LlmContentPart::Text {
+                    text: "answer".into()
+                }
+            ]
+        );
+
+        let public = restored.into_public();
+        assert_eq!(public.content, vec![ContentPart::text("answer")]);
+        assert!(
+            !serde_json::to_string(&public)
+                .unwrap()
+                .contains("PRIVATE-SIGNATURE")
+        );
     }
 
     #[test]

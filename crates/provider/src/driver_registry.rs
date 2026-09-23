@@ -2014,6 +2014,9 @@ mod tests {
                     LlmContentPart::Image { url } => ("image", url.as_str()),
                     LlmContentPart::Audio { url } => ("audio", url.as_str()),
                     LlmContentPart::File { url, .. } => ("file", url.as_str()),
+                    LlmContentPart::ProviderOpaque(opaque) => {
+                        ("provider_opaque", opaque.provider.as_str())
+                    }
                 })
                 .collect();
             assert_eq!(actual, expected);

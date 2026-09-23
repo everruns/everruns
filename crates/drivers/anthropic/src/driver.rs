@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
 
+use everruns_provider::ProviderOpaqueContent;
 use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_helpers::{
     self, ANTHROPIC_NOT_FOUND_PATTERNS, ANTHROPIC_TOO_LARGE_PATTERNS, AUDIO_CONTENT_PLACEHOLDER,
@@ -37,7 +38,6 @@ use everruns_provider::llm_retry::{
     retry_request, send_error_message,
 };
 use everruns_provider::model::ReasoningEffort;
-use everruns_provider::ProviderOpaqueContent;
 use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_provider::stream_reconnect::connect_sse_with_reconnect;
 use everruns_provider::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};

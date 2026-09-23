@@ -632,6 +632,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             phase,
                                             request_body: None,
                                             cache_diagnostics: None,
+                                            provider_opaque_content: None,
                                         })))
                                     }
 
