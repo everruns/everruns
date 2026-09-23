@@ -70,6 +70,7 @@ use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 
 mod compaction;
 mod error_policy;
+mod facts;
 mod finalized_calls;
 mod observability;
 mod output_hooks;
@@ -1096,26 +1097,20 @@ impl ReasonAtom {
             stateful_response_continuation || restored_checkpoint.is_some(),
         );
 
-        // 9c. Append live dynamic facts (e.g. the current time) at the tail.
-        // Collected fresh each request so values are current, and delivered as a
-        // trailing user-role message so they never fold into the cached system
-        // prompt. `volatile_suffix_len` tells the Anthropic driver to anchor its
-        // message cache breakpoint *before* this block, so the volatile tail
-        // rides uncached while the conversation prefix stays cached.
-        let mut volatile_suffix_len = 0usize;
-        {
-            let facts_ctx = crate::capabilities::FactsContext::new(session_id);
-            let dynamic_facts = crate::capabilities::collect_dynamic_facts(
+        // 9c. Dynamic facts (e.g. the current time) as `<facts>` user messages
+        // after each input the model answered, as of that input, so a replayed
+        // history is byte-identical to what was sent (see `facts`).
+        let render_facts = |at| {
+            crate::capabilities::render_facts_block(&crate::capabilities::collect_dynamic_facts(
                 &resolved_capability_configs,
                 &self.capability_registry,
                 Some(model_with_provider.model.as_str()),
-                &facts_ctx,
-            );
-            if let Some(block) = crate::capabilities::render_facts_block(&dynamic_facts) {
-                context_messages.push(RuntimeMessage::user(block));
-                volatile_suffix_len = 1;
-            }
-        }
+                &crate::capabilities::FactsContext::new(session_id).at(at),
+            ))
+        };
+        let (context_messages, volatile_suffix_len) =
+            facts::interleave_facts(context_messages, render_facts);
+        let mut context_messages = context_messages;
 
         // 9d. Prepend conversation context (e.g. hierarchical AGENTS.md) as
         // the leading user-role message.

@@ -157,6 +157,7 @@ impl AnthropicChatDriver {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let max_tokens_fallback_attempted = Arc::new(Mutex::new(false));
         let beta_logged = Arc::new(Mutex::new(false));
+        let binds_thinking = layout::binds_thinking_to_conversation(model);
         let mut retry_config = self.retry_config.clone();
         retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
 
@@ -197,6 +198,9 @@ impl AnthropicChatDriver {
                     }
                     if wants_cache_diagnostics {
                         beta_features.push(CACHE_DIAGNOSTICS_BETA);
+                    }
+                    if binds_thinking {
+                        beta_features.push(layout::THINKING_BINDING_BETA);
                     }
                     if !beta_features.is_empty() {
                         let beta = beta_features.join(",");
@@ -455,46 +459,6 @@ impl AnthropicChatDriver {
         })
     }
 
-    /// Place the message-level prompt-cache breakpoints on the last text
-    /// blocks, skipping `volatile_suffix_len` trailing messages.
-    ///
-    /// The runtime appends volatile content (a live `<facts>` block that changes
-    /// every turn) after the last stable message. Anchoring a breakpoint on
-    /// that volatile tail would make the cached prefix diverge from the next
-    /// turn's prefix right after the last stable message, evicting the
-    /// conversation-history cache. Skipping the volatile suffix keeps the
-    /// breakpoints on stable blocks, so the trailing block rides as an
-    /// uncached suffix while everything before it stays cached.
-    ///
-    /// Two breakpoints, not one, and the pair is what makes caching
-    /// *incremental*: the newest marks where this turn's history gets written,
-    /// the one behind it sits at a position the previous turn already wrote, so
-    /// each turn reads the cache its predecessor created instead of re-paying
-    /// for the whole transcript. With the system prompt and the tool array this
-    /// totals four, Anthropic's per-request maximum.
-    fn mark_recent_text_blocks_for_cache(
-        messages: &mut [AnthropicMessage],
-        volatile_suffix_len: usize,
-    ) {
-        let anchor_len = messages.len().saturating_sub(volatile_suffix_len);
-        let mut remaining = MESSAGE_CACHE_BREAKPOINTS;
-        for msg in messages[..anchor_len].iter_mut().rev() {
-            // At most one breakpoint per message: a second marker inside the
-            // same message would spend a scarce breakpoint on a position the
-            // first one already covers.
-            for block in msg.content.iter_mut().rev() {
-                if let AnthropicContentBlock::Text { cache_control, .. } = block {
-                    *cache_control = Some(AnthropicCacheControl::ephemeral());
-                    remaining -= 1;
-                    break;
-                }
-            }
-            if remaining == 0 {
-                return;
-            }
-        }
-    }
-
     fn convert_messages(
         messages: &[Message],
         prompt_cache_enabled: bool,
@@ -504,7 +468,7 @@ impl AnthropicChatDriver {
         // `system` field. Overwriting on each System message would drop the agent
         // system prompt whenever a later notice/summary System message is present
         // (infinity_context / compaction). See `fold_system_messages`.
-        let system_prompt = fold_system_messages(messages);
+        let mut system_prompt = fold_system_messages(messages);
         let mut converted = Vec::new();
         let visible_tool_use_ids = visible_tool_call_ids(messages);
 
@@ -647,8 +611,9 @@ impl AnthropicChatDriver {
             }
         }
 
+        layout::place_system_messages(&mut system_prompt, &mut converted);
         if prompt_cache_enabled {
-            Self::mark_recent_text_blocks_for_cache(&mut converted, volatile_suffix_len);
+            layout::mark_recent_text_blocks_for_cache(&mut converted, volatile_suffix_len);
         }
 
         (system_prompt, converted)
@@ -779,8 +744,11 @@ impl ChatDriver for AnthropicChatDriver {
         // ReasonAtom emits llm.generation events, and OtelEventListener
         // creates gen-ai spans from those events.
         let prompt_cache_enabled = config.prompt_cache.as_ref().is_some_and(|cfg| cfg.enabled);
-        let (system_prompt, anthropic_messages) =
-            Self::convert_messages(&messages, prompt_cache_enabled, config.volatile_suffix_len);
+        let (system_prompt, anthropic_messages) = Self::convert_messages(
+            &layout::keep_later_system_messages_in_place(&messages, &config.model),
+            prompt_cache_enabled,
+            config.volatile_suffix_len,
+        );
         let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
 
         // `[1m]` model ids (e.g. `claude-opus-4-8[1m]`) are the gateway's
@@ -847,7 +815,7 @@ impl ChatDriver for AnthropicChatDriver {
             Some(effort) if uses_adaptive_thinking(wire_model) => {
                 match adaptive_effort_level(effort) {
                     Some(level) => (
-                        Some(AnthropicThinking::adaptive()),
+                        Some(AnthropicThinking::adaptive(wire_model)),
                         Some(AnthropicOutputConfig {
                             effort: level.to_string(),
                         }),
@@ -997,6 +965,8 @@ impl ChatDriver for AnthropicChatDriver {
                                         // Following requests use this for prompt-cache diagnostics.
                                         *response_id.lock().unwrap() = Some(id);
                                     }
+                                    let transformations = &data.message.input_transformations;
+                                    layout::log_input_transformations(data.message.model.as_deref(), transformations);
                                     *response_model.lock().unwrap() = data.message.model;
                                     if let Some(diagnostics) =
                                         data.message.diagnostics.or(data.diagnostics)
@@ -1588,7 +1558,16 @@ enum AnthropicThinking {
         /// (`display: "omitted"`); "summarized" restores it so assistant
         /// messages keep their thinking content like on budget-based models.
         display: &'static str,
+        /// What the API does with a replayed block whose conversation prefix
+        /// changed; set on preserved-thinking models (see `layout`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        block_binding: Option<AnthropicBlockBinding>,
     },
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+struct AnthropicBlockBinding {
+    prefix_mismatch_behavior: &'static str,
 }
 
 impl AnthropicThinking {
@@ -1599,9 +1578,14 @@ impl AnthropicThinking {
     }
 
     /// Adaptive thinking with summarized (visible) thinking content
-    fn adaptive() -> Self {
+    fn adaptive(model: &str) -> Self {
         Self::Adaptive {
             display: "summarized",
+            block_binding: layout::binds_thinking_to_conversation(model).then_some(
+                AnthropicBlockBinding {
+                    prefix_mismatch_behavior: "drop_block",
+                },
+            ),
         }
     }
 }
@@ -1848,6 +1832,8 @@ struct AnthropicMessageInfo {
     /// request opted into the `cache-diagnosis` beta.
     #[serde(default)]
     diagnostics: Option<serde_json::Value>,
+    #[serde(default)]
+    input_transformations: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2299,6 +2285,9 @@ impl AnthropicModelInfo {
 // ============================================================================
 // Tests
 // ============================================================================
+
+#[path = "driver_layout.rs"]
+mod layout;
 
 #[cfg(test)]
 #[path = "driver_family_tests.rs"]
@@ -2766,7 +2755,7 @@ mod tests {
         // Adaptive must not carry budget_tokens (400 on Fable 5.x / Opus 4.8 /
         // 4.7); display:"summarized" opts back into visible thinking text,
         // which those models omit by default.
-        let adaptive = serde_json::to_value(AnthropicThinking::adaptive()).unwrap();
+        let adaptive = serde_json::to_value(AnthropicThinking::adaptive("claude-test")).unwrap();
         assert_eq!(
             adaptive,
             json!({"type": "adaptive", "display": "summarized"})

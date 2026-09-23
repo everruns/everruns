@@ -49,13 +49,14 @@ impl Capability for CurrentTimeCapability {
         vec![Box::new(GetCurrentTimeTool)]
     }
 
-    /// Contribute the current UTC time as a dynamic fact. The runtime appends
-    /// it to a live `<facts>` block at the conversation tail each turn, so the
-    /// model always knows "now" without a tool round-trip and without the
-    /// changing value invalidating the system-prompt cache. The
-    /// `get_current_time` tool remains for explicit timezone/format queries.
-    fn facts(&self, _config: &Value, _ctx: &FactsContext) -> Vec<Fact> {
-        let now = chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    /// Contribute the current UTC time as a dynamic fact. The runtime renders
+    /// it into a `<facts>` block after each input the model answers, as of
+    /// that input (`ctx.as_of`), so the model always knows "now" without a
+    /// tool round-trip and without the changing value invalidating the
+    /// system-prompt cache. The `get_current_time` tool remains for explicit
+    /// timezone/format queries.
+    fn facts(&self, _config: &Value, ctx: &FactsContext) -> Vec<Fact> {
+        let now = ctx.as_of.to_rfc3339_opts(SecondsFormat::Secs, true);
         vec![Fact::dynamic("current_time", now)]
     }
 }
@@ -174,6 +175,18 @@ mod tests {
         assert_eq!(instant.offset().local_minus_utc(), 0);
         assert!((before..=after).contains(&instant.timestamp()));
         assert!(CurrentTimeCapability.system_prompt_addition().is_none());
+    }
+
+    /// A past block is re-rendered from its own moment, not the clock, so a
+    /// replayed conversation carries the exact text the model saw.
+    #[test]
+    fn dynamic_fact_renders_as_of_the_requested_moment() {
+        use crate::typed_id::SessionId;
+        let at = Utc.with_ymd_and_hms(2026, 9, 23, 10, 0, 0).unwrap();
+        let ctx = FactsContext::new(SessionId::new()).at(at);
+        let facts = CurrentTimeCapability.facts(&Value::Null, &ctx);
+        assert_eq!(facts[0].value, "2026-09-23T10:00:00Z");
+        assert_eq!(CurrentTimeCapability.facts(&Value::Null, &ctx), facts);
     }
 
     #[tokio::test]
