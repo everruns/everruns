@@ -1359,6 +1359,7 @@ jobs:
             --test endpoint_attribution_test \
             --test endpoint_publish_test \
             --test command_policy_enforcement_test \
+            --test db_pool_isolation_test \
             --test fcp_integration_test \
             --test guardrails_integration_test \
             --test mcp_endpoint_test \

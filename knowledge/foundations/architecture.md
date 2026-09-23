@@ -303,6 +303,16 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
    - In PostgreSQL, TEXT and VARCHAR have identical performance
    - TEXT avoids artificial length limits that may cause issues later
    - No need to guess the "right" length for model names, provider names, etc.
+5. **Two connection pools, not one** (EVE-1081): a request pool that fails fast and a small background pool that waits
+   - Why: one shared pool gave every consumer the same acquire deadline, so saturation from any source failed all of
+     them at the same instant. Production showed the durable scheduler, the observer scoring worker and the sweeps
+     around them timing out within two seconds of each other, on the same trace as user-facing 500s.
+   - The request pool keeps a short acquire timeout because a caller is waiting; the background pool waits far longer
+     because nobody is, and the next sweep tick would only retry into the same contention.
+   - Background loops take `StorageBackend::for_background()`, which routes their whole call graph onto the reserved
+     pool without changing a query. Request handlers keep the request pool.
+   - `DATABASE_BACKGROUND_POOL_MAX=0` puts background work back on the request pool, as a config-only rollback.
+   - Sizes and defaults live in `crates/server/src/storage/repositories/mod.rs`.
 
 ### Database Conventions
 
@@ -812,7 +822,7 @@ Multiple control-plane instances can run behind a load balancer for HA.
 Set `EXPECTED_INSTANCES=N` to inform each instance about the total count:
 
 - **SSE connection limits**: Global and per-org limits divided by N. Per-session limits unchanged.
-- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. A startup warning fires if pool × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
+- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. An instance opens `DATABASE_POOL_MAX + DATABASE_BACKGROUND_POOL_MAX` connections, and the startup warning fires when that sum × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
 - **Metrics**: Each instance maintains its own ring buffer. The `/v1/durable/metrics/timeseries` response includes `instance_count` when >1.
 
 ### Load Balancer Requirements

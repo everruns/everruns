@@ -506,6 +506,15 @@ impl ServerAppBuilder {
             task_broadcaster,
         } = crate::storage_init::init_storage(&self.config, migrations).await?;
 
+        // Background loops draw from a pool of their own (EVE-1081). Prod had
+        // the durable scheduler, the observer scoring worker and the sweeps
+        // around them all report `pool timed out while waiting for an open
+        // connection` within two seconds of each other, on the same trace as
+        // user-facing 500s, because every one of them was queued on the single
+        // request pool. Handing them this backend routes their whole call graph
+        // onto the reserved pool without changing a query.
+        let background_db = Arc::new(db.for_background());
+
         // =====================================================================
         // Phase 2: Seed & infrastructure services
         // =====================================================================
@@ -945,7 +954,7 @@ impl ServerAppBuilder {
         if let Some(observer_wake) = observer_wake {
             let judge: Arc<dyn crate::domains::observers::JudgeClient> =
                 Arc::new(crate::domains::observers::LlmJudgeClient::new(
-                    db.clone(),
+                    background_db.clone(),
                     driver_registry.clone(),
                     provider_resolver.clone(),
                 ));
@@ -953,7 +962,7 @@ impl ServerAppBuilder {
                 "observer_scoring",
                 crate::domains::observers::spawn_observer_worker(
                     crate::domains::observers::ObserverWorkerDeps {
-                        db: db.clone(),
+                        db: background_db.clone(),
                         judge: Some(judge),
                     },
                     observer_wake,
@@ -1293,6 +1302,19 @@ impl ServerAppBuilder {
             api::prometheus::spawn_gauge_bridge(durable_state.metrics_collector().clone());
         }
         let scheduler_store = durable_store.clone();
+        // The durable scheduler's own store runs on the background pool
+        // (EVE-1081). `claim_due_schedules` is the loop that Sentry
+        // EVERRUNS-15/16 caught timing out; the request-path copies above keep
+        // the request pool. Dev mode has no pools, so it shares the store.
+        let background_scheduler_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>> =
+            if shared_durable_store.is_some() {
+                durable_store.clone()
+            } else {
+                db.background_pool().cloned().map(|p| {
+                    Arc::new(PostgresWorkflowEventStore::new(p))
+                        as Arc<dyn WorkflowEventStore + Send + Sync>
+                })
+            };
         let apps_state = api::apps::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -2201,7 +2223,7 @@ impl ServerAppBuilder {
             }
 
             // -- Event retention --
-            if let Some(pool) = db.pool() {
+            if let Some(pool) = db.background_pool() {
                 let retention_days = crate::event_retention::retention_days_from_env();
                 supervisor.track_optional(
                     "event_retention",
@@ -2216,7 +2238,7 @@ impl ServerAppBuilder {
             supervisor.track_optional(
                 "blob_gc",
                 crate::blob_gc::spawn_blob_gc_task(
-                    db.clone(),
+                    background_db.clone(),
                     crate::blob_gc::BlobGcConfig::from_env(),
                 ),
             );
@@ -2346,7 +2368,7 @@ impl ServerAppBuilder {
         }
 
         // -- Durable task scheduler (both prod and dev) --
-        if let Some(store) = scheduler_store {
+        if let Some(store) = background_scheduler_store {
             if let Err(e) =
                 crate::leased_resource_scheduler::ensure_leased_resource_cleanup_schedule(
                     store.clone(),
@@ -2375,7 +2397,7 @@ impl ServerAppBuilder {
         supervisor.track(
             "tool_result_timeout_sweep",
             crate::tool_result_timeout::spawn_tool_result_timeout_sweep(
-                db.clone(),
+                background_db.clone(),
                 runner.clone(),
                 event_delivery.clone(),
             ),
@@ -2389,7 +2411,7 @@ impl ServerAppBuilder {
         supervisor.track(
             "session_scheduler",
             crate::session_scheduler::spawn_session_scheduler(
-                db.clone(),
+                background_db.clone(),
                 session_schedule_service,
                 event_service,
                 runner,
@@ -2408,7 +2430,7 @@ impl ServerAppBuilder {
         supervisor.track_optional(
             "memory_source_sync",
             crate::domains::memory::source_sync::spawn_memory_source_sync_task(
-                db.clone(),
+                background_db.clone(),
                 memory_connection_resolver.clone(),
             ),
         );
@@ -2420,7 +2442,7 @@ impl ServerAppBuilder {
         supervisor.track_optional(
             "knowledge_index_sync",
             crate::domains::knowledge_indexes::source_sync::spawn_knowledge_index_sync_task(
-                db.clone(),
+                background_db.clone(),
                 memory_connection_resolver,
                 provider_resolver.clone(),
                 driver_registry.clone(),
@@ -2433,9 +2455,9 @@ impl ServerAppBuilder {
         );
 
         // -- Reporting projection and missing-work reconciliation (both prod and dev) --
-        for handle in
-            crate::domains::reporting::background::spawn_reporting_background_task(db.clone())
-        {
+        for handle in crate::domains::reporting::background::spawn_reporting_background_task(
+            background_db.clone(),
+        ) {
             supervisor.track("reporting_background", handle);
         }
 
