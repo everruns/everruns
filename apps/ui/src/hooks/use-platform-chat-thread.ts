@@ -18,10 +18,9 @@
  * user archived is *not* recreated — archiving is the user saying they do not
  * want it.
  *
- * The guard against a second thread is module-level rather than per-component,
- * because the hook can be mounted more than once at a time (the desktop and
- * mobile sidebars both render the thread list) and the created thread is only
- * visible to the others once the sessions list has refetched.
+ * A module-level guard avoids duplicate requests from parallel mounts (the
+ * desktop and mobile sidebars both render the thread list). The database owns
+ * the uniqueness guarantee across tabs, retries, and stale browser caches.
  *
  * Creating is gated on a *successful* read of the thread list, which is what
  * `isRead` reports. A read that has not succeeded says nothing about whether
@@ -33,12 +32,18 @@
  */
 
 import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useHarnesses } from "@/hooks";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { useCreateSession, usePinSession } from "@/hooks/use-sessions";
 import { useOrg } from "@/providers/org-provider";
-import { CHAT_THREAD_TAG, PLATFORM_CHAT_HARNESS_NAME } from "@/lib/chat-threads";
+import {
+  CHAT_THREAD_TAG,
+  PLATFORM_CHAT_HARNESS_NAME,
+  PLATFORM_CHAT_STARTER_TAG,
+} from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
+import { queryKeys } from "@/lib/query-keys";
 
 /** Title given to the precreated thread. Users may rename it afterwards; the
  *  thread is recognised by its harness binding, not by this string. */
@@ -83,6 +88,7 @@ export function usePlatformChatThread(
   const { data: harnesses = [], isLoading: harnessesLoading } = useHarnesses();
   const createSession = useCreateSession();
   const pinSession = usePinSession();
+  const queryClient = useQueryClient();
 
   const platformChat = harnesses.find((harness) => harness.name === PLATFORM_CHAT_HARNESS_NAME);
   // A thread bound straight to the harness, with no agent in between.
@@ -104,13 +110,14 @@ export function usePlatformChatThread(
             source: "chat",
             harness_name: PLATFORM_CHAT_HARNESS_NAME,
             title: PLATFORM_CHAT_THREAD_TITLE,
-            tags: [CHAT_THREAD_TAG],
+            tags: [CHAT_THREAD_TAG, PLATFORM_CHAT_STARTER_TAG],
           },
         });
       } catch {
-        // Nothing was created, so release the guard and let the next entry try
-        // again. Best-effort: the app works without the precreated thread.
-        ensuredOrgIds.delete(orgId);
+        // Another tab may have won the unique insert, or a successful insert
+        // may have lost its response. Refresh the list to adopt that thread.
+        // Keep the one-shot guard until the next entry to avoid a retry loop.
+        await queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
         return;
       }
 

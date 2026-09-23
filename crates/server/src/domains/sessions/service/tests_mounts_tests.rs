@@ -768,6 +768,7 @@ async fn update_rejects_reserved_routing_tags_for_external_callers() {
         vec!["ag_ui:app:app_ag_ui_other".to_string()],
         vec!["agent:agent_other".to_string()],
         vec!["endpoint:endpoint_other".to_string()],
+        vec![PLATFORM_CHAT_STARTER_TAG.to_string()],
     ] {
         let err = session_service
             .update(
