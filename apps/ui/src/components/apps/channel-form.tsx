@@ -53,7 +53,7 @@ import {
   getSlackReplyModeDisplayName,
 } from "@/lib/app-channels";
 import { generateChannelToken } from "@/lib/channel-tokens";
-import { beginSlackInstall } from "@/lib/api/agent-endpoints";
+import { beginSlackInstall } from "@/lib/api/agent-channels";
 import { ApiError } from "@/lib/api/client";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
@@ -540,24 +540,24 @@ function FieldGrid({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Drives the one-click Slack install for an existing endpoint (EVE-1069).
+ * Drives the one-click Slack install for an existing channel (EVE-1069).
  *
  * `unavailable` is not an error state. A deployment holding no Slack app
  * configuration token answers 501, which is the self-hosted steady state: the
  * manual fields are that deployment's supported path, not a fallback from a
  * failure, so the UI opens them rather than reporting something went wrong.
  */
-function useSlackInstall(endpointId?: string) {
+function useSlackInstall(channelId?: string) {
   const [pending, setPending] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const begin = useCallback(async () => {
-    if (!endpointId) return;
+    if (!channelId) return;
     setPending(true);
     setError(null);
     try {
-      const { authorize_url } = await beginSlackInstall(endpointId);
+      const { authorize_url } = await beginSlackInstall(channelId);
       // A full navigation, not a router push: the next hop is Slack's consent
       // screen, which is outside this app.
       window.location.href = authorize_url;
@@ -569,7 +569,7 @@ function useSlackInstall(endpointId?: string) {
       }
       setPending(false);
     }
-  }, [endpointId]);
+  }, [channelId]);
 
   return { begin, pending, unavailable, error } as const;
 }
@@ -579,23 +579,23 @@ export function ChannelForm({
   onChange,
   mode,
   section = "all",
-  endpointId,
+  channelId,
 }: {
   state: ChannelFormState;
   onChange: (state: ChannelFormState) => void;
   mode: "new" | "edit";
   section?: ChannelFormSection;
   /**
-   * The endpoint's public id (`appchan_…`), present once it exists. One-click
-   * Slack install needs it because Slack redirects back to this endpoint's own
-   * callback route, so the button appears only after the endpoint is saved.
+   * The channel's public id (`appchan_…`), present once it exists. One-click
+   * Slack install needs it because Slack redirects back to this channel's own
+   * callback route, so the button appears only after the channel is saved.
    */
-  endpointId?: string;
+  channelId?: string;
 }) {
   const update = <K extends keyof ChannelFormState>(key: K, value: ChannelFormState[K]) =>
     onChange({ ...state, [key]: value });
-  const slackInstall = useSlackInstall(endpointId);
-  // An endpoint already carrying credentials opens the manual block, so an
+  const slackInstall = useSlackInstall(channelId);
+  // A channel already carrying credentials opens the manual block, so an
   // operator who configured it by hand is not hunting for their own values.
   const slackCredentialsEntered = Boolean(
     state.slackSigningSecret || state.slackBotToken || state.slackTeamId || state.slackChannelId,
@@ -604,7 +604,7 @@ export function ChannelForm({
   if (section === "runs") {
     return (
       <div className="border border-dashed p-4 text-sm text-muted-foreground">
-        Run history will appear here when endpoint run aggregation is available.
+        Run history will appear here when channel run aggregation is available.
       </div>
     );
   }
@@ -616,7 +616,7 @@ export function ChannelForm({
           <div>
             <p className="text-sm font-medium">Enabled</p>
             <p className="text-xs text-muted-foreground">
-              Disabled endpoints stay configured but do not invoke the agent.
+              Disabled channels stay configured but do not invoke the agent.
             </p>
           </div>
           <Switch
@@ -863,7 +863,7 @@ export function ChannelForm({
               placeholder="120"
             />
             <p className="text-xs text-muted-foreground">
-              How long the endpoint waits for the agent before returning 504. Must be 1-600s.
+              How long the channel waits for the agent before returning 504. Must be 1-600s.
             </p>
           </div>
         </div>
@@ -1105,12 +1105,12 @@ export function ChannelForm({
 
       {state.kind === "slack" && (section === "all" || section === "invocation") && (
         <div className="space-y-4">
-          {mode === "edit" && endpointId && !slackInstall.unavailable && (
+          {mode === "edit" && channelId && !slackInstall.unavailable && (
             <div className="border p-4 space-y-3">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Connect to Slack</p>
                 <p className="text-xs text-muted-foreground">
-                  Creates the Slack app for this endpoint and installs it to your workspace. You
+                  Creates the Slack app for this channel and installs it to your workspace. You
                   approve one consent screen; the signing secret, bot token and workspace ID are
                   filled in for you.
                 </p>
@@ -1126,7 +1126,7 @@ export function ChannelForm({
           )}
           {mode === "new" && (
             <p className="text-xs text-muted-foreground">
-              Save the endpoint to connect it to Slack in one click, or fill the fields below in now
+              Save the channel to connect it to Slack in one click, or fill the fields below in now
               if you already have a Slack app.
             </p>
           )}
@@ -1142,8 +1142,8 @@ export function ChannelForm({
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 pt-4">
               <p className="text-xs text-muted-foreground">
-                Every field here is optional. An endpoint with no signing secret simply rejects
-                Slack requests until one is set, so you can save now and finish later.
+                Every field here is optional. A channel with no signing secret simply rejects Slack
+                requests until one is set, so you can save now and finish later.
               </p>
               <FieldGrid>
                 <div className="space-y-2">
@@ -1267,7 +1267,7 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Activation</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Publish this endpoint before external clients can invoke it.
+              Publish this channel before external clients can invoke it.
             </p>
           </div>
         )}

@@ -122,7 +122,7 @@ function SetupSteps({
     <div className="space-y-4">
       {!hasSlackConfig && (
         <p className="text-sm text-muted-foreground">
-          Follow these steps to connect a Slack bot to this endpoint.
+          Follow these steps to connect a Slack bot to this agent channel.
         </p>
       )}
 
@@ -132,7 +132,7 @@ function SetupSteps({
           <p
             className={`text-sm font-medium ${isPublished ? "text-muted-foreground line-through" : ""}`}
           >
-            1. Publish the endpoint
+            1. Publish the channel
           </p>
           {currentStep === 1 && (
             <p className="text-xs text-muted-foreground">
@@ -153,8 +153,8 @@ function SetupSteps({
           </p>
           {currentStep === 1 && (
             <p className="text-xs text-muted-foreground">
-              Available once the endpoint is published — the manifest points Slack at this
-              endpoint&apos;s webhook, and Slack rejects a URL that does not answer yet.
+              Available once the channel is published — the manifest points Slack at this
+              channel&apos;s webhook, and Slack rejects a URL that does not answer yet.
             </p>
           )}
           {currentStep === 2 && (
@@ -165,7 +165,7 @@ function SetupSteps({
                 <strong>Create</strong>, then install it to your workspace.
               </p>
               {manifestLoading ? (
-                <p className="text-xs text-muted-foreground">Loading the endpoint manifest…</p>
+                <p className="text-xs text-muted-foreground">Loading the Slack app manifest…</p>
               ) : canCreateSlackApp && manifestRequestUrl ? (
                 <>
                   <p className="text-xs text-muted-foreground">
@@ -211,7 +211,8 @@ function SetupSteps({
           {currentStep === 2 && (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
-                After creating the Slack app, open Configure and copy two values into this endpoint:
+                After creating the Slack app, open Configure and copy two values into this agent
+                channel:
               </p>
               <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
                 <li>

@@ -6,10 +6,10 @@ import { Plus } from "lucide-react";
 import { useResumeAgentExposures, useSuspendAgentExposures } from "@/hooks/use-agents";
 import {
   isTriggerChannel,
-  useAgentEndpoints,
-  usePublishAgentEndpoint,
-  useTriggerAgentEndpoint,
-} from "@/hooks/use-agent-endpoints";
+  useAgentChannels,
+  usePublishAgentChannel,
+  useTriggerAgentChannel,
+} from "@/hooks/use-agent-channels";
 import { useAgentTriggers } from "@/hooks/use-agent-triggers";
 import { usePolicies } from "@/hooks/use-policies";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,7 +18,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { ChannelRow } from "@/components/apps/channel-row";
 import { MiniTimeline } from "@/components/apps/mini-timeline";
 import { type StatStripStats } from "@/components/apps/stat-strip";
-import { EndpointDetailsPanel } from "@/components/agents/integrations/endpoint-details-panel";
+import { ChannelDetailsPanel } from "@/components/agents/integrations/channel-details-panel";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import { BudgetPanel } from "@/components/budgets/budget-panel";
 import {
@@ -31,46 +31,46 @@ import {
   RailSection,
 } from "@/components/layout";
 import type { Agent } from "@/lib/api/types";
-import type { AgentEndpoint } from "@/hooks/use-agent-endpoints";
+import type { AgentChannel } from "@/hooks/use-agent-channels";
 import { pluralize } from "@/lib/formatting";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 function buildStats(
-  endpoints: AgentEndpoint[],
+  channels: AgentChannel[],
   triggerCount: number,
   suspended: boolean,
 ): StatStripStats {
-  const live = endpoints.filter(
+  const live = channels.filter(
     ({ channel }) => channel.enabled && channel.status === "live",
   ).length;
   // Triggers come from two places while the migration is in flight: native
   // agent triggers, and the schedule channels that predate them. Counting only
   // the latter reported "0 triggers" for an agent that plainly had one.
-  const scheduleChannels = endpoints.filter(({ channel }) => isTriggerChannel(channel)).length;
+  const scheduleChannels = channels.filter(({ channel }) => isTriggerChannel(channel)).length;
   const triggers = triggerCount + scheduleChannels;
-  const doors = endpoints.length - scheduleChannels;
+  const doors = channels.length - scheduleChannels;
 
   let health: string;
   let healthSub: string;
   if (suspended) {
     health = "Suspended";
     healthSub = "Exposures are switched off for this agent";
-  } else if (endpoints.length === 0) {
+  } else if (channels.length === 0) {
     health = "Not exposed";
-    healthSub = "No endpoints configured";
-  } else if (live === endpoints.length) {
+    healthSub = "No channels configured";
+  } else if (live === channels.length) {
     health = "Healthy";
-    healthSub = `${live} of ${endpoints.length} endpoints live`;
+    healthSub = `${live} of ${channels.length} channels live`;
   } else {
     health = "Needs attention";
-    healthSub = `${live} of ${endpoints.length} endpoints live`;
+    healthSub = `${live} of ${channels.length} channels live`;
   }
 
   return {
     health,
     healthSub,
     invocations24h: 0,
-    invocationSub: `${triggers} ${pluralize(triggers, "trigger")} · ${doors} ${pluralize(doors, "endpoint")}`,
+    invocationSub: `${triggers} ${pluralize(triggers, "trigger")} · ${doors} ${pluralize(doors, "channel")}`,
     successRate: null,
     successSub: "Run metrics pending backend aggregation",
     timeline: [],
@@ -78,14 +78,14 @@ function buildStats(
 }
 
 export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
-  const { endpoints, isLoading } = useAgentEndpoints(agent.id);
+  const { channels, isLoading } = useAgentChannels(agent.id);
   const { data: triggers = [] } = useAgentTriggers(agent.id);
   const { can: canAgent } = usePolicies("agents");
   const { can: canBudget } = usePolicies("budgets");
   const suspendExposures = useSuspendAgentExposures();
   const resumeExposures = useResumeAgentExposures();
-  const publishEndpoint = usePublishAgentEndpoint(agent.id);
-  const triggerEndpoint = useTriggerAgentEndpoint(agent.id);
+  const publishChannel = usePublishAgentChannel(agent.id);
+  const triggerChannel = useTriggerAgentChannel(agent.id);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const budgetsEnabled = useFeatureFlag("app_budgets");
 
@@ -96,12 +96,12 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const canManageBudgets = canBudget("budget.manage");
 
   const stats = useMemo(
-    () => buildStats(endpoints, triggers.length, suspended),
-    [endpoints, suspended, triggers.length],
+    () => buildStats(channels, triggers.length, suspended),
+    [channels, suspended, triggers.length],
   );
 
-  const doors = endpoints.filter(({ channel }) => !isTriggerChannel(channel));
-  const scheduleEndpoints = endpoints.filter(({ channel }) => isTriggerChannel(channel));
+  const doors = channels.filter(({ channel }) => !isTriggerChannel(channel));
+  const scheduleTriggerChannels = channels.filter(({ channel }) => isTriggerChannel(channel));
 
   return (
     <>
@@ -129,25 +129,24 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
           <section className="flex flex-col gap-3">
             <div className="flex items-end justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold tracking-tight">Endpoints</h2>
+                <h2 className="text-lg font-semibold tracking-tight">Channels</h2>
                 <p className="text-sm text-muted-foreground">
-                  {doors.length} {pluralize(doors.length, "endpoint")} · how callers reach this
-                  agent
+                  {doors.length} {pluralize(doors.length, "channel")} · how callers reach this agent
                 </p>
               </div>
               {canManage && (
                 <Link
-                  href={`/agents/${agent.id}/endpoints/new`}
+                  href={`/agents/${agent.id}/channels/new`}
                   className={buttonVariants({ size: "sm" })}
                 >
                   <Plus className="size-4" />
-                  Add endpoint
+                  Add channel
                 </Link>
               )}
             </div>
 
             {isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading endpoints…</p>
+              <p className="text-sm text-muted-foreground">Loading channels…</p>
             ) : doors.length === 0 ? (
               <Card>
                 <CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
@@ -168,20 +167,20 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     }
                     usePanel={
                       <div className="space-y-4">
-                        <EndpointDetailsPanel
+                        <ChannelDetailsPanel
                           agentName={agent.display_name ?? agent.name}
                           agentDescription={agent.description}
                           channel={channel}
                           configureHref={
-                            canManage ? `/agents/${agent.id}/endpoints/${channel.id}` : undefined
+                            canManage ? `/agents/${agent.id}/channels/${channel.id}` : undefined
                           }
                         />
                         {budgetsEnabled && canViewBudgets && (
                           <div className="border-t pt-4">
                             <BudgetPanel
-                              subjectType="agent_endpoint"
+                              subjectType="agent_channel"
                               subjectId={channel.id}
-                              title="Endpoint budget"
+                              title="Channel budget"
                               canManage={canManageBudgets}
                             />
                           </div>
@@ -189,14 +188,14 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                       </div>
                     }
                     configureHref={
-                      canManage ? `/agents/${agent.id}/endpoints/${channel.id}` : undefined
+                      canManage ? `/agents/${agent.id}/channels/${channel.id}` : undefined
                     }
                     onPublishChange={
                       canDangerous
-                        ? (publish) => publishEndpoint.mutate({ endpointId: channel.id, publish })
+                        ? (publish) => publishChannel.mutate({ channelId: channel.id, publish })
                         : undefined
                     }
-                    publishPending={publishEndpoint.isPending}
+                    publishPending={publishChannel.isPending}
                   />
                 ))}
               </div>
@@ -209,9 +208,9 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
               <p className="text-sm text-muted-foreground">When this agent wakes up on its own</p>
             </div>
 
-            {scheduleEndpoints.length > 0 && (
+            {scheduleTriggerChannels.length > 0 && (
               <div className="flex flex-col gap-2">
-                {scheduleEndpoints.map(({ channel }) => (
+                {scheduleTriggerChannels.map(({ channel }) => (
                   <ChannelRow
                     key={channel.id}
                     channel={channel}
@@ -220,21 +219,21 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                       setExpandedId((current) => (current === channel.id ? null : channel.id))
                     }
                     configureHref={
-                      canManage ? `/agents/${agent.id}/endpoints/${channel.id}` : undefined
+                      canManage ? `/agents/${agent.id}/channels/${channel.id}` : undefined
                     }
                     onPublishChange={
                       canDangerous
-                        ? (publish) => publishEndpoint.mutate({ endpointId: channel.id, publish })
+                        ? (publish) => publishChannel.mutate({ channelId: channel.id, publish })
                         : undefined
                     }
-                    publishPending={publishEndpoint.isPending}
-                    onRunNow={canManage ? () => triggerEndpoint.mutate(channel.id) : undefined}
+                    publishPending={publishChannel.isPending}
+                    onRunNow={canManage ? () => triggerChannel.mutate(channel.id) : undefined}
                     usePanel={
                       budgetsEnabled && canViewBudgets ? (
                         <BudgetPanel
-                          subjectType="agent_endpoint"
+                          subjectType="agent_channel"
                           subjectId={channel.id}
-                          title="Endpoint budget"
+                          title="Channel budget"
                           canManage={canManageBudgets}
                         />
                       ) : undefined
@@ -269,7 +268,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
               />
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              Takes every endpoint of this agent off the internet at once, without changing the
+              Takes every channel of this agent off the internet at once, without changing the
               publish state each one should return to.
             </p>
           </RailSection>

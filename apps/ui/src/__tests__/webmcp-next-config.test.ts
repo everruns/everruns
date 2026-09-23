@@ -1,4 +1,4 @@
-import { webMcpPermissionsPolicy } from "../../next.config";
+import nextConfig, { webMcpPermissionsPolicy } from "../../next.config";
 
 describe("webMcpPermissionsPolicy", () => {
   it.each(["true", "1"])("allows same-origin tools for %s", (value) => {
@@ -28,5 +28,16 @@ describe("webMcpPermissionsPolicy", () => {
         devMode: undefined,
       }),
     ).toBe("tools=()");
+  });
+});
+
+describe("legacy agent endpoint routes", () => {
+  it("permanently redirects /agents/:id/endpoints/* to /agents/:id/channels/*", async () => {
+    const redirects = await nextConfig.redirects?.();
+    expect(redirects).toContainEqual({
+      source: "/agents/:agentId/endpoints/:path*",
+      destination: "/agents/:agentId/channels/:path*",
+      permanent: true,
+    });
   });
 });

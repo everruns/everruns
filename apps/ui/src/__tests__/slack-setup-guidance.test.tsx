@@ -22,7 +22,7 @@ describe("SlackSetupGuidance", () => {
   it("keeps the setup checklist visible after publish", () => {
     render(<SlackSetupGuidance {...baseProps} isPublished={true} />);
 
-    expect(screen.getByText("1. Publish the endpoint")).toBeInTheDocument();
+    expect(screen.getByText("1. Publish the channel")).toBeInTheDocument();
     expect(screen.getByText("2. Create a Slack app")).toBeInTheDocument();
     expect(screen.getByText("3. Copy credentials back")).toBeInTheDocument();
     expect(screen.getByText("4. Invite the bot and test")).toBeInTheDocument();
@@ -41,7 +41,7 @@ describe("SlackSetupGuidance", () => {
     render(<SlackSetupGuidance {...baseProps} isPublished={false} hasSlackConfig={false} />);
 
     expect(screen.queryByRole("button", { name: "Create Slack app" })).not.toBeInTheDocument();
-    expect(screen.getByText(/Available once the endpoint is published/)).toBeInTheDocument();
+    expect(screen.getByText(/Available once the channel is published/)).toBeInTheDocument();
   });
 
   it("shows create and configure actions once published", () => {

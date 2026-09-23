@@ -58,7 +58,7 @@ export function FcpSetupGuidance({
           {accessBadge}
         </Badge>
         <span className="text-sm text-muted-foreground">
-          {isPublished ? "Ready for FCP clients" : "Publish the endpoint to accept requests"}
+          {isPublished ? "Ready for FCP clients" : "Publish the channel to accept requests"}
         </span>
       </div>
 
@@ -118,7 +118,7 @@ export function FcpSetupGuidance({
         <p className="text-sm text-muted-foreground">
           {hasRateLimit
             ? `${rateLimitPerMinute} requests per minute, per client IP`
-            : "No per-endpoint cap (global API limit applies)"}
+            : "No per-channel cap (global API limit applies)"}
           {" — counted in an FCP-only limiter namespace."}
         </p>
       </div>

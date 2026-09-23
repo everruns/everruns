@@ -43,6 +43,16 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    // Agent "endpoints" were renamed to "channels"; keep old bookmarks and links working.
+    return [
+      {
+        source: "/agents/:agentId/endpoints/:path*",
+        destination: "/agents/:agentId/channels/:path*",
+        permanent: true,
+      },
+    ];
+  },
   // API routing handled by Caddy reverse proxy and backend route layout.
   // No Next.js rewrites needed
 };

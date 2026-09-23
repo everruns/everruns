@@ -108,7 +108,7 @@ export interface Agent {
   network_access?: NetworkAccessList | null;
   status: AgentStatus;
   /**
-   * The agent-level incident switch (EVE-1007). When true every endpoint of
+   * The agent-level incident switch (EVE-1007). When true every channel of
    * this agent refuses traffic, whatever its own publish state, and resuming
    * restores each one to where it was.
    */
@@ -540,7 +540,7 @@ export type SessionStrategy = Extract<SessionBinding, "per_thread" | "per_channe
 export type SlackReplyMode = "all_messages" | "report_progress_only";
 
 /**
- * The bindings a trigger or request/reply endpoint can offer — nothing is
+ * The bindings a trigger or request/reply channel can offer — nothing is
  * listening on a thread, so the exposure owns the session. Mirrors
  * `ChannelType::allowed_bindings()` for schedule, webhook, A2A and api_endpoint.
  */
@@ -789,7 +789,7 @@ export interface AppChannel {
     | Record<string, unknown>;
   enabled: boolean;
   /**
-   * Per-endpoint lifecycle (EVE-1007), authoritative for ingress; `enabled` is
+   * Per-channel lifecycle (EVE-1007), authoritative for ingress; `enabled` is
    * retained for the App API's existing shape. Typed from the generated schema
    * so the two cannot drift.
    */

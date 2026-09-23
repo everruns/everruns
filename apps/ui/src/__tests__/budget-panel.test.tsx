@@ -12,11 +12,11 @@ const createBudget = jest.mocked(budgetsApi.createBudget);
 const updateBudget = jest.mocked(budgetsApi.updateBudget);
 const deleteBudget = jest.mocked(budgetsApi.deleteBudget);
 
-const endpointBudget: Budget = {
-  id: "bdgt_endpoint",
+const channelBudget: Budget = {
+  id: "bdgt_channel",
   organization_id: "org_1",
-  subject_type: "agent_endpoint",
-  subject_id: "endpoint_1",
+  subject_type: "agent_channel",
+  subject_id: "channel_1",
   currency: "usd",
   limit: 10,
   soft_limit: 8,
@@ -45,9 +45,9 @@ function renderPanel(props?: Partial<React.ComponentProps<typeof BudgetPanel>>) 
 
   return render(
     <BudgetPanel
-      subjectType="agent_endpoint"
-      subjectId="endpoint_1"
-      title="Endpoint budget"
+      subjectType="agent_channel"
+      subjectId="channel_1"
+      title="Channel budget"
       canManage
       {...props}
     />,
@@ -58,40 +58,40 @@ function renderPanel(props?: Partial<React.ComponentProps<typeof BudgetPanel>>) 
 describe("BudgetPanel", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    listBudgets.mockResolvedValue([endpointBudget]);
-    createBudget.mockResolvedValue(endpointBudget);
-    updateBudget.mockResolvedValue({ ...endpointBudget, limit: 20 });
+    listBudgets.mockResolvedValue([channelBudget]);
+    createBudget.mockResolvedValue(channelBudget);
+    updateBudget.mockResolvedValue({ ...channelBudget, limit: 20 });
     deleteBudget.mockResolvedValue();
   });
 
   it("shows the refusing cap, rollover state, and migrated App provenance", async () => {
     renderPanel();
 
-    expect(await screen.findByText("bdgt_endpoint")).toBeInTheDocument();
+    expect(await screen.findByText("bdgt_channel")).toBeInTheDocument();
     expect(screen.getByText("Migrated App cap")).toBeInTheDocument();
     expect(screen.getByText(/1h sliding/)).toBeInTheDocument();
     expect(screen.getByText(/Started Sep 19, 2026/)).toBeInTheDocument();
     expect(screen.getByText(/Reset due Sep 19, 2026/)).toBeInTheDocument();
     expect(screen.getByText("exhausted")).toBeInTheDocument();
     expect(listBudgets).toHaveBeenCalledWith({
-      subject_type: "agent_endpoint",
-      subject_id: "endpoint_1",
+      subject_type: "agent_channel",
+      subject_id: "channel_1",
     });
   });
   it("keeps the cap visible but hides mutations without budget.manage", async () => {
     renderPanel({ canManage: false });
 
-    expect(await screen.findByText("bdgt_endpoint")).toBeInTheDocument();
+    expect(await screen.findByText("bdgt_channel")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add budget" })).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Edit budget bdgt_endpoint" }),
+      screen.queryByRole("button", { name: "Edit budget bdgt_channel" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Delete budget bdgt_endpoint" }),
+      screen.queryByRole("button", { name: "Delete budget bdgt_channel" }),
     ).not.toBeInTheDocument();
   });
 
-  it("creates an endpoint budget with the fixed endpoint subject", async () => {
+  it("creates a channel budget with the fixed channel subject", async () => {
     listBudgets.mockResolvedValue([]);
     renderPanel();
 
@@ -101,8 +101,8 @@ describe("BudgetPanel", () => {
 
     await waitFor(() =>
       expect(createBudget).toHaveBeenCalledWith({
-        subject_type: "agent_endpoint",
-        subject_id: "endpoint_1",
+        subject_type: "agent_channel",
+        subject_id: "channel_1",
         currency: "usd",
         limit: 25,
         soft_limit: null,
@@ -111,22 +111,22 @@ describe("BudgetPanel", () => {
     );
   });
 
-  it("edits and removes an endpoint budget", async () => {
+  it("edits and removes a channel budget", async () => {
     renderPanel();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Edit budget bdgt_endpoint" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit budget bdgt_channel" }));
     fireEvent.change(screen.getByLabelText("Limit"), { target: { value: "20" } });
     fireEvent.click(screen.getByRole("button", { name: "Save budget" }));
 
     await waitFor(() =>
-      expect(updateBudget).toHaveBeenCalledWith("bdgt_endpoint", {
+      expect(updateBudget).toHaveBeenCalledWith("bdgt_channel", {
         limit: 20,
         soft_limit: 8,
         status: "exhausted",
       }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete budget bdgt_endpoint" }));
-    await waitFor(() => expect(deleteBudget).toHaveBeenCalledWith("bdgt_endpoint"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete budget bdgt_channel" }));
+    await waitFor(() => expect(deleteBudget).toHaveBeenCalledWith("bdgt_channel"));
   });
 });

@@ -93,7 +93,7 @@ describe("formatSessionExpiration", () => {
       />,
     );
 
-    expect(screen.getByText("No per-endpoint cap (global API limit applies)")).toBeInTheDocument();
+    expect(screen.getByText("No per-channel cap (global API limit applies)")).toBeInTheDocument();
   });
 
   it("renders configured token guidance", () => {

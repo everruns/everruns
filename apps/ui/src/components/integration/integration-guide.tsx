@@ -136,7 +136,7 @@ export function IntegrationGuide({ kind, id, name }: IntegrationGuideProps) {
             {kind === "agent" ? (
               <p>
                 Existing App channels keep working. New external integrations will use agent-owned
-                endpoints as they become available.
+                channels as they become available.
               </p>
             ) : (
               <p>
@@ -144,7 +144,7 @@ export function IntegrationGuide({ kind, id, name }: IntegrationGuideProps) {
                 <Link href="/agents" className="text-primary hover:underline">
                   agent
                 </Link>{" "}
-                that runs on this harness. New external integrations will use agent-owned endpoints.
+                that runs on this harness. New external integrations will use agent-owned channels.
                 Calling a harness directly (no agent) uses the org defaults for prompt and model.
               </p>
             )}

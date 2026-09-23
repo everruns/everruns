@@ -84,7 +84,7 @@ export function A2aSetupGuidance({
         <span className="text-sm text-muted-foreground">
           {isPublished
             ? "Ready to accept authenticated A2A JSON-RPC requests."
-            : "Publish the endpoint to accept A2A requests."}
+            : "Publish the channel to accept A2A requests."}
         </span>
       </div>
 
@@ -109,8 +109,8 @@ export function A2aSetupGuidance({
           <CopyButton value={agentCardUrl} />
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Public discovery document for A2A clients. Returns 404 unless the endpoint is published
-          and enabled.
+          Public discovery document for A2A clients. Returns 404 unless the channel is published and
+          enabled.
         </p>
       </div>
 
@@ -176,7 +176,7 @@ export function A2aSetupGuidance({
         </div>
         {!canFetchAgentCard ? (
           <div className="rounded-md border p-3 text-sm text-muted-foreground">
-            Publish and enable this endpoint to fetch the public Agent Card. Until then, discovery
+            Publish and enable this channel to fetch the public Agent Card. Until then, discovery
             returns 404.
           </div>
         ) : agentCard ? (

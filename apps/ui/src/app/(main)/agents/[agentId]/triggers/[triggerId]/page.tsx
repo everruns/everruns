@@ -35,7 +35,7 @@ import {
 } from "@/components/layout";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 
-/// Full-page trigger editor, matching the endpoint editors rather than the
+/// Full-page trigger editor, matching the channel editors rather than the
 /// dialog the inline panel still uses for quick edits (EVE-1009). `new` creates;
 /// any other id edits that trigger.
 export default function AgentTriggerPage({

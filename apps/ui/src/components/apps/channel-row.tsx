@@ -32,7 +32,7 @@ import type {
   SlackChannelConfig,
   WebhookChannelConfig,
 } from "@/lib/api/types";
-import { getChannelTypeDisplayName, getEndpointLifecyclePresentation } from "@/lib/app-channels";
+import { getChannelTypeDisplayName, getChannelLifecyclePresentation } from "@/lib/app-channels";
 
 function iconFor(kind: ChannelType) {
   switch (kind) {
@@ -71,9 +71,9 @@ function channelName(channel: AppChannel): string {
     const config = channel.channel_config as SlackChannelConfig;
     return config.channel_id || config.team_id || "Slack channel";
   }
-  if (channel.channel_type === "webhook") return "Webhook endpoint";
-  if (channel.channel_type === "ag_ui") return "AG-UI endpoint";
-  if (channel.channel_type === "fcp") return "FCP endpoint";
+  if (channel.channel_type === "webhook") return "Webhook channel";
+  if (channel.channel_type === "ag_ui") return "AG-UI channel";
+  if (channel.channel_type === "fcp") return "FCP channel";
   if (channel.channel_type === "public_chat") {
     const config = channel.channel_config as PublicChatChannelConfig;
     return config.branding?.display_name?.trim() || "Public Chat";
@@ -82,7 +82,7 @@ function channelName(channel: AppChannel): string {
 }
 
 function channelSubline(channel: AppChannel): React.ReactNode {
-  const { description } = getEndpointLifecyclePresentation(channel);
+  const { description } = getChannelLifecyclePresentation(channel);
 
   if (channel.channel_type === "schedule") {
     const config = channel.channel_config as ScheduleChannelConfig;
@@ -123,7 +123,7 @@ function detailText(channel: AppChannel): string {
     if (hasSignIn) {
       access = "sign-in required";
     } else if (config.anonymous === false) {
-      // anonymous off without a sign-in provider locks the endpoint.
+      // anonymous off without a sign-in provider locks the channel.
       access = "no access configured";
     } else if (tokenProtected) {
       access = "token-protected";
@@ -157,25 +157,25 @@ export function ChannelRow({
   onRunNow?: () => void;
   onPublishChange?: (publish: boolean) => void;
   publishPending?: boolean;
-  /// "How do I call this" for this endpoint specifically. Rendered inside the
+  /// "How do I call this" for this channel specifically. Rendered inside the
   /// expanded row rather than a separate tab, so the snippet can carry this
-  /// endpoint's real URL instead of a placeholder.
+  /// channel's real URL instead of a placeholder.
   usePanel?: React.ReactNode;
   configureHref?: string;
   timeline?: TimelineBin[];
 }) {
   const Icon = iconFor(channel.channel_type);
-  const lifecycle = getEndpointLifecyclePresentation(channel);
+  const lifecycle = getChannelLifecyclePresentation(channel);
   const { isLive } = lifecycle;
   const canRunNow = !!onRunNow && channel.channel_type === "schedule" && isLive;
-  const panelId = `endpoint-panel-${channel.id}`;
+  const panelId = `channel-panel-${channel.id}`;
 
   return (
     <div className="border bg-card">
       <div
         className={
           // Four fixed columns plus a rail left roughly 130px for the name at
-          // an ordinary 1280px window, which truncated "Webhook endpoint" to
+          // an ordinary 1280px window, which truncated "Webhook channel" to
           // "W." and stacked its badges. The metric columns — both of which
           // read 0 until run aggregation lands — are held back until there is
           // width for them; the name, status and actions are what the row is

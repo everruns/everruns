@@ -58,7 +58,7 @@ export function AgUiSetupGuidance({
       <div className="flex items-center gap-2">
         <Badge variant={anonymousEnabled ? "default" : "secondary"}>{accessBadge}</Badge>
         <span className="text-sm text-muted-foreground">
-          {isPublished ? "Ready for AG-UI clients" : "Publish the endpoint to accept requests"}
+          {isPublished ? "Ready for AG-UI clients" : "Publish the channel to accept requests"}
         </span>
       </div>
 
@@ -111,7 +111,7 @@ export function AgUiSetupGuidance({
         <p className="text-sm text-muted-foreground">
           {hasRateLimit
             ? `${rateLimitPerMinute} requests per minute, per IP`
-            : "No per-endpoint cap (global API limit applies)"}
+            : "No per-channel cap (global API limit applies)"}
         </p>
       </div>
 

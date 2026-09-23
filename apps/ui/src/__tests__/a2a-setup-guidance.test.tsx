@@ -81,7 +81,7 @@ describe("A2aSetupGuidance", () => {
   it("does not fetch while unpublished or disabled", () => {
     renderGuidance({ isPublished: false });
     expect(global.fetch).not.toHaveBeenCalled();
-    expect(screen.getByText(/Publish and enable this endpoint/)).toBeInTheDocument();
+    expect(screen.getByText(/Publish and enable this channel/)).toBeInTheDocument();
   });
 
   it("keeps the raw URL copy fallback when fetch fails", async () => {

@@ -7,15 +7,15 @@ import type {
   SlackReplyMode,
 } from "@/lib/api/types";
 
-export interface EndpointLifecyclePresentation {
+export interface ChannelLifecyclePresentation {
   label: "live" | "disabled" | "draft";
   description: "Live" | "Paused" | "Draft — not accepting traffic";
   isLive: boolean;
 }
 
-export function getEndpointLifecyclePresentation(
+export function getChannelLifecyclePresentation(
   channel: Pick<AppChannel, "enabled" | "status">,
-): EndpointLifecyclePresentation {
+): ChannelLifecyclePresentation {
   if (!channel.enabled) {
     return { label: "disabled", description: "Paused", isLive: false };
   }

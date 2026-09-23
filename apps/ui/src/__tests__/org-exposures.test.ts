@@ -28,43 +28,43 @@ function agent(overrides: Partial<Agent> = {}): Agent {
   } as Agent;
 }
 
-// Pinned to `live(endpoint)` in crates/server/src/api/app_ingress.rs:
+// Pinned to `channel_liveness` in crates/server/src/api/app_ingress.rs:
 //
-//   live = endpoint.status == live && agent.status == active
+//   live = channel.status == live && agent.status == active
 //                                  && !agent.exposures_suspended
 //
 // The view exists to be trusted during an incident, so it must never report
 // something live that the server would refuse. Change these together.
 describe("exposure state resolution", () => {
   const cases: Array<[string, AppChannel, Agent | undefined, ExposureState]> = [
-    ["a live endpoint on an active agent", channel(), agent(), "live"],
-    ["a draft endpoint", channel({ status: "draft" }), agent(), "draft"],
-    ["a disabled endpoint", channel({ status: "disabled" }), agent(), "disabled"],
-    ["an endpoint turned off via `enabled`", channel({ enabled: false }), agent(), "disabled"],
+    ["a live channel on an active agent", channel(), agent(), "live"],
+    ["a draft channel", channel({ status: "draft" }), agent(), "draft"],
+    ["a disabled channel", channel({ status: "disabled" }), agent(), "disabled"],
+    ["a channel turned off via `enabled`", channel({ enabled: false }), agent(), "disabled"],
     [
-      "a live endpoint whose agent is suspended",
+      "a live channel whose agent is suspended",
       channel(),
       agent({ exposures_suspended: true }),
       "suspended",
     ],
     [
-      "a live endpoint whose agent is archived",
+      "a live channel whose agent is archived",
       channel(),
       agent({ status: "archived" }),
       "agent-inactive",
     ],
-    ["a live endpoint with no agent at all", channel(), undefined, "agent-inactive"],
+    ["a live channel with no agent at all", channel(), undefined, "agent-inactive"],
   ];
 
   it.each(cases)("resolves %s", (_name, ch, ag, expected) => {
     expect(resolveExposureState(ch, ag)).toBe(expected);
   });
 
-  // The agent-level terms win over the endpoint's own state, exactly as the
+  // The agent-level terms win over the channel's own state, exactly as the
   // server folds them in at resolution time. A suspended agent's draft
-  // endpoint is still not live, and must not read as merely "draft" — the
+  // channel is still not live, and must not read as merely "draft" — the
   // operator needs to see that the agent is the reason.
-  it("reports the agent-level reason even when the endpoint is also not live", () => {
+  it("reports the agent-level reason even when the channel is also not live", () => {
     expect(
       resolveExposureState(channel({ status: "draft" }), agent({ exposures_suspended: true })),
     ).toBe("suspended");
@@ -79,26 +79,26 @@ describe("exposure state resolution", () => {
 });
 
 // Anonymous and publicly-reachable are different questions, and conflating
-// them hid a real hazard: a suspended agent's anonymous endpoint read as
+// them hid a real hazard: a suspended agent's anonymous channel read as
 // "authenticated" until someone resumed the agent, at which point it was
 // instantly open with no prior warning in the row.
 describe("anonymous configuration versus live reachability", () => {
   const anonymousAgUi = channel({ channel_type: "ag_ui", channel_config: {} });
 
-  it("an anonymous endpoint is anonymous even while suspended", () => {
+  it("an anonymous channel is anonymous even while suspended", () => {
     expect(isAnonymousExposure(anonymousAgUi)).toBe(true);
     expect(resolveExposureState(anonymousAgUi, agent({ exposures_suspended: true }))).toBe(
       "suspended",
     );
   });
 
-  it("an anonymous endpoint is anonymous even while draft", () => {
+  it("an anonymous channel is anonymous even while draft", () => {
     const draft = channel({ channel_type: "ag_ui", channel_config: {}, status: "draft" });
     expect(isAnonymousExposure(draft)).toBe(true);
     expect(resolveExposureState(draft, agent())).toBe("draft");
   });
 
-  it("only an anonymous endpoint that is also live is an open door", () => {
+  it("only an anonymous channel that is also live is an open door", () => {
     const openNow =
       isAnonymousExposure(anonymousAgUi) && resolveExposureState(anonymousAgUi, agent()) === "live";
     const suspended =
@@ -110,7 +110,7 @@ describe("anonymous configuration versus live reachability", () => {
 });
 
 describe("publicly reachable detection", () => {
-  it("counts an anonymous public chat endpoint", () => {
+  it("counts an anonymous public chat channel", () => {
     expect(
       isAnonymousExposure(
         channel({ channel_type: "public_chat", channel_config: { anonymous: true } }),
@@ -118,7 +118,7 @@ describe("publicly reachable detection", () => {
     ).toBe(true);
   });
 
-  it("counts an AG-UI endpoint with no token and no sign-in", () => {
+  it("counts an AG-UI channel with no token and no sign-in", () => {
     expect(isAnonymousExposure(channel({ channel_type: "ag_ui", channel_config: {} }))).toBe(true);
   });
 

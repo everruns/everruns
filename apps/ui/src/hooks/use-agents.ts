@@ -334,8 +334,8 @@ export function useAgentVersionDiff(
 }
 
 /// The agent-level incident switch (EVE-1007). Invalidating both the list and
-/// the detail matters here: the switch changes whether every endpoint of this
-/// agent accepts traffic, and the Integrations tab reads endpoints through the
+/// the detail matters here: the switch changes whether every channel of this
+/// agent accepts traffic, and the Integrations tab reads channels through the
 /// apps cache, so that has to be refetched too.
 function useExposureMutation(mutationFn: (agentId: string) => Promise<unknown>) {
   const queryClient = useQueryClient();

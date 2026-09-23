@@ -180,7 +180,7 @@ export default function ExposuresPage() {
           <SearchInput
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by agent, transport or endpoint id"
+            placeholder="Search by agent, transport or channel id"
             className="min-w-64 flex-1"
           />
           <Select
@@ -278,7 +278,7 @@ export default function ExposuresPage() {
                       {exposure.anonymous ? (
                         // Anonymous is a property of the configuration, so it
                         // is stated whatever the current state: a suspended
-                        // anonymous endpoint is still anonymous, and resuming
+                        // anonymous channel is still anonymous, and resuming
                         // its agent opens it. Only one that is *also* live is
                         // an open door, and only that one is styled as one.
                         <span

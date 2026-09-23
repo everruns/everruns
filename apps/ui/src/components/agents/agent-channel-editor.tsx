@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { Check, Pencil, Play, Radio, Trash2 } from "lucide-react";
 import { useAgent } from "@/hooks/use-agents";
 import {
-  useAgentEndpoints,
-  useDeleteAgentEndpoint,
-  usePublishAgentEndpoint,
-  useTriggerAgentEndpoint,
-  useUpdateAgentEndpoint,
-} from "@/hooks/use-agent-endpoints";
+  useAgentChannels,
+  useDeleteAgentChannel,
+  usePublishAgentChannel,
+  useTriggerAgentChannel,
+  useUpdateAgentChannel,
+} from "@/hooks/use-agent-channels";
 import { usePolicies } from "@/hooks/use-policies";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,21 +36,15 @@ import {
   RailSection,
 } from "@/components/layout";
 import type { Agent, AppChannel, ScheduleChannelConfig } from "@/lib/api/types";
-import { getChannelTypeDisplayName, getEndpointLifecyclePresentation } from "@/lib/app-channels";
+import { getChannelTypeDisplayName, getChannelLifecyclePresentation } from "@/lib/app-channels";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
-export function AgentEndpointEditor({
-  agentId,
-  endpointId,
-}: {
-  agentId: string;
-  endpointId: string;
-}) {
+export function AgentChannelEditor({ agentId, channelId }: { agentId: string; channelId: string }) {
   const router = useRouter();
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
-  const { endpoints, isLoading: endpointsLoading } = useAgentEndpoints(agentId);
+  const { channels, isLoading: channelsLoading } = useAgentChannels(agentId);
   const { can, isLoading: policiesLoading } = usePolicies("agents");
-  const endpoint = endpoints.find(({ channel }) => channel.id === endpointId)?.channel;
+  const channel = channels.find((entry) => entry.channel.id === channelId)?.channel;
   const returnHref = `/agents/${agentId}?tab=integrations`;
   const canManage = !policiesLoading && can("agent.manage") && !isReadOnlyStatus(agent?.status);
   const canDangerous =
@@ -60,26 +54,26 @@ export function AgentEndpointEditor({
     if (agent && !policiesLoading && !canManage) router.replace(returnHref);
   }, [agent, canManage, policiesLoading, returnHref, router]);
 
-  if (agentLoading || endpointsLoading || policiesLoading) {
-    return <div className="container mx-auto p-6">Loading endpoint...</div>;
+  if (agentLoading || channelsLoading || policiesLoading) {
+    return <div className="container mx-auto p-6">Loading channel...</div>;
   }
-  if (!agent || !endpoint) {
+  if (!agent || !channel) {
     return (
       <ResourceNotFound
-        title="Endpoint not found"
-        description="This endpoint may have been deleted, moved to another agent, or the URL may be wrong."
+        title="Channel not found"
+        description="This channel may have been deleted, moved to another agent, or the URL may be wrong."
         backHref={returnHref}
         backLabel="Back to agent"
-        resourceId={endpointId}
+        resourceId={channelId}
       />
     );
   }
 
   return (
-    <AgentEndpointForm
-      key={endpoint.id}
+    <AgentChannelForm
+      key={channel.id}
       agent={agent}
-      endpoint={endpoint}
+      channel={channel}
       canManage={canManage}
       canDangerous={canDangerous}
       returnHref={returnHref}
@@ -87,35 +81,33 @@ export function AgentEndpointEditor({
   );
 }
 
-function AgentEndpointForm({
+function AgentChannelForm({
   agent,
-  endpoint,
+  channel,
   canManage,
   canDangerous,
   returnHref,
 }: {
   agent: Agent;
-  endpoint: AppChannel;
+  channel: AppChannel;
   canManage: boolean;
   canDangerous: boolean;
   returnHref: string;
 }) {
   const router = useRouter();
   const agentId = agent.id;
-  const endpointId = endpoint.id;
-  const updateEndpoint = useUpdateAgentEndpoint(agentId, endpointId);
-  const deleteEndpoint = useDeleteAgentEndpoint(agentId, endpointId);
-  const publishEndpoint = usePublishAgentEndpoint(agentId);
-  const triggerEndpoint = useTriggerAgentEndpoint(agentId);
+  const channelId = channel.id;
+  const updateChannel = useUpdateAgentChannel(agentId, channelId);
+  const deleteChannel = useDeleteAgentChannel(agentId, channelId);
+  const publishChannel = usePublishAgentChannel(agentId);
+  const triggerChannel = useTriggerAgentChannel(agentId);
   const [formState, setFormState] = useState<ChannelFormState>(() =>
-    getDefaultChannelFormState(endpoint.channel_type, endpoint),
+    getDefaultChannelFormState(channel.channel_type, channel),
   );
   const agentName = getDisplayName(agent);
-  const lifecycle = getEndpointLifecyclePresentation(endpoint);
+  const lifecycle = getChannelLifecyclePresentation(channel);
   const schedule =
-    endpoint.channel_type === "schedule"
-      ? (endpoint.channel_config as ScheduleChannelConfig)
-      : null;
+    channel.channel_type === "schedule" ? (channel.channel_config as ScheduleChannelConfig) : null;
 
   return (
     <PageContainer>
@@ -123,12 +115,12 @@ function AgentEndpointForm({
         items={[
           { label: "Agents", href: "/agents" },
           { label: agentName, href: returnHref },
-          { label: `${getChannelTypeDisplayName(endpoint.channel_type)} endpoint` },
+          { label: `${getChannelTypeDisplayName(channel.channel_type)} channel` },
         ]}
       />
       <PageMasthead
         icon={<Radio />}
-        title={`${getChannelTypeDisplayName(endpoint.channel_type)} endpoint`}
+        title={`${getChannelTypeDisplayName(channel.channel_type)} channel`}
         badges={
           <>
             <Badge variant="accent">
@@ -152,26 +144,26 @@ function AgentEndpointForm({
           <>
             <Button
               type="submit"
-              form="endpoint-edit-form"
-              disabled={!canManage || !isChannelFormValid(formState) || updateEndpoint.isPending}
+              form="channel-edit-form"
+              disabled={!canManage || !isChannelFormValid(formState) || updateChannel.isPending}
             >
               <Check className="size-4" />
-              {updateEndpoint.isPending ? "Saving..." : "Save"}
+              {updateChannel.isPending ? "Saving..." : "Save"}
             </Button>
             <Button
               type="button"
               variant="outline"
-              onClick={() => publishEndpoint.mutate({ endpointId, publish: !lifecycle.isLive })}
-              disabled={!canDangerous || !formState.enabled || publishEndpoint.isPending}
+              onClick={() => publishChannel.mutate({ channelId, publish: !lifecycle.isLive })}
+              disabled={!canDangerous || !formState.enabled || publishChannel.isPending}
             >
               {lifecycle.isLive ? "Unpublish" : "Publish"}
             </Button>
-            {endpoint.channel_type === "schedule" && (
+            {channel.channel_type === "schedule" && (
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => triggerEndpoint.mutate(endpointId)}
-                disabled={!canManage || !lifecycle.isLive || triggerEndpoint.isPending}
+                onClick={() => triggerChannel.mutate(channelId)}
+                disabled={!canManage || !lifecycle.isLive || triggerChannel.isPending}
               >
                 <Play className="size-4" />
                 Run now
@@ -181,11 +173,11 @@ function AgentEndpointForm({
               type="button"
               variant="outline"
               onClick={() =>
-                deleteEndpoint.mutate(undefined, {
+                deleteChannel.mutate(undefined, {
                   onSuccess: () => router.push(returnHref),
                 })
               }
-              disabled={!canDangerous || deleteEndpoint.isPending}
+              disabled={!canDangerous || deleteChannel.isPending}
             >
               <Trash2 className="size-4" />
               Delete
@@ -194,10 +186,10 @@ function AgentEndpointForm({
         }
       />
       <form
-        id="endpoint-edit-form"
+        id="channel-edit-form"
         onSubmit={(event) => {
           event.preventDefault();
-          updateEndpoint.mutate(
+          updateChannel.mutate(
             {
               channel_config: buildChannelConfig(formState),
               enabled: formState.enabled,
@@ -214,7 +206,7 @@ function AgentEndpointForm({
                   state={formState}
                   onChange={setFormState}
                   mode="edit"
-                  endpointId={endpoint.id}
+                  channelId={channel.id}
                 />
               </CardContent>
             </Card>
@@ -223,7 +215,7 @@ function AgentEndpointForm({
             <RailSection label="Lifecycle">
               <p className="text-sm">{lifecycle.description}</p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Save configuration changes before publishing this endpoint.
+                Save configuration changes before publishing this channel.
               </p>
             </RailSection>
           </PageRail>

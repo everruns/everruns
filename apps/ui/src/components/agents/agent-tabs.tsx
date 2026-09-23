@@ -26,7 +26,7 @@ const agentTabItems = {
   // One tab, not three (EVE-1009). "Triggers" and "Integrate" both described a
   // slice of the same question — how is this agent reached, and when does it
   // run — and the second could only ever show generic snippets, because an
-  // agent with two endpoints has no single URL. Both fold in here.
+  // agent with two channels has no single URL. Both fold in here.
   integrations: {
     value: "integrations",
     label: "Integrations",

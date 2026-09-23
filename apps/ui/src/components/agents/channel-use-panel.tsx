@@ -4,8 +4,8 @@ import { useMemo } from "react";
 import { CodeBlock, type CodeBlockSample } from "@/components/ui/code-block";
 import type { AppChannel, ChannelType } from "@/lib/api/types";
 
-/// The endpoint-scoped ingress path for each transport (EVE-1000). These are
-/// addressed by the endpoint's own public id, which is why the snippet here can
+/// The channel-scoped ingress path for each transport (EVE-1000). These are
+/// addressed by the channel's own public id, which is why the snippet here can
 /// show a URL that actually works rather than the placeholder the old Integrate
 /// tab printed.
 ///
@@ -42,19 +42,19 @@ function describe(kind: ChannelType): string {
     case "a2a":
       return "A2A callers send a task here; the agent card is at the same path plus /.well-known/agent-card.json.";
     case "api_endpoint":
-      return "Create a session with the endpoint's API key, then post messages to it.";
+      return "Create a session with the channel's API key, then post messages to it.";
     default:
-      return "Send a request here to invoke the agent through this endpoint.";
+      return "Send a request here to invoke the agent through this channel.";
   }
 }
 
-/// "How do I call this endpoint", rendered inside the expanded endpoint row.
+/// "How do I call this channel", rendered inside the expanded channel row.
 ///
 /// This replaces the agent-level Integrate tab (EVE-1009). The tab could only
 /// show generic snippets, because at the agent level there is no single URL —
 /// an agent reachable through Slack and a webhook has two. Here there is
 /// exactly one, so the snippet is the real thing.
-export function EndpointUsePanel({ channel }: { channel: AppChannel }) {
+export function ChannelUsePanel({ channel }: { channel: AppChannel }) {
   const path = ingressPath(channel.channel_type, channel.id);
 
   const samples = useMemo<CodeBlockSample[]>(() => {
@@ -85,7 +85,7 @@ export function EndpointUsePanel({ channel }: { channel: AppChannel }) {
       <div>
         <p className="text-xs font-medium uppercase text-muted-foreground">Use it</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          This endpoint fires on its own — there is no inbound URL to call.
+          This channel fires on its own — there is no inbound URL to call.
         </p>
       </div>
     );

@@ -10,13 +10,13 @@ jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: (flag: string) => mockUseFeatureFlag(flag),
 }));
 
-jest.mock("@/hooks/use-agent-endpoints", () => ({
+jest.mock("@/hooks/use-agent-channels", () => ({
   isTriggerChannel: () => false,
-  useAgentEndpoints: () => ({
-    endpoints: [
+  useAgentChannels: () => ({
+    channels: [
       {
         channel: {
-          id: "endpoint_1",
+          id: "channel_1",
           channel_type: "webhook",
           channel_config: {},
           enabled: true,
@@ -28,8 +28,8 @@ jest.mock("@/hooks/use-agent-endpoints", () => ({
     ],
     isLoading: false,
   }),
-  usePublishAgentEndpoint: () => ({ mutate: jest.fn(), isPending: false }),
-  useTriggerAgentEndpoint: () => ({ mutate: jest.fn(), isPending: false }),
+  usePublishAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
+  useTriggerAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 
 jest.mock("@/hooks/use-agent-triggers", () => ({
@@ -51,9 +51,9 @@ jest.mock("@/components/apps/channel-row", () => ({
   ChannelRow: ({ usePanel }: { usePanel?: React.ReactNode }) => <div>{usePanel}</div>,
 }));
 
-jest.mock("@/components/agents/integrations/endpoint-details-panel", () => ({
-  EndpointDetailsPanel: ({ channel }: { channel: AppChannel }) => (
-    <div data-testid={`endpoint-details-${channel.id}`} />
+jest.mock("@/components/agents/integrations/channel-details-panel", () => ({
+  ChannelDetailsPanel: ({ channel }: { channel: AppChannel }) => (
+    <div data-testid={`channel-details-${channel.id}`} />
   ),
 }));
 
@@ -111,12 +111,12 @@ describe("AgentIntegrationsPanel budgets", () => {
     render(<AgentIntegrationsPanel agent={agent} />);
 
     expect(mockUseFeatureFlag).toHaveBeenCalledWith("app_budgets");
-    expect(screen.getByTestId("endpoint-details-endpoint_1")).toBeInTheDocument();
+    expect(screen.getByTestId("channel-details-channel_1")).toBeInTheDocument();
     expect(screen.getByTestId("budget-agent-agent_1")).toHaveAttribute(
       "data-can-manage",
       String(canManage),
     );
-    expect(screen.getByTestId("budget-agent_endpoint-endpoint_1")).toHaveAttribute(
+    expect(screen.getByTestId("budget-agent_channel-channel_1")).toHaveAttribute(
       "data-can-manage",
       String(canManage),
     );

@@ -66,7 +66,7 @@ describe("FcpSetupGuidance", () => {
 
     expect(screen.getByText("Token Protected")).toBeInTheDocument();
     expect(screen.getByText("Channel token configured")).toBeInTheDocument();
-    expect(screen.getByText("Publish the endpoint to accept requests")).toBeInTheDocument();
+    expect(screen.getByText("Publish the channel to accept requests")).toBeInTheDocument();
   });
 
   it("renders 'Restricted' state and warning when anonymous is off without a token", () => {
@@ -108,7 +108,7 @@ describe("FcpSetupGuidance", () => {
       />,
     );
 
-    expect(screen.getByText(/No per-endpoint cap/)).toBeInTheDocument();
+    expect(screen.getByText(/No per-channel cap/)).toBeInTheDocument();
   });
 
   it("marks a custom handshake when one is configured", () => {

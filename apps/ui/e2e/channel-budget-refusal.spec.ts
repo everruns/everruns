@@ -54,7 +54,7 @@ async function pollFor<T>(
   throw new Error(`Timed out waiting for ${description}: ${JSON.stringify(lastValue)}`);
 }
 
-test.describe("endpoint budget refusal", () => {
+test.describe("channel budget refusal", () => {
   test.skip(
     !apiBaseUrl || !databaseUrl,
     "Requires PLAYWRIGHT_REAL_API_URL and DATABASE_URL for the real PostgreSQL-backed server.",
@@ -68,7 +68,7 @@ test.describe("endpoint budget refusal", () => {
     const provider = await jsonResponse<{ id: string }>(
       await request.post(`${apiBaseUrl}/api/v1/providers`, {
         data: {
-          name: `Endpoint budget llmsim ${suffix}`,
+          name: `Channel budget llmsim ${suffix}`,
           provider_type: "llmsim",
         },
       }),
@@ -76,8 +76,8 @@ test.describe("endpoint budget refusal", () => {
     const model = await jsonResponse<{ id: string }>(
       await request.post(`${apiBaseUrl}/api/v1/providers/${provider.id}/models`, {
         data: {
-          model_id: `endpoint-budget-${suffix}`,
-          display_name: "Endpoint budget llmsim",
+          model_id: `channel-budget-${suffix}`,
+          display_name: "Channel budget llmsim",
           enabled: true,
         },
       }),
@@ -86,7 +86,7 @@ test.describe("endpoint budget refusal", () => {
       await request.post(`${apiBaseUrl}/api/v1/harnesses`, {
         data: {
           name: `budget-e2e-${suffix}`,
-          display_name: "Endpoint budget E2E",
+          display_name: "Channel budget E2E",
           system_prompt: "",
         },
       }),
@@ -95,7 +95,7 @@ test.describe("endpoint budget refusal", () => {
       await request.post(`${apiBaseUrl}/api/v1/agents`, {
         data: {
           name: `budget-e2e-${suffix}`,
-          display_name: "Endpoint budget refusal",
+          display_name: "Channel budget refusal",
           system_prompt: agentPrompt,
           harness_id: harness.id,
           default_model_id: model.id,
@@ -104,8 +104,8 @@ test.describe("endpoint budget refusal", () => {
     );
 
     const apiKey = `evr_app_${randomUUID().replaceAll("-", "")}`;
-    const bootstrapEndpoint = await jsonResponse<{ id: string }>(
-      await request.post(`${apiBaseUrl}/api/v1/agents/${agent.id}/endpoints`, {
+    const bootstrapChannel = await jsonResponse<{ id: string }>(
+      await request.post(`${apiBaseUrl}/api/v1/agents/${agent.id}/channels`, {
         data: {
           channel_type: "api_endpoint",
           channel_config: {
@@ -117,28 +117,28 @@ test.describe("endpoint budget refusal", () => {
         },
       }),
     );
-    const endpointUuid = randomUUID();
-    const endpointId = `appchan_${endpointUuid.replaceAll("-", "")}`;
-    const seededEndpoint = runSql(
+    const channelUuid = randomUUID();
+    const channelId = `appchan_${channelUuid.replaceAll("-", "")}`;
+    const seededChannel = runSql(
       `WITH seeded AS (
-         INSERT INTO agent_endpoints (
+         INSERT INTO agent_channels (
            id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
            channel_config, enabled, status, agent_identity_id, agent_version_policy,
            agent_version_id, owner_principal_id, resolved_owner_user_id
          )
          SELECT
-           :'endpoint_uuid'::uuid, agent_id, NULL, NULL, :'endpoint_id', 'schedule',
+           :'channel_uuid'::uuid, agent_id, NULL, NULL, :'channel_id', 'schedule',
            :'channel_config'::jsonb, true, 'live', agent_identity_id, agent_version_policy,
            agent_version_id, owner_principal_id, resolved_owner_user_id
-         FROM agent_endpoints
-         WHERE public_id = :'bootstrap_endpoint_id'
+         FROM agent_channels
+         WHERE public_id = :'bootstrap_channel_id'
          RETURNING public_id
        )
        SELECT public_id FROM seeded;`,
       {
-        endpoint_uuid: endpointUuid,
-        endpoint_id: endpointId,
-        bootstrap_endpoint_id: bootstrapEndpoint.id,
+        channel_uuid: channelUuid,
+        channel_id: channelId,
+        bootstrap_channel_id: bootstrapChannel.id,
         channel_config: JSON.stringify({
           cron_expression: "0 0 * * * * *",
           timezone: "UTC",
@@ -147,13 +147,13 @@ test.describe("endpoint budget refusal", () => {
         }),
       },
     );
-    expect(seededEndpoint).toBe(endpointId);
+    expect(seededChannel).toBe(channelId);
 
     const budget = await jsonResponse<{ id: string }>(
       await request.post(`${apiBaseUrl}/api/v1/budgets`, {
         data: {
-          subject_type: "agent_endpoint",
-          subject_id: endpointId,
+          subject_type: "agent_channel",
+          subject_id: channelId,
           currency: "tokens",
           limit: 25,
           period: { type: "duration", seconds: 3600 },
@@ -161,18 +161,18 @@ test.describe("endpoint budget refusal", () => {
       }),
     );
     const consumed = await jsonResponse<{ session_id: string; created_session: boolean }>(
-      await request.post(`${apiBaseUrl}/api/v1/agents/${agent.id}/endpoints/${endpointId}/trigger`),
+      await request.post(`${apiBaseUrl}/api/v1/agents/${agent.id}/channels/${channelId}/trigger`),
     );
     expect(consumed.created_session).toBe(true);
     expect(
       runSql(
-        `SELECT endpoint.public_id
+        `SELECT channel.public_id
          FROM sessions AS session
-         JOIN agent_endpoints AS endpoint ON endpoint.id = session.endpoint_id
+         JOIN agent_channels AS channel ON channel.id = session.channel_id
          WHERE replace(session.id::text, '-', '') = substring(:'session_id' from 9);`,
         { session_id: consumed.session_id },
       ),
-    ).toBe(endpointId);
+    ).toBe(channelId);
 
     const exhausted = await pollFor(
       async () =>
@@ -180,7 +180,7 @@ test.describe("endpoint budget refusal", () => {
           await request.get(`${apiBaseUrl}/api/v1/budgets/${budget.id}`),
         ),
       (current) => current.status === "exhausted",
-      "the production budget listener to exhaust the endpoint budget",
+      "the production budget listener to exhaust the channel budget",
     );
     expect(exhausted.balance).toBe(0);
 
@@ -202,19 +202,19 @@ test.describe("endpoint budget refusal", () => {
     ]);
 
     const refused = await jsonResponse<{ session_id: string; created_session: boolean }>(
-      await request.post(`${apiBaseUrl}/api/v1/agents/${agent.id}/endpoints/${endpointId}/trigger`),
+      await request.post(`${apiBaseUrl}/api/v1/agents/${agent.id}/channels/${channelId}/trigger`),
     );
     expect(refused.created_session).toBe(true);
     expect(refused.session_id).not.toBe(consumed.session_id);
     expect(
       runSql(
-        `SELECT endpoint.public_id
+        `SELECT channel.public_id
          FROM sessions AS session
-         JOIN agent_endpoints AS endpoint ON endpoint.id = session.endpoint_id
+         JOIN agent_channels AS channel ON channel.id = session.channel_id
          WHERE replace(session.id::text, '-', '') = substring(:'session_id' from 9);`,
         { session_id: refused.session_id },
       ),
-    ).toBe(endpointId);
+    ).toBe(channelId);
 
     const refusal = await jsonResponse<{
       action: string;
@@ -233,7 +233,7 @@ test.describe("endpoint budget refusal", () => {
         currency: "tokens",
       },
     });
-    await testInfo.attach("endpoint-budget-refusal.json", {
+    await testInfo.attach("channel-budget-refusal.json", {
       body: JSON.stringify({ consumed, ledger, refused, refusal }, null, 2),
       contentType: "application/json",
     });
@@ -242,20 +242,20 @@ test.describe("endpoint budget refusal", () => {
     await page.goto(`/agents/${agent.id}?tab=integrations`);
     await page.getByRole("button", { name: `Expand ${scheduleMessage} details` }).click();
 
-    const endpointBudgetPanel = page
-      .getByRole("heading", { name: "Endpoint budget", exact: true })
+    const channelBudgetPanel = page
+      .getByRole("heading", { name: "Channel budget", exact: true })
       .locator("xpath=../..");
-    await expect(endpointBudgetPanel).toBeVisible();
-    await expect(endpointBudgetPanel.getByText(budget.id, { exact: true })).toBeVisible();
-    await expect(endpointBudgetPanel.getByText("exhausted", { exact: true })).toBeVisible();
+    await expect(channelBudgetPanel).toBeVisible();
+    await expect(channelBudgetPanel.getByText(budget.id, { exact: true })).toBeVisible();
+    await expect(channelBudgetPanel.getByText("exhausted", { exact: true })).toBeVisible();
     await expect(
-      endpointBudgetPanel.getByText("0.00 of 25.00 tokens remaining", { exact: true }),
+      channelBudgetPanel.getByText("0.00 of 25.00 tokens remaining", { exact: true }),
     ).toBeVisible();
-    await expect(endpointBudgetPanel.getByText("1h sliding", { exact: false })).toBeVisible();
-    await expect(endpointBudgetPanel.getByText("Reset due", { exact: false })).toBeVisible();
+    await expect(channelBudgetPanel.getByText("1h sliding", { exact: false })).toBeVisible();
+    await expect(channelBudgetPanel.getByText("Reset due", { exact: false })).toBeVisible();
 
-    await testInfo.attach("endpoint-budget-cap.png", {
-      body: await endpointBudgetPanel.screenshot(),
+    await testInfo.attach("channel-budget-cap.png", {
+      body: await channelBudgetPanel.screenshot(),
       contentType: "image/png",
     });
   });
