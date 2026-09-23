@@ -1,8 +1,8 @@
-use super::queries as q;
 use super::types::{
     AddSessionParticipantRequest, CancelStatus, CancelTurnResponse, CreateSessionRequest,
     ForkSessionRequest, SessionFacetsResponse, SessionStatsResponse, UpdateSessionRequest,
 };
+use super::{platform_chat_starter::mark_platform_chat_starter, queries as q};
 use crate::domains::common::*;
 use crate::services::PrincipalService;
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
@@ -289,7 +289,7 @@ impl Command for CreateSession {
         } else {
             source
         };
-
+        mark_platform_chat_starter(&mut req, &harness.name, agent_internal_id.is_some())?;
         q::session_service(ctx)?
             .create(
                 &ctx.caller,
