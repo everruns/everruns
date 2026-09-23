@@ -267,7 +267,11 @@ impl CapabilityService {
             {
                 definition.description = desc.to_string();
             }
-            definition.status = CapabilityStatus::Available;
+            if definition.status != CapabilityStatus::Retired
+                && definition.status != CapabilityStatus::NeedsIdentity
+            {
+                definition.status = CapabilityStatus::Available;
+            }
             let mut info = plugin_capability_info(&row.public_id, definition);
             info.agent_count = 0;
             info.harness_count = 0;
@@ -440,8 +444,27 @@ impl CapabilityService {
                 if row.status != "active" {
                     return Ok(None);
                 }
-                let mut definition: DeclarativeCapabilityDefinition =
-                    serde_json::from_value(row.definition.clone()).unwrap_or_default();
+                let unresolved =
+                    crate::domains::capabilities::queries::legacy_mcp_servers_requiring_identity(
+                        &row.definition,
+                    );
+                let mut definition = if unresolved.is_empty() {
+                    crate::domains::capabilities::queries::deserialize_persisted_definition(
+                        row.id,
+                        &row.name,
+                        &row.definition,
+                    )
+                    .unwrap_or_else(|_| {
+                        let mut definition = DeclarativeCapabilityDefinition::default();
+                        definition.status = CapabilityStatus::Retired;
+                        definition
+                    })
+                } else {
+                    let mut definition = DeclarativeCapabilityDefinition::default();
+                    definition.status = CapabilityStatus::NeedsIdentity;
+                    definition
+                };
+                definition.name = row.name;
                 if definition.display_name.is_none() {
                     definition.display_name = row
                         .manifest
@@ -825,6 +848,14 @@ mod tests {
         assert!(!capability.status.is_active());
         assert!(capability.status.is_listed());
         assert_eq!(capability.name, "Legacy OAuth");
+
+        let detail = svc
+            .get(1, &CapabilityId::new(capability_id))
+            .await
+            .unwrap()
+            .expect("unresolved plugin detail stays visible");
+        assert_eq!(detail.status, CapabilityStatus::NeedsIdentity);
+        assert_eq!(detail.name, "Legacy OAuth");
     }
 
     #[tokio::test]

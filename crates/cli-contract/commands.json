@@ -6477,7 +6477,7 @@
       "plugins"
     ],
     "verb": "patch",
-    "description": "Update an installed plugin's status (active/disabled).",
+    "description": "Update an installed plugin's status or MCP acting identities.",
     "method": "PATCH",
     "http_path": "/v1/plugins/{id}",
     "args": [
@@ -6487,6 +6487,13 @@
         "kind": "string",
         "required": true,
         "help": "Public plugin ID."
+      },
+      {
+        "field": "mcp_server_identities",
+        "long": "mcp-server-identities",
+        "kind": "json",
+        "required": false,
+        "help": "Explicit acting-identity choices for legacy authenticated MCP servers. Only `user` and `servi..."
       },
       {
         "field": "status",

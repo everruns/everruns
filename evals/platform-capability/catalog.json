@@ -12842,12 +12842,35 @@
   {
     "category": "plugins",
     "cli": null,
-    "description": "Update an installed plugin's status (active/disabled).",
+    "description": "Update an installed plugin's status or MCP acting identities.",
     "input_schema": {
       "$defs": {
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user"
+          ],
+          "example": "service",
+          "type": "string"
+        },
         "UpdateInstalledPluginRequest": {
-          "description": "Request body for updating an installed plugin (status only; use POST .../update for recompile).",
+          "description": "Request body for updating an installed plugin.",
           "properties": {
+            "mcp_server_identities": {
+              "additionalProperties": {
+                "$ref": "#/$defs/McpServerActsAs"
+              },
+              "description": "Explicit acting-identity choices for legacy authenticated MCP servers.\nOnly `user` and `service` are accepted.",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": [
+                "object",
+                "null"
+              ]
+            },
             "status": {
               "description": "New lifecycle status: `active` or `disabled`.",
               "type": [
@@ -12876,7 +12899,7 @@
           "type": "object"
         }
       ],
-      "description": "Update an installed plugin's status (enable/disable)."
+      "description": "Update an installed plugin's status or resolve legacy MCP identities."
     },
     "method": "PATCH",
     "name": "patch_installed_plugin",

@@ -171,6 +171,16 @@ packages request the same behavior through
 fields. `oauth` and `none` are the supported authentication values.
 Authentication data never enters portable `mcp.json`.
 
+**Legacy installed definitions.** Definitions compiled before `actsAs` became
+required stay repairable. An inline server with no OAuth or preset credential
+source is read as explicit `none` without rewriting the stored definition. An
+authenticated server with no identity remains installed but inactive: the
+capability is listed as `needs_identity`, cannot be assigned or enabled, and
+cannot hydrate into a runtime. An owner or admin must choose `user` or
+`service` for each named server through the installed-plugin management API or
+UI. The update changes only those selected server entries; it does not infer
+from organization presets or rewrite other installed definitions.
+
 ## Marketplaces
 
 Org-scoped registry of plugin catalogs (`plugin_marketplaces`):
