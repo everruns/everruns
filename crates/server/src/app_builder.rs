@@ -1668,10 +1668,11 @@ impl ServerAppBuilder {
         }));
 
         // RFC 9457: rewrite Content-Type on JSON error responses (4xx/5xx) to
-        // `application/problem+json`. Runs after link decoration, which only
-        // touches success responses.
+        // `application/problem+json` and mirror retry metadata into
+        // `Retry-After`. Runs after link decoration, which only touches
+        // success responses.
         let api_routes = api_routes.layer(axum::middleware::from_fn(
-            api::common::problem_json_content_type,
+            api::problem_details::standard_error_headers,
         ));
 
         let api_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env_with_valkey(

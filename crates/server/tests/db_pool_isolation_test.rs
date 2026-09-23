@@ -175,7 +175,10 @@ async fn saturated_request_pool_returns_retryable_service_unavailable_after_acqu
     let _burst = saturate(db.pool(), 4).await;
     let app = Router::new()
         .route("/request", get(request_handler))
-        .with_state(db);
+        .with_state(db)
+        .layer(axum::middleware::from_fn(
+            everruns_server::api::problem_details::standard_error_headers,
+        ));
 
     let started = std::time::Instant::now();
     let response = app
@@ -192,6 +195,13 @@ async fn saturated_request_pool_returns_retryable_service_unavailable_after_acqu
     assert_eq!(
         response.status(),
         axum::http::StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get(axum::http::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok()),
+        Some("1")
     );
     assert!(
         elapsed >= Duration::from_millis(450),
