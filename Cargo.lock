@@ -3035,6 +3035,7 @@ dependencies = [
  "everruns-platform",
  "everruns-provider",
  "everruns-test-support",
+ "futures",
  "rstest",
  "serde_json",
  "tokio",

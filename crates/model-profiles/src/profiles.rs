@@ -775,6 +775,7 @@ fn meta_profile_data(model_id: &str) -> Option<ModelProfile> {
         tool_search: true,
         supported_parameters: Vec::new(),
         supports_phases: true,
+        mid_conversation_system: false,
     })
 }
 
@@ -815,6 +816,7 @@ fn openai_embedding_profile(name: &str, family: &str, input_cost: f64) -> ModelP
         tool_search: false,
         supported_parameters: Vec::new(),
         supports_phases: false,
+        mid_conversation_system: false,
     }
 }
 
@@ -856,6 +858,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            mid_conversation_system: false,
         }),
 
         "o3" => Some(ModelProfile {
@@ -894,6 +897,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "o3-pro" => Some(ModelProfile {
@@ -932,6 +936,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "o4-mini" => Some(ModelProfile {
@@ -970,6 +975,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // GPT-4.1 family models
@@ -1009,6 +1015,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-4.1-mini" => Some(ModelProfile {
@@ -1047,6 +1054,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-4.1-nano" => Some(ModelProfile {
@@ -1085,6 +1093,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // GPT-5 family models
@@ -1125,6 +1134,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-5-mini" => Some(ModelProfile {
@@ -1163,6 +1173,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-5-nano" => Some(ModelProfile {
@@ -1201,6 +1212,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-5-pro" => Some(ModelProfile {
@@ -1239,6 +1251,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-5-codex" => Some(ModelProfile {
@@ -1277,6 +1290,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // GPT-5.1 models: default none, supports none/low/medium/high
@@ -1316,6 +1330,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.1-codex" => Some(ModelProfile {
@@ -1354,6 +1369,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.1-codex-mini" => Some(ModelProfile {
@@ -1392,6 +1408,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // GPT-5.1-codex-max and after: supports xhigh
@@ -1431,6 +1448,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // GPT-5.2 models: supports xhigh, 400K context
@@ -1470,6 +1488,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.2-pro" => Some(ModelProfile {
@@ -1508,6 +1527,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.2-codex" => Some(ModelProfile {
@@ -1546,6 +1566,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // GPT-5.3 Codex: same pricing as 5.2, 25% faster inference
@@ -1585,6 +1606,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // GPT-5.6 series: current flagship family, publicly released 2026-07-09.
@@ -1639,6 +1661,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.6-terra" => Some(ModelProfile {
@@ -1683,6 +1706,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.6-luna" => Some(ModelProfile {
@@ -1727,6 +1751,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            mid_conversation_system: false,
         }),
 
         // GPT-5.5 family: flagship reasoning models. Released 2026-04-23.
@@ -1770,6 +1795,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.5-pro" => Some(ModelProfile {
@@ -1808,6 +1834,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            mid_conversation_system: false,
         }),
 
         // GPT-5.4 family: reasoning models with 1.05M context, tool_search, native phases.
@@ -1855,6 +1882,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.4-mini" => Some(ModelProfile {
@@ -1893,6 +1921,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.4-nano" => Some(ModelProfile {
@@ -1931,6 +1960,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.4-pro" => Some(ModelProfile {
@@ -1975,6 +2005,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            mid_conversation_system: false,
         }),
 
         // GPT-5 chat-latest models (point to latest chat-optimized versions)
@@ -2014,6 +2045,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.1-chat-latest" => Some(ModelProfile {
@@ -2052,6 +2084,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gpt-5.2-chat-latest" => Some(ModelProfile {
@@ -2090,6 +2123,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Deep research models
@@ -2129,6 +2163,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "o4-mini-deep-research" => Some(ModelProfile {
@@ -2167,6 +2202,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         _ => None,
@@ -2225,6 +2261,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Alibaba Qwen3.7 Max — flagship Qwen model.
@@ -2265,6 +2302,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Microsoft MAI-1-preview — Microsoft's first end-to-end in-house
@@ -2298,6 +2336,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Microsoft MAI-Code-1-Flash — Microsoft's in-house, latency-optimized
@@ -2333,6 +2372,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // MiniMax-M3 — flagship MiniMax model. Source: models.dev (minimax
@@ -2373,6 +2413,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Moonshot Kimi K2 Thinking — flagship Kimi reasoning model.
@@ -2413,6 +2454,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Moonshot Kimi K3 — flagship multimodal Kimi model with a 1M-token
@@ -2457,6 +2499,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // xAI Grok 4.3 — flagship Grok model. Source: models.dev (xai provider).
@@ -2503,6 +2546,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         _ => None,
@@ -2557,11 +2601,39 @@ fn anthropic_family_supports_tool_search(family: &str) -> bool {
     )
 }
 
+/// Whether a Claude model `family` accepts mid-conversation system messages —
+/// `{"role": "system"}` entries inside `messages` instead of the top-level
+/// `system` field only.
+///
+/// Per docs.claude.com (and the claude-api skill's platform-availability
+/// matrix) this is Fable 5.x, Opus 5.5, Opus 5 and Opus 4.8 — and explicitly
+/// *not* Sonnet 5 or any earlier family, which reject the role with a 400.
+/// Verified live against `claude-opus-5-5`, which also enforces the placement
+/// rules the Anthropic driver applies (a system entry must follow a user
+/// message, must not be first, and must end the array or precede an assistant
+/// turn).
+///
+/// Centralized here (rather than per-literal) for the same reason as
+/// [`anthropic_family_supports_tool_search`]: the rule is a family cutoff.
+fn anthropic_family_supports_mid_conversation_system(family: &str) -> bool {
+    matches!(
+        family,
+        "claude-fable-5-1"
+            | "claude-fable-5"
+            | "claude-opus-5-5"
+            | "claude-opus-5"
+            | "claude-opus-4-8"
+    )
+}
+
 fn anthropic_profile_data(model_id: &str) -> Option<ModelProfile> {
-    // `tool_search` is assigned centrally by family below, so the per-literal
-    // `tool_search` value in the match arms is a placeholder and is overwritten.
+    // `tool_search` and `mid_conversation_system` are assigned centrally by
+    // family below, so the per-literal values in the match arms are
+    // placeholders and are overwritten.
     anthropic_profile_data_inner(model_id).map(|mut profile| {
         profile.tool_search = anthropic_family_supports_tool_search(&profile.family);
+        profile.mid_conversation_system =
+            anthropic_family_supports_mid_conversation_system(&profile.family);
         profile
     })
 }
@@ -2617,6 +2689,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Claude Fable 5 (previous Fable release; still served, below Fable 5.1)
@@ -2665,6 +2738,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Claude Opus 5.5 (current Opus; successor to Opus 5 at a lower price)
@@ -2712,6 +2786,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Claude Opus 5 (previous Opus; below Opus 5.5, above Opus 4.8)
@@ -2759,6 +2834,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Claude 4.8 series
@@ -2804,6 +2880,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Claude 4.7 series
@@ -2847,6 +2924,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Claude 4.6 series
@@ -2887,6 +2965,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // 1M-context twins of the base profiles above. Same pricing and
@@ -2957,6 +3036,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "claude-sonnet-4-6" => Some(ModelProfile {
@@ -2995,6 +3075,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Claude 4.5 series
@@ -3034,6 +3115,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "claude-sonnet-4-5" => Some(ModelProfile {
@@ -3072,6 +3154,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "claude-haiku-4-5" => Some(ModelProfile {
@@ -3110,6 +3193,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Claude 4 series
@@ -3149,6 +3233,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         _ => None,
@@ -3210,6 +3295,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Gemini 3.5 Flash — current-gen Flash. Source: models.dev (google
@@ -3258,6 +3344,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         // Gemini 3.1 Flash Lite — low-latency, high-volume tier. Source:
@@ -3305,6 +3392,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gemini-2.5-pro" => Some(ModelProfile {
@@ -3348,6 +3436,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gemini-2.5-flash" => Some(ModelProfile {
@@ -3391,6 +3480,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         "gemini-2.0-flash" => Some(ModelProfile {
@@ -3434,6 +3524,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
 
         _ => None,
@@ -3480,6 +3571,7 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }),
         _ => None,
     }

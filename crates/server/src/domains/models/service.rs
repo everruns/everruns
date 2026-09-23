@@ -752,6 +752,7 @@ impl ModelService {
                 hardcoded.supported_parameters
             },
             supports_phases: hardcoded.supports_phases,
+            mid_conversation_system: hardcoded.mid_conversation_system,
         }
     }
 }
@@ -1582,6 +1583,7 @@ mod tests {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }
     }
 

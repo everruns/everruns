@@ -180,6 +180,31 @@ Current provider mappings:
 
 `llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
 
+### Append-Only Anthropic Requests
+
+Anthropic's cached prefix — and, on the models with preserved thinking, the
+validity of every thinking block in the history — depends on the request being
+*append-only* between turns: the top-level `system` field, the `tools` array and
+every earlier message must come back byte-identical.
+
+The conflict is that a session legitimately raises instructions mid-run: the
+`infinity_context` hidden-history notice (whose count grows), a loop-detection
+warning, a restored `[CONVERSATION_SUMMARY]`. Folding those into `system`
+rewrites the prefix ahead of the whole transcript, so each turn re-processes the
+conversation uncached.
+
+Models that accept the role mid-conversation
+(`ModelProfile::mid_conversation_system`, a family cutoff owned by
+[the profile registry](../../crates/model-profiles/src/profiles.rs)) take each
+such instruction as a `{"role": "system"}` entry in `messages` where it arose;
+`system` then carries only the leading run — the agent system prompt and a
+restored summary — and stays byte-stable. The API's placement rules (a system
+entry follows a user message, is never first, and either ends the array or
+precedes an assistant turn) decide per message; anything they leave nowhere to
+go falls back to being folded. The engine keeps the volatile `<facts>` block
+ahead of trailing operator notices so those notices remain placeable. See
+[the driver's `plan_system_messages`](../../crates/drivers/anthropic/src/driver.rs).
+
 ### Cache Accounting and OpenAI Compatibility
 
 Cache accounting and persistence follow the [disjoint usage contract](../security/usage-tracking.md#disjoint-bucket-convention).

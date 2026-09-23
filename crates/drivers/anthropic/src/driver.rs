@@ -17,7 +17,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use everruns_provider::credential_schema::CredentialFormSchema;
@@ -472,13 +472,22 @@ impl AnthropicChatDriver {
     /// each turn reads the cache its predecessor created instead of re-paying
     /// for the whole transcript. With the system prompt and the tool array this
     /// totals four, Anthropic's per-request maximum.
+    ///
+    /// Mid-conversation `system` entries never carry a breakpoint: they are the
+    /// operator notices that change between turns (a hidden-history count, a
+    /// loop warning), so anchoring on one would write a cache entry the next
+    /// turn cannot read.
     fn mark_recent_text_blocks_for_cache(
         messages: &mut [AnthropicMessage],
         volatile_suffix_len: usize,
     ) {
         let anchor_len = messages.len().saturating_sub(volatile_suffix_len);
         let mut remaining = MESSAGE_CACHE_BREAKPOINTS;
-        for msg in messages[..anchor_len].iter_mut().rev() {
+        for msg in messages[..anchor_len]
+            .iter_mut()
+            .rev()
+            .filter(|msg| msg.role != SYSTEM_ROLE)
+        {
             // At most one breakpoint per message: a second marker inside the
             // same message would spend a scarce breakpoint on a position the
             // first one already covers.
@@ -499,20 +508,37 @@ impl AnthropicChatDriver {
         messages: &[Message],
         prompt_cache_enabled: bool,
         volatile_suffix_len: usize,
+        mid_conversation_system: bool,
     ) -> (Option<String>, Vec<AnthropicMessage>) {
-        // Accumulate all system messages into Anthropic's separate top-level
-        // `system` field. Overwriting on each System message would drop the agent
-        // system prompt whenever a later notice/summary System message is present
-        // (infinity_context / compaction). See `fold_system_messages`.
-        let system_prompt = fold_system_messages(messages);
-        let mut converted = Vec::new();
         let visible_tool_use_ids = visible_tool_call_ids(messages);
+        let plan = plan_system_messages(messages, mid_conversation_system, &visible_tool_use_ids);
+        let system_prompt = plan.folded;
+        let mut converted = Vec::new();
+        // Where the volatile tail starts in the converted array. Counting
+        // converted entries, not source messages, keeps the cache anchor right
+        // when a trailing system message is folded away (it produces no entry).
+        let volatile_start = messages.len().saturating_sub(volatile_suffix_len);
+        let mut volatile_converted_start = None;
 
-        for msg in messages {
+        for (index, msg) in messages.iter().enumerate() {
+            if index == volatile_start {
+                volatile_converted_start = Some(converted.len());
+            }
             match msg.role {
                 MessageRole::System => {
-                    // Folded above into the top-level `system` field; never emit a
-                    // System-role entry into the Anthropic `messages` array.
+                    // Either emitted here as a mid-conversation `system` entry
+                    // (append-only: the instruction lands where it arose and the
+                    // cached prefix ahead of it is untouched), or folded into the
+                    // top-level `system` field by the plan above.
+                    if let Some(text) = plan.inline.get(&index) {
+                        converted.push(AnthropicMessage {
+                            role: SYSTEM_ROLE.to_string(),
+                            content: vec![AnthropicContentBlock::Text {
+                                text: text.clone(),
+                                cache_control: None,
+                            }],
+                        });
+                    }
                 }
                 MessageRole::Tool => {
                     // Tool results in Anthropic are user messages with tool_result content blocks.
@@ -648,7 +674,9 @@ impl AnthropicChatDriver {
         }
 
         if prompt_cache_enabled {
-            Self::mark_recent_text_blocks_for_cache(&mut converted, volatile_suffix_len);
+            let converted_volatile_len =
+                converted.len() - volatile_converted_start.unwrap_or(converted.len());
+            Self::mark_recent_text_blocks_for_cache(&mut converted, converted_volatile_len);
         }
 
         (system_prompt, converted)
@@ -779,10 +807,6 @@ impl ChatDriver for AnthropicChatDriver {
         // ReasonAtom emits llm.generation events, and OtelEventListener
         // creates gen-ai spans from those events.
         let prompt_cache_enabled = config.prompt_cache.as_ref().is_some_and(|cfg| cfg.enabled);
-        let (system_prompt, anthropic_messages) =
-            Self::convert_messages(&messages, prompt_cache_enabled, config.volatile_suffix_len);
-        let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
-
         // `[1m]` model ids (e.g. `claude-opus-4-8[1m]`) are the gateway's
         // large-context twins of the 200K base models. Anthropic's wire `model`
         // field only accepts the bare id; the 1M window is requested via the
@@ -795,6 +819,19 @@ impl ChatDriver for AnthropicChatDriver {
             &everruns_provider::DriverId::Anthropic,
             wire_model,
         );
+
+        // Mid-conversation system messages are a model capability, not a
+        // driver-wide one: Opus 5.5/5/4.8 and Fable 5.x accept the role inside
+        // `messages`, Sonnet 5 and older reject it with a 400. The profile owns
+        // the cutoff.
+        let mid_conversation_system = profile.as_ref().is_some_and(|p| p.mid_conversation_system);
+        let (system_prompt, anthropic_messages) = Self::convert_messages(
+            &messages,
+            prompt_cache_enabled,
+            config.volatile_suffix_len,
+            mid_conversation_system,
+        );
+        let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
 
         // Hosted tool_search (deferred tool loading) is gated on the Anthropic
         // model profile. When a hosted `ToolSearchConfig` is present and the
@@ -1470,6 +1507,116 @@ fn is_anthropic_model_not_found(status: reqwest::StatusCode, error_text: &str) -
         }
     }
     false
+}
+
+/// Wire value for the Anthropic `system` message role.
+const SYSTEM_ROLE: &str = "system";
+
+/// How each `System` message in a conversation reaches the Anthropic request.
+struct SystemMessagePlan {
+    /// Text for the top-level `system` field: the agent system prompt (the
+    /// leading run of `System` messages), plus any mid-conversation message the
+    /// API's placement rules leave nowhere to go.
+    folded: Option<String>,
+    /// Message index -> text emitted as a `{"role": "system"}` entry there.
+    inline: HashMap<usize, String>,
+}
+
+/// Decide which `System` messages ride in the top-level `system` field and which
+/// are emitted as mid-conversation `{"role": "system"}` entries.
+///
+/// Folding everything makes `system` change whenever a mid-session notice does —
+/// the `infinity_context` hidden-history count grows with the conversation, a
+/// loop-detection warning appears and disappears. `system` renders ahead of the
+/// whole transcript, so each such change re-processes every earlier turn
+/// uncached and, on the models with preserved thinking (Opus 5.5, Fable 5.1),
+/// invalidates every thinking block in the history.
+///
+/// On models that accept the role mid-conversation the notice is emitted where
+/// it arose instead, leaving the prefix ahead of it byte-identical. Only the
+/// leading run — the static agent system prompt, and the restored
+/// `[CONVERSATION_SUMMARY]` that a compaction checkpoint prepends — keeps being
+/// folded; the API rejects a `system` entry at `messages[0]` anyway.
+///
+/// Anthropic's placement rules (verified live against `claude-opus-5-5`): a
+/// `system` entry must follow a `user` message, must not be first, and must
+/// either end the array or precede an `assistant` turn. Consecutive `system`
+/// entries are accepted. A message the rules leave nowhere to go falls back to
+/// being folded — the pre-existing behavior, not a regression.
+fn plan_system_messages(
+    messages: &[Message],
+    mid_conversation_system: bool,
+    visible_tool_use_ids: &HashSet<&str>,
+) -> SystemMessagePlan {
+    if !mid_conversation_system {
+        return SystemMessagePlan {
+            folded: fold_system_messages(messages),
+            inline: HashMap::new(),
+        };
+    }
+
+    // A message the driver drops (a tool result whose call was trimmed away)
+    // is not a neighbor for the placement rules.
+    let emits = |msg: &Message| match msg.role {
+        MessageRole::Tool => msg
+            .tool_call_id
+            .as_deref()
+            .is_some_and(|id| visible_tool_use_ids.contains(id)),
+        MessageRole::System => false,
+        _ => true,
+    };
+
+    let leading_len = messages
+        .iter()
+        .position(|msg| msg.role != MessageRole::System)
+        .unwrap_or(messages.len());
+
+    let mut inline = HashMap::new();
+    let mut folded: Vec<String> = Vec::new();
+    for (index, msg) in messages.iter().enumerate() {
+        if msg.role != MessageRole::System {
+            continue;
+        }
+        let text = msg.content.to_text();
+        if text.is_empty() {
+            // Matches `fold_system_messages`, which never contributes a blank
+            // section to the joined prompt.
+            continue;
+        }
+        if index < leading_len {
+            folded.push(text);
+            continue;
+        }
+
+        // Tool results render as `user` messages, so they satisfy "follows a
+        // user message" just like a real user turn.
+        let follows_user = messages[..index]
+            .iter()
+            .rfind(|prev| emits(prev))
+            .is_some_and(|prev| matches!(prev.role, MessageRole::User | MessageRole::Tool));
+        let precedes_assistant_or_end = messages[index + 1..]
+            .iter()
+            .find(|next| emits(next))
+            .is_none_or(|next| next.role == MessageRole::Assistant);
+
+        if follows_user && precedes_assistant_or_end {
+            inline.insert(index, text);
+        } else {
+            tracing::debug!(
+                index,
+                follows_user,
+                precedes_assistant_or_end,
+                "AnthropicDriver: folding a mid-conversation system message — \
+                 its position does not satisfy the API's placement rules"
+            );
+            folded.push(text);
+        }
+    }
+
+    SystemMessagePlan {
+        folded: (!folded.is_empty()).then(|| folded.join("\n\n")),
+        inline,
+    }
 }
 
 fn visible_tool_call_ids(messages: &[Message]) -> HashSet<&str> {
@@ -2192,6 +2339,7 @@ impl AnthropicModelInfo {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            mid_conversation_system: false,
         }
     }
 
@@ -2522,14 +2670,15 @@ mod tests {
             for (message, block) in positions {
                 expected[message]["content"][block]["cache_control"] = json!({"type":"ephemeral"});
             }
-            let (_, actual) = AnthropicChatDriver::convert_messages(&messages, enabled, volatile);
+            let (_, actual) =
+                AnthropicChatDriver::convert_messages(&messages, enabled, volatile, false);
             assert_eq!(
                 serde_json::to_value(actual).unwrap(),
                 expected,
                 "enabled={enabled} volatile={volatile}"
             );
         }
-        let (_, empty) = AnthropicChatDriver::convert_messages(&[], true, 0);
+        let (_, empty) = AnthropicChatDriver::convert_messages(&[], true, 0, false);
         assert!(empty.is_empty());
     }
 
@@ -2576,7 +2725,8 @@ mod tests {
                 messages.push(Message::text(MessageRole::System, "later summary"));
             }
             messages.push(Message::text(MessageRole::Assistant, "reply"));
-            let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
+            let (system, converted) =
+                AnthropicChatDriver::convert_messages(&messages, false, 0, false);
             assert_eq!(
                 system.as_deref(),
                 with_system.then_some("first instruction\n\nlater summary")
@@ -2589,6 +2739,132 @@ mod tests {
                 ])
             );
         }
+    }
+
+    /// A mid-conversation notice must not reach the top-level `system` field on
+    /// models that take the role inline: `system` renders ahead of the whole
+    /// transcript, so a notice that changes between turns (the
+    /// `infinity_context` hidden-history count here) would re-process every
+    /// earlier turn uncached and invalidate the history's thinking blocks.
+    #[test]
+    fn mid_conversation_system_messages_keep_the_system_prompt_byte_stable() {
+        let system_field_over_two_turns = |mid_conversation_system: bool| {
+            [
+                "[2 earlier messages are not in this context.]",
+                "[7 earlier messages are not in this context.]",
+            ]
+            .map(|notice| {
+                let messages = [
+                    Message::text(MessageRole::System, "agent prompt"),
+                    Message::text(MessageRole::User, "hello"),
+                    Message::text(MessageRole::System, notice),
+                    Message::text(MessageRole::Assistant, "reply"),
+                    Message::text(MessageRole::User, "again"),
+                ];
+                let (system, converted) = AnthropicChatDriver::convert_messages(
+                    &messages,
+                    false,
+                    0,
+                    mid_conversation_system,
+                );
+                (system, serde_json::to_value(converted).unwrap())
+            })
+        };
+
+        // Folded (Sonnet 5 and older): `system` carries the notice, so it
+        // changes from turn to turn and the notice is absent from `messages`.
+        let [(folded_first, folded_messages), (folded_second, _)] =
+            system_field_over_two_turns(false);
+        assert_ne!(folded_first, folded_second);
+        assert_eq!(
+            folded_first.as_deref(),
+            Some("agent prompt\n\n[2 earlier messages are not in this context.]")
+        );
+        assert!(!folded_messages.to_string().contains("earlier messages"));
+
+        // Inline (Opus 5.5 / Opus 5 / Opus 4.8 / Fable 5.x): `system` is the
+        // agent prompt alone and is byte-identical across turns; the notice
+        // rides where it arose.
+        let [(inline_first, inline_messages), (inline_second, _)] =
+            system_field_over_two_turns(true);
+        assert_eq!(inline_first.as_deref(), Some("agent prompt"));
+        assert_eq!(inline_first, inline_second);
+        assert_eq!(
+            inline_messages,
+            json!([
+                {"role":"user","content":[{"type":"text","text":"hello"}]},
+                {"role":"system","content":[{"type":"text","text":"[2 earlier messages are not in this context.]"}]},
+                {"role":"assistant","content":[{"type":"text","text":"reply"}]},
+                {"role":"user","content":[{"type":"text","text":"again"}]}
+            ])
+        );
+    }
+
+    /// Anthropic's placement rules for a `{"role": "system"}` entry, verified
+    /// live against `claude-opus-5-5`: it must follow a user message (a tool
+    /// result counts), must not be `messages[0]`, and must end the array or
+    /// precede an assistant turn. Anything else folds, as before.
+    #[test]
+    fn mid_conversation_system_messages_fold_when_placement_is_illegal() {
+        let notice = || Message::text(MessageRole::System, "notice");
+        let system_field = |messages: &[Message]| {
+            AnthropicChatDriver::convert_messages(messages, false, 0, true).0
+        };
+
+        // Followed by a user turn, and directly after an assistant turn: both
+        // are 400s on the wire, so the notice stays in `system`.
+        assert_eq!(
+            system_field(&[
+                Message::text(MessageRole::User, "hello"),
+                notice(),
+                Message::text(MessageRole::User, "again"),
+            ])
+            .as_deref(),
+            Some("notice")
+        );
+        assert_eq!(
+            system_field(&[
+                Message::text(MessageRole::User, "hello"),
+                Message::text(MessageRole::Assistant, "reply"),
+                notice(),
+            ])
+            .as_deref(),
+            Some("notice")
+        );
+
+        // Last entry after a tool result (the loop-detection shape) is legal.
+        let mut assistant = Message::text(MessageRole::Assistant, "");
+        assistant.tool_calls = Some(vec![ToolCall {
+            id: "call_1".into(),
+            name: "read".into(),
+            arguments: json!({}),
+        }]);
+        let mut result = Message::text(MessageRole::Tool, "same output again");
+        result.tool_call_id = Some("call_1".into());
+        let (system, converted) = AnthropicChatDriver::convert_messages(
+            &[
+                Message::text(MessageRole::System, "agent prompt"),
+                Message::text(MessageRole::User, "go"),
+                assistant,
+                result,
+                Message::text(MessageRole::System, "Loop detected: change approach."),
+            ],
+            true,
+            1,
+            true,
+        );
+        assert_eq!(system.as_deref(), Some("agent prompt"));
+        let converted = serde_json::to_value(converted).unwrap();
+        // user("go"), assistant(tool_use), user(tool_result), system(warning).
+        assert_eq!(converted.as_array().unwrap().len(), 4);
+        assert_eq!(converted[3]["role"], "system");
+        // Volatile operator text never anchors a cache breakpoint; the stable
+        // turns ahead of the volatile tail still do.
+        assert!(converted[3]["content"][0].get("cache_control").is_none());
+        assert_eq!(
+            converted[0]["content"][0]["cache_control"],
+            json!({"type": "ephemeral"})
+        );
     }
 
     #[test]
@@ -2608,6 +2884,7 @@ mod tests {
             &[orphan, assistant, missing_id, valid],
             false,
             0,
+            false,
         );
         assert!(system.is_none());
         assert_eq!(
@@ -2876,7 +3153,8 @@ mod tests {
             reasoning: Vec::new(),
             configuration_update: None,
         };
-        let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
+        let (_, converted) =
+            AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0, false);
 
         assert_eq!(converted.len(), 2);
         assert_eq!(converted[1].role, "user");
@@ -3011,7 +3289,7 @@ mod tests {
                 "structured_output":false, "open_weights":false,
                 "limits":{"context":200000,"output":64000},
                 "modalities":{"input":["text"],"output":["text"]},
-                "tool_search":false, "supports_phases":false
+                "tool_search":false, "supports_phases":false, "mid_conversation_system":false
             })
         );
     }

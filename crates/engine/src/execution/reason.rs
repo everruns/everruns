@@ -126,6 +126,24 @@ fn client_visible_guardrail_text(
     guarded
 }
 
+/// Where the live `<facts>` block goes: after the last non-System message,
+/// i.e. ahead of any trailing operator notices instead of behind them.
+///
+/// A model-view transform can append a System-role notice at the tail (a
+/// loop-detection warning). Anthropic rejects a mid-conversation
+/// `{"role": "system"}` entry that is followed by a user turn, so a notice left
+/// behind the facts block would have to be folded back into the top-level
+/// `system` field — the between-request edit of the cached prefix that EVE-1084
+/// removes. Both the facts block and those notices are volatile, so the
+/// reported volatile suffix covers everything from this position on and the
+/// cache breakpoints stay on the stable transcript ahead of it.
+fn facts_block_position(messages: &[RuntimeMessage]) -> usize {
+    messages
+        .iter()
+        .rposition(|message| message.role != RuntimeMessageRole::System)
+        .map_or(0, |last_non_system| last_non_system + 1)
+}
+
 fn unix_now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1112,8 +1130,9 @@ impl ReasonAtom {
                 &facts_ctx,
             );
             if let Some(block) = crate::capabilities::render_facts_block(&dynamic_facts) {
-                context_messages.push(RuntimeMessage::user(block));
-                volatile_suffix_len = 1;
+                let insert_at = facts_block_position(&context_messages);
+                context_messages.insert(insert_at, RuntimeMessage::user(block));
+                volatile_suffix_len = context_messages.len() - insert_at;
             }
         }
 

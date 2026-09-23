@@ -28,6 +28,31 @@ fn compaction_cost_combines_with_actual_generation_cost() {
 }
 
 #[test]
+fn facts_block_goes_ahead_of_trailing_operator_notices() {
+    let user = RuntimeMessage::user("do the thing");
+    let agent = RuntimeMessage::assistant("on it");
+    let notice = RuntimeMessage::system("Loop detected: change approach.");
+
+    // No trailing notice: the facts block is simply the last message.
+    assert_eq!(facts_block_position(&[user.clone(), agent.clone()]), 2);
+    // Trailing notices: the facts block goes ahead of them, so each notice can
+    // ride as a mid-conversation system entry instead of being folded into the
+    // cached system prompt.
+    assert_eq!(
+        facts_block_position(&[user.clone(), agent.clone(), notice.clone()]),
+        2
+    );
+    assert_eq!(
+        facts_block_position(&[user.clone(), agent, notice.clone(), notice.clone()]),
+        2
+    );
+    // A leading system prompt is not a trailing notice.
+    assert_eq!(facts_block_position(&[notice.clone(), user]), 2);
+    assert_eq!(facts_block_position(&[]), 0);
+    assert_eq!(facts_block_position(&[notice]), 0);
+}
+
+#[test]
 fn material_reduction_requires_five_percent_at_normal_sizes() {
     assert!(!materially_reduced(1_000, 951));
     assert!(materially_reduced(1_000, 950));

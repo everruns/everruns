@@ -413,6 +413,19 @@ pub struct ModelProfile {
     /// Currently supported by GPT-5.4 and newer via OpenAI Responses API.
     #[serde(default)]
     pub supports_phases: bool,
+    /// Whether the model accepts mid-conversation system messages: `{"role":
+    /// "system"}` entries inside the message array, rather than only a
+    /// dedicated top-level system field.
+    ///
+    /// A driver that owns such a field (Anthropic `system`, Gemini
+    /// `system_instruction`) uses this to keep it byte-stable: an instruction
+    /// that arises mid-session is emitted where it arises instead of being
+    /// folded into the cached prefix, which would re-process every earlier turn
+    /// uncached and, on models with preserved thinking, invalidate every later
+    /// thinking block. Only the Anthropic driver acts on it today; models that
+    /// reject the role keep folding.
+    #[serde(default)]
+    pub mid_conversation_system: bool,
 }
 
 #[cfg(test)]

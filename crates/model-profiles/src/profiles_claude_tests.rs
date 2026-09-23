@@ -120,6 +120,49 @@ fn test_claude_opus_4_7_and_4_6_have_1m_variants() {
     }
 }
 
+/// Mid-conversation `{"role": "system"}` messages are a family cutoff, and the
+/// `[1m]` twins inherit it. Sonnet 5 and the 4.7/4.6 families reject the role
+/// with a 400, so the driver must keep folding their system messages into the
+/// top-level `system` field.
+#[test]
+fn test_claude_mid_conversation_system_support_follows_the_family() {
+    for id in [
+        "claude-fable-5-1",
+        "claude-fable-5",
+        "claude-opus-5-5",
+        "claude-opus-5",
+        "claude-opus-4-8",
+        "claude-fable-5-1[1m]",
+        "claude-opus-5-5[1m]",
+        "claude-opus-5[1m]",
+        "claude-opus-4-8[1m]",
+    ] {
+        assert!(
+            get_model_profile("anthropic", id)
+                .unwrap()
+                .mid_conversation_system,
+            "{id} should accept mid-conversation system messages"
+        );
+    }
+
+    for id in [
+        "claude-sonnet-5",
+        "claude-sonnet-5[1m]",
+        "claude-sonnet-4-6",
+        "claude-opus-4-7",
+        "claude-opus-4-6",
+        "claude-opus-4-5",
+        "claude-haiku-4-5",
+    ] {
+        assert!(
+            !get_model_profile("anthropic", id)
+                .unwrap()
+                .mid_conversation_system,
+            "{id} should not accept mid-conversation system messages"
+        );
+    }
+}
+
 #[test]
 fn test_claude_sonnet_5_1m_variant() {
     let base = get_model_profile("anthropic", "claude-sonnet-5").unwrap();
