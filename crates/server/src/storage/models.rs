@@ -887,6 +887,9 @@ pub struct CreateHarnessCapabilityRow {
 pub struct SessionRow {
     pub id: SessionId,
     pub org_id: i64,
+    /// Project this session runs in (its agent's project; see migration 144's
+    /// `sessions_assign_project` trigger for the derivation order).
+    pub project_id: i64,
     /// Workspace this session is attached to (owns the virtual filesystem).
     /// `#[sqlx(default)]` so projections that don't select it (e.g. stats) still
     /// decode; all session-detail/list queries select it explicitly.
@@ -1049,6 +1052,8 @@ pub enum SessionListOrder {
 /// different population than the page it annotates.
 #[derive(Debug, Clone, Default)]
 pub struct SessionListFilters {
+    /// Restrict to one project. `None` is org-wide (internal callers only).
+    pub project_id: Option<i64>,
     pub agent_id: Option<AgentId>,
     pub search: Option<String>,
     /// Empty means "any source".

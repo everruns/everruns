@@ -83,9 +83,11 @@ Everything above lives inside a two-level tenancy boundary:
 
 | Level | What it is | How often you switch |
 |---|---|---|
-| **Organization** | The billing and team wrapper — members, billing, org-shared resources (models, agent identities). | Rarely. |
-| **Project** | A grouping *inside* an organization that owns the day-to-day building blocks: agents, skills, endpoints, capabilities, MCP servers, memory stores, and sessions. | Constantly. |
+| **Organization** | The billing and team wrapper — members, billing, and the shared registries every project draws from: harnesses, models, agent identities, skills, MCP servers, capabilities, knowledge, and org memory. | Rarely. |
+| **Project** | A grouping of **agents** *inside* an organization, together with everything an agent owns (its endpoints, triggers, versions, and agent memory) and the sessions it runs. | Constantly. |
 
-A project is the scope you work in. Project-scoped resources belong to **exactly one** project, so two projects in the same org are fully isolated — an agent in `Support` is invisible from `Sales`. Every organization has exactly one **default** project, created automatically when the org is created, so there's always somewhere for resources to live and the project switcher is never empty.
+A project is the scope you work in, and its boundary is the agent. Each agent belongs to **exactly one** project, so an agent in `Support` is invisible from `Sales`, and so are its endpoints, triggers, and sessions. A running agent can only see and hand off to agents in its own project. Registries stay shared: a skill or MCP server defined once is available to agents in every project. Every organization has exactly one **default** project, created automatically when the org is created, so there's always somewhere for agents to live and the project switcher is never empty.
+
+Projects are an opt-in feature flag. While it's off, everything lives in the default project and the switcher is hidden.
 
 In the UI the project switcher sits at the top of the sidebar (you change it often); the organization moves into the bottom user menu (you change it rarely). Over the API the active project is derived from auth context — the `everruns_project` cookie (session auth) or the `X-Project-Id` header (API-key auth) — and falls back to the org's default project. There's no project in the URL path, mirroring how the organization is resolved.

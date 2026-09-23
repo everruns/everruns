@@ -55,6 +55,8 @@ mod users;
 mod workspaces;
 
 #[cfg(test)]
+mod projects_tests;
+#[cfg(test)]
 mod tests;
 
 use crate::kernel_imports::{

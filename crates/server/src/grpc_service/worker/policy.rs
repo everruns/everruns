@@ -204,14 +204,19 @@ impl WorkerServiceImpl {
                 "Detached session creation requires a user-owned session with a resolved owner",
             )
         })?;
-        let caller = crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
-            .await
-            .map_err(|error| {
-                // THREAT[TM-API-005]: the resolver failure is a server-side diagnostic;
-                // the worker only needs to know the decision.
-                tracing::error!(%error, "Failed to resolve session owner");
-                Status::permission_denied("Failed to resolve session owner")
-            })?;
+        let caller = crate::auth::caller_resolution::caller_for_user(
+            &self.db,
+            req.org_id,
+            user_id,
+            Some(session.project_id),
+        )
+        .await
+        .map_err(|error| {
+            // THREAT[TM-API-005]: the resolver failure is a server-side diagnostic;
+            // the worker only needs to know the decision.
+            tracing::error!(%error, "Failed to resolve session owner");
+            Status::permission_denied("Failed to resolve session owner")
+        })?;
         crate::domains::sessions::SESSION_MANAGE
             .evaluate_with(self.permission_resolver.as_ref(), &caller)
             .map_err(|error| Status::permission_denied(error.message))?;

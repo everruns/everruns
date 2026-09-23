@@ -157,7 +157,7 @@ impl Command for CreateSession {
         {
             let row = ctx
                 .db
-                .get_agent_by_public_id(ctx.org_id(), Some(ctx.project_id()), &agent_id.to_string())
+                .get_agent_by_public_id(ctx.org_id(), ctx.project_scope(), &agent_id.to_string())
                 .await
                 .map_err(classify_anyhow)?
                 .ok_or_else(|| CommandError::not_found("Agent"))?;
@@ -171,7 +171,7 @@ impl Command for CreateSession {
         } else if let Some(name) = req.agent_name.as_deref() {
             let row = ctx
                 .db
-                .get_agent_by_name(ctx.org_id(), Some(ctx.project_id()), name)
+                .get_agent_by_name(ctx.org_id(), ctx.project_scope(), name)
                 .await
                 .map_err(classify_anyhow)?
                 .ok_or_else(|| CommandError::not_found("Agent"))?;
@@ -422,7 +422,7 @@ impl Command for AddSessionParticipant {
                     .db
                     .get_agent_by_public_id(
                         ctx.org_id(),
-                        Some(ctx.project_id()),
+                        ctx.project_scope(),
                         &agent_id.to_string(),
                     )
                     .await
@@ -747,7 +747,7 @@ impl SessionFilterArgs {
                     .db
                     .get_agent_by_public_id(
                         ctx.org_id(),
-                        Some(ctx.project_id()),
+                        ctx.project_scope(),
                         &agent_id.to_string(),
                     )
                     .await
@@ -805,6 +805,7 @@ impl SessionFilterArgs {
 
         Ok(Some(crate::storage::SessionListFilters {
             include_archived: self.include_archived.unwrap_or(false),
+            project_id: ctx.project_scope(),
             agent_id,
             search: self.search,
             sources: parse_csv(self.source.as_deref(), SessionSource::parse, "source")?,
@@ -1118,7 +1119,7 @@ mod tests {
         );
     }
 
-    fn test_ctx(db: Arc<StorageBackend>, max_sessions_per_org: i64) -> Ctx {
+    pub(super) fn test_ctx(db: Arc<StorageBackend>, max_sessions_per_org: i64) -> Ctx {
         let session_service = Arc::new(crate::domains::sessions::SessionService::new(db.clone()));
         let event_service = Arc::new(crate::services::EventService::new(
             db.clone(),
@@ -1141,7 +1142,7 @@ mod tests {
         ctx
     }
 
-    fn external_test_ctx(db: Arc<StorageBackend>, user_id: Uuid) -> Ctx {
+    pub(super) fn external_test_ctx(db: Arc<StorageBackend>, user_id: Uuid) -> Ctx {
         let session_service = Arc::new(crate::domains::sessions::SessionService::new(db.clone()));
         let capability_service =
             Arc::new(crate::services::CapabilityService::new(db.clone(), None));
@@ -1165,7 +1166,7 @@ mod tests {
         .with_session_service(session_service)
     }
 
-    fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
+    pub(super) fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
         CreateSessionRequest {
             source: None,
             workspace_id: None,
@@ -1195,7 +1196,7 @@ mod tests {
         }
     }
 
-    async fn seed_harness(ctx: &Ctx) -> HarnessId {
+    pub(super) async fn seed_harness(ctx: &Ctx) -> HarnessId {
         CreateHarness(CreateHarnessRequest {
             name: "limit-harness".to_string(),
             display_name: None,
@@ -2203,3 +2204,7 @@ impl Command for CancelSession {
 }
 
 inventory::submit! { CommandDescriptor::of::<CancelSession>() }
+
+#[cfg(test)]
+#[path = "commands_project_tests.rs"]
+mod project_tests;

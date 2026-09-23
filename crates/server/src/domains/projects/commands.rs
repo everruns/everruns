@@ -3,6 +3,8 @@
 // Registered via `inventory::submit!` so they surface through the command
 // dispatch table and the MCP catalog (discover/query/execute), mirroring how
 // organizations are exposed. The REST adapter (api/projects.rs) runs these.
+// Gated by the `projects` feature flag through `CommandMeta::required_feature`
+// (category "projects"), like every other flagged command surface.
 
 use super::types::{DeleteProjectResponse, ProjectResponse};
 use crate::api::common::ListResponse;
@@ -14,17 +16,6 @@ use utoipa::ToSchema;
 
 /// Maximum projects per organization (guards against runaway creation).
 const MAX_PROJECTS_PER_ORG: usize = 100;
-
-/// Gate the projects surface behind the `projects` feature flag. When the flag
-/// is off the whole surface is invisible — every project command reports the
-/// same not-found it would for a missing resource, so API and MCP callers see
-/// no trace of the feature while it stays inert on the org's default project.
-fn ensure_projects_enabled(ctx: &Ctx) -> Result<(), CommandError> {
-    if !ctx.feature_flags.projects {
-        return Err(CommandError::not_found("Project"));
-    }
-    Ok(())
-}
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListProjects {}
@@ -43,7 +34,6 @@ impl Command for ListProjects {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        ensure_projects_enabled(ctx)?;
         let rows = ctx
             .db
             .list_projects(ctx.org_id())
@@ -81,7 +71,6 @@ impl Command for GetProject {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        ensure_projects_enabled(ctx)?;
         let row = ctx
             .db
             .get_project_by_public_id(ctx.org_id(), &self.project)
@@ -117,7 +106,6 @@ impl Command for CreateProject {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        ensure_projects_enabled(ctx)?;
         let name = self.name.trim().to_string();
         if name.is_empty() {
             return Err(CommandError::bad_request("Project name cannot be empty"));
@@ -189,7 +177,6 @@ impl Command for UpdateProject {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        ensure_projects_enabled(ctx)?;
         let current = ctx
             .db
             .get_project_by_public_id(ctx.org_id(), &self.project)
@@ -263,7 +250,6 @@ impl Command for DeleteProject {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        ensure_projects_enabled(ctx)?;
         let current = ctx
             .db
             .get_project_by_public_id(ctx.org_id(), &self.project)

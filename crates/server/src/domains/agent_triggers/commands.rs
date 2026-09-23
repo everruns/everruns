@@ -399,8 +399,7 @@ async fn resolve_trigger_for_agent(
 ) -> Result<(AgentRow, AgentTriggerRow), CommandError> {
     let agent_public = parse_agent_id(agent_id)?;
     let agent =
-        q::require_active_agent(&ctx.db, ctx.org_id(), Some(ctx.project_id()), &agent_public)
-            .await?;
+        q::require_active_agent(&ctx.db, ctx.org_id(), ctx.project_scope(), &agent_public).await?;
     let trigger_id = parse_trigger_id(trigger_id)?;
     let trigger = q::get_by_id(&ctx.db, ctx.org_id(), trigger_id)
         .await?
@@ -445,7 +444,7 @@ impl Command for CreateAgentTrigger {
     async fn execute(self, ctx: &Ctx) -> Result<AgentTrigger, CommandError> {
         let agent_public = parse_agent_id(&self.agent_id)?;
         let agent =
-            q::require_active_agent(&ctx.db, ctx.org_id(), Some(ctx.project_id()), &agent_public)
+            q::require_active_agent(&ctx.db, ctx.org_id(), ctx.project_scope(), &agent_public)
                 .await?;
 
         let req = self.req;
@@ -570,7 +569,7 @@ impl Command for ListAgentTriggers {
     async fn execute(self, ctx: &Ctx) -> Result<Vec<AgentTrigger>, CommandError> {
         let agent_public = parse_agent_id(&self.agent_id)?;
         let agent =
-            q::require_active_agent(&ctx.db, ctx.org_id(), Some(ctx.project_id()), &agent_public)
+            q::require_active_agent(&ctx.db, ctx.org_id(), ctx.project_scope(), &agent_public)
                 .await?;
         let rows = ctx
             .db

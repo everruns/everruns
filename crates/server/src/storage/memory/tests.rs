@@ -9,15 +9,15 @@ use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, PrincipalId, SessionId};
 
 /// Default pagination for tests (large enough to not truncate).
-fn default_pagination() -> Pagination {
+pub(super) fn default_pagination() -> Pagination {
     Pagination::new(0, 1000)
 }
 
-fn test_harness_id() -> HarnessId {
+pub(super) fn test_harness_id() -> HarnessId {
     HarnessId::from_uuid(uuid::Uuid::nil())
 }
 
-fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
+pub(super) fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
     CreateSessionRow {
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
@@ -92,106 +92,6 @@ async fn test_create_and_get_agent() {
     let fetched = fetched.unwrap();
     assert_eq!(fetched.name, "test-agent");
     assert_eq!(fetched.display_name, Some("Test Agent".to_string()));
-}
-
-/// Agents are hard-isolated by project: list/resolve scoped to a project only
-/// see that project's agents; `None` scope is org-wide (internal/worker paths).
-#[tokio::test]
-async fn test_agents_isolated_by_project() {
-    let db = InMemoryDatabase::new();
-
-    // Two projects in the default org (project 1 is the seeded default).
-    let proj_a = DEFAULT_PROJECT_ID;
-    let proj_b = db
-        .create_project(CreateProjectRow {
-            public_id: "proj_000000000000000000000000000000bb".to_string(),
-            org_id: DEFAULT_ORG_ID,
-            name: "Project B".to_string(),
-            description: None,
-            is_default: false,
-        })
-        .await
-        .unwrap()
-        .project_id;
-
-    let make = |project_id: i64, name: &str| CreateAgentRow {
-        project_id,
-        public_id: AgentId::new().to_string(),
-        name: name.to_string(),
-        display_name: None,
-        description: None,
-        intro_markdown: None,
-        short_description: None,
-        starters: serde_json::json!([]),
-        system_prompt: "p".to_string(),
-        default_model_id: None,
-        harness_id: test_harness_id(),
-        tags: vec![],
-        initial_files: serde_json::json!([]),
-        tools: serde_json::json!([]),
-        mcp_servers: serde_json::json!({}),
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        is_built_in: false,
-    };
-
-    let agent_a = db
-        .create_agent(DEFAULT_ORG_ID, make(proj_a, "alpha"))
-        .await
-        .unwrap();
-    let agent_b = db
-        .create_agent(DEFAULT_ORG_ID, make(proj_b, "beta"))
-        .await
-        .unwrap();
-
-    // List is scoped to the active project.
-    let (a_only, _) = db
-        .list_agents(
-            DEFAULT_ORG_ID,
-            Some(proj_a),
-            None,
-            false,
-            default_pagination(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(a_only.len(), 1);
-    assert_eq!(a_only[0].id, agent_a.id);
-
-    let (b_only, _) = db
-        .list_agents(
-            DEFAULT_ORG_ID,
-            Some(proj_b),
-            None,
-            false,
-            default_pagination(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(b_only.len(), 1);
-    assert_eq!(b_only[0].id, agent_b.id);
-
-    // None scope is org-wide (internal/worker access).
-    let (all, _) = db
-        .list_agents(DEFAULT_ORG_ID, None, None, false, default_pagination())
-        .await
-        .unwrap();
-    assert_eq!(all.len(), 2);
-
-    // Resolving B's id from project A must miss; org-wide must hit.
-    assert!(
-        db.get_agent_by_public_id(DEFAULT_ORG_ID, Some(proj_a), &agent_b.public_id)
-            .await
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        db.get_agent_by_public_id(DEFAULT_ORG_ID, None, &agent_b.public_id)
-            .await
-            .unwrap()
-            .is_some()
-    );
 }
 
 #[tokio::test]

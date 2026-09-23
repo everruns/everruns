@@ -13,6 +13,9 @@ impl SessionService {
             .db
             .get_session(caller.org_id, SessionId::from_uuid(id))
             .await?;
+        // A session in another project reads as missing, like a cross-org one.
+        // Internal callers (worker, reconcilers) stay org-wide.
+        let row = row.filter(|r| caller.is_internal || r.project_id == caller.project_id);
         match row {
             Some(r) => {
                 let fallback = if r.harness_id.is_none() {

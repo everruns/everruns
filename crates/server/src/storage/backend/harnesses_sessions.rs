@@ -541,6 +541,17 @@ impl StorageBackend {
         )
     }
 
+    /// Move a session into a project of its org. Used when a caller creates an
+    /// agentless session, which otherwise lands in the org's default project.
+    pub async fn assign_session_project(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        project_id: i64,
+    ) -> Result<bool> {
+        dispatch!(self, assign_session_project, org_id, session_id, project_id)
+    }
+
     pub async fn update_session(
         &self,
         org_id: i64,

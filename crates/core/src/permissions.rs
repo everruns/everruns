@@ -481,6 +481,11 @@ impl Caller {
     /// boundary (it MUST never be reachable from untrusted networks) and (2)
     /// the shared worker secret, which is constant-time compared in the gRPC
     /// auth interceptor. Only ever call this from trusted gRPC/internal paths.
+    ///
+    /// Internal callers are org-wide: their `project_id` is a placeholder that
+    /// must never scope a read or a write. Domain code goes through
+    /// `Ctx::project_scope` / `Ctx::creation_project_id`, which already treat
+    /// internal callers as org-wide and use the org's default project for writes.
     pub fn internal(org_id: i64) -> Self {
         Self::internal_with_project(org_id, crate::project::DEFAULT_PROJECT_ID)
     }

@@ -117,20 +117,25 @@ impl InMemoryDatabase {
         input: CreateOrganizationRow,
     ) -> Result<OrganizationRow> {
         let now = Self::now();
-        let mut orgs = self.organizations.write();
-        let org_id = orgs.keys().max().unwrap_or(&0) + 1;
-        let row = OrganizationRow {
-            org_id,
-            public_id: input.public_id,
-            name: input.name,
-            created_at: now,
-            updated_at: now,
-            external_id: None,
-            created_by: input.created_by,
-            // User-created orgs start un-onboarded; the setup wizard marks them.
-            onboarding_completed_at: None,
+        // Scope the (non-Send) lock guard so it is released before awaiting.
+        let row = {
+            let mut orgs = self.organizations.write();
+            let org_id = orgs.keys().max().unwrap_or(&0) + 1;
+            let row = OrganizationRow {
+                org_id,
+                public_id: input.public_id,
+                name: input.name,
+                created_at: now,
+                updated_at: now,
+                external_id: None,
+                created_by: input.created_by,
+                // User-created orgs start un-onboarded; the setup wizard marks them.
+                onboarding_completed_at: None,
+            };
+            orgs.insert(org_id, row.clone());
+            row
         };
-        orgs.insert(org_id, row.clone());
+        self.ensure_org_default_project(row.org_id).await?;
         Ok(row)
     }
 
@@ -142,22 +147,27 @@ impl InMemoryDatabase {
         input: CreateOrganizationRow,
     ) -> Result<Option<OrganizationRow>> {
         let now = Self::now();
-        let mut orgs = self.organizations.write();
-        if orgs.contains_key(&org_id) {
-            return Ok(None);
-        }
-        let row = OrganizationRow {
-            org_id,
-            public_id: input.public_id,
-            name: input.name,
-            created_at: now,
-            updated_at: now,
-            external_id: None,
-            created_by: input.created_by,
-            // Seeded orgs (default org) are already-onboarded. See migration 090.
-            onboarding_completed_at: Some(now),
+        // Scope the (non-Send) lock guard so it is released before awaiting.
+        let row = {
+            let mut orgs = self.organizations.write();
+            if orgs.contains_key(&org_id) {
+                return Ok(None);
+            }
+            let row = OrganizationRow {
+                org_id,
+                public_id: input.public_id,
+                name: input.name,
+                created_at: now,
+                updated_at: now,
+                external_id: None,
+                created_by: input.created_by,
+                // Seeded orgs (default org) are already-onboarded. See migration 090.
+                onboarding_completed_at: Some(now),
+            };
+            orgs.insert(org_id, row.clone());
+            row
         };
-        orgs.insert(org_id, row.clone());
+        self.ensure_org_default_project(org_id).await?;
         Ok(Some(row))
     }
 

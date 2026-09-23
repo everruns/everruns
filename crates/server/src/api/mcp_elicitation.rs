@@ -254,9 +254,18 @@ async fn resolve_org(
         .iter()
         .find(|org| org.public_id == org_public_id)
         .ok_or_else(|| "You are not a member of this organization.".to_string())?;
+    // The consent link names only an org, so the flow runs in that org's
+    // default project (never a fixed id: that belongs to the default org).
+    let project_id = state
+        .db
+        .get_default_project(org.org_id)
+        .await
+        .map_err(|_| "Could not resolve the organization's project.".to_string())?
+        .map(|p| p.project_id)
+        .ok_or_else(|| "The organization has no default project.".to_string())?;
     Ok(ResolvedOrg {
         org_id: org.org_id,
-        project_id: everruns_core::DEFAULT_PROJECT_ID,
+        project_id,
         public_id: org.public_id.clone(),
         name: org.name.clone(),
         user_id: Some(auth_user.id),

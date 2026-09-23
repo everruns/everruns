@@ -49,11 +49,39 @@ impl WorkerServiceImpl {
                 let user_id = user_id
                     .parse()
                     .map_err(|e| Status::invalid_argument(format!("Invalid user_id: {e}")))?;
-                crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
-                    .await
-                    .map_err(|e| {
-                        Status::permission_denied(format!("Failed to resolve caller: {e}"))
-                    })?
+                // A command run for a session runs in that session's project.
+                // The session must be this user's, so a caller cannot borrow
+                // another session's project scope.
+                let project_id = match req.session_id.as_deref() {
+                    Some(raw) => {
+                        let session_id = everruns_provider::typed_id::SessionId::parse(raw)
+                            .or_else(|_| {
+                                uuid::Uuid::parse_str(raw)
+                                    .map(everruns_provider::typed_id::SessionId::from_uuid)
+                            })
+                            .map_err(|e| {
+                                Status::invalid_argument(format!("Invalid session_id: {e}"))
+                            })?;
+                        let session = self
+                            .db
+                            .get_session(req.org_id, session_id)
+                            .await
+                            .map_err(|e| internal_status("Failed to load session", e))?
+                            .ok_or_else(|| Status::not_found("Session not found"))?;
+                        if session.resolved_owner_user_id != Some(user_id) {
+                            return Err(Status::permission_denied(
+                                "Session is not owned by the command's user",
+                            ));
+                        }
+                        Some(session.project_id)
+                    }
+                    None => None,
+                };
+                crate::auth::caller_resolution::caller_for_user(
+                    &self.db, req.org_id, user_id, project_id,
+                )
+                .await
+                .map_err(|e| Status::permission_denied(format!("Failed to resolve caller: {e}")))?
             }
             None => everruns_core::Caller::internal(req.org_id),
         };
@@ -209,7 +237,24 @@ impl WorkerServiceImpl {
                 "Platform command execution requires a user-owned session with a resolved owner",
             )
         })?;
-        let caller = crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
+        // The API `Session` does not carry the internal project id; read it
+        // from the stored row so platform commands run in the session's project.
+        let project_id = self
+            .db
+            .get_session(
+                req.org_id,
+                everruns_provider::typed_id::SessionId::from_uuid(session_id),
+            )
+            .await
+            .map_err(|error| internal_status("Failed to load session project", error))?
+            .ok_or_else(|| Status::not_found("Session not found"))?
+            .project_id;
+        let caller = crate::auth::caller_resolution::caller_for_user(
+            &self.db,
+            req.org_id,
+            user_id,
+            Some(project_id),
+        )
             .await
             .map_err(|error| {
                 tracing::warn!(%error, %session_id, org_id = req.org_id, %user_id, "Failed to resolve Platform command caller");
@@ -307,6 +352,7 @@ pub(crate) mod test_support {
                 user_id: None,
                 idempotency_key: None,
                 metadata: std::collections::HashMap::new(),
+                session_id: None,
             }))
             .await
             .unwrap_or_else(|status| panic!("{name} transport failure: {status:?}"))

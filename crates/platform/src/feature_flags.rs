@@ -287,9 +287,10 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
         name: "projects",
         label: "Projects",
-        description: "Adds a project layer nested inside your organization: switch projects from \
-             the sidebar and scope agents and other resources to the project you are working in. \
-             Existing resources move into a default project, so nothing changes until you opt in.",
+        description: "Groups agents into projects inside your organization: switch projects from \
+             the sidebar, and each project shows only its agents, their endpoints and triggers, \
+             and their sessions. Skills, MCP servers, and other registries stay shared. Existing \
+             agents start in a default project, so nothing changes until you opt in.",
         experimental: true,
         platform_managed: false,
     },

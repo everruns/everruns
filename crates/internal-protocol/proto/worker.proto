@@ -1663,6 +1663,9 @@ message ExecuteCommandRequest {
     optional string user_id = 5;
     optional string idempotency_key = 6;
     map<string, string> metadata = 7;
+    // Session a user-scoped command runs for. The server runs the command in
+    // that session's project and requires the session to be owned by user_id.
+    optional string session_id = 8;
 }
 
 message CommandError {

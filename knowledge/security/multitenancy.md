@@ -88,20 +88,46 @@ middleware and users API; do not duplicate them here.
 Projects are an optional layer nested *inside* an organization: an organization
 is the billing and team boundary, a project is the day-to-day work scope. Every
 organization has exactly one seeded default project, so there is always a home
-for resources and the switcher is never empty. Org-scoped resources also carry a
-project.
+for resources and the switcher is never empty. The surface is gated by the
+org-opt-in `projects` feature flag.
+
+**The project boundary is the Agent.** Since Apps were retired
+(`knowledge/integrations/agent-exposure.md`), the Agent is the top-level
+deployable thing, and a project groups agents and the work they do. Scope is
+stored only where it cannot be derived:
+
+| Kind | Resources | How scope applies |
+|---|---|---|
+| Anchor | agents | Stored `project_id`, enforced on every UI/API read. |
+| Runtime | sessions | Stored `project_id`, derived at creation: the agent's project, else the parent session's, else the creator's active project, else the org default. |
+| Agent-owned | endpoints, triggers, versions, MCP secret bindings, health checks, agent-scoped memory | No column. Reached only through a project-scoped agent, so they inherit its project. |
+| Session-owned | files, tasks, subagent child sessions, participants, events | No column. Inherit through the session. |
+| Shared registries | harnesses, models, providers, agent identities, skills, MCP servers, capabilities, plugins, org/user memory, knowledge bases and indexes, evals, observers | Org-scoped, visible from every project. Agents reference them; a reference never moves them into a project. |
+| Retired | apps | Frozen archival data; not project-scoped. |
+
+Rules that follow from the boundary:
+
+- A session executes in its own project: platform tools a session calls run as
+  its owner *scoped to the session's project*, so an agent can only see and
+  delegate to agents in its own project.
+- Anonymous ingress stays unscoped: an endpoint's public id is the credential.
+  The session it opens inherits the owning agent's project.
+- Per-org quotas (agent and trigger caps) stay org-wide.
+- `project_id` always pairs with `org_id` (composite key), so a row can never
+  point at another organization's project.
 
 Project scope is a hard filter layered on top of organization scope, never a
 replacement for it. Read paths take a `project_id: Option<i64>`: `Some(p)`
 enforces project isolation for UI and API callers, while `None` is deliberately
-org-wide and reserved for trusted internal and worker paths. Creates write the
-caller's active project. A project filter is always applied on top of org scope,
-so a project never widens isolation.
+org-wide and reserved for trusted internal and worker paths. A resource in
+another project is indistinguishable from a missing resource, exactly as a
+cross-org lookup is.
 
-The active project is resolved the same way as the organization: a server-set
-cookie and a request header, validated against the already-resolved
-organization. A resource in another project is indistinguishable from a missing
-resource, exactly as a cross-org lookup is.
+The active project is resolved like the organization: the `everruns_project`
+cookie or the `X-Project-Id` header, validated against the resolved
+organization, falling back to the org default. While the flag is off, the
+selection is ignored and every caller is in the default project; resources
+created in other projects stay stored but hidden until the flag is re-enabled.
 
 ## Isolation invariants
 

@@ -5383,6 +5383,36 @@
     "read_only": false
   },
   {
+    "category": "projects",
+    "cli": null,
+    "description": "Create a project in the active organization.",
+    "input_schema": {
+      "properties": {
+        "description": {
+          "description": "Optional description.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Display name (unique per org, case-insensitive).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "create_project",
+    "output_shape": "unknown",
+    "path": "/v1/projects",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "providers",
     "cli": null,
     "description": "Create a new LLM provider.",
@@ -7223,6 +7253,29 @@
     "output_shape": "unknown",
     "path": "/v1/plugin_marketplaces/{id}",
     "positional_arg": "id",
+    "read_only": false
+  },
+  {
+    "category": "projects",
+    "cli": null,
+    "description": "Delete a non-default, empty project.",
+    "input_schema": {
+      "properties": {
+        "project": {
+          "description": "Project public ID to delete (must be non-default and empty).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "delete_project",
+    "output_shape": "unknown",
+    "path": "/v1/projects/{project}",
+    "positional_arg": "project",
     "read_only": false
   },
   {
@@ -9124,6 +9177,29 @@
     "output_shape": "unknown",
     "path": "/v1/plugin_marketplaces/{id}",
     "positional_arg": "id",
+    "read_only": true
+  },
+  {
+    "category": "projects",
+    "cli": null,
+    "description": "Get a project by public ID.",
+    "input_schema": {
+      "properties": {
+        "project": {
+          "description": "Project public ID (proj_<32-hex>).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_project",
+    "output_shape": "unknown",
+    "path": "/v1/projects/{project}",
+    "positional_arg": "project",
     "read_only": true
   },
   {
@@ -12102,6 +12178,20 @@
     "name": "list_plugins",
     "output_shape": "unknown",
     "path": "/v1/plugins",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "projects",
+    "cli": null,
+    "description": "List projects in the active organization.",
+    "input_schema": {
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_projects",
+    "output_shape": "unknown",
+    "path": "/v1/projects",
     "positional_arg": null,
     "read_only": true
   },
@@ -18522,6 +18612,41 @@
     "output_shape": "unknown",
     "path": "/v1/plugin_marketplaces/{id}",
     "positional_arg": "id",
+    "read_only": false
+  },
+  {
+    "category": "projects",
+    "cli": null,
+    "description": "Update a project's name or description.",
+    "input_schema": {
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "project": {
+          "description": "Project public ID to update.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project"
+      ],
+      "type": "object"
+    },
+    "method": "PATCH",
+    "name": "update_project",
+    "output_shape": "unknown",
+    "path": "/v1/projects/{project}",
+    "positional_arg": "project",
     "read_only": false
   },
   {

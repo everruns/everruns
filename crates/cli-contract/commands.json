@@ -6536,6 +6536,112 @@
     ]
   },
   {
+    "wire_name": "create_project",
+    "path": [
+      "projects"
+    ],
+    "verb": "create",
+    "description": "Create a project in the active organization.",
+    "method": "POST",
+    "http_path": "/v1/projects",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Optional description."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Display name (unique per org, case-insensitive)."
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_project",
+    "path": [
+      "projects"
+    ],
+    "verb": "delete",
+    "description": "Delete a non-default, empty project.",
+    "method": "DELETE",
+    "http_path": "/v1/projects/{project}",
+    "args": [
+      {
+        "field": "project",
+        "long": "project",
+        "kind": "string",
+        "required": true,
+        "help": "Project public ID to delete (must be non-default and empty)."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_project",
+    "path": [
+      "projects"
+    ],
+    "verb": "get",
+    "description": "Get a project by public ID.",
+    "method": "GET",
+    "http_path": "/v1/projects/{project}",
+    "args": [
+      {
+        "field": "project",
+        "long": "project",
+        "kind": "string",
+        "required": true,
+        "help": "Project public ID (proj_<32-hex>)."
+      }
+    ]
+  },
+  {
+    "wire_name": "list_projects",
+    "path": [
+      "projects"
+    ],
+    "verb": "list",
+    "description": "List projects in the active organization.",
+    "method": "GET",
+    "http_path": "/v1/projects",
+    "args": []
+  },
+  {
+    "wire_name": "update_project",
+    "path": [
+      "projects"
+    ],
+    "verb": "update",
+    "description": "Update a project's name or description.",
+    "method": "PATCH",
+    "http_path": "/v1/projects/{project}",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "project",
+        "long": "project",
+        "kind": "string",
+        "required": true,
+        "help": "Project public ID to update."
+      }
+    ]
+  },
+  {
     "wire_name": "check_provider_credentials",
     "path": [
       "providers",

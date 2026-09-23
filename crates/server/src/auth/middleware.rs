@@ -729,12 +729,7 @@ where
         // First extract the authenticated user
         let user = AuthUser::from_request_parts(parts, state).await?;
         let auth_state = AuthState::from_ref(state);
-        let mut org = resolve_org_for_user(user, parts, &auth_state).await?;
-        // Resolve the active project once (cookie/header), so every org-scoped
-        // handler also gets correct project scope without per-handler changes.
-        org.project_id =
-            resolve_active_project_id(auth_state.db.as_ref(), &parts.headers, org.org_id).await;
-        Ok(org)
+        resolve_org_for_user(user, parts, &auth_state).await
     }
 }
 
@@ -747,18 +742,26 @@ pub const PROJECT_HEADER_NAME: &str = "x-project-id";
 
 /// Resolve the active project for an org from the request.
 ///
-/// Reads the selection from the `X-Project-Id` header (API key) or the
-/// `everruns_project` cookie (session), validates it belongs to the org, and
-/// falls back to the org's default project. Read-only — never creates a project
-/// on the request hot path.
-async fn resolve_active_project_id(
+/// With the `projects` flag on, reads the selection from the `X-Project-Id`
+/// header (API key) or the `everruns_project` cookie (session) and validates it
+/// belongs to the org. Otherwise, or when the selection is absent or invalid,
+/// uses the org's default project. Read-only — never creates a project on the
+/// request hot path.
+pub(crate) async fn resolve_active_project_id(
     db: Option<&std::sync::Arc<StorageBackend>>,
     headers: &axum::http::HeaderMap,
     org_id: i64,
+    projects_enabled: bool,
 ) -> i64 {
     let Some(db) = db else {
         return DEFAULT_PROJECT_ID;
     };
+    if !projects_enabled {
+        return match db.get_default_project(org_id).await {
+            Ok(Some(project)) => project.project_id,
+            _ => DEFAULT_PROJECT_ID,
+        };
+    }
 
     let jar = CookieJar::from_headers(headers);
     let selected = headers
@@ -786,6 +789,26 @@ async fn resolve_active_project_id(
 /// the same org-resolution semantics as a session JWT without going back
 /// through `validate_token`.
 pub(crate) async fn resolve_org_for_user(
+    user: AuthUser,
+    parts: &mut Parts,
+    auth_state: &AuthState,
+) -> Result<ResolvedOrg, AuthError> {
+    let mut org = resolve_org_membership(user, parts, auth_state).await?;
+    // Resolve the active project here, not in each extractor, so no caller
+    // (HTTP or MCP) ever sees the placeholder the membership branches carry.
+    org.project_id = resolve_active_project_id(
+        auth_state.db.as_ref(),
+        &parts.headers,
+        org.org_id,
+        org.feature_flags.projects,
+    )
+    .await;
+    Ok(org)
+}
+
+/// Pick the organization for an authenticated user. The returned
+/// `project_id` is a placeholder; [`resolve_org_for_user`] fills it in.
+async fn resolve_org_membership(
     user: AuthUser,
     parts: &mut Parts,
     auth_state: &AuthState,
@@ -1924,3 +1947,7 @@ mod tests {
         assert!(err.error.contains("Invalid organization ID format"));
     }
 }
+
+#[cfg(test)]
+#[path = "middleware_project_tests.rs"]
+mod project_tests;

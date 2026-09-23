@@ -101,9 +101,21 @@ impl InMemoryDatabase {
                 },
             );
         }
+        // Mirrors migration 144's `sessions_assign_project` trigger: the
+        // agent's project, else the parent session's, else the org default.
+        let project_id = input
+            .agent_id
+            .and_then(|agent_id| self.agents.read().get(&agent_id).map(|a| a.project_id))
+            .or_else(|| {
+                input
+                    .parent_session_id
+                    .and_then(|parent| self.sessions.read().get(&parent).map(|s| s.project_id))
+            })
+            .unwrap_or_else(|| self.default_project_id(input.org_id));
         let row = SessionRow {
             id,
             org_id: input.org_id,
+            project_id,
             workspace_id,
             app_id: input.app_id,
             endpoint_id: input.endpoint_id,
@@ -252,6 +264,7 @@ impl InMemoryDatabase {
         sessions
             .values()
             .filter(|s| s.org_id == org_id)
+            .filter(|s| filters.project_id.is_none_or(|p| s.project_id == p))
             .filter(|s| {
                 skip == FacetDimension::Agent
                     || filters.agent_id.is_none_or(|aid| s.agent_id == Some(aid))
@@ -988,6 +1001,31 @@ impl InMemoryDatabase {
         session.run_summary = Some(summary.to_string());
         session.run_summary_turn_sequence = Some(turn_sequence);
         Ok(true)
+    }
+
+    pub async fn assign_session_project(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        project_id: i64,
+    ) -> Result<bool> {
+        // Mirror the Postgres (project_id, org_id) foreign key.
+        let project_in_org = self
+            .projects
+            .read()
+            .get(&project_id)
+            .is_some_and(|p| p.org_id == org_id);
+        if !project_in_org {
+            anyhow::bail!("project {project_id} does not belong to organization {org_id}");
+        }
+        let mut sessions = self.sessions.write();
+        match sessions.get_mut(&session_id).filter(|s| s.org_id == org_id) {
+            Some(session) => {
+                session.project_id = project_id;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
     }
 
     pub async fn update_session(

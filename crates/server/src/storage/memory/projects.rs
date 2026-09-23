@@ -54,6 +54,35 @@ impl InMemoryDatabase {
             .map(|p| p.org_id))
     }
 
+    /// Give a new org its default project. Mirrors migration 144's
+    /// `organizations_create_default_project` trigger, so every org has one
+    /// whatever path created it.
+    pub(super) async fn ensure_org_default_project(&self, org_id: i64) -> Result<()> {
+        if self.get_default_project(org_id).await?.is_none() {
+            self.create_project(CreateProjectRow {
+                public_id: everruns_core::generate_project_public_id(),
+                org_id,
+                name: "Default".to_string(),
+                description: None,
+                is_default: true,
+            })
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// The org's default project id, for rows created without an explicit
+    /// project. Falls back to the default org's project only for orgs this
+    /// dev backend never seeded a project for.
+    pub(super) fn default_project_id(&self, org_id: i64) -> i64 {
+        self.projects
+            .read()
+            .values()
+            .find(|p| p.org_id == org_id && p.is_default)
+            .map(|p| p.project_id)
+            .unwrap_or(everruns_core::DEFAULT_PROJECT_ID)
+    }
+
     pub async fn get_default_project(&self, org_id: i64) -> Result<Option<ProjectRow>> {
         Ok(self
             .projects

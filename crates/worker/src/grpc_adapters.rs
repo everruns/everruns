@@ -656,6 +656,7 @@ impl GrpcAdapter {
                 user_id: None,
                 idempotency_key: None,
                 metadata: Default::default(),
+                session_id: None,
             })
             .await
             .map_err(grpc_status_to_error)?
@@ -763,6 +764,8 @@ impl GrpcOrgAdapter {
                 user_id: Some(user_id.to_string()),
                 idempotency_key: None,
                 metadata: Default::default(),
+                // Runs the command in this session's project.
+                session_id: self.platform_session_id.map(|id| id.to_string()),
             })
             .await
             .map_err(grpc_status_to_error)?

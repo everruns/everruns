@@ -527,7 +527,13 @@ impl InMemoryDatabase {
         let mut agents = self.agents.write();
         let existing_key = agents
             .iter()
-            .find(|(_, a)| a.org_id == org_id && a.name == input.name && a.status != "deleted")
+            .find(|(_, a)| {
+                // Names are unique per project (migration 144).
+                a.org_id == org_id
+                    && a.project_id == input.project_id
+                    && a.name == input.name
+                    && a.status != "deleted"
+            })
             .map(|(k, _)| *k);
 
         if let Some(key) = existing_key {

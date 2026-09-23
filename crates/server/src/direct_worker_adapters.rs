@@ -2784,7 +2784,14 @@ impl DirectPlatformStore {
                     )
                 })?;
 
-                crate::auth::caller_resolution::caller_for_user(&self.db, self.org_id, user_id)
+                // The session's project, not the org default: an agent's
+                // platform tools reach only agents in its own project.
+                crate::auth::caller_resolution::caller_for_user(
+                    &self.db,
+                    self.org_id,
+                    user_id,
+                    Some(session.project_id),
+                )
                     .await
                     .map_err(|e| {
                         store_error(format!("Failed to resolve platform tool caller: {e}"))

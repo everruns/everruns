@@ -535,7 +535,7 @@ impl Database {
             r#"
             INSERT INTO agents (org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, is_built_in, project_id, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active')
-            ON CONFLICT (org_id, name) WHERE status != 'deleted' DO UPDATE SET
+            ON CONFLICT (org_id, project_id, name) WHERE status != 'deleted' DO UPDATE SET
                 display_name = EXCLUDED.display_name,
                 description = EXCLUDED.description,
                 intro_markdown = EXCLUDED.intro_markdown,

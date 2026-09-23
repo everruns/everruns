@@ -333,6 +333,7 @@ async fn test_execute_command_lists_seeded_harnesses() {
             user_id: None,
             idempotency_key: None,
             metadata: Default::default(),
+            session_id: None,
         }))
         .await
         .expect("execute_command should succeed")
@@ -377,6 +378,7 @@ async fn test_execute_command_denies_org_disabled_feature() {
             user_id: None,
             idempotency_key: None,
             metadata: Default::default(),
+            session_id: None,
         }))
         .await
         .expect("execute_command should return a structured command error")
@@ -405,6 +407,7 @@ async fn test_execute_command_unknown_command_returns_bad_request_kind() {
             user_id: None,
             idempotency_key: None,
             metadata: Default::default(),
+            session_id: None,
         }))
         .await
         .expect("execute_command should return a structured command error")
@@ -441,6 +444,7 @@ async fn test_execute_command_sanitizes_database_conflicts_only() {
                 user_id: None,
                 idempotency_key: None,
                 metadata: Default::default(),
+                session_id: None,
             }))
             .await
             .expect("execute_command should return a structured conflict")
@@ -980,6 +984,7 @@ async fn test_execute_command_uses_user_permissions() {
             user_id: Some(user.id.to_string()),
             idempotency_key: None,
             metadata: Default::default(),
+            session_id: None,
         }))
         .await
         .expect("execute_command should return a structured command error")

@@ -410,6 +410,7 @@ impl CommandMeta {
             "environments" => Some("environments"),
             "notifications" => Some("notifications"),
             "payments" => Some("machine_payments"),
+            "projects" => Some("projects"),
             _ => match self.name {
                 "list_agent_versions"
                 | "create_agent_version"
@@ -517,9 +518,24 @@ impl Ctx {
         self.caller.org_id
     }
 
-    /// Active project scope for the caller (within `org_id`).
-    pub fn project_id(&self) -> i64 {
-        self.caller.project_id
+    /// Project filter for reads: the caller's active project, or `None`
+    /// (org-wide) for internal callers, whose `project_id` is a placeholder.
+    pub fn project_scope(&self) -> Option<i64> {
+        (!self.caller.is_internal).then_some(self.caller.project_id)
+    }
+
+    /// Project a new project-scoped row is written to: the caller's active
+    /// project, or the org's default project for internal callers.
+    pub async fn creation_project_id(&self) -> Result<i64, CommandError> {
+        if !self.caller.is_internal {
+            return Ok(self.caller.project_id);
+        }
+        self.db
+            .get_default_project(self.org_id())
+            .await
+            .map_err(classify_anyhow)?
+            .map(|project| project.project_id)
+            .ok_or_else(|| CommandError::not_found("Project"))
     }
 
     /// Construct a Ctx for an HTTP request.
@@ -1465,6 +1481,7 @@ mod error_tests {
                 Some("machine_payments"),
             ),
             ("create_agent_version", "agents", Some("agent_versions")),
+            ("create_project", "projects", Some("projects")),
             ("list_agents", "agents", None),
         ] {
             let meta = CommandMeta {
@@ -1874,3 +1891,7 @@ mod lenient_tests {
         assert!(err.to_string().contains("coerce string"), "got: {err}");
     }
 }
+
+#[cfg(test)]
+#[path = "common_project_scope_tests.rs"]
+mod project_scope_tests;

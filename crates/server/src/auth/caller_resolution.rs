@@ -8,7 +8,17 @@ fn platform_user_from_roles(roles: &[String]) -> bool {
     roles.iter().any(|role| role == "admin")
 }
 
-pub async fn caller_for_user(db: &StorageBackend, org_id: i64, user_id: Uuid) -> Result<Caller> {
+/// Resolve a user's caller identity for a non-HTTP path.
+///
+/// `project_id` is the project the call runs in: platform tools a session
+/// invokes pass the session's project, so an agent only reaches agents in its
+/// own project. `None` means the org's default project.
+pub async fn caller_for_user(
+    db: &StorageBackend,
+    org_id: i64,
+    user_id: Uuid,
+    project_id: Option<i64>,
+) -> Result<Caller> {
     let user = db
         .get_user(user_id)
         .await?
@@ -21,13 +31,14 @@ pub async fn caller_for_user(db: &StorageBackend, org_id: i64, user_id: Uuid) ->
         .with_context(|| format!("User {user_id} is not a member of organization {org_id}"))?;
     let roles: Vec<String> = serde_json::from_value(user.roles).unwrap_or_default();
 
-    // No selected project on these (non-HTTP) paths — scope to the org's
-    // default project.
-    let project_id = db
-        .get_default_project(org_id)
-        .await?
-        .map(|p| p.project_id)
-        .unwrap_or(everruns_core::DEFAULT_PROJECT_ID);
+    let project_id = match project_id {
+        Some(project_id) => project_id,
+        None => db
+            .get_default_project(org_id)
+            .await?
+            .map(|p| p.project_id)
+            .unwrap_or(everruns_core::DEFAULT_PROJECT_ID),
+    };
 
     Ok(Caller {
         org_id,
