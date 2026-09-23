@@ -28,6 +28,7 @@
 mod caching;
 mod cards;
 pub mod elicitation;
+mod form_elicitation;
 mod tasks;
 mod tool_registry;
 
@@ -997,6 +998,12 @@ async fn handle_tools_call(
     // carries the per-request `_meta` opt-in, so we evaluate it here.
     let tasks_enabled = tasks::tasks_enabled(protocol_version, &params);
 
+    // Whether a session this call starts may park on an `ask_user` question
+    // set: only a client that can be elicited, over a protocol that can carry
+    // the elicitation, has anyone to answer it (EVE-1057, EVE-1060).
+    let ask_user_capable = tool_registry::supports_mrtr(protocol_version)
+        && elicitation::client_supports_elicitation(&params);
+
     let tool_name = match params.get("name").and_then(|v| v.as_str()) {
         Some(name) => name,
         None => return JsonRpcResponse::invalid_params(id, "Missing 'name' in params"),
@@ -1034,6 +1041,27 @@ async fn handle_tools_call(
         .await;
     }
 
+    // An `ask_user` question set parks the turn on something only a person can
+    // answer. A client that declared `elicitation` gets the question set as a
+    // form mode elicitation (EVE-1060) and answers it on the retry; one that
+    // declared nothing gets the ordinary status result, because the turn it is
+    // polling never parked on a card nobody could draw (EVE-1057). See
+    // `form_elicitation`.
+    if tool_name == "session_get_status"
+        && let Some(response) = ask_user_form_elicitation(
+            &id,
+            &params,
+            &arguments,
+            auth_user,
+            org,
+            state,
+            protocol_version,
+        )
+        .await
+    {
+        return response;
+    }
+
     // Card tools return an MCP content array directly (resource + summary
     // text) and skip the JSON-string wrapping path used by other tools.
     // See knowledge/ui/mcp-cards.md.
@@ -1069,7 +1097,7 @@ async fn handle_tools_call(
                 // Tier 1: agent conversation (org-scoped — accept organization_id override)
                 "agent_run" => {
                     match resolve_org_override(&arguments, auth_user, org, state).await {
-                        Ok(org) => tool_agent_run(&arguments, &org, state).await,
+                        Ok(org) => tool_agent_run(&arguments, &org, state, ask_user_capable).await,
                         Err(e) => Err(e),
                     }
                 }
@@ -1228,7 +1256,7 @@ async fn handle_elicited_tool(
 
     let signing_secret = state.auth.config.jwt.secret.clone();
     if let Some(request_state) = elicitation::request_state(params) {
-        let verified = elicitation::verify_token(
+        let verified = elicitation::verify_token::<elicitation::ElicitationIntent>(
             request_state,
             &signing_secret,
             auth_user.id,
@@ -1375,6 +1403,199 @@ fn declined_payload(intent: &elicitation::ElicitationIntent) -> Value {
         }),
     };
     json_result_payload(&structured)
+}
+
+/// Serve an `ask_user` question set a session is parked on as a form mode
+/// elicitation (EVE-1060), and apply the answer that comes back.
+///
+/// Returns `None` whenever the poll should be answered as an ordinary
+/// `session_get_status` result: nothing is parked, the question set is not
+/// projectable, the client cannot be elicited, or the client's answer just
+/// resumed the turn and the status it is about to read is the news.
+///
+/// Deliberately unlike `handle_elicited_tool`: a client that never declared
+/// `elicitation` gets no `MissingRequiredClientCapability` here. A credential
+/// genuinely cannot be obtained any other way, but an unanswerable question
+/// can — EVE-1057 already answered it with the model's declared defaults, so
+/// failing the poll would turn a working headless run into an error.
+#[allow(clippy::too_many_arguments)]
+async fn ask_user_form_elicitation(
+    id: &Option<Value>,
+    params: &Value,
+    arguments: &Value,
+    auth_user: &AuthUser,
+    org: &ResolvedOrg,
+    state: &AppState,
+    protocol_version: &str,
+) -> Option<JsonRpcResponse> {
+    if !tool_registry::supports_mrtr(protocol_version) {
+        return None;
+    }
+    let session_id: everruns_provider::typed_id::SessionId = arguments
+        .get("session_id")
+        .and_then(Value::as_str)?
+        .parse()
+        .ok()?;
+    let org = resolve_org_override(arguments, auth_user, org, state)
+        .await
+        .ok()?;
+    let caller = Caller::from(&org);
+    let session = state
+        .session_service
+        .get(&caller, session_id.uuid(), None)
+        .await
+        .ok()??;
+    if session.status != everruns_platform::SessionStatus::WaitingForToolResults {
+        return None;
+    }
+
+    let events = state
+        .db
+        .list_events(
+            session_id,
+            None,
+            None,
+            &["tool.call_requested".to_string()],
+            &[],
+            None,
+            Some(crate::api::question_answers::QUESTION_LOOKBACK_EVENTS),
+        )
+        .await
+        .ok()?;
+    let pending = crate::api::question_answers::pending_from_events(&events, None)?;
+    // THREAT[TM-AGENT-016]: a credential is never a form property. An
+    // `ask_user` answer is a tool result, so a secret typed into one would be
+    // plaintext in the event log and in model context for the rest of the
+    // session. A secret question set is left to the URL mode path
+    // (`ElicitationIntent::SessionSecret`) and the browser card.
+    if everruns_builtins::ask_user::questions_ask_for_a_secret(&pending.questions) {
+        return None;
+    }
+
+    let intent = elicitation::QuestionSetIntent {
+        session_id: session_id.to_string(),
+        tool_call_id: pending.tool_call_id.clone(),
+    };
+    let signing_secret = state.auth.config.jwt.secret.clone();
+    let now = chrono::Utc::now().timestamp();
+
+    if let Some(request_state) = elicitation::request_state(params) {
+        match elicitation::verify_token::<elicitation::QuestionSetIntent>(
+            request_state,
+            &signing_secret,
+            auth_user.id,
+            now,
+        ) {
+            // Only an answer to *this* question set counts. State minted for
+            // another one is stale, not fatal: fall through and elicit afresh.
+            Ok(token) if token.intent == intent => {
+                if let Some(response) =
+                    elicitation::input_response(params, form_elicitation::ASK_USER_REQUEST_KEY)
+                {
+                    return apply_form_answers(id, response, &caller, session_id, &pending, state)
+                        .await;
+                }
+            }
+            Ok(_) => {}
+            Err(error) => {
+                return Some(JsonRpcResponse::invalid_params(id.clone(), error.message()));
+            }
+        }
+    }
+
+    if !elicitation::client_supports_elicitation(params) {
+        return None;
+    }
+    let signed = elicitation::sign_token(
+        &elicitation::ElicitationToken::new(auth_user.id, org.public_id.clone(), intent, now),
+        &signing_secret,
+    );
+    let result = form_elicitation::form_elicitation_result(&pending.questions, &signed)?;
+    tracing::info!(
+        org.id = %org.public_id,
+        questions = pending.questions.len(),
+        "MCP form elicitation issued"
+    );
+    Some(JsonRpcResponse::success(id.clone(), result))
+}
+
+/// Apply a client's form response to the parked question set.
+///
+/// Routed through the one shared resolution operation (EVE-1054), which owns
+/// validating every selection against what was actually asked, attribution, and
+/// the single-claim resume — `/mcp` gets no second implementation of any of
+/// them. A successful resolve returns `None` so the same `session_get_status`
+/// call goes on to report the resumed session.
+async fn apply_form_answers(
+    id: &Option<Value>,
+    response: &Value,
+    caller: &Caller,
+    session_id: everruns_provider::typed_id::SessionId,
+    pending: &crate::api::question_answers::PendingQuestions,
+    state: &AppState,
+) -> Option<JsonRpcResponse> {
+    use crate::api::question_answers::{QuestionResolver, ResolveError, resolve_question_answers};
+    use everruns_builtins::ask_user::AskUserStatus;
+    use form_elicitation::FormOutcome;
+
+    let outcome = match form_elicitation::outcome_from_response(&pending.questions, response) {
+        Ok(outcome) => outcome,
+        Err(message) => return Some(JsonRpcResponse::invalid_params(id.clone(), message)),
+    };
+    // The trichotomy maps onto the contract's outcomes without translation. A
+    // cancel is the one outcome the typed answer endpoint refuses to take from
+    // a caller, and it is safe here because it carries no answers: dismissing
+    // a form claims nothing on the person's behalf.
+    let (status, answers) = match outcome {
+        FormOutcome::Answered(answers) => (AskUserStatus::Answered, answers),
+        FormOutcome::Declined => (AskUserStatus::Declined, Vec::new()),
+        FormOutcome::Cancelled => (AskUserStatus::Cancelled, Vec::new()),
+    };
+
+    let resolver = QuestionResolver {
+        db: &state.db,
+        session_service: &state.session_service,
+        event_service: &state.event_service,
+        runner: state.runner.clone(),
+    };
+    match resolve_question_answers(
+        &resolver,
+        caller,
+        session_id,
+        Some(&pending.tool_call_id),
+        status,
+        &answers,
+    )
+    .await
+    {
+        Ok(_) => None,
+        // Someone answered first, or the turn already moved on. The status
+        // result this falls through to is a truer answer than an error.
+        Err(
+            ResolveError::AlreadyResolved
+            | ResolveError::NotWaiting(_)
+            | ResolveError::NoPendingQuestions
+            | ResolveError::WrongPendingCall,
+        ) => None,
+        Err(ResolveError::Invalid(detail)) => {
+            // The turn stays parked, so the client can correct the form and
+            // answer again rather than losing the question.
+            let envelope = classify_mcp_execute_error(&detail);
+            Some(JsonRpcResponse::success(
+                id.clone(),
+                error_result_payload(&detail, Some(&envelope)),
+            ))
+        }
+        Err(ResolveError::Internal(detail)) => {
+            tracing::error!(error = %detail, "Failed to resolve an MCP form elicitation");
+            let message = "Failed to record the answer".to_string();
+            let envelope = classify_mcp_execute_error(&message);
+            Some(JsonRpcResponse::success(
+                id.clone(),
+                error_result_payload(&message, Some(&envelope)),
+            ))
+        }
+    }
 }
 
 async fn handle_tasks_method(
@@ -1778,18 +1999,27 @@ async fn tool_agent_run(
     args: &Value,
     org: &ResolvedOrg,
     state: &AppState,
+    ask_user_capable: bool,
 ) -> Result<String, String> {
     let message_text = args
         .get("message")
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: message")?;
 
-    let session_params = json!({
+    let mut session_params = json!({
         "agent_id": args.get("agent_id"),
         "harness_id": args.get("harness_id"),
         "title": args.get("title"),
         "model_id": args.get("model_id"),
     });
+    // The `ask_user` pause hint is a claim about *this* client: declared here
+    // only when the caller said it can be elicited, so an unelicitable caller's
+    // turn resolves the question with the model's declared defaults instead of
+    // parking forever (EVE-1057). The hint is session-level, so it is decided
+    // when the session is created.
+    if ask_user_capable {
+        session_params["hints"] = json!({ "ask_user": true });
+    }
     let session = dispatch_command("create_session", session_params, org, state).await?;
     let session_id = session["id"]
         .as_str()

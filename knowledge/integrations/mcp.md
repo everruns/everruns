@@ -259,6 +259,88 @@ rather than trusted from the token, since it can be revoked in between.
 The pages carry no scripts and no external resources, are never cached or framed,
 and send `Referrer-Policy: no-referrer` so the token cannot leak onward.
 
+## Form mode elicitation (2026-07-28)
+
+The other half of elicitation, and the other MRTR use. `ask_user` (see
+[ask-user.md](../execution/ask-user.md)) parks a turn on a small batch of
+structured decisions; form mode is how an MCP client is asked them, instead of
+being handed prose the model would have to parse an answer back out of.
+
+`agent_run` and `session_send_message` return as soon as the message is
+accepted, so the poll is where the question surfaces: a client calling
+`session_get_status` on a session parked on `ask_user` gets an `input_required`
+result carrying one `elicitation/create` with `mode: "form"` and a
+`requestedSchema`. It answers on the retry, echoing `requestState` and its
+`inputResponses`, and that same poll then reports the resumed session.
+
+### The mapping
+
+`requestedSchema` is a restricted profile: a flat object of primitives and
+enums, no nesting and no arrays. The question set flattens into it.
+
+| Question | Becomes |
+|---|---|
+| single-select | one `string` property keyed by question id, `enum` of the offered labels, `enumNames` beside it, `default` when one is declared |
+| multi-select | one `boolean` property per option, keyed `{question_id}__{index}` |
+| secret | nothing — see below |
+
+Option descriptions ride the property `description` alongside the question text,
+so a client renders the trade-offs the model wrote rather than bare labels.
+
+Free text is not projected. The profile has no way to say "one of these, or
+something else", so a form-mode client chooses among the declared options;
+`allow_other` still holds for the browser card and the typed answer endpoint.
+
+Multi-select as booleans is a decision, not an oversight. The profile has no
+array; a comma-joined string would have to be re-split against labels that may
+contain commas, and refusing form mode for multi-select would leave a client
+that *can* be asked staring at a parked turn. Booleans stay inside the profile
+and round-trip losslessly, at the cost of a wide form. The key is the option's
+index rather than its label, so the round trip does not depend on a
+model-authored label being a usable property name.
+
+MCP's accept/decline/cancel maps onto the `ask_user` contract's outcomes without
+translation: `answered`, `declined`, `cancelled`. `timed_out` stays the server's,
+from the deadline sweep. `cancel` is the one outcome the typed answer endpoint
+refuses from a caller and accepts here, because it carries no answers — a
+dismissed form claims nothing on the person's behalf.
+
+A secret question is never projected. An `ask_user` answer is a tool result, so a
+credential typed into a form property would be plaintext in the event log and in
+model context for the rest of the session (TM-AGENT-016). A secret question set
+is left to URL mode's `session_set_secret` page and the browser card.
+
+### Gating, and why it is not URL mode's
+
+A client that never declared `elicitation` does **not** get
+`MissingRequiredClientCapability`. An unanswerable question is not a failed
+call: the session's `ask_user` pause hint is declared only for a client that can
+be elicited, so an unhinted turn already resolved the question with the model's
+declared defaults (EVE-1057) instead of parking. Failing the poll would turn a
+working headless run into an error. URL mode differs deliberately — a credential
+genuinely cannot be obtained any other way.
+
+`agent_run` therefore declares the session-level `ask_user` hint only when the
+call's `_meta` declared `elicitation` over the `2026-07-28` protocol. The hint is
+a claim about this client, and it is decided when the session is created.
+
+### Resolution
+
+The answer goes through the one shared question-resolution operation
+(`crates/server/src/api/question_answers.rs`), the same one the browser card and
+the typed answer endpoint use. `/mcp` gets no second implementation of
+validation, attribution or idempotency: every selected label is checked against
+the options in the emitted `tool.call_requested` rather than against anything in
+the request (TM-AGENT-015), and a second answer loses the claim rather than
+corrupting the turn. An answer that does not match what was asked is refused as
+an error result with the turn still parked, so the client can correct the form
+rather than lose the question.
+
+`requestState` is the same signed, principal-bound, 15-minute token URL mode
+uses, over a question-set intent (session + tool call id) instead of a URL one.
+State minted for another question set is stale rather than fatal: the poll
+elicits afresh.
+
 ## Architecture
 
 The Tier-2 `discover`, `query`, and `execute` tools share their catalog search,
@@ -635,7 +717,7 @@ known to be transient still ships `retryable: true`.
 Deliberate gaps, recorded so the next pass does not have to re-derive them:
 
 - **Client ID Metadata Documents (CIMD).** The replacement for DCR. Implementing it means the authorization server fetches an arbitrary client-supplied HTTPS URL during `/oauth/authorize`, which is a new SSRF surface on an unauthenticated-ish path and needs a decision on whether any HTTPS origin may act as a client or only an allowlisted set. DCR keeps working throughout the deprecation window, so this is a scoped follow-up rather than a blocker.
-- **MRTR beyond elicitation.** `/mcp` answers `tools/call` with `resultType: "input_required"` only to carry a URL mode elicitation (see [URL mode elicitation](#url-mode-elicitation-2026-07-28)); long-running work is expressed through the Tasks extension instead, and `prompts/get`/`resources/read` never elicit. (The *client* side is in [mcp-servers.md](mcp-servers.md).)
+- **MRTR beyond elicitation.** `/mcp` answers `tools/call` with `resultType: "input_required"` only to carry an elicitation — [URL mode](#url-mode-elicitation-2026-07-28) for a credential, [form mode](#form-mode-elicitation-2026-07-28) for an `ask_user` question set; long-running work is expressed through the Tasks extension instead, and `prompts/get`/`resources/read` never elicit. (The *client* side is in [mcp-servers.md](mcp-servers.md). Everruns answering a form-mode elicitation *from* an attached server is the inverse direction and is not implemented.)
 - **`subscriptions/listen`.** The consolidated notification stream. Task progress is polled through `tasks/get`, so nothing currently needs server push.
 - **Roots, Sampling, Logging.** Deprecated in `2026-07-28` with a 12-month window. Everruns implements none of them, so there is nothing to remove.
 
@@ -644,9 +726,12 @@ Deliberate gaps, recorded so the next pass does not have to re-derive them:
 See `crates/server/src/auth/mcp_oauth.rs` for the OAuth implementation.
 See `crates/server/src/api/mcp_endpoint/caching.rs` for the cacheable-result decoration.
 See `crates/server/src/api/mcp_endpoint/mod.rs` for the MCP endpoint and multi-org tool handlers.
-See `crates/server/src/api/mcp_endpoint/elicitation.rs` for URL mode elicitation
-results and the signed intent token, and
-`crates/server/src/api/mcp_elicitation.rs` for the pages that complete one.
+See `crates/server/src/api/mcp_endpoint/elicitation.rs` for the signed intent
+token, the capability probe, and URL mode elicitation results;
+`crates/server/src/api/mcp_endpoint/form_elicitation.rs` for the `ask_user`
+`requestedSchema` and the answer mapping; and
+`crates/server/src/api/mcp_elicitation.rs` for the pages that complete a URL
+mode one.
 See `crates/core/src/mcp_server.rs` for the `McpExecuteError` /
 `McpErrorCode` / `McpErrorCategory` types backing the structured
 error envelope.

@@ -94,7 +94,9 @@ needed because the model authored the call.
 Whether the turn parks on step 3 at all is a client-capability question, so it
 rides a session hint — `ask_user`, declared by the UI alongside
 `setup_connection` and `url_elicitation`, the same mechanism URL elicitation
-uses. A client that never declared it (a scheduled run, a trigger, an SDK
+uses. An MCP client declares it by declaring `elicitation`, and is then asked
+the question set as a form mode elicitation ([mcp.md](../integrations/mcp.md)).
+A client that never declared it (a scheduled run, a trigger, an SDK
 caller) has nobody to answer the card, so the planner answers the call itself
 with the model's declared defaults and `answered_by: "unattended"` in the same
 turn rather than burning the whole timeout on a human who is not there. One
@@ -173,7 +175,9 @@ A secret question never auto-resolves. A "default credential" is meaningless, so
 rather than answer it, and proceeding without the credential becomes the model's
 explicit decision. This overrides the deadline-defaults rule in EVE-1056.
 
-Surfaces project this rather than rebuild it. `/mcp` already has
+Surfaces project this rather than rebuild it. `/mcp` never puts a secret
+question in the form mode elicitation it uses for choice questions
+([mcp.md](../integrations/mcp.md)) — it already has
 `ElicitationIntent::SessionSecret` — a signed, principal-bound token and a form
 writing through `BatchSetSessionSecrets`. A2A refuses outright: a remote agent is
 never handed a prompt for a human's credential, so a secret question projects as
