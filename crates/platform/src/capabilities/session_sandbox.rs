@@ -464,7 +464,11 @@ impl Tool for SandboxReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Read a file from the session-managed sandbox filesystem."
+        "Read a file from the session-managed sandbox filesystem, starting or \
+         resuming the sandbox first if it is not running. Text files return a \
+         line window (`offset` is zero-based, `limit` defaults to 2000 lines) with \
+         truncation info; binary files return their full content with its \
+         `encoding`. Reads never change the sandbox."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -571,7 +575,11 @@ impl Tool for SandboxWriteFileTool {
     }
 
     fn description(&self) -> &str {
-        "Write a file into the session-managed sandbox filesystem."
+        "Write a file into the session-managed sandbox filesystem, replacing any \
+         existing file at `path` with `content` in full (no append or partial \
+         edit). The sandbox is started or resumed first if needed, and its \
+         filesystem is checkpointed after the write. Returns `path` and \
+         `bytes_written`."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -675,7 +683,10 @@ impl Tool for SandboxStatusTool {
     }
 
     fn description(&self) -> &str {
-        "Inspect the current state of the session-managed sandbox."
+        "Report the session-managed sandbox's state without starting or changing \
+         it. Returns `exists: false` when this session has no sandbox yet; \
+         otherwise the provider, `session_status`, external id, display name, \
+         `workspace_path`, and provider metadata."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -772,7 +783,12 @@ impl Tool for SandboxManageTool {
     }
 
     fn description(&self) -> &str {
-        "Pause, resume, or delete the session-managed sandbox."
+        "Pause, resume, or delete the session-managed sandbox. `pause` stops it \
+         while keeping its filesystem; `resume` starts it again (the other \
+         sandbox tools also resume it on demand); `delete` removes the sandbox \
+         and its unsaved files, and the next sandbox call provisions a fresh \
+         one. Returns the resulting status, or `exists: false` / `deleted` when \
+         there was nothing to act on."
     }
 
     fn parameters_schema(&self) -> Value {

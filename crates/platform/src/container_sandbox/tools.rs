@@ -325,7 +325,11 @@ impl Tool for SandboxReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Read a file from the container sandbox."
+        "Read a file from this session's container sandbox (create it with \
+         `sandbox_create` first). Text files return a line window (`offset` is \
+         zero-based, `limit` defaults to 2000 lines) with truncation info; binary \
+         files return only their size, not their bytes. To copy a binary file \
+         out, use `sandbox_download`."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -410,7 +414,10 @@ impl Tool for SandboxWriteFileTool {
     }
 
     fn description(&self) -> &str {
-        "Write a file to the container sandbox."
+        "Write text to a file in this session's container sandbox (create it with \
+         `sandbox_create` first), replacing any existing file at `path` in full. \
+         `path` must name a file, not a directory. For binary files or files \
+         already in session storage, use `sandbox_upload`."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -498,7 +505,9 @@ impl Tool for SandboxListTool {
     }
 
     fn description(&self) -> &str {
-        "List container sandboxes for this session."
+        "List this session's container sandboxes with their name, state, and \
+         status. Read-only; returns a message saying none were found when the \
+         session has not created one."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -564,7 +573,10 @@ impl Tool for SandboxManageTool {
     }
 
     fn description(&self) -> &str {
-        "Manage the container sandbox: stop, start, or remove it."
+        "Stop, start, or remove this session's container sandbox. `stop` halts it \
+         and keeps its filesystem; `start` runs it again; `remove` deletes the \
+         container, its network, and every file in it that was not downloaded \
+         to session storage, and cannot be undone."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -651,7 +663,10 @@ impl Tool for SandboxUploadTool {
     }
 
     fn description(&self) -> &str {
-        "Upload a file from session storage to the container sandbox."
+        "Copy a file from session storage into this session's container sandbox \
+         at an absolute `container_path`, overwriting any file there. Text and \
+         base64-stored binary files are both copied byte for byte. Use it to \
+         give the sandbox inputs the user attached or earlier results."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -780,7 +795,10 @@ impl Tool for SandboxDownloadTool {
     }
 
     fn description(&self) -> &str {
-        "Download a file from the container sandbox to session storage."
+        "Copy a file out of this session's container sandbox into session storage \
+         at `session_path`, where it outlives the container. UTF-8 files are \
+         stored as text and anything else as base64. Use it to keep results \
+         before the sandbox is stopped or removed."
     }
 
     fn parameters_schema(&self) -> Value {
