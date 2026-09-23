@@ -660,6 +660,7 @@ async fn ingress_router(db: Arc<StorageBackend>) -> Router {
         sse_tracker,
         api::channel_rate_limit::ChannelRateLimiter::in_memory("migration-a2a"),
         api::a2a_signing::A2aReplayStore::in_memory(),
+        "https://app.everruns.test".to_string(),
     );
     let api_state = api::app_api::AppApiState::new(
         db,

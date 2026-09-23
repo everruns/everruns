@@ -1208,6 +1208,7 @@ impl ServerAppBuilder {
             sse_tracker.clone(),
             a2a_rate_limiter,
             a2a_replay_store,
+            auth_config.frontend_url.clone(),
         );
         let app_api_state = api::app_api::AppApiState::new(
             db.clone(),
