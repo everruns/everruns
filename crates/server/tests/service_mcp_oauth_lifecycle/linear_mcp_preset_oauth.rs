@@ -30,6 +30,7 @@ struct PendingState {
 fn resolved_org(user_id: Uuid) -> ResolvedOrg {
     ResolvedOrg {
         org_id: everruns_core::DEFAULT_ORG_ID,
+        project_id: everruns_core::DEFAULT_PROJECT_ID,
         public_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         name: "Default Organization".to_string(),
         user_id: Some(user_id),
@@ -92,6 +93,7 @@ async fn fixture() -> (AppState, ResolvedOrg, Uuid, String, MockMcpOAuthServer) 
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "linear-service-agent".to_string(),
                 display_name: None,

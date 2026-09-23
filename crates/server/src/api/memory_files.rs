@@ -640,6 +640,7 @@ mod tests {
             role,
             is_platform_user: false,
             feature_flags: crate::domains::common::all_feature_flags_for_test(),
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
         }
     }
 

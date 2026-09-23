@@ -12,6 +12,13 @@
 //   queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
 
 export const queryKeys = {
+  // Project queries
+  projects: {
+    all: ["projects"] as const,
+    list: () => ["projects"] as const,
+    detail: (projectId: string) => ["project", projectId] as const,
+  },
+
   // Agent queries
   agents: {
     all: ["agents"] as const,

@@ -146,6 +146,7 @@ mod tests {
     fn caller(org_id: i64, user_id: Uuid) -> Caller {
         Caller {
             org_id,
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             org_public_id: everruns_core::organization::org_public_id_from_internal(org_id),
             user_id: Some(user_id),
             role: OrgRole::Admin,

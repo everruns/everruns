@@ -116,6 +116,7 @@ impl EgressService for MockOAuthAndMcpServers {
 fn resolved_org(user_id: Uuid) -> ResolvedOrg {
     ResolvedOrg {
         org_id: everruns_core::DEFAULT_ORG_ID,
+        project_id: everruns_core::DEFAULT_PROJECT_ID,
         public_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         name: "Default Organization".to_string(),
         user_id: Some(user_id),
@@ -318,6 +319,7 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_provider::typed_id::AgentId::new().to_string(),
                 name: format!("service-oauth-{}", &server_id.to_string()[..8]),
                 display_name: None,

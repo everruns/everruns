@@ -47,3 +47,20 @@ export async function switchOrg(orgId: string): Promise<SwitchOrgResponse> {
   });
   return response.data;
 }
+
+interface SwitchProjectResponse {
+  success: boolean;
+  project_id: string;
+}
+
+/**
+ * Switch the active project (within the current organization).
+ * Sets a server-side cookie (everruns_project) sent with all subsequent
+ * requests, so project scope works with SSE (EventSource) too.
+ */
+export async function switchProject(projectId: string): Promise<SwitchProjectResponse> {
+  const response = await api.post<SwitchProjectResponse>("/v1/users/me/switch-project", {
+    project_id: projectId,
+  });
+  return response.data;
+}

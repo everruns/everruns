@@ -100,6 +100,7 @@ impl PermissionResolver for DenyAllResolver {
 fn test_org(user_id: Uuid) -> ResolvedOrg {
     ResolvedOrg {
         org_id: everruns_core::DEFAULT_ORG_ID,
+        project_id: everruns_core::DEFAULT_PROJECT_ID,
         public_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         name: "Test".to_string(),
         user_id: Some(user_id),
@@ -159,6 +160,7 @@ async fn identity_oauth_fixture(configured: bool) -> (AppState, ResolvedOrg, Uui
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "service-agent".to_string(),
                 display_name: None,
@@ -228,7 +230,7 @@ async fn identity_oauth_callback_stores_only_an_identity_grant() {
     let pending = pending_state(&jar, &provider);
     let identity_id = state
         .db
-        .get_agent_by_public_id(org.org_id, &agent_id)
+        .get_agent_by_public_id(org.org_id, None, &agent_id)
         .await
         .unwrap()
         .unwrap()
@@ -288,7 +290,7 @@ async fn identity_oauth_permission_denial_creates_no_identity() {
     assert!(
         state
             .db
-            .get_agent_by_public_id(org.org_id, &agent_id)
+            .get_agent_by_public_id(org.org_id, None, &agent_id)
             .await
             .unwrap()
             .unwrap()
@@ -309,7 +311,7 @@ async fn identity_oauth_discovery_failure_creates_no_identity() {
     assert!(
         state
             .db
-            .get_agent_by_public_id(org.org_id, &agent_id)
+            .get_agent_by_public_id(org.org_id, None, &agent_id)
             .await
             .unwrap()
             .unwrap()
@@ -348,7 +350,7 @@ async fn identity_oauth_missing_registration_creates_no_identity() {
     assert!(
         state
             .db
-            .get_agent_by_public_id(org.org_id, &agent_id)
+            .get_agent_by_public_id(org.org_id, None, &agent_id)
             .await
             .unwrap()
             .unwrap()

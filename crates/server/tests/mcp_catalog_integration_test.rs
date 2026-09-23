@@ -96,6 +96,7 @@ async fn create_catalog_usage_agent(
         .create_agent(
             org_id,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_provider::typed_id::AgentId::new().to_string(),
                 name: format!("{name}-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some(display_name.to_string()),

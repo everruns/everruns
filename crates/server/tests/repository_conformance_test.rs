@@ -81,6 +81,7 @@ fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionR
 
 fn agent_input(name: String, harness_id: HarnessId) -> CreateAgentRow {
     CreateAgentRow {
+        project_id: everruns_core::DEFAULT_PROJECT_ID,
         public_id: AgentId::new().to_string(),
         name,
         display_name: Some("Conformance Agent".to_string()),

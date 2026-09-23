@@ -264,6 +264,41 @@ pub struct CreateOrgInvitation {
 }
 
 // ============================================
+// Project models
+// ============================================
+
+/// Project row from database
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct ProjectRow {
+    pub project_id: i64,
+    pub public_id: String,
+    pub org_id: i64,
+    pub name: String,
+    #[sqlx(default)]
+    pub description: Option<String>,
+    pub is_default: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating a project
+#[derive(Debug, Clone)]
+pub struct CreateProjectRow {
+    pub public_id: String,
+    pub org_id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_default: bool,
+}
+
+/// Input for updating a project (name/description only; org and default flag are immutable here)
+#[derive(Debug, Clone, Default)]
+pub struct UpdateProject {
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
+// ============================================
 // Auth models
 // ============================================
 
@@ -484,6 +519,10 @@ pub struct AgentRow {
     pub id: AgentId,
     pub public_id: String,
     pub org_id: i64,
+    /// Owning project (hard isolation). `#[sqlx(default)]` keeps SELECTs that
+    /// don't project this column working; project-scoped reads include it.
+    #[sqlx(default)]
+    pub project_id: i64,
     pub name: String,
     #[sqlx(default)]
     pub display_name: Option<String>,
@@ -653,6 +692,8 @@ pub struct CreateAgentVersionRow {
 #[derive(Debug, Clone)]
 pub struct CreateAgentRow {
     pub public_id: String,
+    /// Project this agent belongs to (the caller's active project).
+    pub project_id: i64,
     pub name: String,
     pub display_name: Option<String>,
     pub description: Option<String>,

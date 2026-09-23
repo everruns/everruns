@@ -152,38 +152,39 @@ impl Command for CreateSession {
                 .map_err(|e| CommandError::forbidden(e.to_string()))?;
         }
 
-        let (agent_internal_id, agent_public_id, agent_harness_id) =
-            if let Some(agent_id) = req.agent_id {
-                let row = ctx
-                    .db
-                    .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
-                    .await
-                    .map_err(classify_anyhow)?
-                    .ok_or_else(|| CommandError::not_found("Agent"))?;
-                let public_id: AgentId = row
-                    .public_id
-                    .parse()
-                    .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
-                let harness_id =
-                    (row.harness_source != "organization_default").then_some(row.harness_id);
-                (Some(row.id.uuid()), Some(public_id), harness_id)
-            } else if let Some(name) = req.agent_name.as_deref() {
-                let row = ctx
-                    .db
-                    .get_agent_by_name(ctx.org_id(), name)
-                    .await
-                    .map_err(classify_anyhow)?
-                    .ok_or_else(|| CommandError::not_found("Agent"))?;
-                let public_id: AgentId = row
-                    .public_id
-                    .parse()
-                    .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
-                let harness_id =
-                    (row.harness_source != "organization_default").then_some(row.harness_id);
-                (Some(row.id.uuid()), Some(public_id), harness_id)
-            } else {
-                (None, None, None)
-            };
+        let (agent_internal_id, agent_public_id, agent_harness_id) = if let Some(agent_id) =
+            req.agent_id
+        {
+            let row = ctx
+                .db
+                .get_agent_by_public_id(ctx.org_id(), Some(ctx.project_id()), &agent_id.to_string())
+                .await
+                .map_err(classify_anyhow)?
+                .ok_or_else(|| CommandError::not_found("Agent"))?;
+            let public_id: AgentId = row
+                .public_id
+                .parse()
+                .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
+            let harness_id =
+                (row.harness_source != "organization_default").then_some(row.harness_id);
+            (Some(row.id.uuid()), Some(public_id), harness_id)
+        } else if let Some(name) = req.agent_name.as_deref() {
+            let row = ctx
+                .db
+                .get_agent_by_name(ctx.org_id(), Some(ctx.project_id()), name)
+                .await
+                .map_err(classify_anyhow)?
+                .ok_or_else(|| CommandError::not_found("Agent"))?;
+            let public_id: AgentId = row
+                .public_id
+                .parse()
+                .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
+            let harness_id =
+                (row.harness_source != "organization_default").then_some(row.harness_id);
+            (Some(row.id.uuid()), Some(public_id), harness_id)
+        } else {
+            (None, None, None)
+        };
 
         if let Some(name) = req.harness_name.clone() {
             crate::api::validation::validate_harness_name(&name).map_err(validation_error)?;
@@ -419,7 +420,11 @@ impl Command for AddSessionParticipant {
                     .ok_or_else(|| CommandError::bad_request("agent_id is required"))?;
                 let agent = ctx
                     .db
-                    .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+                    .get_agent_by_public_id(
+                        ctx.org_id(),
+                        Some(ctx.project_id()),
+                        &agent_id.to_string(),
+                    )
                     .await
                     .map_err(classify_anyhow)?
                     .ok_or_else(|| CommandError::not_found("Agent"))?;
@@ -740,7 +745,11 @@ impl SessionFilterArgs {
             Some(agent_id) => {
                 let row = ctx
                     .db
-                    .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+                    .get_agent_by_public_id(
+                        ctx.org_id(),
+                        Some(ctx.project_id()),
+                        &agent_id.to_string(),
+                    )
                     .await
                     .map_err(classify_anyhow)?;
                 // An unknown agent matches nothing; the caller renders an empty
@@ -1139,6 +1148,7 @@ mod tests {
         Ctx::new(
             Caller {
                 org_id: DEFAULT_ORG_ID,
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 org_public_id: everruns_core::organization::org_public_id_from_internal(
                     DEFAULT_ORG_ID,
                 ),
@@ -1446,6 +1456,7 @@ mod tests {
             .create_agent(
                 ctx.org_id(),
                 crate::storage::models::CreateAgentRow {
+                    project_id: everruns_core::DEFAULT_PROJECT_ID,
                     public_id: public_id.clone(),
                     name: name.to_string(),
                     display_name: None,
@@ -1547,6 +1558,7 @@ mod tests {
             .create_agent(
                 DEFAULT_ORG_ID,
                 crate::storage::models::CreateAgentRow {
+                    project_id: everruns_core::DEFAULT_PROJECT_ID,
                     public_id: host_public_id.to_string(),
                     name: "participant-host".to_string(),
                     display_name: None,
@@ -1574,6 +1586,7 @@ mod tests {
             .create_agent(
                 DEFAULT_ORG_ID,
                 crate::storage::models::CreateAgentRow {
+                    project_id: everruns_core::DEFAULT_PROJECT_ID,
                     public_id: member_public_id.to_string(),
                     name: "participant-member".to_string(),
                     display_name: None,

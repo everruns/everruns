@@ -454,6 +454,7 @@ pub(crate) fn all_feature_flags_for_test() -> FeatureFlags {
         public_chat: true,
         webmcp: true,
         machine_payments: true,
+        projects: true,
     }
 }
 
@@ -514,6 +515,11 @@ pub struct Ctx {
 impl Ctx {
     pub fn org_id(&self) -> i64 {
         self.caller.org_id
+    }
+
+    /// Active project scope for the caller (within `org_id`).
+    pub fn project_id(&self) -> i64 {
+        self.caller.project_id
     }
 
     /// Construct a Ctx for an HTTP request.

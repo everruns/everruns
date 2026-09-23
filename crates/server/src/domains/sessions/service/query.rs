@@ -56,7 +56,7 @@ impl SessionService {
         if let Some(agent_id) = session.agent_id {
             let agent = match self
                 .db
-                .get_agent_by_public_id(org_id, &agent_id.to_string())
+                .get_agent_by_public_id(org_id, None, &agent_id.to_string())
                 .await?
             {
                 Some(agent) => Some(agent),

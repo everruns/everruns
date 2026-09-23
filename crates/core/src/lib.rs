@@ -159,6 +159,7 @@ pub mod principal;
 use everruns_provider::model_spec;
 use everruns_provider::provider;
 use everruns_provider::runtime_provider;
+pub mod project;
 pub mod session;
 pub mod session_file;
 pub mod session_path;
@@ -525,6 +526,10 @@ pub(crate) use runtime_provider::ProviderKey;
 // (`SessionStatus`, `SessionSource`, `SessionActivity`, participants) moved to
 // the `everruns-platform` crate. Core keeps only the portable execution view
 // and the neutral execution state consumed during a turn.
+pub use project::{
+    DEFAULT_PROJECT_ID, DEFAULT_PROJECT_PUBLIC_ID, Project, ProjectSummary,
+    generate_project_public_id, validate_project_public_id,
+};
 pub use session::{ExecutionSession, SessionExecutionState, SessionSeedMode, SubagentStatus};
 pub use session_file::{
     FileInfo, FileStat, GREP_MAX_CONTEXT_LINES, GREP_MAX_RETURN_BYTES, GrepContextBlock,

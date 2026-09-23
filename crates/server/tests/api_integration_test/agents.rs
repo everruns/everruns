@@ -107,7 +107,7 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
     assert!(!listed.to_string().contains(sentinel));
     let stored_agent = server
         .db
-        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent.public_id.to_string())
+        .get_agent_by_public_id(DEFAULT_ORG_ID, None, &agent.public_id.to_string())
         .await
         .unwrap()
         .unwrap();
@@ -359,6 +359,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
         .create_agent(
             everruns_core::DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_provider::typed_id::AgentId::new().to_string(),
                 name: "missing-harness-card".to_string(),
                 display_name: None,

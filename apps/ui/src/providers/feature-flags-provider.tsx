@@ -28,6 +28,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   public_chat: false,
   webmcp: false,
   machine_payments: false,
+  projects: false,
 };
 
 export interface FeatureFlagsContextValue {

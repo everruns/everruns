@@ -931,6 +931,7 @@ mod tests {
         fn caller(org_id: i64) -> Caller {
             Caller {
                 org_id,
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 org_public_id: format!("org_{org_id:032}"),
                 user_id: None,
                 role: OrgRole::Owner,

@@ -56,7 +56,9 @@ import { useFeatureFlags } from "@/providers/feature-flags-provider";
 import { SidebarNavigation } from "./sidebar-navigation";
 import { SidebarChatThreads } from "./sidebar-chat-threads";
 import { SidebarOrganizationMenu } from "./sidebar-organization-menu";
+import { SidebarProjectMenu } from "./sidebar-project-menu";
 import { SidebarUserMenu } from "./sidebar-user-menu";
+import { SidebarUserOrgSection } from "./sidebar-user-org-section";
 import type { SidebarUserMenuItemsRenderer } from "./sidebar-user-menu";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -97,6 +99,7 @@ export function Sidebar({
     createOrganization: createOrgOverride,
   } = useAuth();
   const featureFlags = useFeatureFlags();
+  const projectsEnabled = featureFlags.projects;
   const { data: providers, isLoading: providersLoading, isError: providersError } = useProviders();
   const durablePolicies = usePolicies("durable");
   const { setOpen: openCommandPalette } = useCommandPalette();
@@ -139,10 +142,14 @@ export function Sidebar({
         </Link>
       </div>
 
-      <SidebarOrganizationMenu
-        onCreateOrg={handleCreateOrg}
-        useDefaultCreateOrgDialog={useDefaultCreateOrgDialog}
-      />
+      {projectsEnabled ? (
+        <SidebarProjectMenu />
+      ) : (
+        <SidebarOrganizationMenu
+          onCreateOrg={handleCreateOrg}
+          useDefaultCreateOrgDialog={useDefaultCreateOrgDialog}
+        />
+      )}
 
       <div role="search" aria-label="Sidebar search" className="px-2.5 py-2">
         <button
@@ -178,6 +185,7 @@ export function Sidebar({
           logout={logout}
           logoutPending={logoutPending}
           renderExtraItems={config?.profileMenu?.items}
+          renderOrgSection={projectsEnabled ? () => <SidebarUserOrgSection /> : undefined}
           version={version}
         />
       </div>

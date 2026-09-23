@@ -1037,6 +1037,7 @@ mod tests {
         let mut ctx = Ctx::new(
             Caller {
                 org_id: DEFAULT_ORG_ID,
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
                 user_id: Some(Uuid::nil()),
                 role: OrgRole::Owner,

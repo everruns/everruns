@@ -19,10 +19,12 @@ async fn resolve_agent(
 ) -> Result<crate::storage::models::AgentRow, CommandError> {
     let row = if let Ok(agent_id) = id_or_name.parse::<AgentId>() {
         ctx.db
-            .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+            .get_agent_by_public_id(ctx.org_id(), Some(ctx.project_id()), &agent_id.to_string())
             .await
     } else {
-        ctx.db.get_agent_by_name(ctx.org_id(), id_or_name).await
+        ctx.db
+            .get_agent_by_name(ctx.org_id(), Some(ctx.project_id()), id_or_name)
+            .await
     }
     .map_err(classify_anyhow)?
     .ok_or_else(|| CommandError::not_found("Agent"))?;

@@ -32,6 +32,7 @@ pub mod org_resolver;
 pub mod organizations;
 pub mod payments;
 pub mod plugins;
+pub mod projects;
 pub mod providers;
 pub mod reporting;
 pub mod schedules;

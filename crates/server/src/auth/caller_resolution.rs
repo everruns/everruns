@@ -21,9 +21,18 @@ pub async fn caller_for_user(db: &StorageBackend, org_id: i64, user_id: Uuid) ->
         .with_context(|| format!("User {user_id} is not a member of organization {org_id}"))?;
     let roles: Vec<String> = serde_json::from_value(user.roles).unwrap_or_default();
 
+    // No selected project on these (non-HTTP) paths — scope to the org's
+    // default project.
+    let project_id = db
+        .get_default_project(org_id)
+        .await?
+        .map(|p| p.project_id)
+        .unwrap_or(everruns_core::DEFAULT_PROJECT_ID);
+
     Ok(Caller {
         org_id,
         org_public_id: membership.public_id,
+        project_id,
         user_id: Some(user_id),
         role: membership
             .role

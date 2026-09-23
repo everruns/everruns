@@ -109,6 +109,7 @@ mod knowledge;
 mod models_files;
 mod observers_billing;
 mod orgs_images;
+mod projects;
 mod resources_tasks;
 
 #[cfg(test)]

@@ -256,6 +256,7 @@ async fn resolve_org(
         .ok_or_else(|| "You are not a member of this organization.".to_string())?;
     Ok(ResolvedOrg {
         org_id: org.org_id,
+        project_id: everruns_core::DEFAULT_PROJECT_ID,
         public_id: org.public_id.clone(),
         name: org.name.clone(),
         user_id: Some(auth_user.id),

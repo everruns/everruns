@@ -35,6 +35,7 @@ fn ctx_with_role_and_flags(
     Ctx::new(
         Caller {
             org_id: DEFAULT_ORG_ID,
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
             user_id: Some(Uuid::nil()),
             role,
@@ -868,7 +869,7 @@ async fn archiving_agent_revokes_all_identity_connections() {
         .await
         .unwrap();
     let row = db
-        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent.public_id.to_string())
+        .get_agent_by_public_id(DEFAULT_ORG_ID, None, &agent.public_id.to_string())
         .await
         .unwrap()
         .unwrap();
@@ -962,7 +963,7 @@ async fn built_in_agent_rejects_update() {
     assert_built_in_rejection(&err);
 
     // The prompt must actually be unchanged, not merely reported as such.
-    let after = q::get_by_public_id(&db, DEFAULT_ORG_ID, &agent.public_id.to_string())
+    let after = q::get_by_public_id(&db, DEFAULT_ORG_ID, None, &agent.public_id.to_string())
         .await
         .expect("reload")
         .expect("agent still present");
@@ -1012,7 +1013,7 @@ async fn built_in_agent_rejects_delete_and_destroy() {
     assert_built_in_rejection(&err);
 
     assert!(
-        q::get_by_public_id(&db, DEFAULT_ORG_ID, &agent.public_id.to_string())
+        q::get_by_public_id(&db, DEFAULT_ORG_ID, None, &agent.public_id.to_string())
             .await
             .expect("reload")
             .is_some(),

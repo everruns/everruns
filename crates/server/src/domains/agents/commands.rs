@@ -326,7 +326,7 @@ impl Command for CreateAgent {
         }
 
         // Business rules
-        q::ensure_name_available(&ctx.db, ctx.org_id(), &req.name, None).await?;
+        q::ensure_name_available(&ctx.db, ctx.org_id(), ctx.project_id(), &req.name, None).await?;
         let caps = normalize_capability_refs(
             ctx,
             q::ensure_file_system_capability(
@@ -364,6 +364,7 @@ impl Command for CreateAgent {
         let client_id = req.id;
         let (row, agent_uuid) = if let Some(client_id) = client_id {
             let input = CreateAgentRow {
+                project_id: ctx.project_id(),
                 public_id: client_id.to_string(),
                 name: req.name,
                 display_name: req.display_name,
@@ -400,6 +401,7 @@ impl Command for CreateAgent {
             let internal_uuid = uuid::Uuid::now_v7();
             let public_id = AgentId::from_uuid(internal_uuid);
             let input = CreateAgentRow {
+                project_id: ctx.project_id(),
                 public_id: public_id.to_string(),
                 name: req.name,
                 display_name: req.display_name,
@@ -505,6 +507,7 @@ impl Command for ListAgents {
             .db
             .list_agents(
                 ctx.org_id(),
+                Some(ctx.project_id()),
                 self.search.as_deref(),
                 self.include_archived,
                 pg,
@@ -571,7 +574,7 @@ impl Command for GetAgent {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
-        q::resolve(&ctx.db, ctx.org_id(), &self.id)
+        q::resolve(&ctx.db, ctx.org_id(), Some(ctx.project_id()), &self.id)
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Agent"))
@@ -658,7 +661,7 @@ impl Command for UpdateAgentCmd {
         // Resolve existing
         let existing = ctx
             .db
-            .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+            .get_agent_by_public_id(ctx.org_id(), Some(ctx.project_id()), &agent_id.to_string())
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
@@ -680,7 +683,14 @@ impl Command for UpdateAgentCmd {
             None
         };
         if let Some(ref name) = req.name {
-            q::ensure_name_available(&ctx.db, ctx.org_id(), name, Some(internal_id)).await?;
+            q::ensure_name_available(
+                &ctx.db,
+                ctx.org_id(),
+                ctx.project_id(),
+                name,
+                Some(internal_id),
+            )
+            .await?;
         }
 
         // Resolve capabilities
@@ -854,7 +864,7 @@ impl Command for DeleteAgent {
 
         let row = ctx
             .db
-            .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+            .get_agent_by_public_id(ctx.org_id(), Some(ctx.project_id()), &agent_id.to_string())
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
@@ -991,7 +1001,7 @@ impl Command for UpsertAgent {
         let previous_config_hash = if ctx.feature_flags.agent_versions {
             if let Some(existing) = ctx
                 .db
-                .get_agent_by_public_id(ctx.org_id(), &public_id)
+                .get_agent_by_public_id(ctx.org_id(), Some(ctx.project_id()), &public_id)
                 .await
                 .map_err(classify_anyhow)?
             {
@@ -1008,6 +1018,7 @@ impl Command for UpsertAgent {
         };
 
         let input = CreateAgentRow {
+            project_id: ctx.project_id(),
             public_id: public_id.clone(),
             name: req.name,
             display_name: req.display_name,
@@ -1112,15 +1123,19 @@ impl Command for CopyAgent {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
-        let source = q::resolve(&ctx.db, ctx.org_id(), &self.id)
+        let source = q::resolve(&ctx.db, ctx.org_id(), Some(ctx.project_id()), &self.id)
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
-        let copy_name =
-            q::find_unique_name(&ctx.db, ctx.org_id(), &format!("{}-copy", source.name))
-                .await
-                .map_err(classify_anyhow)?;
+        let copy_name = q::find_unique_name(
+            &ctx.db,
+            ctx.org_id(),
+            ctx.project_id(),
+            &format!("{}-copy", source.name),
+        )
+        .await
+        .map_err(classify_anyhow)?;
 
         let req = CreateAgentRequest {
             id: None,
@@ -1196,7 +1211,7 @@ impl Command for ExportAgent {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
-        q::get_by_public_id(&ctx.db, ctx.org_id(), &self.id)
+        q::get_by_public_id(&ctx.db, ctx.org_id(), Some(ctx.project_id()), &self.id)
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Agent"))
@@ -1260,7 +1275,7 @@ inventory::submit! { CommandDescriptor::of::<ImportAgent>() }
 // ============================================================================
 
 async fn resolve_agent(ctx: &Ctx, id: &str) -> Result<Agent, CommandError> {
-    q::resolve(&ctx.db, ctx.org_id(), id)
+    q::resolve(&ctx.db, ctx.org_id(), Some(ctx.project_id()), id)
         .await
         .map_err(classify_anyhow)?
         .ok_or_else(|| CommandError::not_found("Agent"))
@@ -2006,7 +2021,14 @@ impl Command for ForkAgentVersion {
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         validate_name("Agent", &self.req.name)?;
-        q::ensure_name_available(&ctx.db, ctx.org_id(), &self.req.name, None).await?;
+        q::ensure_name_available(
+            &ctx.db,
+            ctx.org_id(),
+            ctx.project_id(),
+            &self.req.name,
+            None,
+        )
+        .await?;
         let source = resolve_agent(ctx, &self.agent_id).await?;
         let version = resolve_agent_version(ctx, self.version_id).await?;
         if version.agent_id.uuid() != source.internal_id {
@@ -2379,7 +2401,7 @@ impl Command for CheckAgentName {
 
         let existing = ctx
             .db
-            .get_agent_by_name(ctx.org_id(), &self.name)
+            .get_agent_by_name(ctx.org_id(), Some(ctx.project_id()), &self.name)
             .await
             .map_err(classify_anyhow)?;
 
@@ -2453,7 +2475,7 @@ impl Command for DestroyAgent {
 
         let row = ctx
             .db
-            .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+            .get_agent_by_public_id(ctx.org_id(), Some(ctx.project_id()), &agent_id.to_string())
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Agent"))?;

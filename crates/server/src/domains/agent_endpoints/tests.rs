@@ -39,6 +39,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             public_id: public_id.clone(),
             name: "endpoint-agent".to_string(),
             display_name: Some("Endpoint Agent".to_string()),

@@ -536,16 +536,18 @@ impl StorageBackend {
     pub async fn get_agent_by_public_id(
         &self,
         org_id: i64,
+        project_id: Option<i64>,
         public_id: &str,
     ) -> Result<Option<AgentRow>> {
         #[cfg(test)]
         self.fail_if_forced("get_agent_by_public_id")?;
-        dispatch!(self, get_agent_by_public_id, org_id, public_id)
+        dispatch!(self, get_agent_by_public_id, org_id, project_id, public_id)
     }
 
     pub async fn list_agents(
         &self,
         org_id: i64,
+        project_id: Option<i64>,
         search: Option<&str>,
         include_archived: bool,
         pagination: Pagination,
@@ -554,6 +556,7 @@ impl StorageBackend {
             self,
             list_agents,
             org_id,
+            project_id,
             search,
             include_archived,
             pagination
@@ -564,8 +567,13 @@ impl StorageBackend {
         dispatch!(self, count_sessions_for_agent, org_id, agent_id)
     }
 
-    pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
-        dispatch!(self, get_agent_by_name, org_id, name)
+    pub async fn get_agent_by_name(
+        &self,
+        org_id: i64,
+        project_id: Option<i64>,
+        name: &str,
+    ) -> Result<Option<AgentRow>> {
+        dispatch!(self, get_agent_by_name, org_id, project_id, name)
     }
 
     pub async fn update_agent(

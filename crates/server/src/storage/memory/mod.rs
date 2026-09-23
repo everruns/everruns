@@ -36,6 +36,7 @@ mod organizations;
 mod payments;
 mod plugins;
 mod principals;
+mod projects;
 mod providers;
 mod reporting;
 mod schedules;
@@ -70,6 +71,7 @@ use crate::kernel_imports::{
     everruns_provider::typed_id::TriggerId,
 };
 use chrono::{DateTime, Utc};
+use everruns_core::{DEFAULT_PROJECT_ID, DEFAULT_PROJECT_PUBLIC_ID};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 #[cfg(test)]
@@ -251,6 +253,8 @@ pub struct InMemoryDatabase {
     /// Test-only fault injection: storage methods queued here fail once.
     #[cfg(test)]
     forced_failures: RwLock<Vec<String>>,
+    // Projects (grouping layer nested inside an org)
+    projects: RwLock<HashMap<i64, ProjectRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -298,9 +302,26 @@ impl Default for InMemoryDatabase {
             },
         );
 
+        // Pre-create the default project for the default org.
+        let mut projects = HashMap::new();
+        projects.insert(
+            DEFAULT_PROJECT_ID,
+            ProjectRow {
+                project_id: DEFAULT_PROJECT_ID,
+                public_id: DEFAULT_PROJECT_PUBLIC_ID.to_string(),
+                org_id: DEFAULT_ORG_ID,
+                name: "Default".to_string(),
+                description: None,
+                is_default: true,
+                created_at: now,
+                updated_at: now,
+            },
+        );
+
         Self {
             event_write_lock: tokio::sync::Mutex::new(()),
             organizations: RwLock::new(organizations),
+            projects: RwLock::new(projects),
             organization_members: RwLock::new(HashMap::new()),
             users: RwLock::new(HashMap::new()),
             user_oauth_identities: RwLock::new(HashMap::new()),

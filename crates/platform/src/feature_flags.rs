@@ -87,6 +87,13 @@ pub struct FeatureFlags {
     /// Deployment-controlled and off by default on every grade because spend is
     /// irreversible. Unlike experimental flags, this is not org-configurable.
     pub machine_payments: bool,
+    /// Projects: a nested work scope inside an organization (Direction F). The
+    /// project switcher takes the sidebar's top slot and the organization moves
+    /// into the user menu; resources resolve to the caller's active project.
+    /// Experimental and org-opt-in. When off, every resource stays in the org's
+    /// seeded default project and the project UI is hidden, so the column
+    /// backfill and default-project seeding make turning it on non-breaking.
+    pub projects: bool,
 }
 
 /// Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
@@ -277,6 +284,15 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         experimental: true,
         platform_managed: false,
     },
+    FeatureFlagDefinition {
+        name: "projects",
+        label: "Projects",
+        description: "Adds a project layer nested inside your organization: switch projects from \
+             the sidebar and scope agents and other resources to the project you are working in. \
+             Existing resources move into a default project, so nothing changes until you opt in.",
+        experimental: true,
+        platform_managed: false,
+    },
 ];
 
 /// Whether a flag may only be enabled for an org by a platform user.
@@ -316,6 +332,7 @@ impl FeatureFlags {
             webmcp: opt_in("webmcp", system.webmcp),
             environments: opt_in("environments", system.environments),
             machine_payments: system.machine_payments,
+            projects: opt_in("projects", system.projects),
         }
     }
 
@@ -345,6 +362,7 @@ impl FeatureFlags {
                 sandboxes_enabled() || grade.experimental_features_enabled(),
             ),
             machine_payments: standard_flag("FEATURE_MACHINE_PAYMENTS", false),
+            projects: experimental_flag("FEATURE_PROJECTS", grade),
         }
     }
 
@@ -378,6 +396,7 @@ impl FeatureFlags {
             ("webmcp".to_string(), self.webmcp),
             ("platform_chat_v2".to_string(), self.platform_chat_v2),
             ("machine_payments".to_string(), self.machine_payments),
+            ("projects".to_string(), self.projects),
         ]))
     }
 
@@ -400,6 +419,7 @@ impl FeatureFlags {
             "public_chat" => self.public_chat,
             "webmcp" => self.webmcp,
             "machine_payments" => self.machine_payments,
+            "projects" => self.projects,
             _ => false,
         }
     }
@@ -442,6 +462,7 @@ impl FeatureFlags {
             public_chat: true,
             webmcp: true,
             machine_payments: true,
+            projects: true,
         }
     }
 }
@@ -582,6 +603,7 @@ mod tests {
             public_chat: true,
             webmcp: true,
             machine_payments: true,
+            projects: true,
         };
         assert!(flags.is_enabled("notifications"));
         assert!(flags.is_enabled("evals"));
@@ -601,6 +623,7 @@ mod tests {
         );
         assert!(flags.is_enabled("webmcp"));
         assert!(flags.is_enabled("machine_payments"));
+        assert!(flags.is_enabled("projects"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -654,6 +677,7 @@ mod tests {
             public_chat: true,
             webmcp: true,
             machine_payments: true,
+            projects: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"notifications\":true"));

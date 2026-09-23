@@ -22,6 +22,7 @@ impl InMemoryDatabase {
             id,
             public_id: input.public_id,
             org_id,
+            project_id: input.project_id,
             name: input.name,
             display_name: input.display_name,
             description: input.description,
@@ -114,6 +115,7 @@ impl InMemoryDatabase {
             id,
             public_id: input.public_id,
             org_id,
+            project_id: input.project_id,
             name: input.name,
             display_name: input.display_name,
             description: input.description,
@@ -187,13 +189,18 @@ impl InMemoryDatabase {
     pub async fn get_agent_by_public_id(
         &self,
         org_id: i64,
+        project_id: Option<i64>,
         public_id: &str,
     ) -> Result<Option<AgentRow>> {
         Ok(self
             .agents
             .read()
             .values()
-            .find(|a| a.org_id == org_id && a.public_id == public_id)
+            .find(|a| {
+                a.org_id == org_id
+                    && project_id.is_none_or(|p| a.project_id == p)
+                    && a.public_id == public_id
+            })
             .cloned())
     }
 
@@ -226,6 +233,7 @@ impl InMemoryDatabase {
     pub async fn list_agents(
         &self,
         org_id: i64,
+        project_id: Option<i64>,
         search: Option<&str>,
         include_archived: bool,
         pagination: crate::api::common::Pagination,
@@ -235,6 +243,7 @@ impl InMemoryDatabase {
             .values()
             .filter(|a| {
                 a.org_id == org_id
+                    && project_id.is_none_or(|p| a.project_id == p)
                     && if include_archived {
                         a.status != "deleted"
                     } else {
@@ -263,12 +272,22 @@ impl InMemoryDatabase {
         Ok((paginated, total))
     }
 
-    pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
+    pub async fn get_agent_by_name(
+        &self,
+        org_id: i64,
+        project_id: Option<i64>,
+        name: &str,
+    ) -> Result<Option<AgentRow>> {
         Ok(self
             .agents
             .read()
             .values()
-            .find(|a| a.org_id == org_id && a.name == name && a.status != "deleted")
+            .find(|a| {
+                a.org_id == org_id
+                    && project_id.is_none_or(|p| a.project_id == p)
+                    && a.name == name
+                    && a.status != "deleted"
+            })
             .cloned())
     }
 
@@ -456,6 +475,7 @@ impl InMemoryDatabase {
                 id,
                 public_id: input.public_id,
                 org_id,
+                project_id: input.project_id,
                 name: input.name,
                 display_name: input.display_name,
                 description: input.description,
@@ -537,6 +557,7 @@ impl InMemoryDatabase {
                 id,
                 public_id: input.public_id,
                 org_id,
+                project_id: input.project_id,
                 name: input.name,
                 display_name: input.display_name,
                 description: input.description,

@@ -176,7 +176,7 @@ impl TestServer {
 
         let agent = self
             .db
-            .get_agent_by_public_id(DEFAULT_ORG_ID, agent_public_id)
+            .get_agent_by_public_id(DEFAULT_ORG_ID, None, agent_public_id)
             .await
             .expect("get fixture agent")
             .expect("fixture agent exists");

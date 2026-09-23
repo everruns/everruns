@@ -323,6 +323,7 @@ async fn create_rejects_high_risk_harness_capabilities_for_members() {
 
     let member = Caller {
         org_id: owner.org_id,
+        project_id: everruns_core::DEFAULT_PROJECT_ID,
         org_public_id: owner.org_public_id.clone(),
         user_id: None,
         role: OrgRole::Member,
@@ -414,6 +415,7 @@ async fn create_rejects_declarative_capability_with_high_risk_dependency_for_mem
 
     let member = Caller {
         org_id: owner.org_id,
+        project_id: everruns_core::DEFAULT_PROJECT_ID,
         org_public_id: owner.org_public_id.clone(),
         user_id: None,
         role: OrgRole::Member,

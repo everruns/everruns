@@ -184,6 +184,7 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
         .create_agent(
             1,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: format!("{channel_type} budget test agent"),
                 display_name: None,

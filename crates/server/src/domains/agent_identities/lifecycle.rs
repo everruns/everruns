@@ -142,6 +142,7 @@ mod tests {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    project_id: everruns_core::DEFAULT_PROJECT_ID,
                     public_id,
                     name: "service-mcp-agent".to_string(),
                     display_name: Some("Service MCP Agent".to_string()),

@@ -670,7 +670,7 @@ pub async fn authorize_connection(
 
             let agent = state
                 .db
-                .get_agent_by_public_id(org.org_id, &agent_public_id)
+                .get_agent_by_public_id(org.org_id, Some(org.project_id), &agent_public_id)
                 .await
                 .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
                 .ok_or((StatusCode::NOT_FOUND, "Agent not found".to_string()))?;

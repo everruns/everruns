@@ -160,6 +160,7 @@ pub(crate) async fn resolve_manifest_starters(
             match crate::domains::agents::queries::get_by_public_id(
                 &state.db,
                 app.org_id,
+                None,
                 &agent_id.to_string(),
             )
             .await

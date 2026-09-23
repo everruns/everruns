@@ -24,6 +24,7 @@ fn ctx_for(db: Arc<StorageBackend>, user_id: Option<Uuid>) -> Ctx {
     Ctx::new(
         Caller {
             org_id: DEFAULT_ORG_ID,
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             org_public_id: everruns_core::organization::org_public_id_from_internal(DEFAULT_ORG_ID),
             user_id,
             role: OrgRole::Owner,
@@ -308,6 +309,7 @@ async fn agent_facets_return_public_ids_that_can_be_used_as_filters() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: public_id.to_string(),
                 name: "facet-agent".to_string(),
                 display_name: None,

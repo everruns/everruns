@@ -55,6 +55,7 @@ fn caller_with_role(role: OrgRole) -> Caller {
     Caller {
         org_id: DEFAULT_ORG_ID,
         org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+        project_id: everruns_core::DEFAULT_PROJECT_ID,
         user_id: Some(Uuid::nil()),
         role,
         is_platform_user: false,
@@ -539,6 +540,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: public_id.to_string(),
                 name: name.to_string(),
                 display_name: None,
@@ -808,7 +810,7 @@ async fn dispatch_blocks_built_in_agent_mutation() {
     let agent_id = seed_agent(&ctx, "platform-chat").await;
     let row = ctx
         .db
-        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())
+        .get_agent_by_public_id(DEFAULT_ORG_ID, None, &agent_id.to_string())
         .await
         .expect("load seeded agent")
         .expect("seeded agent exists");

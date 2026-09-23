@@ -3,6 +3,7 @@ use super::*;
 use crate::api::common::Pagination;
 use chrono::Utc;
 use everruns_core::DEFAULT_ORG_ID;
+use everruns_core::DEFAULT_PROJECT_ID;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, PrincipalId, SessionId};
@@ -58,6 +59,7 @@ async fn test_create_and_get_agent() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -90,6 +92,106 @@ async fn test_create_and_get_agent() {
     let fetched = fetched.unwrap();
     assert_eq!(fetched.name, "test-agent");
     assert_eq!(fetched.display_name, Some("Test Agent".to_string()));
+}
+
+/// Agents are hard-isolated by project: list/resolve scoped to a project only
+/// see that project's agents; `None` scope is org-wide (internal/worker paths).
+#[tokio::test]
+async fn test_agents_isolated_by_project() {
+    let db = InMemoryDatabase::new();
+
+    // Two projects in the default org (project 1 is the seeded default).
+    let proj_a = DEFAULT_PROJECT_ID;
+    let proj_b = db
+        .create_project(CreateProjectRow {
+            public_id: "proj_000000000000000000000000000000bb".to_string(),
+            org_id: DEFAULT_ORG_ID,
+            name: "Project B".to_string(),
+            description: None,
+            is_default: false,
+        })
+        .await
+        .unwrap()
+        .project_id;
+
+    let make = |project_id: i64, name: &str| CreateAgentRow {
+        project_id,
+        public_id: AgentId::new().to_string(),
+        name: name.to_string(),
+        display_name: None,
+        description: None,
+        intro_markdown: None,
+        short_description: None,
+        starters: serde_json::json!([]),
+        system_prompt: "p".to_string(),
+        default_model_id: None,
+        harness_id: test_harness_id(),
+        tags: vec![],
+        initial_files: serde_json::json!([]),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+        is_built_in: false,
+    };
+
+    let agent_a = db
+        .create_agent(DEFAULT_ORG_ID, make(proj_a, "alpha"))
+        .await
+        .unwrap();
+    let agent_b = db
+        .create_agent(DEFAULT_ORG_ID, make(proj_b, "beta"))
+        .await
+        .unwrap();
+
+    // List is scoped to the active project.
+    let (a_only, _) = db
+        .list_agents(
+            DEFAULT_ORG_ID,
+            Some(proj_a),
+            None,
+            false,
+            default_pagination(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(a_only.len(), 1);
+    assert_eq!(a_only[0].id, agent_a.id);
+
+    let (b_only, _) = db
+        .list_agents(
+            DEFAULT_ORG_ID,
+            Some(proj_b),
+            None,
+            false,
+            default_pagination(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(b_only.len(), 1);
+    assert_eq!(b_only[0].id, agent_b.id);
+
+    // None scope is org-wide (internal/worker access).
+    let (all, _) = db
+        .list_agents(DEFAULT_ORG_ID, None, None, false, default_pagination())
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 2);
+
+    // Resolving B's id from project A must miss; org-wide must hit.
+    assert!(
+        db.get_agent_by_public_id(DEFAULT_ORG_ID, Some(proj_a), &agent_b.public_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        db.get_agent_by_public_id(DEFAULT_ORG_ID, None, &agent_b.public_id)
+            .await
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -156,6 +258,7 @@ async fn test_create_and_list_sessions() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -593,6 +696,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "stats-agent".to_string(),
                 display_name: Some("Stats Agent".to_string()),
@@ -727,6 +831,7 @@ async fn test_session_updated_at() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -821,6 +926,7 @@ async fn test_events_sequence() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -915,6 +1021,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -1348,6 +1455,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "filter-test-agent".to_string(),
                 display_name: Some("Filter Test Agent".to_string()),
@@ -2071,6 +2179,7 @@ async fn test_list_events_empty_session_with_limit() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "empty-agent".to_string(),
                 display_name: Some("Empty Agent".to_string()),
@@ -2146,6 +2255,7 @@ async fn test_sessions_pagination() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -2296,6 +2406,7 @@ async fn test_sessions_pagination_ordering() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "test-agent".to_string(),
                 display_name: Some("Test Agent".to_string()),
@@ -2814,6 +2925,7 @@ async fn create_test_agent(
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            project_id: DEFAULT_PROJECT_ID,
             public_id: AgentId::new().to_string(),
             name: name.to_string(),
             display_name: Some("Test Agent".to_string()),
@@ -2846,7 +2958,7 @@ async fn test_search_agents_no_filter_returns_all() {
     create_test_agent(&db, "Beta", None).await;
 
     let (results, _total) = db
-        .list_agents(DEFAULT_ORG_ID, None, false, default_pagination())
+        .list_agents(DEFAULT_ORG_ID, None, None, false, default_pagination())
         .await
         .unwrap();
     assert_eq!(results.len(), 2);
@@ -2858,7 +2970,7 @@ async fn test_search_agents_empty_string_returns_all() {
     create_test_agent(&db, "Alpha", None).await;
 
     let (results, _total) = db
-        .list_agents(DEFAULT_ORG_ID, Some(""), false, default_pagination())
+        .list_agents(DEFAULT_ORG_ID, None, Some(""), false, default_pagination())
         .await
         .unwrap();
     assert_eq!(results.len(), 1);
@@ -2873,6 +2985,7 @@ async fn test_search_agents_single_word_match() {
     let (results, _total) = db
         .list_agents(
             DEFAULT_ORG_ID,
+            None,
             Some("customer"),
             false,
             default_pagination(),
@@ -2891,6 +3004,7 @@ async fn test_search_agents_case_insensitive() {
     let (results, _total) = db
         .list_agents(
             DEFAULT_ORG_ID,
+            None,
             Some("CUSTOMER"),
             false,
             default_pagination(),
@@ -2909,6 +3023,7 @@ async fn test_search_agents_multi_word_all_must_match() {
     let (results, _total) = db
         .list_agents(
             DEFAULT_ORG_ID,
+            None,
             Some("customer bot"),
             false,
             default_pagination(),
@@ -2925,7 +3040,13 @@ async fn test_search_agents_matches_description() {
     create_test_agent(&db, "Helper", Some("Handles billing inquiries")).await;
 
     let (results, _total) = db
-        .list_agents(DEFAULT_ORG_ID, Some("billing"), false, default_pagination())
+        .list_agents(
+            DEFAULT_ORG_ID,
+            None,
+            Some("billing"),
+            false,
+            default_pagination(),
+        )
         .await
         .unwrap();
     assert_eq!(results.len(), 1);
@@ -2941,6 +3062,7 @@ async fn test_search_agents_cross_field_match() {
     let (results, _total) = db
         .list_agents(
             DEFAULT_ORG_ID,
+            None,
             Some("daytona sandbox"),
             false,
             default_pagination(),
@@ -2958,6 +3080,7 @@ async fn test_search_agents_no_match() {
     let (results, _total) = db
         .list_agents(
             DEFAULT_ORG_ID,
+            None,
             Some("zzz_nonexistent"),
             false,
             default_pagination(),
@@ -2980,7 +3103,13 @@ async fn test_search_agents_poem_does_not_crash() {
                     Through winding roads and starlit nights, \
                     we chase our dreams to greater heights.";
     let (results, _total) = db
-        .list_agents(DEFAULT_ORG_ID, Some(poem), false, default_pagination())
+        .list_agents(
+            DEFAULT_ORG_ID,
+            None,
+            Some(poem),
+            false,
+            default_pagination(),
+        )
         .await
         .unwrap();
     // No agent should match a poem
@@ -2998,6 +3127,7 @@ async fn test_search_agents_poem_token_cap() {
     let (results, _total) = db
         .list_agents(
             DEFAULT_ORG_ID,
+            None,
             Some(long_query),
             false,
             default_pagination(),
@@ -3016,7 +3146,13 @@ async fn test_search_agents_special_characters() {
     create_test_agent(&db, "my-agent_v1", None).await;
 
     let (results, _total) = db
-        .list_agents(DEFAULT_ORG_ID, Some("v2.0"), false, default_pagination())
+        .list_agents(
+            DEFAULT_ORG_ID,
+            None,
+            Some("v2.0"),
+            false,
+            default_pagination(),
+        )
         .await
         .unwrap();
     assert_eq!(results.len(), 1);
@@ -3030,7 +3166,13 @@ async fn test_search_agents_unicode() {
     create_test_agent(&db, "English Agent", None).await;
 
     let (results, _total) = db
-        .list_agents(DEFAULT_ORG_ID, Some("日本語"), false, default_pagination())
+        .list_agents(
+            DEFAULT_ORG_ID,
+            None,
+            Some("日本語"),
+            false,
+            default_pagination(),
+        )
         .await
         .unwrap();
     assert_eq!(results.len(), 1);
@@ -3044,7 +3186,13 @@ async fn test_search_agents_emoji() {
     create_test_agent(&db, "Normal Agent", None).await;
 
     let (results, _total) = db
-        .list_agents(DEFAULT_ORG_ID, Some("🤖"), false, default_pagination())
+        .list_agents(
+            DEFAULT_ORG_ID,
+            None,
+            Some("🤖"),
+            false,
+            default_pagination(),
+        )
         .await
         .unwrap();
     assert_eq!(results.len(), 1);
@@ -3059,6 +3207,7 @@ async fn test_search_agents_whitespace_normalization() {
     let (results, _total) = db
         .list_agents(
             DEFAULT_ORG_ID,
+            None,
             Some("  customer   bot  "),
             false,
             default_pagination(),
@@ -3425,6 +3574,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: "search-test-agent".to_string(),
                 display_name: Some("Search Test Agent".to_string()),

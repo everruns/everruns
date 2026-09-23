@@ -155,6 +155,7 @@ mod tests {
         Caller {
             org_id: DEFAULT_ORG_ID,
             org_public_id: "org_00000000000000000000000000000001".to_string(),
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             user_id: Some(user_id),
             role: OrgRole::Owner,
             is_platform_user: false,
@@ -177,6 +178,7 @@ mod tests {
         db.create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: agent_public_id.clone(),
                 name: "resolve-test".to_string(),
                 display_name: None,
@@ -225,6 +227,7 @@ mod tests {
         db.create_agent(
             42,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: agent_public_id.clone(),
                 name: "other-org-agent".to_string(),
                 display_name: None,
@@ -306,6 +309,7 @@ mod tests {
             Caller {
                 org_id: DEFAULT_ORG_ID,
                 org_public_id: "org_00000000000000000000000000000001".to_string(),
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 user_id: Some(everruns_platform::ANONYMOUS_USER_ID),
                 role: OrgRole::Owner,
                 is_platform_user: false,

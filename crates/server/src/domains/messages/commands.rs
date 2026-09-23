@@ -594,6 +594,7 @@ mod tests {
         db.create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: AgentId::new().to_string(),
                 name: name.to_string(),
                 display_name: None,
@@ -706,6 +707,7 @@ mod tests {
             .expect("create Platform Chat session");
         let caller = Caller {
             org_id: DEFAULT_ORG_ID,
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             org_public_id: everruns_core::organization::org_public_id_from_internal(DEFAULT_ORG_ID),
             user_id: Some(caller_user_id),
             role: OrgRole::Member,

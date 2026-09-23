@@ -90,6 +90,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_provider::typ
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             public_id: public_id.clone(),
             name: "trigger-agent".to_string(),
             display_name: Some("Trigger Agent".to_string()),
@@ -147,6 +148,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     let app_id = Some(uuid::Uuid::from_u128(60));
     let now = chrono::Utc::now();
     let agent = crate::storage::models::AgentRow {
+        project_id: everruns_core::DEFAULT_PROJECT_ID,
         id: AgentId::from_uuid(uuid::Uuid::from_u128(70)),
         public_id: AgentId::from_uuid(uuid::Uuid::from_u128(71)).to_string(),
         org_id: DEFAULT_ORG_ID,
@@ -236,7 +238,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
     let db = Arc::new(StorageBackend::in_memory());
     let (agent_public_id, _) = seed_agent(&db).await;
     let agent = db
-        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_public_id)
+        .get_agent_by_public_id(DEFAULT_ORG_ID, None, &agent_public_id)
         .await
         .unwrap()
         .unwrap();
@@ -412,7 +414,7 @@ async fn responses_use_public_agent_id_not_internal_fk() {
     let (agent_id, _) = seed_agent(&db).await;
     let public_agent_id: AgentId = agent_id.parse().expect("public agent id parses");
     let internal_agent_id = db
-        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id)
+        .get_agent_by_public_id(DEFAULT_ORG_ID, None, &agent_id)
         .await
         .unwrap()
         .expect("agent row")
@@ -656,7 +658,7 @@ async fn binding_torn_down_on_delete() {
 /// Full `AgentRow` for identity tests (the helper above returns only ids).
 async fn seed_agent_row(db: &Arc<StorageBackend>) -> crate::storage::models::AgentRow {
     let (public_id, _) = seed_agent(db).await;
-    db.get_agent_by_public_id(DEFAULT_ORG_ID, &public_id)
+    db.get_agent_by_public_id(DEFAULT_ORG_ID, None, &public_id)
         .await
         .unwrap()
         .expect("seeded agent row")

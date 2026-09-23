@@ -17,10 +17,11 @@ impl WorkerServiceImpl {
 
         // Get agent with capabilities via domain query
         let public_id = everruns_provider::typed_id::AgentId::from_uuid(agent_id).to_string();
-        let agent =
-            crate::domains::agents::queries::get_by_public_id(&self.db, req.org_id, &public_id)
-                .await
-                .map_err(|e| internal_status("Failed to get agent", e))?;
+        let agent = crate::domains::agents::queries::get_by_public_id(
+            &self.db, req.org_id, None, &public_id,
+        )
+        .await
+        .map_err(|e| internal_status("Failed to get agent", e))?;
 
         let proto_agent = agent.map(|a| schema_agent_to_proto(&a));
 

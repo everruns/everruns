@@ -855,6 +855,8 @@ export interface FeatureFlags {
   webmcp: boolean;
   /** Machine-payment custody, policy, audit, and paid capability surfaces. */
   machine_payments: boolean;
+  /** Project-based sidebar (project switcher) instead of the org-based UI. Experimental. */
+  projects: boolean;
 }
 
 export interface OrgFeatureFlagSetting {

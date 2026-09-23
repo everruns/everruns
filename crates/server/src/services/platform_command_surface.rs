@@ -423,6 +423,7 @@ mod tests {
             public_chat: true,
             webmcp: true,
             machine_payments: true,
+            projects: true,
         }
     }
 
@@ -446,6 +447,7 @@ mod tests {
                 public_chat: true,
                 webmcp: true,
                 machine_payments: true,
+                projects: true,
             },
         )
     }

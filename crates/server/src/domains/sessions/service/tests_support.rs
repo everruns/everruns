@@ -27,6 +27,7 @@ pub(crate) async fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
 pub(crate) fn external_caller(org_id: i64) -> Caller {
     Caller {
         org_id,
+        project_id: everruns_core::DEFAULT_PROJECT_ID,
         org_public_id: everruns_core::organization::org_public_id_from_internal(org_id),
         user_id: None,
         role: OrgRole::Owner,

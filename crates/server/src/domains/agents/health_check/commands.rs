@@ -44,10 +44,15 @@ impl AgentHealthCheckService {
         agent_id: &str,
     ) -> Result<HealthCheckRun, CommandError> {
         let org_id = caller.org_id;
-        let agent = crate::domains::agents::queries::resolve(&self.run_ctx.db, org_id, agent_id)
-            .await
-            .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("Agent"))?;
+        let agent = crate::domains::agents::queries::resolve(
+            &self.run_ctx.db,
+            org_id,
+            Some(caller.project_id),
+            agent_id,
+        )
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Agent"))?;
 
         let (resolved_prompt, tools) = self
             .capability_service
@@ -105,11 +110,15 @@ impl AgentHealthCheckService {
         let run_id: HealthCheckRunId = run_id
             .parse()
             .map_err(|_| CommandError::bad_request("Invalid health check run id"))?;
-        let agent =
-            crate::domains::agents::queries::resolve(&self.run_ctx.db, caller.org_id, agent_id)
-                .await
-                .map_err(classify_anyhow)?
-                .ok_or_else(|| CommandError::not_found("Agent"))?;
+        let agent = crate::domains::agents::queries::resolve(
+            &self.run_ctx.db,
+            caller.org_id,
+            Some(caller.project_id),
+            agent_id,
+        )
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Agent"))?;
         let row = self
             .run_ctx
             .db
@@ -129,11 +138,15 @@ impl AgentHealthCheckService {
         caller: &Caller,
         agent_id: &str,
     ) -> Result<Vec<HealthCheckRun>, CommandError> {
-        let agent =
-            crate::domains::agents::queries::resolve(&self.run_ctx.db, caller.org_id, agent_id)
-                .await
-                .map_err(classify_anyhow)?
-                .ok_or_else(|| CommandError::not_found("Agent"))?;
+        let agent = crate::domains::agents::queries::resolve(
+            &self.run_ctx.db,
+            caller.org_id,
+            Some(caller.project_id),
+            agent_id,
+        )
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Agent"))?;
         let rows = self
             .run_ctx
             .db
@@ -157,10 +170,15 @@ impl AgentHealthCheckService {
         agent_id: &str,
     ) -> Result<LatestHealthCheckRun, CommandError> {
         let org_id = caller.org_id;
-        let agent = crate::domains::agents::queries::resolve(&self.run_ctx.db, org_id, agent_id)
-            .await
-            .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("Agent"))?;
+        let agent = crate::domains::agents::queries::resolve(
+            &self.run_ctx.db,
+            org_id,
+            Some(caller.project_id),
+            agent_id,
+        )
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Agent"))?;
 
         let rows = self
             .run_ctx

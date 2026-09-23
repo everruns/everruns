@@ -1172,6 +1172,7 @@ mod creation_tests {
         );
         let org = ResolvedOrg {
             org_id: everruns_core::DEFAULT_ORG_ID,
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             public_id: "org_test".into(),
             name: "Test".into(),
             user_id: None,
@@ -1201,6 +1202,7 @@ mod creation_tests {
         );
         let org = ResolvedOrg {
             org_id: everruns_core::DEFAULT_ORG_ID,
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             public_id: "org_test".into(),
             name: "Test".into(),
             user_id: None,

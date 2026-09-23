@@ -5,6 +5,7 @@ import { QueryProvider } from "@/providers/query-provider";
 import { FeatureFlagsProvider } from "@/providers/feature-flags-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { OrgProvider } from "@/providers/org-provider";
+import { ProjectProvider } from "@/providers/project-provider";
 import { LocaleProvider } from "@/providers/locale-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { parseThemeMode, THEME_COOKIE, THEME_SCRIPT } from "@/lib/theme";
@@ -23,6 +24,7 @@ export default async function RootLayout({
 }>) {
   const cookieStore = await cookies();
   const initialOrgId = cookieStore.get("everruns_org")?.value ?? null;
+  const initialProjectId = cookieStore.get("everruns_project")?.value ?? null;
   const webMcpOriginTrialToken = process.env.WEBMCP_ORIGIN_TRIAL_TOKEN?.trim();
   const themeMode = parseThemeMode(cookieStore.get(THEME_COOKIE)?.value);
 
@@ -42,7 +44,11 @@ export default async function RootLayout({
             <QueryProvider>
               <AuthProvider>
                 <OrgProvider initialOrgId={initialOrgId}>
-                  <FeatureFlagsProvider>{children}</FeatureFlagsProvider>
+                  <FeatureFlagsProvider>
+                    <ProjectProvider initialProjectId={initialProjectId}>
+                      {children}
+                    </ProjectProvider>
+                  </FeatureFlagsProvider>
                 </OrgProvider>
               </AuthProvider>
             </QueryProvider>

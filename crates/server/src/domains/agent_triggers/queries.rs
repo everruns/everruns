@@ -56,10 +56,11 @@ pub async fn get_by_id(
 pub async fn require_active_agent(
     db: &Arc<StorageBackend>,
     org_id: i64,
+    project_id: Option<i64>,
     agent_id: &AgentId,
 ) -> Result<AgentRow, CommandError> {
     let row = db
-        .get_agent_by_public_id(org_id, &agent_id.to_string())
+        .get_agent_by_public_id(org_id, project_id, &agent_id.to_string())
         .await
         .map_err(classify_anyhow)?
         .ok_or_else(|| classify_anyhow(ResourceNotFoundError::new("Agent").into()))?;

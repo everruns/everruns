@@ -76,3 +76,16 @@ A bare Agent has no way to receive messages from external users. An **Endpoint**
 Each endpoint owns its inbound authentication, session-routing strategy, transport configuration, version policy, and publish state. One Agent can have several endpoints, and each endpoint can be published or revoked independently. Create and manage them from the Agent's **Integrations** tab.
 
 For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead of an endpoint.
+
+## Organizations and projects
+
+Everything above lives inside a two-level tenancy boundary:
+
+| Level | What it is | How often you switch |
+|---|---|---|
+| **Organization** | The billing and team wrapper — members, billing, org-shared resources (models, agent identities). | Rarely. |
+| **Project** | A grouping *inside* an organization that owns the day-to-day building blocks: agents, skills, endpoints, capabilities, MCP servers, memory stores, and sessions. | Constantly. |
+
+A project is the scope you work in. Project-scoped resources belong to **exactly one** project, so two projects in the same org are fully isolated — an agent in `Support` is invisible from `Sales`. Every organization has exactly one **default** project, created automatically when the org is created, so there's always somewhere for resources to live and the project switcher is never empty.
+
+In the UI the project switcher sits at the top of the sidebar (you change it often); the organization moves into the bottom user menu (you change it rarely). Over the API the active project is derived from auth context — the `everruns_project` cookie (session auth) or the `X-Project-Id` header (API-key auth) — and falls back to the org's default project. There's no project in the URL path, mirroring how the organization is resolved.

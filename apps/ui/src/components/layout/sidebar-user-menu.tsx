@@ -52,6 +52,7 @@ export function SidebarUserMenu({
   logout,
   logoutPending,
   renderExtraItems,
+  renderOrgSection,
   version,
 }: {
   requiresAuth: boolean;
@@ -59,6 +60,8 @@ export function SidebarUserMenu({
   logout: () => Promise<void>;
   logoutPending: boolean;
   renderExtraItems?: SidebarUserMenuItemsRenderer;
+  /** Organization section rendered at the top of the menu (Direction F). */
+  renderOrgSection?: () => React.ReactNode;
   version: string;
 }) {
   const router = useRouter();
@@ -109,7 +112,13 @@ export function SidebarUserMenu({
           <ChevronUp className="icon-sharp h-4 w-4 text-muted-foreground" />
         </DropdownMenuTrigger>
         <DropdownMenuPositioner side="top" align="start">
-          <DropdownMenuContent className="w-56">
+          <DropdownMenuContent className="w-60">
+            {renderOrgSection && (
+              <>
+                {renderOrgSection()}
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuGroup>
               <DropdownMenuLabel>{requiresAuth ? "My Account" : "Local Account"}</DropdownMenuLabel>
               <NotificationMenuSub />

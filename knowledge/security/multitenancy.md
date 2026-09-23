@@ -83,6 +83,26 @@ stay synchronized. Exact cookie flags, resolution precedence, and error status
 codes are security-sensitive implementation details owned by the auth
 middleware and users API; do not duplicate them here.
 
+### Projects (nested scope)
+
+Projects are an optional layer nested *inside* an organization: an organization
+is the billing and team boundary, a project is the day-to-day work scope. Every
+organization has exactly one seeded default project, so there is always a home
+for resources and the switcher is never empty. Org-scoped resources also carry a
+project.
+
+Project scope is a hard filter layered on top of organization scope, never a
+replacement for it. Read paths take a `project_id: Option<i64>`: `Some(p)`
+enforces project isolation for UI and API callers, while `None` is deliberately
+org-wide and reserved for trusted internal and worker paths. Creates write the
+caller's active project. A project filter is always applied on top of org scope,
+so a project never widens isolation.
+
+The active project is resolved the same way as the organization: a server-set
+cookie and a request header, validated against the already-resolved
+organization. A resource in another project is indistinguishable from a missing
+resource, exactly as a cross-org lookup is.
+
 ## Isolation invariants
 
 Every org-scoped read and mutation must include organization scope, even when a

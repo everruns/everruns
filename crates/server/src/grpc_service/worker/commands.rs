@@ -129,6 +129,7 @@ impl WorkerServiceImpl {
             Some(agent_id) => crate::domains::agents::queries::get_by_public_id(
                 &self.db,
                 org_id,
+                None,
                 &agent_id.to_string(),
             )
             .await

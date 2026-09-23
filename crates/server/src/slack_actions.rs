@@ -554,6 +554,7 @@ mod tests {
                     org_id,
                     id,
                     CreateAgentRow {
+                        project_id: everruns_core::DEFAULT_PROJECT_ID,
                         public_id: id.to_string(),
                         name: format!("a-{}", Uuid::now_v7()),
                         display_name: None,
