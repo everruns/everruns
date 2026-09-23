@@ -248,6 +248,10 @@ pub struct LlmCompletionMetadata {
     /// shape is provider-owned, so the runtime carries it without interpreting
     /// it.
     pub cache_diagnostics: Option<serde_json::Value>,
+    /// Provider-native assistant content for lossless replay on the next call.
+    ///
+    /// This is internal transcript state. Public message projections remove it.
+    pub provider_opaque_content: Option<crate::message::ProviderOpaqueContent>,
 }
 
 /// Normalize an inclusive provider's reported prompt-token count to the disjoint

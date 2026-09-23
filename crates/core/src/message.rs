@@ -15,6 +15,7 @@ use crate::typed_id::{FileId, ImageId, MessageId, ModelId};
 use utoipa::ToSchema;
 
 use everruns_provider::execution_phase::{ExecutionPhase, PhaseSource};
+use everruns_provider::message::ProviderOpaqueContent;
 use everruns_provider::reasoning::ReasoningContentPart;
 /// Message role in the conversation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -246,6 +247,7 @@ pub enum ContentType {
     ToolCall,
     ToolResult,
     Reasoning,
+    ProviderOpaque,
 }
 
 impl std::fmt::Display for ContentType {
@@ -258,6 +260,7 @@ impl std::fmt::Display for ContentType {
             ContentType::ToolCall => write!(f, "tool_call"),
             ContentType::ToolResult => write!(f, "tool_result"),
             ContentType::Reasoning => write!(f, "reasoning"),
+            ContentType::ProviderOpaque => write!(f, "provider_opaque"),
         }
     }
 }
@@ -270,6 +273,7 @@ impl From<&str> for ContentType {
             "tool_call" => ContentType::ToolCall,
             "tool_result" => ContentType::ToolResult,
             "reasoning" => ContentType::Reasoning,
+            "provider_opaque" => ContentType::ProviderOpaque,
             _ => ContentType::Text,
         }
     }
@@ -606,6 +610,8 @@ pub enum ContentPart {
     /// Provider reasoning artifact, ordered against the text and tool calls it
     /// was interleaved with.
     Reasoning(ReasoningContentPart),
+    /// Provider-native assistant content retained only for internal replay.
+    ProviderOpaque(ProviderOpaqueContent),
 }
 
 impl ContentPart {
@@ -702,6 +708,7 @@ impl ContentPart {
             ContentPart::ToolCall(_) => ContentType::ToolCall,
             ContentPart::ToolResult(_) => ContentType::ToolResult,
             ContentPart::Reasoning(_) => ContentType::Reasoning,
+            ContentPart::ProviderOpaque(_) => ContentType::ProviderOpaque,
         }
     }
 
@@ -833,6 +840,8 @@ impl RuntimeMessage {
     /// Replace every reasoning part with its publishable projection, dropping
     /// opaque provider replay state. Used at API boundaries.
     pub fn into_public(mut self) -> Self {
+        self.content
+            .retain(|part| !matches!(part, ContentPart::ProviderOpaque(_)));
         for part in &mut self.content {
             if let ContentPart::Reasoning(r) = part {
                 *r = r.to_public();
@@ -1054,6 +1063,7 @@ impl RuntimeMessage {
                 // the provider `Message::reasoning`; it must never be flattened into
                 // prompt text. Filtered out below.
                 ContentPart::Reasoning(_) => String::new(),
+                ContentPart::ProviderOpaque(_) => String::new(),
                 ContentPart::Image(_) => "[Image]".to_string(),
                 ContentPart::ImageFile(_) => "[Image File]".to_string(),
                 ContentPart::File(part) => part
