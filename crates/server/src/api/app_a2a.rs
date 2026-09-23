@@ -19,7 +19,7 @@ use std::sync::Arc;
 use axum::{
     Extension, Json, Router,
     body::Bytes,
-    extract::{ConnectInfo, OriginalUri, Path, State},
+    extract::{ConnectInfo, Path, State},
     http::{HeaderMap, StatusCode},
     response::{
         IntoResponse, Response,
@@ -55,6 +55,12 @@ use crate::middleware::RequestId;
 use crate::security::constant_time_eq;
 use crate::storage::{EncryptionService, StorageBackend};
 
+// Two cohesive pieces live beside this file rather than in it: the Agent Card
+// (discovery, no request path) and the `ask_user` projection (EVE-1062).
+// `agent_card` is `pub` so `openapi.rs` can name its documented handlers.
+pub mod agent_card;
+mod ask_user;
+
 const A2A_PROTOCOL_VERSION: &str = "1.0";
 const A2A_AGENT_VERSION: &str = "0.1";
 const A2A_PROTOCOL_BINDING_JSONRPC: &str = "JSONRPC";
@@ -86,6 +92,10 @@ pub struct AppA2aState {
     pub rate_limiter: ChannelRateLimiter,
     pub auth_verifier: AppEndpointAuthVerifier,
     pub replay_store: A2aReplayStore,
+    /// UI origin, used to hand a `secret` question to a human instead of
+    /// asking the calling agent for the credential (EVE-1062). Empty when no
+    /// frontend URL is configured; the projection then carries no link.
+    pub frontend_url: String,
 }
 
 struct MessageSendContext {
@@ -105,6 +115,7 @@ impl AppA2aState {
         sse_tracker: Arc<SseConnectionTracker>,
         rate_limiter: ChannelRateLimiter,
         replay_store: A2aReplayStore,
+        frontend_url: String,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
@@ -121,6 +132,7 @@ impl AppA2aState {
             rate_limiter,
             auth_verifier: AppEndpointAuthVerifier::new(),
             replay_store,
+            frontend_url,
         }
     }
 }
@@ -133,12 +145,12 @@ pub fn routes(state: AppA2aState) -> Router {
         )
         .route(
             "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json",
-            get(agent_card_legacy),
+            get(agent_card::agent_card_legacy),
         )
         .route("/v1/e/{channel_id}/a2a", post(invoke_a2a_endpoint))
         .route(
             "/v1/e/{channel_id}/a2a/.well-known/agent-card.json",
-            get(agent_card_endpoint),
+            get(agent_card::agent_card_endpoint),
         )
         .with_state(state)
 }
@@ -300,6 +312,17 @@ pub async fn invoke_a2a_endpoint(
         body,
     )
     .await
+}
+
+async fn endpoint_app_id(
+    state: &AppA2aState,
+    channel_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+        .await
+        .map_err(internal_error)?
+        .map(|(app, _)| app.public_id.to_string())
+        .ok_or_else(not_found)
 }
 
 async fn invoke_a2a(
@@ -631,6 +654,13 @@ struct ParsedMessage {
     role: Option<String>,
     message_id: Option<String>,
     context_id: Option<String>,
+    /// `message.taskId` — which task a reply belongs to. Only an `ask_user`
+    /// answer needs it; an ordinary message keeps routing by channel binding.
+    task_id: Option<String>,
+    /// A typed answer to the question set this task is parked on (EVE-1062),
+    /// carried as a `DataPart`. `None` for every message that is just a
+    /// message, which is what keeps text-only callers unchanged.
+    answer: Option<crate::api::question_answers::QuestionAnswersRequest>,
 }
 
 fn parse_message_params(params: &Value) -> Result<ParsedMessage, &'static str> {
@@ -660,7 +690,12 @@ fn parse_message_params(params: &Value) -> Result<ParsedMessage, &'static str> {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    if text.trim().is_empty() {
+    // A typed answer is carried as data, so it is the one message shape that
+    // legitimately has no text. Everything else keeps the original rule.
+    let answer = ask_user::parse_ask_user_answer_part(&parts).map_err(
+        |_| "Invalid params: message.parts carries a malformed everruns/ask_user_answer data part",
+    )?;
+    if answer.is_none() && text.trim().is_empty() {
         return Err("Invalid params: message.parts must contain at least one non-empty text part");
     }
     Ok(ParsedMessage {
@@ -677,12 +712,17 @@ fn parse_message_params(params: &Value) -> Result<ParsedMessage, &'static str> {
             .get("contextId")
             .and_then(Value::as_str)
             .map(str::to_owned),
+        task_id: message
+            .get("taskId")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        answer,
     })
 }
 
 async fn handle_message_send(
     state: &AppA2aState,
-    _auth: AuthorizedA2a,
+    auth: AuthorizedA2a,
     parsed: JsonRpcRequest,
     rpc_id: Value,
     ctx: MessageSendContext,
@@ -694,6 +734,22 @@ async fn handle_message_send(
             return (StatusCode::OK, rpc_error(rpc_id, -32602, msg)).into_response();
         }
     };
+
+    // An answer to a parked question set is not a new turn (EVE-1062): it
+    // completes the `ask_user` call this task is waiting on and resumes the
+    // turn that asked. A text-only reply falls through to the ordinary path,
+    // where the message supersedes the question.
+    if let Some(answer) = parsed_msg.answer {
+        return ask_user::handle_ask_user_answer(
+            state,
+            &auth,
+            parsed_msg.task_id.as_deref(),
+            answer,
+            rpc_id,
+            wrap_legacy_send_response,
+        )
+        .await;
+    }
 
     // task_id is generated up front; the durable workflow that this dispatch
     // schedules is async, so the initial response is always non-terminal
@@ -786,10 +842,25 @@ async fn handle_tasks_get(
         return (StatusCode::OK, rpc_error(rpc_id, -32001, "Task not found")).into_response();
     }
 
-    let state_label = match derive_task_state_from_events(&state.db, session_id).await {
+    let mut state_label = match derive_task_state_from_events(&state.db, session_id).await {
         Ok(label) => label,
         Err(err) => return internal_error(err).into_response(),
     };
+
+    // EVE-1062: a session parked on `ask_user` is `input_required`, and the
+    // question rides `TaskStatus.message` — the turn that asked is still open,
+    // so the lifecycle events above report `working` on their own.
+    let mut status_message = None;
+    match ask_user::pending_ask_user(&state.db, &session).await {
+        Ok(Some(pending)) => {
+            let projection =
+                ask_user::project_ask_user(&pending, &session.id.to_string(), &state.frontend_url);
+            state_label = projection.state;
+            status_message = Some(projection.message);
+        }
+        Ok(None) => {}
+        Err(err) => return internal_error(err).into_response(),
+    }
 
     // EVE-728: surface the task's deterministic structured result (result.json
     // reported via a `result_schema`, EVE-678) as an A2A artifact. Reading is
@@ -807,7 +878,10 @@ async fn handle_tasks_get(
         Err(err) => return internal_error(err).into_response(),
     };
 
-    let mut task = build_task_json(session.id, state_label, None);
+    let mut task = ask_user::with_status_message(
+        build_task_json(session.id, state_label, None),
+        status_message,
+    );
     if let Some(result) = structured_result
         && let Some(obj) = task.as_object_mut()
     {
@@ -1041,6 +1115,21 @@ async fn handle_message_stream(
         }
     };
 
+    // `message/stream` opens a new task; it never resumes the one that asked.
+    // Refusing is better than dispatching the answer as a fresh prompt, which
+    // would leave the question parked and put the answer in the wrong turn.
+    if parsed_msg.answer.is_some() {
+        return (
+            StatusCode::OK,
+            rpc_error(
+                rpc_id,
+                -32602,
+                "Invalid params: answer an ask_user question set with message/send on its task id",
+            ),
+        )
+            .into_response();
+    }
+
     // Per-invocation correlation id used by `A2aInvocationRequest` for
     // request tracing only. The *streamed* `taskId` (which clients use for
     // `tasks/get` / `tasks/cancel`) is set further down to the resolved
@@ -1141,6 +1230,7 @@ async fn handle_message_stream(
         task_id: stream_task_id,
         context_id,
         session_id: session_id_uuid,
+        frontend_url: state.frontend_url.clone(),
         finished: false,
         terminal_emitted: false,
     };
@@ -1176,7 +1266,7 @@ async fn handle_message_stream(
             }
 
             if let Some(frame_value) =
-                translate_session_event(&event.data, &s.task_id, &s.context_id)
+                translate_session_event(&event.data, &s.task_id, &s.context_id, &s.frontend_url)
             {
                 let is_final = frame_value
                     .get("final")
@@ -1214,6 +1304,8 @@ struct A2aStreamState {
     task_id: String,
     context_id: String,
     session_id: Uuid,
+    /// UI origin, for the `auth_required` projection of a secret question.
+    frontend_url: String,
     finished: bool,
     terminal_emitted: bool,
 }
@@ -1221,8 +1313,28 @@ struct A2aStreamState {
 /// Translate a small allowlist of session events into the A2A frame body
 /// (the JSON that goes inside the JSON-RPC `result`). Returning `None` means
 /// the event should be filtered out of the A2A stream.
-fn translate_session_event(data: &EventData, task_id: &str, context_id: &str) -> Option<Value> {
+fn translate_session_event(
+    data: &EventData,
+    task_id: &str,
+    context_id: &str,
+    frontend_url: &str,
+) -> Option<Value> {
     match data {
+        // EVE-1062: a parked `ask_user` call is the one non-terminal stop this
+        // stream has. Without a frame the caller waits on a question it cannot
+        // see, and the turn never completes; `final: true` closes the stream
+        // because the answer arrives as a fresh `message/send` on this task.
+        EventData::ToolCallRequested(requested) => {
+            let pending = ask_user::pending_ask_user_from_request(requested)?;
+            let projection = ask_user::project_ask_user(&pending, task_id, frontend_url);
+            Some(json!({
+                "kind": "status-update",
+                "taskId": task_id,
+                "contextId": context_id,
+                "status": { "state": projection.state, "message": projection.message },
+                "final": true,
+            }))
+        }
         EventData::OutputMessageCompleted(d) => {
             let text = d
                 .message
@@ -1317,255 +1429,6 @@ fn command_error_response(
     }
 }
 
-/// GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json
-#[utoipa::path(
-    get,
-    path = "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json",
-    params(
-        ("app_id" = String, Path, description = "App ID"),
-        ("channel_id" = String, Path, description = "A2A channel ID")
-    ),
-    responses(
-        (status = 200, description = "Agent Card JSON"),
-        (status = 404, description = "App or channel not found / unpublished / disabled", body = ErrorResponse),
-    ),
-    tag = "apps"
-)]
-pub async fn agent_card_legacy(
-    State(state): State<AppA2aState>,
-    OriginalUri(original_uri): OriginalUri,
-    Path((app_id, channel_id)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
-    agent_card(state, original_uri, app_id, channel_id, headers).await
-}
-
-#[utoipa::path(
-    description = "Get the public Agent Card for a published A2A endpoint.",
-    get,
-    path = "/v1/e/{channel_id}/a2a/.well-known/agent-card.json",
-    params(("channel_id" = String, Path, description = "A2A endpoint channel ID")),
-    responses(
-        (status = 200, description = "Agent Card JSON"),
-        (status = 404, description = "Endpoint not found, app not published, or channel disabled", body = ErrorResponse)
-    ),
-    tag = "apps"
-)]
-pub async fn agent_card_endpoint(
-    State(state): State<AppA2aState>,
-    OriginalUri(original_uri): OriginalUri,
-    Path(channel_id): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
-    let app_id = endpoint_app_id(&state, &channel_id).await?;
-    agent_card(state, original_uri, app_id, channel_id, headers).await
-}
-
-async fn endpoint_app_id(
-    state: &AppA2aState,
-    channel_id: &str,
-) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
-        .await
-        .map_err(internal_error)?
-        .map(|(app, _)| app.public_id.to_string())
-        .ok_or_else(not_found)
-}
-
-async fn agent_card(
-    state: AppA2aState,
-    original_uri: axum::http::Uri,
-    app_id: String,
-    channel_id: String,
-    headers: HeaderMap,
-) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(
-        &state.db,
-        state.encryption.as_ref(),
-        &channel_id,
-    )
-    .await
-    .map_err(internal_error)?
-    .ok_or_else(not_found)?;
-    if !app.matches_legacy_app_id(&app_id) {
-        return Err(not_found());
-    }
-    if channel.channel_type != everruns_platform::ChannelType::A2a {
-        return Err(not_found());
-    }
-    // The Agent Card is only served for a live endpoint: it advertises the
-    // invocation URL and security scheme, so publishing it for a draft or
-    // suspended endpoint would leak a surface that refuses traffic.
-    if crate::api::app_ingress::endpoint_liveness(&app, &channel).is_err() {
-        return Err(not_found());
-    }
-    let config = channel.a2a_config().ok_or_else(not_found)?;
-
-    // Build the absolute endpoint URL from the actual request URI and inbound
-    // Host header. Test and proxy deployments can mount API routes under a
-    // prefix such as `/api`; deriving from the original URI preserves it.
-    let scheme = headers
-        .get("x-forwarded-proto")
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or("https");
-    let host = headers
-        .get(axum::http::header::HOST)
-        .and_then(|h| h.to_str().ok());
-    let endpoint_path = original_uri
-        .path()
-        .strip_suffix("/.well-known/agent-card.json")
-        .unwrap_or_else(|| original_uri.path());
-    let endpoint = match host {
-        Some(host) => format!("{scheme}://{host}{endpoint_path}"),
-        None => endpoint_path.to_string(),
-    };
-
-    let name = config
-        .agent_card_name
-        .clone()
-        .unwrap_or_else(|| app.name.clone());
-    let description = config
-        .agent_card_description
-        .clone()
-        .or_else(|| app.description.clone())
-        .unwrap_or_default();
-
-    let (security_schemes, security) = a2a_security_for_config(&config, channel.auth.as_deref());
-    let card = json!({
-        "name": name,
-        "description": description,
-        "version": A2A_AGENT_VERSION,
-        "supportedInterfaces": [
-            {
-                "url": endpoint,
-                "protocolBinding": A2A_PROTOCOL_BINDING_JSONRPC,
-                "protocolVersion": A2A_PROTOCOL_VERSION,
-            }
-        ],
-        "capabilities": {
-            // Streaming is only supported on session_per_invocation channels.
-            // Shared-session channels reject message/stream because events
-            // cannot be safely correlated across concurrent callers.
-            "streaming": config.session_mode == everruns_platform::app::SessionBinding::Ephemeral,
-            "pushNotifications": false,
-            "stateTransitionHistory": false,
-        },
-        "defaultInputModes": ["text/plain"],
-        "defaultOutputModes": ["text/plain"],
-        "skills": [
-            {
-                "id": "default",
-                "name": app.name,
-                "description": description,
-                "tags": ["everruns", "a2a"],
-            }
-        ],
-        "securitySchemes": security_schemes,
-        "securityRequirements": security,
-    });
-    Ok(Json(card))
-}
-
-fn a2a_security_for_config(
-    config: &everruns_platform::A2aChannelConfig,
-    auth: Option<&everruns_platform::AppEndpointAuthConfig>,
-) -> (Value, Value) {
-    let (mut schemes, mut requirements) = base_a2a_security(auth);
-    // THREAT[TM-A2A-010]: When the channel opts into HMAC signing, advertise
-    // a vendor `everrunsHmacSignature` scheme alongside whichever primary
-    // scheme is in use so the calling A2A client knows it must sign on top
-    // of authentication.
-    if config
-        .signing_secret
-        .as_deref()
-        .is_some_and(|s| !s.is_empty())
-    {
-        if let Value::Object(map) = &mut schemes {
-            map.insert(
-                "everrunsHmacSignature".to_string(),
-                json!({
-                    "apiKeySecurityScheme": {
-                        "location": "header",
-                        "name": A2A_SIGNATURE_HEADER,
-                        "description": "HMAC-SHA256 over v0:{timestamp}:{channel_scope}:{body}; pair with X-Everruns-A2A-Timestamp",
-                    }
-                }),
-            );
-        }
-        if let Value::Array(arr) = &mut requirements {
-            if let Some(Value::Object(first)) = arr.first_mut() {
-                first.insert("everrunsHmacSignature".to_string(), json!([]));
-            } else {
-                arr.push(json!({ "everrunsHmacSignature": [] }));
-            }
-        }
-    }
-    (schemes, requirements)
-}
-
-fn base_a2a_security(auth: Option<&everruns_platform::AppEndpointAuthConfig>) -> (Value, Value) {
-    let Some(auth) = auth else {
-        return (
-            json!({ "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
-            json!([{ "apiKey": [] }]),
-        );
-    };
-    match (&auth.mode, auth.provider.as_ref()) {
-        (everruns_platform::AppEndpointAuthMode::HttpBasic, _) => (
-            json!({ "httpBasic": { "httpAuthSecurityScheme": { "scheme": "basic" } } }),
-            json!([{ "httpBasic": [] }]),
-        ),
-        (
-            everruns_platform::AppEndpointAuthMode::GoogleOidc,
-            Some(everruns_platform::AppEndpointAuthProviderConfig::GoogleOidc { .. }),
-        ) => (
-            json!({
-                "googleOidc": {
-                    "openIdConnectSecurityScheme": {
-                        "openIdConnectUrl": "https://accounts.google.com/.well-known/openid-configuration"
-                    }
-                }
-            }),
-            json!([{ "googleOidc": auth.requirements.scopes.clone() }]),
-        ),
-        (
-            everruns_platform::AppEndpointAuthMode::Oidc,
-            Some(everruns_platform::AppEndpointAuthProviderConfig::Oidc { issuer, .. }),
-        ) => {
-            let discovery = format!(
-                "{}/.well-known/openid-configuration",
-                issuer.trim_end_matches('/')
-            );
-            (
-                json!({
-                    "oidc": {
-                        "openIdConnectSecurityScheme": {
-                            "openIdConnectUrl": discovery
-                        }
-                    }
-                }),
-                json!([{ "oidc": auth.requirements.scopes.clone() }]),
-            )
-        }
-        // The linked A2A schema models OAuth2 as concrete OpenAPI flows. An
-        // introspection-only channel has no token URL to publish, so advertise
-        // generic bearer auth rather than fabricating an unusable OAuth flow.
-        (everruns_platform::AppEndpointAuthMode::OAuth2Introspection, _) => (
-            json!({ "oauth2Bearer": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
-            json!([{ "oauth2Bearer": auth.requirements.scopes.clone() }]),
-        ),
-        (everruns_platform::AppEndpointAuthMode::Mtls, _) => (
-            json!({ "mtls": { "mtlsSecurityScheme": {} } }),
-            json!([{ "mtls": [] }]),
-        ),
-        (everruns_platform::AppEndpointAuthMode::Anonymous, _) => (json!({}), json!([])),
-        _ => (
-            json!({ "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
-            json!([{ "apiKey": [] }]),
-        ),
-    }
-}
-
 fn extract_a2a_api_key(headers: &HeaderMap) -> Option<String> {
     let auth = headers
         .get(axum::http::header::AUTHORIZATION)?
@@ -1636,49 +1499,6 @@ mod tests {
     }
 
     #[test]
-    fn oauth2_introspection_security_advertises_bearer_auth() {
-        let config = everruns_platform::A2aChannelConfig {
-            api_key_hash: "hash".to_string(),
-            api_key_prefix: "evra2a_abcd...".to_string(),
-            session_mode: everruns_platform::app::SessionBinding::Endpoint,
-            message: "{{a2a.text}}".to_string(),
-            agent_card_name: None,
-            agent_card_description: None,
-            rate_limit_per_minute: None,
-            auth: Some(everruns_platform::AppEndpointAuthConfig {
-                mode: everruns_platform::AppEndpointAuthMode::OAuth2Introspection,
-                provider: Some(
-                    everruns_platform::AppEndpointAuthProviderConfig::OAuth2Introspection {
-                        introspection_url: "https://auth.example.test/introspect".to_string(),
-                        client_id: None,
-                        client_secret: None,
-                        client_secret_configured: false,
-                    },
-                ),
-                requirements: everruns_platform::AppEndpointAuthRequirements {
-                    audiences: vec![],
-                    scopes: vec!["app:invoke".to_string()],
-                    claims: serde_json::Map::new(),
-                    subjects: vec![],
-                    groups: vec![],
-                    domains: vec![],
-                },
-            }),
-            signing_secret: None,
-        };
-
-        let (schemes, requirements) = a2a_security_for_config(&config, config.auth.as_ref());
-
-        assert_eq!(
-            schemes["oauth2Bearer"]["httpAuthSecurityScheme"]["scheme"],
-            "bearer"
-        );
-        assert_eq!(requirements, json!([{ "oauth2Bearer": ["app:invoke"] }]));
-        serde_json::from_value::<std::collections::HashMap<String, a2a::SecurityScheme>>(schemes)
-            .expect("securitySchemes should parse as linked A2A security schemes");
-    }
-
-    #[test]
     fn parse_message_params_joins_text_parts_and_extracts_metadata() {
         let params = json!({
             "message": {
@@ -1727,7 +1547,7 @@ mod tests {
             llm_call_count: None,
             status: None,
         });
-        let frame = translate_session_event(&data, "task-1", "ctx-1").unwrap();
+        let frame = translate_session_event(&data, "task-1", "ctx-1", "").unwrap();
         assert_eq!(frame["kind"], "status-update");
         assert_eq!(frame["taskId"], "task-1");
         assert_eq!(frame["contextId"], "ctx-1");
@@ -1746,7 +1566,7 @@ mod tests {
             error_fields: None,
             error_disclosure: None,
         });
-        let frame = translate_session_event(&data, "task-1", "ctx-1").unwrap();
+        let frame = translate_session_event(&data, "task-1", "ctx-1", "").unwrap();
         assert_eq!(frame["status"]["state"], "failed");
         assert_eq!(frame["final"], true);
     }
@@ -1763,7 +1583,7 @@ mod tests {
             iteration: None,
             phase: None,
         });
-        assert!(translate_session_event(&data, "t", "c").is_none());
+        assert!(translate_session_event(&data, "t", "c", "").is_none());
     }
 
     #[test]

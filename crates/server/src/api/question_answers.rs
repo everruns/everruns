@@ -476,6 +476,17 @@ pub struct SubmittedAnswer {
     pub secret_ref: Option<String>,
 }
 
+impl From<SubmittedAnswer> for AskUserAnswer {
+    fn from(answer: SubmittedAnswer) -> Self {
+        AskUserAnswer {
+            id: answer.id,
+            selected: answer.selected,
+            other_text: answer.other_text,
+            secret_ref: answer.secret_ref,
+        }
+    }
+}
+
 /// Result of answering a pending question set.
 #[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct QuestionAnswersResponse {
@@ -537,16 +548,7 @@ pub async fn submit_question_answers(
         SubmittedStatus::Answered => AskUserStatus::Answered,
         SubmittedStatus::Declined => AskUserStatus::Declined,
     };
-    let submitted: Vec<AskUserAnswer> = req
-        .answers
-        .into_iter()
-        .map(|answer| AskUserAnswer {
-            id: answer.id,
-            selected: answer.selected,
-            other_text: answer.other_text,
-            secret_ref: answer.secret_ref,
-        })
-        .collect();
+    let submitted: Vec<AskUserAnswer> = req.answers.into_iter().map(AskUserAnswer::from).collect();
 
     let resolver = QuestionResolver {
         db: &state.db,
