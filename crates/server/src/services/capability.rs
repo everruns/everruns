@@ -205,12 +205,23 @@ impl CapabilityService {
             if row.status != "active" {
                 continue;
             }
-            let mut definition: DeclarativeCapabilityDefinition =
-                serde_json::from_value(row.definition.clone()).unwrap_or_default();
+            let mut definition =
+                crate::domains::capabilities::queries::deserialize_persisted_definition(
+                    row.id,
+                    &row.name,
+                    &row.definition,
+                )
+                .unwrap_or_else(|_| {
+                    let mut definition = DeclarativeCapabilityDefinition::default();
+                    definition.status = CapabilityStatus::Retired;
+                    definition
+                });
             definition.name = row.name.clone();
             definition.display_name = row.display_name.clone();
             definition.description = row.description.clone();
-            definition.status = CapabilityStatus::Available;
+            if definition.status != CapabilityStatus::Retired {
+                definition.status = CapabilityStatus::Available;
+            }
             let mut info = declarative_capability_info(&row.name, definition);
             info.agent_count = 0;
             info.harness_count = 0;
@@ -220,8 +231,27 @@ impl CapabilityService {
         // Add active installed plugin capabilities.
         let plugin_rows = self.db.list_active_plugin_installs(org_id).await?;
         for row in plugin_rows {
-            let mut definition: everruns_core::DeclarativeCapabilityDefinition =
-                serde_json::from_value(row.definition.clone()).unwrap_or_default();
+            let unresolved =
+                crate::domains::capabilities::queries::legacy_mcp_servers_requiring_identity(
+                    &row.definition,
+                );
+            let mut definition = if unresolved.is_empty() {
+                crate::domains::capabilities::queries::deserialize_persisted_definition(
+                    row.id,
+                    &row.name,
+                    &row.definition,
+                )
+                .unwrap_or_else(|_| {
+                    let mut definition = DeclarativeCapabilityDefinition::default();
+                    definition.status = CapabilityStatus::Retired;
+                    definition
+                })
+            } else {
+                let mut definition = DeclarativeCapabilityDefinition::default();
+                definition.status = CapabilityStatus::NeedsIdentity;
+                definition
+            };
+            definition.name = row.name.clone();
             // Override display_name from manifest when the definition doesn't declare one.
             if definition.display_name.is_none() {
                 definition.display_name = row
@@ -371,12 +401,23 @@ impl CapabilityService {
                 if row.status == "deleted" {
                     return Ok(None);
                 }
-                let mut definition: DeclarativeCapabilityDefinition =
-                    serde_json::from_value(row.definition.clone()).unwrap_or_default();
+                let mut definition =
+                    crate::domains::capabilities::queries::deserialize_persisted_definition(
+                        row.id,
+                        &row.name,
+                        &row.definition,
+                    )
+                    .unwrap_or_else(|_| {
+                        let mut definition = DeclarativeCapabilityDefinition::default();
+                        definition.status = CapabilityStatus::Retired;
+                        definition
+                    });
                 definition.name = row.name;
                 definition.display_name = row.display_name;
                 definition.description = row.description;
-                definition.status = if row.status == "active" {
+                definition.status = if definition.status == CapabilityStatus::Retired {
+                    CapabilityStatus::Retired
+                } else if row.status == "active" {
                     CapabilityStatus::Available
                 } else {
                     CapabilityStatus::Retired
@@ -414,7 +455,11 @@ impl CapabilityService {
                 {
                     definition.description = desc.to_string();
                 }
-                definition.status = CapabilityStatus::Available;
+                if definition.status != CapabilityStatus::Retired
+                    && definition.status != CapabilityStatus::NeedsIdentity
+                {
+                    definition.status = CapabilityStatus::Available;
+                }
                 return Ok(Some(plugin_capability_info(plugin_public_id, definition)));
             }
             return Ok(None);
@@ -640,10 +685,12 @@ impl CapabilityService {
 mod tests {
     use super::*;
     use crate::storage::memory::InMemoryDatabase;
-    use crate::storage::models::{CreateMcpServerRow, UpdateMcpServerTools};
+    use crate::storage::models::{
+        CreateMcpServerRow, CreatePluginInstallRow, UpdateMcpServerTools,
+    };
     use everruns_capability::CapabilityRef;
     use everruns_core::McpServerAuthMode;
-    use everruns_provider::typed_id::SkillId;
+    use everruns_provider::typed_id::{PluginInstallId, SkillId};
 
     fn make_service() -> CapabilityService {
         let db = Arc::new(StorageBackend::InMemory(Arc::new(InMemoryDatabase::new())));
@@ -730,6 +777,54 @@ mod tests {
         svc.invalidate_skills_cache(1).await;
         assert!(!is_cached(&svc, 1).await);
         assert!(is_cached(&svc, 2).await);
+    }
+
+    #[tokio::test]
+    async fn unresolved_plugin_is_listed_as_needs_identity() {
+        let svc = make_service();
+        let public_id = PluginInstallId::new().to_string();
+        svc.db
+            .create_plugin_install(
+                1,
+                CreatePluginInstallRow {
+                    public_id: public_id.clone(),
+                    name: "legacy_oauth".to_string(),
+                    marketplace_id: None,
+                    source: serde_json::json!({}),
+                    version: None,
+                    pinned_sha: None,
+                    manifest: serde_json::json!({
+                        "name": "legacy_oauth",
+                        "displayName": "Legacy OAuth",
+                        "description": "Needs an identity choice"
+                    }),
+                    definition: serde_json::json!({
+                        "name": "legacy_oauth",
+                        "description": "Needs an identity choice",
+                        "mcp_servers": {
+                            "remote": {
+                                "url": "https://example.com/mcp",
+                                "auth_mode": "oauth"
+                            }
+                        }
+                    }),
+                    warnings: serde_json::json!([]),
+                },
+            )
+            .await
+            .unwrap();
+        let capability_id = everruns_capability::plugin_capability_id(&public_id);
+
+        let listed = svc.list_all(1).await.unwrap();
+        let capability = listed
+            .iter()
+            .find(|capability| capability.id.as_str() == capability_id)
+            .expect("unresolved plugin stays visible");
+
+        assert_eq!(capability.status, CapabilityStatus::NeedsIdentity);
+        assert!(!capability.status.is_active());
+        assert!(capability.status.is_listed());
+        assert_eq!(capability.name, "Legacy OAuth");
     }
 
     #[tokio::test]

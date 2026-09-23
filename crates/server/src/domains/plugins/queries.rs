@@ -109,6 +109,10 @@ pub fn row_to_installed_plugin(
         capability_ref: plugin_capability_id(&install.public_id),
         status: install.status.clone(),
         warnings,
+        identity_required:
+            crate::domains::capabilities::queries::legacy_mcp_servers_requiring_identity(
+                &install.definition,
+            ),
         update_available,
         created_at: install.created_at,
         updated_at: install.updated_at,

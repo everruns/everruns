@@ -140,9 +140,13 @@ export function McpServersEditor({
             <Label>Authentication</Label>
             <Select
               value={server.authMode}
-              onValueChange={(value) =>
-                update(server.id, { authMode: value as McpServerEntry["authMode"] })
-              }
+              onValueChange={(value) => {
+                const authMode = value as McpServerEntry["authMode"];
+                update(server.id, {
+                  authMode,
+                  actsAs: authMode === "oauth" ? server.actsAs : "none",
+                });
+              }}
             >
               <SelectTrigger className="w-48">
                 <SelectValue />
@@ -150,20 +154,43 @@ export function McpServersEditor({
               <SelectContent>
                 <SelectItem value="none">None</SelectItem>
                 <SelectItem value="api_key">API key</SelectItem>
-                <SelectItem value="oauth">OAuth per user</SelectItem>
+                <SelectItem value="oauth">OAuth</SelectItem>
               </SelectContent>
             </Select>
           </div>
           {server.authMode === "oauth" && (
-            <div className="grid gap-1.5">
-              <Label htmlFor={`mcp-oauth-${server.id}`}>OAuth provider ID</Label>
-              <Input
-                id={`mcp-oauth-${server.id}`}
-                placeholder="atlassian"
-                value={server.oauthProviderId}
-                onChange={(e) => update(server.id, { oauthProviderId: e.target.value })}
-              />
-            </div>
+            <>
+              <div className="grid gap-1.5">
+                <Label htmlFor={`mcp-oauth-${server.id}`}>OAuth provider ID</Label>
+                <Input
+                  id={`mcp-oauth-${server.id}`}
+                  placeholder="atlassian"
+                  value={server.oauthProviderId}
+                  onChange={(e) => update(server.id, { oauthProviderId: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Acting identity</Label>
+                <Select
+                  value={server.actsAs}
+                  onValueChange={(value) =>
+                    update(server.id, { actsAs: value as McpServerEntry["actsAs"] })
+                  }
+                >
+                  <SelectTrigger className="w-64">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Choose an identity</SelectItem>
+                    <SelectItem value="user">Invoking user</SelectItem>
+                    <SelectItem value="service">Agent service</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Choose whose OAuth grant this capability can use.
+                </p>
+              </div>
+            </>
           )}
 
           <div className="flex items-center justify-between">

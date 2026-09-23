@@ -31,6 +31,7 @@ describe("declarative capability form conversions", () => {
         { id: "h2", key: "  ", value: "ignored" },
       ],
       authMode: "oauth",
+      actsAs: "user",
       oauthProviderId: "atlassian",
       toolDiscovery: false,
     };
@@ -41,6 +42,7 @@ describe("declarative capability form conversions", () => {
         url: "https://mcp.example.com/v1",
         headers: { "X-Env": "prod" },
         auth_mode: "oauth",
+        actsAs: "user",
         oauth_provider_id: "atlassian",
         tool_discovery: false,
       },
@@ -60,6 +62,7 @@ describe("declarative capability form conversions", () => {
     expect(entriesToMcpServers([entry])).toEqual({
       fs: {
         type: "stdio",
+        actsAs: "none",
         command: "npx",
         args: ["-y", "@modelcontextprotocol/server-filesystem"],
         env: { ROOT: "/tmp" },
@@ -73,8 +76,19 @@ describe("declarative capability form conversions", () => {
 
   it("round-trips MCP servers through parse and serialize", () => {
     const servers = {
-      remote: { type: "http", url: "https://a.example/mcp", headers: { Authorization: "x" } },
-      local: { type: "stdio", command: "run", args: ["--flag"], tool_discovery: false },
+      remote: {
+        type: "http",
+        url: "https://a.example/mcp",
+        headers: { Authorization: "x" },
+        actsAs: "none",
+      },
+      local: {
+        type: "stdio",
+        command: "run",
+        args: ["--flag"],
+        tool_discovery: false,
+        actsAs: "none",
+      },
     };
     expect(entriesToMcpServers(mcpServersToEntries(servers))).toEqual(servers);
   });
@@ -123,7 +137,9 @@ describe("declarative capability form conversions", () => {
       category: "Declarative",
       icon: "puzzle",
       system_prompt: "You are helpful.",
-      mcp_servers: { remote: { type: "http", url: "https://a.example/mcp" } },
+      mcp_servers: {
+        remote: { type: "http", url: "https://a.example/mcp", actsAs: "none" },
+      },
       skills: [
         {
           name: "helper",

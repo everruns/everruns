@@ -1,18 +1,20 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement, ReactNode } from "react";
-import { CatalogEntryRow } from "@/app/(main)/plugins/page";
+import { CatalogEntryRow, InstalledPluginCard } from "@/app/(main)/plugins/page";
 import { ApiError } from "@/lib/api/client";
 import type { InstalledPlugin, MarketplaceCatalogEntry } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 
 const mockInstallPlugin = jest.fn();
 const mockGetInstalledPlugins = jest.fn();
+const mockPatchInstalledPlugin = jest.fn();
 
 jest.mock("@/lib/api/plugins", () => ({
   ...jest.requireActual("@/lib/api/plugins"),
   installPlugin: (...args: unknown[]) => mockInstallPlugin(...args),
   getInstalledPlugins: (...args: unknown[]) => mockGetInstalledPlugins(...args),
+  patchInstalledPlugin: (...args: unknown[]) => mockPatchInstalledPlugin(...args),
 }));
 
 jest.mock("@/providers/org-provider", () => ({
@@ -41,6 +43,7 @@ function installedPlugin(overrides: Partial<InstalledPlugin> = {}): InstalledPlu
     capability_ref: "plugin:resend",
     status: "active",
     warnings: [],
+    identity_required: [],
     update_available: false,
     created_at: "2026-08-06T00:00:00Z",
     updated_at: "2026-08-06T00:00:00Z",
@@ -174,6 +177,65 @@ describe("Plugins page catalog install", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("already installed");
+    });
+  });
+});
+
+describe("Installed plugin identity policy", () => {
+  let queryClient: QueryClient;
+  let wrapper: ({ children }: { children: ReactNode }) => ReactElement;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+  });
+
+  it("shows identity choices and blocks activation while a server is unresolved", () => {
+    render(
+      <InstalledPluginCard
+        plugin={installedPlugin({
+          status: "disabled",
+          identity_required: ["linear"],
+        })}
+        onUninstall={jest.fn()}
+      />,
+      { wrapper },
+    );
+
+    expect(screen.getByText("Needs identity")).toBeVisible();
+    expect(screen.getByText("linear")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Enable" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Use invoking user" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Use agent service" })).toBeEnabled();
+  });
+
+  it("submits only the selected server identity", async () => {
+    mockPatchInstalledPlugin.mockReturnValue(new Promise(() => undefined));
+    render(
+      <InstalledPluginCard
+        plugin={installedPlugin({
+          status: "disabled",
+          identity_required: ["linear", "github"],
+        })}
+        onUninstall={jest.fn()}
+      />,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Use invoking user" })[1]);
+
+    await waitFor(() => {
+      expect(mockPatchInstalledPlugin).toHaveBeenCalledWith("plugin-1", {
+        mcp_server_identities: { github: "user" },
+      });
     });
   });
 });

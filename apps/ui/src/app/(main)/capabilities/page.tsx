@@ -57,6 +57,8 @@ function getStatusLabel(status: CapabilityStatus): string {
       return "Coming Soon";
     case "deprecated":
       return "Deprecated";
+    case "needs_identity":
+      return "Needs Identity";
     case "retired":
       return "Removed";
   }
@@ -210,6 +212,7 @@ export default function CapabilitiesPage() {
       available: list.filter((c) => c.status === "available").length,
       coming_soon: list.filter((c) => c.status === "coming_soon").length,
       deprecated: list.filter((c) => c.status === "deprecated").length,
+      needs_identity: list.filter((c) => c.status === "needs_identity").length,
     } satisfies Record<StatusTab, number>;
   }, [capabilities]);
 
@@ -256,6 +259,7 @@ export default function CapabilitiesPage() {
     { value: "available" as const, label: "Available" },
     { value: "coming_soon" as const, label: "Coming Soon" },
     { value: "deprecated" as const, label: "Deprecated" },
+    { value: "needs_identity" as const, label: "Needs Identity" },
   ];
 
   return (
@@ -276,6 +280,7 @@ export default function CapabilitiesPage() {
             <span>{statusCounts.available} available</span>
             <span>{statusCounts.coming_soon} coming soon</span>
             <span>{statusCounts.deprecated} deprecated</span>
+            <span>{statusCounts.needs_identity} need identity</span>
           </>
         }
         actions={

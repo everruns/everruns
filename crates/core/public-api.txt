@@ -194,6 +194,7 @@ everruns_core::capability_types::CapabilityStatus	enum
 everruns_core::capability_types::CapabilityStatus::Available	variant
 everruns_core::capability_types::CapabilityStatus::ComingSoon	variant
 everruns_core::capability_types::CapabilityStatus::Deprecated	variant
+everruns_core::capability_types::CapabilityStatus::NeedsIdentity	variant
 everruns_core::capability_types::CapabilityStatus::Retired	variant
 everruns_core::capability_types::MountAccess	enum
 everruns_core::capability_types::MountAccess::ReadOnly	variant

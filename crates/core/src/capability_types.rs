@@ -81,6 +81,9 @@ pub enum CapabilityStatus {
     /// Removal announced. Still fully functional; surfaces warn and discourage
     /// new attachments.
     Deprecated,
+    /// Stored contribution requires an owner or administrator to choose
+    /// whether authenticated MCP access acts as the invoking user or service.
+    NeedsIdentity,
     /// Removed. Registered but inert, and hidden from capability catalogs.
     Retired,
 }
@@ -108,6 +111,7 @@ impl std::fmt::Display for CapabilityStatus {
             CapabilityStatus::Available => write!(f, "available"),
             CapabilityStatus::ComingSoon => write!(f, "coming_soon"),
             CapabilityStatus::Deprecated => write!(f, "deprecated"),
+            CapabilityStatus::NeedsIdentity => write!(f, "needs_identity"),
             CapabilityStatus::Retired => write!(f, "retired"),
         }
     }
@@ -568,6 +572,7 @@ mod tests {
             (CapabilityStatus::Available, "available"),
             (CapabilityStatus::ComingSoon, "coming_soon"),
             (CapabilityStatus::Deprecated, "deprecated"),
+            (CapabilityStatus::NeedsIdentity, "needs_identity"),
             (CapabilityStatus::Retired, "retired"),
         ] {
             assert_eq!(
@@ -593,11 +598,13 @@ mod tests {
         assert!(CapabilityStatus::Available.is_active());
         assert!(CapabilityStatus::Deprecated.is_active());
         assert!(!CapabilityStatus::ComingSoon.is_active());
+        assert!(!CapabilityStatus::NeedsIdentity.is_active());
         assert!(!CapabilityStatus::Retired.is_active());
 
         assert!(CapabilityStatus::Available.is_listed());
         assert!(CapabilityStatus::ComingSoon.is_listed());
         assert!(CapabilityStatus::Deprecated.is_listed());
+        assert!(CapabilityStatus::NeedsIdentity.is_listed());
         assert!(!CapabilityStatus::Retired.is_listed());
     }
 }

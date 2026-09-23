@@ -146,9 +146,19 @@ pub async fn validate_capability_refs(
             let row = db
                 .get_plugin_install_by_public_id(org_id, public_id)
                 .await?;
-            if row.is_none_or(|row| row.status != "active") {
+            if row.as_ref().is_none_or(|row| row.status != "active") {
                 return Err(BadRequestError::new(format!(
                     "Plugin capability '{cap_id}' is unavailable. Remove it or reinstall the plugin and select the new capability."
+                ))
+                .into());
+            }
+            let unresolved = super::queries::legacy_mcp_servers_requiring_identity(
+                &row.expect("active plugin row was checked").definition,
+            );
+            if !unresolved.is_empty() {
+                return Err(BadRequestError::new(format!(
+                    "Plugin capability '{cap_id}' needs an acting identity for MCP server(s): {}",
+                    unresolved.join(", ")
                 ))
                 .into());
             }
@@ -418,6 +428,57 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn plugin_with_unresolved_authenticated_mcp_identity_is_rejected() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let capability_ref = create_plugin(&db, "legacy-oauth").await;
+        let public_id = parse_plugin_capability_id(&capability_ref).unwrap();
+        let plugin = db
+            .get_plugin_install_by_public_id(DEFAULT_ORG_ID, public_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let definition = serde_json::json!({
+            "name": "legacy-oauth",
+            "description": "Legacy OAuth plugin",
+            "mcp_servers": {
+                "remote": {
+                    "url": "https://example.com/mcp",
+                    "auth_mode": "oauth"
+                }
+            }
+        });
+        db.update_plugin_install(
+            DEFAULT_ORG_ID,
+            plugin.id,
+            crate::storage::models::UpdatePluginInstall {
+                definition: Some(definition.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let error = validate_capability_refs(
+            &db,
+            DEFAULT_ORG_ID,
+            &[AgentCapabilityConfig::new(capability_ref.as_str())],
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("needs an acting identity"));
+        assert!(error.to_string().contains("remote"));
+        assert_eq!(
+            db.get_plugin_install(DEFAULT_ORG_ID, plugin.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .definition,
+            definition
+        );
     }
 
     #[tokio::test]

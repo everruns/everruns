@@ -12,7 +12,7 @@ use super::types::*;
 use super::{PLUGIN_MANAGE, PLUGIN_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    DeploymentGrade, Policy, everruns_provider::typed_id::PluginInstallId,
+    DeploymentGrade, McpServerActsAs, Policy, everruns_provider::typed_id::PluginInstallId,
     everruns_provider::typed_id::PluginMarketplaceId,
 };
 use everruns_core::plugins::compile_plugin;
@@ -62,6 +62,52 @@ fn validate_marketplace_name(name: &str) -> Result<(), CommandError> {
         ));
     }
     Ok(())
+}
+
+fn apply_mcp_identity_choices(
+    definition: &serde_json::Value,
+    choices: &std::collections::BTreeMap<String, McpServerActsAs>,
+) -> Result<serde_json::Value, CommandError> {
+    if choices.is_empty() {
+        return Err(CommandError::bad_request(
+            "mcp_server_identities must contain at least one choice",
+        ));
+    }
+
+    let unresolved: std::collections::HashSet<_> =
+        crate::domains::capabilities::queries::legacy_mcp_servers_requiring_identity(definition)
+            .into_iter()
+            .collect();
+    let mut updated = definition.clone();
+    let servers = updated
+        .get_mut("mcp_servers")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| CommandError::bad_request("Plugin has no MCP servers"))?;
+
+    for (name, acts_as) in choices {
+        if acts_as.is_none() {
+            return Err(CommandError::bad_request(format!(
+                "MCP server '{name}' must act as user or service"
+            )));
+        }
+        if !unresolved.contains(name) {
+            return Err(CommandError::bad_request(format!(
+                "MCP server '{name}' does not require an identity choice"
+            )));
+        }
+        let server = servers
+            .get_mut(name)
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| {
+                CommandError::bad_request(format!("MCP server '{name}' is not an object"))
+            })?;
+        server.insert(
+            "actsAs".to_string(),
+            serde_json::Value::String(acts_as.to_string()),
+        );
+    }
+
+    Ok(updated)
 }
 
 fn validate_source_type(source_type: &str, _ctx: &Ctx) -> Result<(), CommandError> {
@@ -1100,7 +1146,7 @@ inventory::submit! { CommandDescriptor::of::<InstallPluginCmd>() }
 // PatchInstalledPlugin (enable / disable)
 // ============================================================================
 
-/// Update an installed plugin's status (enable/disable).
+/// Update an installed plugin's status or resolve legacy MCP identities.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PatchInstalledPlugin {
     /// Public plugin ID.
@@ -1116,7 +1162,7 @@ impl Command for PatchInstalledPlugin {
         CommandMeta {
             name: "patch_installed_plugin",
             category: "plugins",
-            description: "Update an installed plugin's status (active/disabled).",
+            description: "Update an installed plugin's status or MCP acting identities.",
             method: "PATCH",
             path: "/v1/plugins/{id}",
         }
@@ -1142,6 +1188,25 @@ impl Command for PatchInstalledPlugin {
                 "status must be 'active' or 'disabled'",
             ));
         }
+        let definition = self
+            .req
+            .mcp_server_identities
+            .as_ref()
+            .map(|choices| apply_mcp_identity_choices(&existing.definition, choices))
+            .transpose()?;
+        let effective_definition = definition.as_ref().unwrap_or(&existing.definition);
+        if self.req.status.as_deref() == Some("active") {
+            let unresolved =
+                crate::domains::capabilities::queries::legacy_mcp_servers_requiring_identity(
+                    effective_definition,
+                );
+            if !unresolved.is_empty() {
+                return Err(CommandError::bad_request(format!(
+                    "Plugin needs an acting identity for MCP server(s): {}",
+                    unresolved.join(", ")
+                )));
+            }
+        }
         let updated = ctx
             .db
             .update_plugin_install(
@@ -1149,6 +1214,7 @@ impl Command for PatchInstalledPlugin {
                 existing.id,
                 UpdatePluginInstall {
                     status: self.req.status,
+                    definition,
                     ..Default::default()
                 },
             )
@@ -1456,5 +1522,77 @@ mod tests {
             ..Default::default()
         })
         .unwrap();
+    }
+
+    #[test]
+    fn legacy_plugin_identity_choices_are_explicit_and_targeted() {
+        let stored = serde_json::json!({
+            "name": "legacy",
+            "description": "Legacy plugin",
+            "mcp_servers": {
+                "oauth": {
+                    "url": "https://example.com/mcp",
+                    "auth_mode": "oauth"
+                },
+                "service": {
+                    "url": "https://example.com/service",
+                    "auth_mode": "oauth"
+                },
+                "public": {
+                    "url": "https://example.com/public"
+                }
+            }
+        });
+        let choices = std::collections::BTreeMap::from([
+            ("oauth".to_string(), McpServerActsAs::User),
+            ("service".to_string(), McpServerActsAs::Service),
+        ]);
+
+        let updated = apply_mcp_identity_choices(&stored, &choices).unwrap();
+
+        assert_eq!(updated["mcp_servers"]["oauth"]["actsAs"], "user");
+        assert_eq!(updated["mcp_servers"]["service"]["actsAs"], "service");
+        assert!(
+            updated["mcp_servers"]["public"].get("actsAs").is_none(),
+            "the explicit management action must not rewrite unrelated legacy entries"
+        );
+        assert!(
+            stored["mcp_servers"]["oauth"].get("actsAs").is_none(),
+            "the caller retains the original row until persistence succeeds"
+        );
+    }
+
+    #[test]
+    fn legacy_plugin_identity_choices_reject_none_and_known_servers() {
+        let stored = serde_json::json!({
+            "mcp_servers": {
+                "oauth": {"url": "https://example.com/mcp", "auth_mode": "oauth"},
+                "known": {
+                    "url": "https://example.com/known",
+                    "auth_mode": "oauth",
+                    "actsAs": "service"
+                }
+            }
+        });
+
+        for (name, acts_as, expected) in [
+            (
+                "oauth",
+                McpServerActsAs::None,
+                "must act as user or service",
+            ),
+            (
+                "known",
+                McpServerActsAs::Service,
+                "does not require an identity choice",
+            ),
+        ] {
+            let error = apply_mcp_identity_choices(
+                &stored,
+                &std::collections::BTreeMap::from([(name.to_string(), acts_as)]),
+            )
+            .unwrap_err();
+            assert!(error.message().contains(expected), "{}", error.message());
+        }
     }
 }
