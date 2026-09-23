@@ -2,9 +2,9 @@
 //
 // Detects repeated identical tool calls and injects a warning to break the loop.
 // Uses MessageFilterProvider::post_load to scan loaded messages for repeated
-// tool-call batches. When N consecutive assistant messages carry the same
-// tool-call signature, a system warning is appended telling the model to
-// change its approach.
+// tool-call batches. Warnings are reconstructed after the input that triggered
+// them, so later requests replay the same prompt prefix even after the loop
+// clears.
 
 use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
@@ -125,6 +125,72 @@ impl Capability for LoopDetectionCapability {
     }
 }
 
+fn loop_warning(
+    messages: &[RuntimeMessage],
+    threshold: usize,
+    mutating_failure_threshold: usize,
+) -> Option<String> {
+    if let Some(failed) = repeated_failed_mutating_result(messages, mutating_failure_threshold) {
+        return Some(format!(
+            "\u{26a0} Loop detected: `{}` failed the same way {} times in a row with identical \
+             arguments. The detailed error is already present in the preceding tool result. \
+             Repeating the same call will not make progress and may cause side effects. \
+             Change the arguments, correct the tool contract, inspect a new source of context, \
+             or report the blocker instead of retrying it unchanged.",
+            failed.tool_name, failed.consecutive,
+        ));
+    }
+
+    if repeated_tool_result_count(messages, threshold).is_some() {
+        return Some(
+            "Loop detected: the same tool call produced the same result repeatedly. \
+             The approach is not making progress. Try different arguments, inspect a \
+             new source of context, change state before retrying, or report the blocker."
+                .to_string(),
+        );
+    }
+
+    if let Some(repetition) = repeated_read_range_count(messages, threshold) {
+        tracing::debug!(
+            tool_name = repetition.tool_name,
+            path = repetition.path,
+            repeated_range_count = repetition.repeated_range_count,
+            total_recent_reads = repetition.total_recent_reads,
+            "Reconstructing repeated read-range warning"
+        );
+        return Some(
+            "Loop detected: you are repeatedly reading the same file or output range. \
+             Use the content already returned, read a different range once, change approach, \
+             or report the blocker."
+                .to_string(),
+        );
+    }
+
+    let mut recent_hashes: Vec<u64> = Vec::new();
+    for message in messages.iter().rev() {
+        if message.role != RuntimeMessageRole::Agent {
+            continue;
+        }
+        let tool_calls = message.tool_calls();
+        if tool_calls.is_empty() {
+            break;
+        }
+        recent_hashes.push(hash_tool_calls(&tool_calls));
+    }
+    let target = *recent_hashes.first()?;
+    (recent_hashes
+        .iter()
+        .take_while(|&&hash| hash == target)
+        .count()
+        >= threshold)
+        .then(|| {
+            "\u{26a0} Loop detected: you called the same tool(s) with identical arguments \
+         multiple times in a row. The approach is not working. \
+         Try a different command, different arguments, or report the blocker."
+                .to_string()
+        })
+}
+
 struct LoopDetectionFilter;
 
 impl MessageFilterProvider for LoopDetectionFilter {
@@ -151,91 +217,33 @@ impl MessageFilterProvider for LoopDetectionFilter {
             .unwrap_or(DEFAULT_MUTATING_FAILURE_THRESHOLD)
             .max(1);
 
-        // Check the mutating-tool failure loop first: it uses a lower threshold
-        // and a more specific, actionable message, so it should interrupt before
-        // the generic repeated-result warning fires.
-        if let Some(failed) = repeated_failed_mutating_result(messages, mutating_failure_threshold)
+        let source = std::mem::take(messages);
+        let mut analyzed = Vec::with_capacity(source.len());
+        let mut replayed = Vec::with_capacity(source.len());
+        for message in source {
+            let is_input = matches!(
+                message.role,
+                RuntimeMessageRole::User | RuntimeMessageRole::ToolResult
+            );
+            analyzed.push(message.clone());
+            replayed.push(message);
+            if is_input
+                && let Some(warning) =
+                    loop_warning(&analyzed, threshold, mutating_failure_threshold)
+            {
+                replayed.push(RuntimeMessage::turn_scoped_system(warning));
+            }
+        }
+        if analyzed.last().is_some_and(|message| {
+            !matches!(
+                message.role,
+                RuntimeMessageRole::User | RuntimeMessageRole::ToolResult
+            )
+        }) && let Some(warning) = loop_warning(&analyzed, threshold, mutating_failure_threshold)
         {
-            tracing::warn!(
-                tool_name = failed.tool_name,
-                consecutive = failed.consecutive,
-                threshold = mutating_failure_threshold,
-                "Loop detected: mutating tool failed identically and repeatedly"
-            );
-            messages.push(RuntimeMessage::system(format!(
-                "\u{26a0} Loop detected: `{}` failed the same way {} times in a row with identical \
-                 arguments. The detailed error is already present in the preceding tool result. \
-                 Repeating the same call will not make progress and may cause side effects. \
-                 Change the arguments, correct the tool contract, inspect a new source of context, \
-                 or report the blocker instead of retrying it unchanged.",
-                failed.tool_name, failed.consecutive,
-            )));
-            return;
+            replayed.push(RuntimeMessage::turn_scoped_system(warning));
         }
-
-        if let Some(consecutive) = repeated_tool_result_count(messages, threshold) {
-            tracing::warn!(
-                consecutive,
-                threshold,
-                "Loop detected: identical tool call/result pairs repeated"
-            );
-            messages.push(RuntimeMessage::system(
-                "Loop detected: the same tool call produced the same result repeatedly. \
-                 The approach is not making progress. Try different arguments, inspect a \
-                 new source of context, change state before retrying, or report the blocker.",
-            ));
-            return;
-        }
-
-        if let Some(repetition) = repeated_read_range_count(messages, threshold) {
-            tracing::warn!(
-                tool_name = repetition.tool_name,
-                path = repetition.path,
-                repeated_range_count = repetition.repeated_range_count,
-                total_recent_reads = repetition.total_recent_reads,
-                threshold,
-                "Loop detected: read tool repeatedly requested the same range"
-            );
-            messages.push(RuntimeMessage::system(
-                "Loop detected: you are repeatedly reading the same file or output range. \
-                 Use the content already returned, read a different range once, change approach, \
-                 or report the blocker.",
-            ));
-            return;
-        }
-
-        // Collect tool call signature hashes from recent agent messages (reverse order).
-        let mut recent_hashes: Vec<u64> = Vec::new();
-        for msg in messages.iter().rev() {
-            if msg.role != RuntimeMessageRole::Agent {
-                continue;
-            }
-            let tool_calls = msg.tool_calls();
-            if tool_calls.is_empty() {
-                // Agent message without tool calls breaks the pattern
-                break;
-            }
-            recent_hashes.push(hash_tool_calls(&tool_calls));
-        }
-
-        // recent_hashes is in reverse chronological order.
-        // Check for `threshold` consecutive identical hashes.
-        if recent_hashes.len() >= threshold {
-            let target = recent_hashes[0];
-            let consecutive = recent_hashes.iter().take_while(|&&h| h == target).count();
-            if consecutive >= threshold {
-                tracing::warn!(
-                    consecutive,
-                    threshold,
-                    "Loop detected: identical tool calls repeated"
-                );
-                messages.push(RuntimeMessage::system(
-                    "\u{26a0} Loop detected: you called the same tool(s) with identical arguments \
-                     multiple times in a row. The approach is not working. \
-                     Try a different command, different arguments, or report the blocker.",
-                ));
-            }
-        }
+        *messages = replayed;
     }
 }
 
@@ -794,6 +802,46 @@ mod tests {
         let last = messages.last().unwrap();
         assert_eq!(last.role, RuntimeMessageRole::System);
         assert!(last.text().unwrap().contains("same tool call produced"));
+    }
+
+    #[test]
+    fn cleared_loop_keeps_the_earlier_warning_and_only_appends() {
+        let filter = LoopDetectionFilter;
+        let mut stored = vec![RuntimeMessage::user("do something")];
+        for _ in 0..3 {
+            stored.push(agent_msg_with_calls(vec![(
+                "tool_a",
+                serde_json::json!({"x": 1}),
+            )]));
+            stored.push(tool_result_msg("call:a", "result:a"));
+        }
+
+        let mut first = stored.clone();
+        filter.post_load(&mut first, &default_config());
+        assert!(first.last().unwrap().is_turn_scoped_reminder());
+
+        stored.push(agent_msg_with_calls(vec![(
+            "tool_b",
+            serde_json::json!({"x": 2}),
+        )]));
+        stored.push(tool_result_msg("call:b", "result:b"));
+        let mut second = stored;
+        filter.post_load(&mut second, &default_config());
+
+        let prompt_view = |messages: &[RuntimeMessage]| {
+            messages
+                .iter()
+                .map(|message| {
+                    (
+                        message.role.clone(),
+                        message.content_to_llm_string(),
+                        message.is_turn_scoped_reminder(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(prompt_view(&second[..first.len()]), prompt_view(&first));
+        assert_eq!(second.len(), first.len() + 2);
     }
 
     #[test]

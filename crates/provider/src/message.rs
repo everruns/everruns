@@ -6,6 +6,10 @@
 
 use crate::tool_types::ToolCall;
 
+/// Internal marker that asks a capable driver to expire a system reminder at
+/// the next user message. Drivers must remove it before serialization.
+pub const TURN_SCOPED_SYSTEM_MARKER: &str = "\u{0}everruns:turn-scoped-system\u{0}";
+
 /// Message format for LLM calls (provider-agnostic): the request-shaped view a
 /// driver turns into provider wire format. Distinct from the lossless stored
 /// `everruns_core::message::RuntimeMessage`, which `llm_conversions` maps here.
@@ -93,6 +97,12 @@ impl Message {
                 );
             }
         }
+    }
+
+    /// Mark this system message as scoped to the current model turn.
+    pub fn mark_turn_scoped_system(&mut self) {
+        debug_assert_eq!(self.role, MessageRole::System);
+        self.prepend_text_prefix(TURN_SCOPED_SYSTEM_MARKER);
     }
 }
 

@@ -876,6 +876,10 @@ impl ReasonAtom {
         let mut messages = transcript::order_native_results(assembled.messages);
         let mut message_source_sequence = assembled.message_source_sequence;
         let model_with_provider = assembled.model;
+        let supports_clear_at = facts::supports_clear_at(
+            &model_with_provider.provider_type,
+            &model_with_provider.model,
+        );
         let resolved_model_id = assembled.resolved_model_id;
         let resolved_locale = assembled.resolved_locale;
         let compaction_policy = assembled.compaction_policy;
@@ -1097,9 +1101,9 @@ impl ReasonAtom {
             stateful_response_continuation || restored_checkpoint.is_some(),
         );
 
-        // 9c. Dynamic facts (e.g. the current time) as `<facts>` user messages
-        // after each input the model answered, as of that input, so a replayed
-        // history is byte-identical to what was sent (see `facts`).
+        // 9c. Dynamic facts after each answered input, rendered as of that input.
+        // Capable Anthropic models use turn-scoped system messages; others keep
+        // the user-message fallback (see `facts`).
         let render_facts = |at| {
             crate::capabilities::render_facts_block(&crate::capabilities::collect_dynamic_facts(
                 &resolved_capability_configs,
@@ -1109,7 +1113,7 @@ impl ReasonAtom {
             ))
         };
         let (context_messages, volatile_suffix_len) =
-            facts::interleave_facts(context_messages, render_facts);
+            facts::interleave_facts(context_messages, render_facts, supports_clear_at);
         let mut context_messages = context_messages;
 
         // 9d. Prepend conversation context (e.g. hierarchical AGENTS.md) as
@@ -1184,6 +1188,7 @@ impl ReasonAtom {
             {
                 llm_msg.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
             }
+            facts::mark_turn_scoped(&mut llm_msg, msg, supports_clear_at);
             llm_messages.push(llm_msg);
         }
         if stripped_error_count > 0 {

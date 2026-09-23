@@ -1,5 +1,3 @@
-// Message types
-//
 // RuntimeMessage is a DB-agnostic message type that represents
 // a single message in the conversation history.
 //
@@ -16,6 +14,7 @@ use utoipa::ToSchema;
 
 use everruns_provider::execution_phase::{ExecutionPhase, PhaseSource};
 use everruns_provider::reasoning::ReasoningContentPart;
+mod turn_scope;
 /// Message role in the conversation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]

@@ -10,10 +10,10 @@
 //! - [`Volatility::Dynamic`] facts are **never** placed in the prefix. Instead
 //!   the runtime adds a `<facts>` block after each input the model answered (a
 //!   user message or a tool-result batch), with values as of that input (see
-//!   `ReasonAtom`). Earlier blocks are re-rendered from the same timestamps on
-//!   every request, so the history the model saw is replayed byte-identical:
-//!   the cached prefix holds, and so do thinking blocks that providers bind to
-//!   the conversation that produced them.
+//!   `ReasonAtom`). Anthropic models with `clear_at` receive a turn-scoped
+//!   system message; other models retain the user-message fallback. Earlier
+//!   blocks are re-rendered from the same timestamps on every request, so the
+//!   history the model saw is replayed byte-identical.
 //!
 //! This is the generic mechanism behind "the current time is X" without either
 //! (a) baking a changing timestamp into the system prompt — which busts the

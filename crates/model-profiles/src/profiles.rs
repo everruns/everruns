@@ -1,7 +1,6 @@
 // Hardcoded LLM Model Profiles
 //
 // This module provides model profiles based on models.dev structure.
-// Profiles are matched by provider_type + model_id.
 //
 // IMPORTANT: Never guess or extrapolate profile data (pricing, limits, capabilities).
 // Always source from https://github.com/sst/models.dev/tree/dev/providers
@@ -14,6 +13,7 @@
 // Data source: https://github.com/sst/models.dev/tree/dev/providers
 // Cross-referenced with official Anthropic and OpenAI documentation
 
+mod anthropic_capabilities;
 mod gpt6;
 
 use crate::types::{
@@ -2558,10 +2558,10 @@ fn anthropic_family_supports_tool_search(family: &str) -> bool {
 }
 
 fn anthropic_profile_data(model_id: &str) -> Option<ModelProfile> {
-    // `tool_search` is assigned centrally by family below, so the per-literal
-    // `tool_search` value in the match arms is a placeholder and is overwritten.
+    // Assign family capabilities centrally; match arms hold model-specific data.
     anthropic_profile_data_inner(model_id).map(|mut profile| {
         profile.tool_search = anthropic_family_supports_tool_search(&profile.family);
+        anthropic_capabilities::apply(&mut profile);
         profile
     })
 }
