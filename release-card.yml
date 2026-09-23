@@ -1,19 +1,19 @@
-version: 0.29.0
-date: 2026-09-18
+version: 0.30.0
+date: 2026-09-23
 headline:
-  - One command line,
-  - Platform Chat v2.
+  - Agents that
+  - ask, and run.
 summary:
-  - A unified command line serves people and agents,
-  - soft approval ships on by default,
-  - and typed judgments back a new guardrail engine.
+  - Agents can pause to ask a person a question,
+  - a host_shell tool runs bash under a policy,
+  - and Slack installs in one click.
 highlights:
-  - title: Platform Chat v2
-    description: One command line serves people and agents, with Platform Chat rebuilt on it.
-    source: "#3680"
-  - title: Soft approval
-    description: A soft-approval capability, on by default for Generic and Platform Chat.
-    source: "#3655"
-  - title: Typed judgments and guardrails
-    description: Typed judgments become a capability backing a guardrail engine.
-    source: "#3644"
+  - title: Ask User
+    description: Agents pause mid-run to ask a person, keeping credentials out of the log.
+    source: "#3735"
+  - title: Host Shell
+    description: A host_shell capability runs the bash tool as real child processes under a kernel policy.
+    source: "#3719"
+  - title: Slack one-click install
+    description: Install the Slack app in one click, taking its credentials straight from OAuth.
+    source: "#3724"

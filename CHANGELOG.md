@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-09-23
+
+### Highlights
+
+- **Ask User** - Agents can pause mid-run to ask a person a question: an inline UI card in Platform Chat ([#3735](https://github.com/everruns/everruns/pull/3735)), in-process and hosted strategies ([#3738](https://github.com/everruns/everruns/pull/3738)), expiry that resolves to declared defaults ([#3757](https://github.com/everruns/everruns/pull/3757)), and credential collection that never enters the log or agent context ([#3747](https://github.com/everruns/everruns/pull/3747)). Enabled on the default chat harnesses ([#3737](https://github.com/everruns/everruns/pull/3737)).
+- **Host Shell** - A new `host_shell` capability runs the `bash` tool as real child processes on the machine hosting the agent, bounded by a kernel policy (Seatbelt and Landlock). Behind the `host-shell` feature on `everruns` or `everruns-host`; see `examples/host-shell-agent` ([#3719](https://github.com/everruns/everruns/pull/3719)).
+- **Slack one-click install** - Install the Slack app in one click, creating the app and taking its credentials straight from OAuth ([#3724](https://github.com/everruns/everruns/pull/3724)).
+- **New models** - Claude Opus 5.5 lands as the recommended Opus ([#3769](https://github.com/everruns/everruns/pull/3769)), and GPT-6 Sol and Luna arrive with GPT-6 Luna as the default chat and utility model ([#3771](https://github.com/everruns/everruns/pull/3771), [#3774](https://github.com/everruns/everruns/pull/3774)).
+- **Agent endpoint budget controls** - Set spend budgets on agent endpoints from the UI ([#3719](https://github.com/everruns/everruns/pull/3719)).
+
 ### Added
 
 - **Host Shell** - A new `host_shell` capability runs the `bash` tool as real
@@ -16,6 +26,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `HostCompute::contained` makes `ContainmentLevel::Native` a level a target can
   actually enforce. Behind the `host-shell` feature on `everruns` or
   `everruns-host`. See `examples/host-shell-agent`.
+
+### What's Changed
+
+- refactor: rename Classifier to Decisions, jev_evaluate to jev_decision ([#3743](https://github.com/everruns/everruns/pull/3743)) by [@chaliy](https://github.com/chaliy)
+- feat(utility-llm): default the utility model to GPT-6 Luna ([#3774](https://github.com/everruns/everruns/pull/3774)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump zod from 4.6.1 to 4.6.5 in /apps/docs ([#3764](https://github.com/everruns/everruns/pull/3764)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump zod from 4.6.1 to 4.6.5 in /apps/ui ([#3767](https://github.com/everruns/everruns/pull/3767)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump cron-parser from 5.10.0 to 5.10.1 in /apps/ui ([#3766](https://github.com/everruns/everruns/pull/3766)) by [@dependabot](https://github.com/dependabot)
+- chore(deps-dev): bump @google/design.md from 0.3.0 to 0.4.0 in /apps/ui ([#3765](https://github.com/everruns/everruns/pull/3765)) by [@dependabot](https://github.com/dependabot)
+- test(llm-tests): label synthetic quota-skip tests with a fake model ([#3773](https://github.com/everruns/everruns/pull/3773)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump marked from 18.0.12 to 18.0.13 in /apps/docs ([#3763](https://github.com/everruns/everruns/pull/3763)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump rust from 1.98.0-slim to 1.98.1-slim in /crates/worker ([#3761](https://github.com/everruns/everruns/pull/3761)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump rust from 1.98.0-slim-bookworm to 1.98.1-slim-bookworm in /docker ([#3762](https://github.com/everruns/everruns/pull/3762)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump rust from 1.98.0-slim to 1.98.1-slim in /crates/server ([#3760](https://github.com/everruns/everruns/pull/3760)) by [@dependabot](https://github.com/dependabot)
+- fix(provider): retry quota 429s instead of failing as request-too-large ([#3772](https://github.com/everruns/everruns/pull/3772)) by [@chaliy](https://github.com/chaliy)
+- fix(ask-user): refuse a credential-shaped free-text answer before it persists ([#3758](https://github.com/everruns/everruns/pull/3758)) by [@chaliy](https://github.com/chaliy)
+- feat(ask-user): resolve an expired question with its declared defaults ([#3757](https://github.com/everruns/everruns/pull/3757)) by [@chaliy](https://github.com/chaliy)
+- fix(framework): gate the Classifier::new doctest on the feature it needs ([#3759](https://github.com/everruns/everruns/pull/3759)) by [@chaliy](https://github.com/chaliy)
+- fix(capabilities): fail closed when a stored definition cannot be parsed ([#3756](https://github.com/everruns/everruns/pull/3756)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): enforce limits on native non-streaming completions ([#3731](https://github.com/everruns/everruns/pull/3731)) by [@chaliy](https://github.com/chaliy)
+- fix(framework): preserve harness requirement on resume ([#3730](https://github.com/everruns/everruns/pull/3730)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): consume approval cards atomically ([#3729](https://github.com/everruns/everruns/pull/3729)) by [@chaliy](https://github.com/chaliy)
+- feat(facade): AgentBuilder::backends(HostBackends) for caller-owned persistence ([#3733](https://github.com/everruns/everruns/pull/3733)) by [@shbodya](https://github.com/shbodya)
+- test(llm-tests): cover Opus 5.5 in basic and hosted tool-search live tests ([#3770](https://github.com/everruns/everruns/pull/3770)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add GPT-6 Sol and Luna, make GPT-6 Luna the default ([#3771](https://github.com/everruns/everruns/pull/3771)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add Claude Opus 5.5 and make it the recommended Opus ([#3769](https://github.com/everruns/everruns/pull/3769)) by [@chaliy](https://github.com/chaliy)
+- test(sse): pin that dropping the stream releases the connection slot ([#3755](https://github.com/everruns/everruns/pull/3755)) by [@chaliy](https://github.com/chaliy)
+- docs: public pages for Ask User ([#3751](https://github.com/everruns/everruns/pull/3751)) by [@chaliy](https://github.com/chaliy)
+- ci(guards): stop discarding the error that explains a guard failure ([#3752](https://github.com/everruns/everruns/pull/3752)) by [@chaliy](https://github.com/chaliy)
+- docs(examples): a terminal responder and a concierge that asks ([#3750](https://github.com/everruns/everruns/pull/3750)) by [@chaliy](https://github.com/chaliy)
+- ci(observability): ratchet log sites that interpolate errors into messages ([#3749](https://github.com/everruns/everruns/pull/3749)) by [@chaliy](https://github.com/chaliy)
+- fix(server): apply RequestIdLayer outside the access log so request_id is set ([#3748](https://github.com/everruns/everruns/pull/3748)) by [@chaliy](https://github.com/chaliy)
+- fix(observability): report one pool exhaustion as one incident ([#3741](https://github.com/everruns/everruns/pull/3741)) by [@chaliy](https://github.com/chaliy)
+- feat(ask-user): collect a credential without it entering the log or context ([#3747](https://github.com/everruns/everruns/pull/3747)) by [@chaliy](https://github.com/chaliy)
+- feat(engine): never park an ask_user question nobody can answer ([#3744](https://github.com/everruns/everruns/pull/3744)) by [@chaliy](https://github.com/chaliy)
+- fix(server): reject stale Ask User answers ([#3746](https://github.com/everruns/everruns/pull/3746)) by [@warp-factories](https://github.com/warp-factories)
+- fix(ui): one definition of the question-answers request types ([#3745](https://github.com/everruns/everruns/pull/3745)) by [@chaliy](https://github.com/chaliy)
+- fix(platform): enforce command capability boundary ([#3709](https://github.com/everruns/everruns/pull/3709)) by [@chaliy](https://github.com/chaliy)
+- fix(server): recover parked-turn resolution after crashes ([#3742](https://github.com/everruns/everruns/pull/3742)) by [@warp-factories](https://github.com/warp-factories)
+- fix(ci): require a token boundary before a credential prefix ([#3728](https://github.com/everruns/everruns/pull/3728)) by [@chaliy](https://github.com/chaliy)
+- feat(server): one operation resolves an ask_user question set ([#3732](https://github.com/everruns/everruns/pull/3732)) by [@chaliy](https://github.com/chaliy)
+- fix(server): share one session SQL database store in the composed server ([#3727](https://github.com/everruns/everruns/pull/3727)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): stop republishing merged PR bodies into the release log ([#3722](https://github.com/everruns/everruns/pull/3722)) by [@chaliy](https://github.com/chaliy)
+- EVE-1052: Document the Agent Integrations Slack flow ([#3736](https://github.com/everruns/everruns/pull/3736)) by [@warp-factories](https://github.com/warp-factories)
+- feat(mcp): add Linear application actor preset ([#3734](https://github.com/everruns/everruns/pull/3734)) by [@warp-factories](https://github.com/warp-factories)
+- fix(provider): report provider-served response model — EVE-1049 ([#3739](https://github.com/everruns/everruns/pull/3739)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): share one generic harness between platform and Framework ([#3725](https://github.com/everruns/everruns/pull/3725)) by [@chaliy](https://github.com/chaliy)
+- feat(harnesses): enable ask_user on default chat harnesses ([#3737](https://github.com/everruns/everruns/pull/3737)) by [@warp-factories](https://github.com/warp-factories)
+- feat(framework): add in-process Ask User strategy ([#3738](https://github.com/everruns/everruns/pull/3738)) by [@warp-factories](https://github.com/warp-factories)
+- feat(ui): add Ask User inline card — EVE-1055 ([#3735](https://github.com/everruns/everruns/pull/3735)) by [@warp-factories](https://github.com/warp-factories)
+- test(mcp): add OAuth harness and gRPC acts-as coverage ([#3716](https://github.com/everruns/everruns/pull/3716)) by [@warp-factories](https://github.com/warp-factories)
+- feat(slack): one-click install — create the app and take the credentials from OAuth ([#3724](https://github.com/everruns/everruns/pull/3724)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add agent endpoint budget controls (EVE-1051) ([#3719](https://github.com/everruns/everruns/pull/3719)) by [@warp-factories](https://github.com/warp-factories)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.30.0.
 
 ## [0.29.0] - 2026-09-18
 
