@@ -21,6 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { switchProject as switchProjectApi } from "@/lib/api/users";
 import { useProjects } from "@/hooks/use-projects";
 import { useOrg } from "@/providers/org-provider";
+import { useFeatureFlagsState } from "@/providers/feature-flags-provider";
 import { PROJECT_STORAGE_KEY } from "@/lib/constants";
 import type { Project } from "@/lib/api/types";
 
@@ -53,6 +54,10 @@ export interface ProjectContextValue {
   setCurrentProject: (project: Project) => void;
   isLoading: boolean;
   isSwitching: boolean;
+  /** The project scope is settled: flags are loaded, and either Projects is
+   *  off or a current project is picked. Until then `currentProject` may still
+   *  change from null to the org's project on its own. */
+  isResolved: boolean;
 }
 
 const ProjectContext = createContext<ProjectContextValue | undefined>(undefined);
@@ -65,6 +70,7 @@ interface ProjectProviderProps {
 export function ProjectProvider({ children, initialProjectId = null }: ProjectProviderProps) {
   const { currentOrg } = useOrg();
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
+  const { flags, isLoading: flagsLoading } = useFeatureFlagsState();
   const [currentProject, setCurrentProjectState] = useState<Project | null>(null);
   const [isSwitching, setIsSwitching] = useState(false);
   const router = useRouter();
@@ -138,17 +144,31 @@ export function ProjectProvider({ children, initialProjectId = null }: ProjectPr
       setCurrentProject,
       isLoading: projectsLoading,
       isSwitching,
+      isResolved: !flagsLoading && (!flags.projects || currentProject !== null),
     }),
-    [currentProject, projects, setCurrentProject, projectsLoading, isSwitching],
+    [
+      currentProject,
+      projects,
+      setCurrentProject,
+      projectsLoading,
+      isSwitching,
+      flagsLoading,
+      flags.projects,
+    ],
   );
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
 }
 
-/** The active project's id, or null outside a `ProjectProvider` (unit tests,
- *  surfaces rendered without one). Unlike `useProject`, never throws. */
-export function useCurrentProjectId(): string | null {
-  return useContext(ProjectContext)?.currentProject?.id ?? null;
+/** The active project's id and whether it is settled (see `isResolved`).
+ *  Outside a `ProjectProvider` (unit tests, surfaces rendered without one) it
+ *  is `{ projectId: null, resolved: true }`. Unlike `useProject`, never throws. */
+export function useProjectScope(): { projectId: string | null; resolved: boolean } {
+  const context = useContext(ProjectContext);
+  return {
+    projectId: context?.currentProject?.id ?? null,
+    resolved: context?.isResolved ?? true,
+  };
 }
 
 export function useProject() {

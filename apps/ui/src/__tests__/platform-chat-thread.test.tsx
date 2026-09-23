@@ -46,8 +46,9 @@ jest.mock("@/providers/org-provider", () => ({
 
 // Each project has its own thread; switching projects does not reload the page.
 let currentProjectId: string | null = null;
+let projectResolved = true;
 jest.mock("@/providers/project-provider", () => ({
-  useCurrentProjectId: () => currentProjectId,
+  useProjectScope: () => ({ projectId: currentProjectId, resolved: projectResolved }),
 }));
 
 let orgCounter = 0;
@@ -82,6 +83,7 @@ beforeEach(() => {
   orgCounter += 1;
   currentOrgId = `org_${orgCounter}`;
   currentProjectId = null;
+  projectResolved = true;
   jest.clearAllMocks();
   mockCreate.mockResolvedValue({ id: "ses_new" });
   mockPin.mockResolvedValue(undefined);
@@ -239,4 +241,22 @@ test("creates a thread per project within one page load", async () => {
   currentProjectId = "proj_marketing";
   render(<Probe ensure />);
   await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(2));
+});
+
+test("waits for the project to settle so first load creates one thread, not two", async () => {
+  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, isRead: true, error: null });
+
+  // First load: the project is not known yet.
+  projectResolved = false;
+  const { rerender } = render(<Probe ensure />);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(mockCreate).not.toHaveBeenCalled();
+
+  // The org's project resolves while the thread list is still empty.
+  projectResolved = true;
+  currentProjectId = "proj_default";
+  rerender(<Probe ensure />);
+  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+  rerender(<Probe ensure />);
+  expect(mockCreate).toHaveBeenCalledTimes(1);
 });

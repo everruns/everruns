@@ -37,7 +37,7 @@ import { useHarnesses } from "@/hooks";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { useCreateSession, usePinSession } from "@/hooks/use-sessions";
 import { useOrg } from "@/providers/org-provider";
-import { useCurrentProjectId } from "@/providers/project-provider";
+import { useProjectScope } from "@/providers/project-provider";
 import {
   CHAT_THREAD_TAG,
   PLATFORM_CHAT_HARNESS_NAME,
@@ -75,8 +75,11 @@ export function usePlatformChatThread(
   const { ensure = false } = options;
   const { currentOrg } = useOrg();
   const orgId = currentOrg?.public_id;
-  const projectId = useCurrentProjectId();
-  const scope = orgId ? `${orgId}:${projectId ?? ""}` : undefined;
+  const { projectId, resolved: projectResolved } = useProjectScope();
+  // Wait for the project to settle: on first load it goes from unknown to the
+  // org's project, and keying the guard on the unsettled value mints a second
+  // thread while the first create is still in flight.
+  const scope = orgId && projectResolved ? `${orgId}:${projectId ?? ""}` : undefined;
   // Archived threads count as existing: a user who put the thread away must not
   // get a fresh one on the next page load.
   const {
