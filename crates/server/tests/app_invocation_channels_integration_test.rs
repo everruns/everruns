@@ -30,7 +30,7 @@ async fn create_app(
         .json();
 
     server
-        .seed_app_endpoint(
+        .seed_app_channel(
             name,
             agent["id"].as_str().unwrap(),
             channel_type,
@@ -40,7 +40,7 @@ async fn create_app(
 }
 
 async fn publish_app(server: &TestServer, app_id: &str) {
-    server.set_app_endpoints_live(app_id, true).await;
+    server.set_app_channels_live(app_id, true).await;
 }
 #[tokio::test]
 async fn webhook_legacy_app_channel_mismatch_is_not_found() {

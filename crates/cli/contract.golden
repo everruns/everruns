@@ -4,6 +4,14 @@ agent-identities get	--id!
 agent-identities list	--include-archived --search
 agent-identities update	--avatar-url --description --id! --locale --name --status --timezone
 agents analyze	--capabilities --mcp-servers --system-prompt --tools
+agents channels create	--agent-id! --channel-config --channel-type! --enabled
+agents channels delete	--agent-id! --channel-id!
+agents channels get	--agent-id! --channel-id!
+agents channels list	--agent-id!
+agents channels publish	--agent-id! --channel-id!
+agents channels trigger	--agent-id! --channel-id!
+agents channels unpublish	--agent-id! --channel-id!
+agents channels update	--agent-id! --channel-config --channel-id! --enabled
 agents check-name	--exclude-id --name!
 agents check-rules delete	--rule-id!
 agents check-rules list	
@@ -13,14 +21,6 @@ agents create	--description --file/-f --harness/-H --initial-files-dir --model -
 agents credentials create	--agent-id --description --label! --mcp-server-name! --parameter-name! --tool-name!
 agents delete	<agent_id>!
 agents destroy	--id <id>
-agents endpoints create	--agent-id! --channel-config --channel-type! --enabled
-agents endpoints delete	--agent-id! --endpoint-id!
-agents endpoints get	--agent-id! --endpoint-id!
-agents endpoints list	--agent-id!
-agents endpoints publish	--agent-id! --endpoint-id!
-agents endpoints trigger	--agent-id! --endpoint-id!
-agents endpoints unpublish	--agent-id! --endpoint-id!
-agents endpoints update	--agent-id! --channel-config --enabled --endpoint-id!
 agents export	--id <id>
 agents exposures resume	--agent <agent_id>
 agents exposures suspend	--agent <agent_id>

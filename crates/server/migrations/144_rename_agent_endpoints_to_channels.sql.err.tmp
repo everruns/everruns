@@ -1,0 +1,1 @@
+psql:crates/server/migrations/144_rename_agent_endpoints_to_channels.sql:15: ERROR:  relation "agent_endpoints" does not exist

@@ -1,11 +1,9 @@
 use crate::auth::ResolvedOrg;
-use crate::domains::agent_endpoints::types::{
-    CreateAgentEndpointRequest, UpdateAgentEndpointRequest,
-};
-use crate::domains::agent_endpoints::{
-    CreateAgentEndpoint, DeleteAgentEndpoint, GetAgentEndpoint, ListAgentEndpoints,
-    PublishAgentEndpoint, TriggerAgentEndpoint, TriggerAgentEndpointOutput, UnpublishAgentEndpoint,
-    UpdateAgentEndpointCmd,
+use crate::domains::agent_channels::types::{CreateAgentChannelRequest, UpdateAgentChannelRequest};
+use crate::domains::agent_channels::{
+    CreateAgentChannel, DeleteAgentChannel, GetAgentChannel, ListAgentChannels,
+    PublishAgentChannel, TriggerAgentChannel, TriggerAgentChannelOutput, UnpublishAgentChannel,
+    UpdateAgentChannelCmd,
 };
 use crate::domains::common::Command;
 use axum::{
@@ -24,159 +22,157 @@ pub type AppState = super::agent_triggers::AppState;
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/agents/{agent_id}/endpoints",
-            get(list_agent_endpoints).post(create_agent_endpoint),
+            "/v1/agents/{agent_id}/channels",
+            get(list_agent_channels).post(create_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
-            get(get_agent_endpoint)
-                .patch(update_agent_endpoint)
-                .delete(delete_agent_endpoint),
+            "/v1/agents/{agent_id}/channels/{channel_id}",
+            get(get_agent_channel)
+                .patch(update_agent_channel)
+                .delete(delete_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish",
-            post(publish_agent_endpoint),
+            "/v1/agents/{agent_id}/channels/{channel_id}/publish",
+            post(publish_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish",
-            post(unpublish_agent_endpoint),
+            "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
+            post(unpublish_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger",
-            post(trigger_agent_endpoint),
+            "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
+            post(trigger_agent_channel),
         )
         .with_state(state)
 }
 
 #[utoipa::path(
-    description = "List ingress endpoints owned by an Agent.",
+    description = "List ingress channels owned by an Agent.",
     get,
-    path = "/v1/agents/{agent_id}/endpoints",
+    path = "/v1/agents/{agent_id}/channels",
     params(("agent_id" = String, Path, description = "Agent ID or name")),
     responses(
-        (status = 200, description = "Agent endpoints", body = Vec<AppChannel>),
+        (status = 200, description = "Agent channels", body = Vec<AppChannel>),
         (status = 404, description = "Agent not found", body = ErrorResponse)
     ),
-    tag = "agent-endpoints"
+    tag = "agent-channels"
 )]
-pub async fn list_agent_endpoints(
+pub async fn list_agent_channels(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> ApiResult<Vec<AppChannel>> {
-    let endpoints = ListAgentEndpoints { agent_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(Json(endpoints))
+    let channels = ListAgentChannels { agent_id }.run(&state.ctx(&org)).await?;
+    Ok(Json(channels))
 }
 
 #[utoipa::path(
-    description = "Create an ingress endpoint owned by an Agent.",
+    description = "Create an ingress channel owned by an Agent.",
     post,
-    path = "/v1/agents/{agent_id}/endpoints",
+    path = "/v1/agents/{agent_id}/channels",
     params(("agent_id" = String, Path, description = "Agent ID or name")),
-    request_body = CreateAgentEndpointRequest,
+    request_body = CreateAgentChannelRequest,
     responses(
-        (status = 201, description = "Endpoint created", body = AppChannel),
-        (status = 400, description = "Invalid endpoint", body = ErrorResponse),
+        (status = 201, description = "Channel created", body = AppChannel),
+        (status = 400, description = "Invalid channel", body = ErrorResponse),
         (status = 404, description = "Agent not found", body = ErrorResponse)
     ),
-    tag = "agent-endpoints"
+    tag = "agent-channels"
 )]
-pub async fn create_agent_endpoint(
+pub async fn create_agent_channel(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
-    Json(req): Json<CreateAgentEndpointRequest>,
+    Json(req): Json<CreateAgentChannelRequest>,
 ) -> Result<(StatusCode, Json<AppChannel>), (StatusCode, Json<ErrorResponse>)> {
-    let endpoint = CreateAgentEndpoint { agent_id, req }
+    let channel = CreateAgentChannel { agent_id, req }
         .run(&state.ctx(&org))
         .await?;
-    Ok((StatusCode::CREATED, Json(endpoint)))
+    Ok((StatusCode::CREATED, Json(channel)))
 }
 
 #[utoipa::path(
-    description = "Get one ingress endpoint owned by an Agent.",
+    description = "Get one ingress channel owned by an Agent.",
     get,
-    path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
-        ("endpoint_id" = String, Path, description = "Endpoint ID")
+        ("channel_id" = String, Path, description = "Channel ID")
     ),
     responses(
-        (status = 200, description = "Agent endpoint", body = AppChannel),
-        (status = 404, description = "Endpoint not found", body = ErrorResponse)
+        (status = 200, description = "Agent channel", body = AppChannel),
+        (status = 404, description = "Channel not found", body = ErrorResponse)
     ),
-    tag = "agent-endpoints"
+    tag = "agent-channels"
 )]
-pub async fn get_agent_endpoint(
+pub async fn get_agent_channel(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((agent_id, endpoint_id)): Path<(String, String)>,
+    Path((agent_id, channel_id)): Path<(String, String)>,
 ) -> ApiResult<AppChannel> {
-    let endpoint = GetAgentEndpoint {
+    let channel = GetAgentChannel {
         agent_id,
-        endpoint_id,
+        channel_id,
     }
     .run(&state.ctx(&org))
     .await?;
-    Ok(Json(endpoint))
+    Ok(Json(channel))
 }
 
 #[utoipa::path(
-    description = "Update an ingress endpoint owned by an Agent.",
+    description = "Update an ingress channel owned by an Agent.",
     patch,
-    path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
-        ("endpoint_id" = String, Path, description = "Endpoint ID")
+        ("channel_id" = String, Path, description = "Channel ID")
     ),
-    request_body = UpdateAgentEndpointRequest,
+    request_body = UpdateAgentChannelRequest,
     responses(
-        (status = 200, description = "Endpoint updated", body = AppChannel),
-        (status = 400, description = "Invalid endpoint", body = ErrorResponse),
-        (status = 404, description = "Endpoint not found", body = ErrorResponse)
+        (status = 200, description = "Channel updated", body = AppChannel),
+        (status = 400, description = "Invalid channel", body = ErrorResponse),
+        (status = 404, description = "Channel not found", body = ErrorResponse)
     ),
-    tag = "agent-endpoints"
+    tag = "agent-channels"
 )]
-pub async fn update_agent_endpoint(
+pub async fn update_agent_channel(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((agent_id, endpoint_id)): Path<(String, String)>,
-    Json(req): Json<UpdateAgentEndpointRequest>,
+    Path((agent_id, channel_id)): Path<(String, String)>,
+    Json(req): Json<UpdateAgentChannelRequest>,
 ) -> ApiResult<AppChannel> {
-    let endpoint = UpdateAgentEndpointCmd {
+    let channel = UpdateAgentChannelCmd {
         agent_id,
-        endpoint_id,
+        channel_id,
         req,
     }
     .run(&state.ctx(&org))
     .await?;
-    Ok(Json(endpoint))
+    Ok(Json(channel))
 }
 
 #[utoipa::path(
-    description = "Delete an ingress endpoint owned by an Agent.",
+    description = "Delete an ingress channel owned by an Agent.",
     delete,
-    path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
-        ("endpoint_id" = String, Path, description = "Endpoint ID")
+        ("channel_id" = String, Path, description = "Channel ID")
     ),
     responses(
-        (status = 200, description = "Endpoint deleted"),
-        (status = 404, description = "Endpoint not found", body = ErrorResponse)
+        (status = 200, description = "Channel deleted"),
+        (status = 404, description = "Channel not found", body = ErrorResponse)
     ),
-    tag = "agent-endpoints"
+    tag = "agent-channels"
 )]
-pub async fn delete_agent_endpoint(
+pub async fn delete_agent_channel(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((agent_id, endpoint_id)): Path<(String, String)>,
+    Path((agent_id, channel_id)): Path<(String, String)>,
 ) -> ApiResult<Value> {
-    let result = DeleteAgentEndpoint {
+    let result = DeleteAgentChannel {
         agent_id,
-        endpoint_id,
+        channel_id,
     }
     .run(&state.ctx(&org))
     .await?;
@@ -184,84 +180,84 @@ pub async fn delete_agent_endpoint(
 }
 
 #[utoipa::path(
-    description = "Publish an Agent endpoint so it can accept ingress traffic.",
+    description = "Publish an Agent channel so it can accept ingress traffic.",
     post,
-    path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}/publish",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
-        ("endpoint_id" = String, Path, description = "Endpoint ID")
+        ("channel_id" = String, Path, description = "Channel ID")
     ),
     responses(
-        (status = 200, description = "Endpoint published", body = AppChannel),
-        (status = 404, description = "Endpoint not found", body = ErrorResponse)
+        (status = 200, description = "Channel published", body = AppChannel),
+        (status = 404, description = "Channel not found", body = ErrorResponse)
     ),
-    tag = "agent-endpoints"
+    tag = "agent-channels"
 )]
-pub async fn publish_agent_endpoint(
+pub async fn publish_agent_channel(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((agent_id, endpoint_id)): Path<(String, String)>,
+    Path((agent_id, channel_id)): Path<(String, String)>,
 ) -> ApiResult<AppChannel> {
-    let endpoint = PublishAgentEndpoint {
+    let channel = PublishAgentChannel {
         agent_id,
-        endpoint_id,
+        channel_id,
     }
     .run(&state.ctx(&org))
     .await?;
-    Ok(Json(endpoint))
+    Ok(Json(channel))
 }
 
 #[utoipa::path(
-    description = "Unpublish an Agent endpoint so it no longer accepts ingress traffic.",
+    description = "Unpublish an Agent channel so it no longer accepts ingress traffic.",
     post,
-    path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
-        ("endpoint_id" = String, Path, description = "Endpoint ID")
+        ("channel_id" = String, Path, description = "Channel ID")
     ),
     responses(
-        (status = 200, description = "Endpoint unpublished", body = AppChannel),
-        (status = 404, description = "Endpoint not found", body = ErrorResponse)
+        (status = 200, description = "Channel unpublished", body = AppChannel),
+        (status = 404, description = "Channel not found", body = ErrorResponse)
     ),
-    tag = "agent-endpoints"
+    tag = "agent-channels"
 )]
-pub async fn unpublish_agent_endpoint(
+pub async fn unpublish_agent_channel(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((agent_id, endpoint_id)): Path<(String, String)>,
+    Path((agent_id, channel_id)): Path<(String, String)>,
 ) -> ApiResult<AppChannel> {
-    let endpoint = UnpublishAgentEndpoint {
+    let channel = UnpublishAgentChannel {
         agent_id,
-        endpoint_id,
+        channel_id,
     }
     .run(&state.ctx(&org))
     .await?;
-    Ok(Json(endpoint))
+    Ok(Json(channel))
 }
 
 #[utoipa::path(
-    description = "Run a published Agent schedule endpoint now.",
+    description = "Run a published Agent schedule channel now.",
     post,
-    path = "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger",
+    path = "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
-        ("endpoint_id" = String, Path, description = "Endpoint ID")
+        ("channel_id" = String, Path, description = "Channel ID")
     ),
     responses(
-        (status = 200, description = "Endpoint triggered", body = TriggerAgentEndpointOutput),
-        (status = 400, description = "Endpoint cannot run", body = ErrorResponse),
-        (status = 404, description = "Endpoint not found", body = ErrorResponse)
+        (status = 200, description = "Channel triggered", body = TriggerAgentChannelOutput),
+        (status = 400, description = "Channel cannot run", body = ErrorResponse),
+        (status = 404, description = "Channel not found", body = ErrorResponse)
     ),
-    tag = "agent-endpoints"
+    tag = "agent-channels"
 )]
-pub async fn trigger_agent_endpoint(
+pub async fn trigger_agent_channel(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path((agent_id, endpoint_id)): Path<(String, String)>,
-) -> ApiResult<TriggerAgentEndpointOutput> {
-    let result = TriggerAgentEndpoint {
+    Path((agent_id, channel_id)): Path<(String, String)>,
+) -> ApiResult<TriggerAgentChannelOutput> {
+    let result = TriggerAgentChannel {
         agent_id,
-        endpoint_id,
+        channel_id,
     }
     .run(&state.ctx(&org))
     .await?;

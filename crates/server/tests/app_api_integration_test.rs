@@ -29,7 +29,7 @@ async fn create_app_with_api_endpoint(server: &TestServer, name: &str) -> (Value
     let api_key = format!("evr_app_{}", uuid::Uuid::new_v4().simple());
     let api_key_hash = hex::encode(Sha256::digest(api_key.as_bytes()));
     let app = server
-        .seed_app_endpoint(
+        .seed_app_channel(
             name,
             agent["id"].as_str().unwrap(),
             "api_endpoint",
@@ -70,7 +70,7 @@ async fn api_endpoint_legacy_app_channel_mismatch_is_not_found() {
 }
 
 async fn publish_app(server: &TestServer, app_id: &str) {
-    server.set_app_endpoints_live(app_id, true).await;
+    server.set_app_channels_live(app_id, true).await;
 }
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
@@ -225,7 +225,7 @@ async fn api_endpoint_unpublished_app_is_forbidden() {
         )
         .await
         .status();
-    let endpoint_status = server
+    let channel_status = server
         .request_raw(
             Method::POST,
             &format!("/v1/e/{channel_id}/sessions"),
@@ -239,7 +239,7 @@ async fn api_endpoint_unpublished_app_is_forbidden() {
         .status();
 
     assert_eq!(legacy_status, StatusCode::FORBIDDEN);
-    assert_eq!(endpoint_status, legacy_status);
+    assert_eq!(channel_status, legacy_status);
 }
 
 #[tokio::test]

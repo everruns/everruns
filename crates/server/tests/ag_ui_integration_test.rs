@@ -25,12 +25,12 @@ fn unique_id(prefix: &str) -> String {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_rejects_ambiguity() {
+async fn test_ag_ui_channel_routes_distinguish_channels_and_legacy_alias_rejects_ambiguity() {
     let server = TestServer::in_memory().await;
     let agent_id = create_llmsim_agent(&server).await;
     let app: App = serde_json::from_value(
         server
-            .seed_app_endpoint(
+            .seed_app_channel(
                 &unique_id("Multi AG-UI App"),
                 &agent_id,
                 "ag_ui",
@@ -44,7 +44,7 @@ async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_reject
     .expect("fixture App");
     let first_channel_id = app.channels[0].public_id.to_string();
     let second_channel = server
-        .seed_endpoint_for_app(
+        .seed_channel_for_app(
             &app.public_id.to_string(),
             "ag_ui",
             json!({
@@ -55,7 +55,7 @@ async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_reject
         .await;
     let second_channel_id = second_channel["id"].as_str().unwrap();
     server
-        .set_app_endpoints_live(&app.public_id.to_string(), true)
+        .set_app_channels_live(&app.public_id.to_string(), true)
         .await;
 
     let payload = json!({
@@ -102,7 +102,7 @@ async fn test_ag_ui_endpoint_routes_distinguish_channels_and_legacy_alias_reject
     .assert_status(StatusCode::CONFLICT);
     assert_eq!(
         legacy.json::<Value>()["detail"],
-        "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/e/{channel_id}/ag-ui URL"
+        "Multiple enabled AG-UI channels; use a channel-scoped /v1/e/{channel_id}/ag-ui URL"
     );
 }
 
@@ -169,7 +169,7 @@ async fn create_published_ag_ui_app(server: &TestServer) -> App {
 
     let app: App = serde_json::from_value(
         server
-            .seed_app_endpoint(
+            .seed_app_channel(
                 &unique_id("AG-UI App"),
                 &agent_id,
                 "ag_ui",
@@ -181,7 +181,7 @@ async fn create_published_ag_ui_app(server: &TestServer) -> App {
 
     serde_json::from_value(
         server
-            .set_app_endpoints_live(&app.public_id.to_string(), true)
+            .set_app_channels_live(&app.public_id.to_string(), true)
             .await,
     )
     .expect("published fixture App")
@@ -225,7 +225,7 @@ async fn test_encrypted_legacy_auth_without_encryption_denies_anonymous_ingress(
         .encrypt_string(&serde_json::to_string(&legacy).unwrap())
         .unwrap();
     sqlx::query(
-        "UPDATE agent_endpoints
+        "UPDATE agent_channels
          SET channel_config = '{}'::jsonb, channel_config_encrypted = $1,
              auth = NULL, auth_encrypted = NULL
          WHERE id = $2",
@@ -272,7 +272,7 @@ async fn assert_malformed_legacy_auth_denies_anonymous_ingress(encrypted: bool) 
         (legacy, None)
     };
     sqlx::query(
-        "UPDATE agent_endpoints
+        "UPDATE agent_channels
          SET channel_config = $1, channel_config_encrypted = $2,
              auth = NULL, auth_encrypted = NULL
          WHERE id = $3",

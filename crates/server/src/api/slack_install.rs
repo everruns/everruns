@@ -1,4 +1,4 @@
-//! One-click Slack install: create the endpoint's app, then finish its OAuth.
+//! One-click Slack install: create the Slack channel's app, then finish its OAuth.
 //!
 //! Replaces three of the four values an operator used to copy out of
 //! api.slack.com. `apps.manifest.create` returns the signing secret and the
@@ -98,7 +98,7 @@ pub fn routes(state: SlackInstallState) -> Router {
 #[derive(Serialize)]
 pub struct BeginInstallResponse {
     /// Send the operator here. Slack shows one consent screen and then
-    /// redirects to this endpoint's callback.
+    /// redirects to this channel's callback.
     pub authorize_url: String,
 }
 
@@ -108,34 +108,34 @@ async fn begin_install(
     State(state): State<SlackInstallState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<BeginInstallResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let (app, endpoint) = super::slack_events::resolve_slack_channel(
+    let (app, slack_channel) = super::slack_events::resolve_slack_channel(
         &state.slack,
-        SlackTarget::Endpoint(channel_id.clone()),
+        SlackTarget::Channel(channel_id.clone()),
     )
     .await?;
 
-    // The webhook routes resolve an endpoint by public id alone because Slack
+    // The webhook routes resolve a channel by public id alone because Slack
     // is the caller and there is no org to check against. Here there is one,
     // and skipping it would let any authenticated user provision an app onto
-    // another org's endpoint.
+    // another org's channel.
     if app.org_id != org.org_id {
-        return Err(ErrorResponse::new("Endpoint not found").into_response(StatusCode::NOT_FOUND));
+        return Err(ErrorResponse::new("Channel not found").into_response(StatusCode::NOT_FOUND));
     }
-    if endpoint.channel_type != ChannelType::Slack {
-        return Err(ErrorResponse::new("Endpoint is not a Slack endpoint")
+    if slack_channel.channel_type != ChannelType::Slack {
+        return Err(ErrorResponse::new("Channel is not a Slack channel")
             .into_response(StatusCode::BAD_REQUEST));
     }
 
-    let mut config = parse_config(&endpoint.channel_config);
+    let mut config = parse_config(&slack_channel.channel_config);
 
-    // Reuse the app the endpoint already has rather than creating a second one
+    // Reuse the app the channel already has rather than creating a second one
     // per retry: a click that failed after creation but before consent would
     // otherwise orphan one app per attempt.
     let mut provisioned = match config.provisioned_app.take() {
         Some(existing) => existing,
         None => {
             let manifest =
-                super::slack_events::manifest_yaml_for_endpoint(&state.slack, &app, &endpoint)
+                super::slack_events::manifest_yaml_for_channel(&state.slack, &app, &slack_channel)
                     .await?;
             let created = state
                 .provisioner
@@ -159,10 +159,10 @@ async fn begin_install(
     provisioned.install_state_issued_at = Some(chrono::Utc::now());
     config.provisioned_app = Some(provisioned);
 
-    persist(&state, endpoint.internal_id, &config).await?;
+    persist(&state, slack_channel.internal_id, &config).await?;
     let redirect_uri = super::slack_events::slack_oauth_redirect_url(
         &state.slack.api_base_url,
-        &endpoint.public_id.to_string(),
+        &slack_channel.public_id.to_string(),
     );
     Ok(Json(BeginInstallResponse {
         authorize_url: format!(
@@ -187,7 +187,7 @@ pub struct CallbackQuery {
 /// this route cannot be authenticated because it is reached by a browser
 /// redirect. Without a stored single-use nonce an attacker could drive it with
 /// an authorization code from their own workspace and bind that workspace to
-/// someone else's endpoint. The nonce is compared in constant time, checked for
+/// someone else's channel. The nonce is compared in constant time, checked for
 /// expiry, and cleared before the exchange result is stored, so a replay of the
 /// same callback URL finds nothing to match.
 async fn finish_install(
@@ -226,14 +226,14 @@ async fn finish_install_inner(
     let code = query.code.filter(|c| !c.is_empty()).ok_or("missing code")?;
     let presented = query.state.unwrap_or_default();
 
-    let (_, endpoint) = super::slack_events::resolve_slack_channel(
+    let (_, slack_channel) = super::slack_events::resolve_slack_channel(
         &state.slack,
-        SlackTarget::Endpoint(channel_id.to_string()),
+        SlackTarget::Channel(channel_id.to_string()),
     )
     .await
-    .map_err(|_| "endpoint not found")?;
+    .map_err(|_| "channel not found")?;
 
-    let mut config = parse_config(&endpoint.channel_config);
+    let mut config = parse_config(&slack_channel.channel_config);
     let mut provisioned = config.provisioned_app.take().ok_or("no provisioned app")?;
     spend_install_state(&mut provisioned, &presented, chrono::Utc::now())?;
     let client_id = provisioned.client_id.clone();
@@ -242,7 +242,7 @@ async fn finish_install_inner(
     }
     let redirect_uri = super::slack_events::slack_oauth_redirect_url(
         &state.slack.api_base_url,
-        &endpoint.public_id.to_string(),
+        &slack_channel.public_id.to_string(),
     );
     let exchanged = exchange_code(
         &state.slack_api_base,
@@ -259,7 +259,7 @@ async fn finish_install_inner(
     config.bot_token = exchanged.bot_token;
     config.team_id = Some(exchanged.team_id);
 
-    persist(state, endpoint.internal_id, &config)
+    persist(state, slack_channel.internal_id, &config)
         .await
         .map_err(|_| "failed to store install result")?;
     Ok(())
@@ -344,12 +344,12 @@ async fn exchange_code(
     Ok(ExchangedInstall { bot_token, team_id })
 }
 
-/// The endpoint's Slack config, or an empty one when it will not parse.
+/// The channel's Slack config, or an empty one when it will not parse.
 ///
 /// Matching the manifest route's read: a config we cannot parse is not a 500,
 /// because the install is how an operator recovers from exactly that. Built
 /// from `{}` rather than `Default` so every field's serde default applies,
-/// which is the same shape a never-configured endpoint has.
+/// which is the same shape a never-configured channel has.
 fn parse_config(raw: &serde_json::Value) -> SlackChannelConfig {
     serde_json::from_value(raw.clone()).unwrap_or_else(|_| {
         serde_json::from_value(serde_json::json!({}))
@@ -359,7 +359,7 @@ fn parse_config(raw: &serde_json::Value) -> SlackChannelConfig {
 
 async fn persist(
     state: &SlackInstallState,
-    endpoint_internal_id: uuid::Uuid,
+    channel_internal_id: uuid::Uuid,
     config: &SlackChannelConfig,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let json = serde_json::to_value(config).map_err(|error| {
@@ -369,7 +369,7 @@ async fn persist(
     crate::domains::apps::queries::update_channel_config_unscoped(
         &state.slack.db,
         state.slack.encryption.as_ref(),
-        endpoint_internal_id,
+        channel_internal_id,
         &json,
     )
     .await
@@ -385,7 +385,7 @@ fn provisioning_error_response(error: SlackProvisioningError) -> (StatusCode, Js
         // 500 so the UI can tell "this deployment does not do one-click" from
         // "one-click broke" and fall back to the manual fields.
         SlackProvisioningError::Unavailable => ErrorResponse::new(
-            "One-click Slack install is not configured on this deployment; configure the endpoint manually",
+            "One-click Slack install is not configured on this deployment; configure the channel manually",
         )
         .into_response(StatusCode::NOT_IMPLEMENTED),
         SlackProvisioningError::Rejected(code) => {
@@ -470,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_object_parses_as_an_unconfigured_endpoint() {
+    fn an_empty_object_parses_as_an_unconfigured_channel() {
         let config = parse_config(&serde_json::json!({}));
         assert!(config.provisioned_app.is_none());
     }

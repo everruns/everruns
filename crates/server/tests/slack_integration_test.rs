@@ -227,7 +227,7 @@ async fn create_published_slack_app(server: &TestServer, signing_secret: &str) -
 
     let app: App = serde_json::from_value(
         server
-            .seed_app_endpoint(
+            .seed_app_channel(
                 "Slack Test Bot",
                 &agent_id,
                 "slack",
@@ -244,7 +244,7 @@ async fn create_published_slack_app(server: &TestServer, signing_secret: &str) -
 
     serde_json::from_value(
         server
-            .set_app_endpoints_live(&app.public_id.to_string(), true)
+            .set_app_channels_live(&app.public_id.to_string(), true)
             .await,
     )
     .expect("published fixture App")
@@ -310,20 +310,20 @@ async fn test_slack_url_verification_challenge() {
         "challenge": "test_challenge_string_abc123",
         "token": "ignored"
     });
-    let endpoint_resp = send_slack_event_to_path(
+    let channel_resp = send_slack_event_to_path(
         &server,
         &format!("/v1/e/{}/slack/events", app.channels[0].public_id),
         TEST_SIGNING_SECRET,
         &payload,
     )
     .await;
-    let endpoint_body: Value = endpoint_resp.assert_status(StatusCode::OK).json();
-    assert_eq!(endpoint_body["challenge"], "test_challenge_string_abc123");
+    let channel_body: Value = channel_resp.assert_status(StatusCode::OK).json();
+    assert_eq!(channel_body["challenge"], "test_challenge_string_abc123");
 
     let legacy_resp =
         send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload).await;
     let legacy_body: Value = legacy_resp.assert_status(StatusCode::OK).json();
-    assert_eq!(legacy_body["challenge"], endpoint_body["challenge"]);
+    assert_eq!(legacy_body["challenge"], channel_body["challenge"]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

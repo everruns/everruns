@@ -30,7 +30,7 @@ async fn create_session_with_owner(
     agent_id: Option<AgentId>,
     resolved_owner_user_id: Option<Uuid>,
 ) -> SessionRow {
-    create_session_with_owner_tags_and_endpoint(
+    create_session_with_owner_tags_and_channel(
         db,
         org_id,
         agent_id,
@@ -48,7 +48,7 @@ async fn create_session_with_owner_and_tags(
     resolved_owner_user_id: Option<Uuid>,
     tags: Vec<String>,
 ) -> SessionRow {
-    create_session_with_owner_tags_and_endpoint(
+    create_session_with_owner_tags_and_channel(
         db,
         org_id,
         agent_id,
@@ -59,20 +59,20 @@ async fn create_session_with_owner_and_tags(
     .await
 }
 
-async fn create_session_with_owner_tags_and_endpoint(
+async fn create_session_with_owner_tags_and_channel(
     db: &Arc<StorageBackend>,
     org_id: i64,
     agent_id: Option<AgentId>,
     resolved_owner_user_id: Option<Uuid>,
     tags: Vec<String>,
-    endpoint_id: Option<Uuid>,
+    channel_id: Option<Uuid>,
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
         source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id,
         app_id: None,
-        endpoint_id,
+        channel_id,
         harness_id: None,
         agent_id,
         agent_version_id: None,
@@ -112,7 +112,7 @@ async fn create_child_session(
         workspace_id: None,
         org_id: parent.org_id,
         app_id: parent.app_id,
-        endpoint_id: None,
+        channel_id: None,
         harness_id: parent.harness_id,
         agent_id,
         agent_version_id: None,
@@ -148,7 +148,7 @@ async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) 
         workspace_id: None,
         org_id: origin.org_id,
         app_id: origin.app_id,
-        endpoint_id: None,
+        channel_id: None,
         harness_id: origin.harness_id,
         agent_id: origin.agent_id,
         agent_identity_id: origin.agent_identity_id,
@@ -177,7 +177,7 @@ async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) 
     db.create_session(input).await.unwrap()
 }
 
-async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
+async fn assert_channel_budget_exhausts_and_stops(channel_type: &str) {
     let (svc, db) = make_service();
     let harness_id = everruns_provider::typed_id::HarnessId::new();
     let agent = db
@@ -206,7 +206,7 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
         )
         .await
         .unwrap();
-    let endpoint_public_id = format!("appchan_{}", Uuid::new_v4().simple());
+    let channel_public_id = format!("appchan_{}", Uuid::new_v4().simple());
     let app = db
         .create_app(
             1,
@@ -228,11 +228,11 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
         )
         .await
         .unwrap();
-    let endpoint = db
+    let channel = db
         .create_app_channel(
             app.id,
             CreateAppChannelRow {
-                public_id: endpoint_public_id.clone(),
+                public_id: channel_public_id.clone(),
                 channel_type: channel_type.into(),
                 channel_config: serde_json::json!({}),
                 channel_config_encrypted: None,
@@ -245,25 +245,25 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
         .await
         .unwrap();
     assert!(
-        db.get_agent_endpoint_public_id(2, endpoint.id)
+        db.get_agent_channel_public_id(2, channel.id)
             .await
             .unwrap()
             .is_none()
     );
-    let session = create_session_with_owner_tags_and_endpoint(
+    let session = create_session_with_owner_tags_and_channel(
         &db,
         1,
         Some(agent.id),
         None,
-        vec![format!("{channel_type}:endpoint:{endpoint_public_id}")],
-        Some(endpoint.id),
+        vec![format!("{channel_type}:endpoint:{channel_public_id}")],
+        Some(channel.id),
     )
     .await;
     let budget = db
         .create_budget(CreateBudgetRow {
             org_id: session.org_id,
-            subject_type: "agent_endpoint".into(),
-            subject_id: endpoint_public_id,
+            subject_type: "agent_channel".into(),
+            subject_id: channel_public_id,
             currency: "tokens".into(),
             limit: 150.0,
             soft_limit: None,
@@ -275,7 +275,7 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
     let data = LlmGenerationData::success(
         vec![],
         vec![],
-        Some("endpoint session spent its budget".into()),
+        Some("channel session spent its budget".into()),
         vec![],
         "gpt-5.4-mini".into(),
         Some("openai".into()),
@@ -1340,13 +1340,13 @@ async fn test_list_budgets_for_session_hierarchy_includes_app_and_channel_from_t
 }
 
 #[tokio::test]
-async fn test_slack_endpoint_budget_exhausts_and_stops_session() {
-    assert_endpoint_budget_exhausts_and_stops("slack").await;
+async fn test_slack_channel_budget_exhausts_and_stops_session() {
+    assert_channel_budget_exhausts_and_stops("slack").await;
 }
 
 #[tokio::test]
-async fn test_fcp_endpoint_budget_exhausts_and_stops_session() {
-    assert_endpoint_budget_exhausts_and_stops("fcp").await;
+async fn test_fcp_channel_budget_exhausts_and_stops_session() {
+    assert_channel_budget_exhausts_and_stops("fcp").await;
 }
 
 #[tokio::test]

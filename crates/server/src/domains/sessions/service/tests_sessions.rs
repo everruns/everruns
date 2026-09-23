@@ -411,7 +411,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             harness_id: Some(harness.id),
             agent_id: Some(missing_agent_id),
             agent_version_id: None,

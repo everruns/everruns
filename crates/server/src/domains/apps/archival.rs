@@ -15,7 +15,7 @@ const APP_VIEW: Policy = Policy {
 };
 
 fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
-    redact_inline_endpoint_auth(config);
+    redact_inline_channel_auth(config);
     let Some(map) = config.as_object_mut() else {
         return;
     };
@@ -106,7 +106,7 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
     }
 }
 
-fn redact_inline_endpoint_auth(config: &mut Value) {
+fn redact_inline_channel_auth(config: &mut Value) {
     let Some(provider) = config
         .get_mut("auth")
         .and_then(|auth| auth.get_mut("provider"))
@@ -133,7 +133,7 @@ fn redact_inline_endpoint_auth(config: &mut Value) {
 pub(crate) fn redact_channel_for_response(mut channel: AppChannel) -> AppChannel {
     if let Some(auth) = channel.auth.take() {
         let mut wrapped = json!({ "auth": auth });
-        redact_inline_endpoint_auth(&mut wrapped);
+        redact_inline_channel_auth(&mut wrapped);
         channel.auth = wrapped
             .get_mut("auth")
             .map(Value::take)
@@ -249,7 +249,7 @@ mod redaction_tests {
     ///
     /// The nonce matters as much as the secret: it is what the OAuth callback
     /// compares against, so a reader who could see it could drive the callback
-    /// and bind their own workspace to this endpoint (EVE-1069).
+    /// and bind their own workspace to this channel (EVE-1069).
     #[test]
     fn slack_redaction_drops_the_provisioned_app_whole() {
         let mut config = json!({
@@ -283,7 +283,7 @@ mod redaction_tests {
     }
 
     #[test]
-    fn a_hand_configured_endpoint_gains_no_provisioned_flag() {
+    fn a_hand_configured_channel_gains_no_provisioned_flag() {
         let mut config = json!({ "signing_secret": "shhh" });
         redact_channel_config(&ChannelType::Slack, &mut config);
         assert!(config.get("slack_app_provisioned").is_none());

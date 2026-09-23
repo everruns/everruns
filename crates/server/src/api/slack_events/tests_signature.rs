@@ -856,7 +856,7 @@ mod pane_rename_tests {
                 workspace_id: None,
                 org_id: app.org_id,
                 app_id: Some(app.internal_id),
-                endpoint_id: None,
+                channel_id: None,
                 harness_id: Some(everruns_provider::typed_id::HarnessId::from_uuid(
                     uuid::Uuid::nil(),
                 )),

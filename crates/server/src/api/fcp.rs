@@ -8,7 +8,7 @@
 //
 // Design Decision: FCP runs its own minimal auth stack — anonymous access
 // plus a single shared bearer token, validated by constant-time comparison
-// inline. It deliberately does **not** call into `AppEndpointAuthVerifier`
+// inline. It deliberately does **not** call into `ChannelAuthVerifier`
 // (used by AG-UI/A2A) or the platform's user-session auth. This keeps the
 // public FCP surface narrow, predictable, and decoupled from changes to
 // other channels.
@@ -113,14 +113,14 @@ pub fn routes(state: FcpState) -> Router {
 }
 enum FcpTarget {
     LegacyApp(String),
-    Endpoint(String),
+    Channel(String),
 }
 
 /// Resolved channel context, used by both `GET` and `POST`. The lookup is
 /// shared so we apply the same "exists at all?" sanitization in one place.
 struct FcpContext {
     app: crate::api::app_ingress::IngressContext,
-    channel: crate::api::app_ingress::IngressEndpoint,
+    channel: crate::api::app_ingress::IngressChannel,
     config: FcpChannelConfig,
 }
 
@@ -132,7 +132,7 @@ async fn resolve_context(state: &FcpState, target: FcpTarget) -> Result<FcpConte
     //   - whether an app is published but has no FCP channel
     //   - whether a channel exists but is disabled
     let (app, channel) = match target {
-        FcpTarget::LegacyApp(app_id) => match crate::api::app_ingress::resolve_legacy_endpoint(
+        FcpTarget::LegacyApp(app_id) => match crate::api::app_ingress::resolve_legacy_channel(
             &state.db,
             state.encryption.as_ref(),
             &app_id,
@@ -140,28 +140,28 @@ async fn resolve_context(state: &FcpState, target: FcpTarget) -> Result<FcpConte
         )
         .await
         {
-            Ok(crate::api::app_ingress::LegacyEndpointMatch::One(endpoint)) => *endpoint,
+            Ok(crate::api::app_ingress::LegacyChannelMatch::One(resolved)) => *resolved,
             Ok(
-                crate::api::app_ingress::LegacyEndpointMatch::NotFound
-                | crate::api::app_ingress::LegacyEndpointMatch::Ambiguous,
+                crate::api::app_ingress::LegacyChannelMatch::NotFound
+                | crate::api::app_ingress::LegacyChannelMatch::Ambiguous,
             ) => return Err(not_found_response()),
             Err(err) => {
                 tracing::error!(error = %err, "FCP alias lookup failed");
                 return Err(internal_error_response());
             }
         },
-        FcpTarget::Endpoint(channel_id) => {
-            match crate::api::app_ingress::resolve_endpoint(
+        FcpTarget::Channel(channel_id) => {
+            match crate::api::app_ingress::resolve_channel(
                 &state.db,
                 state.encryption.as_ref(),
                 &channel_id,
             )
             .await
             {
-                Ok(Some(endpoint)) => endpoint,
+                Ok(Some(resolved)) => resolved,
                 Ok(None) => return Err(not_found_response()),
                 Err(err) => {
-                    tracing::error!(error = %err, "FCP endpoint lookup failed");
+                    tracing::error!(error = %err, "FCP channel lookup failed");
                     return Err(internal_error_response());
                 }
             }
@@ -170,12 +170,12 @@ async fn resolve_context(state: &FcpState, target: FcpTarget) -> Result<FcpConte
     if channel.channel_type != ChannelType::Fcp {
         return Err(not_found_response());
     }
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
+    if let Err(reason) = crate::api::app_ingress::channel_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
-            endpoint_id = %channel.public_id,
+            channel_id = %channel.public_id,
             reason = reason.as_str(),
-            "FCP request rejected: endpoint not live"
+            "FCP request rejected: channel not live"
         );
         return Err(not_found_response());
     }
@@ -229,7 +229,7 @@ async fn check_rate_limit(
     headers: &HeaderMap,
     peer_addr: Option<std::net::SocketAddr>,
     app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    channel: &crate::api::app_ingress::IngressChannel,
     config: &FcpChannelConfig,
 ) -> Result<(), Response> {
     let Some(limit) = config.rate_limit_per_minute else {
@@ -264,13 +264,13 @@ async fn check_rate_limit(
     responses(
         (
             status = 200,
-            description = "Markdown handshake describing the FCP endpoint and how to authenticate. \
+            description = "Markdown handshake describing the FCP channel and how to authenticate. \
                            Always `text/markdown`.",
             content_type = "text/markdown",
         ),
         (
             status = 404,
-            description = "No FCP endpoint at this URL. Single sanitized body covers \
+            description = "No FCP channel at this URL. Single sanitized body covers \
                            unknown apps, unpublished apps, apps without an FCP channel, \
                            and disabled FCP channels — operator state is never disclosed.",
             content_type = "text/markdown",
@@ -298,13 +298,7 @@ async fn handshake_endpoint(
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
 ) -> Response {
-    handshake_for_target(
-        state,
-        FcpTarget::Endpoint(channel_id),
-        connect_info,
-        headers,
-    )
-    .await
+    handshake_for_target(state, FcpTarget::Channel(channel_id), connect_info, headers).await
 }
 
 async fn handshake_for_target(
@@ -420,10 +414,10 @@ pub async fn message_legacy(
 }
 
 #[utoipa::path(
-    description = "Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token.",
+    description = "Send a message to a published FCP channel. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the channel requires a token.",
     post,
     path = "/v1/e/{channel_id}/fcp",
-    params(("channel_id" = String, Path, description = "FCP endpoint channel ID")),
+    params(("channel_id" = String, Path, description = "FCP channel ID")),
     request_body(
         content = String,
         description = "Plain UTF-8 text or JSON with a message field. Maximum 256 KiB.",
@@ -433,7 +427,7 @@ pub async fn message_legacy(
         (status = 200, description = "Agent reply as Markdown", content_type = "text/markdown"),
         (status = 400, description = "Malformed or empty message", content_type = "text/markdown"),
         (status = 401, description = "Missing or invalid FCP token", content_type = "text/markdown"),
-        (status = 404, description = "Endpoint not found, app not published, or channel disabled", content_type = "text/markdown"),
+        (status = 404, description = "Channel not found, app not published, or channel disabled", content_type = "text/markdown"),
         (status = 410, description = "FCP session expired", content_type = "text/markdown"),
         (status = 413, description = "Body exceeds 256 KiB", content_type = "text/markdown"),
         (status = 429, description = "Per-channel FCP rate limit exceeded", content_type = "text/markdown"),
@@ -451,7 +445,7 @@ pub async fn message_endpoint(
 ) -> Response {
     message(
         state,
-        FcpTarget::Endpoint(channel_id),
+        FcpTarget::Channel(channel_id),
         req_id,
         connect_info,
         headers,
@@ -771,18 +765,19 @@ struct ResolvedSession {
 async fn resolve_session(
     state: &FcpState,
     app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    channel: &crate::api::app_ingress::IngressChannel,
     config: &FcpChannelConfig,
     cookie_session_id: Option<Uuid>,
 ) -> Result<ResolvedSession, Response> {
     let app_tag = format!("fcp:app:{}", app.public_id);
-    let endpoint_tag = format!("fcp:endpoint:{}", channel.public_id);
+    // `fcp:endpoint:` is a persisted routing key, kept for compatibility.
+    let channel_tag = format!("fcp:endpoint:{}", channel.public_id);
     if let Some(session_id) = cookie_session_id {
         match state.db.get_session(app.org_id, session_id.into()).await {
             Ok(Some(row))
                 if row.app_id == Some(app.internal_id)
                     && row.tags.contains(&app_tag)
-                    && row.tags.contains(&endpoint_tag) =>
+                    && row.tags.contains(&channel_tag) =>
             {
                 if let Some(age) = expired_age_seconds(
                     row.created_at,
@@ -835,7 +830,7 @@ async fn resolve_session(
                 title: Some(format!("FCP session for {}", app.name)),
                 goal: None,
                 locale: None,
-                tags: vec![app_tag, endpoint_tag],
+                tags: vec![app_tag, channel_tag],
                 model_id: None,
                 capabilities: vec![],
                 tools: vec![],
@@ -902,7 +897,7 @@ fn expired_age_seconds(
 
 fn fcp_message_metadata(
     app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    channel: &crate::api::app_ingress::IngressChannel,
 ) -> HashMap<String, Value> {
     let mut map = HashMap::new();
     map.insert(
@@ -1135,7 +1130,7 @@ mod tests {
     }
 
     #[test]
-    fn handshake_marks_anonymous_endpoint() {
+    fn handshake_marks_anonymous_channel() {
         let app = test_app("Open", None);
         let rendered = render_handshake(&app, &default_config());
         assert!(!rendered.contains("Authorization: Bearer"));

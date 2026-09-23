@@ -3,8 +3,8 @@ use crate::domains::common::{CommandError, classify_anyhow};
 use crate::storage::password::hash_password;
 use everruns_platform::app::{ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_platform::{
-    A2aChannelConfig, AgUiChannelConfig, ApiEndpointChannelConfig, AppEndpointAuthConfig,
-    AppEndpointAuthMode, AppEndpointAuthProviderConfig, ChannelType, FcpChannelConfig,
+    A2aChannelConfig, AgUiChannelConfig, ApiEndpointChannelConfig, ChannelAuthConfig,
+    ChannelAuthMode, ChannelAuthProviderConfig, ChannelType, FcpChannelConfig,
     PublicChatChannelConfig, PublicToolVisibility, SlackChannelConfig,
 };
 use serde_json::Value;
@@ -28,7 +28,7 @@ pub(crate) fn normalize_and_validate_channel_config(
         | ChannelType::A2a
         | ChannelType::ApiEndpoint
         | ChannelType::PublicChat => {
-            normalize_inline_endpoint_auth(&channel_type, &mut channel_config)?;
+            normalize_inline_channel_auth(&channel_type, &mut channel_config)?;
         }
         ChannelType::Fcp | ChannelType::Slack | ChannelType::Schedule | ChannelType::Webhook => {
             // FCP deliberately runs its own minimal auth stack (anonymous +
@@ -36,7 +36,7 @@ pub(crate) fn normalize_and_validate_channel_config(
             // AG-UI/A2A. See `knowledge/integrations/fcp-channel.md`.
             if channel_config.get("auth").is_some() {
                 return Err(CommandError::bad_request(format!(
-                    "Endpoint auth is not supported for {channel_type} channels"
+                    "Channel auth is not supported for {channel_type} channels"
                 )));
             }
         }
@@ -55,8 +55,8 @@ pub(crate) fn normalize_and_validate_channel_config(
                     CommandError::bad_request(format!("Invalid AG-UI channel config: {e}"))
                 })?;
             // Reject obviously broken caps (e.g. > 1M req/min) so a typo can't
-            // silently disable the per-endpoint limit by overflowing reasonable
-            // expectations. `0` is allowed and means "no per-endpoint cap".
+            // silently disable the per-channel limit by overflowing reasonable
+            // expectations. `0` is allowed and means "no per-channel cap".
             if let Some(limit) = config.rate_limit_per_minute
                 && limit > 1_000_000
             {
@@ -245,8 +245,8 @@ pub(crate) fn normalize_and_validate_channel_config(
                     CommandError::bad_request(format!("Invalid Public Chat channel config: {e}"))
                 })?;
             // Mirror the AG-UI cap so a typo cannot silently disable the
-            // per-endpoint limit by overflowing reasonable expectations. `0`
-            // means "no per-endpoint cap".
+            // per-channel limit by overflowing reasonable expectations. `0`
+            // means "no per-channel cap".
             if let Some(limit) = config.rate_limit_per_minute
                 && limit > 1_000_000
             {
@@ -328,11 +328,11 @@ pub(crate) fn normalize_and_validate_channel_config(
     Ok(channel_config)
 }
 
-fn hash_endpoint_basic_password(password: &str) -> Result<String, CommandError> {
+fn hash_channel_basic_password(password: &str) -> Result<String, CommandError> {
     hash_password(password).map_err(classify_anyhow)
 }
 
-fn normalize_inline_endpoint_auth(
+fn normalize_inline_channel_auth(
     channel_type: &ChannelType,
     channel_config: &mut Value,
 ) -> Result<(), CommandError> {
@@ -342,9 +342,9 @@ fn normalize_inline_endpoint_auth(
     if auth_value.is_null() {
         return Ok(());
     }
-    let auth: AppEndpointAuthConfig = serde_json::from_value(auth_value.clone())
-        .map_err(|e| CommandError::bad_request(format!("Invalid endpoint auth config: {e}")))?;
-    validate_endpoint_auth_config(channel_type, channel_config, &auth)?;
+    let auth: ChannelAuthConfig = serde_json::from_value(auth_value.clone())
+        .map_err(|e| CommandError::bad_request(format!("Invalid channel auth config: {e}")))?;
+    validate_channel_auth_config(channel_type, channel_config, &auth)?;
 
     if let Some(provider) = channel_config
         .get_mut("auth")
@@ -370,7 +370,7 @@ fn normalize_inline_endpoint_auth(
                 }
                 provider.insert(
                     "password_hash".to_string(),
-                    Value::String(hash_endpoint_basic_password(&password)?),
+                    Value::String(hash_channel_basic_password(&password)?),
                 );
             }
         }
@@ -378,14 +378,14 @@ fn normalize_inline_endpoint_auth(
     Ok(())
 }
 
-fn validate_endpoint_auth_config(
+fn validate_channel_auth_config(
     channel_type: &ChannelType,
     channel_config: &Value,
-    auth: &AppEndpointAuthConfig,
+    auth: &ChannelAuthConfig,
 ) -> Result<(), CommandError> {
     match auth.mode {
-        AppEndpointAuthMode::Anonymous => Ok(()),
-        AppEndpointAuthMode::SharedSecret => {
+        ChannelAuthMode::Anonymous => Ok(()),
+        ChannelAuthMode::SharedSecret => {
             if *channel_type != ChannelType::AgUi && *channel_type != ChannelType::PublicChat {
                 return Err(CommandError::bad_request(
                     "Shared token auth is only supported for AG-UI and Public Chat channels",
@@ -403,7 +403,7 @@ fn validate_endpoint_auth_config(
                 ))
             }
         }
-        AppEndpointAuthMode::ApiKey => {
+        ChannelAuthMode::ApiKey => {
             if *channel_type != ChannelType::A2a && *channel_type != ChannelType::ApiEndpoint {
                 return Err(CommandError::bad_request(
                     "API key auth is only supported for A2A and api_endpoint channels",
@@ -425,8 +425,8 @@ fn validate_endpoint_auth_config(
                 ))
             }
         }
-        AppEndpointAuthMode::GoogleOidc => match auth.provider.as_ref() {
-            Some(AppEndpointAuthProviderConfig::GoogleOidc { client_id, .. })
+        ChannelAuthMode::GoogleOidc => match auth.provider.as_ref() {
+            Some(ChannelAuthProviderConfig::GoogleOidc { client_id, .. })
                 if !client_id.trim().is_empty() =>
             {
                 Ok(())
@@ -435,8 +435,8 @@ fn validate_endpoint_auth_config(
                 "Google auth requires provider.type=google_oidc and non-empty client_id",
             )),
         },
-        AppEndpointAuthMode::Oidc => match auth.provider.as_ref() {
-            Some(AppEndpointAuthProviderConfig::Oidc { issuer, jwks_url }) => {
+        ChannelAuthMode::Oidc => match auth.provider.as_ref() {
+            Some(ChannelAuthProviderConfig::Oidc { issuer, jwks_url }) => {
                 if issuer.trim().is_empty() {
                     return Err(CommandError::bad_request(
                         "OIDC auth requires a non-empty issuer",
@@ -455,8 +455,8 @@ fn validate_endpoint_auth_config(
                 "OIDC auth requires provider.type=oidc",
             )),
         },
-        AppEndpointAuthMode::OAuth2Introspection => match auth.provider.as_ref() {
-            Some(AppEndpointAuthProviderConfig::OAuth2Introspection {
+        ChannelAuthMode::OAuth2Introspection => match auth.provider.as_ref() {
+            Some(ChannelAuthProviderConfig::OAuth2Introspection {
                 introspection_url, ..
             }) => {
                 everruns_provider::url_validation::validate_safe_url(introspection_url).map_err(
@@ -468,8 +468,8 @@ fn validate_endpoint_auth_config(
                 "OAuth2 introspection auth requires provider.type=oauth2_introspection",
             )),
         },
-        AppEndpointAuthMode::HttpBasic => match auth.provider.as_ref() {
-            Some(AppEndpointAuthProviderConfig::HttpBasic {
+        ChannelAuthMode::HttpBasic => match auth.provider.as_ref() {
+            Some(ChannelAuthProviderConfig::HttpBasic {
                 username,
                 password,
                 password_hash,
@@ -486,8 +486,8 @@ fn validate_endpoint_auth_config(
                 "HTTP Basic auth requires provider.type=http_basic, username, and password or password_hash",
             )),
         },
-        AppEndpointAuthMode::Mtls => match auth.provider.as_ref() {
-            Some(AppEndpointAuthProviderConfig::Mtls {
+        ChannelAuthMode::Mtls => match auth.provider.as_ref() {
+            Some(ChannelAuthProviderConfig::Mtls {
                 header_name,
                 allowed_values,
                 proxy_secret_header,
@@ -619,10 +619,10 @@ pub(crate) fn merge_preserved_secret_fields(
         }
         ChannelType::Schedule => {}
     }
-    merge_preserved_endpoint_auth_secrets(final_channel_config, existing_decrypted);
+    merge_preserved_channel_auth_secrets(final_channel_config, existing_decrypted);
 }
 
-fn merge_preserved_endpoint_auth_secrets(
+fn merge_preserved_channel_auth_secrets(
     final_channel_config: &mut Value,
     existing_decrypted: &Value,
 ) {

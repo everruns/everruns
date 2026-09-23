@@ -47,7 +47,7 @@ async fn create_app_with_a2a_mode(
     let api_key = format!("evr_app_{}", uuid::Uuid::new_v4().simple());
     let api_key_hash = hex::encode(Sha256::digest(api_key.as_bytes()));
     let app = server
-        .seed_app_endpoint(
+        .seed_app_channel(
             name,
             agent["id"].as_str().unwrap(),
             "a2a",
@@ -65,7 +65,7 @@ async fn create_app_with_a2a_mode(
 }
 
 async fn publish_app(server: &TestServer, app_id: &str) {
-    server.set_app_endpoints_live(app_id, true).await;
+    server.set_app_channels_live(app_id, true).await;
 }
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {

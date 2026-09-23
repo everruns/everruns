@@ -1,19 +1,19 @@
 //! Control-plane implementation of the Slack action seam (EVE-1024).
 //!
 //! The native `slack` capability names an action; this module resolves which
-//! Slack endpoint the session belongs to, fetches that endpoint's `bot_token`,
+//! Slack channel the session belongs to, fetches that channel's `bot_token`,
 //! and makes the call. The token stays in this process — see
 //! [`everruns_platform::slack_action`] for why the action travels instead.
 //!
 //! # Resolution
 //!
-//! `sessions.endpoint_id` is the authoritative answer to "which door did this
+//! `sessions.channel_id` is the authoritative answer to "which door did this
 //! session come through" (EVE-1004), so it is preferred over the
 //! `slack:endpoint:{id}` routing tag, which is mutable. The tag is the fallback
 //! for app-channel sessions that predate the FK backfill.
 //!
-//! Resolving through the endpoint rather than the app matters: since EVE-1008
-//! the endpoint owns Slack bot identity, so an app with two Slack endpoints has
+//! Resolving through the channel rather than the app matters: since EVE-1008
+//! the channel owns Slack bot identity, so an app with two Slack channels has
 //! two different bots, and `App::slack_channel()` would return whichever comes
 //! first.
 //!
@@ -38,8 +38,9 @@ use crate::slack_api_error::{SlackApiError, parse_retry_after};
 use crate::storage::{EncryptionService, StorageBackend};
 
 /// Routing-tag prefix stamped on Slack-originated sessions by
-/// `slack_events::build_session_tags`.
-const SLACK_ENDPOINT_TAG_PREFIX: &str = "slack:endpoint:";
+/// `slack_events::build_session_tags`. The `endpoint` spelling is a persisted
+/// routing key kept for compatibility across the Endpoint -> Channel rename.
+const SLACK_AGENT_CHANNEL_TAG_PREFIX: &str = "slack:endpoint:";
 
 /// Ceiling on an upload's byte count.
 ///
@@ -49,7 +50,7 @@ const SLACK_ENDPOINT_TAG_PREFIX: &str = "slack:endpoint:";
 /// the capability's cap so a legitimate call never hits only one of them.
 const MAX_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
 
-/// Performs Slack actions as one session's own endpoint bot.
+/// Performs Slack actions as one session's own channel bot.
 ///
 /// Bound to one org and one session at construction, like
 /// `platform_store(org_id, session_id)`: the tenant and session are not
@@ -85,7 +86,7 @@ impl DbSlackActionInvoker {
         self
     }
 
-    /// Resolve the Slack endpoint that created this session, and its bot token.
+    /// Resolve the Slack channel that created this session, and its bot token.
     async fn resolve_bot_token(&self) -> Result<String, SlackActionError> {
         let org = self.org_id;
         let session_id = self.session_id;
@@ -102,15 +103,15 @@ impl DbSlackActionInvoker {
             return Err(SlackActionError::NoSlackSession);
         };
 
-        // Decide which endpoint before loading the app, so the tag fallback and
+        // Decide which channel before loading the app, so the tag fallback and
         // the FK agree on a single target.
-        let endpoint_selector = match session.endpoint_id {
-            Some(internal_id) => EndpointSelector::Internal(internal_id),
+        let channel_selector = match session.channel_id {
+            Some(internal_id) => ChannelSelector::Internal(internal_id),
             None => session
                 .tags
                 .iter()
-                .find_map(|tag| tag.strip_prefix(SLACK_ENDPOINT_TAG_PREFIX))
-                .map(|public_id| EndpointSelector::Public(public_id.to_string()))
+                .find_map(|tag| tag.strip_prefix(SLACK_AGENT_CHANNEL_TAG_PREFIX))
+                .map(|public_id| ChannelSelector::Public(public_id.to_string()))
                 .ok_or(SlackActionError::NoSlackSession)?,
         };
 
@@ -122,21 +123,21 @@ impl DbSlackActionInvoker {
         )
         .await
         .map_err(|e| SlackActionError::Transient(e.to_string()))?
-        .ok_or(SlackActionError::EndpointUnavailable)?;
+        .ok_or(SlackActionError::ChannelUnavailable)?;
 
-        let endpoint = select_slack_endpoint(&app, &endpoint_selector)
+        let channel = select_slack_channel(&app, &channel_selector)
             .ok_or(SlackActionError::NoSlackSession)?;
 
-        if !endpoint.status.is_live() {
-            // A retired or drafted endpoint must not keep acting. Reported as
+        if !channel.status.is_live() {
+            // A retired or drafted channel must not keep acting. Reported as
             // unavailable rather than as "not from Slack": the session did come
             // from Slack, the door is just shut.
-            return Err(SlackActionError::EndpointUnavailable);
+            return Err(SlackActionError::ChannelUnavailable);
         }
 
-        let config = endpoint
+        let config = channel
             .slack_config()
-            .ok_or(SlackActionError::EndpointUnavailable)?;
+            .ok_or(SlackActionError::ChannelUnavailable)?;
         if config.bot_token.trim().is_empty() {
             return Err(SlackActionError::NotConfigured);
         }
@@ -144,26 +145,26 @@ impl DbSlackActionInvoker {
     }
 }
 
-/// Which endpoint on the app a session belongs to.
-enum EndpointSelector {
-    /// From `sessions.endpoint_id`, the authoritative FK (EVE-1004).
+/// Which channel on the app a session belongs to.
+enum ChannelSelector {
+    /// From `sessions.channel_id`, the authoritative FK (EVE-1004).
     Internal(uuid::Uuid),
     /// From the `slack:endpoint:{id}` routing tag, for pre-backfill sessions.
     Public(String),
 }
 
-/// Pick the Slack endpoint `selector` names, or `None` when it names none.
+/// Pick the Slack channel `selector` names, or `None` when it names none.
 ///
 /// Requires `ChannelType::Slack` even when the id matches: an id that resolves
-/// to a non-Slack endpoint means the session came through another channel, and
-/// falling through to a sibling Slack endpoint would be exactly the
-/// wrong-bot bug that resolving by endpoint exists to prevent.
-fn select_slack_endpoint<'a>(app: &'a App, selector: &EndpointSelector) -> Option<&'a AppChannel> {
-    let endpoint = app.channels.iter().find(|channel| match selector {
-        EndpointSelector::Internal(internal_id) => channel.internal_id == *internal_id,
-        EndpointSelector::Public(public_id) => &channel.public_id.to_string() == public_id,
+/// to a non-Slack channel means the session came through another channel, and
+/// falling through to a sibling Slack channel would be exactly the
+/// wrong-bot bug that resolving by channel exists to prevent.
+fn select_slack_channel<'a>(app: &'a App, selector: &ChannelSelector) -> Option<&'a AppChannel> {
+    let channel = app.channels.iter().find(|channel| match selector {
+        ChannelSelector::Internal(internal_id) => channel.internal_id == *internal_id,
+        ChannelSelector::Public(public_id) => &channel.public_id.to_string() == public_id,
     })?;
-    (endpoint.channel_type == ChannelType::Slack).then_some(endpoint)
+    (channel.channel_type == ChannelType::Slack).then_some(channel)
 }
 
 impl From<SlackApiError> for SlackActionError {
@@ -221,7 +222,7 @@ impl SlackActionInvoker for DbSlackActionInvoker {
         debug!(
             session_id = %self.session_id,
             action = kind,
-            "Performed Slack action as the endpoint bot"
+            "Performed Slack action as the channel bot"
         );
         Ok(outcome)
     }
@@ -468,8 +469,8 @@ pub fn in_process_invoker(
 
 /// Serve one `InvokeSlackAction` RPC (EVE-1024).
 ///
-/// The invoker resolves which Slack endpoint created the session and reads that
-/// endpoint's `bot_token`, both org-scoped, so a session id from another tenant
+/// The invoker resolves which Slack channel created the session and reads that
+/// channel's `bot_token`, both org-scoped, so a session id from another tenant
 /// resolves to nothing. The token is used here and never returned: the response
 /// carries the action's outcome or a typed error.
 ///
@@ -545,7 +546,7 @@ mod tests {
             }
         }
 
-        /// An endpoint must be owned by an agent, so every app needs one.
+        /// A channel must be owned by an agent, so every app needs one.
         async fn seed_agent(&self, org_id: i64, harness_id: HarnessId) -> AgentId {
             use crate::storage::models::CreateAgentRow;
             let id = AgentId::new();
@@ -608,8 +609,8 @@ mod tests {
                 .id
         }
 
-        /// Seed an app with one endpoint of `channel_type`, live and configured.
-        async fn seed_app_with_endpoint(
+        /// Seed an app with one channel of `channel_type`, live and configured.
+        async fn seed_app_with_channel(
             &self,
             org_id: i64,
             channel_type: &str,
@@ -662,7 +663,7 @@ mod tests {
                 .await
                 .expect("create channel");
 
-            // A new endpoint starts `draft`; publish it so it accepts traffic.
+            // A new channel starts `draft`; publish it so it accepts traffic.
             self.db
                 .update_app_channel(
                     channel.id,
@@ -672,7 +673,7 @@ mod tests {
                     },
                 )
                 .await
-                .expect("publish endpoint");
+                .expect("publish channel");
 
             (app.id, channel.id, public_id)
         }
@@ -681,7 +682,7 @@ mod tests {
             &self,
             org_id: i64,
             app_id: Option<Uuid>,
-            endpoint_id: Option<Uuid>,
+            channel_id: Option<Uuid>,
             tags: Vec<String>,
         ) -> SessionId {
             let harness_id = self.seed_harness().await;
@@ -691,7 +692,7 @@ mod tests {
                     workspace_id: None,
                     org_id,
                     app_id,
-                    endpoint_id,
+                    channel_id,
                     harness_id: Some(harness_id),
                     agent_id: None,
                     agent_version_id: None,
@@ -738,7 +739,7 @@ mod tests {
     /// The case the issue calls out: an agent with the capability enabled,
     /// running from the API or a schedule, must fail closed.
     #[tokio::test]
-    async fn a_session_with_no_app_has_no_endpoint_to_act_as() {
+    async fn a_session_with_no_app_has_no_channel_to_act_as() {
         let fixture = Fixture::new();
         let session_id = fixture.seed_session(ORG, None, None, vec![]).await;
 
@@ -746,7 +747,7 @@ mod tests {
             .invoker(ORG, session_id)
             .invoke(add_reaction_action())
             .await
-            .expect_err("a non-app session must not resolve an endpoint");
+            .expect_err("a non-app session must not resolve a channel");
 
         assert!(matches!(error, SlackActionError::NoSlackSession));
     }
@@ -759,28 +760,28 @@ mod tests {
             .invoker(ORG, SessionId::new())
             .invoke(add_reaction_action())
             .await
-            .expect_err("an unknown session must not resolve an endpoint");
+            .expect_err("an unknown session must not resolve a channel");
 
         assert!(matches!(error, SlackActionError::NoSlackSession));
     }
 
-    /// An app session whose endpoint is not a Slack endpoint must not fall
+    /// An app session whose channel is not a Slack channel must not fall
     /// through to a Slack sibling.
     #[tokio::test]
-    async fn a_non_slack_endpoint_does_not_resolve() {
+    async fn a_non_slack_channel_does_not_resolve() {
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture
-            .seed_app_with_endpoint(ORG, "schedule", "xoxb-nope")
+        let (app_id, channel_id, _) = fixture
+            .seed_app_with_channel(ORG, "schedule", "xoxb-nope")
             .await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
             .invoker(ORG, session_id)
             .invoke(add_reaction_action())
             .await
-            .expect_err("a schedule endpoint is not a Slack endpoint");
+            .expect_err("a schedule channel is not a Slack channel");
 
         assert!(matches!(error, SlackActionError::NoSlackSession));
     }
@@ -788,13 +789,13 @@ mod tests {
     /// Org scoping: the session read is org-scoped, so another tenant's org id
     /// resolves to nothing rather than to this tenant's bot.
     #[tokio::test]
-    async fn another_orgs_id_does_not_reach_this_sessions_endpoint() {
+    async fn another_orgs_id_does_not_reach_this_sessions_channel() {
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+        let (app_id, channel_id, _) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
             .await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -807,56 +808,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_endpoint_without_a_bot_token_is_not_configured() {
+    async fn a_channel_without_a_bot_token_is_not_configured() {
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture.seed_app_with_endpoint(ORG, "slack", "").await;
+        let (app_id, channel_id, _) = fixture.seed_app_with_channel(ORG, "slack", "").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
             .invoker(ORG, session_id)
             .invoke(add_reaction_action())
             .await
-            .expect_err("an unconfigured endpoint has no token to act with");
+            .expect_err("an unconfigured channel has no token to act with");
 
         assert!(matches!(error, SlackActionError::NotConfigured));
     }
 
     #[tokio::test]
-    async fn a_disabled_endpoint_stops_acting() {
+    async fn a_disabled_channel_stops_acting() {
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+        let (app_id, channel_id, _) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
             .await;
         fixture
             .db
             .update_app_channel(
-                endpoint_id,
+                channel_id,
                 UpdateAppChannel {
                     status: Some("disabled".to_string()),
                     ..Default::default()
                 },
             )
             .await
-            .expect("disable endpoint");
+            .expect("disable channel");
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
             .invoker(ORG, session_id)
             .invoke(add_reaction_action())
             .await
-            .expect_err("a disabled endpoint must not keep acting");
+            .expect_err("a disabled channel must not keep acting");
 
-        assert!(matches!(error, SlackActionError::EndpointUnavailable));
+        assert!(matches!(error, SlackActionError::ChannelUnavailable));
     }
 
-    /// Pre-backfill sessions carry no `endpoint_id`, so the routing tag is the
+    /// Pre-backfill sessions carry no `channel_id`, so the routing tag is the
     /// fallback (EVE-1004).
     #[tokio::test]
-    async fn the_routing_tag_resolves_a_session_without_the_endpoint_fk() {
+    async fn the_routing_tag_resolves_a_session_without_the_channel_fk() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/reactions.add"))
@@ -865,15 +866,15 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, _, endpoint_public_id) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+        let (app_id, _, channel_public_id) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
             .await;
         let session_id = fixture
             .seed_session(
                 ORG,
                 Some(app_id),
                 None,
-                vec![format!("slack:endpoint:{endpoint_public_id}")],
+                vec![format!("slack:endpoint:{channel_public_id}")],
             )
             .await;
 
@@ -886,7 +887,7 @@ mod tests {
             )
             .invoke(add_reaction_action())
             .await
-            .expect("the routing tag must resolve the endpoint");
+            .expect("the routing tag must resolve the channel");
 
         assert!(matches!(
             outcome,
@@ -896,13 +897,13 @@ mod tests {
         ));
     }
 
-    /// An app session with neither the FK nor the tag names no endpoint, and
-    /// must not pick whichever Slack endpoint the app happens to carry.
+    /// An app session with neither the FK nor the tag names no channel, and
+    /// must not pick whichever Slack channel the app happens to carry.
     #[tokio::test]
-    async fn an_app_session_with_no_endpoint_reference_fails_closed() {
+    async fn an_app_session_with_no_channel_reference_fails_closed() {
         let fixture = Fixture::new();
         let (app_id, _, _) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
             .await;
         let session_id = fixture.seed_session(ORG, Some(app_id), None, vec![]).await;
 
@@ -910,7 +911,7 @@ mod tests {
             .invoker(ORG, session_id)
             .invoke(add_reaction_action())
             .await
-            .expect_err("no endpoint reference must not fall back to a sibling");
+            .expect_err("no channel reference must not fall back to a sibling");
 
         assert!(matches!(error, SlackActionError::NoSlackSession));
     }
@@ -918,24 +919,24 @@ mod tests {
     /// The whole point of EVE-1024's "Done when": react to the triggering
     /// message using the channel's own bot token and no extra credential.
     #[tokio::test]
-    async fn a_slack_session_reacts_with_the_endpoints_own_token() {
+    async fn a_slack_session_reacts_with_the_channels_own_token() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/reactions.add"))
             .and(wiremock::matchers::header(
                 "authorization",
-                "Bearer xoxb-endpoint-secret",
+                "Bearer xoxb-channel-secret",
             ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
             .mount(&server)
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-endpoint-secret")
+        let (app_id, channel_id, _) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-channel-secret")
             .await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         let outcome = fixture
@@ -943,7 +944,7 @@ mod tests {
             .with_api_base(server.uri())
             .invoke(add_reaction_action())
             .await
-            .expect("the endpoint's own token must be used");
+            .expect("the channel's own token must be used");
 
         assert!(matches!(
             outcome,
@@ -968,11 +969,11 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+        let (app_id, channel_id, _) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
             .await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         let outcome = fixture
@@ -1006,11 +1007,11 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+        let (app_id, channel_id, _) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
             .await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -1058,11 +1059,11 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+        let (app_id, channel_id, _) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
             .await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         let outcome = fixture
@@ -1108,11 +1109,11 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+        let (app_id, channel_id, _) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
             .await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -1129,11 +1130,11 @@ mod tests {
     #[tokio::test]
     async fn an_empty_upload_is_rejected_before_any_request() {
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+        let (app_id, channel_id, _) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
             .await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         // No mock server: reaching Slack at all would fail the test with a
@@ -1181,11 +1182,11 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+        let (app_id, channel_id, _) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
             .await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         let outcome = fixture
@@ -1229,11 +1230,11 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, endpoint_id, _) = fixture
-            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+        let (app_id, channel_id, _) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
             .await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture

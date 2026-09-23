@@ -1,6 +1,6 @@
 // Frozen App compatibility runtime.
 //
-// App management is retired. This module only preserves endpoint invocation,
+// App management is retired. This module only preserves channel invocation,
 // legacy session attribution, and schedule utilities shared by agent triggers.
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
@@ -203,7 +203,7 @@ pub(crate) fn render_message_template(template: &str, context: &Value) -> String
 
 fn app_session_tags(
     app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    channel: &crate::api::app_ingress::IngressChannel,
 ) -> Vec<String> {
     vec![
         format!("app:{}", app.public_id),
@@ -215,7 +215,7 @@ fn app_session_tags(
 
 fn app_invocation_message_metadata(
     app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    channel: &crate::api::app_ingress::IngressChannel,
     source: AppInvocationSource,
 ) -> HashMap<String, Value> {
     [
@@ -243,7 +243,7 @@ fn app_invocation_message_metadata(
 fn emit_app_invocation_audit_event(
     db: Arc<crate::storage::StorageBackend>,
     app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    channel: &crate::api::app_ingress::IngressChannel,
     session_id: SessionId,
     source: AppInvocationSource,
     created_session: bool,
@@ -285,7 +285,7 @@ async fn find_or_create_invocation_session(
     db: &Arc<crate::storage::StorageBackend>,
     session_service: &SessionService,
     app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    channel: &crate::api::app_ingress::IngressChannel,
     session_mode: SessionBinding,
     source: AppInvocationSource,
 ) -> Result<(SessionId, bool), CommandError> {
@@ -383,7 +383,7 @@ async fn find_or_create_invocation_session(
 async fn dispatch_invocation_message(
     message_service: &MessageService,
     app: &crate::api::app_ingress::IngressContext,
-    channel: &crate::api::app_ingress::IngressEndpoint,
+    channel: &crate::api::app_ingress::IngressChannel,
     session_id: SessionId,
     source: AppInvocationSource,
     request_id: Option<String>,
@@ -432,7 +432,7 @@ struct InvocationServices<'a> {
 
 struct InvocationRequest {
     app: crate::api::app_ingress::IngressContext,
-    channel: crate::api::app_ingress::IngressEndpoint,
+    channel: crate::api::app_ingress::IngressChannel,
     session_mode: SessionBinding,
     source: AppInvocationSource,
     template_context: Value,
@@ -556,18 +556,18 @@ pub async fn invoke_scheduled_app_channel(
     app_id: &str,
     channel_id: &str,
 ) -> Result<AppInvocationResult, CommandError> {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(db, encryption, channel_id)
+    let (app, channel) = crate::api::app_ingress::resolve_channel(db, encryption, channel_id)
         .await
         .map_err(classify_anyhow)?
         .filter(|(context, _)| context.org_id == org_id)
-        .ok_or_else(|| CommandError::not_found("Endpoint"))?;
+        .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !app.matches_legacy_app_id(app_id) {
-        return Err(CommandError::not_found("Endpoint"));
+        return Err(CommandError::not_found("Channel"));
     }
-    invoke_scheduled_endpoint_inner(db, session_service, message_service, app, channel).await
+    invoke_scheduled_channel_inner(db, session_service, message_service, app, channel).await
 }
 
-pub async fn invoke_scheduled_agent_endpoint(
+pub async fn invoke_scheduled_agent_channel(
     db: &Arc<crate::storage::StorageBackend>,
     encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
     session_service: &SessionService,
@@ -575,20 +575,20 @@ pub async fn invoke_scheduled_agent_endpoint(
     org_id: i64,
     channel_id: &str,
 ) -> Result<AppInvocationResult, CommandError> {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(db, encryption, channel_id)
+    let (app, channel) = crate::api::app_ingress::resolve_channel(db, encryption, channel_id)
         .await
         .map_err(classify_anyhow)?
         .filter(|(context, _)| context.org_id == org_id)
-        .ok_or_else(|| CommandError::not_found("Endpoint"))?;
-    invoke_scheduled_endpoint_inner(db, session_service, message_service, app, channel).await
+        .ok_or_else(|| CommandError::not_found("Channel"))?;
+    invoke_scheduled_channel_inner(db, session_service, message_service, app, channel).await
 }
 
-async fn invoke_scheduled_endpoint_inner(
+async fn invoke_scheduled_channel_inner(
     db: &Arc<crate::storage::StorageBackend>,
     session_service: &SessionService,
     message_service: &MessageService,
     app: crate::api::app_ingress::IngressContext,
-    channel: crate::api::app_ingress::IngressEndpoint,
+    channel: crate::api::app_ingress::IngressChannel,
 ) -> Result<AppInvocationResult, CommandError> {
     let config = channel
         .schedule_config()
@@ -664,12 +664,12 @@ where
     F: FnOnce(SessionId) -> Fut,
     Fut: std::future::Future<Output = Result<(), CommandError>>,
 {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(db, encryption, &req.channel_id)
+    let (app, channel) = crate::api::app_ingress::resolve_channel(db, encryption, &req.channel_id)
         .await
         .map_err(classify_anyhow)?
-        .ok_or_else(|| CommandError::not_found("Endpoint"))?;
+        .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !app.matches_legacy_app_id(&req.app_id) {
-        return Err(CommandError::not_found("Endpoint"));
+        return Err(CommandError::not_found("Channel"));
     }
     let config = channel
         .a2a_config()
@@ -738,29 +738,29 @@ pub async fn resolve_api_app_channel(
 ) -> Result<
     (
         crate::api::app_ingress::IngressContext,
-        crate::api::app_ingress::IngressEndpoint,
+        crate::api::app_ingress::IngressChannel,
     ),
     CommandError,
 > {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(db, encryption, channel_id)
+    let (app, channel) = crate::api::app_ingress::resolve_channel(db, encryption, channel_id)
         .await
         .map_err(classify_anyhow)?
-        .ok_or_else(|| CommandError::not_found("Endpoint"))?;
+        .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !app.matches_legacy_app_id(app_id) {
-        return Err(CommandError::not_found("Endpoint"));
+        return Err(CommandError::not_found("Channel"));
     }
     if channel.channel_type != ChannelType::ApiEndpoint {
         return Err(CommandError::not_found("Channel"));
     }
-    // EVE-1007: the endpoint's own status, folded with the agent-level terms, is
+    // EVE-1007: the channel's own status, folded with the agent-level terms, is
     // the authority. The rejection stays the same forbidden shape a draft App
     // produced before, so a key holder cannot tell the reasons apart.
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
+    if let Err(reason) = crate::api::app_ingress::channel_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
-            endpoint_id = %channel.public_id,
+            channel_id = %channel.public_id,
             reason = reason.as_str(),
-            "api_endpoint request rejected: endpoint not live"
+            "api_endpoint request rejected: channel not live"
         );
         return Err(CommandError::forbidden("App is not published".to_string()));
     }
@@ -904,12 +904,12 @@ pub async fn invoke_webhook_app_channel(
     req: WebhookInvocationRequest,
     request_id: Option<String>,
 ) -> Result<AppInvocationResult, CommandError> {
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(db, encryption, &req.channel_id)
+    let (app, channel) = crate::api::app_ingress::resolve_channel(db, encryption, &req.channel_id)
         .await
         .map_err(classify_anyhow)?
-        .ok_or_else(|| CommandError::not_found("Endpoint"))?;
+        .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !app.matches_legacy_app_id(&req.app_id) {
-        return Err(CommandError::not_found("Endpoint"));
+        return Err(CommandError::not_found("Channel"));
     }
     let config = channel
         .webhook_config()

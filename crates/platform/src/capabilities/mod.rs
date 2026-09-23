@@ -166,9 +166,9 @@ pub fn register_hosted_capabilities(
     }
     // First channel adapter to implement `Capability::tools()` (EVE-1024). It
     // is inert outside a Slack-originated session: the invoker seam resolves
-    // the session's Slack endpoint and fails closed when there is none, so
+    // the session's Slack channel and fails closed when there is none, so
     // registering it unconditionally costs an agent nothing until a Slack
-    // endpoint creates its session.
+    // channel creates its session.
     registry.register(SlackCapability);
     registry.register(UserHooksCapability);
     registry.register(DataKnowledgeCapability);

@@ -56,7 +56,7 @@ pub struct CreateAgentTriggerRequest {
     /// Optional per-ingress, per-IP webhook request limit.
     #[serde(default)]
     pub rate_limit_per_minute: Option<u32>,
-    /// Shared endpoint auth is not supported by webhook triggers.
+    /// Shared channel auth is not supported by webhook triggers.
     #[serde(default)]
     pub auth: Option<Value>,
     /// Whether the trigger is active on creation (default `true`).
@@ -86,7 +86,7 @@ pub struct UpdateAgentTriggerRequest {
     /// Replacement per-ingress, per-IP webhook request limit.
     #[serde(default)]
     pub rate_limit_per_minute: Option<u32>,
-    /// Shared endpoint auth is not supported by webhook triggers.
+    /// Shared channel auth is not supported by webhook triggers.
     #[serde(default)]
     pub auth: Option<Value>,
     /// Replacement enabled state.

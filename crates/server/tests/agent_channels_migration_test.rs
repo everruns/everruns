@@ -1,9 +1,10 @@
 //! Tenancy and reuse evidence for re-parenting channels from App to Agent
 //! (EVE-1003, migration 135).
 //!
-//! The migration moves `app_channels` rows into `agent_endpoints`, owned by an
+//! The migration moves `app_channels` rows into `agent_endpoints` (renamed to
+//! `agent_channels` by migration 144), owned by an
 //! Agent, and leaves `app_channels` behind as a compatibility view. The risk it
-//! carries is not that endpoints stop being readable — it is that the
+//! carries is not that channels stop being readable — it is that the
 //! session-ownership anchor moves and `shared_session` reuse silently stops
 //! keying on the values that stop cross-org and cross-app adoption.
 //!
@@ -15,7 +16,7 @@
 //! knowledge/integrations/app-invocation-channels.md, and TM-AUTHZ-009 /
 //! TM-A2A-007.
 //!
-//! Run with: cargo test -p everruns-server --test agent_endpoints_migration_test -- --test-threads=1
+//! Run with: cargo test -p everruns-server --test agent_channels_migration_test -- --test-threads=1
 
 mod test_harness;
 use std::sync::Arc;
@@ -53,7 +54,7 @@ async fn pool() -> PgPool {
 #[tokio::test]
 async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable() {
     let pool = pool().await;
-    let fixture = seed(&pool, "endpoint-no-app-reads", "published").await;
+    let fixture = seed(&pool, "channel-no-app-reads", "published").await;
     let ag_ui_token = "migration-ag-ui-token";
     let public_chat_token = "migration-public-chat-token";
     let fcp_token = "migration-fcp-token";
@@ -62,7 +63,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     let api_key = "evr_app_migration_key";
     let slack_signing_secret = "migration-slack-signing-secret";
     let migrated_webhook_token = "migration-trigger-webhook-token";
-    seed_ingress_endpoint(
+    seed_ingress_channel(
         &pool,
         &fixture,
         ChannelType::AgUi,
@@ -71,14 +72,14 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     .await;
     let migrated_webhook_id =
         seed_migrated_webhook_trigger(&pool, &fixture, migrated_webhook_token).await;
-    seed_ingress_endpoint(
+    seed_ingress_channel(
         &pool,
         &fixture,
         ChannelType::PublicChat,
         json!({"anonymous": true, "token": public_chat_token}),
     )
     .await;
-    seed_ingress_endpoint(
+    seed_ingress_channel(
         &pool,
         &fixture,
         ChannelType::Fcp,
@@ -89,7 +90,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         }),
     )
     .await;
-    let webhook_id = seed_ingress_endpoint(
+    let webhook_id = seed_ingress_channel(
         &pool,
         &fixture,
         ChannelType::Webhook,
@@ -100,7 +101,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         }),
     )
     .await;
-    let a2a_id = seed_ingress_endpoint(
+    let a2a_id = seed_ingress_channel(
         &pool,
         &fixture,
         ChannelType::A2a,
@@ -112,7 +113,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         }),
     )
     .await;
-    let api_id = seed_ingress_endpoint(
+    let api_id = seed_ingress_channel(
         &pool,
         &fixture,
         ChannelType::ApiEndpoint,
@@ -123,7 +124,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         }),
     )
     .await;
-    seed_ingress_endpoint(
+    seed_ingress_channel(
         &pool,
         &fixture,
         ChannelType::Schedule,
@@ -135,7 +136,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     )
     .await;
     sqlx::query(
-        "UPDATE agent_endpoints
+        "UPDATE agent_channels
          SET channel_config = $1
          WHERE id = $2",
     )
@@ -143,10 +144,10 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         "signing_secret": slack_signing_secret,
         "bot_token": "xoxb-migration-test"
     }))
-    .bind(fixture.endpoint_id)
+    .bind(fixture.channel_id)
     .execute(&pool)
     .await
-    .expect("configure Slack endpoint credentials");
+    .expect("configure Slack channel credentials");
 
     let role = format!("ingress_no_apps_{}", Uuid::new_v4().simple());
     let create_role = format!("CREATE ROLE {role} NOLOGIN");
@@ -157,7 +158,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     let grants = format!(
         "GRANT USAGE ON SCHEMA public TO {role};
          GRANT SELECT ON
-             organizations, agents, agent_endpoints, agent_triggers,
+             organizations, agents, agent_channels, agent_triggers,
              harnesses, harness_capabilities, agent_capabilities, agent_versions,
              principals, users, sessions, workspaces, session_participants,
              events, event_sequences, images, memories, models
@@ -166,12 +167,12 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
              sessions, workspaces, session_participants, events, images,
              event_sequences, memories, reporting_outbox, audit_logs
          TO {role};
-         GRANT UPDATE ON sessions, agent_endpoints, event_sequences TO {role};"
+         GRANT UPDATE ON sessions, agent_channels, event_sequences TO {role};"
     );
     sqlx::raw_sql(sqlx::AssertSqlSafe(grants.as_str()))
         .execute(&pool)
         .await
-        .expect("grant endpoint-only ingress reads");
+        .expect("grant channel-only ingress reads");
 
     let role_for_connect = role.clone();
     let restricted_pool = PgPoolOptions::new()
@@ -569,15 +570,15 @@ async fn seed_migrated_webhook_trigger(pool: &PgPool, fixture: &Fixture, token: 
     .expect("seed migrated webhook trigger");
     ingress_id
 }
-async fn seed_ingress_endpoint(
+async fn seed_ingress_channel(
     pool: &PgPool,
     fixture: &Fixture,
     channel_type: ChannelType,
     channel_config: Value,
 ) -> String {
-    let endpoint_public_id = format!("appchan_{}", hex32());
+    let channel_public_id = format!("appchan_{}", hex32());
     sqlx::query(
-        "INSERT INTO agent_endpoints (
+        "INSERT INTO agent_channels (
              id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
              channel_config, enabled, status, agent_version_policy, owner_principal_id
          )
@@ -587,14 +588,14 @@ async fn seed_ingress_endpoint(
     .bind(fixture.agent_id)
     .bind(fixture.app_id)
     .bind(&fixture.app_public_id)
-    .bind(&endpoint_public_id)
+    .bind(&channel_public_id)
     .bind(channel_type.to_string())
     .bind(channel_config)
     .bind(fixture.owner_principal_id)
     .execute(pool)
     .await
-    .expect("seed ingress endpoint");
-    endpoint_public_id
+    .expect("seed ingress channel");
+    channel_public_id
 }
 
 async fn ingress_router(db: Arc<StorageBackend>) -> Router {
@@ -750,14 +751,14 @@ fn png_multipart_body() -> (String, Vec<u8>) {
     (format!("multipart/form-data; boundary={boundary}"), body)
 }
 
-/// One isolated org + agent + app + endpoint + owner principal, seeded directly
+/// One isolated org + agent + app + channel + owner principal, seeded directly
 /// so the test exercises the migrated schema rather than the App create path.
 struct Fixture {
     org_id: i64,
     app_id: Uuid,
     app_public_id: String,
     agent_id: Uuid,
-    endpoint_id: Uuid,
+    channel_id: Uuid,
     owner_principal_id: Uuid,
     workspace_id: Uuid,
 }
@@ -837,30 +838,30 @@ async fn seed(pool: &PgPool, org_name: &str, app_status: &str) -> Fixture {
     .await
     .expect("seed app");
 
-    let endpoint_id = Uuid::now_v7();
-    let endpoint_public_id = format!("appchan_{}", hex32());
+    let channel_id = Uuid::now_v7();
+    let channel_public_id = format!("appchan_{}", hex32());
     sqlx::query(
-        "INSERT INTO agent_endpoints (id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
+        "INSERT INTO agent_channels (id, agent_id, app_id, legacy_app_public_id, public_id, channel_type,
                                       channel_config, enabled, status, agent_version_policy,
                                       owner_principal_id)
          VALUES ($1, $2, $3, $4, $5, 'slack', '{}'::jsonb, true, 'live', 'default', $6)",
     )
-    .bind(endpoint_id)
+    .bind(channel_id)
     .bind(agent_id)
     .bind(app_id)
     .bind(&app_public_id)
-    .bind(&endpoint_public_id)
+    .bind(&channel_public_id)
     .bind(owner_principal_id)
     .execute(pool)
     .await
-    .expect("seed endpoint");
+    .expect("seed channel");
 
     Fixture {
         org_id,
         app_id,
         app_public_id,
         agent_id,
-        endpoint_id,
+        channel_id,
         owner_principal_id,
         workspace_id,
     }
@@ -885,19 +886,19 @@ async fn seed_session(pool: &PgPool, fixture: &Fixture, owner: Uuid, tags: &[&st
     session_id
 }
 
-/// Acceptance: every `app_channels` row resolves to an `agent_endpoints` row
+/// Acceptance: every `app_channels` row resolves to an `agent_channels` row
 /// with the same id and a non-null `agent_id`. Asserted over the whole database
 /// so any rows an earlier test or the migration backfill produced are covered,
 /// not just the ones this test seeds.
 #[tokio::test]
-async fn every_app_channel_has_an_endpoint_with_an_agent() {
+async fn every_app_channel_has_a_channel_with_an_agent() {
     let pool = pool().await;
-    let _fixture = seed(&pool, "endpoint-invariant", "published").await;
+    let _fixture = seed(&pool, "channel-invariant", "published").await;
 
     let orphans: i64 = sqlx::query_scalar(
         "SELECT COUNT(*)
          FROM app_channels ac
-         LEFT JOIN agent_endpoints ae ON ae.id = ac.id
+         LEFT JOIN agent_channels ae ON ae.id = ac.id
          WHERE ae.id IS NULL OR ae.agent_id IS NULL",
     )
     .fetch_one(&pool)
@@ -906,28 +907,28 @@ async fn every_app_channel_has_an_endpoint_with_an_agent() {
 
     assert_eq!(
         orphans, 0,
-        "every app_channels row must have an agent_endpoints row with the same id and an agent_id"
+        "every app_channels row must have an agent_channels row with the same id and an agent_id"
     );
 }
 
 /// The compatibility view must expose the former `app_channels` shape verbatim,
 /// because App read paths still select these columns by name.
 #[tokio::test]
-async fn app_channels_view_mirrors_the_endpoint_row() {
+async fn app_channels_view_mirrors_the_channel_row() {
     let pool = pool().await;
-    let fixture = seed(&pool, "endpoint-view", "published").await;
+    let fixture = seed(&pool, "channel-view", "published").await;
 
     let row = sqlx::query(
         "SELECT id, app_id, public_id, channel_type, channel_config,
                 channel_config_encrypted, durable_schedule_id, enabled, created_at, updated_at
          FROM app_channels WHERE id = $1",
     )
-    .bind(fixture.endpoint_id)
+    .bind(fixture.channel_id)
     .fetch_one(&pool)
     .await
     .expect("read channel through the compatibility view");
 
-    assert_eq!(row.get::<Uuid, _>("id"), fixture.endpoint_id);
+    assert_eq!(row.get::<Uuid, _>("id"), fixture.channel_id);
     assert_eq!(row.get::<Uuid, _>("app_id"), fixture.app_id);
     assert_eq!(row.get::<String, _>("channel_type"), "slack");
     assert!(row.get::<bool, _>("enabled"));
@@ -939,11 +940,11 @@ async fn app_channels_view_mirrors_the_endpoint_row() {
 async fn shared_session_reuse_still_matches_after_reparenting() {
     let pool = pool().await;
     let db = Database::new(pool.clone());
-    let fixture = seed(&pool, "endpoint-reuse", "published").await;
+    let fixture = seed(&pool, "channel-reuse", "published").await;
 
     let routing_tags = [
         "__internal:app_channel:shared".to_string(),
-        format!("app_channel:{}", fixture.endpoint_id),
+        format!("app_channel:{}", fixture.channel_id),
     ];
     let expected = seed_session(
         &pool,
@@ -951,7 +952,7 @@ async fn shared_session_reuse_still_matches_after_reparenting() {
         fixture.owner_principal_id,
         &[
             "__internal:app_channel:shared",
-            &format!("app_channel:{}", fixture.endpoint_id),
+            &format!("app_channel:{}", fixture.channel_id),
             "slack:channel:C123",
         ],
     )
@@ -976,13 +977,13 @@ async fn shared_session_reuse_still_matches_after_reparenting() {
 
 /// TM-AUTHZ-009: a session carrying the same surface tags but owned by a
 /// different principal must never be adopted. This is what makes
-/// `owner_principal_id` load-bearing on the endpoint rather than collapsible
+/// `owner_principal_id` load-bearing on the channel rather than collapsible
 /// onto the agent.
 #[tokio::test]
 async fn session_owned_by_another_principal_is_not_adopted() {
     let pool = pool().await;
     let db = Database::new(pool.clone());
-    let fixture = seed(&pool, "endpoint-owner", "published").await;
+    let fixture = seed(&pool, "channel-owner", "published").await;
 
     let other_principal = Uuid::now_v7();
     sqlx::query("INSERT INTO principals (id, public_id, org_id, kind) VALUES ($1, $2, $3, 'user')")
@@ -993,7 +994,7 @@ async fn session_owned_by_another_principal_is_not_adopted() {
         .await
         .expect("seed second principal");
 
-    let tag = format!("app_channel:{}", fixture.endpoint_id);
+    let tag = format!("app_channel:{}", fixture.channel_id);
     // Same org, same app, same surface tags — only the owner differs.
     seed_session(&pool, &fixture, other_principal, &[&tag]).await;
 
@@ -1019,8 +1020,8 @@ async fn session_owned_by_another_principal_is_not_adopted() {
 async fn cross_org_reuse_fails() {
     let pool = pool().await;
     let db = Database::new(pool.clone());
-    let mine = seed(&pool, "endpoint-org-a", "published").await;
-    let theirs = seed(&pool, "endpoint-org-b", "published").await;
+    let mine = seed(&pool, "channel-org-a", "published").await;
+    let theirs = seed(&pool, "channel-org-b", "published").await;
 
     let tag = "app_channel:shared-surface".to_string();
     seed_session(&pool, &theirs, theirs.owner_principal_id, &[&tag]).await;
@@ -1046,7 +1047,7 @@ async fn cross_org_reuse_fails() {
 async fn cross_app_reuse_fails() {
     let pool = pool().await;
     let db = Database::new(pool.clone());
-    let first = seed(&pool, "endpoint-app-a", "published").await;
+    let first = seed(&pool, "channel-app-a", "published").await;
 
     // A second app in the same org, owned by the same principal.
     let second_app = Uuid::now_v7();
@@ -1076,7 +1077,7 @@ async fn cross_app_reuse_fails() {
     .await
     .expect("seed second app");
 
-    let tag = format!("app_channel:{}", first.endpoint_id);
+    let tag = format!("app_channel:{}", first.channel_id);
     seed_session(&pool, &first, first.owner_principal_id, &[&tag]).await;
 
     let found = db
@@ -1102,19 +1103,13 @@ async fn cross_app_reuse_fails() {
 async fn reuse_requires_containment_of_every_routing_tag() {
     let pool = pool().await;
     let db = Database::new(pool.clone());
-    let fixture = seed(&pool, "endpoint-containment", "published").await;
+    let fixture = seed(&pool, "channel-containment", "published").await;
 
-    let endpoint_tag = format!("app_channel:{}", fixture.endpoint_id);
+    let channel_tag = format!("app_channel:{}", fixture.channel_id);
     // Session carries only the first of the two tags the lookup requires.
-    seed_session(
-        &pool,
-        &fixture,
-        fixture.owner_principal_id,
-        &[&endpoint_tag],
-    )
-    .await;
+    seed_session(&pool, &fixture, fixture.owner_principal_id, &[&channel_tag]).await;
 
-    let required = [endpoint_tag.clone(), "slack:thread:T999".to_string()];
+    let required = [channel_tag.clone(), "slack:thread:T999".to_string()];
     let found = db
         .find_app_session_by_tags_and_owner(
             fixture.org_id,
@@ -1136,7 +1131,7 @@ async fn reuse_requires_containment_of_every_routing_tag() {
             fixture.org_id,
             fixture.app_id,
             PrincipalId::from(fixture.owner_principal_id),
-            &[endpoint_tag],
+            &[channel_tag],
         )
         .await
         .expect("reuse lookup");
@@ -1146,13 +1141,13 @@ async fn reuse_requires_containment_of_every_routing_tag() {
     );
 }
 
-/// An endpoint is owned by an agent, so creating one against an agent-less App
+/// A channel is owned by an agent, so creating one against an agent-less App
 /// must fail loudly rather than write a row with no owner.
 #[tokio::test]
-async fn endpoint_creation_requires_the_app_to_have_an_agent() {
+async fn channel_creation_requires_the_app_to_have_an_agent() {
     let pool = pool().await;
     let db = Database::new(pool.clone());
-    let fixture = seed(&pool, "endpoint-no-agent", "draft").await;
+    let fixture = seed(&pool, "channel-no-agent", "draft").await;
 
     sqlx::query("UPDATE apps SET agent_id = NULL WHERE id = $1")
         .bind(fixture.app_id)
@@ -1178,21 +1173,21 @@ async fn endpoint_creation_requires_the_app_to_have_an_agent() {
 
     assert!(
         result.is_err(),
-        "creating an endpoint on an agent-less App must fail; an endpoint must be owned by an agent"
+        "creating a channel on an agent-less App must fail; a channel must be owned by an agent"
     );
 }
 
-/// The update path writes to `agent_endpoints` rather than the read-only view.
-/// It must preserve endpoint identity and the authoritative endpoint status.
+/// The update path writes to `agent_channels` rather than the read-only view.
+/// It must preserve channel identity and the authoritative channel status.
 #[tokio::test]
-async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
+async fn updating_a_channel_preserves_identity_and_keeps_status_honest() {
     let pool = pool().await;
     let db = Database::new(pool.clone());
-    let fixture = seed(&pool, "endpoint-update", "published").await;
+    let fixture = seed(&pool, "channel-update", "published").await;
 
     let public_id: String =
-        sqlx::query_scalar("SELECT public_id FROM agent_endpoints WHERE id = $1")
-            .bind(fixture.endpoint_id)
+        sqlx::query_scalar("SELECT public_id FROM agent_channels WHERE id = $1")
+            .bind(fixture.channel_id)
             .fetch_one(&pool)
             .await
             .expect("read public_id");
@@ -1200,7 +1195,7 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
     // Disabling must drive the derived status to 'disabled'.
     let updated = db
         .update_app_channel(
-            fixture.endpoint_id,
+            fixture.channel_id,
             everruns_server::storage::UpdateAppChannel {
                 channel_config: Some(serde_json::json!({"team_id": "T1"})),
                 enabled: Some(false),
@@ -1208,18 +1203,18 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
             },
         )
         .await
-        .expect("update endpoint")
-        .expect("endpoint exists");
+        .expect("update channel")
+        .expect("channel exists");
 
-    assert_eq!(updated.id, fixture.endpoint_id, "row id must not change");
+    assert_eq!(updated.id, fixture.channel_id, "row id must not change");
     assert_eq!(
         updated.public_id, public_id,
         "public_id is the ingress identity and must survive an update"
     );
     assert!(!updated.enabled);
 
-    let status: String = sqlx::query_scalar("SELECT status FROM agent_endpoints WHERE id = $1")
-        .bind(fixture.endpoint_id)
+    let status: String = sqlx::query_scalar("SELECT status FROM agent_channels WHERE id = $1")
+        .bind(fixture.channel_id)
         .fetch_one(&pool)
         .await
         .expect("read status");
@@ -1227,45 +1222,45 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
 
     // Re-enabling does not infer lifecycle from the frozen App row.
     db.update_app_channel(
-        fixture.endpoint_id,
+        fixture.channel_id,
         everruns_server::storage::UpdateAppChannel {
             enabled: Some(true),
             ..Default::default()
         },
     )
     .await
-    .expect("re-enable endpoint")
-    .expect("endpoint exists");
+    .expect("re-enable channel")
+    .expect("channel exists");
 
-    let status: String = sqlx::query_scalar("SELECT status FROM agent_endpoints WHERE id = $1")
-        .bind(fixture.endpoint_id)
+    let status: String = sqlx::query_scalar("SELECT status FROM agent_channels WHERE id = $1")
+        .bind(fixture.channel_id)
         .fetch_one(&pool)
         .await
         .expect("read status");
     assert_eq!(status, "disabled");
 
     db.update_app_channel(
-        fixture.endpoint_id,
+        fixture.channel_id,
         everruns_server::storage::UpdateAppChannel {
             status: Some("live".to_string()),
             ..Default::default()
         },
     )
     .await
-    .expect("set endpoint live")
-    .expect("endpoint exists");
+    .expect("set channel live")
+    .expect("channel exists");
 
-    let status: String = sqlx::query_scalar("SELECT status FROM agent_endpoints WHERE id = $1")
-        .bind(fixture.endpoint_id)
+    let status: String = sqlx::query_scalar("SELECT status FROM agent_channels WHERE id = $1")
+        .bind(fixture.channel_id)
         .fetch_one(&pool)
         .await
         .expect("read status");
     assert_eq!(status, "live");
 
-    // The agent and owner the endpoint was created with are untouched by an update.
+    // The agent and owner the channel was created with are untouched by an update.
     let (agent_id, owner): (Uuid, Uuid) =
-        sqlx::query_as("SELECT agent_id, owner_principal_id FROM agent_endpoints WHERE id = $1")
-            .bind(fixture.endpoint_id)
+        sqlx::query_as("SELECT agent_id, owner_principal_id FROM agent_channels WHERE id = $1")
+            .bind(fixture.channel_id)
             .fetch_one(&pool)
             .await
             .expect("read ownership");
@@ -1273,21 +1268,21 @@ async fn updating_an_endpoint_preserves_identity_and_keeps_status_honest() {
     assert!(!agent_id.is_nil());
 }
 
-/// Deleting an endpoint removes it from the table and therefore from the view.
+/// Deleting a channel removes it from the table and therefore from the view.
 #[tokio::test]
-async fn deleting_an_endpoint_removes_it_from_the_view() {
+async fn deleting_a_channel_removes_it_from_the_view() {
     let pool = pool().await;
     let db = Database::new(pool.clone());
-    let fixture = seed(&pool, "endpoint-delete", "published").await;
+    let fixture = seed(&pool, "channel-delete", "published").await;
 
     assert!(
-        db.delete_app_channel(fixture.endpoint_id)
+        db.delete_app_channel(fixture.channel_id)
             .await
-            .expect("delete endpoint")
+            .expect("delete channel")
     );
 
     let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM app_channels WHERE id = $1")
-        .bind(fixture.endpoint_id)
+        .bind(fixture.channel_id)
         .fetch_one(&pool)
         .await
         .expect("count view rows");
@@ -1295,7 +1290,9 @@ async fn deleting_an_endpoint_removes_it_from_the_view() {
 }
 
 #[tokio::test]
-async fn endpoint_auth_migration_only_backfills_plaintext_transport_rows() {
+async fn channel_auth_migration_only_backfills_plaintext_transport_rows() {
+    // Migration 139 predates the migration 144 rename, so the fixture uses the
+    // table name it was written against.
     let pool = pool().await;
     let mut tx = pool.begin().await.expect("begin transaction");
     sqlx::raw_sql(
@@ -1337,13 +1334,13 @@ async fn endpoint_auth_migration_only_backfills_plaintext_transport_rows() {
         .bind(ciphertext)
         .execute(&mut *tx)
         .await
-        .expect("seed pre-migration endpoint");
+        .expect("seed pre-migration channel");
     }
 
     sqlx::raw_sql(include_str!("../migrations/139_agent_endpoint_auth.sql"))
         .execute(&mut *tx)
         .await
-        .expect("apply endpoint auth migration");
+        .expect("apply channel auth migration");
 
     let (config, auth): (serde_json::Value, Option<serde_json::Value>) =
         sqlx::query_as("SELECT channel_config, auth FROM agent_endpoints WHERE id = $1")

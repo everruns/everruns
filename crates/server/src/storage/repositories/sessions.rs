@@ -12,7 +12,7 @@ use tracing::warn;
 use uuid::Uuid;
 
 /// Columns projected by every session detail/list query.
-const SESSION_COLUMNS: &str = "id, org_id, workspace_id, app_id, endpoint_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at, \
+const SESSION_COLUMNS: &str = "id, org_id, workspace_id, app_id, channel_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at, \
      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, \
      forked_from_session_id, forked_from_sequence, \
      blueprint_id, blueprint_config, archived_at, event_count, task_count";
@@ -277,9 +277,9 @@ impl Database {
 
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO sessions (id, org_id, app_id, endpoint_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, blueprint_id, blueprint_config, parent_session_id, workspace_id, parallel_tool_calls, root_session_id, source, status)
+            INSERT INTO sessions (id, org_id, app_id, channel_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, blueprint_id, blueprint_config, parent_session_id, workspace_id, parallel_tool_calls, root_session_id, source, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, 'started')
-            RETURNING id, org_id, workspace_id, app_id, endpoint_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
+            RETURNING id, org_id, workspace_id, app_id, channel_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, root_session_id,
                       blueprint_id, blueprint_config, archived_at, event_count, task_count
             "#,
@@ -287,7 +287,7 @@ impl Database {
         .bind(session_id)
         .bind(input.org_id)
         .bind(input.app_id)
-        .bind(input.endpoint_id)
+        .bind(input.channel_id)
         .bind(input.harness_id.map(|h| h.uuid()))
         .bind(input.agent_id.map(|a| a.uuid()))
         .bind(input.agent_version_id.map(|id| id.uuid()))
@@ -425,7 +425,7 @@ impl Database {
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT s.id, s.org_id, s.workspace_id, s.app_id, s.endpoint_id, s.harness_id, s.agent_id, s.agent_version_id, s.agent_config_hash, s.agent_identity_id, s.owner_principal_id, s.resolved_owner_user_id, s.title, s.goal, s.locale, s.tags, s.model_id, s.capabilities, s.tools, s.mcp_servers, s.system_prompt, s.initial_files, s.hints, s.network_access, s.max_iterations, s.parallel_tool_calls, s.status, s.source, s.last_turn_status, s.last_turn_at, s.run_summary, s.run_summary_turn_sequence, s.created_at, s.updated_at, s.started_at, s.finished_at,
+            SELECT s.id, s.org_id, s.workspace_id, s.app_id, s.channel_id, s.harness_id, s.agent_id, s.agent_version_id, s.agent_config_hash, s.agent_identity_id, s.owner_principal_id, s.resolved_owner_user_id, s.title, s.goal, s.locale, s.tags, s.model_id, s.capabilities, s.tools, s.mcp_servers, s.system_prompt, s.initial_files, s.hints, s.network_access, s.max_iterations, s.parallel_tool_calls, s.status, s.source, s.last_turn_status, s.last_turn_at, s.run_summary, s.run_summary_turn_sequence, s.created_at, s.updated_at, s.started_at, s.finished_at,
                    s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens, s.total_actual_cost_usd, s.total_estimated_cost_usd, s.total_cost_usd, s.parent_session_id,
                    s.forked_from_session_id, s.forked_from_sequence,
                    s.blueprint_id, s.blueprint_config, s.archived_at, s.event_count, s.task_count,
@@ -447,7 +447,7 @@ impl Database {
     pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, endpoint_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, channel_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, event_count, task_count
@@ -698,7 +698,7 @@ impl Database {
     ) -> Result<Vec<SessionRow>> {
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, endpoint_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, channel_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, event_count, task_count
@@ -979,7 +979,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, endpoint_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, channel_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, event_count, task_count
@@ -1006,7 +1006,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, endpoint_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, channel_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, event_count, task_count
@@ -1034,7 +1034,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, endpoint_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, channel_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, event_count, task_count
@@ -1063,7 +1063,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, endpoint_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, channel_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, event_count, task_count
@@ -1088,7 +1088,7 @@ impl Database {
     pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT s.id, s.org_id, s.workspace_id, s.app_id, s.endpoint_id, s.harness_id, s.agent_id, s.agent_version_id, s.agent_config_hash, s.agent_identity_id, s.owner_principal_id, s.resolved_owner_user_id, s.title, s.locale, s.tags, s.model_id, s.capabilities, s.tools, s.mcp_servers, s.system_prompt, s.initial_files, s.hints, s.network_access, s.max_iterations, s.parallel_tool_calls, s.status, s.source, s.last_turn_status, s.last_turn_at, s.created_at, s.updated_at, s.started_at, s.finished_at,
+            SELECT s.id, s.org_id, s.workspace_id, s.app_id, s.channel_id, s.harness_id, s.agent_id, s.agent_version_id, s.agent_config_hash, s.agent_identity_id, s.owner_principal_id, s.resolved_owner_user_id, s.title, s.locale, s.tags, s.model_id, s.capabilities, s.tools, s.mcp_servers, s.system_prompt, s.initial_files, s.hints, s.network_access, s.max_iterations, s.parallel_tool_calls, s.status, s.source, s.last_turn_status, s.last_turn_at, s.created_at, s.updated_at, s.started_at, s.finished_at,
                    s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens, s.total_cost_usd, s.parent_session_id,
                    s.blueprint_id, s.blueprint_config
             FROM sessions s
@@ -1189,7 +1189,7 @@ impl Database {
                 agent_version_id = COALESCE($17, agent_version_id),
                 agent_config_hash = COALESCE($18, agent_config_hash)
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, workspace_id, app_id, endpoint_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
+            RETURNING id, org_id, workspace_id, app_id, channel_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                       blueprint_id, blueprint_config, archived_at, event_count, task_count
             "#,

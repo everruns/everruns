@@ -50,7 +50,7 @@ fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionR
         source: everruns_platform::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
-        endpoint_id: None,
+        channel_id: None,
         harness_id: None,
         agent_id: None,
         agent_version_id: None,

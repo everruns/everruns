@@ -16,7 +16,7 @@ pub(crate) fn make_signature(secret: &str, timestamp: &str, body: &str) -> Strin
 
 pub(crate) struct TestIngress {
     context: crate::api::app_ingress::IngressContext,
-    pub(crate) channels: Vec<crate::api::app_ingress::IngressEndpoint>,
+    pub(crate) channels: Vec<crate::api::app_ingress::IngressChannel>,
 }
 
 impl Deref for TestIngress {
@@ -34,19 +34,19 @@ impl DerefMut for TestIngress {
 }
 
 pub(crate) fn test_app() -> TestIngress {
-    use everruns_platform::{ChannelType, EndpointStatus};
+    use everruns_platform::{ChannelStatus, ChannelType};
     use everruns_provider::typed_id::AppChannelId;
 
     TestIngress {
         context: crate::api::app_ingress::IngressContext::for_test("Test App", None),
-        channels: vec![crate::api::app_ingress::IngressEndpoint {
+        channels: vec![crate::api::app_ingress::IngressChannel {
             public_id: AppChannelId::from_uuid(uuid::Uuid::nil()),
             internal_id: uuid::Uuid::nil(),
             channel_type: ChannelType::Slack,
             channel_config: serde_json::json!({}),
             auth: None,
             enabled: true,
-            status: EndpointStatus::Live,
+            status: ChannelStatus::Live,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }],
@@ -114,7 +114,7 @@ pub(crate) async fn setup_test_session(
         workspace_id: None,
         org_id: 1,
         app_id: None,
-        endpoint_id: None,
+        channel_id: None,
         harness_id: Some(everruns_provider::typed_id::HarnessId::from_uuid(
             uuid::Uuid::nil(),
         )),

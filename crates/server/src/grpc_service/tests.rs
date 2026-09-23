@@ -316,7 +316,7 @@ async fn test_list_commands_includes_platform_catalog_commands() {
         response
             .commands
             .iter()
-            .any(|command| command.name == "create_agent_endpoint" && command.api_version == "v1")
+            .any(|command| command.name == "create_agent_channel" && command.api_version == "v1")
     );
 }
 
@@ -623,7 +623,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,

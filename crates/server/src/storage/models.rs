@@ -523,8 +523,8 @@ pub struct AgentRow {
     pub root_agent_id: Option<AgentId>,
     pub tags: Vec<String>,
     pub status: String,
-    /// Incident switch: when true no endpoint on this agent accepts traffic,
-    /// without rewriting the per-endpoint status it must restore to (EVE-1007).
+    /// Incident switch: when true no channel on this agent accepts traffic,
+    /// without rewriting the per-channel status it must restore to (EVE-1007).
     pub exposures_suspended: bool,
     /// Platform-supplied agent (mirrors `HarnessRow::is_built_in`). Its
     /// definition is immutable through the API and excluded from the per-org
@@ -853,12 +853,12 @@ pub struct SessionRow {
     pub workspace_id: Uuid,
     #[sqlx(default)]
     pub app_id: Option<Uuid>,
-    /// Endpoint whose ingress created this session (EVE-1004). `app_id` says
+    /// Channel whose ingress created this session (EVE-1004). `app_id` says
     /// which bundle; this says which door. NULL for user, API, and
     /// platform-created sessions, and for app-channel sessions predating the
     /// routing tag the backfill reads.
     #[sqlx(default)]
-    pub endpoint_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
     #[sqlx(default)]
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
@@ -1082,10 +1082,10 @@ pub struct CreateSessionRow {
     /// variants (see `SessionSource::is_client_declarable`).
     pub source: everruns_platform::SessionSource,
     pub app_id: Option<Uuid>,
-    /// Endpoint whose ingress created this session (EVE-1004). Set by the
-    /// app-channel ingress paths, which all know their endpoint; `None`
+    /// Channel whose ingress created this session (EVE-1004). Set by the
+    /// app-channel ingress paths, which all know their channel; `None`
     /// everywhere else.
-    pub endpoint_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
     pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
@@ -2927,7 +2927,7 @@ pub struct AppChannelRow {
     pub auth_encrypted: Option<Vec<u8>>,
     pub durable_schedule_id: Option<Uuid>,
     pub enabled: bool,
-    /// Per-endpoint lifecycle; authoritative for ingress (EVE-1007).
+    /// Per-channel lifecycle; authoritative for ingress (EVE-1007).
     #[sqlx(default)]
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -2997,7 +2997,7 @@ pub struct UpdateAppChannel {
     pub auth_encrypted: UpdateField<Vec<u8>>,
     pub durable_schedule_id: UpdateField<Uuid>,
     pub enabled: Option<bool>,
-    /// Set the endpoint lifecycle directly. When `None`, an `enabled` change
+    /// Set the channel lifecycle directly. When `None`, an `enabled` change
     /// still moves `status` between `disabled` and the App's publish state so
     /// the two cannot drift while the App API is still the everyday control.
     pub status: Option<String>,

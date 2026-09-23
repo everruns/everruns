@@ -250,18 +250,19 @@ jobs:
               - 'docs/api/openapi.json'
               - '.github/workflows/ci.yml'
             budget_e2e:
-              - 'apps/ui/e2e/endpoint-budget-refusal.spec.ts'
+              - 'apps/ui/e2e/channel-budget-refusal.spec.ts'
               - 'apps/ui/src/components/agents/agent-integrations-panel.tsx'
               - 'apps/ui/src/components/budgets/**'
-              - 'apps/ui/src/hooks/use-agent-endpoints.ts'
+              - 'apps/ui/src/hooks/use-agent-channels.ts'
               - 'apps/ui/src/lib/api/budgets.ts'
               - 'crates/server/src/api/budgets.rs'
-              - 'crates/server/src/domains/agent_endpoints/**'
+              - 'crates/server/src/domains/agent_channels/**'
               - 'crates/server/src/domains/apps/invocation.rs'
               - 'crates/server/src/domains/budgets/**'
               - 'crates/server/src/storage/repositories/budgets.rs'
               - 'crates/server/migrations/027_app_budgets.sql'
               - 'crates/server/migrations/137_endpoint_attribution.sql'
+              - 'crates/server/migrations/144_rename_agent_endpoints_to_channels.sql'
               - '.github/workflows/ci.yml'
             docs:
               - 'apps/docs/**'
@@ -1356,10 +1357,10 @@ jobs:
             --test session_git_integration_test \
             --test session_tab_counts_integration_test \
             --test webhook_trigger_migration_test \
-            --test agent_endpoints_migration_test \
+            --test agent_channels_migration_test \
             --test app_api_integration_test \
-            --test endpoint_attribution_test \
-            --test endpoint_publish_test \
+            --test channel_attribution_test \
+            --test channel_publish_test \
             --test command_policy_enforcement_test \
             --test db_pool_isolation_test \
             --test fcp_integration_test \
@@ -2406,7 +2407,7 @@ jobs:
       AUTH_MODE: none
       FEATURE_APP_BUDGETS: "true"
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
-      WORKER_GRPC_AUTH_TOKEN: endpoint-budget-e2e-token
+      WORKER_GRPC_AUTH_TOKEN: channel-budget-e2e-token
       PLAYWRIGHT_REAL_API_URL: http://localhost:9000
 
     defaults:
@@ -2473,8 +2474,8 @@ jobs:
           ./bin/everruns-worker > /tmp/everruns-budget-e2e-worker.log 2>&1 &
           echo "WORKER_PID=$!" >> "$GITHUB_ENV"
 
-      - name: Run endpoint budget full-stack test
-        run: pnpm exec playwright test e2e/endpoint-budget-refusal.spec.ts
+      - name: Run channel budget full-stack test
+        run: pnpm exec playwright test e2e/channel-budget-refusal.spec.ts
 
       - name: Show server and worker logs on failure
         if: failure()

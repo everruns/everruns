@@ -1,4 +1,4 @@
-//! Creating an endpoint's Slack app without the operator visiting api.slack.com.
+//! Creating a channel's Slack app without the operator visiting api.slack.com.
 //!
 //! Connecting an agent to Slack asks for four values copied out of Slack by
 //! hand. Three of them can be obtained programmatically: `apps.manifest.create`
@@ -47,10 +47,10 @@ impl std::fmt::Debug for SlackAppCredentials {
     }
 }
 
-/// What a provisioned Slack app leaves on the endpoint.
+/// What a provisioned Slack app leaves on the channel.
 ///
 /// One struct rather than five loose fields on `SlackChannelConfig`, because
-/// they are one fact — "we created this endpoint's Slack app" — and they are
+/// they are one fact — "we created this channel's Slack app" — and they are
 /// all-or-nothing. Loose `Option`s let a client id exist without its secret,
 /// a state that nothing can act on and every reader has to defend against.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -68,7 +68,7 @@ pub struct ProvisionedSlackApp {
     ///
     /// Slack echoes `state` back to the redirect URL unverified, so without
     /// one the callback is a route an attacker can drive with a code of their
-    /// choosing and bind their own workspace to this endpoint. Cleared the
+    /// choosing and bind their own workspace to this channel. Cleared the
     /// moment it is spent, so a replay finds nothing to match.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install_state: Option<String>,
@@ -114,7 +114,7 @@ pub enum SlackProvisioningError {
 
 pub type SlackProvisioningResult<T> = Result<T, SlackProvisioningError>;
 
-/// Creates and reaps per-endpoint Slack apps on behalf of the deployment.
+/// Creates and reaps per-channel Slack apps on behalf of the deployment.
 #[async_trait]
 pub trait SlackAppProvisioner: Send + Sync {
     /// Create a Slack app from a manifest this server generated.
@@ -126,7 +126,7 @@ pub trait SlackAppProvisioner: Send + Sync {
     /// Called when an install is abandoned before OAuth completes, so a
     /// half-finished flow does not leave an app in the deployment's Slack
     /// account that nothing references. Best-effort by contract: the caller
-    /// logs a failure and moves on rather than trapping the endpoint in a
+    /// logs a failure and moves on rather than trapping the channel in a
     /// state the UI cannot explain.
     async fn delete_app(&self, app_id: &str) -> SlackProvisioningResult<()>;
 

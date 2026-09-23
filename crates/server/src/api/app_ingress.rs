@@ -3,7 +3,7 @@ use std::sync::Arc;
 use everruns_platform::app::{ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_platform::{
     A2aChannelConfig, AgUiChannelConfig, AgentVersionPolicy, ApiEndpointChannelConfig, AppChannel,
-    AppEndpointAuthConfig, ChannelType, EndpointStatus, FcpChannelConfig, PublicChatChannelConfig,
+    ChannelAuthConfig, ChannelStatus, ChannelType, FcpChannelConfig, PublicChatChannelConfig,
     SlackChannelConfig,
 };
 use everruns_provider::typed_id::{
@@ -11,7 +11,7 @@ use everruns_provider::typed_id::{
 };
 use uuid::Uuid;
 
-use crate::storage::{EncryptionService, IngressEndpointRow, StorageBackend};
+use crate::storage::{EncryptionService, IngressChannelRow, StorageBackend};
 
 #[derive(Debug, Clone)]
 pub struct IngressContext {
@@ -66,19 +66,19 @@ impl IngressContext {
 }
 
 #[derive(Debug, Clone)]
-pub struct IngressEndpoint {
+pub struct IngressChannel {
     pub public_id: AppChannelId,
     pub internal_id: Uuid,
     pub channel_type: ChannelType,
     pub channel_config: serde_json::Value,
-    pub auth: Option<Box<AppEndpointAuthConfig>>,
+    pub auth: Option<Box<ChannelAuthConfig>>,
     pub enabled: bool,
-    pub status: EndpointStatus,
+    pub status: ChannelStatus,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-impl IngressEndpoint {
+impl IngressChannel {
     pub fn into_channel(self) -> AppChannel {
         AppChannel {
             public_id: self.public_id,
@@ -132,71 +132,71 @@ impl IngressEndpoint {
     }
 }
 
-pub async fn resolve_endpoint(
+pub async fn resolve_channel(
     db: &StorageBackend,
     encryption: Option<&Arc<EncryptionService>>,
-    endpoint_id: &str,
-) -> anyhow::Result<Option<(IngressContext, IngressEndpoint)>> {
-    db.get_ingress_endpoint_by_public_id(endpoint_id)
+    channel_id: &str,
+) -> anyhow::Result<Option<(IngressContext, IngressChannel)>> {
+    db.get_ingress_channel_by_public_id(channel_id)
         .await?
         .map(|row| row_to_ingress(encryption, row))
         .transpose()
 }
 
-pub async fn resolve_legacy_endpoint(
+pub async fn resolve_legacy_channel(
     db: &StorageBackend,
     encryption: Option<&Arc<EncryptionService>>,
     legacy_app_id: &str,
     channel_type: ChannelType,
-) -> anyhow::Result<LegacyEndpointMatch> {
+) -> anyhow::Result<LegacyChannelMatch> {
     let rows = db
-        .list_ingress_endpoints_by_legacy_alias(legacy_app_id, &channel_type.to_string())
+        .list_ingress_channels_by_legacy_alias(legacy_app_id, &channel_type.to_string())
         .await?;
-    let mut endpoints = rows.into_iter().map(|row| row_to_ingress(encryption, row));
-    let Some(endpoint) = endpoints.next() else {
-        return Ok(LegacyEndpointMatch::NotFound);
+    let mut channels = rows.into_iter().map(|row| row_to_ingress(encryption, row));
+    let Some(channel) = channels.next() else {
+        return Ok(LegacyChannelMatch::NotFound);
     };
-    if endpoints.next().is_some() {
-        return Ok(LegacyEndpointMatch::Ambiguous);
+    if channels.next().is_some() {
+        return Ok(LegacyChannelMatch::Ambiguous);
     }
-    Ok(LegacyEndpointMatch::One(Box::new(endpoint?)))
+    Ok(LegacyChannelMatch::One(Box::new(channel?)))
 }
 
 pub(crate) fn row_to_ingress(
     encryption: Option<&Arc<EncryptionService>>,
-    row: IngressEndpointRow,
-) -> anyhow::Result<(IngressContext, IngressEndpoint)> {
-    let endpoint_public_id = row
-        .endpoint_public_id
+    row: IngressChannelRow,
+) -> anyhow::Result<(IngressContext, IngressChannel)> {
+    let channel_public_id = row
+        .channel_public_id
         .parse()
-        .unwrap_or_else(|_| AppChannelId::from_uuid(row.endpoint_id));
+        .unwrap_or_else(|_| AppChannelId::from_uuid(row.channel_id));
     let mut channel_config = decrypt_json(
         encryption,
         row.channel_config_encrypted.as_deref(),
         &row.channel_config,
-        "endpoint configuration",
+        "channel configuration",
     );
     let legacy_auth = channel_config
         .as_object_mut()
         .and_then(|object| object.remove("auth"));
     let auth = if row.auth.is_some() || row.auth_encrypted.is_some() {
-        Some(endpoint_auth_fail_closed(decrypt_json(
+        Some(channel_auth_fail_closed(decrypt_json(
             encryption,
             row.auth_encrypted.as_deref(),
             &row.auth.clone().unwrap_or(serde_json::Value::Null),
-            "endpoint authentication",
+            "channel authentication",
         )))
     } else {
-        legacy_auth.map(endpoint_auth_fail_closed)
+        legacy_auth.map(channel_auth_fail_closed)
     };
     let app_public_id = row
         .legacy_app_public_id
         .as_deref()
         .and_then(|value| value.parse().ok())
-        .unwrap_or_else(|| AppId::from_uuid(row.endpoint_id));
+        .unwrap_or_else(|| AppId::from_uuid(row.channel_id));
     let context = IngressContext {
         public_id: app_public_id,
-        internal_id: row.legacy_app_id.unwrap_or(row.endpoint_id),
+        internal_id: row.legacy_app_id.unwrap_or(row.channel_id),
         historical_app_id: row.legacy_app_id,
         legacy_app_public_id: row.legacy_app_public_id,
         org_id: row.org_id,
@@ -213,18 +213,18 @@ pub(crate) fn row_to_ingress(
         agent_status: row.agent_status,
         exposures_suspended: row.exposures_suspended,
     };
-    let endpoint = IngressEndpoint {
-        public_id: endpoint_public_id,
-        internal_id: row.endpoint_id,
+    let channel = IngressChannel {
+        public_id: channel_public_id,
+        internal_id: row.channel_id,
         channel_type: ChannelType::from_str_opt(&row.channel_type).unwrap_or(ChannelType::Slack),
         channel_config,
         auth,
         enabled: row.enabled,
-        status: EndpointStatus::from(row.endpoint_status.as_str()),
+        status: ChannelStatus::from(row.channel_status.as_str()),
         created_at: row.created_at,
         updated_at: row.updated_at,
     };
-    Ok((context, endpoint))
+    Ok((context, channel))
 }
 
 fn decrypt_json(
@@ -249,17 +249,17 @@ fn decrypt_json(
         })
 }
 
-fn endpoint_auth_fail_closed(value: serde_json::Value) -> Box<AppEndpointAuthConfig> {
+fn channel_auth_fail_closed(value: serde_json::Value) -> Box<ChannelAuthConfig> {
     Box::new(serde_json::from_value(value).unwrap_or_else(|error| {
-        tracing::error!(%error, "Failed to parse endpoint authentication");
+        tracing::error!(%error, "Failed to parse channel authentication");
         serde_json::from_value(serde_json::json!({"mode": "http_basic"}))
-            .expect("fail-closed endpoint authentication is valid")
+            .expect("fail-closed channel authentication is valid")
     }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotLive {
-    EndpointNotLive,
+    ChannelNotLive,
     AgentNotActive,
     ExposuresSuspended,
 }
@@ -267,19 +267,16 @@ pub enum NotLive {
 impl NotLive {
     pub fn as_str(self) -> &'static str {
         match self {
-            NotLive::EndpointNotLive => "endpoint not live",
+            NotLive::ChannelNotLive => "channel not live",
             NotLive::AgentNotActive => "agent not active",
             NotLive::ExposuresSuspended => "agent exposures suspended",
         }
     }
 }
 
-pub fn endpoint_liveness(
-    context: &IngressContext,
-    endpoint: &IngressEndpoint,
-) -> Result<(), NotLive> {
-    if !endpoint.status.is_live() {
-        return Err(NotLive::EndpointNotLive);
+pub fn channel_liveness(context: &IngressContext, channel: &IngressChannel) -> Result<(), NotLive> {
+    if !channel.status.is_live() {
+        return Err(NotLive::ChannelNotLive);
     }
     if context.agent_status != "active" {
         return Err(NotLive::AgentNotActive);
@@ -290,8 +287,8 @@ pub fn endpoint_liveness(
     Ok(())
 }
 
-pub enum LegacyEndpointMatch {
+pub enum LegacyChannelMatch {
     NotFound,
-    One(Box<(IngressContext, IngressEndpoint)>),
+    One(Box<(IngressContext, IngressChannel)>),
     Ambiguous,
 }

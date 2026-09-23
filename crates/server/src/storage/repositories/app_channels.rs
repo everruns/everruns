@@ -1,17 +1,17 @@
 // PostgreSQL repository: App Channel CRUD
 //
-// Rows live in `agent_endpoints`, which is owned by an Agent rather than an App
+// Rows live in `agent_channels`, which is owned by an Agent rather than an App
 // while `app_channels` remains as a read-only compatibility view. Every
-// internal write goes directly to `agent_endpoints`, because the view cannot
-// supply the NOT NULL columns the endpoint carries (`agent_id`,
+// internal write goes directly to `agent_channels`, because the view cannot
+// supply the NOT NULL columns the channel carries (`agent_id`,
 // `owner_principal_id`).
 //
 // The lifted identity, version policy, and owner are derived from the owning
 // App on insert, which is exactly where those values came from before the
-// re-parenting. A new endpoint's status is independent of App publish state.
+// re-parenting. A new channel's status is independent of App publish state.
 
 use super::super::models::*;
-use super::super::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
+use super::super::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow};
 use super::Database;
 use crate::errors::BadRequestError;
 use anyhow::Result;
@@ -26,17 +26,17 @@ fn schedule_cap_error(max: i64, count: i64) -> anyhow::Error {
 
 fn missing_agent_error(app_id: Uuid) -> anyhow::Error {
     BadRequestError::new(format!(
-        "App {app_id} was not found or has no agent; an endpoint must be owned by an agent"
+        "App {app_id} was not found or has no agent; a channel must be owned by an agent"
     ))
     .into()
 }
 
-/// Insert an endpoint, deriving its agent, identity, version policy, and owner
+/// Insert a channel, deriving its agent, identity, version policy, and owner
 /// from the owning App. Selecting from `apps` rather than binding the values
 /// keeps the derivation atomic with the insert. Yields no row when the App is
 /// missing or still agent-less, which callers turn into `missing_agent_error`.
 const INSERT_CHANNEL_SQL: &str = r#"
-    INSERT INTO agent_endpoints (
+    INSERT INTO agent_channels (
         app_id, legacy_app_public_id, agent_id, public_id, channel_type, channel_config,
         channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled,
         status, agent_identity_id, agent_version_policy, agent_version_id,
@@ -85,15 +85,15 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_ingress_endpoint_by_public_id(
+    pub async fn get_ingress_channel_by_public_id(
         &self,
         public_id: &str,
-    ) -> Result<Option<IngressEndpointRow>> {
-        sqlx::query_as::<_, IngressEndpointRow>(
+    ) -> Result<Option<IngressChannelRow>> {
+        sqlx::query_as::<_, IngressChannelRow>(
             r#"
             SELECT
-                ae.id AS endpoint_id,
-                ae.public_id AS endpoint_public_id,
+                ae.id AS channel_id,
+                ae.public_id AS channel_public_id,
                 ae.app_id AS legacy_app_id,
                 ae.legacy_app_public_id,
                 agent.org_id,
@@ -115,10 +115,10 @@ impl Database {
                 ae.auth,
                 ae.auth_encrypted,
                 ae.enabled,
-                ae.status AS endpoint_status,
+                ae.status AS channel_status,
                 ae.created_at,
                 ae.updated_at
-            FROM agent_endpoints AS ae
+            FROM agent_channels AS ae
             JOIN agents AS agent ON agent.id = ae.agent_id
             WHERE ae.public_id = $1
             "#,
@@ -129,14 +129,14 @@ impl Database {
         .map_err(Into::into)
     }
 
-    pub async fn list_agent_endpoints(
+    pub async fn list_agent_channels(
         &self,
         org_id: i64,
         agent_id: Uuid,
-    ) -> Result<Vec<IngressEndpointRow>> {
-        sqlx::query_as::<_, IngressEndpointRow>(
+    ) -> Result<Vec<IngressChannelRow>> {
+        sqlx::query_as::<_, IngressChannelRow>(
             r#"
-            SELECT ae.id AS endpoint_id, ae.public_id AS endpoint_public_id,
+            SELECT ae.id AS channel_id, ae.public_id AS channel_public_id,
                 ae.app_id AS legacy_app_id, ae.legacy_app_public_id, agent.org_id,
                 ae.agent_id, agent.public_id AS agent_public_id,
                 COALESCE(agent.display_name, agent.name) AS agent_name,
@@ -145,8 +145,8 @@ impl Database {
                 ae.agent_identity_id, ae.agent_version_policy, ae.agent_version_id,
                 ae.owner_principal_id, ae.resolved_owner_user_id, ae.channel_type,
                 ae.channel_config, ae.channel_config_encrypted, ae.auth, ae.auth_encrypted,
-                ae.enabled, ae.status AS endpoint_status, ae.created_at, ae.updated_at
-            FROM agent_endpoints AS ae
+                ae.enabled, ae.status AS channel_status, ae.created_at, ae.updated_at
+            FROM agent_channels AS ae
             JOIN agents AS agent ON agent.id = ae.agent_id
             WHERE agent.org_id = $1 AND ae.agent_id = $2
             ORDER BY ae.created_at, ae.id
@@ -159,15 +159,15 @@ impl Database {
         .map_err(Into::into)
     }
 
-    pub async fn get_agent_endpoint(
+    pub async fn get_agent_channel(
         &self,
         org_id: i64,
         agent_id: Uuid,
         public_id: &str,
-    ) -> Result<Option<IngressEndpointRow>> {
-        sqlx::query_as::<_, IngressEndpointRow>(
+    ) -> Result<Option<IngressChannelRow>> {
+        sqlx::query_as::<_, IngressChannelRow>(
             r#"
-            SELECT ae.id AS endpoint_id, ae.public_id AS endpoint_public_id,
+            SELECT ae.id AS channel_id, ae.public_id AS channel_public_id,
                 ae.app_id AS legacy_app_id, ae.legacy_app_public_id, agent.org_id,
                 ae.agent_id, agent.public_id AS agent_public_id,
                 COALESCE(agent.display_name, agent.name) AS agent_name,
@@ -176,8 +176,8 @@ impl Database {
                 ae.agent_identity_id, ae.agent_version_policy, ae.agent_version_id,
                 ae.owner_principal_id, ae.resolved_owner_user_id, ae.channel_type,
                 ae.channel_config, ae.channel_config_encrypted, ae.auth, ae.auth_encrypted,
-                ae.enabled, ae.status AS endpoint_status, ae.created_at, ae.updated_at
-            FROM agent_endpoints AS ae
+                ae.enabled, ae.status AS channel_status, ae.created_at, ae.updated_at
+            FROM agent_channels AS ae
             JOIN agents AS agent ON agent.id = ae.agent_id
             WHERE agent.org_id = $1 AND ae.agent_id = $2 AND ae.public_id = $3
             "#,
@@ -190,14 +190,14 @@ impl Database {
         .map_err(Into::into)
     }
 
-    pub async fn create_agent_endpoint(
+    pub async fn create_agent_channel(
         &self,
         org_id: i64,
-        input: CreateAgentEndpointRow,
-    ) -> Result<IngressEndpointRow> {
+        input: CreateAgentChannelRow,
+    ) -> Result<IngressChannelRow> {
         let inserted = sqlx::query_scalar::<_, Uuid>(
             r#"
-            INSERT INTO agent_endpoints (
+            INSERT INTO agent_channels (
                 agent_id, app_id, legacy_app_public_id, public_id, channel_type,
                 channel_config, channel_config_encrypted, auth, auth_encrypted,
                 enabled, status, agent_identity_id, agent_version_policy,
@@ -230,21 +230,21 @@ impl Database {
         if inserted.is_none() {
             return Err(BadRequestError::new("Agent was not found or is not active").into());
         }
-        self.get_agent_endpoint(org_id, input.agent_id, &input.public_id)
+        self.get_agent_channel(org_id, input.agent_id, &input.public_id)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("created Agent endpoint could not be reloaded"))
+            .ok_or_else(|| anyhow::anyhow!("created Agent channel could not be reloaded"))
     }
 
-    pub async fn update_agent_endpoint(
+    pub async fn update_agent_channel(
         &self,
         org_id: i64,
         agent_id: Uuid,
         public_id: &str,
-        input: UpdateAgentEndpointRow,
-    ) -> Result<Option<IngressEndpointRow>> {
+        input: UpdateAgentChannelRow,
+    ) -> Result<Option<IngressChannelRow>> {
         sqlx::query(
             r#"
-            UPDATE agent_endpoints AS ae
+            UPDATE agent_channels AS ae
             SET channel_type = COALESCE($4, ae.channel_type),
                 channel_config = COALESCE($5, ae.channel_config),
                 channel_config_encrypted = CASE WHEN $6 THEN $7 ELSE ae.channel_config_encrypted END,
@@ -273,10 +273,10 @@ impl Database {
         .bind(&input.status)
         .execute(&self.pool)
         .await?;
-        self.get_agent_endpoint(org_id, agent_id, public_id).await
+        self.get_agent_channel(org_id, agent_id, public_id).await
     }
 
-    pub async fn delete_agent_endpoint(
+    pub async fn delete_agent_channel(
         &self,
         org_id: i64,
         agent_id: Uuid,
@@ -284,7 +284,7 @@ impl Database {
     ) -> Result<bool> {
         let archived = sqlx::query(
             r#"
-            UPDATE agent_endpoints AS ae
+            UPDATE agent_channels AS ae
             SET enabled = false, status = 'disabled', updated_at = NOW()
             FROM agents AS agent
             WHERE agent.org_id = $1 AND agent.id = $2
@@ -301,7 +301,7 @@ impl Database {
         }
         let deleted = sqlx::query(
             r#"
-            DELETE FROM agent_endpoints AS ae
+            DELETE FROM agent_channels AS ae
             USING agents AS agent
             WHERE agent.org_id = $1 AND agent.id = $2
               AND ae.agent_id = agent.id AND ae.public_id = $3 AND ae.app_id IS NULL
@@ -315,16 +315,16 @@ impl Database {
         Ok(deleted.rows_affected() > 0)
     }
 
-    pub async fn list_ingress_endpoints_by_legacy_alias(
+    pub async fn list_ingress_channels_by_legacy_alias(
         &self,
         legacy_app_public_id: &str,
         channel_type: &str,
-    ) -> Result<Vec<IngressEndpointRow>> {
-        sqlx::query_as::<_, IngressEndpointRow>(
+    ) -> Result<Vec<IngressChannelRow>> {
+        sqlx::query_as::<_, IngressChannelRow>(
             r#"
             SELECT
-                ae.id AS endpoint_id,
-                ae.public_id AS endpoint_public_id,
+                ae.id AS channel_id,
+                ae.public_id AS channel_public_id,
                 ae.app_id AS legacy_app_id,
                 ae.legacy_app_public_id,
                 agent.org_id,
@@ -346,10 +346,10 @@ impl Database {
                 ae.auth,
                 ae.auth_encrypted,
                 ae.enabled,
-                ae.status AS endpoint_status,
+                ae.status AS channel_status,
                 ae.created_at,
                 ae.updated_at
-            FROM agent_endpoints AS ae
+            FROM agent_channels AS ae
             JOIN agents AS agent ON agent.id = ae.agent_id
             WHERE ae.legacy_app_public_id = $1
               AND ae.channel_type = $2
@@ -379,7 +379,7 @@ impl Database {
         let count = sqlx::query_scalar::<_, i64>(
             r#"
             SELECT COUNT(*)
-            FROM agent_endpoints ae
+            FROM agent_channels ae
             JOIN apps a ON ae.app_id = a.id
             WHERE a.org_id = $1 AND ae.channel_type = 'schedule' AND ae.enabled = true
             "#,
@@ -412,7 +412,7 @@ impl Database {
         let rows = sqlx::query_as::<_, AppChannelRow>(
             r#"
             SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
-            FROM agent_endpoints
+            FROM agent_channels
             WHERE app_id = $1
             ORDER BY created_at ASC
             "#,
@@ -429,7 +429,7 @@ impl Database {
             r#"
             SELECT EXISTS (
                 SELECT 1
-                FROM agent_endpoints
+                FROM agent_channels
                 WHERE app_id = $1
             )
             "#,
@@ -457,7 +457,7 @@ impl Database {
         let row = sqlx::query_as::<_, AppChannelRow>(
             r#"
             SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
-            FROM agent_endpoints
+            FROM agent_channels
             WHERE public_id = $1
             "#,
         )
@@ -468,21 +468,21 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_agent_endpoint_public_id(
+    pub async fn get_agent_channel_public_id(
         &self,
         org_id: i64,
-        endpoint_id: Uuid,
+        channel_id: Uuid,
     ) -> Result<Option<String>> {
         let public_id = sqlx::query_scalar::<_, String>(
             r#"
             SELECT ae.public_id
-            FROM agent_endpoints AS ae
+            FROM agent_channels AS ae
             JOIN agents AS a ON a.id = ae.agent_id
             WHERE a.org_id = $1 AND ae.id = $2
             "#,
         )
         .bind(org_id)
-        .bind(endpoint_id)
+        .bind(channel_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -499,7 +499,7 @@ impl Database {
     ) -> Result<Option<AppChannelRow>> {
         let row = sqlx::query_as::<_, AppChannelRow>(
             r#"
-            UPDATE agent_endpoints AS ae
+            UPDATE agent_channels AS ae
             SET
                 channel_type = COALESCE($2, ae.channel_type),
                 channel_config = COALESCE($3, ae.channel_config),
@@ -551,7 +551,7 @@ impl Database {
         let count = sqlx::query_scalar::<_, i64>(
             r#"
             SELECT COUNT(*)
-            FROM agent_endpoints ae
+            FROM agent_channels ae
             JOIN apps a ON ae.app_id = a.id
             WHERE a.org_id = $1 AND ae.channel_type = 'schedule' AND ae.enabled = true
             "#,
@@ -565,7 +565,7 @@ impl Database {
 
         let row = sqlx::query_as::<_, AppChannelRow>(
             r#"
-            UPDATE agent_endpoints AS ae
+            UPDATE agent_channels AS ae
             SET
                 channel_type = COALESCE($2, ae.channel_type),
                 channel_config = COALESCE($3, ae.channel_config),
@@ -606,7 +606,7 @@ impl Database {
     // `get_app_channel_by_public_id`. Callers MUST have already resolved the
     // channel under their org-scoped app.
     pub async fn delete_app_channel(&self, id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM agent_endpoints WHERE id = $1")
+        let result = sqlx::query("DELETE FROM agent_channels WHERE id = $1")
             .bind(id)
             .execute(&self.pool)
             .await?;
@@ -615,17 +615,17 @@ impl Database {
     }
 
     /// Agent ids, from the given set, that currently have at least one live
-    /// endpoint (EVE-1007).
+    /// channel (EVE-1007).
     ///
     /// Exposure state is derived on read and never stored: a stored flag would
-    /// be a second writer for state the endpoint rows already own, and it would
-    /// drift the moment an endpoint changed by any other path. Batched so a list
+    /// be a second writer for state the channel rows already own, and it would
+    /// drift the moment a channel changed by any other path. Batched so a list
     /// page costs one query rather than one per agent.
     ///
-    /// This answers the endpoint half only. The agent-level terms
+    /// This answers the channel half only. The agent-level terms
     /// (`status`, `exposures_suspended`) are applied by the caller, which
     /// already holds the agent row.
-    pub async fn agents_with_live_endpoints(
+    pub async fn agents_with_live_channels(
         &self,
         agent_ids: &[Uuid],
     ) -> Result<std::collections::HashSet<Uuid>> {
@@ -635,7 +635,7 @@ impl Database {
         let rows = sqlx::query_scalar::<_, Uuid>(
             r#"
             SELECT DISTINCT agent_id
-            FROM agent_endpoints
+            FROM agent_channels
             WHERE agent_id = ANY($1) AND status = 'live'
             "#,
         )
@@ -645,17 +645,17 @@ impl Database {
         Ok(rows.into_iter().collect())
     }
 
-    /// Bridge archived App publish behavior onto endpoint status.
+    /// Bridge archived App publish behavior onto channel status.
     ///
-    /// Publishing only raises endpoints the operator enabled, and unpublishing
-    /// lowers only live endpoints. An explicitly disabled endpoint therefore
+    /// Publishing only raises channels the operator enabled, and unpublishing
+    /// lowers only live channels. An explicitly disabled channel therefore
     /// stays disabled across a compatibility publish cycle.
-    pub async fn set_app_endpoint_publish(&self, app_id: Uuid, published: bool) -> Result<u64> {
+    pub async fn set_app_channel_publish(&self, app_id: Uuid, published: bool) -> Result<u64> {
         let sql = if published {
-            "UPDATE agent_endpoints SET status = 'live', updated_at = NOW()
+            "UPDATE agent_channels SET status = 'live', updated_at = NOW()
              WHERE app_id = $1 AND enabled = true AND status <> 'live'"
         } else {
-            "UPDATE agent_endpoints SET status = 'draft', updated_at = NOW()
+            "UPDATE agent_channels SET status = 'draft', updated_at = NOW()
              WHERE app_id = $1 AND status = 'live'"
         };
         let result = sqlx::query(sql).bind(app_id).execute(&self.pool).await?;
@@ -666,7 +666,7 @@ impl Database {
         let count = sqlx::query_scalar::<_, i64>(
             r#"
             SELECT COUNT(*)
-            FROM agent_endpoints ae
+            FROM agent_channels ae
             JOIN apps a ON ae.app_id = a.id
             WHERE a.org_id = $1 AND ae.channel_type = 'schedule' AND ae.enabled = true
             "#,

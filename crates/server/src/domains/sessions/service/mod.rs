@@ -69,9 +69,11 @@ const RESERVED_SESSION_TAG_PREFIXES: &[&str] = &[
     "app:",
     "app_channel:",
     "slack:app:",
-    // Per-transport endpoint namespaces. Added with EVE-1004, which made them
-    // attribution inputs: migration 137 reads all three endpoint tag spellings
-    // to decide which endpoint a session arrived through. Not exploitable
+    // Per-transport channel namespaces. Added with EVE-1004, which made them
+    // attribution inputs: migration 137 reads all three channel tag spellings
+    // to decide which channel a session arrived through. The `endpoint`
+    // spelling predates the Endpoint -> Channel rename and is a persisted
+    // routing key, kept for compatibility. Not exploitable
     // before this — every routing lookup also anchors on `app_id`, which only
     // internal callers can set — but the list is what keeps that true as
     // readers are added.

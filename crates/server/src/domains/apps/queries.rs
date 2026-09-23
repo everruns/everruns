@@ -9,8 +9,7 @@ use crate::storage::encryption::EncryptionService;
 use crate::storage::models::UpdateAppChannel;
 use everruns_durable::UpdateField;
 use everruns_platform::{
-    AgentVersionPolicy, App, AppChannel, AppEndpointAuthConfig, AppStatus, ChannelType,
-    EndpointStatus,
+    AgentVersionPolicy, App, AppChannel, AppStatus, ChannelAuthConfig, ChannelStatus, ChannelType,
 };
 use everruns_provider::typed_id::AppId;
 use everruns_provider::typed_id::{
@@ -103,7 +102,7 @@ pub struct PreparedChannelStorage {
     pub auth_encrypted: Option<Vec<u8>>,
 }
 
-/// Store transport configuration and endpoint auth independently. Auth may
+/// Store transport configuration and channel auth independently. Auth may
 /// contain secret-equivalent hashes and provider credentials, so it follows
 /// the same encryption policy as channel configuration.
 pub fn prepare_channel_storage(
@@ -116,7 +115,7 @@ pub fn prepare_channel_storage(
         .and_then(|object| object.remove("auth"))
         .filter(|value| !value.is_null());
     let auth = auth.map(|value| {
-        serde_json::from_value::<AppEndpointAuthConfig>(value.clone())
+        serde_json::from_value::<ChannelAuthConfig>(value.clone())
             .and_then(serde_json::to_value)
             .unwrap_or(value)
     });
@@ -154,19 +153,19 @@ fn first_class_auth_value(
 ) -> Option<serde_json::Value> {
     if let Some(encrypted) = row.auth_encrypted.as_deref() {
         let Some(encryption) = encryption else {
-            tracing::error!("Endpoint auth is encrypted but encryption is unavailable");
+            tracing::error!("Channel auth is encrypted but encryption is unavailable");
             return Some(serde_json::json!({"mode": "http_basic"}));
         };
         let json = match encryption.decrypt_to_string(encrypted) {
             Ok(json) => json,
             Err(err) => {
-                tracing::error!(error = %err, "Failed to decrypt endpoint auth");
+                tracing::error!(error = %err, "Failed to decrypt channel auth");
                 return Some(serde_json::json!({"mode": "http_basic"}));
             }
         };
         return serde_json::from_str(&json)
             .map_err(|err| {
-                tracing::error!(error = %err, "Failed to parse decrypted endpoint auth JSON");
+                tracing::error!(error = %err, "Failed to parse decrypted channel auth JSON");
             })
             .ok()
             .or_else(|| Some(serde_json::json!({"mode": "http_basic"})));
@@ -174,27 +173,27 @@ fn first_class_auth_value(
     row.auth.clone()
 }
 
-pub fn decrypt_endpoint_auth(
+pub fn decrypt_channel_auth(
     encryption: Option<&Arc<EncryptionService>>,
     row: &AppChannelRow,
-) -> Option<AppEndpointAuthConfig> {
+) -> Option<ChannelAuthConfig> {
     first_class_auth_value(encryption, row).map(|value| {
         serde_json::from_value(value).unwrap_or_else(|err| {
-            tracing::error!(error = %err, "Failed to parse endpoint auth");
-            fail_closed_endpoint_auth()
+            tracing::error!(error = %err, "Failed to parse channel auth");
+            fail_closed_channel_auth()
         })
     })
 }
 
-fn fail_closed_endpoint_auth() -> AppEndpointAuthConfig {
+fn fail_closed_channel_auth() -> ChannelAuthConfig {
     serde_json::from_value(serde_json::json!({"mode": "http_basic"}))
-        .expect("fail-closed endpoint auth is valid")
+        .expect("fail-closed channel auth is valid")
 }
 
-fn parse_legacy_endpoint_auth(value: serde_json::Value) -> AppEndpointAuthConfig {
+fn parse_legacy_channel_auth(value: serde_json::Value) -> ChannelAuthConfig {
     serde_json::from_value(value).unwrap_or_else(|err| {
-        tracing::error!(error = %err, "Failed to parse legacy endpoint auth");
-        fail_closed_endpoint_auth()
+        tracing::error!(error = %err, "Failed to parse legacy channel auth");
+        fail_closed_channel_auth()
     })
 }
 /// Return a write-ready config that includes either first-class auth or the
@@ -242,9 +241,9 @@ pub fn channel_row_to_channel(
         .as_object_mut()
         .and_then(|object| object.remove("auth"));
     let auth = if row.auth.is_some() || row.auth_encrypted.is_some() {
-        decrypt_endpoint_auth(encryption, &row).map(Box::new)
+        decrypt_channel_auth(encryption, &row).map(Box::new)
     } else {
-        legacy_auth.map(|value| Box::new(parse_legacy_endpoint_auth(value)))
+        legacy_auth.map(|value| Box::new(parse_legacy_channel_auth(value)))
     };
 
     AppChannel {
@@ -254,7 +253,7 @@ pub fn channel_row_to_channel(
         channel_config,
         auth,
         enabled: row.enabled,
-        status: EndpointStatus::from(row.status.as_str()),
+        status: ChannelStatus::from(row.status.as_str()),
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
@@ -312,7 +311,7 @@ pub async fn row_to_app(
             let auth = config
                 .as_object_mut()
                 .and_then(|object| object.remove("auth"))
-                .map(|value| Box::new(parse_legacy_endpoint_auth(value)));
+                .map(|value| Box::new(parse_legacy_channel_auth(value)));
             vec![AppChannel {
                 public_id: AppChannelId::from_uuid(row.id),
                 internal_id: row.id,
@@ -323,9 +322,9 @@ pub async fn row_to_app(
                 // Legacy fallback: this App predates `app_channels` rows, so the
                 // only lifecycle it has is its own publish state.
                 status: if row.status == "published" {
-                    EndpointStatus::Live
+                    ChannelStatus::Live
                 } else {
-                    EndpointStatus::Draft
+                    ChannelStatus::Draft
                 },
                 created_at: row.created_at,
                 updated_at: row.updated_at,
@@ -596,7 +595,7 @@ mod tests {
 
     fn encryption() -> Arc<EncryptionService> {
         Arc::new(
-            EncryptionService::new(&generate_encryption_key("endpoint-auth-test"), &[]).unwrap(),
+            EncryptionService::new(&generate_encryption_key("channel-auth-test"), &[]).unwrap(),
         )
     }
 
@@ -671,7 +670,7 @@ mod tests {
         let channel = channel_row_to_channel(None, row);
         assert_eq!(
             channel.auth.map(|auth| auth.mode),
-            Some(everruns_platform::AppEndpointAuthMode::GoogleOidc)
+            Some(everruns_platform::ChannelAuthMode::GoogleOidc)
         );
         assert!(channel.channel_config.get("auth").is_none());
     }
@@ -688,7 +687,7 @@ mod tests {
         let channel = channel_row_to_channel(Some(&encryption()), row);
         assert_eq!(
             channel.auth.map(|auth| auth.mode),
-            Some(everruns_platform::AppEndpointAuthMode::HttpBasic)
+            Some(everruns_platform::ChannelAuthMode::HttpBasic)
         );
         assert!(channel.channel_config.get("auth").is_none());
     }

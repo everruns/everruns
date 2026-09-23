@@ -31,7 +31,7 @@ pub(crate) async fn handle_slack_manifest_endpoint(
     State(state): State<SlackState>,
     Path(channel_id): Path<String>,
 ) -> Result<Json<ManifestResponse>, (StatusCode, Json<ErrorResponse>)> {
-    handle_slack_manifest(state, SlackTarget::Endpoint(channel_id)).await
+    handle_slack_manifest(state, SlackTarget::Channel(channel_id)).await
 }
 
 pub(crate) async fn handle_slack_manifest(
@@ -39,7 +39,7 @@ pub(crate) async fn handle_slack_manifest(
     target: SlackTarget,
 ) -> Result<Json<ManifestResponse>, (StatusCode, Json<ErrorResponse>)> {
     let (app, slack_channel) = resolve_slack_channel(&state, target).await?;
-    let manifest_yaml = manifest_yaml_for_endpoint(&state, &app, &slack_channel).await?;
+    let manifest_yaml = manifest_yaml_for_channel(&state, &app, &slack_channel).await?;
 
     // URL-encode the manifest for the Slack "create from manifest" URL
     let encoded = urlencoding_encode(&manifest_yaml);
@@ -54,16 +54,16 @@ pub(crate) async fn handle_slack_manifest(
     }))
 }
 
-/// The manifest YAML for one resolved endpoint.
+/// The manifest YAML for one resolved channel.
 ///
 /// Split out of the handler so the one-click install path (`slack_install`)
 /// creates the app from exactly the manifest the copy-paste flow serves —
 /// the PoC's finding that `apps.manifest.create` accepts it whole only holds
 /// if the two cannot drift.
-pub(crate) async fn manifest_yaml_for_endpoint(
+pub(crate) async fn manifest_yaml_for_channel(
     state: &SlackState,
     app: &crate::api::app_ingress::IngressContext,
-    slack_channel: &crate::api::app_ingress::IngressEndpoint,
+    slack_channel: &crate::api::app_ingress::IngressChannel,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     // A config we cannot parse still produces the channel-bot manifest rather than
     // a 500: the agent surface is additive, so defaulting it off is the safe read.
@@ -125,7 +125,7 @@ pub(crate) fn slack_interactivity_url(api_base_url: &str, channel_public_id: &st
     )
 }
 
-/// OAuth redirect target for this endpoint's Slack app.
+/// OAuth redirect target for this channel's Slack app.
 ///
 /// Slack refuses `/oauth/v2/authorize` outright when the app declares no
 /// redirect URL ("redirect_uri did not match any configured URIs"), so an app

@@ -2,7 +2,7 @@
 //!
 //! # Why the action crosses a seam instead of the token
 //!
-//! A Slack endpoint's `bot_token` lives in `SlackChannelConfig`, encrypted at
+//! A Slack channel's `bot_token` lives in `SlackChannelConfig`, encrypted at
 //! rest and resolved by the control plane. The obvious shape — hand the worker
 //! the token and let the capability speak HTTP — would put a long-lived
 //! workspace credential in the process that also runs model-chosen tool
@@ -11,8 +11,8 @@
 //!
 //! So the *action* travels and the credential does not. The capability names
 //! what it wants done; the implementor (the control plane, which already holds
-//! the endpoint row and the retry/`Retry-After` handling) resolves the
-//! session's Slack endpoint, performs the call, and returns an outcome. The
+//! the channel row and the retry/`Retry-After` handling) resolves the
+//! session's Slack channel, performs the call, and returns an outcome. The
 //! worker never sees `bot_token`.
 //!
 //! # Fail closed
@@ -20,19 +20,19 @@
 //! Resolution keys off the `slack:endpoint:{id}` session tag that
 //! `build_session_tags` stamps on Slack-originated sessions. A session without
 //! that tag — one started from the API, a schedule, or another channel — has no
-//! Slack endpoint to act as, and every action must fail with
+//! Slack channel to act as, and every action must fail with
 //! [`SlackActionError::NoSlackSession`] rather than falling back to some other
-//! endpoint's credential.
+//! channel's credential.
 //!
-//! Resolution deliberately goes through the **endpoint**, not the app: since
-//! EVE-1008 the endpoint owns Slack bot identity, so one agent can carry two
-//! Slack endpoints with different bots and resolving via `slack:app:{id}` would
+//! Resolution deliberately goes through the **channel**, not the app: since
+//! EVE-1008 the channel owns Slack bot identity, so one agent can carry two
+//! Slack channels with different bots and resolving via `slack:app:{id}` would
 //! pick the wrong one.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-/// One thing an agent can ask its own Slack endpoint to do.
+/// One thing an agent can ask its own Slack channel to do.
 ///
 /// Kept deliberately small. Each variant is a single Slack Web API call whose
 /// blast radius is the conversation the agent is already in; anything wider
@@ -118,23 +118,23 @@ pub enum SlackActionOutcome {
 /// Why an action did not happen.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum SlackActionError {
-    /// This session did not come from Slack, so there is no endpoint to act as.
+    /// This session did not come from Slack, so there is no channel to act as.
     ///
     /// The one case that is a capability configuration story rather than a
     /// fault: the agent has the capability enabled and is running somewhere the
     /// capability cannot apply.
     #[error(
-        "this session did not originate from Slack, so there is no Slack endpoint to act as; \
+        "this session did not originate from Slack, so there is no Slack channel to act as; \
          Slack tools only work in a session created by a Slack message"
     )]
     NoSlackSession,
 
-    /// The session's endpoint is gone, disabled, or belongs to another org.
-    #[error("the Slack endpoint for this session is no longer available")]
-    EndpointUnavailable,
+    /// The session's channel is gone, disabled, or belongs to another org.
+    #[error("the Slack channel for this session is no longer available")]
+    ChannelUnavailable,
 
-    /// The endpoint exists but carries no bot token yet.
-    #[error("the Slack endpoint for this session has no bot token configured")]
+    /// The channel exists but carries no bot token yet.
+    #[error("the Slack channel for this session has no bot token configured")]
     NotConfigured,
 
     /// Slack refused in a way retrying cannot fix (bad scope, unknown channel).
@@ -169,20 +169,20 @@ impl SlackActionError {
     }
 }
 
-/// Performs [`SlackAction`]s as one session's own Slack endpoint bot.
+/// Performs [`SlackAction`]s as one session's own Slack channel bot.
 ///
 /// Implemented by the control plane. An instance is **bound to one org and one
 /// session** at construction, the same way `platform_store(org_id, session_id)`
 /// is: the tenant and the session are the implementor's to fix, not an argument
 /// a caller supplies. A capability holds only the handle it was given, so there
-/// is no argument it could vary to reach another session's endpoint.
+/// is no argument it could vary to reach another session's channel.
 #[async_trait]
 pub trait SlackActionInvoker: Send + Sync {
-    /// Resolve this session's Slack endpoint and perform `action` as its bot.
+    /// Resolve this session's Slack channel and perform `action` as its bot.
     ///
     /// Returns [`SlackActionError::NoSlackSession`] when the bound session did
-    /// not come through a Slack endpoint. Implementations must fail closed
-    /// there rather than falling back to any other endpoint's credential.
+    /// not come through a Slack channel. Implementations must fail closed
+    /// there rather than falling back to any other channel's credential.
     async fn invoke(&self, action: SlackAction) -> Result<SlackActionOutcome, SlackActionError>;
 }
 

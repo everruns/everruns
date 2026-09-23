@@ -1493,7 +1493,7 @@ impl ServerAppBuilder {
                 agent_identity_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
-            .merge(api::agent_endpoints::routes(agent_triggers_state.clone()))
+            .merge(api::agent_channels::routes(agent_triggers_state.clone()))
             .merge(api::agent_triggers::routes(agent_triggers_state))
             // Evals routes are conditionally merged below based on feature flag.
             .merge(api::harness_examples::routes(harness_examples_state))

@@ -170,7 +170,7 @@ async fn create_session(
         workspace_id: None,
         org_id: everruns_core::DEFAULT_ORG_ID,
         app_id: None,
-        endpoint_id: None,
+        channel_id: None,
         harness_id: Some(harness_id),
         agent_id: Some(agent_id),
         agent_version_id: None,

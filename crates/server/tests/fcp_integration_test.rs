@@ -88,7 +88,7 @@ async fn create_fcp_app(server: &TestServer, channel_config: Value) -> App {
 
     serde_json::from_value(
         server
-            .seed_app_endpoint(&unique_id("FCP App"), &agent_id, "fcp", channel_config)
+            .seed_app_channel(&unique_id("FCP App"), &agent_id, "fcp", channel_config)
             .await,
     )
     .expect("fixture App")
@@ -99,7 +99,7 @@ async fn create_published_fcp_app(server: &TestServer, channel_config: Value) ->
 
     serde_json::from_value(
         server
-            .set_app_endpoints_live(&app.public_id.to_string(), true)
+            .set_app_channels_live(&app.public_id.to_string(), true)
             .await,
     )
     .expect("published fixture App")
@@ -222,11 +222,11 @@ async fn fcp_handshake_returns_markdown_for_published_app() {
         .db
         .get_agent(
             DEFAULT_ORG_ID,
-            app.agent_id.expect("endpoint-owned App has an Agent"),
+            app.agent_id.expect("channel-owned App has an Agent"),
         )
         .await
-        .expect("get endpoint Agent")
-        .expect("endpoint Agent exists");
+        .expect("get channel Agent")
+        .expect("channel Agent exists");
     let agent_name = agent.display_name.as_deref().unwrap_or(&agent.name);
     let agent_description = agent
         .description
@@ -242,12 +242,12 @@ async fn fcp_handshake_returns_markdown_for_published_app() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_endpoint_handshake_matches_legacy_alias() {
+async fn fcp_channel_handshake_matches_legacy_alias() {
     let server = TestServer::in_memory().await;
     let app = create_published_fcp_app(&server, json!({})).await;
     let channel_id = app.channels[0].public_id;
 
-    let endpoint = server
+    let channel = server
         .request_raw(
             Method::GET,
             &format!("/v1/e/{channel_id}/fcp"),
@@ -257,9 +257,9 @@ async fn fcp_endpoint_handshake_matches_legacy_alias() {
         .await;
     let legacy = get_handshake(&server, &app.public_id, vec![]).await;
 
-    assert_eq!(endpoint.status(), StatusCode::OK);
-    assert_eq!(endpoint.status(), legacy.status());
-    assert_eq!(endpoint.text(), legacy.text());
+    assert_eq!(channel.status(), StatusCode::OK);
+    assert_eq!(channel.status(), legacy.status());
+    assert_eq!(channel.text(), legacy.text());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -535,7 +535,7 @@ async fn fcp_post_requires_token_when_configured() {
     .await;
     assert_accepted_or_timeout(ok.status());
 
-    let endpoint_ok = send_fcp_post_to_path(
+    let channel_ok = send_fcp_post_to_path(
         &server,
         &format!("/v1/e/{channel_id}/fcp"),
         "hi",
@@ -545,7 +545,7 @@ async fn fcp_post_requires_token_when_configured() {
         ],
     )
     .await;
-    assert_accepted_or_timeout(endpoint_ok.status());
+    assert_accepted_or_timeout(channel_ok.status());
 
     // Right token via dedicated header.
     let ok2 = send_fcp_post(

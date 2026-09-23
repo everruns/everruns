@@ -1,8 +1,8 @@
 // App A2A (Agent2Agent) ingress — JSON-RPC + API key authenticated invocation.
 //
-// Design Decision: A2A channels use endpoint-scoped routes
+// Design Decision: A2A channels use channel-scoped routes
 // (`POST /v1/e/{channel_id}/a2a`) so a single app can expose multiple
-// agent-to-agent endpoints with independent keys, agent cards, and session
+// agent-to-agent channels with independent keys, agent cards, and session
 // routing. App-and-channel routes remain permanent aliases.
 //
 // Supported methods: `message/send` (single JSON-RPC response),
@@ -37,9 +37,7 @@ use crate::api::a2a_signing::{
     A2A_SIGNATURE_HEADER, A2A_TIMESTAMP_HEADER, A2aReplayStore, SignatureCheckError,
     now_unix_seconds, verify_signature,
 };
-use crate::api::app_endpoint_auth::{
-    AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth,
-};
+use crate::api::channel_auth::{ChannelAuthError, ChannelAuthVerifier, LegacyChannelAuth};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::api::sse::SseConnectionTracker;
@@ -90,7 +88,7 @@ pub struct AppA2aState {
     pub event_delivery: EventDelivery,
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub rate_limiter: ChannelRateLimiter,
-    pub auth_verifier: AppEndpointAuthVerifier,
+    pub auth_verifier: ChannelAuthVerifier,
     pub replay_store: A2aReplayStore,
     /// UI origin, used to hand a `secret` question to a human instead of
     /// asking the calling agent for the credential (EVE-1062). Empty when no
@@ -130,7 +128,7 @@ impl AppA2aState {
             event_delivery,
             sse_tracker,
             rate_limiter,
-            auth_verifier: AppEndpointAuthVerifier::new(),
+            auth_verifier: ChannelAuthVerifier::new(),
             replay_store,
             frontend_url,
         }
@@ -276,16 +274,16 @@ pub async fn invoke_a2a_legacy(
 }
 
 #[utoipa::path(
-    description = "Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.",
+    description = "Invoke a published A2A channel with JSON-RPC 2.0. Authentication follows the channel configuration.",
     post,
     path = "/v1/e/{channel_id}/a2a",
-    params(("channel_id" = String, Path, description = "A2A endpoint channel ID")),
+    params(("channel_id" = String, Path, description = "A2A channel ID")),
     request_body(content = serde_json::Value, content_type = "application/json"),
     responses(
         (status = 200, description = "JSON-RPC response or event stream"),
         (status = 400, description = "Invalid JSON-RPC request"),
-        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
-        (status = 404, description = "Endpoint not found, app not published, or channel disabled", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid channel credentials", body = ErrorResponse),
+        (status = 404, description = "Channel not found, app not published, or channel disabled", body = ErrorResponse),
         (status = 429, description = "Per-channel or SSE connection limit exceeded", body = ErrorResponse)
     ),
     tag = "apps"
@@ -298,7 +296,7 @@ pub async fn invoke_a2a_endpoint(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let app_id = match endpoint_app_id(&state, &channel_id).await {
+    let app_id = match channel_app_id(&state, &channel_id).await {
         Ok(app_id) => app_id,
         Err(err) => return err.into_response(),
     };
@@ -314,11 +312,11 @@ pub async fn invoke_a2a_endpoint(
     .await
 }
 
-async fn endpoint_app_id(
+async fn channel_app_id(
     state: &AppA2aState,
     channel_id: &str,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+    crate::api::app_ingress::resolve_channel(&state.db, state.encryption.as_ref(), channel_id)
         .await
         .map_err(internal_error)?
         .map(|(app, _)| app.public_id.to_string())
@@ -444,7 +442,7 @@ async fn authenticate_request(
     body: &[u8],
 ) -> Result<AuthorizedA2a, (StatusCode, Json<ErrorResponse>)> {
     let (app, channel) =
-        crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+        crate::api::app_ingress::resolve_channel(&state.db, state.encryption.as_ref(), channel_id)
             .await
             .map_err(internal_error)?
             .ok_or_else(not_found)?;
@@ -462,15 +460,15 @@ async fn authenticate_request(
         return Err(not_found());
     }
     // THREAT[TM-AUTHZ-006]: Anonymous A2A ingress must never reach a non-live
-    // endpoint, and every request must present the per-channel API key before
+    // channel, and every request must present the per-channel API key before
     // session creation. Liveness is resolved before auth so a caller cannot
-    // distinguish a misconfigured endpoint from a bad key.
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
+    // distinguish a misconfigured channel from a bad key.
+    if let Err(reason) = crate::api::app_ingress::channel_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
-            endpoint_id = %channel.public_id,
+            channel_id = %channel.public_id,
             reason = reason.as_str(),
-            "A2A request rejected: endpoint not live"
+            "A2A request rejected: channel not live"
         );
         return Err(not_found());
     }
@@ -481,7 +479,7 @@ async fn authenticate_request(
     };
 
     if let Some(auth) = channel.auth.as_ref() {
-        if auth.mode == everruns_platform::AppEndpointAuthMode::ApiKey {
+        if auth.mode == everruns_platform::ChannelAuthMode::ApiKey {
             verify_a2a_api_key(headers, &config.api_key_hash)?;
         } else {
             state
@@ -489,7 +487,7 @@ async fn authenticate_request(
                 .verify(
                     auth,
                     headers,
-                    LegacyEndpointAuth {
+                    LegacyChannelAuth {
                         shared_secret: None,
                         api_key: None,
                     },
@@ -506,7 +504,7 @@ async fn authenticate_request(
     // a `(timestamp, signature)` header pair signed against the basestring
     // `v0:{timestamp}:{channel_scope}:{body}` (where `channel_scope` is
     // `{app_id}:{channel_id}`). Channels without a `signing_secret` keep
-    // the existing API-key / endpoint-auth behavior. The 5-minute
+    // the existing API-key / channel-auth behavior. The 5-minute
     // timestamp window plus the signature-keyed dedup store bound the
     // replay surface to the window even if an `Authorization: Bearer` is
     // captured. The scope inside the basestring also prevents
@@ -1454,11 +1452,11 @@ fn service_unavailable(message: impl Into<String>) -> (StatusCode, Json<ErrorRes
     ErrorResponse::new(message.into()).into_response(StatusCode::SERVICE_UNAVAILABLE)
 }
 
-fn a2a_auth_error_response(error: AppEndpointAuthError) -> (StatusCode, Json<ErrorResponse>) {
+fn a2a_auth_error_response(error: ChannelAuthError) -> (StatusCode, Json<ErrorResponse>) {
     match error {
-        AppEndpointAuthError::Unauthorized => unauthorized(),
-        AppEndpointAuthError::Misconfigured => forbidden("A2A auth is misconfigured"),
-        AppEndpointAuthError::ProviderUnavailable => {
+        ChannelAuthError::Unauthorized => unauthorized(),
+        ChannelAuthError::Misconfigured => forbidden("A2A auth is misconfigured"),
+        ChannelAuthError::ProviderUnavailable => {
             service_unavailable("A2A auth provider is unavailable")
         }
     }

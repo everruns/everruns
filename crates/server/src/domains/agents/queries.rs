@@ -82,7 +82,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_capability::Capabi
         parallel_tool_calls: row.parallel_tool_calls,
         tools: serde_json::from_value(row.tools).unwrap_or_default(),
         status: AgentStatus::from(row.status.as_str()),
-        // `exposed` is derived from the endpoint rows, which this row-level
+        // `exposed` is derived from the channel rows, which this row-level
         // mapping cannot see. Callers that surface it use
         // `with_derived_exposure`.
         exposures_suspended: row.exposures_suspended,
@@ -302,14 +302,14 @@ pub async fn resolve(
 /// Fill in `Agent::exposed` for a batch of agents (EVE-1007).
 ///
 /// ```text
-/// exposed(agent) = any endpoint live
+/// exposed(agent) = any channel live
 ///               && agent.status == active
 ///               && !agent.exposures_suspended
 /// ```
 ///
 /// The same formula the ingress gate applies per request, evaluated here for
 /// list badges. Derived on every read rather than stored, so it cannot drift
-/// from the endpoint rows.
+/// from the channel rows.
 pub async fn with_derived_exposure(
     db: &StorageBackend,
     agents: &mut [Agent],
@@ -324,7 +324,7 @@ pub async fn with_derived_exposure(
     if candidates.is_empty() {
         return Ok(());
     }
-    let live = db.agents_with_live_endpoints(&candidates).await?;
+    let live = db.agents_with_live_channels(&candidates).await?;
     for agent in agents.iter_mut() {
         agent.exposed = live.contains(&agent.internal_id);
     }

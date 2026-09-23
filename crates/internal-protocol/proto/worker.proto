@@ -282,10 +282,10 @@ service WorkerService {
     // Gate outbound tool calls through the control-plane org rate limiter.
     rpc CheckOutboundToolRateLimit(CheckOutboundToolRateLimitRequest) returns (CheckOutboundToolRateLimitResponse);
 
-    // === Slack endpoint actions (EVE-1024) ===
+    // === Slack channel actions (EVE-1024) ===
     // The native `slack` capability names an action and the control plane
-    // performs it as the session's own endpoint bot. The action crosses the
-    // wire; the endpoint's bot_token never does.
+    // performs it as the session's own channel bot. The action crosses the
+    // wire; the channel's bot_token never does.
     rpc InvokeSlackAction(InvokeSlackActionRequest) returns (InvokeSlackActionResponse);
 
     // === Machine payment operations ===
@@ -1791,7 +1791,7 @@ message CheckOutboundToolRateLimitResponse {
     bool allowed = 1;
 }
 
-// === Slack endpoint action messages (EVE-1024) ===
+// === Slack channel action messages (EVE-1024) ===
 
 message SlackAddReaction {
     string channel = 1;
@@ -1857,7 +1857,7 @@ message SlackFileUploaded {
 enum SlackActionErrorKind {
     SLACK_ACTION_ERROR_KIND_UNSPECIFIED = 0;
     SLACK_ACTION_ERROR_KIND_NO_SLACK_SESSION = 1;
-    SLACK_ACTION_ERROR_KIND_ENDPOINT_UNAVAILABLE = 2;
+    SLACK_ACTION_ERROR_KIND_CHANNEL_UNAVAILABLE = 2;
     SLACK_ACTION_ERROR_KIND_NOT_CONFIGURED = 3;
     SLACK_ACTION_ERROR_KIND_REJECTED = 4;
     SLACK_ACTION_ERROR_KIND_RATE_LIMITED = 5;

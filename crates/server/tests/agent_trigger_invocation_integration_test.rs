@@ -152,7 +152,7 @@ async fn create_migrated_webhook_trigger(
     let agent = create_agent(server, &format!("{name}-agent")).await;
     let agent_public_id = agent["id"].as_str().unwrap().to_string();
     let app = server
-        .seed_app_endpoint(
+        .seed_app_channel(
             name,
             &agent_public_id,
             "webhook",
@@ -465,7 +465,7 @@ async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
     sqlx::query(
         "UPDATE sessions
          SET app_id = $2,
-             endpoint_id = NULL,
+             channel_id = NULL,
              owner_principal_id = $3,
              resolved_owner_user_id = $4,
              tags = $5,
@@ -537,7 +537,7 @@ async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
         .await
         .expect("get webhook session")
         .expect("webhook session exists");
-    assert_eq!(session.endpoint_id, None);
+    assert_eq!(session.channel_id, None);
 
     let service = BudgetService::new(server.db.clone());
     let selected = service

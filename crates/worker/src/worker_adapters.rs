@@ -286,13 +286,13 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Performs Slack actions as one session's own endpoint bot (EVE-1024).
+    /// Performs Slack actions as one session's own channel bot (EVE-1024).
     ///
     /// Bound to the org and session it is asked for, so the capability holding
     /// the handle cannot vary either. Defaults to none: an adapter without a
     /// route to the control plane has no way to resolve the session's Slack
-    /// endpoint, and the capability fails closed with a clear reason rather
-    /// than acting as some other endpoint's bot.
+    /// channel, and the capability fails closed with a clear reason rather
+    /// than acting as some other channel's bot.
     fn slack_action_invoker(
         &self,
         _org_id: i64,

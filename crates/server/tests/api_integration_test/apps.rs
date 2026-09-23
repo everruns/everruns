@@ -123,7 +123,7 @@ async fn app_management_routes_are_retired() {
 }
 
 #[tokio::test]
-async fn public_chat_endpoint_route_matches_legacy_alias() {
+async fn public_chat_channel_route_matches_legacy_alias() {
     let server = TestServer::in_memory().await;
     let agent: Value = server
         .post(
@@ -138,7 +138,7 @@ async fn public_chat_endpoint_route_matches_legacy_alias() {
         .assert_status(StatusCode::CREATED)
         .json();
     let app = server
-        .seed_app_endpoint(
+        .seed_app_channel(
             "Public Chat route",
             agent["id"].as_str().expect("agent ID"),
             "public_chat",
@@ -150,20 +150,20 @@ async fn public_chat_endpoint_route_matches_legacy_alias() {
         .await;
     let app_id = app["id"].as_str().expect("App ID");
     let channel_id = app["channels"][0]["id"].as_str().expect("channel ID");
-    server.set_app_endpoints_live(app_id, true).await;
+    server.set_app_channels_live(app_id, true).await;
 
-    let endpoint_response = server
+    let channel_response = server
         .get(&format!("/v1/e/{channel_id}/public-chat/config"))
         .await;
     let legacy_response = server
         .get(&format!("/v1/apps/{app_id}/public-chat/config"))
         .await;
-    let endpoint: Value = endpoint_response.assert_status(StatusCode::OK).json();
+    let channel: Value = channel_response.assert_status(StatusCode::OK).json();
     let legacy: Value = legacy_response.assert_status(StatusCode::OK).json();
 
-    assert_eq!(endpoint, legacy);
-    assert_eq!(endpoint["app_id"], app_id);
-    assert_eq!(endpoint["name"], "Public Chat alias");
+    assert_eq!(channel, legacy);
+    assert_eq!(channel["app_id"], app_id);
+    assert_eq!(channel["name"], "Public Chat alias");
 }
 
 #[tokio::test]

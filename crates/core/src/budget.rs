@@ -61,10 +61,12 @@ pub enum BudgetSubjectType {
     App,
     /// Bound to a single `AppChannel` (only sessions for that channel count).
     AppChannel,
-    /// Bound to a single agent endpoint — the exposure a session arrived
+    /// Bound to a single agent channel — the exposure a session arrived
     /// through (EVE-1004). Successor to `AppChannel`, which is retained until
-    /// the App abstraction is deleted.
-    AgentEndpoint,
+    /// the App abstraction is deleted. Accepts the pre-rename
+    /// `agent_endpoint` wire value (migration 144).
+    #[serde(alias = "agent_endpoint")]
+    AgentChannel,
 }
 
 impl BudgetSubjectType {
@@ -77,7 +79,7 @@ impl BudgetSubjectType {
             BudgetSubjectType::Organization => "org",
             BudgetSubjectType::App => "app",
             BudgetSubjectType::AppChannel => "app_channel",
-            BudgetSubjectType::AgentEndpoint => "agent_endpoint",
+            BudgetSubjectType::AgentChannel => "agent_channel",
         }
     }
 }
@@ -97,7 +99,9 @@ impl From<&str> for BudgetSubjectType {
             "org" | "organization" => BudgetSubjectType::Organization,
             "app" => BudgetSubjectType::App,
             "app_channel" => BudgetSubjectType::AppChannel,
-            "agent_endpoint" => BudgetSubjectType::AgentEndpoint,
+            // `agent_endpoint` is the pre-rename wire value; pods on the
+            // previous build may still write it during the rollout (migration 144).
+            "agent_channel" | "agent_endpoint" => BudgetSubjectType::AgentChannel,
             _ => BudgetSubjectType::Session,
         }
     }
@@ -258,4 +262,25 @@ pub struct BudgetToolResponse {
     /// Human-readable hint for the agent
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BudgetSubjectType;
+
+    #[test]
+    fn agent_channel_parses_its_pre_rename_wire_value() {
+        assert_eq!(
+            BudgetSubjectType::from("agent_channel"),
+            BudgetSubjectType::AgentChannel
+        );
+        assert_eq!(
+            BudgetSubjectType::from("agent_endpoint"),
+            BudgetSubjectType::AgentChannel
+        );
+        assert_eq!(BudgetSubjectType::AgentChannel.as_wire(), "agent_channel");
+        let parsed: BudgetSubjectType =
+            serde_json::from_str("\"agent_endpoint\"").expect("legacy wire value");
+        assert_eq!(parsed, BudgetSubjectType::AgentChannel);
+    }
 }

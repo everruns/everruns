@@ -318,14 +318,14 @@ pub struct Agent {
     pub mcp_servers: ScopedMcpServers,
     /// Current lifecycle status of the agent.
     pub status: AgentStatus,
-    /// Incident switch: when true, no endpoint on this agent accepts traffic
-    /// (EVE-1007). Distinct from archiving — it leaves per-endpoint status
+    /// Incident switch: when true, no channel on this agent accepts traffic
+    /// (EVE-1007). Distinct from archiving — it leaves per-channel status
     /// untouched so clearing it restores exactly the previously live set.
     #[serde(default)]
     pub exposures_suspended: bool,
-    /// Whether any endpoint on this agent is currently live. Derived from the
-    /// endpoint rows on read and never stored: a stored flag would be a second
-    /// writer for state the endpoints already own.
+    /// Whether any channel on this agent is currently live. Derived from the
+    /// channel rows on read and never stored: a stored flag would be a second
+    /// writer for state the channels already own.
     #[serde(default)]
     pub exposed: bool,
     /// Timestamp when the agent was created.

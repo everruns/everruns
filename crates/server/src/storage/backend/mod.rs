@@ -29,7 +29,7 @@ use super::memory::InMemoryDatabase;
 use super::models::*;
 use super::reporting::models::ReportingOutboxRow;
 use super::repositories::Database;
-use super::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
+use super::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow};
 use crate::api::common::Pagination;
 
 /// Hard upper bound on a single retention-prune batch (EVE-580). Caps the

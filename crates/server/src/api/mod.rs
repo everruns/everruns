@@ -5,9 +5,9 @@
 
 pub mod a2a_signing;
 pub mod ag_ui;
+pub mod agent_channels;
 pub mod agent_credentials;
 pub mod agent_discovery;
-pub mod agent_endpoints;
 pub mod agent_examples;
 pub mod agent_identities;
 pub mod agent_identity_connections;
@@ -16,13 +16,13 @@ pub mod agent_triggers;
 pub mod agents;
 pub mod app_a2a;
 pub mod app_api;
-pub mod app_endpoint_auth;
 pub mod app_ingress;
 pub mod app_webhooks;
 pub mod apps;
 pub mod audit_logs;
 pub mod budgets;
 pub mod capabilities;
+pub mod channel_auth;
 pub mod channel_rate_limit;
 pub mod commands;
 pub mod common;

@@ -1647,10 +1647,10 @@ inventory::submit! { CommandDescriptor::of::<SetDefaultAgentVersion>() }
 // SuspendAgentExposures / ResumeAgentExposures
 // ============================================================================
 
-/// Take every endpoint on an agent off the internet in one action (EVE-1007).
+/// Take every channel on an agent off the internet in one action (EVE-1007).
 ///
 /// This is the incident control, and is deliberately separate from archiving and
-/// from per-endpoint publish: it leaves every endpoint's own `status` untouched,
+/// from per-channel publish: it leaves every channel's own `status` untouched,
 /// so resuming restores exactly the set that was live before — which is what
 /// makes it safe to reach for under pressure.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -1666,7 +1666,7 @@ impl Command for SuspendAgentExposures {
         CommandMeta {
             name: "suspend_agent_exposures",
             category: "agents",
-            description: "Stop every endpoint on an agent from accepting traffic.",
+            description: "Stop every channel on an agent from accepting traffic.",
             method: "POST",
             path: "/v1/agents/{agent_id}/exposures/suspend",
         }
@@ -1712,7 +1712,7 @@ impl Command for ResumeAgentExposures {
         CommandMeta {
             name: "resume_agent_exposures",
             category: "agents",
-            description: "Let an agent's live endpoints accept traffic again.",
+            description: "Let an agent's live channels accept traffic again.",
             method: "POST",
             path: "/v1/agents/{agent_id}/exposures/resume",
         }

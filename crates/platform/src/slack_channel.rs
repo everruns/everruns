@@ -1,4 +1,4 @@
-//! Typed configuration for a Slack endpoint.
+//! Typed configuration for a Slack channel.
 //!
 //! Split out of `app.rs` (EVE-1069): that file is on the size ratchet's debt
 //! list, and one-click install adds to this type rather than to the rest of it.
@@ -31,8 +31,8 @@ pub struct SlackChannelConfig {
     /// May be empty while the channel is being configured.
     #[serde(default)]
     pub bot_token: String,
-    /// Set when this deployment created the endpoint's Slack app (EVE-1069).
-    /// Absent on a hand-configured endpoint.
+    /// Set when this deployment created the channel's Slack app (EVE-1069).
+    /// Absent on a hand-configured channel.
     ///
     /// Never reaches an API response: `redact_channel_config` drops the whole
     /// object and surfaces `slack_app_provisioned: true` instead, so it carries
@@ -165,7 +165,7 @@ mod tests {
         // stored Slack config would be noise, same as the AG-UI config.
         assert!(json.get("generic_tool_text").is_none());
         assert!(json.get("first_message_received_at").is_none());
-        // Absent on a hand-configured endpoint (EVE-1069).
+        // Absent on a hand-configured channel (EVE-1069).
         assert!(json.get("provisioned_app").is_none());
     }
 

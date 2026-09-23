@@ -99,14 +99,14 @@ impl SessionService {
         app_internal_id: Option<Uuid>,
         agent_version_policy: AgentVersionPolicy,
         agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
-        // Internal id of the endpoint this ingress resolved, recorded as
-        // `sessions.endpoint_id` so provenance names the door, not the bundle
-        // (EVE-1004). `None` only where the caller genuinely has no endpoint
+        // Internal id of the channel this ingress resolved, recorded as
+        // `sessions.channel_id` so provenance names the door, not the bundle
+        // (EVE-1004). `None` only where the caller genuinely has no channel
         // pointer — migrated App schedules, whose trigger row kept
-        // `execution_app_id` but never an endpoint id. Leaving those NULL is
+        // `execution_app_id` but never a channel id. Leaving those NULL is
         // the same rule the 137 backfill follows: derive or leave unknown,
-        // never guess an App's endpoint for it.
-        endpoint_internal_id: Option<Uuid>,
+        // never guess an App's channel for it.
+        channel_internal_id: Option<Uuid>,
         owner_principal_id: PrincipalId,
         resolved_owner_user_id: Option<Uuid>,
         source: SessionSource,
@@ -119,7 +119,7 @@ impl SessionService {
             agent_public_id,
             Some((agent_version_policy, agent_version_id)),
             app_internal_id,
-            endpoint_internal_id,
+            channel_internal_id,
             Some((owner_principal_id, resolved_owner_user_id)),
             source,
             req,
@@ -172,11 +172,11 @@ impl SessionService {
             Option<everruns_provider::typed_id::AgentVersionId>,
         )>,
         app_id: Option<Uuid>,
-        // Endpoint whose ingress is creating this session (EVE-1004). Every
-        // app-channel path knows its endpoint, so this is passed rather than
+        // Channel whose ingress is creating this session (EVE-1004). Every
+        // app-channel path knows its channel, so this is passed rather than
         // inferred from tags — the tag spelling differs per transport and a
-        // multi-endpoint App makes `app_id` alone ambiguous.
-        endpoint_id: Option<Uuid>,
+        // multi-channel App makes `app_id` alone ambiguous.
+        channel_id: Option<Uuid>,
         // (principal, resolved_user) override; used by app-channel ingress so
         // the session owner matches the App row (not the internal caller).
         owner_override: Option<(PrincipalId, Option<Uuid>)>,
@@ -426,7 +426,7 @@ impl SessionService {
             org_id,
             source,
             app_id,
-            endpoint_id,
+            channel_id,
             harness_id: Some(harness_id),
             agent_id,
             agent_version_id: resolved_agent_version.as_ref().map(|version| version.id),
@@ -619,7 +619,7 @@ impl SessionService {
             org_id,
             source,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
             agent_version_id: None,

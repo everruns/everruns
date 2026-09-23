@@ -425,17 +425,17 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "channel_config_encrypted",
         id_column: "id",
     },
-    // Endpoint channel config (multi-channel) — same secrets, per-endpoint.
-    // Re-parented from `app_channels` onto `agent_endpoints` (EVE-1003); the
+    // Agent channel config (multi-channel) — same secrets, per channel.
+    // Re-parented from `app_channels` onto `agent_channels` (EVE-1003); the
     // `app_channels` view is read-only and cannot be rotated through.
     EncryptedColumn {
-        table: "agent_endpoints",
+        table: "agent_channels",
         column: "channel_config_encrypted",
         id_column: "id",
     },
-    // Endpoint authentication can contain password hashes and provider secrets.
+    // Channel authentication can contain password hashes and provider secrets.
     EncryptedColumn {
-        table: "agent_endpoints",
+        table: "agent_channels",
         column: "auth_encrypted",
         id_column: "id",
     },
@@ -721,7 +721,7 @@ mod tests {
             // Detect DROP TABLE [IF EXISTS] <table>
             // A dropped table's encrypted columns no longer exist, so they must not
             // stay registered for key rotation. `app_channels` is the case that
-            // motivated this: EVE-1003 moved its rows into `agent_endpoints` and left
+            // motivated this: EVE-1003 moved its rows into `agent_channels` and left
             // a read-only view behind, and rotating through that view would rewrite
             // the same underlying rows a second time.
             if trimmed.starts_with("drop table") {

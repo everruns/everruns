@@ -1,4 +1,4 @@
-// App webhook ingress — endpoint-scoped token-authenticated invocation.
+// App webhook ingress — channel-scoped token-authenticated invocation.
 //
 // Design Decision: Webhooks use `POST /v1/e/{channel_id}/webhook` so one app
 // can expose multiple entry points with different tokens and invocation
@@ -132,15 +132,15 @@ pub async fn invoke_webhook_legacy(
 }
 
 #[utoipa::path(
-    description = "Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.",
+    description = "Invoke a published webhook channel. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.",
     post,
     path = "/v1/e/{channel_id}/webhook",
-    params(("channel_id" = String, Path, description = "Webhook endpoint channel ID")),
+    params(("channel_id" = String, Path, description = "Webhook channel ID")),
     request_body(content = String, content_type = "application/octet-stream"),
     responses(
         (status = 202, description = "Webhook accepted", body = WebhookInvocationResponse),
         (status = 401, description = "Invalid or missing webhook token", body = ErrorResponse),
-        (status = 404, description = "Endpoint not found, app not published, or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Channel not found, app not published, or channel disabled", body = ErrorResponse),
         (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -199,14 +199,11 @@ async fn invoke_webhook(
         )
         .await;
     }
-    let (app, channel) = crate::api::app_ingress::resolve_endpoint(
-        &state.db,
-        state.encryption.as_ref(),
-        &channel_id,
-    )
-    .await
-    .map_err(internal_error)?
-    .ok_or_else(not_found)?;
+    let (app, channel) =
+        crate::api::app_ingress::resolve_channel(&state.db, state.encryption.as_ref(), &channel_id)
+            .await
+            .map_err(internal_error)?
+            .ok_or_else(not_found)?;
     if app_id
         .as_deref()
         .is_some_and(|legacy_app_id| !app.matches_legacy_app_id(legacy_app_id))
@@ -224,15 +221,15 @@ async fn invoke_webhook(
         return Err(not_found());
     }
     // THREAT[TM-AUTHZ-006]: Anonymous webhook ingress must never reach a
-    // non-live endpoint, and every request must present the per-channel shared
+    // non-live channel, and every request must present the per-channel shared
     // secret before session creation. Liveness is resolved before auth so a
-    // caller cannot distinguish a misconfigured endpoint from a bad token.
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&app, &channel) {
+    // caller cannot distinguish a misconfigured channel from a bad token.
+    if let Err(reason) = crate::api::app_ingress::channel_liveness(&app, &channel) {
         tracing::debug!(
             app_id = %app.public_id,
-            endpoint_id = %channel.public_id,
+            channel_id = %channel.public_id,
             reason = reason.as_str(),
-            "Webhook request rejected: endpoint not live"
+            "Webhook request rejected: channel not live"
         );
         return Err(not_found());
     }

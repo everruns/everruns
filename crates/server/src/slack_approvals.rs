@@ -48,7 +48,7 @@ use uuid::Uuid;
 /// Tool whose completion raises a Slack approval card.
 pub(crate) const REQUEST_APPROVAL_TOOL: &str = "request_approval";
 
-/// Session hint a Slack endpoint declares when it can draw approval cards.
+/// Session hint a Slack channel declares when it can draw approval cards.
 ///
 /// Deliberately its own key rather than reusing `setup_connection`: a surface
 /// that renders one card does not necessarily render another, and Client Hints

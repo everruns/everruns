@@ -55,7 +55,11 @@ impl InMemoryDatabase {
             .filter(|b| {
                 b.org_id == org_id
                     && b.status != "disabled"
-                    && subject_type.is_none_or(|t| b.subject_type == t)
+                    && subject_type.is_none_or(|t| {
+                        b.subject_type == t
+                            // Pre-rename `agent_channel` value (migration 144).
+                            || (t == "agent_channel" && b.subject_type == "agent_endpoint")
+                    })
                     && subject_id.is_none_or(|i| b.subject_id == i)
             })
             .cloned()
@@ -82,7 +86,7 @@ impl InMemoryDatabase {
                 org_public_id,
                 app_id: None,
                 app_channel_id: None,
-                endpoint_id: None,
+                agent_channel_id: None,
             },
         )
         .await

@@ -59,7 +59,7 @@ everruns_core::budget::BudgetStatus::Exhausted	variant
 everruns_core::budget::BudgetStatus::Paused	variant
 everruns_core::budget::BudgetSubjectType	enum
 everruns_core::budget::BudgetSubjectType::Agent	variant
-everruns_core::budget::BudgetSubjectType::AgentEndpoint	variant
+everruns_core::budget::BudgetSubjectType::AgentChannel	variant
 everruns_core::budget::BudgetSubjectType::App	variant
 everruns_core::budget::BudgetSubjectType::AppChannel	variant
 everruns_core::budget::BudgetSubjectType::Organization	variant

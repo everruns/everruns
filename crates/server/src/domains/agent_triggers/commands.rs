@@ -1422,7 +1422,7 @@ async fn find_or_create_trigger_session(
                 execution_context.agent_version_policy.clone(),
                 execution_context.agent_version_id,
                 // Migrated App schedules (migration 106) kept
-                // `execution_app_id` but never an endpoint pointer, so there
+                // `execution_app_id` but never a channel pointer, so there
                 // is nothing structural to record here.
                 None,
                 execution_context.owner_principal_id,

@@ -682,15 +682,15 @@ impl StorageBackend {
         dispatch!(self, list_app_channels, app_id)
     }
 
-    pub async fn set_app_endpoint_publish(&self, app_id: Uuid, published: bool) -> Result<u64> {
-        dispatch!(self, set_app_endpoint_publish, app_id, published)
+    pub async fn set_app_channel_publish(&self, app_id: Uuid, published: bool) -> Result<u64> {
+        dispatch!(self, set_app_channel_publish, app_id, published)
     }
 
-    pub async fn agents_with_live_endpoints(
+    pub async fn agents_with_live_channels(
         &self,
         agent_ids: &[Uuid],
     ) -> Result<std::collections::HashSet<Uuid>> {
-        dispatch!(self, agents_with_live_endpoints, agent_ids)
+        dispatch!(self, agents_with_live_channels, agent_ids)
     }
 
     pub async fn app_has_channels(&self, app_id: Uuid) -> Result<bool> {
@@ -704,48 +704,48 @@ impl StorageBackend {
         dispatch!(self, get_app_channel_by_public_id, public_id)
     }
 
-    pub async fn get_ingress_endpoint_by_public_id(
+    pub async fn get_ingress_channel_by_public_id(
         &self,
         public_id: &str,
-    ) -> Result<Option<IngressEndpointRow>> {
-        dispatch!(self, get_ingress_endpoint_by_public_id, public_id)
+    ) -> Result<Option<IngressChannelRow>> {
+        dispatch!(self, get_ingress_channel_by_public_id, public_id)
     }
 
-    pub async fn list_agent_endpoints(
+    pub async fn list_agent_channels(
         &self,
         org_id: i64,
         agent_id: Uuid,
-    ) -> Result<Vec<IngressEndpointRow>> {
-        dispatch!(self, list_agent_endpoints, org_id, agent_id)
+    ) -> Result<Vec<IngressChannelRow>> {
+        dispatch!(self, list_agent_channels, org_id, agent_id)
     }
 
-    pub async fn get_agent_endpoint(
-        &self,
-        org_id: i64,
-        agent_id: Uuid,
-        public_id: &str,
-    ) -> Result<Option<IngressEndpointRow>> {
-        dispatch!(self, get_agent_endpoint, org_id, agent_id, public_id)
-    }
-
-    pub async fn create_agent_endpoint(
-        &self,
-        org_id: i64,
-        input: CreateAgentEndpointRow,
-    ) -> Result<IngressEndpointRow> {
-        dispatch!(self, create_agent_endpoint, org_id, input)
-    }
-
-    pub async fn update_agent_endpoint(
+    pub async fn get_agent_channel(
         &self,
         org_id: i64,
         agent_id: Uuid,
         public_id: &str,
-        input: UpdateAgentEndpointRow,
-    ) -> Result<Option<IngressEndpointRow>> {
+    ) -> Result<Option<IngressChannelRow>> {
+        dispatch!(self, get_agent_channel, org_id, agent_id, public_id)
+    }
+
+    pub async fn create_agent_channel(
+        &self,
+        org_id: i64,
+        input: CreateAgentChannelRow,
+    ) -> Result<IngressChannelRow> {
+        dispatch!(self, create_agent_channel, org_id, input)
+    }
+
+    pub async fn update_agent_channel(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        public_id: &str,
+        input: UpdateAgentChannelRow,
+    ) -> Result<Option<IngressChannelRow>> {
         dispatch!(
             self,
-            update_agent_endpoint,
+            update_agent_channel,
             org_id,
             agent_id,
             public_id,
@@ -753,34 +753,34 @@ impl StorageBackend {
         )
     }
 
-    pub async fn delete_agent_endpoint(
+    pub async fn delete_agent_channel(
         &self,
         org_id: i64,
         agent_id: Uuid,
         public_id: &str,
     ) -> Result<bool> {
-        dispatch!(self, delete_agent_endpoint, org_id, agent_id, public_id)
+        dispatch!(self, delete_agent_channel, org_id, agent_id, public_id)
     }
 
-    pub async fn list_ingress_endpoints_by_legacy_alias(
+    pub async fn list_ingress_channels_by_legacy_alias(
         &self,
         legacy_app_public_id: &str,
         channel_type: &str,
-    ) -> Result<Vec<IngressEndpointRow>> {
+    ) -> Result<Vec<IngressChannelRow>> {
         dispatch!(
             self,
-            list_ingress_endpoints_by_legacy_alias,
+            list_ingress_channels_by_legacy_alias,
             legacy_app_public_id,
             channel_type
         )
     }
 
-    pub async fn get_agent_endpoint_public_id(
+    pub async fn get_agent_channel_public_id(
         &self,
         org_id: i64,
-        endpoint_id: Uuid,
+        channel_id: Uuid,
     ) -> Result<Option<String>> {
-        dispatch!(self, get_agent_endpoint_public_id, org_id, endpoint_id)
+        dispatch!(self, get_agent_channel_public_id, org_id, channel_id)
     }
 
     pub async fn update_app_channel(

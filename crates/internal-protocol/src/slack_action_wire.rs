@@ -1,6 +1,6 @@
-//! Wire conversions for the Slack endpoint action seam (EVE-1024).
+//! Wire conversions for the Slack channel action seam (EVE-1024).
 //!
-//! The native `slack` capability runs in the worker; the endpoint's `bot_token`
+//! The native `slack` capability runs in the worker; the channel's `bot_token`
 //! lives in the control plane and stays there. So the *action* is what crosses
 //! this boundary, and this module is the only place that knows both shapes.
 //!
@@ -121,8 +121,8 @@ impl From<SlackActionError> for proto::SlackActionError {
                 message: None,
                 retry_after_secs: None,
             },
-            SlackActionError::EndpointUnavailable => Self {
-                kind: Kind::EndpointUnavailable as i32,
+            SlackActionError::ChannelUnavailable => Self {
+                kind: Kind::ChannelUnavailable as i32,
                 message: None,
                 retry_after_secs: None,
             },
@@ -166,7 +166,7 @@ impl From<proto::SlackActionError> for SlackActionError {
         };
         match Kind::try_from(error.kind) {
             Ok(Kind::NoSlackSession) => Self::NoSlackSession,
-            Ok(Kind::EndpointUnavailable) => Self::EndpointUnavailable,
+            Ok(Kind::ChannelUnavailable) => Self::ChannelUnavailable,
             Ok(Kind::NotConfigured) => Self::NotConfigured,
             Ok(Kind::Rejected) => Self::Rejected(detail()),
             Ok(Kind::RateLimited) => Self::RateLimited {
@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn every_error_keeps_its_kind_and_classification() {
         round_trip_error(SlackActionError::NoSlackSession);
-        round_trip_error(SlackActionError::EndpointUnavailable);
+        round_trip_error(SlackActionError::ChannelUnavailable);
         round_trip_error(SlackActionError::NotConfigured);
         round_trip_error(SlackActionError::Rejected("bad scope".to_string()));
         round_trip_error(SlackActionError::RateLimited {

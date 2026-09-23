@@ -1,4 +1,4 @@
-//! The worker end of the Slack endpoint action seam (EVE-1024).
+//! The worker end of the Slack channel action seam (EVE-1024).
 //!
 //! Split out of `grpc_adapters` rather than added to it: that file is on the
 //! file-size ratchet, and a per-integration client is exactly the kind of thing
@@ -12,8 +12,8 @@ use crate::grpc_adapters::GrpcClient;
 /// Forwards one session's Slack actions to the control plane (EVE-1024).
 ///
 /// Bound to the org and session it was built for, so the capability holding it
-/// has no argument it could vary to reach another session's endpoint. The
-/// endpoint's `bot_token` stays in the control plane; only the action and its
+/// has no argument it could vary to reach another session's channel. The
+/// channel's `bot_token` stays in the control plane; only the action and its
 /// outcome cross this client.
 pub struct GrpcSlackActionInvoker {
     client: GrpcClient,

@@ -428,7 +428,7 @@ mod tests {
             workspace_id,
             org_id: everruns_core::DEFAULT_ORG_ID,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,

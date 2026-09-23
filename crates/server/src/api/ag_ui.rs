@@ -69,9 +69,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::api::app_endpoint_auth::{
-    AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth,
-};
+use crate::api::channel_auth::{ChannelAuthError, ChannelAuthVerifier, LegacyChannelAuth};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::api::images::{
@@ -107,7 +105,7 @@ pub struct AgUiState {
     pub event_service: Arc<EventService>,
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub rate_limiter: ChannelRateLimiter,
-    pub auth_verifier: AppEndpointAuthVerifier,
+    pub auth_verifier: ChannelAuthVerifier,
     pub public_chat_enabled: bool,
 }
 
@@ -132,7 +130,7 @@ impl AgUiState {
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             sse_tracker,
             rate_limiter,
-            auth_verifier: AppEndpointAuthVerifier::new(),
+            auth_verifier: ChannelAuthVerifier::new(),
             public_chat_enabled: false,
             encryption,
             db,
@@ -154,7 +152,7 @@ pub fn routes(state: AgUiState) -> Router {
                 MAX_PUBLIC_AG_UI_IMAGE_SIZE + 1024 * 1024,
             )),
         )
-        .route("/v1/e/{channel_id}/ag-ui", post(run_agent_endpoint))
+        .route("/v1/e/{channel_id}/ag-ui", post(run_agent_channel))
         .route(
             "/v1/e/{channel_id}/ag-ui/images",
             post(upload_image_endpoint).layer(DefaultBodyLimit::max(
@@ -165,15 +163,15 @@ pub fn routes(state: AgUiState) -> Router {
 }
 enum AgUiTarget {
     LegacyApp(String),
-    Endpoint(String),
+    Channel(String),
 }
 
 struct AuthorizedAgUiRequest {
     context: crate::api::app_ingress::IngressContext,
     channel_id: String,
-    /// Internal id of the endpoint this request arrived through, recorded on
+    /// Internal id of the channel this request arrived through, recorded on
     /// any session it creates (EVE-1004).
-    endpoint_internal_id: uuid::Uuid,
+    channel_internal_id: uuid::Uuid,
     channel_config: AgUiChannelConfig,
 }
 
@@ -185,7 +183,7 @@ async fn authorize_ag_ui_request(
 ) -> Result<AuthorizedAgUiRequest, Response> {
     let (context, channel) = match target {
         AgUiTarget::LegacyApp(app_id) => {
-            match crate::api::app_ingress::resolve_legacy_endpoint(
+            match crate::api::app_ingress::resolve_legacy_channel(
                 &state.db,
                 state.encryption.as_ref(),
                 &app_id,
@@ -194,18 +192,18 @@ async fn authorize_ag_ui_request(
             .await
             .map_err(internal_error)?
             {
-                crate::api::app_ingress::LegacyEndpointMatch::One(endpoint) => *endpoint,
-                crate::api::app_ingress::LegacyEndpointMatch::NotFound => {
+                crate::api::app_ingress::LegacyChannelMatch::One(resolved) => *resolved,
+                crate::api::app_ingress::LegacyChannelMatch::NotFound => {
                     return Err(not_found());
                 }
-                crate::api::app_ingress::LegacyEndpointMatch::Ambiguous => {
+                crate::api::app_ingress::LegacyChannelMatch::Ambiguous => {
                     return Err(conflict(
-                        "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/e/{channel_id}/ag-ui URL",
+                        "Multiple enabled AG-UI channels; use a channel-scoped /v1/e/{channel_id}/ag-ui URL",
                     ));
                 }
             }
         }
-        AgUiTarget::Endpoint(channel_id) => crate::api::app_ingress::resolve_endpoint(
+        AgUiTarget::Channel(channel_id) => crate::api::app_ingress::resolve_channel(
             &state.db,
             state.encryption.as_ref(),
             &channel_id,
@@ -228,12 +226,12 @@ async fn authorize_ag_ui_request(
     if channel.channel_type != ChannelType::AgUi {
         return Err(not_found());
     }
-    if let Err(reason) = crate::api::app_ingress::endpoint_liveness(&context, &channel) {
+    if let Err(reason) = crate::api::app_ingress::channel_liveness(&context, &channel) {
         tracing::debug!(
             app_id = %context.public_id,
-            endpoint_id = %channel.public_id,
+            channel_id = %channel.public_id,
             reason = reason.as_str(),
-            "AG-UI request rejected: endpoint not live"
+            "AG-UI request rejected: channel not live"
         );
         return Err(not_found());
     }
@@ -248,7 +246,7 @@ async fn authorize_ag_ui_request(
             .verify(
                 auth,
                 headers,
-                LegacyEndpointAuth {
+                LegacyChannelAuth {
                     shared_secret: channel_config.token.as_deref(),
                     api_key: None,
                 },
@@ -296,7 +294,7 @@ async fn authorize_ag_ui_request(
 
     Ok(AuthorizedAgUiRequest {
         channel_id: channel.public_id.to_string(),
-        endpoint_internal_id: channel.internal_id,
+        channel_internal_id: channel.internal_id,
         context,
         channel_config,
     })
@@ -328,7 +326,7 @@ async fn upload_image_endpoint(
 ) -> Result<(StatusCode, Json<ImageUploadResponse>), Response> {
     upload_image(
         state,
-        AgUiTarget::Endpoint(channel_id),
+        AgUiTarget::Channel(channel_id),
         connect_info,
         headers,
         multipart,
@@ -441,7 +439,7 @@ async fn run_agent_legacy(
     .await
 }
 
-async fn run_agent_endpoint(
+async fn run_agent_channel(
     State(state): State<AgUiState>,
     Path(channel_id): Path<String>,
     req_id: Option<Extension<RequestId>>,
@@ -451,7 +449,7 @@ async fn run_agent_endpoint(
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
     run_agent(
         state,
-        AgUiTarget::Endpoint(channel_id),
+        AgUiTarget::Channel(channel_id),
         req_id,
         connect_info,
         headers,
@@ -473,14 +471,14 @@ async fn run_agent(
     let AuthorizedAgUiRequest {
         context: app,
         channel_id,
-        endpoint_internal_id,
+        channel_internal_id,
         channel_config,
     } = authorize_ag_ui_request(&state, target, &headers, peer_addr).await?;
 
     run_app_agent_stream(
         state,
         app,
-        endpoint_internal_id,
+        channel_internal_id,
         channel_config,
         "ag_ui",
         vec![format!("ag_ui:channel:{channel_id}")],
@@ -500,7 +498,7 @@ async fn run_agent(
 pub(crate) async fn run_app_agent_stream(
     state: AgUiState,
     app: crate::api::app_ingress::IngressContext,
-    endpoint_internal_id: uuid::Uuid,
+    channel_internal_id: uuid::Uuid,
     channel_config: AgUiChannelConfig,
     tag_prefix: &str,
     extra_routing_tags: Vec<String>,
@@ -553,7 +551,7 @@ pub(crate) async fn run_app_agent_stream(
     let session = find_or_create_session(
         &state,
         &app,
-        endpoint_internal_id,
+        channel_internal_id,
         &channel_config,
         &routing_tags,
         &thread_tag,
@@ -882,7 +880,7 @@ impl From<anyhow::Error> for SessionError {
 async fn find_or_create_session(
     state: &AgUiState,
     app: &crate::api::app_ingress::IngressContext,
-    endpoint_internal_id: uuid::Uuid,
+    channel_internal_id: uuid::Uuid,
     config: &AgUiChannelConfig,
     routing_tags: &[String],
     thread_id: &str,
@@ -944,7 +942,7 @@ async fn find_or_create_session(
                     app.historical_app_id,
                     app.agent_version_policy.clone(),
                     app.agent_version_id,
-                    Some(endpoint_internal_id),
+                    Some(channel_internal_id),
                     app.owner_principal_id,
                     app.resolved_owner_user_id,
                     everruns_platform::SessionSource::AgUi,
@@ -1665,11 +1663,11 @@ fn service_unavailable(message: &str) -> Response {
         .into_response()
 }
 
-fn ag_ui_auth_error_response(error: AppEndpointAuthError) -> Response {
+fn ag_ui_auth_error_response(error: ChannelAuthError) -> Response {
     match error {
-        AppEndpointAuthError::Unauthorized => unauthorized(),
-        AppEndpointAuthError::Misconfigured => forbidden("AG-UI auth is misconfigured"),
-        AppEndpointAuthError::ProviderUnavailable => {
+        ChannelAuthError::Unauthorized => unauthorized(),
+        ChannelAuthError::Misconfigured => forbidden("AG-UI auth is misconfigured"),
+        ChannelAuthError::ProviderUnavailable => {
             service_unavailable("AG-UI auth provider is unavailable")
         }
     }

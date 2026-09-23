@@ -126,7 +126,7 @@ pub fn routes(state: SlackState) -> Router {
 
 pub(crate) enum SlackTarget {
     LegacyApp(String),
-    Endpoint(String),
+    Channel(String),
 }
 
 /// Extract text content from an output.message.completed event's data.

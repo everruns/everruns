@@ -52,7 +52,7 @@ pub mod vector_store;
 pub mod agent_trigger;
 pub mod app;
 
-// The seam a Slack-native capability acts through; the Slack endpoint row it
+// The seam a Slack-native capability acts through; the Slack channel row it
 // resolves against lives in `app` (EVE-1024).
 pub mod slack_action;
 pub mod slack_channel;
@@ -170,7 +170,7 @@ pub use session::{
 pub use everruns_host::session_services::session_mutator;
 pub use everruns_host::{SessionMutator, SessionMutatorExt};
 
-// Slack endpoint actions (EVE-1024).
+// Slack channel actions (EVE-1024).
 pub use slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionInvokerExt, SlackActionOutcome,
 };
@@ -230,8 +230,8 @@ pub use everruns_core::channel::SessionBinding;
 
 pub use app::{
     A2aChannelConfig, AgUiChannelConfig, AgentVersionPolicy, ApiEndpointChannelConfig, App,
-    AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppEndpointAuthRequirements, AppStatus, CaptchaProvider, ChannelType, EndpointStatus,
+    AppChannel, AppStatus, CaptchaProvider, ChannelAuthConfig, ChannelAuthMode,
+    ChannelAuthProviderConfig, ChannelAuthRequirements, ChannelStatus, ChannelType,
     FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig, PublicChatChannelConfig,
     SlackReplyMode,
 };

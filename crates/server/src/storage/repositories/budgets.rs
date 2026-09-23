@@ -20,11 +20,11 @@ pub struct BudgetSubjectLookup<'a> {
     pub org_public_id: Option<&'a str>,
     pub app_id: Option<&'a str>,
     pub app_channel_id: Option<&'a str>,
-    /// Public id of the endpoint the session arrived through. During the
+    /// Public id of the agent channel the session arrived through. During the
     /// transition this is the same `appchan_` id as `app_channel_id` — the
-    /// endpoint kept its identifier when it was re-parented — but the subject
+    /// channel kept its identifier when it was re-parented — but the subject
     /// type it resolves under is the new one (EVE-1004).
-    pub endpoint_id: Option<&'a str>,
+    pub agent_channel_id: Option<&'a str>,
 }
 
 impl<'a> BudgetSubjectLookup<'a> {
@@ -35,7 +35,10 @@ impl<'a> BudgetSubjectLookup<'a> {
         if let Some(id) = self.session_id {
             pairs.push(("session", id));
         }
-        if let Some(id) = self.endpoint_id {
+        if let Some(id) = self.agent_channel_id {
+            pairs.push(("agent_channel", id));
+            // Pre-rename wire value; the previous build may still write it
+            // during the migration 144 rollout.
             pairs.push(("agent_endpoint", id));
         }
         if let Some(id) = self.app_channel_id {
@@ -119,7 +122,10 @@ impl Database {
                    balance, period, period_started_at, metadata, status, created_at, updated_at
             FROM budgets
             WHERE org_id = $1
-              AND ($2::TEXT IS NULL OR subject_type = $2)
+              -- `agent_endpoint` is the pre-rename `agent_channel` value the
+              -- previous build may still write during the migration 144 rollout.
+              AND ($2::TEXT IS NULL OR subject_type = $2
+                   OR ($2 = 'agent_channel' AND subject_type = 'agent_endpoint'))
               AND ($3::TEXT IS NULL OR subject_id = $3)
               AND status != 'disabled'
             ORDER BY created_at DESC
@@ -154,7 +160,7 @@ impl Database {
                 org_public_id,
                 app_id: None,
                 app_channel_id: None,
-                endpoint_id: None,
+                agent_channel_id: None,
             },
         )
         .await

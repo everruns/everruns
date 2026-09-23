@@ -6,7 +6,7 @@
 //! works but costs a *second* bot token — separate scopes to grant, separate
 //! rotation, and an identity that is not the bot the user invited.
 //!
-//! These tools act as the endpoint's own bot instead. They carry no credential:
+//! These tools act as the channel's own bot instead. They carry no credential:
 //! each one names an action and hands it to the [`SlackActionInvoker`] seam,
 //! which the control plane implements. See
 //! [`crate::slack_action`] for why the action travels and the token does not,

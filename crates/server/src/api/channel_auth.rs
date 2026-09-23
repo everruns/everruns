@@ -1,4 +1,4 @@
-// Shared auth verifier for public App endpoint channels.
+// Shared auth verifier for public agent channels.
 //
 // The verifier remains provider-shaped so the same runtime can later read
 // org-level reusable providers without changing AG-UI/A2A ingress behavior.
@@ -15,8 +15,7 @@ use crate::kernel_imports::{
 use axum::http::{HeaderMap, header::AUTHORIZATION};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use everruns_platform::{
-    AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppEndpointAuthRequirements,
+    ChannelAuthConfig, ChannelAuthMode, ChannelAuthProviderConfig, ChannelAuthRequirements,
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use moka::future::Cache;
@@ -30,7 +29,7 @@ use crate::security::constant_time_eq;
 use crate::storage::password::verify_password;
 
 #[derive(Clone)]
-pub struct AppEndpointAuthVerifier {
+pub struct ChannelAuthVerifier {
     // Outbound HTTP clients are built per-request via `build_pinned_client` so
     // each request can pin reqwest's DNS resolution to addresses we just
     // validated, eliminating the rebinding TOCTOU window. The struct only
@@ -39,13 +38,13 @@ pub struct AppEndpointAuthVerifier {
     jwks_cache: Cache<String, Arc<JwkSet>>,
 }
 
-impl Default for AppEndpointAuthVerifier {
+impl Default for ChannelAuthVerifier {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AppEndpointAuthVerifier {
+impl ChannelAuthVerifier {
     pub fn new() -> Self {
         Self {
             discovery_cache: Cache::builder()
@@ -61,10 +60,10 @@ impl AppEndpointAuthVerifier {
 
     pub async fn verify(
         &self,
-        auth: &AppEndpointAuthConfig,
+        auth: &ChannelAuthConfig,
         headers: &HeaderMap,
-        legacy: LegacyEndpointAuth<'_>,
-    ) -> Result<(), AppEndpointAuthError> {
+        legacy: LegacyChannelAuth<'_>,
+    ) -> Result<(), ChannelAuthError> {
         self.verify_principal(auth, headers, legacy)
             .await
             .map(|_| ())
@@ -72,36 +71,36 @@ impl AppEndpointAuthVerifier {
 
     pub async fn verify_principal(
         &self,
-        auth: &AppEndpointAuthConfig,
+        auth: &ChannelAuthConfig,
         headers: &HeaderMap,
-        legacy: LegacyEndpointAuth<'_>,
-    ) -> Result<Option<AppEndpointAuthPrincipal>, AppEndpointAuthError> {
+        legacy: LegacyChannelAuth<'_>,
+    ) -> Result<Option<ChannelAuthPrincipal>, ChannelAuthError> {
         match auth.mode {
-            AppEndpointAuthMode::Anonymous => Ok(None),
-            AppEndpointAuthMode::SharedSecret => {
+            ChannelAuthMode::Anonymous => Ok(None),
+            ChannelAuthMode::SharedSecret => {
                 let expected = legacy
                     .shared_secret
-                    .ok_or(AppEndpointAuthError::Misconfigured)?;
+                    .ok_or(ChannelAuthError::Misconfigured)?;
                 verify_shared_secret(headers, expected)?;
                 Ok(None)
             }
-            AppEndpointAuthMode::ApiKey => {
-                let api_key = legacy.api_key.ok_or(AppEndpointAuthError::Misconfigured)?;
+            ChannelAuthMode::ApiKey => {
+                let api_key = legacy.api_key.ok_or(ChannelAuthError::Misconfigured)?;
                 verify_shared_secret(headers, api_key)?;
                 Ok(None)
             }
-            AppEndpointAuthMode::HttpBasic => {
+            ChannelAuthMode::HttpBasic => {
                 self.verify_basic(auth, headers)?;
                 Ok(None)
             }
-            AppEndpointAuthMode::GoogleOidc | AppEndpointAuthMode::Oidc => {
+            ChannelAuthMode::GoogleOidc | ChannelAuthMode::Oidc => {
                 self.verify_oidc(auth, headers).await.map(Some)
             }
-            AppEndpointAuthMode::OAuth2Introspection => self
+            ChannelAuthMode::OAuth2Introspection => self
                 .verify_oauth2_introspection(auth, headers)
                 .await
                 .map(Some),
-            AppEndpointAuthMode::Mtls => {
+            ChannelAuthMode::Mtls => {
                 self.verify_mtls(auth, headers)?;
                 Ok(None)
             }
@@ -110,43 +109,43 @@ impl AppEndpointAuthVerifier {
 
     fn verify_basic(
         &self,
-        auth: &AppEndpointAuthConfig,
+        auth: &ChannelAuthConfig,
         headers: &HeaderMap,
-    ) -> Result<(), AppEndpointAuthError> {
-        let Some(AppEndpointAuthProviderConfig::HttpBasic {
+    ) -> Result<(), ChannelAuthError> {
+        let Some(ChannelAuthProviderConfig::HttpBasic {
             username,
             password_hash,
             ..
         }) = auth.provider.as_ref()
         else {
-            return Err(AppEndpointAuthError::Misconfigured);
+            return Err(ChannelAuthError::Misconfigured);
         };
         let expected_hash = password_hash
             .as_deref()
             .filter(|hash| !hash.trim().is_empty())
-            .ok_or(AppEndpointAuthError::Misconfigured)?;
+            .ok_or(ChannelAuthError::Misconfigured)?;
         let (provided_user, provided_password) =
-            extract_basic_credentials(headers).ok_or(AppEndpointAuthError::Unauthorized)?;
+            extract_basic_credentials(headers).ok_or(ChannelAuthError::Unauthorized)?;
         if provided_user != *username {
-            return Err(AppEndpointAuthError::Unauthorized);
+            return Err(ChannelAuthError::Unauthorized);
         }
         let valid = verify_password(&provided_password, expected_hash)
-            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
+            .map_err(|_| ChannelAuthError::Misconfigured)?;
         if valid {
             Ok(())
         } else {
-            Err(AppEndpointAuthError::Unauthorized)
+            Err(ChannelAuthError::Unauthorized)
         }
     }
 
     async fn verify_oidc(
         &self,
-        auth: &AppEndpointAuthConfig,
+        auth: &ChannelAuthConfig,
         headers: &HeaderMap,
-    ) -> Result<AppEndpointAuthPrincipal, AppEndpointAuthError> {
-        let token = extract_bearer(headers).ok_or(AppEndpointAuthError::Unauthorized)?;
+    ) -> Result<ChannelAuthPrincipal, ChannelAuthError> {
+        let token = extract_bearer(headers).ok_or(ChannelAuthError::Unauthorized)?;
         let (issuer, jwks_url, requirements) = match auth.provider.as_ref() {
-            Some(AppEndpointAuthProviderConfig::GoogleOidc {
+            Some(ChannelAuthProviderConfig::GoogleOidc {
                 client_id,
                 allowed_domains,
             }) => {
@@ -163,7 +162,7 @@ impl AppEndpointAuthVerifier {
                     requirements,
                 )
             }
-            Some(AppEndpointAuthProviderConfig::Oidc { issuer, jwks_url }) => {
+            Some(ChannelAuthProviderConfig::Oidc { issuer, jwks_url }) => {
                 let discovery = self.discovery(issuer).await?;
                 (
                     normalize_issuer(issuer),
@@ -173,32 +172,32 @@ impl AppEndpointAuthVerifier {
                     auth.requirements.clone(),
                 )
             }
-            _ => return Err(AppEndpointAuthError::Misconfigured),
+            _ => return Err(ChannelAuthError::Misconfigured),
         };
 
         if requirements.audiences.is_empty() {
-            return Err(AppEndpointAuthError::Misconfigured);
+            return Err(ChannelAuthError::Misconfigured);
         }
         let jwks = self.jwks(&jwks_url).await?;
-        let header = decode_header(token).map_err(|_| AppEndpointAuthError::Unauthorized)?;
-        let kid = header.kid.ok_or(AppEndpointAuthError::Unauthorized)?;
+        let header = decode_header(token).map_err(|_| ChannelAuthError::Unauthorized)?;
+        let kid = header.kid.ok_or(ChannelAuthError::Unauthorized)?;
         let jwk = jwks
             .keys
             .iter()
             .find(|jwk| jwk.common.key_id.as_deref() == Some(kid.as_str()))
-            .ok_or(AppEndpointAuthError::Unauthorized)?;
+            .ok_or(ChannelAuthError::Unauthorized)?;
         let alg = header.alg;
         if !is_public_key_algorithm(alg) {
-            return Err(AppEndpointAuthError::Unauthorized);
+            return Err(ChannelAuthError::Unauthorized);
         }
-        let key = DecodingKey::from_jwk(jwk).map_err(|_| AppEndpointAuthError::Unauthorized)?;
+        let key = DecodingKey::from_jwk(jwk).map_err(|_| ChannelAuthError::Unauthorized)?;
         let mut validation = Validation::new(alg);
         validation.set_issuer(&[issuer]);
         validation.set_audience(&requirements.audiences);
         validation.validate_nbf = true;
         validation.set_required_spec_claims(&["exp", "iss", "aud"]);
         let claims = decode::<Value>(token, &key, &validation)
-            .map_err(|_| AppEndpointAuthError::Unauthorized)?
+            .map_err(|_| ChannelAuthError::Unauthorized)?
             .claims;
         validate_claim_requirements(&claims, &requirements)?;
         principal_from_claims(&claims)
@@ -206,22 +205,22 @@ impl AppEndpointAuthVerifier {
 
     async fn verify_oauth2_introspection(
         &self,
-        auth: &AppEndpointAuthConfig,
+        auth: &ChannelAuthConfig,
         headers: &HeaderMap,
-    ) -> Result<AppEndpointAuthPrincipal, AppEndpointAuthError> {
-        let token = extract_bearer(headers).ok_or(AppEndpointAuthError::Unauthorized)?;
-        let Some(AppEndpointAuthProviderConfig::OAuth2Introspection {
+    ) -> Result<ChannelAuthPrincipal, ChannelAuthError> {
+        let token = extract_bearer(headers).ok_or(ChannelAuthError::Unauthorized)?;
+        let Some(ChannelAuthProviderConfig::OAuth2Introspection {
             introspection_url,
             client_id,
             client_secret,
             ..
         }) = auth.provider.as_ref()
         else {
-            return Err(AppEndpointAuthError::Misconfigured);
+            return Err(ChannelAuthError::Misconfigured);
         };
         let client = build_pinned_client(introspection_url)
             .await
-            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
+            .map_err(|_| ChannelAuthError::Misconfigured)?;
         let mut req = client.post(introspection_url).form(&[("token", token)]);
         if let Some(client_id) = client_id.as_deref().filter(|id| !id.is_empty()) {
             req = if let Some(secret) = client_secret.as_deref() {
@@ -233,19 +232,19 @@ impl AppEndpointAuthVerifier {
         let response = req
             .send()
             .await
-            .map_err(|_| AppEndpointAuthError::ProviderUnavailable)?;
+            .map_err(|_| ChannelAuthError::ProviderUnavailable)?;
         if response.status().is_server_error() {
-            return Err(AppEndpointAuthError::ProviderUnavailable);
+            return Err(ChannelAuthError::ProviderUnavailable);
         }
         if !response.status().is_success() {
-            return Err(AppEndpointAuthError::Unauthorized);
+            return Err(ChannelAuthError::Unauthorized);
         }
         let claims: Value = response
             .json()
             .await
-            .map_err(|_| AppEndpointAuthError::ProviderUnavailable)?;
+            .map_err(|_| ChannelAuthError::ProviderUnavailable)?;
         if claims.get("active").and_then(Value::as_bool) != Some(true) {
-            return Err(AppEndpointAuthError::Unauthorized);
+            return Err(ChannelAuthError::Unauthorized);
         }
         let requirements = auth.requirements.clone();
         validate_claim_requirements(&claims, &requirements)?;
@@ -254,10 +253,10 @@ impl AppEndpointAuthVerifier {
 
     fn verify_mtls(
         &self,
-        auth: &AppEndpointAuthConfig,
+        auth: &ChannelAuthConfig,
         headers: &HeaderMap,
-    ) -> Result<(), AppEndpointAuthError> {
-        let Some(AppEndpointAuthProviderConfig::Mtls {
+    ) -> Result<(), ChannelAuthError> {
+        let Some(ChannelAuthProviderConfig::Mtls {
             header_name,
             allowed_values,
             proxy_secret_header,
@@ -265,7 +264,7 @@ impl AppEndpointAuthVerifier {
             ..
         }) = auth.provider.as_ref()
         else {
-            return Err(AppEndpointAuthError::Misconfigured);
+            return Err(ChannelAuthError::Misconfigured);
         };
         // THREAT[TM-AUTH-021]: mTLS identity requires BOTH the cert identity
         // header (injected by the reverse proxy after client-cert verification)
@@ -276,27 +275,27 @@ impl AppEndpointAuthVerifier {
         let (proxy_hdr, expected_secret) =
             match (proxy_secret_header.as_deref(), proxy_secret.as_deref()) {
                 (Some(h), Some(s)) if !h.trim().is_empty() && !s.trim().is_empty() => (h, s),
-                _ => return Err(AppEndpointAuthError::Misconfigured),
+                _ => return Err(ChannelAuthError::Misconfigured),
             };
         let cert_value = headers
             .get(header_name)
             .and_then(|v| v.to_str().ok())
-            .ok_or(AppEndpointAuthError::Unauthorized)?;
+            .ok_or(ChannelAuthError::Unauthorized)?;
         if !allowed_values.iter().any(|a| a == cert_value) {
-            return Err(AppEndpointAuthError::Unauthorized);
+            return Err(ChannelAuthError::Unauthorized);
         }
         let provided_secret = headers
             .get(proxy_hdr)
             .and_then(|v| v.to_str().ok())
-            .ok_or(AppEndpointAuthError::Unauthorized)?;
+            .ok_or(ChannelAuthError::Unauthorized)?;
         if constant_time_eq(provided_secret.as_bytes(), expected_secret.as_bytes()) {
             Ok(())
         } else {
-            Err(AppEndpointAuthError::Unauthorized)
+            Err(ChannelAuthError::Unauthorized)
         }
     }
 
-    async fn discovery(&self, issuer: &str) -> Result<OidcDiscovery, AppEndpointAuthError> {
+    async fn discovery(&self, issuer: &str) -> Result<OidcDiscovery, ChannelAuthError> {
         let issuer = normalize_issuer(issuer);
         if let Some(discovery) = self.discovery_cache.get(&issuer).await {
             return Ok(discovery);
@@ -306,46 +305,46 @@ impl AppEndpointAuthVerifier {
         // construct any derived URL.
         resolve_and_validate(&issuer)
             .await
-            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
+            .map_err(|_| ChannelAuthError::Misconfigured)?;
         let url = format!("{issuer}/.well-known/openid-configuration");
         let client = build_pinned_client(&url)
             .await
-            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
+            .map_err(|_| ChannelAuthError::Misconfigured)?;
         let discovery = client
             .get(&url)
             .send()
             .await
-            .map_err(|_| AppEndpointAuthError::ProviderUnavailable)?
+            .map_err(|_| ChannelAuthError::ProviderUnavailable)?
             .error_for_status()
-            .map_err(|_| AppEndpointAuthError::ProviderUnavailable)?
+            .map_err(|_| ChannelAuthError::ProviderUnavailable)?
             .json::<OidcDiscovery>()
             .await
-            .map_err(|_| AppEndpointAuthError::ProviderUnavailable)?;
+            .map_err(|_| ChannelAuthError::ProviderUnavailable)?;
         // Early-fail on a misconfigured jwks_uri before caching the discovery.
         resolve_and_validate(&discovery.jwks_uri)
             .await
-            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
+            .map_err(|_| ChannelAuthError::Misconfigured)?;
         self.discovery_cache.insert(issuer, discovery.clone()).await;
         Ok(discovery)
     }
 
-    async fn jwks(&self, jwks_url: &str) -> Result<Arc<JwkSet>, AppEndpointAuthError> {
+    async fn jwks(&self, jwks_url: &str) -> Result<Arc<JwkSet>, ChannelAuthError> {
         if let Some(jwks) = self.jwks_cache.get(jwks_url).await {
             return Ok(jwks);
         }
         let client = build_pinned_client(jwks_url)
             .await
-            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
+            .map_err(|_| ChannelAuthError::Misconfigured)?;
         let jwks = client
             .get(jwks_url)
             .send()
             .await
-            .map_err(|_| AppEndpointAuthError::ProviderUnavailable)?
+            .map_err(|_| ChannelAuthError::ProviderUnavailable)?
             .error_for_status()
-            .map_err(|_| AppEndpointAuthError::ProviderUnavailable)?
+            .map_err(|_| ChannelAuthError::ProviderUnavailable)?
             .json::<JwkSet>()
             .await
-            .map_err(|_| AppEndpointAuthError::ProviderUnavailable)?;
+            .map_err(|_| ChannelAuthError::ProviderUnavailable)?;
         let jwks = Arc::new(jwks);
         self.jwks_cache
             .insert(jwks_url.to_string(), jwks.clone())
@@ -355,19 +354,19 @@ impl AppEndpointAuthVerifier {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AppEndpointAuthPrincipal {
+pub struct ChannelAuthPrincipal {
     pub issuer: String,
     pub subject: String,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct LegacyEndpointAuth<'a> {
+pub struct LegacyChannelAuth<'a> {
     pub shared_secret: Option<&'a str>,
     pub api_key: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AppEndpointAuthError {
+pub enum ChannelAuthError {
     Unauthorized,
     Misconfigured,
     ProviderUnavailable,
@@ -378,18 +377,18 @@ struct OidcDiscovery {
     jwks_uri: String,
 }
 
-fn principal_from_claims(claims: &Value) -> Result<AppEndpointAuthPrincipal, AppEndpointAuthError> {
+fn principal_from_claims(claims: &Value) -> Result<ChannelAuthPrincipal, ChannelAuthError> {
     let issuer = claims
         .get("iss")
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
-        .ok_or(AppEndpointAuthError::Unauthorized)?;
+        .ok_or(ChannelAuthError::Unauthorized)?;
     let subject = claims
         .get("sub")
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
-        .ok_or(AppEndpointAuthError::Unauthorized)?;
-    Ok(AppEndpointAuthPrincipal {
+        .ok_or(ChannelAuthError::Unauthorized)?;
+    Ok(ChannelAuthPrincipal {
         issuer: normalize_issuer(issuer),
         subject: subject.to_string(),
     })
@@ -498,19 +497,19 @@ fn extract_basic_credentials(headers: &HeaderMap) -> Option<(String, String)> {
     Some((username.to_string(), password.to_string()))
 }
 
-fn verify_shared_secret(headers: &HeaderMap, expected: &str) -> Result<(), AppEndpointAuthError> {
-    let provided = extract_bearer(headers).ok_or(AppEndpointAuthError::Unauthorized)?;
+fn verify_shared_secret(headers: &HeaderMap, expected: &str) -> Result<(), ChannelAuthError> {
+    let provided = extract_bearer(headers).ok_or(ChannelAuthError::Unauthorized)?;
     if constant_time_eq(provided.as_bytes(), expected.as_bytes()) {
         Ok(())
     } else {
-        Err(AppEndpointAuthError::Unauthorized)
+        Err(ChannelAuthError::Unauthorized)
     }
 }
 
 fn validate_claim_requirements(
     claims: &Value,
-    requirements: &AppEndpointAuthRequirements,
-) -> Result<(), AppEndpointAuthError> {
+    requirements: &ChannelAuthRequirements,
+) -> Result<(), ChannelAuthError> {
     if !requirements.audiences.is_empty() {
         let audiences = claim_audience_set(claims);
         if !requirements
@@ -518,7 +517,7 @@ fn validate_claim_requirements(
             .iter()
             .any(|audience| audiences.contains(audience))
         {
-            return Err(AppEndpointAuthError::Unauthorized);
+            return Err(ChannelAuthError::Unauthorized);
         }
     }
     if !requirements.scopes.is_empty() {
@@ -531,7 +530,7 @@ fn validate_claim_requirements(
             .iter()
             .all(|scope| token_scopes.contains(scope))
         {
-            return Err(AppEndpointAuthError::Unauthorized);
+            return Err(ChannelAuthError::Unauthorized);
         }
     }
     if !requirements.subjects.is_empty() {
@@ -544,7 +543,7 @@ fn validate_claim_requirements(
             .iter()
             .any(|allowed| allowed == subject)
         {
-            return Err(AppEndpointAuthError::Unauthorized);
+            return Err(ChannelAuthError::Unauthorized);
         }
     }
     if !requirements.domains.is_empty() {
@@ -554,7 +553,7 @@ fn validate_claim_requirements(
             .or_else(|| email_domain(claims.get("email").and_then(Value::as_str)))
             .unwrap_or_default();
         if !requirements.domains.iter().any(|allowed| allowed == domain) {
-            return Err(AppEndpointAuthError::Unauthorized);
+            return Err(ChannelAuthError::Unauthorized);
         }
     }
     if !requirements.groups.is_empty() {
@@ -564,12 +563,12 @@ fn validate_claim_requirements(
             .iter()
             .any(|group| groups.contains(group))
         {
-            return Err(AppEndpointAuthError::Unauthorized);
+            return Err(ChannelAuthError::Unauthorized);
         }
     }
     for (name, expected) in &requirements.claims {
         if claims.get(name) != Some(expected) {
-            return Err(AppEndpointAuthError::Unauthorized);
+            return Err(ChannelAuthError::Unauthorized);
         }
     }
     Ok(())
@@ -640,7 +639,7 @@ mod tests {
         assert!(verify_shared_secret(&headers, EXAMPLE_PASSWORD).is_ok());
         assert_eq!(
             verify_shared_secret(&headers, "other").unwrap_err(),
-            AppEndpointAuthError::Unauthorized
+            ChannelAuthError::Unauthorized
         );
     }
 
@@ -648,18 +647,18 @@ mod tests {
     fn basic_auth_verifies_argon2_password_hash() {
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, example_basic_auth_header());
-        let auth = AppEndpointAuthConfig {
-            mode: AppEndpointAuthMode::HttpBasic,
-            provider: Some(AppEndpointAuthProviderConfig::HttpBasic {
+        let auth = ChannelAuthConfig {
+            mode: ChannelAuthMode::HttpBasic,
+            provider: Some(ChannelAuthProviderConfig::HttpBasic {
                 username: EXAMPLE_USERNAME.to_string(),
                 password: None,
                 password_hash: Some(hash_password(EXAMPLE_PASSWORD).unwrap()),
                 password_configured: false,
             }),
-            requirements: AppEndpointAuthRequirements::default(),
+            requirements: ChannelAuthRequirements::default(),
         };
         assert!(
-            AppEndpointAuthVerifier::new()
+            ChannelAuthVerifier::new()
                 .verify_basic(&auth, &headers)
                 .is_ok()
         );
@@ -673,7 +672,7 @@ mod tests {
             "scope": "read write",
             "tier": "prod"
         });
-        let requirements = AppEndpointAuthRequirements {
+        let requirements = ChannelAuthRequirements {
             audiences: vec!["api://test".to_string()],
             scopes: vec!["read".to_string()],
             domains: vec!["example.com".to_string()],
@@ -695,29 +694,29 @@ mod tests {
         assert!(validate_claim_requirements(&claims, &requirements).is_ok());
     }
 
-    fn mtls_auth() -> AppEndpointAuthConfig {
-        AppEndpointAuthConfig {
-            mode: AppEndpointAuthMode::Mtls,
-            provider: Some(AppEndpointAuthProviderConfig::Mtls {
+    fn mtls_auth() -> ChannelAuthConfig {
+        ChannelAuthConfig {
+            mode: ChannelAuthMode::Mtls,
+            provider: Some(ChannelAuthProviderConfig::Mtls {
                 header_name: "x-client-cert".to_string(),
                 allowed_values: vec!["CN=trusted".to_string()],
                 proxy_secret_header: Some("x-proxy-secret".to_string()),
                 proxy_secret: Some("supersecret".to_string()),
                 proxy_secret_configured: false,
             }),
-            requirements: AppEndpointAuthRequirements::default(),
+            requirements: ChannelAuthRequirements::default(),
         }
     }
 
     #[test]
     fn mtls_requires_both_cert_and_proxy_secret() {
         let auth = mtls_auth();
-        let verifier = AppEndpointAuthVerifier::new();
+        let verifier = ChannelAuthVerifier::new();
 
         // No headers — Unauthorized (cert missing).
         assert_eq!(
             verifier.verify_mtls(&auth, &HeaderMap::new()).unwrap_err(),
-            AppEndpointAuthError::Unauthorized
+            ChannelAuthError::Unauthorized
         );
 
         // Cert header only — Unauthorized (proxy secret missing). This is the
@@ -726,7 +725,7 @@ mod tests {
         headers.insert("x-client-cert", HeaderValue::from_static("CN=trusted"));
         assert_eq!(
             verifier.verify_mtls(&auth, &headers).unwrap_err(),
-            AppEndpointAuthError::Unauthorized,
+            ChannelAuthError::Unauthorized,
             "spoofed cert header alone must not authenticate"
         );
 
@@ -736,7 +735,7 @@ mod tests {
         headers.insert("x-proxy-secret", HeaderValue::from_static("wrongsecret"));
         assert_eq!(
             verifier.verify_mtls(&auth, &headers).unwrap_err(),
-            AppEndpointAuthError::Unauthorized
+            ChannelAuthError::Unauthorized
         );
 
         // Both correct — Ok.
@@ -750,23 +749,23 @@ mod tests {
     fn mtls_without_proxy_secret_config_is_misconfigured() {
         // Legacy configs that predate EVE-545 (no proxy_secret fields) must fail
         // closed so they cannot be exploited after an upgrade.
-        let auth = AppEndpointAuthConfig {
-            mode: AppEndpointAuthMode::Mtls,
-            provider: Some(AppEndpointAuthProviderConfig::Mtls {
+        let auth = ChannelAuthConfig {
+            mode: ChannelAuthMode::Mtls,
+            provider: Some(ChannelAuthProviderConfig::Mtls {
                 header_name: "x-client-cert".to_string(),
                 allowed_values: vec!["CN=trusted".to_string()],
                 proxy_secret_header: None,
                 proxy_secret: None,
                 proxy_secret_configured: false,
             }),
-            requirements: AppEndpointAuthRequirements::default(),
+            requirements: ChannelAuthRequirements::default(),
         };
-        let verifier = AppEndpointAuthVerifier::new();
+        let verifier = ChannelAuthVerifier::new();
         let mut headers = HeaderMap::new();
         headers.insert("x-client-cert", HeaderValue::from_static("CN=trusted"));
         assert_eq!(
             verifier.verify_mtls(&auth, &headers).unwrap_err(),
-            AppEndpointAuthError::Misconfigured
+            ChannelAuthError::Misconfigured
         );
     }
 

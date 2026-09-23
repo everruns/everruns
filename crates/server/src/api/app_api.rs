@@ -27,8 +27,8 @@ use everruns_core::events::{
 use everruns_provider::execution_phase::ExecutionPhase;
 use serde::{Deserialize, Serialize};
 
-use crate::api::app_endpoint_auth::{
-    AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth, extract_bearer,
+use crate::api::channel_auth::{
+    ChannelAuthError, ChannelAuthVerifier, LegacyChannelAuth, extract_bearer,
 };
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
@@ -52,7 +52,7 @@ pub struct AppApiState {
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub rate_limiter: ChannelRateLimiter,
-    pub auth_verifier: AppEndpointAuthVerifier,
+    pub auth_verifier: ChannelAuthVerifier,
 }
 
 impl AppApiState {
@@ -75,7 +75,7 @@ impl AppApiState {
             db,
             encryption,
             rate_limiter,
-            auth_verifier: AppEndpointAuthVerifier::new(),
+            auth_verifier: ChannelAuthVerifier::new(),
         }
     }
 }
@@ -114,11 +114,11 @@ pub fn routes(state: AppApiState) -> Router {
         .with_state(state)
 }
 
-async fn endpoint_app_id(
+async fn channel_app_id(
     state: &AppApiState,
     channel_id: &str,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    crate::api::app_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), channel_id)
+    crate::api::app_ingress::resolve_channel(&state.db, state.encryption.as_ref(), channel_id)
         .await
         .map_err(internal_error)?
         .map(|(app, _)| app.public_id.to_string())
@@ -133,9 +133,9 @@ async fn endpoint_app_id(
     request_body = MessageBody,
     responses(
         (status = 201, description = "Session created and message dispatched", body = SessionRef),
-        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid channel credentials", body = ErrorResponse),
         (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
-        (status = 404, description = "Endpoint not found", body = ErrorResponse),
+        (status = 404, description = "Channel not found", body = ErrorResponse),
         (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
     ),
     tag = "apps"
@@ -148,7 +148,7 @@ pub async fn create_session_endpoint(
     headers: HeaderMap,
     body: Json<MessageBody>,
 ) -> Response {
-    let app_id = match endpoint_app_id(&state, &channel_id).await {
+    let app_id = match channel_app_id(&state, &channel_id).await {
         Ok(app_id) => app_id,
         Err(err) => return err.into_response(),
     };
@@ -174,9 +174,9 @@ pub async fn create_session_endpoint(
     request_body = MessageBody,
     responses(
         (status = 202, description = "Follow-up message dispatched", body = SessionRef),
-        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid channel credentials", body = ErrorResponse),
         (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
-        (status = 404, description = "Endpoint or session not found, or session not owned by this channel", body = ErrorResponse),
+        (status = 404, description = "Channel or session not found, or session not owned by this channel", body = ErrorResponse),
         (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
     ),
     tag = "apps"
@@ -189,7 +189,7 @@ pub async fn post_message_endpoint(
     headers: HeaderMap,
     body: Json<MessageBody>,
 ) -> Response {
-    let app_id = match endpoint_app_id(&state, &channel_id).await {
+    let app_id = match channel_app_id(&state, &channel_id).await {
         Ok(app_id) => app_id,
         Err(err) => return err.into_response(),
     };
@@ -214,9 +214,9 @@ pub async fn post_message_endpoint(
     ),
     responses(
         (status = 200, description = "Derived session status and completed agent messages", body = SessionStatus),
-        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid channel credentials", body = ErrorResponse),
         (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
-        (status = 404, description = "Endpoint or session not found, or session not owned by this channel", body = ErrorResponse),
+        (status = 404, description = "Channel or session not found, or session not owned by this channel", body = ErrorResponse),
         (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
     ),
     tag = "apps"
@@ -227,7 +227,7 @@ pub async fn get_session_endpoint(
     headers: HeaderMap,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
 ) -> Response {
-    let app_id = match endpoint_app_id(&state, &channel_id).await {
+    let app_id = match channel_app_id(&state, &channel_id).await {
         Ok(app_id) => app_id,
         Err(err) => return err.into_response(),
     };
@@ -250,9 +250,9 @@ pub async fn get_session_endpoint(
     ),
     responses(
         (status = 200, description = "In-flight turn canceled", body = SessionRef),
-        (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid channel credentials", body = ErrorResponse),
         (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
-        (status = 404, description = "Endpoint or session not found, or session not owned by this channel", body = ErrorResponse),
+        (status = 404, description = "Channel or session not found, or session not owned by this channel", body = ErrorResponse),
         (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse)
     ),
     tag = "apps"
@@ -263,7 +263,7 @@ pub async fn cancel_session_endpoint(
     headers: HeaderMap,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
 ) -> Response {
-    let app_id = match endpoint_app_id(&state, &channel_id).await {
+    let app_id = match channel_app_id(&state, &channel_id).await {
         Ok(app_id) => app_id,
         Err(err) => return err.into_response(),
     };
@@ -576,7 +576,7 @@ async fn authenticate_request(
         .ok_or_else(|| bad_request("Invalid api_endpoint channel configuration"))?;
 
     if let Some(auth) = channel.auth.as_ref() {
-        if auth.mode == everruns_platform::AppEndpointAuthMode::ApiKey {
+        if auth.mode == everruns_platform::ChannelAuthMode::ApiKey {
             verify_api_key(headers, &config.api_key_hash)?;
         } else {
             state
@@ -584,7 +584,7 @@ async fn authenticate_request(
                 .verify(
                     auth,
                     headers,
-                    LegacyEndpointAuth {
+                    LegacyChannelAuth {
                         shared_secret: None,
                         api_key: None,
                     },
@@ -633,7 +633,7 @@ fn verify_api_key(
     // never persisted. Hash the inbound key and constant-time compare. Parse
     // the bearer scheme case-insensitively with whitespace trimming (RFC 7235)
     // via the shared `extract_bearer` helper, matching the rest of the
-    // app-endpoint auth stack.
+    // channel auth stack.
     let provided_key = extract_bearer(headers).ok_or_else(unauthorized)?;
     let provided_hash = hash_app_api_key(provided_key);
     if constant_time_eq(provided_hash.as_bytes(), expected_hash.as_bytes()) {
@@ -798,11 +798,11 @@ fn command_error_response(
     }
 }
 
-fn api_auth_error_response(error: AppEndpointAuthError) -> (StatusCode, Json<ErrorResponse>) {
+fn api_auth_error_response(error: ChannelAuthError) -> (StatusCode, Json<ErrorResponse>) {
     match error {
-        AppEndpointAuthError::Unauthorized => unauthorized(),
-        AppEndpointAuthError::Misconfigured => forbidden("api_endpoint auth is misconfigured"),
-        AppEndpointAuthError::ProviderUnavailable => {
+        ChannelAuthError::Unauthorized => unauthorized(),
+        ChannelAuthError::Misconfigured => forbidden("api_endpoint auth is misconfigured"),
+        ChannelAuthError::ProviderUnavailable => {
             ErrorResponse::new("api_endpoint auth provider is unavailable".to_string())
                 .into_response(StatusCode::SERVICE_UNAVAILABLE)
         }

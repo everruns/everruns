@@ -133,7 +133,7 @@ fn every_utoipa_handler_is_registered_in_apidoc() {
 }
 
 #[test]
-fn endpoint_scoped_ingress_paths_are_documented_with_channel_parameters() {
+fn channel_scoped_ingress_paths_are_documented_with_channel_parameters() {
     let doc = ApiDoc::openapi();
     for path in [
         "/v1/e/{channel_id}/webhook",
@@ -149,12 +149,12 @@ fn endpoint_scoped_ingress_paths_are_documented_with_channel_parameters() {
             .paths
             .paths
             .get(path)
-            .unwrap_or_else(|| panic!("missing endpoint-scoped OpenAPI path {path}"));
+            .unwrap_or_else(|| panic!("missing channel-scoped OpenAPI path {path}"));
         let operation = item
             .get
             .as_ref()
             .or(item.post.as_ref())
-            .expect("endpoint path has an operation");
+            .expect("channel path has an operation");
         let parameter_names: BTreeSet<_> = operation
             .parameters
             .as_ref()

@@ -9,11 +9,29 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 fn validate_subject_type(subject_type: &str) -> Result<(), CommandError> {
-    const SUPPORTED: &[&str] = &["session", "agent", "user", "org", "agent_endpoint"];
+    // `agent_endpoint` is the pre-rename `agent_channel` value: rows the
+    // previous build wrote during the migration 144 rollout stay manageable.
+    const SUPPORTED: &[&str] = &[
+        "session",
+        "agent",
+        "user",
+        "org",
+        "agent_channel",
+        "agent_endpoint",
+    ];
     if SUPPORTED.contains(&subject_type) {
         return Ok(());
     }
     Err(CommandError::bad_request("Invalid subject_type"))
+}
+
+/// New rows always store the current wire value.
+fn normalize_subject_type(subject_type: String) -> String {
+    if subject_type == "agent_endpoint" {
+        "agent_channel".to_string()
+    } else {
+        subject_type
+    }
 }
 
 fn validate_limit(limit: f64, soft_limit: Option<f64>) -> Result<(), CommandError> {
@@ -81,7 +99,7 @@ impl Command for CreateBudget {
 
         let input = CreateBudgetRow {
             org_id: ctx.org_id(),
-            subject_type: req.subject_type,
+            subject_type: normalize_subject_type(req.subject_type),
             subject_id: req.subject_id,
             currency: req.currency,
             limit: req.limit,
@@ -674,7 +692,7 @@ mod tests {
 
     #[test]
     fn validate_subject_type_accepts_supported_subjects() {
-        for kind in ["session", "agent", "user", "org", "agent_endpoint"] {
+        for kind in ["session", "agent", "user", "org", "agent_channel"] {
             assert!(validate_subject_type(kind).is_ok(), "expected {kind} ok");
         }
     }
@@ -716,11 +734,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_endpoint_budget_remains_creatable_and_updatable() {
+    async fn agent_channel_budget_remains_creatable_and_updatable() {
         let ctx = ctx_for_role(OrgRole::Owner);
         let budget = CreateBudget(CreateBudgetRequest {
-            subject_type: "agent_endpoint".to_string(),
-            subject_id: "endpoint".to_string(),
+            subject_type: "agent_channel".to_string(),
+            subject_id: "channel".to_string(),
             currency: "usd".to_string(),
             limit: 10.0,
             soft_limit: None,
@@ -729,7 +747,7 @@ mod tests {
         })
         .execute(&ctx)
         .await
-        .expect("agent endpoint budget remains supported");
+        .expect("agent channel budget remains supported");
 
         let updated = UpdateBudgetCmd {
             budget_id: budget.id.to_string(),
@@ -740,8 +758,38 @@ mod tests {
         }
         .execute(&ctx)
         .await
-        .expect("agent endpoint budget remains writable");
+        .expect("agent channel budget remains writable");
         assert_eq!(updated.limit, 20.0);
+    }
+
+    #[tokio::test]
+    async fn pre_rename_agent_endpoint_subject_is_stored_as_agent_channel() {
+        let ctx = ctx_for_role(OrgRole::Owner);
+        let budget = CreateBudget(CreateBudgetRequest {
+            subject_type: "agent_endpoint".to_string(),
+            subject_id: "channel".to_string(),
+            currency: "usd".to_string(),
+            limit: 10.0,
+            soft_limit: None,
+            period: None,
+            metadata: None,
+        })
+        .execute(&ctx)
+        .await
+        .expect("pre-rename subject type is accepted during the rollout");
+        assert_eq!(budget.subject_type.to_string(), "agent_channel");
+
+        // A row the previous build wrote still lists under the new filter.
+        seed_historical_budget(&ctx, "agent_endpoint").await;
+        let listed = ListBudgets {
+            subject_type: Some("agent_channel".to_string()),
+            subject_id: Some("historical-agent_endpoint".to_string()),
+        }
+        .execute(&ctx)
+        .await
+        .expect("list agent channel budgets");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].subject_type.to_string(), "agent_channel");
     }
     #[tokio::test]
     async fn historical_app_budget_reads_remain_available() {

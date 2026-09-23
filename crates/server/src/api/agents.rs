@@ -883,7 +883,7 @@ pub async fn set_default_agent_version(
         .await
 }
 
-/// POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline
+/// POST /v1/agents/{agent_id}/exposures/suspend - Take every channel offline
 #[utoipa::path(
     post,
     path = "/v1/agents/{agent_id}/exposures/suspend",
@@ -907,7 +907,7 @@ pub async fn suspend_agent_exposures(
         .await
 }
 
-/// POST /v1/agents/{agent_id}/exposures/resume - Let live endpoints serve again
+/// POST /v1/agents/{agent_id}/exposures/resume - Let live channels serve again
 #[utoipa::path(
     post,
     path = "/v1/agents/{agent_id}/exposures/resume",

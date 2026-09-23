@@ -75,7 +75,7 @@ async fn create_app_with_a2a_mode(
     let api_key = format!("evr_app_{}", uuid::Uuid::new_v4().simple());
     let api_key_hash = hex::encode(Sha256::digest(api_key.as_bytes()));
     let app = server
-        .seed_app_endpoint(
+        .seed_app_channel(
             name,
             agent["id"].as_str().unwrap(),
             "a2a",
@@ -93,7 +93,7 @@ async fn create_app_with_a2a_mode(
 }
 
 async fn publish_app(server: &TestServer, app_id: &str) {
-    server.set_app_endpoints_live(app_id, true).await;
+    server.set_app_channels_live(app_id, true).await;
 }
 #[tokio::test]
 async fn a2a_legacy_app_channel_mismatch_is_not_found() {
@@ -1541,7 +1541,7 @@ const A2A_SIGNING_SECRET: &str = "shared-a2a-signing-secret-1234567890";
 
 async fn enable_a2a_signing(server: &TestServer, channel_id: &str, secret: &str) {
     server
-        .update_endpoint_config(
+        .update_channel_config(
             channel_id,
             json!({
                 "session_mode": "shared_session",

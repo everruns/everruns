@@ -40,21 +40,21 @@ pub enum AppStatus {
     Deleted,
 }
 
-/// Per-endpoint lifecycle (EVE-1007).
+/// Per-channel lifecycle (EVE-1007).
 ///
 /// This is the authority for whether an exposure accepts traffic. It replaced
 /// the two-dimensional `App.status × AppChannel.enabled` matrix, which could
 /// express "published App, disabled channel" and forced publishing a whole App —
-/// and therefore every sibling endpoint on it — to make one endpoint reachable.
+/// and therefore every sibling channel on it — to make one channel reachable.
 ///
-/// Liveness is not this value alone; see `endpoint_is_live` in
+/// Liveness is not this value alone; see `channel_is_live` in
 /// `crates/server/src/api/app_ingress.rs` for the agent-level terms, which are
 /// folded in at resolution time rather than stored here.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[cfg_attr(feature = "openapi", schema(example = "live"))]
 #[serde(rename_all = "lowercase")]
-pub enum EndpointStatus {
+pub enum ChannelStatus {
     /// Configured but never published; refuses traffic.
     #[default]
     Draft,
@@ -64,30 +64,30 @@ pub enum EndpointStatus {
     Disabled,
 }
 
-impl EndpointStatus {
-    /// Whether the endpoint's own state permits traffic. Callers must still
+impl ChannelStatus {
+    /// Whether the channel's own state permits traffic. Callers must still
     /// apply the agent-level terms.
     pub fn is_live(self) -> bool {
-        matches!(self, EndpointStatus::Live)
+        matches!(self, ChannelStatus::Live)
     }
 }
 
-impl std::fmt::Display for EndpointStatus {
+impl std::fmt::Display for ChannelStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EndpointStatus::Draft => write!(f, "draft"),
-            EndpointStatus::Live => write!(f, "live"),
-            EndpointStatus::Disabled => write!(f, "disabled"),
+            ChannelStatus::Draft => write!(f, "draft"),
+            ChannelStatus::Live => write!(f, "live"),
+            ChannelStatus::Disabled => write!(f, "disabled"),
         }
     }
 }
 
-impl From<&str> for EndpointStatus {
+impl From<&str> for ChannelStatus {
     fn from(s: &str) -> Self {
         match s {
-            "live" => EndpointStatus::Live,
-            "disabled" => EndpointStatus::Disabled,
-            _ => EndpointStatus::Draft,
+            "live" => ChannelStatus::Live,
+            "disabled" => ChannelStatus::Disabled,
+            _ => ChannelStatus::Draft,
         }
     }
 }
@@ -173,7 +173,7 @@ pub enum ChannelType {
     /// Public Chat channel — an isolated, public-facing chat web app bound to a
     /// single App's agent. Anonymous by default, with optional Google sign-in
     /// and Cloudflare Turnstile bot mitigation. Reuses AG-UI streaming and the
-    /// shared App endpoint auth verifier. See `knowledge/integrations/public-chat.md`.
+    /// shared channel auth verifier. See `knowledge/integrations/public-chat.md`.
     #[serde(rename = "public_chat")]
     PublicChat,
 }
@@ -184,7 +184,7 @@ impl ChannelType {
     /// A transport constrains the binding because of what it *is*, not because
     /// of a second enum: a schedule or webhook has no thread and no requester to
     /// key on, so only `Endpoint` and `Ephemeral` mean anything there, while a
-    /// messaging channel has no single "the endpoint's session" to share. Before
+    /// messaging channel has no single "the channel's session" to share. Before
     /// EVE-1005 this distinction was carried by having two enums, which is why
     /// every new surface had to pick a side.
     ///
@@ -328,16 +328,16 @@ pub struct AppChannel {
     /// Channel-specific configuration (validated per channel type).
     #[serde(default)]
     pub channel_config: serde_json::Value,
-    /// Authentication policy for this endpoint.
+    /// Authentication policy for this channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<Box<AppEndpointAuthConfig>>,
+    pub auth: Option<Box<ChannelAuthConfig>>,
     /// Whether this channel is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// Per-endpoint lifecycle. Authoritative for ingress (EVE-1007); `enabled`
+    /// Per-channel lifecycle. Authoritative for ingress (EVE-1007); `enabled`
     /// is retained for the App API's existing shape.
     #[serde(default)]
-    pub status: EndpointStatus,
+    pub status: ChannelStatus,
     /// Timestamp when this channel was created.
     pub created_at: DateTime<Utc>,
     /// Timestamp when this channel was last updated.
@@ -424,9 +424,9 @@ impl AppChannel {
 
 // These accessors answer "which channel of this type does this app have",
 // and deliberately filter on `enabled` rather than liveness. Liveness is
-// applied separately by `endpoint_liveness` at the ingress gates, because
+// applied separately by `channel_liveness` at the ingress gates, because
 // non-ingress callers — Slack delivery recovery for sessions that are
-// already running, for one — must keep working when an endpoint is
+// already running, for one — must keep working when a channel is
 // unpublished or its agent is suspended. Folding liveness in here would
 // orphan in-flight deliveries.
 impl App {
@@ -543,14 +543,14 @@ pub const DEFAULT_SESSION_EXPIRATION_SECONDS: u32 = 6 * 60 * 60;
 /// Default public AG-UI text shown while a tool call is running.
 pub const DEFAULT_AG_UI_GENERIC_TOOL_TEXT: &str = DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT;
 
-/// App-published endpoint authentication mode.
+/// Channel authentication mode.
 ///
-/// Stored on `AppChannel.auth` so users can protect one endpoint without first
+/// Stored on `AppChannel.auth` so users can protect one channel without first
 /// creating org-level identity-provider state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
-pub enum AppEndpointAuthMode {
+pub enum ChannelAuthMode {
     Anonymous,
     SharedSecret,
     ApiKey,
@@ -562,11 +562,11 @@ pub enum AppEndpointAuthMode {
     Mtls,
 }
 
-/// OIDC/OAuth/basic/mTLS provider details for one App endpoint.
+/// OIDC/OAuth/basic/mTLS provider details for one channel.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum AppEndpointAuthProviderConfig {
+pub enum ChannelAuthProviderConfig {
     GoogleOidc {
         client_id: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -613,10 +613,10 @@ pub enum AppEndpointAuthProviderConfig {
     },
 }
 
-/// Claim and credential requirements common to App endpoint auth providers.
+/// Claim and credential requirements common to channel auth providers.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct AppEndpointAuthRequirements {
+pub struct ChannelAuthRequirements {
     /// JWT `aud` values to require on inbound tokens. Empty list disables audience checking.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audiences: Vec<String>,
@@ -637,19 +637,19 @@ pub struct AppEndpointAuthRequirements {
     pub domains: Vec<String>,
 }
 
-/// Authentication config for one App endpoint/channel.
+/// Authentication config for one channel.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[cfg_attr(
     feature = "openapi",
     schema(example = json!({"mode": "api_key", "requirements": {"audiences": ["everruns-api"], "scopes": ["app:invoke"]}}))
 )]
-pub struct AppEndpointAuthConfig {
-    pub mode: AppEndpointAuthMode,
+pub struct ChannelAuthConfig {
+    pub mode: ChannelAuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider: Option<AppEndpointAuthProviderConfig>,
+    pub provider: Option<ChannelAuthProviderConfig>,
     #[serde(default)]
-    pub requirements: AppEndpointAuthRequirements,
+    pub requirements: ChannelAuthRequirements,
 }
 
 /// Typed AG-UI channel configuration.
@@ -658,11 +658,11 @@ pub struct AppEndpointAuthConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AgUiChannelConfig {
-    /// Whether anonymous access is allowed for this endpoint.
+    /// Whether anonymous access is allowed for this channel.
     /// Enabled by default for the initial AG-UI rollout.
     #[serde(default = "default_true")]
     pub anonymous: bool,
-    /// Optional shared bearer token for the public AG-UI endpoint.
+    /// Optional shared bearer token for the public AG-UI channel.
     /// When set, requests must include the token in a supported header.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
@@ -672,7 +672,7 @@ pub struct AgUiChannelConfig {
     /// Defaults to 6 hours.
     #[serde(default = "default_session_expiration_seconds")]
     pub session_expiration_seconds: u32,
-    /// Optional per-IP rate limit applied to this app's AG-UI endpoint, in
+    /// Optional per-IP rate limit applied to this AG-UI channel, in
     /// requests per minute. `None` or `Some(0)` disables the per-app limit
     /// (the global API limit still applies). Set a positive value to enforce
     /// a stricter cap on anonymous traffic for this app.
@@ -692,10 +692,10 @@ pub struct AgUiChannelConfig {
     /// summaries may derive from private prompts, tools, or retrieved data.
     #[serde(default, skip_serializing_if = "is_false")]
     pub reasoning_summary_visible: bool,
-    /// Optional inline auth config for this public endpoint. When omitted,
+    /// Optional inline auth config for this public channel. When omitted,
     /// legacy `anonymous` + `token` behavior applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<AppEndpointAuthConfig>,
+    pub auth: Option<ChannelAuthConfig>,
 }
 
 fn default_session_expiration_seconds() -> u32 {
@@ -715,7 +715,7 @@ fn is_false(value: &bool) -> bool {
 }
 
 /// Default FCP handshake body. Returned by `GET` when the channel config does
-/// not override `handshake`. Kept generic so an unconfigured FCP endpoint
+/// not override `handshake`. Kept generic so an unconfigured FCP channel
 /// still satisfies the FCP `SHOULD` for handshake responses.
 pub const DEFAULT_FCP_HANDSHAKE: &str = "FCP endpoint.\n\nPOST plain text or `application/json` (`{\"message\": \"...\"}`) to\nthis URL to talk to the agent. Replies are returned as `text/markdown`.\n\nSession state, when supported, is carried by the `fcp_session` cookie.";
 
@@ -734,20 +734,20 @@ pub const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS: u32 = 120;
 /// else. Inline OIDC/HTTP-Basic/mTLS verifier modes are intentionally
 /// **not** wired here so the FCP ingress path does not share authentication
 /// machinery with other channels or with the main API's user auth stack.
-/// Operators that need IdP-backed auth in front of an FCP endpoint should
+/// Operators that need IdP-backed auth in front of an FCP channel should
 /// terminate that at the edge (reverse proxy, IAP, mTLS) rather than asking
 /// the FCP handler to grow another auth mode.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct FcpChannelConfig {
-    /// Whether anonymous access is allowed for this endpoint. When `false`
+    /// Whether anonymous access is allowed for this channel. When `false`
     /// a non-empty `token` must authenticate every `POST`.
     #[serde(default = "default_true")]
     pub anonymous: bool,
     /// Optional shared bearer token. When set, callers must send
     /// `Authorization: Bearer <token>` (or the `X-Everruns-FCP-Token`
     /// header). Validated by constant-time comparison inside the FCP
-    /// handler — never via the shared App endpoint auth verifier.
+    /// handler — never via the shared channel auth verifier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
     /// Markdown body returned for `GET` requests (the FCP handshake). When
@@ -760,13 +760,13 @@ pub struct FcpChannelConfig {
     /// long-running conversation expires on a sensible cadence.
     #[serde(default = "default_session_expiration_seconds")]
     pub session_expiration_seconds: u32,
-    /// Optional per-IP rate limit (requests per minute) for the FCP endpoint.
+    /// Optional per-IP rate limit (requests per minute) for the FCP channel.
     /// `None` or `Some(0)` disables the per-app limit; the global API limit
     /// still applies. Counted in an FCP-specific limiter namespace so it
     /// cannot be shared or exhausted by other channels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
-    /// Maximum number of seconds the FCP endpoint waits for the agent to
+    /// Maximum number of seconds the FCP channel waits for the agent to
     /// produce a reply before returning a `504`. Defaults to 120 s.
     #[serde(default = "default_fcp_response_timeout_seconds")]
     pub response_timeout_seconds: u32,
@@ -809,7 +809,7 @@ pub struct WebhookChannelConfig {
     pub session_mode: SessionBinding,
     /// Message content or template sent when the webhook arrives.
     pub message: String,
-    /// Optional per-IP rate limit applied to this app's webhook endpoint, in
+    /// Optional per-IP rate limit applied to this webhook channel, in
     /// requests per minute. `None` or `Some(0)` disables the per-channel limit
     /// (the global API limit still applies). Mirrors
     /// `A2aChannelConfig::rate_limit_per_minute` (EVE-627).
@@ -848,17 +848,17 @@ pub struct A2aChannelConfig {
     /// Optional description surfaced in the Agent Card.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_card_description: Option<String>,
-    /// Optional per-IP rate limit applied to this app's A2A endpoint, in
+    /// Optional per-IP rate limit applied to this A2A channel, in
     /// requests per minute. `None` or `Some(0)` disables the per-channel
     /// limit (the global API limit still applies). Set a positive value to
     /// enforce a stricter cap on unattended agent-to-agent traffic for this
     /// app. Mirrors `AgUiChannelConfig::rate_limit_per_minute`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
-    /// Optional inline auth config for this A2A endpoint. When omitted,
+    /// Optional inline auth config for this A2A channel. When omitted,
     /// legacy per-channel API-key behavior applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<AppEndpointAuthConfig>,
+    pub auth: Option<ChannelAuthConfig>,
     /// Optional shared HMAC signing secret. When set, requests must include
     /// `X-Everruns-A2A-Timestamp` + `X-Everruns-A2A-Signature` headers and
     /// the server verifies an HMAC-SHA256 signature over the exact
@@ -898,10 +898,10 @@ pub struct ApiEndpointChannelConfig {
     /// `A2aChannelConfig::rate_limit_per_minute`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
-    /// Optional inline auth config for this endpoint. When omitted, the
+    /// Optional inline auth config for this channel. When omitted, the
     /// generated per-channel API-key bearer scheme applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<AppEndpointAuthConfig>,
+    pub auth: Option<ChannelAuthConfig>,
 }
 
 /// Branding shown on a Public Chat surface. All fields optional; the public app
@@ -940,7 +940,7 @@ pub enum CaptchaProvider {
 /// When present and enabled, anonymous visitors must pass a challenge before a
 /// session is created or any turn runs; signed-in visitors bypass it. The
 /// `secret_key` is write-only: it is stored to call the provider's verify
-/// endpoint server-side and is redacted in API responses (only
+/// channel server-side and is redacted in API responses (only
 /// `secret_key_configured: bool` is surfaced). The `site_key` is public and
 /// returned so the web app can render the widget.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -963,7 +963,7 @@ pub struct PublicChatCaptchaConfig {
 /// Typed Public Chat channel configuration.
 ///
 /// Parsed from the `channel_config` JSON field on App. Public Chat reuses
-/// AG-UI's streaming semantics and the shared App endpoint auth verifier, and
+/// AG-UI's streaming semantics and the shared channel auth verifier, and
 /// adds branding and bot-mitigation tailored to a public, link-shareable chat
 /// website. See `knowledge/integrations/public-chat.md`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -995,10 +995,10 @@ pub struct PublicChatChannelConfig {
         skip_serializing_if = "is_default_ag_ui_generic_tool_text"
     )]
     pub generic_tool_text: String,
-    /// Optional inline auth config for this public endpoint (e.g. Google OIDC).
+    /// Optional inline auth config for this public channel (e.g. Google OIDC).
     /// When omitted, anonymous + optional `token` behavior applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth: Option<AppEndpointAuthConfig>,
+    pub auth: Option<ChannelAuthConfig>,
     /// Branding shown on the public chat surface.
     #[serde(default, skip_serializing_if = "PublicChatBranding::is_empty")]
     pub branding: PublicChatBranding,
@@ -1330,7 +1330,7 @@ mod tests {
             channel_config: config,
             auth: None,
             enabled: true,
-            status: EndpointStatus::Live,
+            status: ChannelStatus::Live,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

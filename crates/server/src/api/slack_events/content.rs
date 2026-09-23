@@ -116,13 +116,14 @@ pub(crate) fn build_attachment_content_parts(
 
 pub(crate) fn build_session_tags(
     app: &crate::api::app_ingress::IngressContext,
-    slack_channel: &crate::api::app_ingress::IngressEndpoint,
+    slack_channel: &crate::api::app_ingress::IngressChannel,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
     surface: SlackSurface,
 ) -> Vec<String> {
     let mut tags = vec![
         format!("slack:app:{}", app.public_id),
+        // Persisted routing key; the `endpoint` spelling is kept for compatibility.
         format!("slack:endpoint:{}", slack_channel.public_id),
     ];
 
