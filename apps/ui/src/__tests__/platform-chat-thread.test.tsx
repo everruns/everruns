@@ -37,11 +37,17 @@ jest.mock("@/hooks/use-sessions", () => ({
   usePinSession: () => ({ mutateAsync: mockPin }),
 }));
 
-// The ensure guard is keyed by org and lives for the page load, so each test
+// The ensure guard is keyed by org and project and lives for the page load, so each test
 // runs against its own org — the same isolation a fresh page load gives.
 let currentOrgId = "org_1";
 jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({ currentOrg: { public_id: currentOrgId, name: "Acme", role: "owner" } }),
+}));
+
+// Each project has its own thread; switching projects does not reload the page.
+let currentProjectId: string | null = null;
+jest.mock("@/providers/project-provider", () => ({
+  useCurrentProjectId: () => currentProjectId,
 }));
 
 let orgCounter = 0;
@@ -75,6 +81,7 @@ function Probe({ ensure }: { ensure?: boolean }) {
 beforeEach(() => {
   orgCounter += 1;
   currentOrgId = `org_${orgCounter}`;
+  currentProjectId = null;
   jest.clearAllMocks();
   mockCreate.mockResolvedValue({ id: "ses_new" });
   mockPin.mockResolvedValue(undefined);
@@ -218,4 +225,18 @@ test("refreshes threads after a competing client wins creation", async () => {
   await waitFor(() => expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["sessions"] }));
   rerender(<Probe ensure />);
   await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+});
+
+test("creates a thread per project within one page load", async () => {
+  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, isRead: true, error: null });
+
+  currentProjectId = "proj_default";
+  const { unmount } = render(<Probe ensure />);
+  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+  unmount();
+
+  // Same org, another project with no thread yet: it gets its own.
+  currentProjectId = "proj_marketing";
+  render(<Probe ensure />);
+  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(2));
 });

@@ -59,7 +59,8 @@ function CreateProjectDialog({
         <DialogHeader>
           <DialogTitle>Create project</DialogTitle>
           <DialogDescription>
-            Projects group agents, skills, apps, sessions and more within this organization.
+            A project groups agents with their chats, endpoints, and triggers. Skills, MCP servers,
+            and other registries stay shared across the organization.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">

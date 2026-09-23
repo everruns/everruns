@@ -145,6 +145,12 @@ export function ProjectProvider({ children, initialProjectId = null }: ProjectPr
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
 }
 
+/** The active project's id, or null outside a `ProjectProvider` (unit tests,
+ *  surfaces rendered without one). Unlike `useProject`, never throws. */
+export function useCurrentProjectId(): string | null {
+  return useContext(ProjectContext)?.currentProject?.id ?? null;
+}
+
 export function useProject() {
   const context = useContext(ProjectContext);
   if (context === undefined) {

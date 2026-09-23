@@ -37,6 +37,7 @@ import { useHarnesses } from "@/hooks";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { useCreateSession, usePinSession } from "@/hooks/use-sessions";
 import { useOrg } from "@/providers/org-provider";
+import { useCurrentProjectId } from "@/providers/project-provider";
 import {
   CHAT_THREAD_TAG,
   PLATFORM_CHAT_HARNESS_NAME,
@@ -49,10 +50,12 @@ import { queryKeys } from "@/lib/query-keys";
  *  thread is recognised by its harness binding, not by this string. */
 export const PLATFORM_CHAT_THREAD_TITLE = "Platform Chat";
 
-/** Orgs this page load has already created the thread for. Survives the
- *  remounts and parallel mounts a single page load produces; a full reload
- *  starts over, by which time the created thread is in the sessions list. */
-const ensuredOrgIds = new Set<string>();
+/** Org + project scopes this page load has already created the thread for.
+ *  Survives the remounts and parallel mounts a single page load produces; a
+ *  full reload starts over, by which time the created thread is in the
+ *  sessions list. Keyed by project too: each project has its own thread, and
+ *  switching projects does not reload the page. */
+const ensuredScopes = new Set<string>();
 
 export interface UsePlatformChatThreadOptions {
   /** Create the thread when the user has none. Read-only when false. */
@@ -72,6 +75,8 @@ export function usePlatformChatThread(
   const { ensure = false } = options;
   const { currentOrg } = useOrg();
   const orgId = currentOrg?.public_id;
+  const projectId = useCurrentProjectId();
+  const scope = orgId ? `${orgId}:${projectId ?? ""}` : undefined;
   // Archived threads count as existing: a user who put the thread away must not
   // get a fresh one on the next page load.
   const {
@@ -98,9 +103,9 @@ export function usePlatformChatThread(
   const isLoading = threadsLoading || harnessesLoading;
 
   useEffect(() => {
-    if (!ensure || !threadsRead || harnessesLoading || !orgId || !platformChat || thread) return;
-    if (ensuredOrgIds.has(orgId)) return;
-    ensuredOrgIds.add(orgId);
+    if (!ensure || !threadsRead || harnessesLoading || !scope || !platformChat || thread) return;
+    if (ensuredScopes.has(scope)) return;
+    ensuredScopes.add(scope);
 
     void (async () => {
       let created;
@@ -132,7 +137,7 @@ export function usePlatformChatThread(
     // Deliberately not keyed on the mutation objects: they are recreated on
     // every render, and the attempt guard above is what keeps this one-shot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ensure, threadsRead, harnessesLoading, orgId, platformChat, thread]);
+  }, [ensure, threadsRead, harnessesLoading, scope, platformChat, thread]);
 
   return { thread, isLoading };
 }
