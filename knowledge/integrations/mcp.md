@@ -727,11 +727,12 @@ See `crates/server/src/auth/mcp_oauth.rs` for the OAuth implementation.
 See `crates/server/src/api/mcp_endpoint/caching.rs` for the cacheable-result decoration.
 See `crates/server/src/api/mcp_endpoint/mod.rs` for the MCP endpoint and multi-org tool handlers.
 See `crates/server/src/api/mcp_endpoint/elicitation.rs` for the signed intent
-token, the capability probe, and URL mode elicitation results;
-`crates/server/src/api/mcp_endpoint/form_elicitation.rs` for the `ask_user`
-`requestedSchema` and the answer mapping; and
-`crates/server/src/api/mcp_elicitation.rs` for the pages that complete a URL
-mode one.
+token, the capability probe, and URL mode end to end;
+`crates/server/src/api/mcp_endpoint/form_elicitation.rs` for form mode end to
+end — the `ask_user` `requestedSchema`, the answer mapping, and the handler the
+`session_get_status` poll calls; and `crates/server/src/api/mcp_elicitation.rs`
+for the pages that complete a URL mode one. Each mode owns one file so the
+endpoint's dispatcher stays a dispatcher.
 See `crates/core/src/mcp_server.rs` for the `McpExecuteError` /
 `McpErrorCode` / `McpErrorCategory` types backing the structured
 error envelope.
