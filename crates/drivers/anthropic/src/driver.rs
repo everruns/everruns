@@ -790,6 +790,7 @@ impl ChatDriver for AnthropicChatDriver {
         // suffix for everything that reasons about the canonical model, and
         // keep the flag for the header.
         let (wire_model, wants_million_context) = split_million_context(&config.model);
+        crate::prefill::reject_trailing_assistant(wire_model, &messages)?;
 
         let profile = everruns_provider::get_model_profile(
             &everruns_provider::DriverId::Anthropic,
@@ -866,29 +867,15 @@ impl ChatDriver for AnthropicChatDriver {
             "AnthropicDriver: building request with thinking config"
         );
 
-        // Calculate max_tokens - use caller's limit, or model's max output from profile, or 16384 fallback.
-        // Anthropic requires max_tokens (can't omit), so we look up the model's native limit.
+        // Caller's cap is the answer budget; thinking room goes on top.
         let max_tokens_from_profile = config.max_tokens.is_none();
-        let base_max_tokens = config.max_tokens.unwrap_or_else(|| {
-            profile
-                .as_ref()
-                .and_then(|p| {
-                    p.limits.as_ref().and_then(|l| {
-                        u32::try_from(l.output)
-                            .ok()
-                            .and_then(|v| if v > 0 { Some(v) } else { None })
-                    })
-                })
-                .unwrap_or(16_384)
-        });
-        let max_tokens = if let Some(AnthropicThinking::Enabled { budget_tokens }) = thinking {
-            // max_tokens must be > thinking.budget_tokens per Anthropic requirements
-            // Only increase if the caller's limit is too low for the thinking budget
-            let min_for_thinking = budget_tokens + 1024; // minimum headroom for response
-            base_max_tokens.max(min_for_thinking)
-        } else {
-            base_max_tokens
+        let budget = match thinking {
+            Some(AnthropicThinking::Enabled { budget_tokens }) => Some(budget_tokens),
+            _ => None,
         };
+        let adaptive_effort = output_config.as_ref().map(|c| c.effort.as_str());
+        let max_tokens =
+            crate::effort::max_tokens(config.max_tokens, profile.as_ref(), budget, adaptive_effort);
 
         // Budget-based thinking with tools needs the interleaved-thinking beta
         // header; adaptive thinking interleaves automatically (no header).
@@ -1692,7 +1679,7 @@ fn is_million_context_family(model_id: &str) -> bool {
 
 /// Whether a model id (optionally date-suffixed) belongs to an
 /// adaptive-thinking family.
-fn uses_adaptive_thinking(model_id: &str) -> bool {
+pub(crate) fn uses_adaptive_thinking(model_id: &str) -> bool {
     let family = normalize_anthropic_id(model_id);
     ADAPTIVE_THINKING_FAMILIES
         .iter()
@@ -2457,6 +2444,13 @@ mod tests {
                         expected["thinking"] = json!({"type":"enabled","budget_tokens":budget});
                     }
                 } else if let Some(level) = adaptive {
+                    let room = match level {
+                        "low" => 4_096,
+                        "medium" => 8_192,
+                        "high" => 16_384,
+                        _ => 32_768,
+                    };
+                    expected["max_tokens"] = json!(1 + room);
                     expected["thinking"] = json!({"type":"adaptive","display":"summarized"});
                     expected["output_config"] = json!({"effort":level});
                 }

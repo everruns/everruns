@@ -245,6 +245,18 @@ When `config.max_tokens` is `None`, drivers resolve the default from model profi
 
 Anthropic requires `max_tokens` in every request (cannot be omitted), so the driver always resolves a value.
 
+**Thinking room on caller caps (Anthropic)**: thinking tokens count toward `max_tokens`, so a caller cap
+sized for the visible answer would be spent on thinking and return empty. The driver treats a caller's
+`max_tokens` as the answer budget and adds thinking room on top: the budget for budget-based thinking,
+an effort-sized allowance for adaptive thinking, capped at the model's output limit. Source:
+`crates/drivers/anthropic/src/effort.rs`.
+
+**Always-thinking Claude models**: on families where thinking cannot be disabled (Opus 5.5, Fable 5.x)
+the driver always sends an explicit effort. No caller effort sends the profile default, and an explicit
+`none` sends `low`, the closest level the API accepts. Requests that end on an assistant turn (prefill)
+are rejected with a configuration error before any network call on every adaptive-thinking family,
+because the API answers them with a 400.
+
 **Stale profile fallback**: If the Anthropic API returns 400 because `max_tokens` exceeds the model's actual limit (e.g., stale profile data), the driver retries once with 16,384 and logs a warning to update the model profile. If the retry also fails, the error propagates normally.
 
 Agents can override `max_tokens` via agent config. Cost guardrails should be configurable per-agent or per-org, not baked into driver code.
