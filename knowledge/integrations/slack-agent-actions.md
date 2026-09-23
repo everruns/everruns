@@ -41,9 +41,9 @@ without a design.
 
 **A native `slack` capability, resolving the channel's bot token.** A session
 created by a Slack channel carries both `slack:app:{id}` and
-`slack:endpoint:{id}` tags. The capability resolves through the **endpoint**,
-not the app: since EVE-1008 the endpoint is what owns Slack bot identity, so one
-agent can carry two Slack endpoints with different bots and resolving via the
+`slack:endpoint:{id}` tags. The capability resolves through the **channel**,
+not the app: since EVE-1008 the channel is what owns Slack bot identity, so one
+agent can carry two Slack agent channels with different bots and resolving via the
 app would pick the wrong one. It then acts as the bot the user already invited —
 no second token, no second set of scopes to rotate, and the agent's Slack
 identity matches the one answering in the thread.
@@ -129,12 +129,12 @@ bot.
 One decision the abstract above did not anticipate: **the action crosses the
 process boundary, not the token.**
 
-The agent loop runs in the worker; `bot_token` lives in the endpoint row the
+The agent loop runs in the worker; `bot_token` lives in the channel row the
 control plane owns. Handing the worker the token would put a long-lived
 workspace credential in the process that also evaluates model-chosen tool
 arguments, and would need a second Slack HTTP path beside the one
 `slack_delivery` maintains. So `SlackActionInvoker` is a seam: the capability
-names an action, the control plane resolves the endpoint and performs the call,
+names an action, the control plane resolves the channel and performs the call,
 and only the outcome comes back. The token never leaves the control plane in
 either deployment — in-process it is read directly, remote it is used behind the
 `InvokeSlackAction` RPC.
@@ -142,16 +142,16 @@ either deployment — in-process it is read directly, remote it is used behind t
 An invoker is **bound to one org and one session at construction**, the way
 `platform_store(org_id, session_id)` is. A capability holds only the handle it
 was given, so there is no argument it could vary to reach another session's
-endpoint. Org scoping is then structural rather than a check: the session read
+channel. Org scoping is then structural rather than a check: the session read
 is `get_session(org_id, session_id)` and the app read is
 `get_by_internal_id(.., org_id, ..)`.
 
-Resolution prefers `sessions.endpoint_id` (EVE-1004) over the
+Resolution prefers `sessions.channel_id` (EVE-1004) over the
 `slack:endpoint:{id}` routing tag, because the FK is immutable and the tag is
 not; the tag remains the fallback for pre-backfill sessions. Either way the
-endpoint must be `ChannelType::Slack` and `status == live`, so a session that
-came through another channel never falls through to a sibling Slack endpoint —
-the wrong-bot bug that resolving by endpoint exists to prevent.
+channel must be `ChannelType::Slack` and `status == live`, so a session that
+came through another channel never falls through to a sibling Slack agent channel —
+the wrong-bot bug that resolving by channel exists to prevent.
 
 Errors cross as a closed enum, not a message string. The capability renders "this
 session did not come from Slack" as a tool error the model should act on and a
@@ -168,8 +168,8 @@ thread; it returns when there is a per-channel allowlist to gate it.
 
 An adapter with no route to the control plane provides no invoker, and the tools
 fail closed with the same reason a non-Slack session gets. That is the designed
-answer rather than a gap: a capability that cannot resolve an endpoint must not
-act as any other endpoint's bot.
+answer rather than a gap: a capability that cannot resolve a channel must not
+act as any other channel's bot.
 
 ## What landed for step 2
 
@@ -209,7 +209,7 @@ Three refusals, all fail-closed:
 - a clicker who is not the requester (the default policy; the refusal is
   ephemeral and visible, and nothing is recorded),
 - a card whose binding names a session in another org, or a session belonging to
-  a *different Slack endpoint on the same app* — one agent can carry two, and a
+  a *different Slack agent channel on the same app* — one agent can carry two, and a
   click on one must not answer a pause raised through the other,
 - a card with no requester to bind to, which nobody may answer rather than
   everybody.

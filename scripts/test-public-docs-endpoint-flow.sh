@@ -7,11 +7,11 @@ SLACK_GUIDE="$ROOT/docs/integrations/slack.md"
 
 required_guide_text=(
   'Select **Integrations**.'
-  'Select **Add endpoint**.'
-  'Select **Save endpoint**.'
+  'Select **Add channel**.'
+  'Select **Save channel**.'
   'Select **Publish**'
   'Select **Connect to Slack**'
-  '/v1/e/{endpoint_id}/slack/events'
+  '/v1/e/{channel_id}/slack/events'
 )
 
 for text in "${required_guide_text[@]}"; do
@@ -28,11 +28,13 @@ stale_patterns=(
   'Click **Create App**'
   'Publish the App'
   '/api/v1/apps'
+  'Add endpoint'
+  'Save endpoint'
 )
 
 for pattern in "${stale_patterns[@]}"; do
   if grep -RFn --include='*.md' "$pattern" "$ROOT/docs"; then
-    printf 'Public docs still instruct readers through the retired App flow: %s\n' "$pattern" >&2
+    printf 'Public docs still instruct readers through a retired App or Endpoint flow: %s\n' "$pattern" >&2
     exit 1
   fi
 done
@@ -40,8 +42,8 @@ done
 for diagram in \
   "$ROOT/docs/images/integrations/slack-architecture.mmd" \
   "$ROOT/docs/images/integrations/slack-message-flow.mmd"; do
-  if ! grep -Fq 'Endpoint' "$diagram"; then
-    printf 'Slack diagram does not name Endpoint as the ingress owner: %s\n' "$diagram" >&2
+  if ! grep -Fq 'Channel' "$diagram"; then
+    printf 'Slack diagram does not name Channel as the ingress owner: %s\n' "$diagram" >&2
     exit 1
   fi
   if grep -Fq '/v1/apps/' "$diagram"; then
@@ -76,9 +78,9 @@ required_lifecycle_text=(
 
 for text in "${required_lifecycle_text[@]}"; do
   if ! grep -Fq "$text" "$apps_guide"; then
-    printf 'Apps compatibility guide omits an endpoint lifecycle transition: %s\n' "$text" >&2
+    printf 'Apps compatibility guide omits a channel lifecycle transition: %s\n' "$text" >&2
     exit 1
   fi
 done
 
-printf 'Public Slack documentation uses the Agent Integrations endpoint flow.\n'
+printf 'Public Slack documentation uses the Agent Integrations channel flow.\n'

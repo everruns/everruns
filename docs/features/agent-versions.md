@@ -1,6 +1,6 @@
 ---
 title: Agent Versions
-description: Save immutable Agent snapshots, compare changes, roll back, and bind endpoints to a default, latest, or pinned version.
+description: Save immutable Agent snapshots, compare changes, roll back, and bind channels to a default, latest, or pinned version.
 ---
 
 # Agent Versions
@@ -16,13 +16,13 @@ This feature is gated by `FEATURE_AGENT_VERSIONS`.
 - Compare authored and resolved configuration between two versions.
 - Roll back the editable draft to a previous version.
 - Fork a version into a new agent.
-- Configure each endpoint to use the Agent default, latest version, or a pinned version.
+- Configure each channel to use the Agent default, latest version, or a pinned version.
 
 ## Runtime Behavior
 
 When a session is created, Everruns records the resolved `agent_version_id` on the session. Events emitted during that session include version metadata so logs, traces, and exports can identify the exact agent configuration that ran.
 
-Endpoints can use:
+Channels can use:
 
 - `default`: follow the agent default version.
 - `latest`: always use the newest saved version.

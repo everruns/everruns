@@ -133,14 +133,14 @@ which are currently reduced to a filename string), and the Workflow Builder cust
 required revisiting the per-app bot identity decision — one Slack workspace install maps
 to one bot, and an App was a bundle of unrelated channels, so there was no single row to
 install *into*. Retiring the App abstraction answered that: identity lives on the
-endpoint. `signing_secret`, `bot_token` and `team_id` are endpoint config, each endpoint
-serves its own manifest at `/v1/e/{endpoint_id}/slack/manifest` pointed at its own
+channel. `signing_secret`, `bot_token` and `team_id` are channel config, each channel
+serves its own manifest at `/v1/e/{channel_id}/slack/manifest` pointed at its own
 request URL, verifies its own signatures, and is published on its own.
 
 That gives the install flow an obvious shape: the callback writes the workspace's
-credentials onto one endpoint row and publishes it, and two workspaces installing against
-the same agent are two endpoints rather than a collision. What still needs deciding is
-whether installing creates an endpoint or fills in one the operator made first, and where
+credentials onto one channel row and publishes it, and two workspaces installing against
+the same agent are two channels rather than a collision. What still needs deciding is
+whether installing creates a channel or fills in one the operator made first, and where
 the per-install team binding is enforced on inbound events. Neither is a modelling
 question any more.
 

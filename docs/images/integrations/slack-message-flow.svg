@@ -21,9 +21,9 @@
   <rect x="180" y="20" width="100" height="36" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <text x="230" y="43" text-anchor="middle" class="label">Webhook</text>
 
-  <!-- Endpoint -->
+  <!-- Channel -->
   <rect x="330" y="20" width="100" height="36" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="380" y="43" text-anchor="middle" class="label">Endpoint</text>
+  <text x="380" y="43" text-anchor="middle" class="label">Channel</text>
 
   <!-- Runtime Agent -->
   <rect x="480" y="20" width="100" height="36" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
@@ -69,28 +69,28 @@
   <polygon points="93,185 83,190 93,195" fill="#0A1636"/>
   <text x="155" y="184" text-anchor="middle" class="arrow-label">200 OK (&lt; 3s)</text>
 
-  <!-- Step 5: Webhook -> Endpoint: Route to Endpoint -->
+  <!-- Step 5: Webhook -> Channel: Route to Channel -->
   <rect x="236" y="216" width="18" height="18" fill="#0A1636"/>
   <text x="245" y="229" text-anchor="middle" class="step-num">5</text>
   <line x1="230" y1="225" x2="372" y2="225" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="367,220 377,225 367,230" fill="#0A1636"/>
-  <text x="300" y="219" text-anchor="middle" class="arrow-label">Route to Endpoint</text>
+  <text x="300" y="219" text-anchor="middle" class="arrow-label">Route to Channel</text>
 
-  <!-- Step 6: Endpoint -> Endpoint (self): Find/create Session -->
+  <!-- Step 6: Channel -> Channel (self): Find/create Session -->
   <rect x="386" y="251" width="18" height="18" fill="#0A1636"/>
   <text x="395" y="264" text-anchor="middle" class="step-num">6</text>
   <polyline points="380,260 415,260 415,272 380,272" stroke="#0A1636" stroke-width="1.5" fill="none"/>
   <polygon points="385,267 375,272 385,277" fill="#0A1636"/>
   <text x="420" y="264" text-anchor="start" class="arrow-label">Find/create Session</text>
 
-  <!-- Step 7: Endpoint -> Runtime Agent: Trigger agent turn -->
+  <!-- Step 7: Channel -> Runtime Agent: Trigger agent turn -->
   <rect x="386" y="286" width="18" height="18" fill="#0A1636"/>
   <text x="395" y="299" text-anchor="middle" class="step-num">7</text>
   <line x1="380" y1="295" x2="522" y2="295" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="517,290 527,295 517,300" fill="#0A1636"/>
   <text x="450" y="289" text-anchor="middle" class="arrow-label">Trigger agent turn</text>
 
-  <!-- Step 8: Endpoint -> Dispatcher: Register delivery -->
+  <!-- Step 8: Channel -> Dispatcher: Register delivery -->
   <rect x="386" y="321" width="18" height="18" fill="#0A1636"/>
   <text x="395" y="334" text-anchor="middle" class="step-num">8</text>
   <line x1="380" y1="330" x2="672" y2="330" stroke="#0A1636" stroke-width="1.5"/>

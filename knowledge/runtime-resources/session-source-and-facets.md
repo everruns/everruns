@@ -45,11 +45,11 @@ Three rules govern it:
   conventions the server itself writes. Rows it cannot place stay `unknown`
   rather than being folded into a real facet and quietly inflating it.
 
-`source` names the *transport*; `sessions.endpoint_id` names the *door*
-(EVE-1004). Two endpoints of the same transport produce the same source and
-different endpoints, so the pair answers "which Slack workspace was this" where
-`source` alone cannot. Each ingress path passes its endpoint explicitly rather
-than inferring one from `app_id`, which is ambiguous for a multi-endpoint App;
+`source` names the *transport*; `sessions.channel_id` names the *door*
+(EVE-1004). Two channels of the same transport produce the same source and
+different channels, so the pair answers "which Slack workspace was this" where
+`source` alone cannot. Each ingress path passes its channel explicitly rather
+than inferring one from `app_id`, which is ambiguous for a multi-channel App;
 migration 137 backfilled the same way, from the routing tags, and left the rest
 NULL under the rule above. Nothing about `source` changed, so the facet counts
 over existing rows are unchanged by that migration.

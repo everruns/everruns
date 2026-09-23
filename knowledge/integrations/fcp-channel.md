@@ -21,13 +21,13 @@ parameter collection, and error guidance happen in natural language, the
 same way a person would ask a service what it does. See the upstream FCP
 specification at `https://github.com/everruns/fcp/blob/main/SPEC.md`.
 
-This spec captures how an existing FCP agent endpoint is exposed, the
+This spec captures how an existing FCP agent channel is exposed, the
 isolation invariants it must keep, and its frozen configuration.
 
 ## Goals
 
 1. Provide an unattended, anonymous-by-default text-in / text-out
-   endpoint for an agent.
+   channel for an agent.
 2. Make every response, success or error, readable and actionable
    without parsing.
 3. Keep FCP's auth, rate-limit, and error surface isolated from every
@@ -47,8 +47,8 @@ isolation invariants it must keep, and its frozen configuration.
 Canonical:
 
 ```
-GET  /v1/e/{endpoint_id}/fcp
-POST /v1/e/{endpoint_id}/fcp
+GET  /v1/e/{channel_id}/fcp
+POST /v1/e/{channel_id}/fcp
 ```
 
 Permanent compatibility aliases:
@@ -58,13 +58,13 @@ GET  /v1/apps/{legacy_app_id}/fcp
 POST /v1/apps/{legacy_app_id}/fcp
 ```
 
-Aliases resolve from endpoint-owned legacy identity without reading `apps` or
+Aliases resolve from channel-owned legacy identity without reading `apps` or
 `app_channels`.
 
 Both routes always respond with `Content-Type: text/markdown; charset=utf-8`.
 
 - `GET` returns the configured handshake (or a generated one).
-- `POST` runs one turn through the endpoint's agent and returns the assistant's
+- `POST` runs one turn through the channel's agent and returns the assistant's
   final Markdown reply.
 
 ## Configuration
@@ -78,8 +78,8 @@ Both routes always respond with `Content-Type: text/markdown; charset=utf-8`.
 | `token`                     | none         | Shared bearer secret; validated by constant-time comparison.                                |
 | `handshake`                 | generated    | Optional Markdown override for the `GET` body.                                              |
 | `session_expiration_seconds`| `21600` (6h) | Cookie lifetime; `0` disables expiration.                                                   |
-| `rate_limit_per_minute`     | none         | Per-endpoint, per-IP cap counted in the FCP-specific limiter namespace.                     |
-| `response_timeout_seconds`  | `120`        | Maximum seconds the endpoint waits for the agent's reply before returning `504`.            |
+| `rate_limit_per_minute`     | none         | Per-channel, per-IP cap counted in the FCP-specific limiter namespace.                     |
+| `response_timeout_seconds`  | `120`        | Maximum seconds the channel waits for the agent's reply before returning `504`.            |
 
 `auth` (the inline IdP/Basic/mTLS verifier used by AG-UI and A2A) is
 **deliberately not accepted** on FCP channels, see the isolation
@@ -92,7 +92,7 @@ with anything else.
 
 1. **Auth stack is FCP-only.** Token verification lives inside
    `crates/server/src/api/fcp.rs::check_token` and never delegates to
-   `AppEndpointAuthVerifier`. Adding new auth modes is intentionally a
+   `ChannelAuthVerifier`. Adding new auth modes is intentionally a
    breaking design decision, not a config flag.
 2. **Rate limiter is FCP-only.** `app_builder` constructs a dedicated
    `ChannelRateLimiter` with namespace `"fcp"`. Buckets cannot collide
@@ -100,12 +100,12 @@ with anything else.
 3. **No platform-user auth.** FCP requests never carry an Everruns user
    session, API token, or cookie. The platform's auth middleware is not
    on the FCP route path.
-4. **No frozen-App dependency.** Endpoint lookup and liveness read
-   `agent_endpoints` and `agents`, not `apps` or `app_channels`.
+4. **No frozen-App dependency.** Channel lookup and liveness read
+   `agent_channels` and `agents`, not `apps` or `app_channels`.
 5. **No internal-state leaks.** Every error path collapses through a
    small set of sanitized responses (`not_found_response`,
    `unauthorized_response`, `turn_error_response`, etc.). A caller cannot
-   distinguish "no such endpoint" from "endpoint not live" from
+   distinguish "no such channel" from "channel not live" from
    "agent suspended". `turn.failed` causes pass through `PublicError` so
    provider details (OpenAI/Anthropic vocabulary, stack traces, internal
    codes) never reach the wire.
@@ -134,7 +134,7 @@ Examples:
 - `410 Gone` body tells the caller to drop the `fcp_session` cookie.
 
 The handshake itself is the single source of truth for "how do I use
-this endpoint": all error bodies point back at it rather than restating
+this channel": all error bodies point back at it rather than restating
 its contents.
 
 ## Request shape
@@ -163,8 +163,8 @@ FCP sessions are reused via the `fcp_session` cookie:
 - Expired sessions return `410 Gone` with body instructing the client to
   drop the cookie.
 
-All sessions adopt the endpoint's owner principal. Frozen App attribution and
-historical `fcp:app:` tags remain alongside endpoint tags for compatibility.
+All sessions adopt the channel's owner principal. Frozen App attribution and
+historical `fcp:app:` tags remain alongside `fcp:endpoint:` channel tags for compatibility.
 See `knowledge/integrations/app-invocation-channels.md`.
 
 ## Migration

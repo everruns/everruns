@@ -56,7 +56,9 @@ Multiple budgets can apply to the same session. The **most restrictive** budget 
 - A **$10 USD session budget** caps dollar cost
 - A **2M token budget** caps total token usage regardless of model pricing
 
-Budget stacking is enforced across the session hierarchy: root session, app channel, app, agent, user, and organization. The most restrictive matching budget wins.
+Budget stacking is enforced across the session hierarchy: root session, Agent channel (the Slack, AG-UI, A2A, FCP, or Public Chat channel the session arrived through), legacy app channel, legacy app, agent, user, and organization. The most restrictive matching budget wins.
+
+To cap an Agent channel, create a budget with `subject_type` `agent_channel` and the channel ID as `subject_id`. The older `agent_endpoint` subject type is still accepted on input.
 
 ## CLI Usage
 

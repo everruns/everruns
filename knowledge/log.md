@@ -1,5 +1,19 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-23
+
+* **The agent-owned Endpoint is now a Channel, end to end.** "Endpoint" read as
+  a URL, and a Slack workspace install is not a URL; it is a channel the agent
+  is reachable through. "Port" was the other candidate and was just as
+  technical. The rename covers product copy, UI and management API paths,
+  Rust types, the `agent_channels` table, `sessions.channel_id`, and the
+  `agent_channel` budget subject. Anything already installed or persisted
+  keeps its name: `/v1/e/…` ingress, `/v1/apps/…` aliases, the `endpoint:`
+  routing tags, and the `api_endpoint` channel type. A one-release
+  compatibility view and column sync cover rolling deploys. The auth spec
+  moved to [Channel Authentication](integrations/channel-auth.md). See
+  [Agent Exposure](integrations/agent-exposure.md#naming-endpoint-became-channel).
+
 ## 2026-09-19
 
 * **A live PoC settled how far Slack one-click install can go, and disproved two

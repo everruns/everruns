@@ -312,7 +312,7 @@ user-visible change.
 2. **Does a `service` grant survive agent deletion?** The identity outlives the
    agent today. Proposal: revoke on agent delete, since the grant was
    authorized for that agent's work.
-3. **Per-endpoint override.** Should an agent endpoint (Slack, A2A) be able to
+3. **Per-channel override.** Should an agent channel (Slack, A2A) be able to
    force `user` on an attachment the agent declares as `service`? Deferred —
-   real requirement, but it needs the endpoint-scoped config layer that
+   real requirement, but it needs the channel-scoped config layer that
    [agent-exposure.md](agent-exposure.md) is still building.

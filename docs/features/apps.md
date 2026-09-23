@@ -1,35 +1,35 @@
 ---
 title: Apps Compatibility
-description: Understand the retired App model, permanent route compatibility, and the Agent-owned endpoint model that replaces it.
+description: Understand the retired App model, permanent route compatibility, and the Agent-owned channel model that replaces it.
 ---
 
-Apps are retired from Everruns management. New integrations belong directly to an Agent as **endpoints** or **triggers**.
+Apps are retired from Everruns management. New integrations belong directly to an Agent as **channels** or **triggers**.
 
-- Use an **endpoint** when an external peer sends a request and waits for a reply. Slack, AG-UI, A2A, FCP, and Public Chat use endpoints.
+- Use a **channel** when an external peer sends a request and waits for a reply. Slack, AG-UI, A2A, FCP, and Public Chat use channels.
 - Use a **trigger** when a schedule or event starts Agent work without a reply channel.
 
 Create and manage both from the Agent's **Integrations** tab.
 
-![Agent Endpoint Architecture](../images/apps/architecture.svg)
+![Agent Channel Architecture](../images/apps/architecture.svg)
 
 ## Existing Apps
 
 Everruns keeps existing App records for historical attribution and compatibility. Existing installs continue to serve traffic, but the App list, detail page, create flow, and management API are retired.
 
-The old `/v1/apps/{app_id}/…` ingress paths remain permanent aliases. They resolve to the migrated endpoint and continue to work. Do not rewrite a working existing installation only to change its URL.
+The old `/v1/apps/{app_id}/…` ingress paths remain permanent aliases. They resolve to the migrated channel and continue to work. Do not rewrite a working existing installation only to change its URL.
 
-New integrations use endpoint-scoped canonical paths:
+New integrations use channel-scoped canonical paths:
 
 ```text
-/v1/e/{endpoint_id}/slack/events
-/v1/e/{endpoint_id}/ag-ui
-/v1/e/{endpoint_id}/a2a
-/v1/e/{endpoint_id}/fcp
+/v1/e/{channel_id}/slack/events
+/v1/e/{channel_id}/ag-ui
+/v1/e/{channel_id}/a2a
+/v1/e/{channel_id}/fcp
 ```
 
-## Endpoint Lifecycle
+## Channel Lifecycle
 
-Each endpoint has its own lifecycle:
+Each channel has its own lifecycle:
 
 ```text
 Draft ⇄ Live
@@ -42,10 +42,14 @@ Disabled → Draft
 - **Live**: Published and able to accept traffic while its Agent is active and exposures are not suspended.
 - **Disabled**: Kept for configuration but rejects ingress traffic and does not invoke the Agent.
 
-Publishing or unpublishing one endpoint does not change another endpoint on the same Agent.
+Publishing or unpublishing one channel does not change another channel on the same Agent.
+
+## Managing Channels
+
+Manage channels from the Agent's **Integrations** tab or through the management API under `/v1/agents/{agent_id}/channels`. Channels were called *endpoints* in earlier releases: the management API moved from `/v1/agents/{agent_id}/endpoints` and the UI from `/agents/{agent_id}/endpoints`. Ingress URLs under `/v1/e/…` did not change, and neither did existing Slack, A2A, or AG-UI installs.
 
 ## Where to Go
 
-- [Slack Integration](/integrations/slack/), create and publish a Slack endpoint.
+- [Slack Integration](/integrations/slack/), create and publish a Slack channel.
 - [Agent Triggers](/features/agent-triggers/), configure proactive scheduled work.
-- [Agent Versions](/features/agent-versions/), select which Agent version an endpoint uses.
+- [Agent Versions](/features/agent-versions/), select which Agent version a channel uses.

@@ -38,8 +38,8 @@ Seed at least these five exposures across at least three agents:
 2. Verify every exposure above appears, regardless of owning agent.
 3. Verify the stat strip counts Live, Publicly reachable, Suspended agents, and Transports.
 4. Verify the live anonymous row sorts first and is visually distinct (tinted row, red Anonymous with a globe).
-5. Verify the suspended agent's anonymous endpoint reads **Suspended**, not Live, and its Access reads **Anonymous (not live)**.
-6. Verify the archived agent's endpoint reads **Agent inactive**, not Live.
+5. Verify the suspended agent's anonymous channel reads **Suspended**, not Live, and its Access reads **Anonymous (not live)**.
+6. Verify the archived agent's channel reads **Agent inactive**, not Live.
 7. Set the state filter to **Publicly reachable**.
 8. Verify exactly the live-and-anonymous exposures remain — the draft anonymous and suspended anonymous ones are excluded.
 9. Reset the filter. Click **Suspend** on a live row.
@@ -50,8 +50,8 @@ Seed at least these five exposures across at least three agents:
 
 ## Expected Result
 
-- Every endpoint and trigger in the org appears, across all agents.
-- State never reads Live for something the server would refuse: the agent-level suspend and archived cases both override the endpoint's own status.
+- Every channel and trigger in the org appears, across all agents.
+- State never reads Live for something the server would refuse: the agent-level suspend and archived cases both override the channel's own status.
 - "Publicly reachable" returns exactly the live-and-anonymous set.
 - Anonymous configuration is visible before it becomes reachable, so resuming an agent holds no surprise.
 - Suspending from this view takes effect immediately and is reflected on the agent page.

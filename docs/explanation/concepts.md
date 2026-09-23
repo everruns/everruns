@@ -69,10 +69,10 @@ A message log can't carry that. An event log can, and you can derive a message l
 
 See [Events as the primary store](/explanation/events/) for the consequences.
 
-## Endpoints connect Agents to the outside world
+## Channels connect Agents to the outside world
 
-A bare Agent has no way to receive messages from external users. An **Endpoint** belongs to one Agent and exposes it through a transport such as Slack, AG-UI, A2A, FCP, or Public Chat.
+A bare Agent has no way to receive messages from external users. A **Channel** belongs to one Agent and exposes it through a transport such as Slack, AG-UI, A2A, FCP, or Public Chat.
 
-Each endpoint owns its inbound authentication, session-routing strategy, transport configuration, version policy, and publish state. One Agent can have several endpoints, and each endpoint can be published or revoked independently. Create and manage them from the Agent's **Integrations** tab.
+Each channel owns its inbound authentication, session-routing strategy, transport configuration, version policy, and publish state. One Agent can have several channels, and each channel can be published or revoked independently. Create and manage them from the Agent's **Integrations** tab. Earlier releases called channels *endpoints*.
 
-For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead of an endpoint.
+For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead of a channel.

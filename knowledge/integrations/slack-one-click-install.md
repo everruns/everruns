@@ -51,7 +51,7 @@ only matter if it is what lets a competitor skip the per-agent consent, which is
 unproven. Dropping it also drops a Slack Marketplace review from the critical
 path — weeks of calendar time, for a step that turns out to be optional.
 
-**Per-endpoint app identity is kept.** Each endpoint already gets its own Slack
+**Per-channel app identity is kept.** Each channel already gets its own Slack
 app, which is what puts a distinctly named and avatared agent in Slack's Agents
 menu. Nothing here trades that away, and an approach that collapsed every agent
 into one shared bot identity would.
@@ -70,7 +70,7 @@ they are not re-derived:
 - **That one-click and per-agent identity were in tension.** They are not. The
   fork between "OAuth with one shared bot" and "manifest with per-agent bots"
   was a false choice; programmatic creation gives both.
-- **That the manifest needs a live endpoint before the Slack app can exist.**
+- **That the manifest needs a live channel before the Slack app can exist.**
   The web *create from manifest* flow verifies `request_url` on save, which is
   why [Slack Integration Modernization](slack-modernization.md) sequenced
   publish before app creation. The API does not verify it. Whether Slack

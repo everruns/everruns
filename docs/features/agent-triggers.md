@@ -61,6 +61,6 @@ Agent triggers, webhook triggers, and session schedules solve different problems
 
 ## See also
 
-- [Slack Integration](/integrations/slack/), publish an Agent to an inbound messaging endpoint.
+- [Slack Integration](/integrations/slack/), publish an Agent to an inbound messaging channel.
 - [Session participants](/features/session-participants/), understand the host agent used by a trigger-created session.
 - [API reference](/api/), exact trigger schemas and responses.

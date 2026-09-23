@@ -1,8 +1,8 @@
 graph LR
-    Channel["External Channel<br/>(Slack, etc.)"] -->|request| Endpoint
-    Endpoint -->|inherits| Harness
-    Endpoint -->|belongs to| Agent
-    Endpoint -->|creates/finds| Session
+    External["External Platform<br/>(Slack, etc.)"] -->|request| Channel["Channel"]
+    Channel -->|inherits| Harness
+    Channel -->|belongs to| Agent
+    Channel -->|creates/finds| Session
     Session -->|runs| RuntimeAgent
 
     classDef external fill:#ffd6a5,stroke:#e07b39,color:#5a3000
@@ -10,7 +10,7 @@ graph LR
     classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
     classDef runtime fill:#bde0fe,stroke:#3a86a8,color:#023047
 
-    class Channel external
-    class Endpoint app
+    class External external
+    class Channel app
     class Harness,Agent config
     class Session,RuntimeAgent runtime

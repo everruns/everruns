@@ -1,6 +1,6 @@
 ---
 title: Concepts
-description: How harnesses, agents, endpoints, sessions, turns, events, capabilities, tools, and files fit together in the execution model.
+description: How harnesses, agents, channels, sessions, turns, events, capabilities, tools, and files fit together in the execution model.
 ---
 
 This page is the **concept cheat-sheet**: short definitions of every entity, organised into three layers (high-level execution model, session internals, and settings). For the design rationale behind each entity, read [Core concepts](/explanation/concepts/) under Explanation.
@@ -70,17 +70,17 @@ A Tool is a function the agent can invoke during execution. Tools are provided b
 - MCP tools are prefixed: `mcp_{server_name}__{tool_name}`
 - Executed during the act phase of a turn
 
-### Endpoint
+### Channel
 
-An Endpoint is an Agent-owned way for an external caller to reach that Agent. Slack, AG-UI, A2A, FCP, and Public Chat each use an endpoint with transport-specific configuration.
+A Channel is an Agent-owned way for an external caller to reach that Agent. Slack, AG-UI, A2A, FCP, and Public Chat each use a channel with transport-specific configuration.
 
-- Each endpoint belongs to exactly one Agent.
-- Each endpoint has its own publish state, credentials, identity, and version policy.
+- Each channel belongs to exactly one Agent.
+- Each channel has its own publish state, credentials, identity, and version policy.
 - Lifecycle: `draft` → `live` → `draft`.
-- Incoming messages route to sessions by the endpoint's session strategy.
-- An Agent can own multiple independently published endpoints.
+- Incoming messages route to sessions by the channel's session strategy.
+- An Agent can own multiple independently published channels.
 
-Open an Agent's **Integrations** tab to create and manage endpoints. See [Slack Integration](/integrations/slack/) for a complete example.
+Open an Agent's **Integrations** tab to create and manage channels. Earlier releases called them *endpoints*. See [Slack Integration](/integrations/slack/) for a complete example.
 
 ---
 

@@ -269,8 +269,8 @@ A frozen archival compatibility record. Apps and their historical channel relati
 storage, but App management, publishing, command discovery, and UI are retired.
 
 - Only deprecated archival reads remain.
-- `agent_endpoints` owns live ingress identity and liveness.
-- Permanent App-shaped route aliases resolve from endpoint-owned legacy identity without reading
+- `agent_channels` owns live ingress identity and liveness.
+- Permanent App-shaped route aliases resolve from channel-owned legacy identity without reading
   `apps` or `app_channels`.
 - Existing session attribution, budget subject values, owner semantics, and reserved routing tags
   remain compatible.

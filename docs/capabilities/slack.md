@@ -10,20 +10,20 @@ description: "Act in the Slack conversation as the bot the workspace already inv
 | **Features** | `slack_actions` |
 | **Dependencies** | None |
 
-An agent published to a [Slack endpoint](/integrations/slack/) can reply in its thread. This
+An agent published to a [Slack Agent channel](/integrations/slack/) can reply in its thread. This
 capability lets it do the rest — react to a message, rewrite one it posted, share a file, resolve a
 user ID to a name — as the same bot the workspace invited.
 
-No second credential. The tools resolve the endpoint's own bot token server-side, so there is
+No second credential. The tools resolve the channel's own bot token server-side, so there is
 nothing extra to provision, scope, or rotate.
 
 ## Requirements
 
 The tools only work in a session a Slack message created. An agent that has the capability enabled
-but is running from the API, a schedule, or another channel has no Slack endpoint to act as, and
-every tool returns an error saying so rather than acting as some other endpoint's bot.
+but is running from the API, a schedule, or another channel has no Slack Agent channel to act as, and
+every tool returns an error saying so rather than acting as some other channel's bot.
 
-Where an agent carries two Slack endpoints, each with its own bot, the tools act as the endpoint
+Where an agent carries two Slack Agent channels, each with its own bot, the tools act as the channel
 that created the session.
 
 Your Slack app needs the scope for each action you use: `reactions:write` for reactions,
@@ -88,7 +88,7 @@ Content is capped at 8 MiB.
 
 - Posting to an arbitrary channel is deliberately not offered. The blast radius of "anywhere the bot
   is" is wider than "the thread that asked", and the reply path already answers in the thread.
-- A retired or disabled endpoint stops acting immediately, even for a session it created earlier.
+- A retired or disabled channel stops acting immediately, even for a session it created earlier.
 - Slack rate limits reach the agent with Slack's own retry advice rather than as a generic failure.
 - The [Slack MCP server](/features/mcp/) stays supported for anything this does not cover. This
   removes the second credential for the common cases; it does not replace MCP.

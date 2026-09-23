@@ -1,30 +1,30 @@
 ---
 type: Specification
-title: "Endpoint Authentication"
-description: "Shared inbound authentication framework for agent endpoints."
+title: "Channel Authentication"
+description: "Shared inbound authentication framework for agent channels."
 tags:
   - everruns
   - integrations
 ---
-# Endpoint Authentication
+# Channel Authentication
 
 ## Abstract
 
-Agent endpoints such as AG-UI and A2A need a shared authentication model so
+Agent channels such as AG-UI and A2A need a shared authentication model so
 enterprise schemes can be added once instead of reimplemented per transport.
-Authentication configuration is endpoint-local. There is no required
-organization-level provider setup. Agent-owned endpoint APIs and editors
+Authentication configuration is channel-local. There is no required
+organization-level provider setup. Agent-owned channel APIs and editors
 manage the configuration; App management and App editor routes are retired.
 
 ## Goals
 
-1. Support OAuth2/OIDC-style enterprise auth for agent endpoints,
+1. Support OAuth2/OIDC-style enterprise auth for agent channels,
    especially Google OIDC, generic OIDC/JWT bearer, OAuth2 introspection, HTTP
    Basic, and reverse-proxy mTLS identity headers.
 2. Preserve existing channel behavior when `auth` is absent:
    AG-UI keeps `anonymous` plus optional `token`; A2A keeps the generated
    hashed API key.
-3. Keep one verifier path for all supported endpoint auth modes.
+3. Keep one verifier path for all supported channel auth modes.
 4. Advertise the effective A2A security scheme in the Agent Card.
 
 ## Non-Goals
@@ -39,16 +39,16 @@ manage the configuration; App management and App editor routes are retired.
 5. Token issuance. Everruns validates credentials issued by external identity
    providers.
 
-## Endpoint Auth Model
+## Channel Auth Model
 
-Supported endpoints store auth in `agent_endpoints.auth`. Deployments with
+Supported channels store auth in `agent_channels.auth`. Deployments with
 encryption configured store the JSON
-only in `agent_endpoints.auth_encrypted`; this includes Argon2id password
+only in `agent_channels.auth_encrypted`; this includes Argon2id password
 hashes, OAuth client secrets, and mTLS proxy secrets.
 
 Legacy nested `channel_config.auth` remains readable. The migration moves
 plaintext rows immediately. It leaves encrypted transport rows intact because
-SQL cannot decrypt them; the next endpoint write decrypts and separates their
+SQL cannot decrypt them; the next channel write decrypts and separates their
 auth. First-class auth is authoritative when both forms exist.
 
 ```json
@@ -70,7 +70,7 @@ auth. First-class auth is authoritative when both forms exist.
 
 Modes:
 
-- `anonymous` bypasses credential checks for an explicitly public endpoint.
+- `anonymous` bypasses credential checks for an explicitly public channel.
 - `shared_secret` validates a bearer token against a configured shared secret.
   AG-UI's legacy `token` path still also accepts `X-Everruns-AG-UI-Token` when
   `auth` is absent.
@@ -94,9 +94,9 @@ exact claim values. Empty requirement lists mean no constraint for that field.
 Audience requirements match any token `aud` value; scope requirements require
 all configured scopes.
 
-## Endpoint Addresses
+## Channel Addresses
 
-Each agent endpoint has a stable endpoint ID. Canonical ingress routes use
+Each agent channel has a stable channel ID. Canonical ingress routes use
 `/v1/e/{channel_id}`:
 
 - Slack: `POST /slack/events` and `GET /slack/manifest`.
@@ -109,14 +109,14 @@ Each agent endpoint has a stable endpoint ID. Canonical ingress routes use
 - Public Chat: `GET /public-chat/config` and `POST /public-chat`.
 
 Existing `/v1/apps/{app_id}/...` routes are permanent aliases. They resolve
-from endpoint-owned `legacy_app_public_id` and never read `apps` or
-`app_channels`. Channel-less aliases resolve the only live endpoint of the
-requested type. They return `409 Conflict` when multiple live endpoints match,
-with a detail that directs the caller to the endpoint-scoped URL.
+from channel-owned `legacy_app_public_id` and never read `apps` or
+`app_channels`. Channel-less aliases resolve the only live channel of the
+requested type. They return `409 Conflict` when multiple live channels match,
+with a detail that directs the caller to the channel-scoped URL.
 
 ## Enforcement
 
-Supported handlers resolve endpoint identity and liveness first, then run the
+Supported handlers resolve channel identity and liveness first, then run the
 auth verifier before rate limiting, session lookup, task polling, cancellation,
 image upload, or message dispatch.
 
@@ -127,7 +127,7 @@ AG-UI behavior:
   `X-Everruns-AG-UI-Token`.
 - With first-class `auth`, the shared verifier is authoritative and the legacy token gate
   is ignored.
-- Stream and image-upload routes use the same auth decision on endpoint-scoped
+- Stream and image-upload routes use the same auth decision on channel-scoped
   and app-scoped addresses.
 
 A2A behavior:
@@ -143,7 +143,7 @@ A2A behavior:
 Webhook behavior:
 
 - Webhook channels continue to require their existing `token`.
-- The API rejects endpoint auth on webhook channels until the webhook
+- The API rejects channel auth on webhook channels until the webhook
   handler is wired into the shared verifier. This avoids storing a policy that
   callers might assume is enforced.
 
@@ -160,8 +160,8 @@ Webhook behavior:
   provider misconfiguration.
 
 ## UI
-Agent Integrations presents endpoint inventory and Agent-owned create and
-configure flows for supported endpoint types. The inventory also exposes
+Agent Integrations presents channel inventory and Agent-owned create and
+configure flows for supported channel types. The inventory also exposes
 publish, unpublish, delete, and migrated schedule run-now controls. App editor
 routes are retired.
 
@@ -169,7 +169,7 @@ routes are retired.
 
 See `knowledge/security/threat-model.md` entries:
 
-- `TM-AUTH-020`, public App endpoint auth bypass.
+- `TM-AUTH-020`, public Agent channel auth bypass.
 - `TM-AUTH-021`, mTLS identity header spoofing.
 - `TM-AUTH-022`, JWKS / OIDC discovery abuse or poisoning.
 - `TM-A2A-014`, Agent Card advertises the wrong or stale auth scheme.
@@ -184,10 +184,12 @@ Required coverage:
 3. A2A regression tests for legacy API key behavior and Agent Card scheme
    generation.
 4. AG-UI regression tests that stream and image upload use the same auth gate.
-5. Route-parity tests for canonical endpoint addresses and permanent aliases.
+5. Route-parity tests for canonical channel addresses and permanent aliases.
 
 ## References
 
+- `crates/server/src/api/channel_auth.rs`, the shared verifier
+- [`knowledge/integrations/agent-exposure.md`](agent-exposure.md), why channels are agent-owned
 - [`knowledge/integrations/apps.md`](apps.md)
 - [`knowledge/integrations/a2a-channel.md`](a2a-channel.md)
 - [`knowledge/integrations/app-invocation-channels.md`](app-invocation-channels.md)

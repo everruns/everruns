@@ -1,14 +1,14 @@
 sequenceDiagram
     participant S as Slack
     participant W as Webhook
-    participant E as Endpoint
+    participant E as Channel
     participant R as Runtime Agent
     participant D as Delivery Dispatcher
-    S->>W: POST /v1/e/{endpoint_id}/slack/events
+    S->>W: POST /v1/e/{channel_id}/slack/events
     W->>W: Verify signing secret (HMAC-SHA256)
     W->>W: Dedup check (slack_ts)
     W->>S: 200 OK (< 3 seconds)
-    W->>E: Route to Endpoint
+    W->>E: Route to Channel
     E->>E: Find or create Session (by strategy)
     E->>R: Create user message → trigger agent turn
     E->>D: Register delivery for this turn
