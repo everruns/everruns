@@ -2114,6 +2114,8 @@ impl ReasonAtom {
         };
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
+        let provider_text = text.clone();
+        let provider_tool_calls = tool_calls.clone();
 
         // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
         // once on the finalized final-answer text to attach claim-level citations
@@ -2511,6 +2513,15 @@ impl ReasonAtom {
             &resolved_capability_configs,
             text,
         );
+        let provider_opaque_content = completion_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.provider_opaque_content.clone())
+            .filter(|_| {
+                tripped.is_none()
+                    && text == provider_text
+                    && finalized_tool_calls == provider_tool_calls
+                    && rejected_tool_calls.is_empty()
+            });
         let has_tool_calls = !finalized_tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             RuntimeMessage::assistant_with_tools(&text, finalized_tool_calls.clone())
@@ -2576,6 +2587,11 @@ impl ReasonAtom {
             content.extend(reasoning.drain(..).map(ContentPart::Reasoning));
             content.append(&mut assistant_message.content);
             assistant_message.content = content;
+        }
+        if let Some(content) = provider_opaque_content {
+            assistant_message
+                .content
+                .push(ContentPart::ProviderOpaque(content));
         }
         // Emit output.message.completed event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)
