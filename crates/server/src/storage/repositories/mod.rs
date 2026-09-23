@@ -57,11 +57,30 @@ use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 
 /// Database pool configuration loaded from environment variables.
+///
+/// Two pools, not one (EVE-1081). The request pool is sized for HTTP handlers
+/// and fails fast, because a caller is waiting on the other end of every
+/// acquire. The background pool is small and patient, because nobody is
+/// waiting on a sweep and the next tick would only retry into the same
+/// contention. Sharing one pool made saturation from any source fail every
+/// consumer at the same instant; see `Database::connect_with_config`.
 pub struct DatabasePoolConfig {
     pub max_connections: u32,
     pub min_connections: u32,
     pub acquire_timeout: std::time::Duration,
     pub idle_timeout: std::time::Duration,
+    /// Connections reserved for background sweeps. Sized against the number of
+    /// background loops the server spawns (currently ~10), each of which runs
+    /// its queries sequentially; the one exception is the reporting repair
+    /// path, which holds an advisory-lock connection while acquiring a second.
+    /// Brief queuing among sweeps is fine — that contention is bounded and
+    /// self-inflicted, which is exactly what sharing with the request path was
+    /// not. `0` puts background work back on the request pool — the
+    /// pre-EVE-1081 behavior, kept as a config-only rollback.
+    pub background_max_connections: u32,
+    /// Acquire timeout for the background pool. Deliberately far longer than
+    /// the request timeout: a sweep can afford to wait.
+    pub background_acquire_timeout: std::time::Duration,
 }
 
 impl Default for DatabasePoolConfig {
@@ -71,6 +90,8 @@ impl Default for DatabasePoolConfig {
             min_connections: 5,
             acquire_timeout: std::time::Duration::from_secs(5),
             idle_timeout: std::time::Duration::from_secs(300),
+            background_max_connections: 8,
+            background_acquire_timeout: std::time::Duration::from_secs(30),
         }
     }
 }
@@ -87,6 +108,24 @@ impl DatabasePoolConfig {
                 defaults.acquire_timeout,
             ),
             idle_timeout: env_duration_secs("DATABASE_IDLE_TIMEOUT_SECS", defaults.idle_timeout),
+            background_max_connections: env_or(
+                "DATABASE_BACKGROUND_POOL_MAX",
+                defaults.background_max_connections,
+            ),
+            background_acquire_timeout: env_duration_secs(
+                "DATABASE_BACKGROUND_ACQUIRE_TIMEOUT_SECS",
+                defaults.background_acquire_timeout,
+            ),
+        }
+    }
+
+    /// Connections this process opens to PostgreSQL across both pools.
+    pub fn total_max_connections(&self) -> u32 {
+        if self.background_max_connections == 0 {
+            self.max_connections
+        } else {
+            self.max_connections
+                .saturating_add(self.background_max_connections)
         }
     }
 }
@@ -159,6 +198,10 @@ fn build_search_sql(
 #[derive(Clone)]
 pub struct Database {
     pool: PgPool,
+    /// Connections reserved for background sweeps (EVE-1081). Separate from
+    /// `pool` so a request burst cannot starve them; equal to `pool` when the
+    /// database was built without a background pool (tests, embedded uses).
+    background_pool: PgPool,
     /// Optional S3-compatible blob backend. When set, file/image content bytes
     /// are offloaded to the object store and these tables hold only metadata +
     /// a pointer (knowledge/runtime-resources/object-storage.md). `None` keeps bytes inline in
@@ -169,6 +212,7 @@ pub struct Database {
 impl Database {
     pub fn new(pool: PgPool) -> Self {
         Self {
+            background_pool: pool.clone(),
             pool,
             blob_store: None,
         }
@@ -188,12 +232,30 @@ impl Database {
         self.blob_store.as_ref()
     }
 
-    /// Create database connection pool from URL with configurable pool settings.
+    /// Create database connection pools from URL, configured from the environment.
     ///
     /// Multi-instance sizing: set `DATABASE_POOL_MAX = pg_max_connections / N - margin`
-    /// where N = number of control-plane instances.
+    /// where N = number of control-plane instances. The background pool adds
+    /// `DATABASE_BACKGROUND_POOL_MAX` on top of that per instance.
     pub async fn from_url(database_url: &str) -> Result<Self> {
-        let config = DatabasePoolConfig::from_env();
+        Self::connect_with_config(database_url, DatabasePoolConfig::from_env()).await
+    }
+
+    /// Create database connection pools from an explicit configuration.
+    ///
+    /// Builds two pools over the same database (EVE-1081). Production showed
+    /// four independent background loops — the durable scheduler, the observer
+    /// scoring worker and the sweeps around them — reporting
+    /// `pool timed out while waiting for an open connection` within two seconds
+    /// of each other, sharing a trace with user-facing 500s. They were all
+    /// waiting on the one process-wide pool, so whatever saturated it failed
+    /// every consumer at the same instant. A separate small pool means a
+    /// request burst can no longer take the sweeps down with it, and the
+    /// sweeps can no longer consume the connections requests need.
+    pub async fn connect_with_config(
+        database_url: &str,
+        config: DatabasePoolConfig,
+    ) -> Result<Self> {
         let pool = PgPoolOptions::new()
             .max_connections(config.max_connections)
             .min_connections(config.min_connections)
@@ -201,11 +263,27 @@ impl Database {
             .idle_timeout(config.idle_timeout)
             .connect(database_url)
             .await?;
+
+        // Lazy: the background pool must not add a second round of connects to
+        // startup, and its first sweep tick is seconds away regardless.
+        let background_pool = if config.background_max_connections == 0 {
+            pool.clone()
+        } else {
+            PgPoolOptions::new()
+                .max_connections(config.background_max_connections)
+                .min_connections(1)
+                .acquire_timeout(config.background_acquire_timeout)
+                .idle_timeout(config.idle_timeout)
+                .connect_lazy(database_url)?
+        };
+
         tracing::info!(
             max_connections = config.max_connections,
             min_connections = config.min_connections,
             acquire_timeout_secs = config.acquire_timeout.as_secs(),
             idle_timeout_secs = config.idle_timeout.as_secs(),
+            background_max_connections = config.background_max_connections,
+            background_acquire_timeout_secs = config.background_acquire_timeout.as_secs(),
             "Database connection pool initialized"
         );
 
@@ -216,7 +294,9 @@ impl Database {
             .unwrap_or(1)
             .max(1);
         if instances > 1 {
-            let estimated_total = config.max_connections.saturating_mul(instances);
+            // Both pools count against the server's connection budget.
+            let per_instance = config.total_max_connections();
+            let estimated_total = per_instance.saturating_mul(instances);
             // PostgreSQL default max_connections is 100; warn if we'd exceed 80% of it
             let pg_max: u32 = std::env::var("PG_MAX_CONNECTIONS")
                 .ok()
@@ -225,15 +305,19 @@ impl Database {
             if estimated_total > pg_max * 80 / 100 {
                 tracing::warn!(
                     pool_max = config.max_connections,
+                    background_pool_max = config.background_max_connections,
+                    per_instance,
                     instances,
                     estimated_total,
                     pg_max,
                     "Pool size × instances ({estimated_total}) exceeds 80% of PG_MAX_CONNECTIONS ({pg_max}). \
-                     Reduce DATABASE_POOL_MAX or increase PostgreSQL max_connections."
+                     Reduce DATABASE_POOL_MAX / DATABASE_BACKGROUND_POOL_MAX or increase PostgreSQL max_connections."
                 );
             } else {
                 tracing::info!(
                     pool_max = config.max_connections,
+                    background_pool_max = config.background_max_connections,
+                    per_instance,
                     instances,
                     estimated_total,
                     pg_max,
@@ -244,11 +328,32 @@ impl Database {
 
         Ok(Self {
             pool,
+            background_pool,
             blob_store: None,
         })
     }
 
+    /// The request pool: short acquire timeout, sized for HTTP handlers.
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    /// The background pool: small and patient, for sweeps and workers that no
+    /// caller is waiting on.
+    pub fn background_pool(&self) -> &PgPool {
+        &self.background_pool
+    }
+
+    /// A view of this database whose queries run on the background pool.
+    ///
+    /// Every repository method takes `&self.pool`, so handing a background loop
+    /// this value routes its whole call graph off the request pool without
+    /// touching a single query.
+    pub fn for_background(&self) -> Self {
+        Self {
+            pool: self.background_pool.clone(),
+            background_pool: self.background_pool.clone(),
+            blob_store: self.blob_store.clone(),
+        }
     }
 }
