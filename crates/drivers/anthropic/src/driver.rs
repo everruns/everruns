@@ -17,7 +17,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use everruns_provider::credential_schema::CredentialFormSchema;
@@ -37,6 +37,7 @@ use everruns_provider::llm_retry::{
     retry_request, send_error_message,
 };
 use everruns_provider::model::ReasoningEffort;
+use everruns_provider::ProviderOpaqueContent;
 use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_provider::stream_reconnect::connect_sse_with_reconnect;
 use everruns_provider::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
@@ -59,6 +60,36 @@ pub fn provider(
             "x-api-key",
             api_key,
         ))
+}
+
+fn append_raw_block_field(
+    blocks: &Mutex<BTreeMap<u32, Value>>,
+    index: u32,
+    field: &str,
+    fragment: &str,
+) {
+    let mut blocks = blocks.lock().unwrap();
+    let Some(Value::Object(block)) = blocks.get_mut(&index) else {
+        return;
+    };
+    let value = block
+        .entry(field.to_string())
+        .or_insert_with(|| Value::String(String::new()));
+    if let Value::String(value) = value {
+        value.push_str(fragment);
+    }
+}
+
+fn set_raw_block_field(
+    blocks: &Mutex<BTreeMap<u32, Value>>,
+    index: u32,
+    field: &str,
+    value: Value,
+) {
+    let mut blocks = blocks.lock().unwrap();
+    if let Some(Value::Object(block)) = blocks.get_mut(&index) {
+        block.insert(field.to_string(), value);
+    }
 }
 
 /// Message-level prompt-cache breakpoints per request. Anthropic allows four
@@ -443,6 +474,30 @@ impl AnthropicChatDriver {
         }
     }
 
+    fn preserved_content(content: &MessageContent) -> Option<Vec<AnthropicContentBlock>> {
+        let MessageContent::Parts(parts) = content else {
+            return None;
+        };
+        parts.iter().find_map(|part| {
+            let LlmContentPart::ProviderOpaque(opaque) = part else {
+                return None;
+            };
+            if opaque.provider != "anthropic" {
+                return None;
+            }
+            match serde_json::from_value(opaque.content.clone()) {
+                Ok(content) => Some(content),
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        "AnthropicDriver: ignoring invalid preserved assistant content"
+                    );
+                    None
+                }
+            }
+        })
+    }
+
     fn system_prompt_for_request(
         system_prompt: Option<String>,
         prompt_cache_enabled: bool,
@@ -536,10 +591,19 @@ impl AnthropicChatDriver {
                                 content,
                                 is_error: None,
                             }],
+                            preserved: false,
                         });
                     }
                 }
                 MessageRole::Assistant => {
+                    if let Some(content) = Self::preserved_content(&msg.content) {
+                        converted.push(AnthropicMessage {
+                            role: Self::convert_role(&msg.role).to_string(),
+                            content,
+                            preserved: true,
+                        });
+                        continue;
+                    }
                     let mut content = Vec::new();
 
                     tracing::debug!(
@@ -596,16 +660,17 @@ impl AnthropicChatDriver {
                             });
                         }
                     }
-
                     converted.push(AnthropicMessage {
                         role: Self::convert_role(&msg.role).to_string(),
                         content,
+                        preserved: false,
                     });
                 }
                 _ => {
                     converted.push(AnthropicMessage {
                         role: Self::convert_role(&msg.role).to_string(),
                         content: Self::convert_content(&msg.content),
+                        preserved: false,
                     });
                 }
             }
@@ -925,6 +990,8 @@ impl ChatDriver for AnthropicChatDriver {
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
         let current_thinking = Arc::new(Mutex::new(Option::<OpenThinkingBlock>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
+        let response_content = Arc::new(Mutex::new(BTreeMap::<u32, Value>::new()));
+        let input_json = Arc::new(Mutex::new(BTreeMap::<u32, String>::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
         let response_id = Arc::new(Mutex::new(Option::<String>::None));
         let response_model = Arc::new(Mutex::new(Option::<String>::None));
@@ -945,6 +1012,8 @@ impl ChatDriver for AnthropicChatDriver {
             let current_tool_call = Arc::clone(&current_tool_call);
             let current_thinking = Arc::clone(&current_thinking);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
+            let response_content = Arc::clone(&response_content);
+            let input_json = Arc::clone(&input_json);
             let finish_reason = Arc::clone(&finish_reason);
             let response_id = Arc::clone(&response_id);
             let response_model = Arc::clone(&response_model);
@@ -995,7 +1064,16 @@ impl ChatDriver for AnthropicChatDriver {
                                 if let Ok(data) =
                                     serde_json::from_str::<AnthropicContentBlockStart>(&event.data)
                                 {
-                                    match data.content_block {
+                                    response_content
+                                        .lock()
+                                        .unwrap()
+                                        .insert(data.index, data.content_block.clone());
+                                    let Ok(content_block) =
+                                        serde_json::from_value(data.content_block)
+                                    else {
+                                        return Ok(LlmStreamEvent::TextDelta(String::new()));
+                                    };
+                                    match content_block {
                                         AnthropicContentBlockDelta::ToolUse { id, name } => {
                                             let mut current = current_tool_call.lock().unwrap();
                                             *current = Some(ToolCall {
@@ -1021,7 +1099,8 @@ impl ChatDriver for AnthropicChatDriver {
                                                     ..Default::default()
                                                 });
                                         }
-                                        AnthropicContentBlockDelta::Text { .. } => {}
+                                        AnthropicContentBlockDelta::Text { .. }
+                                        | AnthropicContentBlockDelta::Unknown => {}
                                     }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
@@ -1033,6 +1112,12 @@ impl ChatDriver for AnthropicChatDriver {
                                 {
                                     match data.delta {
                                         AnthropicDelta::TextDelta { text } => {
+                                            append_raw_block_field(
+                                                &response_content,
+                                                data.index,
+                                                "text",
+                                                &text,
+                                            );
                                             // EVE-636: do not count deltas as tokens here —
                                             // deltas != tokens, and this took a mutex on every
                                             // token. Authoritative `output_tokens` is set from
@@ -1040,6 +1125,12 @@ impl ChatDriver for AnthropicChatDriver {
                                             return Ok(LlmStreamEvent::TextDelta(text));
                                         }
                                         AnthropicDelta::InputJsonDelta { partial_json } => {
+                                            input_json
+                                                .lock()
+                                                .unwrap()
+                                                .entry(data.index)
+                                                .or_default()
+                                                .push_str(&partial_json);
                                             // EVE-636: accumulate tool-input JSON in place via
                                             // push_str (amortized O(total)) instead of
                                             // re-copying + re-boxing into a Value per delta
@@ -1051,6 +1142,12 @@ impl ChatDriver for AnthropicChatDriver {
                                             return Ok(LlmStreamEvent::TextDelta(String::new()));
                                         }
                                         AnthropicDelta::ThinkingDelta { thinking } => {
+                                            append_raw_block_field(
+                                                &response_content,
+                                                data.index,
+                                                "thinking",
+                                                &thinking,
+                                            );
                                             let mut open = current_thinking.lock().unwrap();
                                             open.get_or_insert_with(OpenThinkingBlock::default)
                                                 .text
@@ -1061,6 +1158,12 @@ impl ChatDriver for AnthropicChatDriver {
                                             });
                                         }
                                         AnthropicDelta::SignatureDelta { signature } => {
+                                            set_raw_block_field(
+                                                &response_content,
+                                                data.index,
+                                                "signature",
+                                                Value::String(signature.clone()),
+                                            );
                                             // Signs the block currently open, and
                                             // only that block.
                                             tracing::debug!(
@@ -1093,15 +1196,42 @@ impl ChatDriver for AnthropicChatDriver {
                                     }
                                 }
 
-                                // Some responses carry the completed block
-                                // inline; prefer its signature when present,
-                                // otherwise the one accumulated from
-                                // signature_delta.
-                                let completed = serde_json::from_str::<AnthropicContentBlockStop>(
+                                let stop = serde_json::from_str::<AnthropicContentBlockStop>(
                                     &event.data,
                                 )
-                                .ok()
-                                .and_then(|data| data.content_block);
+                                .ok();
+                                let completed = stop.as_ref().and_then(|data| {
+                                    let index = data.index;
+                                    if let Some(partial_json) =
+                                        input_json.lock().unwrap().remove(&index)
+                                    {
+                                        match serde_json::from_str(&partial_json) {
+                                            Ok(input) => set_raw_block_field(
+                                                &response_content,
+                                                index,
+                                                "input",
+                                                input,
+                                            ),
+                                            Err(error) => tracing::warn!(
+                                                %error,
+                                                index,
+                                                "AnthropicDriver: invalid streamed tool input"
+                                            ),
+                                        }
+                                    }
+                                    if let Some(content_block) = &data.content_block {
+                                        response_content
+                                            .lock()
+                                            .unwrap()
+                                            .insert(index, content_block.clone());
+                                    }
+                                    response_content
+                                        .lock()
+                                        .unwrap()
+                                        .get(&index)
+                                        .cloned()
+                                        .and_then(|value| serde_json::from_value(value).ok())
+                                });
 
                                 let mut open = current_thinking.lock().unwrap();
                                 if let Some(mut block) = open.take() {
@@ -1210,6 +1340,19 @@ impl ChatDriver for AnthropicChatDriver {
                                         .lock()
                                         .unwrap()
                                         .clone();
+                                    let content = response_content
+                                        .lock()
+                                        .unwrap()
+                                        .values()
+                                        .cloned()
+                                        .collect::<Vec<_>>();
+                                    if !content.is_empty() {
+                                        metadata.provider_opaque_content =
+                                            Some(ProviderOpaqueContent::new(
+                                                "anthropic",
+                                                Value::Array(content),
+                                            ));
+                                    }
                                     metadata
                                 })))
                             }
@@ -1695,6 +1838,8 @@ fn adaptive_effort_level(effort: ReasoningEffort) -> Option<&'static str> {
 struct AnthropicMessage {
     role: String,
     content: Vec<AnthropicContentBlock>,
+    #[serde(skip)]
+    preserved: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1724,6 +1869,21 @@ enum AnthropicContentBlock {
         id: String,
         name: String,
         input: Value,
+    },
+    #[serde(rename = "server_tool_use")]
+    ServerToolUse {
+        id: String,
+        name: String,
+        input: Value,
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
+    },
+    #[serde(rename = "tool_search_tool_result")]
+    ToolSearchToolResult {
+        tool_use_id: String,
+        content: Value,
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
     },
     #[serde(rename = "tool_result")]
     ToolResult {
@@ -1852,15 +2012,17 @@ struct AnthropicUsage {
 
 #[derive(Debug, Deserialize)]
 struct AnthropicContentBlockStart {
-    content_block: AnthropicContentBlockDelta,
+    index: u32,
+    content_block: Value,
 }
 
 /// Completed content block from content_block_stop event
 /// Includes the cryptographic signature for thinking blocks
 #[derive(Debug, Deserialize)]
 struct AnthropicContentBlockStop {
+    index: u32,
     #[serde(default)]
-    content_block: Option<AnthropicCompletedContentBlock>,
+    content_block: Option<Value>,
 }
 
 /// Completed content block variants (from content_block_stop)
@@ -1930,10 +2092,13 @@ enum AnthropicContentBlockDelta {
     /// and carries no readable text, but must still be replayed verbatim.
     #[serde(rename = "redacted_thinking")]
     RedactedThinking { data: String },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Deserialize)]
 struct AnthropicContentBlockDeltaEvent {
+    index: u32,
     delta: AnthropicDelta,
 }
 
