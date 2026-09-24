@@ -1,0 +1,26 @@
+# Procedural macros for the experimental `serve` agent framework.
+#
+# Decision: a proc-macro crate cannot export ordinary items, so the attributes
+# live here and `serve` re-exports them. Every expansion references runtime
+# items through `::serve::__private::…`, so an application depends on `serve`
+# alone. Experimental (Alpha): not published, no compatibility promise.
+
+[package]
+name = "serve-macros"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Attribute macros for serve (experimental): #[agent], #[tool], #[channel], #[schedule], #[connection], #[eval]"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn = { workspace = true, features = ["full"] }
+
+[lints]
+workspace = true

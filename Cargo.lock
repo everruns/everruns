@@ -7596,6 +7596,73 @@ dependencies = [
 ]
 
 [[package]]
+name = "serve"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "clap",
+ "cron",
+ "everruns",
+ "futures",
+ "hex",
+ "hmac",
+ "inventory",
+ "reqwest 0.13.5",
+ "rusqlite",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serve-macros",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "serve-build"
+version = "0.0.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
+name = "serve-example-hello"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serve",
+ "serve-build",
+ "tokio",
+]
+
+[[package]]
+name = "serve-example-revenue-analyst"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serve",
+ "serve-build",
+ "tokio",
+]
+
+[[package]]
+name = "serve-macros"
+version = "0.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
+]
+
+[[package]]
 name = "sha1"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

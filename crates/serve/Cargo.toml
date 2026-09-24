@@ -1,0 +1,52 @@
+# serve: an experimental agent framework on top of `everruns`.
+#
+# Decisions:
+# - Topcoat's application shape (`serve::start(App::builder().discover().build())`,
+#   attribute macros, one `&Cx` context) over eve's hosting model (file layout
+#   as convention, a build-time manifest as the host contract, one /v1 wire
+#   API in every deployment).
+# - Registration is link-time (`inventory`), because Rust cannot scan the
+#   filesystem at runtime; `serve-build` embeds `agent/**` at build time.
+# - Built on the `everruns` facade only (Agent, Engine, Session, event stream,
+#   `local` SQLite persistence). No new runtime.
+# - Experimental (Alpha): `publish = false`, no compatibility promise, not
+#   covered by the everruns stability policy.
+
+[package]
+name = "serve"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Experimental agent framework over everruns: attribute macros, a build-time manifest, and a /v1 wire API"
+readme = "README.md"
+
+[dependencies]
+everruns = { workspace = true, features = ["local", "openai", "openrouter", "mcp", "bashkit"] }
+serve-macros = { path = "../serve-macros" }
+anyhow.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+clap.workspace = true
+cron = "0.17"
+futures.workspace = true
+hex.workspace = true
+hmac.workspace = true
+inventory.workspace = true
+reqwest.workspace = true
+rusqlite = { version = "0.39", features = ["bundled"] }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["full"] }
+toml = "1"
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,22 @@
+# Build-script helper for the experimental `serve` agent framework.
+#
+# Decision: kept separate from `serve` so an application's build.rs compiles
+# this dependency-free crate instead of a second copy of the whole runtime.
+# Experimental (Alpha): not published, no compatibility promise.
+
+[package]
+name = "serve-build"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "build.rs helper for serve (experimental): embeds agent/**/*.md and serve.toml"
+
+[dependencies]
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

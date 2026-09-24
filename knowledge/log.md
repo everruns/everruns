@@ -1,5 +1,16 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-24
+
+* **An experimental app framework, serve, pairs Topcoat's API shape with eve's
+  hosting model on the existing runtime.** Attribute macros register agents,
+  tools, channels, schedules, connections and evals at link time. The built
+  binary emits a manifest that is the whole contract with a host. One `/v1`
+  wire API resumes by event-log cursor instead of a continuation token. Because
+  the binary is the behavior, a restart no longer needs the application to
+  reattach agents by hand. It is a proof of concept, unpublished and outside the
+  stability policy. Recorded as [serve](framework/serve.md).
+
 ## 2026-09-19
 
 * **A live PoC settled how far Slack one-click install can go, and disproved two
