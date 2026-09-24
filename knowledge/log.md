@@ -1,5 +1,20 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-24
+
+* **Framework observability has a design: listeners on the Engine, OTel and
+  Braintrust as opt-in values.** The `everruns` crate could only be observed by
+  pulling `Session::events()` per session, and the existing OTel and Braintrust
+  exporters were wired only by the server. The proposal registers push listeners
+  once on `Engine::builder()`, so new, resumed and spawned sessions are all
+  covered; app listeners see the reviewed `SessionEvent` while the built-in
+  exporters get the lossless core event internally. Each listener drains its own
+  bounded queue in commit order, so an observer can drop events but never slow a
+  turn, and `Engine::shutdown` flushes what short-lived programs would otherwise
+  lose. The framework never installs global tracing state. Tracked as EVE-1100
+  and EVE-1101. See [Framework Event Listeners and
+  Observability](framework/observability.md).
+
 ## 2026-09-19
 
 * **A live PoC settled how far Slack one-click install can go, and disproved two
