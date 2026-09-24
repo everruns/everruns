@@ -453,6 +453,7 @@ mod tests {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         };
 
         // The workspace owner, then a second session attached to that same workspace.

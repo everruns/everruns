@@ -143,6 +143,7 @@ pub(crate) async fn setup_test_session(
         network_access: None,
         parent_session_id: None,
         budget_root_session_id: None,
+        project_id: None,
     };
     let session = db.create_session(row).await.unwrap();
     session.id

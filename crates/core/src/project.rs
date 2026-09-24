@@ -1,9 +1,9 @@
-// Project types for the project layer (nested inside an organization).
-// See specs/multitenancy.md (Projects) and the "Project structure" design (F).
-//
-// A Project is the day-to-day work scope users switch between; an Organization
-// is the billing/team wrapper. Project-scoped resources belong to exactly one
-// project. Every org has exactly one `default` project.
+//! Project types for the project layer (nested inside an organization).
+//! See `knowledge/security/multitenancy.md` (Projects).
+//!
+//! A Project is the day-to-day work scope users switch between; an Organization
+//! is the billing/team wrapper. A project groups agents and what they own.
+//! Every org has exactly one `default` project.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,9 @@ pub struct Project {
     pub description: Option<String>,
     /// Whether this is the org's default project.
     pub is_default: bool,
+    /// When the project was created.
     pub created_at: DateTime<Utc>,
+    /// When the project was last renamed or edited.
     pub updated_at: DateTime<Utc>,
 }
 

@@ -124,7 +124,7 @@ async fn second_project(db: &InMemoryDatabase) -> i64 {
     .project_id
 }
 
-/// Sessions take their project from what they run (migration 144's
+/// Sessions take their project from what they run (migration 145's
 /// `sessions_assign_project`): the agent's, else the parent session's, else
 /// the org default. Listing filters by it.
 #[tokio::test]
@@ -174,24 +174,16 @@ async fn test_sessions_follow_agent_project() {
     assert_eq!(list(None).await.len(), 3, "None is org-wide");
 }
 
-/// A session can move only to a project of its own org.
+/// An explicit project wins over derivation, but only a project of the
+/// session's own org (the Postgres composite foreign key).
 #[tokio::test]
-async fn test_assign_session_project_stays_in_org() {
+async fn test_explicit_session_project_stays_in_org() {
     let db = InMemoryDatabase::new();
     let proj_c = second_project(&db).await;
-    let session = db.create_session(test_session_input(None)).await.unwrap();
-
-    assert!(
-        db.assign_session_project(DEFAULT_ORG_ID, session.id, proj_c)
-            .await
-            .unwrap()
-    );
-    let moved = db
-        .get_session(DEFAULT_ORG_ID, session.id)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(moved.project_id, proj_c);
+    let mut input = test_session_input(None);
+    input.project_id = Some(proj_c);
+    let session = db.create_session(input).await.unwrap();
+    assert_eq!(session.project_id, proj_c);
 
     let other_org_project = db
         .create_project(CreateProjectRow {
@@ -204,10 +196,10 @@ async fn test_assign_session_project_stays_in_org() {
         .await
         .unwrap()
         .project_id;
+    let mut input = test_session_input(None);
+    input.project_id = Some(other_org_project);
     assert!(
-        db.assign_session_project(DEFAULT_ORG_ID, session.id, other_org_project)
-            .await
-            .is_err(),
+        db.create_session(input).await.is_err(),
         "another org's project is rejected"
     );
 }

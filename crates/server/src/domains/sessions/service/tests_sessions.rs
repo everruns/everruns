@@ -436,6 +436,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();

@@ -349,6 +349,7 @@ mod tests {
             parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
+            project_id: None,
         }
     }
 

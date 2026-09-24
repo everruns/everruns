@@ -97,6 +97,7 @@ async fn create_session_with_owner_tags_and_endpoint(
         blueprint_config: None,
         parent_session_id: None,
         budget_root_session_id: None,
+        project_id: None,
     })
     .await
     .unwrap()
@@ -137,6 +138,7 @@ async fn create_child_session(
         blueprint_config: None,
         parent_session_id: Some(parent.id),
         budget_root_session_id: None,
+        project_id: None,
     })
     .await
     .unwrap()
@@ -173,6 +175,7 @@ async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) 
         blueprint_config: None,
         parent_session_id: None,
         budget_root_session_id: Some(origin.id),
+        project_id: None,
     };
     db.create_session(input).await.unwrap()
 }

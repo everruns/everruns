@@ -542,6 +542,7 @@ mod tests {
                 parent_session_id: None,
                 budget_root_session_id: None,
                 workspace_id: None,
+                project_id: None,
             })
             .await
             .expect("create session");
@@ -702,6 +703,7 @@ mod tests {
                 parent_session_id: None,
                 budget_root_session_id: None,
                 workspace_id: None,
+                project_id: None,
             })
             .await
             .expect("create Platform Chat session");

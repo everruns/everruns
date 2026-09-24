@@ -48,6 +48,7 @@ pub(super) fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow 
         blueprint_config: None,
         parent_session_id: None,
         budget_root_session_id: None,
+        project_id: None,
     }
 }
 
@@ -214,6 +215,7 @@ async fn test_create_and_list_sessions() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -269,6 +271,7 @@ async fn test_set_session_fork_lineage_roundtrip() {
         blueprint_config: None,
         parent_session_id: None,
         budget_root_session_id: None,
+        project_id: None,
     };
 
     let parent = db.create_session(new_session()).await.unwrap();
@@ -676,6 +679,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -788,6 +792,7 @@ async fn test_session_updated_at() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -882,6 +887,7 @@ async fn test_events_sequence() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -977,6 +983,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -1062,6 +1069,7 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -1169,6 +1177,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -1322,6 +1331,7 @@ async fn test_unpin_session_is_scoped_by_org() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -1411,6 +1421,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -2135,6 +2146,7 @@ async fn test_list_events_empty_session_with_limit() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -2212,6 +2224,7 @@ async fn test_sessions_pagination() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -2363,6 +2376,7 @@ async fn test_sessions_pagination_ordering() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -3152,6 +3166,7 @@ async fn test_search_sessions_by_title() {
         blueprint_config: None,
         parent_session_id: None,
         budget_root_session_id: None,
+        project_id: None,
     })
     .await
     .unwrap();
@@ -3186,6 +3201,7 @@ async fn test_search_sessions_by_title() {
         blueprint_config: None,
         parent_session_id: None,
         budget_root_session_id: None,
+        project_id: None,
     })
     .await
     .unwrap();
@@ -3243,6 +3259,7 @@ async fn test_search_sessions_with_agent_filter() {
         blueprint_config: None,
         parent_session_id: None,
         budget_root_session_id: None,
+        project_id: None,
     })
     .await
     .unwrap();
@@ -3277,6 +3294,7 @@ async fn test_search_sessions_with_agent_filter() {
         blueprint_config: None,
         parent_session_id: None,
         budget_root_session_id: None,
+        project_id: None,
     })
     .await
     .unwrap();
@@ -3530,6 +3548,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -3728,6 +3747,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -3762,6 +3782,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -3796,6 +3817,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -3896,6 +3918,7 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -3954,6 +3977,7 @@ async fn test_session_system_prompt_defaults_to_none() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();

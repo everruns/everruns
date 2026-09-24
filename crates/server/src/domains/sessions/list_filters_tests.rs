@@ -92,6 +92,7 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
             parent_session_id: None,
             budget_root_session_id: None,
             workspace_id: None,
+            project_id: None,
         })
         .await
         .expect("create session");
@@ -432,6 +433,7 @@ async fn facets_never_count_across_organizations() {
         parent_session_id: None,
         budget_root_session_id: None,
         workspace_id: None,
+        project_id: None,
     })
     .await
     .expect("create foreign session");

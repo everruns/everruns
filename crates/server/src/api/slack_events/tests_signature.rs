@@ -883,6 +883,7 @@ mod pane_rename_tests {
                 network_access: None,
                 parent_session_id: None,
                 budget_root_session_id: None,
+                project_id: None,
             })
             .await
             .expect("create pane session");

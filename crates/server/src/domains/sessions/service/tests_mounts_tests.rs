@@ -190,6 +190,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
             network_access: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();
@@ -528,6 +529,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
             network_access: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();

@@ -651,6 +651,7 @@ mod tests {
             parent_session_id: None,
             budget_root_session_id: None,
             workspace_id,
+            project_id: None,
         }
     }
 

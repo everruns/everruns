@@ -457,22 +457,15 @@ impl SessionService {
             parent_session_id: req.parent_session_id,
             budget_root_session_id: req.budget_root_session_id,
             workspace_id,
+            // Storage places a session in its agent's (or parent's) project.
+            // With neither, it belongs to the project the caller works in;
+            // internal callers fall through to the org default.
+            project_id: (agent_id.is_none()
+                && req.parent_session_id.is_none()
+                && !caller.is_internal)
+                .then_some(caller.project_id),
         };
-        let mut row = self.db.create_session(input).await?;
-        // Storage places a session in its agent's (or parent's) project. With
-        // neither, it lands in the org default, so move it to the project the
-        // caller is working in.
-        if agent_id.is_none()
-            && row.parent_session_id.is_none()
-            && !caller.is_internal
-            && row.project_id != caller.project_id
-            && self
-                .db
-                .assign_session_project(org_id, row.id, caller.project_id)
-                .await?
-        {
-            row.project_id = caller.project_id;
-        }
+        let row = self.db.create_session(input).await?;
         let row = if requested_goal.is_some() {
             self.db
                 .update_session(
@@ -661,6 +654,7 @@ impl SessionService {
             blueprint_config,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         };
         let mut row = self.db.create_session(input).await?;
         if requested_goal.is_some() {

@@ -1136,6 +1136,13 @@ everruns_core::progress_reporting::report_progress_tool_definition	function
 everruns_core::progress_reporting::session_uses_report_progress	function
 everruns_core::progress_reporting::sync_channel_reply_mode_tags	function
 everruns_core::progress_reporting::sync_slack_reply_mode_tags	function
+everruns_core::project	module
+everruns_core::project::DEFAULT_PROJECT_ID	constant
+everruns_core::project::DEFAULT_PROJECT_PUBLIC_ID	constant
+everruns_core::project::Project	struct
+everruns_core::project::ProjectSummary	struct
+everruns_core::project::generate_project_public_id	function
+everruns_core::project::validate_project_public_id	function
 everruns_core::provider_resolution	module
 everruns_core::provider_resolution::ProviderStore	trait
 everruns_core::resource_names	module

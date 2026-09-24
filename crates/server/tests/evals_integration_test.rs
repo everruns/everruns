@@ -599,6 +599,7 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
             parent_session_id: None,
             budget_root_session_id: None,
             workspace_id: None,
+            project_id: None,
         })
         .await
         .expect("create session");
@@ -1027,6 +1028,7 @@ async fn seed_run_with_tool_iterations(
             parent_session_id: None,
             budget_root_session_id: None,
             workspace_id: None,
+            project_id: None,
         })
         .await
         .expect("create session");
@@ -1385,6 +1387,7 @@ async fn seed_session_with_raw_events(
             parent_session_id: None,
             budget_root_session_id: None,
             workspace_id: None,
+            project_id: None,
         })
         .await
         .expect("create session");

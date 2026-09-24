@@ -528,7 +528,7 @@ impl InMemoryDatabase {
         let existing_key = agents
             .iter()
             .find(|(_, a)| {
-                // Names are unique per project (migration 144).
+                // Names are unique per project (migration 145).
                 a.org_id == org_id
                     && a.project_id == input.project_id
                     && a.name == input.name

@@ -3477,6 +3477,7 @@ mod tests {
                 blueprint_config: None,
                 parent_session_id: None,
                 budget_root_session_id: None,
+                project_id: None,
             })
             .await
             .expect("create pinned session");
@@ -3756,6 +3757,7 @@ mod tests {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("seed session")
@@ -4616,6 +4618,7 @@ mod tests {
                 network_access: None,
                 parent_session_id: None,
                 budget_root_session_id: None,
+                project_id: None,
             })
             .await
             .expect("create session");

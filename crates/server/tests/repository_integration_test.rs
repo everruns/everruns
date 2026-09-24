@@ -617,6 +617,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -785,6 +786,7 @@ async fn test_detached_budget_root_override_canonicalizes_postgres_chain() {
         blueprint_config: None,
         parent_session_id: None,
         budget_root_session_id: None,
+        project_id: None,
     };
     let root = backend.create_session(base.clone()).await.expect("root");
     let mut detached_input = base.clone();
@@ -925,6 +927,7 @@ async fn test_session_crud() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1183,6 +1186,7 @@ async fn test_event_crud() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1290,6 +1294,7 @@ async fn test_event_exclude_types() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1405,6 +1410,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1514,6 +1520,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1639,6 +1646,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1873,6 +1881,7 @@ async fn test_event_filter_types() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -2191,6 +2200,7 @@ async fn test_session_file_crud() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -2846,6 +2856,7 @@ async fn test_session_usage_tracking() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -2962,6 +2973,7 @@ async fn test_session_previews() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -3596,6 +3608,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create test session");
@@ -3991,6 +4004,7 @@ async fn list_org_session_tasks_pg() {
                     blueprint_config: None,
                     parent_session_id: None,
                     budget_root_session_id: None,
+                    project_id: None,
                 })
                 .await
                 .expect("create session")
@@ -4228,6 +4242,7 @@ async fn delete_session_purges_events_and_detaches_usage_records() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -4354,6 +4369,7 @@ async fn append_only_guards_still_reject_ordinary_mutations() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -4543,6 +4559,7 @@ async fn seed_overdue_schedules(
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("Failed to create test session");

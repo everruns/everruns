@@ -63,6 +63,7 @@ async fn platform_command_surface_uses_session_owner_and_org() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("create session");
@@ -121,6 +122,7 @@ async fn platform_command_surface_uses_session_owner_and_org() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("create session without platform");
@@ -182,6 +184,7 @@ async fn platform_command_surface_uses_session_owner_and_org() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .expect("create session with platform via dependency");

@@ -54,7 +54,7 @@ impl InMemoryDatabase {
             .map(|p| p.org_id))
     }
 
-    /// Give a new org its default project. Mirrors migration 144's
+    /// Give a new org its default project. Mirrors migration 145's
     /// `organizations_create_default_project` trigger, so every org has one
     /// whatever path created it.
     pub(super) async fn ensure_org_default_project(&self, org_id: i64) -> Result<()> {

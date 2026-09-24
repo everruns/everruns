@@ -125,7 +125,7 @@ CREATE INDEX idx_sessions_org_project ON sessions(org_id, project_id);
 -- A session's project follows what it runs: its agent's project, else its
 -- parent session's (subagents), else the org default. Every session insert
 -- path gets this without threading a project through each caller; the create
--- API reassigns an agentless session to the caller's active project.
+-- API names the caller's active project for an agentless session.
 CREATE FUNCTION sessions_assign_project() RETURNS trigger AS $$
 BEGIN
     IF NEW.project_id IS NULL THEN
@@ -142,6 +142,14 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER sessions_assign_project_before_insert BEFORE INSERT ON sessions
     FOR EACH ROW EXECUTE FUNCTION sessions_assign_project();
+
+-- Each project has its own Platform Chat, so migration 144's one-starter
+-- guarantee holds per owner per project rather than per org. Existing starters
+-- all sit in their org's default project, so the re-key cannot conflict.
+DROP INDEX idx_sessions_platform_chat_starter_owner;
+CREATE UNIQUE INDEX idx_sessions_platform_chat_starter_owner
+    ON sessions (org_id, project_id, owner_principal_id)
+    WHERE tags @> ARRAY['platform-chat-starter']::text[];
 
 COMMENT ON TABLE projects IS
     'Grouping of agents inside an organization. Agents and sessions store project_id; everything they own inherits it.';

@@ -652,6 +652,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
             blueprint_config: None,
             parent_session_id: None,
             budget_root_session_id: None,
+            project_id: None,
         })
         .await
         .unwrap();

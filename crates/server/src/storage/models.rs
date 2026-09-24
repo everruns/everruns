@@ -887,7 +887,7 @@ pub struct CreateHarnessCapabilityRow {
 pub struct SessionRow {
     pub id: SessionId,
     pub org_id: i64,
-    /// Project this session runs in (its agent's project; see migration 144's
+    /// Project this session runs in (its agent's project; see migration 145's
     /// `sessions_assign_project` trigger for the derivation order).
     pub project_id: i64,
     /// Workspace this session is attached to (owns the virtual filesystem).
@@ -1174,6 +1174,9 @@ pub struct CreateSessionRow {
     /// equals the new session id (the equality invariant). When `Some`, the
     /// session attaches to that workspace and no new workspace is created.
     pub workspace_id: Option<Uuid>,
+    /// Explicit project. `None` lets storage derive it: the agent's project,
+    /// else the parent session's, else the org default.
+    pub project_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, FromRow)]
