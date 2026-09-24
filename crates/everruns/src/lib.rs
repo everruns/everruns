@@ -46,6 +46,9 @@ extern crate self as everruns;
 // --- Value-first agent description and execution -------------------------
 mod agent;
 mod agent_state;
+/// Stability: alpha — may change without a major bump; see [`stability`].
+#[cfg(feature = "builtins")]
+pub mod approval;
 /// Stability: stable — no breaking change without a major bump; see [`stability`].
 #[cfg(feature = "builtins")]
 pub mod ask_user;
@@ -157,7 +160,7 @@ pub use session::{
     TurnHandle,
 };
 pub use session_environment::SessionEnvironmentError;
-pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
+pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolCallContext, ToolResponse};
 
 #[cfg(feature = "local")]
 pub mod local;
@@ -331,10 +334,10 @@ pub mod prelude {
         IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model, PluginError, ResumeError,
         RunError, RunOptions, SendDisposition, SentMessage, Session, SessionContext,
         SessionEnvironmentError, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
-        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle,
-        TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff,
-        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
-        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+        ToolCallContext, ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn,
+        TurnHandle, TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId,
+        WorkspaceDiff, WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId,
+        WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{

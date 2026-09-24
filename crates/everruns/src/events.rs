@@ -26,6 +26,7 @@
 //! post-commit durable events plus live-only ephemeral events. Sink absence,
 //! lag, or failure cannot create, roll back, or replace conversation history.
 
+use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
 
 use everruns_core::events::{
@@ -344,7 +345,7 @@ impl SessionEvent {
     /// Known event types map to typed [`SessionEventKind`] variants; every other
     /// type is carried through the [`Other`](SessionEventKind::Other) fallback,
     /// so no event is ever dropped.
-    fn from_core_event(event: &Event) -> Self {
+    pub(crate) fn from_core_event(event: &Event) -> Self {
         let mut raw = serde_json::to_value(event).expect("canonical events are JSON serializable");
         let mut data = serde_json::to_value(&event.data)
             .expect("canonical event payloads are JSON serializable");
@@ -670,6 +671,12 @@ impl SessionEvent {
 /// blocking the runner or silently losing events.
 pub struct EventStream {
     rx: broadcast::Receiver<SessionEvent>,
+    /// Durable events read from the log, delivered before any live event.
+    backlog: VecDeque<SessionEvent>,
+    /// Highest durable sequence already delivered from `backlog` (or skipped
+    /// by the caller). Live durable events at or below it are duplicates of
+    /// the replay and are dropped; sequence-less ephemeral events pass.
+    replayed_through: Option<i32>,
 }
 
 /// Why an [`EventStream`] could not deliver the next event losslessly.
@@ -700,7 +707,37 @@ impl std::error::Error for EventStreamError {}
 
 impl EventStream {
     fn new(rx: broadcast::Receiver<SessionEvent>) -> Self {
-        Self { rx }
+        Self {
+            rx,
+            backlog: VecDeque::new(),
+            replayed_through: None,
+        }
+    }
+
+    /// Put `backlog` ahead of the live feed and suppress live duplicates of
+    /// every durable sequence up to the later of `after` and the backlog's
+    /// last sequence.
+    ///
+    /// The receiver must already be subscribed when the backlog is read, so an
+    /// event committed between the read and this call arrives live and is
+    /// either delivered once from the backlog or once from the live feed.
+    pub(crate) fn with_replay(mut self, after: i32, backlog: Vec<SessionEvent>) -> Self {
+        let last = backlog
+            .iter()
+            .filter_map(SessionEvent::sequence)
+            .max()
+            .unwrap_or(after)
+            .max(after);
+        self.replayed_through = Some(last);
+        self.backlog = backlog.into();
+        self
+    }
+
+    fn is_replayed(&self, event: &SessionEvent) -> bool {
+        matches!(
+            (event.sequence(), self.replayed_through),
+            (Some(sequence), Some(through)) if sequence <= through
+        )
     }
 
     /// Await the next event.
@@ -709,12 +746,18 @@ impl EventStream {
     /// arrive. Returns [`EventStreamError::Lagged`] if the consumer fell behind
     /// and events were evicted from the bounded buffer; no loss is hidden.
     pub async fn recv(&mut self) -> Result<Option<SessionEvent>, EventStreamError> {
-        match self.rx.recv().await {
-            Ok(event) => Ok(Some(event)),
-            Err(broadcast::error::RecvError::Lagged(missed)) => {
-                Err(EventStreamError::Lagged { missed })
+        if let Some(event) = self.backlog.pop_front() {
+            return Ok(Some(event));
+        }
+        loop {
+            match self.rx.recv().await {
+                Ok(event) if self.is_replayed(&event) => continue,
+                Ok(event) => return Ok(Some(event)),
+                Err(broadcast::error::RecvError::Lagged(missed)) => {
+                    return Err(EventStreamError::Lagged { missed });
+                }
+                Err(broadcast::error::RecvError::Closed) => return Ok(None),
             }
-            Err(broadcast::error::RecvError::Closed) => Ok(None),
         }
     }
 
@@ -724,13 +767,19 @@ impl EventStream {
     /// has ended). Returns [`EventStreamError::Lagged`] rather than hiding a
     /// gap.
     pub fn try_recv(&mut self) -> Result<Option<SessionEvent>, EventStreamError> {
-        match self.rx.try_recv() {
-            Ok(event) => Ok(Some(event)),
-            Err(broadcast::error::TryRecvError::Lagged(missed)) => {
-                Err(EventStreamError::Lagged { missed })
+        if let Some(event) = self.backlog.pop_front() {
+            return Ok(Some(event));
+        }
+        loop {
+            match self.rx.try_recv() {
+                Ok(event) if self.is_replayed(&event) => continue,
+                Ok(event) => return Ok(Some(event)),
+                Err(broadcast::error::TryRecvError::Lagged(missed)) => {
+                    return Err(EventStreamError::Lagged { missed });
+                }
+                Err(broadcast::error::TryRecvError::Empty)
+                | Err(broadcast::error::TryRecvError::Closed) => return Ok(None),
             }
-            Err(broadcast::error::TryRecvError::Empty)
-            | Err(broadcast::error::TryRecvError::Closed) => Ok(None),
         }
     }
 }

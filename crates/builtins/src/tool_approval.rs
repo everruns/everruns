@@ -158,28 +158,53 @@ fn requires_approval(mode: ApprovalMode, risk: ToolRisk) -> bool {
     }
 }
 
+/// A host-owned rule that decides which tool calls need approval.
+///
+/// Returns `true` when `tool_call` must be approved before it runs. It sees
+/// the call's arguments, so a host can gate on what a call does rather than
+/// only on which tool it is. It runs on the turn's task and must not block.
+pub type ToolApprovalPolicy = Arc<dyn Fn(&ToolCall, &ToolDefinition) -> bool + Send + Sync>;
+
 /// Blocks risky tools behind an interactive host approval.
 ///
 /// Constructed by hosts that can service a prompt; holds the hook so a single
-/// cache of "always" answers is shared across the session's turns.
+/// cache of "always" answers is shared across the session's turns. Clones
+/// share the approver, policy, and that cache.
+#[derive(Clone)]
 pub struct ToolApprovalCapability {
     approver: Arc<dyn ToolApprover>,
+    policy: Option<ToolApprovalPolicy>,
     remembered: Arc<Mutex<HashMap<(SessionId, String), bool>>>,
 }
 
 impl ToolApprovalCapability {
     /// Build the gate over a host approver.
+    ///
+    /// Which calls are gated follows the configured [`ApprovalMode`] and each
+    /// tool's declared hints.
     pub fn new(approver: Arc<dyn ToolApprover>) -> Self {
         Self {
             approver,
+            policy: None,
             remembered: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Replace hint-based classification with a host policy.
+    ///
+    /// With a policy the gate asks the approver exactly when `policy` returns
+    /// `true`; the configured [`ApprovalMode`] and the tool's hints no longer
+    /// decide. "Always" answers are still remembered per session and tool.
+    pub fn with_policy(mut self, policy: ToolApprovalPolicy) -> Self {
+        self.policy = Some(policy);
+        self
     }
 
     fn hook(&self, mode: ApprovalMode) -> Arc<dyn PreToolUseHook> {
         Arc::new(ToolApprovalHook {
             approver: self.approver.clone(),
             mode,
+            policy: self.policy.clone(),
             remembered: self.remembered.clone(),
         })
     }
@@ -262,6 +287,7 @@ impl Capability for ToolApprovalCapability {
 struct ToolApprovalHook {
     approver: Arc<dyn ToolApprover>,
     mode: ApprovalMode,
+    policy: Option<ToolApprovalPolicy>,
     /// "Allow always" / "reject always" answers, keyed by (session, tool name).
     /// `true` = remembered allow, `false` = remembered reject.
     remembered: Arc<Mutex<HashMap<(SessionId, String), bool>>>,
@@ -285,7 +311,11 @@ impl PreToolUseHook for ToolApprovalHook {
         tool_def: &ToolDefinition,
         context: &ToolContext,
     ) -> PreToolUseDecision {
-        if !requires_approval(self.mode, classify(tool_def)) {
+        let gated = match &self.policy {
+            Some(policy) => policy(&tool_call, tool_def),
+            None => requires_approval(self.mode, classify(tool_def)),
+        };
+        if !gated {
             return PreToolUseDecision::Continue(tool_call);
         }
 
@@ -615,5 +645,51 @@ mod tests {
             PreToolUseDecision::Block { reason, .. } => assert_eq!(reason, "turn cancelled"),
             other => panic!("expected a block, got {other:?}"),
         }
+    }
+    #[tokio::test]
+    async fn a_policy_decides_instead_of_hints_and_mode() {
+        // The policy gates only calls whose arguments say "drop", even on a
+        // tool that declares itself read-only and with the mode off.
+        let approver = ScriptedApprover::new(ApprovalDecision::Reject);
+        let policy: ToolApprovalPolicy = Arc::new(|call: &ToolCall, _def: &ToolDefinition| {
+            call.arguments["sql"]
+                .as_str()
+                .is_some_and(|sql| sql.contains("drop"))
+        });
+        let capability = ToolApprovalCapability::new(approver.clone()).with_policy(policy);
+        let hook = capability.hook(ApprovalMode::Off);
+        let context = ToolContext::new(SessionId::new_random());
+        let readonly = tool_with(ToolHints {
+            readonly: Some(true),
+            ..Default::default()
+        });
+        let mut risky = call();
+        risky.arguments = json!({ "sql": "drop table users" });
+        let mut safe = call();
+        safe.arguments = json!({ "sql": "select 1" });
+
+        let decision = hook.before_exec(safe, &readonly, &context).await;
+        assert!(matches!(decision, PreToolUseDecision::Continue(_)));
+        assert_eq!(approver.asked.load(Ordering::SeqCst), 0);
+
+        match hook.before_exec(risky, &readonly, &context).await {
+            PreToolUseDecision::Block { reason, .. } => assert_eq!(reason, "rejected by user"),
+            other => panic!("expected a block, got {other:?}"),
+        }
+        assert_eq!(approver.asked.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_policy_that_declines_skips_even_destructive_tools() {
+        let approver = ScriptedApprover::new(ApprovalDecision::Reject);
+        let capability = ToolApprovalCapability::new(approver.clone())
+            .with_policy(Arc::new(|_: &ToolCall, _: &ToolDefinition| false));
+        let context = ToolContext::new(SessionId::new_random());
+        let decision = capability
+            .hook(ApprovalMode::Protective)
+            .before_exec(call(), &destructive_tool(), &context)
+            .await;
+        assert!(matches!(decision, PreToolUseDecision::Continue(_)));
+        assert_eq!(approver.asked.load(Ordering::SeqCst), 0);
     }
 }

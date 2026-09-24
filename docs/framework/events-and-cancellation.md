@@ -45,6 +45,33 @@ envelopes, live-delta memory bounds, explicit lag handling, ordering, and the du
 Use [Session History and Resume](/framework/session-history/) to rebuild a
 bounded persisted transcript after live lag or a process restart.
 
+## Replay durable events
+
+Durable events carry a dense per-session `sequence()` starting at 1.
+`session.events_after(n)` returns every durable event after sequence `n`, and
+it keeps working after `Engine::resume` in a new process when the backend
+persists events (for example `LocalConfig`). `session.events_from(n)` returns
+an `EventStream` that replays that backlog and then continues live. It never
+skips or repeats a durable event. Ephemeral deltas have no sequence and pass
+through live. A client that lagged or reconnected resumes from the last
+sequence it saw:
+
+```rust
+# use everruns::{Agent, Engine, Model};
+# #[tokio::main]
+# async fn main() -> Result<(), Box<dyn std::error::Error>> {
+# let agent = Agent::builder().instructions("Be concise.").model(Model::simulated("Hi.")).build()?;
+# let session = Engine::new().create(agent);
+# session.run("hello").await?;
+let last_seen = 2;
+let mut stream = session.events_from(last_seen).await?;
+while let Ok(Some(event)) = stream.try_recv() {
+    println!("{:?} {}", event.sequence(), event.event_type());
+}
+# Ok(())
+# }
+```
+
 ## Cancel a turn
 
 A message receipt exposes the specific accepting turn, so live applications

@@ -32,6 +32,8 @@ use crate::capability_config::{
 };
 use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_tool_schema};
 #[cfg(feature = "builtins")]
+mod approval;
+#[cfg(feature = "builtins")]
 mod ask_user;
 mod capability_implementation;
 use capability_implementation::CapabilityImplementation;
@@ -255,6 +257,15 @@ pub enum BuildError {
         /// The colliding workspace backend id.
         id: String,
     },
+    /// A tool requires approval but no approver was configured.
+    ///
+    /// Set one with `AgentBuilder::approver` (requires the default `builtins`
+    /// feature). The build fails rather than letting gated calls run
+    /// unapproved. Stability: alpha.
+    MissingApprover {
+        /// The first tool that needs approval.
+        tool: String,
+    },
 }
 
 impl fmt::Display for BuildError {
@@ -298,6 +309,10 @@ impl fmt::Display for BuildError {
             BuildError::DuplicateWorkspaceProvider { id } => {
                 write!(f, "duplicate workspace backend id {id:?}")
             }
+            BuildError::MissingApprover { tool } => write!(
+                f,
+                "tool {tool:?} needs approval but the agent has no approver"
+            ),
         }
     }
 }
@@ -740,6 +755,8 @@ pub struct AgentBuilder {
     plugin_warnings: Vec<String>,
     #[cfg(feature = "builtins")]
     ask_user: Option<everruns_builtins::AskUserCapability>,
+    #[cfg(feature = "builtins")]
+    approver: Option<Arc<dyn everruns_builtins::ToolApprover>>,
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
@@ -1070,6 +1087,9 @@ impl AgentBuilder {
     /// - [`BuildError::DuplicateCapability`] if two inputs resolve to the same
     ///   capability implementation, including aliases and reference/implementation
     ///   collisions.
+    /// - [`BuildError::MissingApprover`] if a function tool
+    ///   [needs approval](crate::FunctionTool::needs_approval) and no approver
+    ///   was set.
     pub fn build(self) -> Result<Agent, BuildError> {
         #[cfg(feature = "local")]
         if self.local.is_some() && self.backends.is_some() {
@@ -1261,6 +1281,44 @@ impl AgentBuilder {
                 canonical_id,
                 parts.reference.config_value().clone(),
             ));
+        }
+
+        // Approval-gated function tools share one host gate whose policy names
+        // exactly those tools. Fail closed: a gated tool without an approver
+        // is a build error, never a silently ungated call.
+        let approval_predicates = function_tools
+            .iter()
+            .filter_map(|tool| {
+                tool.approval()
+                    .map(|predicate| (tool.name().to_string(), predicate.clone()))
+            })
+            .collect::<Vec<_>>();
+        if let Some((first_gated, _)) = approval_predicates.first() {
+            #[cfg(feature = "builtins")]
+            {
+                let Some(approver) = self.approver.clone() else {
+                    return Err(BuildError::MissingApprover {
+                        tool: first_gated.clone(),
+                    });
+                };
+                let id = everruns_builtins::TOOL_APPROVAL_CAPABILITY_ID.to_string();
+                if capability_registry.get(&id).is_some()
+                    || activated_capabilities.activate(id.clone()).is_err()
+                {
+                    return Err(BuildError::DuplicateCapability { id });
+                }
+                capabilities.push(everruns_capability::CapabilityRef::new(id.as_str()));
+                capability_implementations.push(CapabilityImplementation::Approval(
+                    approval::approval_capability(
+                        approver,
+                        approval_predicates.into_iter().collect(),
+                    ),
+                ));
+            }
+            #[cfg(not(feature = "builtins"))]
+            return Err(BuildError::MissingApprover {
+                tool: first_gated.clone(),
+            });
         }
 
         for function_tool in function_tools {

@@ -13,6 +13,8 @@ use crate::tool_types::{
     ClientSideTool, DeferrablePolicy, HUMAN_INTENT_ARGUMENT, ToolCall, ToolDefinition, ToolHints,
 };
 use crate::tools::{Tool, ToolExecutionResult};
+use crate::typed_id::SessionId;
+use everruns_core::tool_context::ToolContext;
 
 pub const ASK_USER_CAPABILITY_ID: &str = "ask_user";
 // Defined in `everruns-provider` so the engine can recognise the call without
@@ -180,16 +182,95 @@ pub struct AskUserResult {
     pub answered_by: AskUserAnsweredBy,
     pub answers: Vec<AskUserAnswer>,
 }
+/// Where an [`AskUser`] batch comes from: the session and tool call asking.
+///
+/// A host that serves several sessions uses it to route the questions to the
+/// right person or connection. Values are opaque correlation strings; they
+/// carry no organization or principal identity.
+///
+/// Stability: alpha. `#[non_exhaustive]` so it can gain fields without a
+/// breaking change; read it through the accessors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct AskContext {
+    session_id: SessionId,
+    turn_id: Option<String>,
+    tool_call_id: String,
+}
+
+impl AskContext {
+    /// Describe the session and tool call asking.
+    ///
+    /// Hosts rarely construct this; the capability builds it for each call.
+    /// It is public so responders can be driven directly in tests.
+    pub fn new(session_id: SessionId, tool_call_id: impl Into<String>) -> Self {
+        Self {
+            session_id,
+            turn_id: None,
+            tool_call_id: tool_call_id.into(),
+        }
+    }
+
+    /// Attach the id of the turn that made the call.
+    pub fn with_turn_id(mut self, turn_id: impl Into<String>) -> Self {
+        self.turn_id = Some(turn_id.into());
+        self
+    }
+
+    /// The session asking.
+    pub fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+
+    /// The turn that made the call, when the runtime reported one.
+    pub fn turn_id(&self) -> Option<&str> {
+        self.turn_id.as_deref()
+    }
+
+    /// The `ask_user` tool call id, stable for the lifetime of the call.
+    pub fn tool_call_id(&self) -> &str {
+        &self.tool_call_id
+    }
+
+    fn from_tool_context(context: &ToolContext) -> Self {
+        let mut ask = Self::new(
+            context.session_id,
+            context.tool_call_id.clone().unwrap_or_default(),
+        );
+        ask.turn_id = context
+            .event_context
+            .as_ref()
+            .and_then(|event| event.turn_id)
+            .map(|turn_id| turn_id.to_string());
+        ask
+    }
+}
+
 /// A host that can answer structured questions while a tool call is in flight.
 #[async_trait]
 pub trait AskUser: Send + Sync {
     /// Ask the host to answer one normalized batch of questions.
     async fn ask(&self, questions: &[AskUserQuestion]) -> AskUserResult;
+
+    /// Ask with the session and tool call that raised the questions.
+    ///
+    /// The capability always calls this method. The default ignores `context`
+    /// and delegates to [`ask`](Self::ask), so existing responders keep
+    /// working; a host that serves several sessions overrides it to route the
+    /// batch. Stability: alpha.
+    async fn ask_in(&self, context: &AskContext, questions: &[AskUserQuestion]) -> AskUserResult {
+        let _ = context;
+        self.ask(questions).await
+    }
 }
 #[async_trait]
 impl<T: AskUser + ?Sized> AskUser for Arc<T> {
     async fn ask(&self, questions: &[AskUserQuestion]) -> AskUserResult {
         self.as_ref().ask(questions).await
+    }
+
+    async fn ask_in(&self, context: &AskContext, questions: &[AskUserQuestion]) -> AskUserResult {
+        self.as_ref().ask_in(context, questions).await
     }
 }
 
@@ -592,6 +673,21 @@ impl Tool for AskUserTool {
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
+        self.run(arguments, None).await
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        self.run(arguments, Some(AskContext::from_tool_context(context)))
+            .await
+    }
+}
+
+impl AskUserTool {
+    async fn run(&self, arguments: Value, context: Option<AskContext>) -> ToolExecutionResult {
         let normalized = match normalize_ask_user_arguments(&arguments) {
             Ok(arguments) => arguments,
             Err(error) => return ToolExecutionResult::tool_error(error),
@@ -608,7 +704,11 @@ impl Tool for AskUserTool {
                 ));
             }
         };
-        match serde_json::to_value(self.responder.ask(&request.questions).await) {
+        let outcome = match &context {
+            Some(context) => self.responder.ask_in(context, &request.questions).await,
+            None => self.responder.ask(&request.questions).await,
+        };
+        match serde_json::to_value(outcome) {
             Ok(outcome) => ToolExecutionResult::success(outcome),
             Err(error) => ToolExecutionResult::internal_error_msg(format!(
                 "ask_user responder returned an invalid outcome: {error}"
@@ -1188,6 +1288,85 @@ mod tests {
                 },
             ]
         );
+    }
+
+    /// A responder that overrides `ask_in` learns which session and tool call
+    /// asked; one that does not keeps its `ask`-only behavior.
+    #[tokio::test]
+    async fn execute_with_context_routes_through_ask_in() {
+        use std::sync::Mutex;
+
+        #[derive(Default)]
+        struct Routing {
+            seen: Mutex<Option<AskContext>>,
+        }
+
+        #[async_trait]
+        impl AskUser for Routing {
+            async fn ask(&self, _questions: &[AskUserQuestion]) -> AskUserResult {
+                panic!("ask_in must be used when the call has a context");
+            }
+
+            async fn ask_in(
+                &self,
+                context: &AskContext,
+                questions: &[AskUserQuestion],
+            ) -> AskUserResult {
+                *self.seen.lock().unwrap() = Some(context.clone());
+                DefaultsResponder.ask(questions).await
+            }
+        }
+
+        let responder = Arc::new(Routing::default());
+        let capability = AskUserCapability::new(responder.clone());
+        let tools = capability.tools();
+        let [tool] = tools.as_slice() else {
+            panic!("in-process ask_user contributes one tool");
+        };
+        let session_id = SessionId::new();
+        let mut context = ToolContext::new(session_id);
+        context.tool_call_id = Some("call_ask".to_string());
+        let arguments = json!({
+            "questions": [{
+                "header": "Target",
+                "question": "Where should I deploy?",
+                "options": [option("Staging", true), option("Production", false)]
+            }]
+        });
+
+        let ToolExecutionResult::Success(_) = tool.execute_with_context(arguments, &context).await
+        else {
+            panic!("responder answers");
+        };
+        let seen = responder.seen.lock().unwrap().clone().expect("ask_in ran");
+        assert_eq!(seen.session_id(), session_id);
+        assert_eq!(seen.tool_call_id(), "call_ask");
+        assert_eq!(seen.turn_id(), None);
+
+        // Default `ask_in` delegates to `ask`, so the unattended responder
+        // still answers when the engine supplies a context.
+        let defaults = AskUserCapability::default();
+        let tools = defaults.tools();
+        let [tool] = tools.as_slice() else {
+            panic!("default ask_user strategy must contribute one tool");
+        };
+        let ToolExecutionResult::Success(result) = tool
+            .execute_with_context(
+                json!({
+                    "questions": [{
+                        "header": "Target",
+                        "question": "Where?",
+                        "options": [option("Staging", true), option("Production", false)]
+                    }]
+                }),
+                &context,
+            )
+            .await
+        else {
+            panic!("default responder answers");
+        };
+        let outcome: AskUserResult = serde_json::from_value(result).unwrap();
+        assert_eq!(outcome.answered_by, AskUserAnsweredBy::Unattended);
     }
 
     /// EVE-1058: a credential has no default, so nothing answers for the person.
