@@ -237,7 +237,8 @@ impl Engine {
     /// Stop listener intake, drain queued events, and flush each listener.
     ///
     /// Listener tasks that do not finish within `deadline` are cancelled and
-    /// reported through [`ObserverReport::timed_out`].
+    /// reported through [`ObserverReport::timed_out`]. Concurrent calls wait
+    /// for the same shutdown result; the first call supplies the shared deadline.
     pub async fn shutdown(&self, deadline: Duration) -> ObserverReport {
         self.inner.observers.shutdown(deadline).await
     }

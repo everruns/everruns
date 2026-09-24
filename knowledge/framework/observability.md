@@ -109,7 +109,8 @@ Why the Engine:
 ### 4. Lifecycle: explicit flush
 
 - `Engine::shutdown(&self, deadline) -> ObserverReport` stops intake,
-  drains the queues, then calls `flush()` on every listener.
+  drains the queues, then calls `flush()` on every listener. Concurrent callers
+  await that same operation and report; the first caller supplies its deadline.
 - `async fn flush(&self) {}` is a defaulted method on
   `everruns_core::EventListener`. EVE-1101 will make Braintrust signal its
   batch task and await the final POST. The OTel wrapper will implement it with
@@ -157,13 +158,16 @@ The framework never installs a global tracer or `tracing` subscriber on its own.
 
 - An app listener sees turn, tool, and output events for a session run on the
   offline simulator provider.
-- A resumed session keeps flowing to the same listener, with no replay.
+- A resumed session keeps flowing to the same listener, with no replay. A fresh
+  Engine can attach and resume the persisted session with the same behavior.
 - A listener that sleeps does not change turn latency. Overflow increments the
   drop count and the turn still succeeds.
 - A panicking listener does not affect the other listeners or the turn.
 - `shutdown` delivers everything queued, calls `flush`, and cancels an in-flight
-  callback when its deadline expires.
-- Child-session events reach the Engine listener but not the parent session stream.
+  callback when its deadline expires. Concurrent Engine clones receive the same
+  terminal report.
+- A child Session spawned during a parent tool call reaches the Engine listener
+  but not the parent session stream.
 - `--no-default-features` still builds.
 
 ## EVE-1101 tests

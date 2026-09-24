@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
 use crate::SessionEvent;
@@ -177,6 +177,41 @@ impl ListenerCounters {
     }
 }
 
+async fn finish_shutdown(
+    slots: Vec<Arc<ListenerSlot>>,
+    handles: Vec<(Arc<ListenerSlot>, JoinHandle<()>)>,
+    timeout: Duration,
+    completion: watch::Sender<Option<ObserverReport>>,
+) {
+    let deadline = tokio::time::Instant::now().checked_add(timeout);
+    let mut timed_out = false;
+    for (slot, mut handle) in handles {
+        let outcome = match deadline {
+            Some(deadline) => tokio::time::timeout_at(deadline, &mut handle).await,
+            None => Ok((&mut handle).await),
+        };
+        match outcome {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) if error.is_panic() => {
+                slot.counters.panics.fetch_add(1, Ordering::Relaxed);
+            }
+            Ok(Err(_)) => {}
+            Err(_) => {
+                timed_out = true;
+                handle.abort();
+                let _ = handle.await;
+            }
+        }
+    }
+    let report = ObserverReport {
+        stats: ObserverStats {
+            listeners: slots.iter().map(|slot| slot.stats()).collect(),
+        },
+        timed_out,
+    };
+    let _ = completion.send(Some(report));
+}
+
 struct WorkerState {
     receiver: Option<mpsc::Receiver<SessionEvent>>,
     handle: Option<JoinHandle<()>>,
@@ -342,6 +377,7 @@ async fn drain_listener(
 pub(crate) struct ObserverDispatcher {
     accepting: AtomicBool,
     slots: Vec<Arc<ListenerSlot>>,
+    shutdown: Mutex<Option<watch::Receiver<Option<ObserverReport>>>>,
 }
 
 impl ObserverDispatcher {
@@ -357,6 +393,7 @@ impl ObserverDispatcher {
                 .enumerate()
                 .map(|(index, listener)| ListenerSlot::new(index, listener, queue_capacity))
                 .collect(),
+            shutdown: Mutex::new(None),
         })
     }
 
@@ -378,34 +415,40 @@ impl ObserverDispatcher {
     }
 
     pub(crate) async fn shutdown(&self, timeout: Duration) -> ObserverReport {
-        self.accepting.store(false, Ordering::Release);
-        for slot in &self.slots {
-            slot.ensure_worker();
-            slot.close();
-        }
-
-        let deadline = tokio::time::Instant::now() + timeout;
-        let mut timed_out = false;
-        for slot in &self.slots {
-            let Some(mut handle) = slot.take_handle() else {
-                continue;
-            };
-            match tokio::time::timeout_at(deadline, &mut handle).await {
-                Ok(Ok(())) => {}
-                Ok(Err(error)) if error.is_panic() => {
-                    slot.counters.panics.fetch_add(1, Ordering::Relaxed);
+        let mut completion = {
+            let mut shutdown = self
+                .shutdown
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(completion) = shutdown.as_ref() {
+                completion.clone()
+            } else {
+                self.accepting.store(false, Ordering::Release);
+                for slot in &self.slots {
+                    slot.ensure_worker();
+                    slot.close();
                 }
-                Ok(Err(_)) => {}
-                Err(_) => {
-                    timed_out = true;
-                    handle.abort();
-                    let _ = handle.await;
-                }
+                let handles = self
+                    .slots
+                    .iter()
+                    .filter_map(|slot| slot.take_handle().map(|handle| (slot.clone(), handle)))
+                    .collect();
+                let slots = self.slots.clone();
+                let (sender, completion) = watch::channel(None);
+                tokio::spawn(finish_shutdown(slots, handles, timeout, sender));
+                *shutdown = Some(completion.clone());
+                completion
             }
-        }
-        ObserverReport {
-            stats: self.stats(),
-            timed_out,
+        };
+
+        loop {
+            if let Some(report) = completion.borrow().clone() {
+                return report;
+            }
+            completion
+                .changed()
+                .await
+                .expect("observer shutdown task retains its completion sender");
         }
     }
 }
@@ -429,7 +472,7 @@ mod tests {
     use async_trait::async_trait;
     use everruns_core::event_emitter::EventEmitter;
     use everruns_core::events::{EventContext, EventRequest, TurnStartedData};
-    use everruns_host::{HostEventEmitter, InMemoryEventLog};
+    use everruns_host::{HostBackends, HostEventEmitter, InMemoryEventLog};
     use everruns_provider::tool_types::ToolCall;
     use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
     use serde_json::json;
@@ -594,6 +637,61 @@ mod tests {
         assert_eq!(ids.len(), events.len(), "resume must not replay old events");
     }
 
+    #[tokio::test]
+    async fn fresh_engine_attach_and_resume_delivers_only_new_events() {
+        let backends = HostBackends::in_memory();
+        let build_agent = || {
+            Agent::builder()
+                .instructions("Reply deterministically.")
+                .model(Model::simulated("done"))
+                .backends(backends.clone())
+                .build()
+                .expect("valid agent")
+        };
+        let original = Engine::new();
+        let original_session = original.create(build_agent());
+        let session_id = original_session.session_id();
+        original_session
+            .run("before attach")
+            .await
+            .expect("original turn runs");
+        drop(original_session);
+        drop(original);
+
+        let recorder = Recorder::all();
+        let engine = Engine::builder().listener(recorder.clone()).build();
+        engine
+            .attach(session_id, build_agent())
+            .await
+            .expect("persisted session attaches");
+        engine
+            .resume(session_id)
+            .await
+            .expect("attached session resumes")
+            .run("after attach")
+            .await
+            .expect("resumed turn runs");
+        engine.shutdown(Duration::from_secs(5)).await;
+
+        let events = recorder
+            .events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type() == "turn.started")
+                .count(),
+            1,
+            "attaching and resuming must not replay the original turn"
+        );
+        assert!(
+            events
+                .iter()
+                .all(|event| event.session_id == session_id.to_string())
+        );
+    }
+
     struct SlowListener {
         blocked: AtomicBool,
         entered: Arc<Notify>,
@@ -643,6 +741,39 @@ mod tests {
         release.notify_waiters();
         let report = engine.shutdown(Duration::from_secs(5)).await;
         assert!(!report.timed_out);
+    }
+
+    #[tokio::test]
+    async fn concurrent_shutdown_callers_wait_for_the_same_result() {
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let engine = Engine::builder()
+            .listener(SlowListener {
+                blocked: AtomicBool::new(false),
+                entered: entered.clone(),
+                release: release.clone(),
+            })
+            .build();
+        let session = engine.create(simple_agent());
+        let run = tokio::spawn(async move { session.run("hello").await });
+        entered.notified().await;
+        run.await
+            .expect("turn task remains healthy")
+            .expect("turn runs");
+
+        let first_engine = engine.clone();
+        let first =
+            tokio::spawn(async move { first_engine.shutdown(Duration::from_secs(5)).await });
+        let second = tokio::spawn(async move { engine.shutdown(Duration::from_secs(5)).await });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!first.is_finished());
+        assert!(!second.is_finished());
+
+        release.notify_waiters();
+        let first_report = first.await.expect("first shutdown task remains healthy");
+        let second_report = second.await.expect("second shutdown task remains healthy");
+        assert_eq!(first_report, second_report);
+        assert!(first_report.stats.listeners[0].flushed);
     }
 
     struct PanickingListener;
@@ -801,43 +932,66 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn child_session_events_reach_engine_listener_not_parent_stream() {
+    async fn tool_spawned_session_reaches_engine_listener_not_parent_stream() {
         let recorder = Recorder::all();
-        let dispatcher =
-            ObserverDispatcher::new(vec![Arc::new(recorder.clone())], OBSERVER_QUEUE_CAPACITY);
-        let parent_session_id = SessionId::new();
-        let child_session_id = SessionId::new();
-        let bus = Arc::new(FacadeEventBus::new(parent_session_id, dispatcher.clone()));
-        let mut parent_stream = bus.subscribe();
-        let emitter = HostEventEmitter::new(Arc::new(InMemoryEventLog::new()), bus);
-        let turn_id = TurnId::new();
-
-        emitter
-            .emit(EventRequest::new(
-                child_session_id,
-                EventContext::turn(turn_id, MessageId::new()),
-                TurnStartedData {
-                    turn_id,
-                    input_message_id: MessageId::new(),
-                    input_content: None,
-                    agent_id: None,
-                    agent_name: None,
-                    agent_description: None,
-                },
+        let engine = Engine::builder().listener(recorder.clone()).build();
+        let spawned_ids = Arc::new(Mutex::new(Vec::new()));
+        let tool_engine = engine.clone();
+        let tool_spawned_ids = spawned_ids.clone();
+        let spawn = FunctionTool::new(
+            "spawn_child",
+            "Run a child session.",
+            json!({"type": "object", "properties": {}}),
+            move |_arguments: serde_json::Value| {
+                let engine = tool_engine.clone();
+                let spawned_ids = tool_spawned_ids.clone();
+                async move {
+                    let child = engine.create(simple_agent());
+                    let child_id = child.session_id();
+                    child
+                        .run("child turn")
+                        .await
+                        .map_err(|error| format!("child turn failed: {error:?}"))?;
+                    spawned_ids
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .push(child_id);
+                    Ok::<_, String>(json!({"session_id": child_id.to_string()}))
+                }
+            },
+        );
+        let parent = Agent::builder()
+            .instructions("Spawn one child.")
+            .model(Model::simulated_scripted(
+                "parent done",
+                vec![
+                    vec![ToolCall {
+                        id: "call_spawn_child".to_string(),
+                        name: "spawn_child".to_string(),
+                        arguments: json!({}),
+                    }],
+                    vec![],
+                ],
             ))
-            .await
-            .expect("child event emits");
+            .tool(spawn)
+            .build()
+            .expect("valid parent agent");
+        let parent_session = engine.create(parent);
+        let parent_id = parent_session.session_id();
+        let mut parent_stream = parent_session.events();
+        parent_session.run("spawn").await.expect("parent turn runs");
+        engine.shutdown(Duration::from_secs(5)).await;
 
-        dispatcher.shutdown(Duration::from_secs(5)).await;
-        assert_eq!(
-            recorder.events.lock().unwrap()[0].session_id,
-            child_session_id.to_string()
-        );
-        assert!(
-            parent_stream
-                .try_recv()
-                .expect("parent stream remains healthy")
-                .is_none()
-        );
+        let child_id = spawned_ids.lock().unwrap()[0];
+        let events = recorder.events.lock().unwrap();
+        assert!(events.iter().any(|event| {
+            event.session_id == child_id.to_string() && event.event_type() == "turn.started"
+        }));
+        while let Some(event) = parent_stream
+            .try_recv()
+            .expect("parent stream remains healthy")
+        {
+            assert_eq!(event.session_id, parent_id.to_string());
+        }
     }
 }
