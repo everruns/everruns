@@ -28,5 +28,6 @@
 * [Citations Specification](citations.md) - Claim-level source provenance as composable citation capabilities.
 * [Memory Specification](memory.md) - Org-scoped named Memories (mountable into Workspaces).
 * [Infinity Context](infinity-context.md) - Unlimited conversation length via context management.
+* [Anthropic Infinity Context Compaction](anthropic-infinity-context-compaction.md) - Append-only Anthropic message history through server-side threshold compaction.
 * [Compaction](compaction.md) - Context compaction capability.
 * [Client Hints](client-hints.md) - Generic client hints mechanism.

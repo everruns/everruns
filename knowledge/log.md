@@ -1,5 +1,19 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-24
+
+* **Anthropic Infinity Context now has an append-only design target instead of
+  a notice-only cache fix.** Stabilizing `[N earlier messages ...]` would still
+  move the recent window, so it cannot preserve the full prompt prefix. The
+  selected design keeps the prior wire-level `messages` array unchanged on
+  explicitly supported direct Anthropic models, uses threshold server-side
+  compaction to reduce the model-visible context, and uses automatic top-level
+  prompt caching so cache markers do not edit prior message blocks. Raw history
+  remains lossless and checkpoints store only an encrypted replay optimization;
+  unsupported or rewrite-unsafe configurations retain the legacy window.
+  Recorded in [Anthropic Infinity Context
+  Compaction](runtime-resources/anthropic-infinity-context-compaction.md).
+
 ## 2026-09-19
 
 * **A live PoC settled how far Slack one-click install can go, and disproved two
