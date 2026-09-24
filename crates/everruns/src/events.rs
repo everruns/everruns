@@ -818,18 +818,29 @@ pub(crate) struct FacadeEventBus {
     /// unobservable either way.
     sender: OnceLock<broadcast::Sender<SessionEvent>>,
     capacity: usize,
+    session_id: SessionId,
+    observers: std::sync::Arc<crate::observers::ObserverDispatcher>,
     active_turn: Mutex<Option<EventContext>>,
 }
 
 impl FacadeEventBus {
-    pub(crate) fn new() -> Self {
-        Self::with_capacity(EVENT_STREAM_CAPACITY)
+    pub(crate) fn new(
+        session_id: SessionId,
+        observers: std::sync::Arc<crate::observers::ObserverDispatcher>,
+    ) -> Self {
+        Self::with_capacity(session_id, observers, EVENT_STREAM_CAPACITY)
     }
 
-    fn with_capacity(capacity: usize) -> Self {
+    fn with_capacity(
+        session_id: SessionId,
+        observers: std::sync::Arc<crate::observers::ObserverDispatcher>,
+        capacity: usize,
+    ) -> Self {
         Self {
             sender: OnceLock::new(),
             capacity,
+            session_id,
+            observers,
             active_turn: Mutex::new(None),
         }
     }
@@ -883,28 +894,28 @@ impl FacadeEventBus {
     }
 
     fn observe(&self, event: &Event) -> Result<(), EventSinkError> {
-        match event.event_type.as_str() {
-            events::TURN_STARTED => {
-                *self.active_turn.lock().expect("active-turn lock poisoned") =
-                    Some(event.context.clone());
+        let projected = SessionEvent::from_core_event(event);
+        self.observers.dispatch(projected.clone());
+        if event.session_id == self.session_id {
+            match event.event_type.as_str() {
+                events::TURN_STARTED => {
+                    *self.active_turn.lock().expect("active-turn lock poisoned") =
+                        Some(event.context.clone());
+                }
+                events::TURN_COMPLETED
+                | events::TURN_FAILED
+                | events::TURN_CANCELLED
+                | events::TURN_SEALED => {
+                    self.active_turn
+                        .lock()
+                        .expect("active-turn lock poisoned")
+                        .take();
+                }
+                _ => {}
             }
-            events::TURN_COMPLETED
-            | events::TURN_FAILED
-            | events::TURN_CANCELLED
-            | events::TURN_SEALED => {
-                self.active_turn
-                    .lock()
-                    .expect("active-turn lock poisoned")
-                    .take();
+            if let Some(sender) = self.sender.get() {
+                let _ = sender.send(projected);
             }
-            _ => {}
-        }
-        // A broadcast sender with no current receiver is still open: callers
-        // can subscribe before the next turn. Observation is best-effort and
-        // absence is equivalent to the host's no-op sink, not a delivery
-        // failure worth counting on every canonical append.
-        if let Some(sender) = self.sender.get() {
-            let _ = sender.send(SessionEvent::from_core_event(event));
         }
         Ok(())
     }
@@ -931,10 +942,26 @@ mod tests {
     use serde_json::json;
 
     use super::{EventStreamError, FacadeEventBus, SessionEvent, SessionEventKind};
+    use crate::observers::{OBSERVER_QUEUE_CAPACITY, ObserverDispatcher};
     use crate::{Agent, InMemoryEngine, Model};
 
     fn host(bus: Arc<FacadeEventBus>) -> HostEventEmitter {
         HostEventEmitter::new(Arc::new(InMemoryEventLog::new()), bus)
+    }
+
+    fn bus(session_id: SessionId) -> Arc<FacadeEventBus> {
+        Arc::new(FacadeEventBus::new(
+            session_id,
+            ObserverDispatcher::new(Vec::new(), OBSERVER_QUEUE_CAPACITY),
+        ))
+    }
+
+    fn bus_with_capacity(session_id: SessionId, capacity: usize) -> Arc<FacadeEventBus> {
+        Arc::new(FacadeEventBus::with_capacity(
+            session_id,
+            ObserverDispatcher::new(Vec::new(), OBSERVER_QUEUE_CAPACITY),
+            capacity,
+        ))
     }
 
     fn turn_started(session_id: SessionId, turn_id: TurnId) -> everruns_core::EventRequest {
@@ -1019,7 +1046,7 @@ mod tests {
     async fn envelope_is_complete_while_data_stays_reviewed() {
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
-        let bus = Arc::new(FacadeEventBus::new());
+        let bus = bus(session_id);
         let emitter = host(bus.clone());
         let mut stream = bus.subscribe();
 
@@ -1066,7 +1093,7 @@ mod tests {
     #[tokio::test]
     async fn bounded_stream_reports_lag_instead_of_hiding_loss() {
         let session_id = SessionId::new();
-        let bus = Arc::new(FacadeEventBus::with_capacity(2));
+        let bus = bus_with_capacity(session_id, 2);
         let emitter = host(bus.clone());
         let mut stream = bus.subscribe();
 
@@ -1090,7 +1117,7 @@ mod tests {
         // pins the semantics that laziness relies on: events emitted before
         // anyone subscribed are not replayed, and later events still arrive.
         let session_id = SessionId::new();
-        let bus = Arc::new(FacadeEventBus::new());
+        let bus = bus(session_id);
         let emitter = host(bus.clone());
 
         emitter
@@ -1118,11 +1145,12 @@ mod tests {
 
     #[tokio::test]
     async fn no_subscriber_is_a_noop_not_a_closed_sink_failure() {
-        let bus = Arc::new(FacadeEventBus::new());
+        let session_id = SessionId::new();
+        let bus = bus(session_id);
         let emitter = host(bus);
 
         emitter
-            .emit(turn_started(SessionId::new(), TurnId::new()))
+            .emit(turn_started(session_id, TurnId::new()))
             .await
             .expect("observation absence cannot reverse the append");
 
@@ -1134,7 +1162,7 @@ mod tests {
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
         let message_id = MessageId::new();
-        let bus = Arc::new(FacadeEventBus::new());
+        let bus = bus(session_id);
         let emitter = host(bus.clone());
         let mut stream = bus.subscribe();
 
@@ -1189,7 +1217,7 @@ mod tests {
     async fn cancellation_uses_the_active_turn_and_canonical_sequence() {
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
-        let bus = Arc::new(FacadeEventBus::new());
+        let bus = bus(session_id);
         let emitter = host(bus.clone());
         let mut stream = bus.subscribe();
         emitter
@@ -1226,7 +1254,7 @@ mod tests {
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
         let message_id = MessageId::new();
-        let bus = Arc::new(FacadeEventBus::new());
+        let bus = bus(session_id);
         let emitter = host(bus.clone());
         let mut stream = bus.subscribe();
         emitter
@@ -1268,7 +1296,7 @@ mod tests {
     async fn tool_narration_is_preserved_for_renderers() {
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
-        let bus = Arc::new(FacadeEventBus::new());
+        let bus = bus(session_id);
         let emitter = host(bus.clone());
         let mut stream = bus.subscribe();
 
@@ -1302,7 +1330,7 @@ mod tests {
     async fn unpromoted_event_kind_is_identified_but_not_projected() {
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
-        let bus = Arc::new(FacadeEventBus::new());
+        let bus = bus(session_id);
         let emitter = host(bus.clone());
         let mut stream = bus.subscribe();
         let canonical = emitter

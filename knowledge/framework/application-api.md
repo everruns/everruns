@@ -40,6 +40,9 @@ The Framework owns value-first configuration for:
   credential-free model identity;
 - canonical, lossless session events and lifecycle hooks through curated
   application values rather than engine or worker phase records;
+- alpha Engine-level push listeners over the same curated session events, with
+  bounded non-blocking delivery, explicit drop statistics, and deadline-bounded
+  shutdown flushing;
 - high-level context-compaction and model-adaptive tool-search behavior without
   checkpoint-store or provider-specific plumbing;
 - high-level task, background-message, wake, and workspace-policy behavior
@@ -321,6 +324,9 @@ it from the driver descriptor they were built from.
 - The host log owns coherent append and bounded snapshot replay. In-memory
   durability is process-lifetime only; JSONL acknowledges only a flushed and
   synchronized canonical envelope. Any projection index is rebuildable.
+- Engine listeners observe new events only. Resume does not replay persisted
+  history. Listener backpressure, overflow, or failure cannot change turn
+  success, event persistence, or per-session event-stream isolation.
 - Promoting an application concern must not expose credentials, tenant records,
   backend stores, or host lifecycle entities.
 - Resume authority is engine-scoped. An in-memory engine must reject an id from
@@ -374,6 +380,7 @@ entrypoints.
 - `crates/everruns/src/capability_config.rs`
 - `crates/everruns/src/tool_search.rs`
 - `crates/everruns/src/hooks.rs`
+- `crates/everruns/src/observers.rs`
 - `crates/everruns/src/compaction.rs`
 - `crates/everruns/src/session.rs`
 - `crates/everruns/src/context.rs`
