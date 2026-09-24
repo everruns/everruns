@@ -22,7 +22,7 @@ everruns-core.workspace = true
 # schema is derived from `ScoutConfig` instead of hand-written JSON.
 everruns-capability = { workspace = true, features = ["definition"] }
 everruns-provider.workspace = true
-everruns-openrouter = { version = "0.30.0", path = "../../crates/drivers/openrouter" }
+everruns-openrouter = { version = "0.31.0", path = "../../crates/drivers/openrouter" }
 async-trait.workspace = true
 reqwest.workspace = true
 serde.workspace = true
