@@ -841,20 +841,24 @@ pub async fn grep_files(
 }
 
 /// POST /fs/_/search - Search files with context and paging
-#[utoipa::path(
-    post,
-    path = "/v1/sessions/{session_id}/fs/_/search",
-    params(
-        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
-    ),
-    request_body = SearchRequest,
-    responses(
-        (status = 200, description = "Search results with surrounding context", body = GrepSearchResult),
-        (status = 400, description = "Invalid session ID or regex pattern"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "filesystem"
-)]
+///
+/// Deliberately carries no utoipa path annotation. This whole
+/// `/v1/sessions/{session_id}/fs/*` family is delisted from the published spec
+/// (see the note in `openapi.rs`), so the annotation would describe an
+/// operation `ApiDoc` never registers — which
+/// `openapi_coverage_test::every_utoipa_handler_is_registered_in_apidoc`
+/// rejects. (The guard scans for that attribute as plain text, so naming it
+/// literally here would re-trip it on this very comment.) The sibling handlers
+/// here keep theirs only because
+/// `api::workspace_files` happens to expose functions of the same name, and
+/// the guard matches on the function name; `search_files` has no such twin.
+///
+/// The canonical home for this capability is the workspace surface. That is
+/// not a rename: `workspace_files::grep_files` pre-excludes `/memory/user`
+/// through `GrepInput::excluded_path_prefix` because it cannot establish
+/// session ownership, and `GrepOptions` carries no equivalent — so a workspace
+/// search would need that threaded through the service first, or its match
+/// counts would betray private files it correctly refuses to return.
 pub async fn search_files(
     org: ResolvedOrg,
     State(state): State<AppState>,
