@@ -1307,11 +1307,7 @@ impl ServerAppBuilder {
         // Bridge durable MetricsCollector gauges to Prometheus
         if prometheus_handle.is_some() {
             api::prometheus::spawn_gauge_bridge(durable_state.metrics_collector().clone());
-            if let (Some(request_pool), Some(background_pool)) =
-                (db.pool().cloned(), db.background_pool().cloned())
-            {
-                api::prometheus::spawn_pool_gauge_bridge(request_pool, background_pool);
-            }
+            api::prometheus::spawn_storage_pool_gauge_bridge(db.as_ref());
         }
         let scheduler_store = durable_store.clone();
         // The durable scheduler's own store runs on the background pool
