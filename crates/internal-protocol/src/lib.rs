@@ -2137,8 +2137,10 @@ mod tests {
     // EVE-652: a proto entity missing its required id used to build an empty-string
     // typed id and fail later as an opaque JsonError. It now fails with the precise
     // MissingField, instead of silently corrupting the id.
+    // EVE-652: a proto entity missing its required id fails with the precise
+    // MissingField("id") across every entity's proto->schema conversion.
     #[test]
-    fn test_proto_agent_missing_id_is_missing_field_error() {
+    fn test_proto_missing_id_is_missing_field_error() {
         let proto_agent = proto::Agent {
             id: None,
             ..Default::default()
@@ -2146,12 +2148,9 @@ mod tests {
         let err = proto_agent_to_schema(proto_agent).unwrap_err();
         assert!(
             matches!(err, ConversionError::MissingField("id")),
-            "expected MissingField(\"id\"), got {err:?}"
+            "agent: expected MissingField(\"id\"), got {err:?}"
         );
-    }
 
-    #[test]
-    fn test_proto_harness_missing_id_is_missing_field_error() {
         let proto_harness = proto::Harness {
             id: None,
             ..Default::default()
@@ -2159,7 +2158,17 @@ mod tests {
         let err = proto_harness_to_schema(proto_harness).unwrap_err();
         assert!(
             matches!(err, ConversionError::MissingField("id")),
-            "expected MissingField(\"id\"), got {err:?}"
+            "harness: expected MissingField(\"id\"), got {err:?}"
+        );
+
+        let proto_session = proto::Session {
+            id: None,
+            ..Default::default()
+        };
+        let err = proto_session_to_schema(proto_session).unwrap_err();
+        assert!(
+            matches!(err, ConversionError::MissingField("id")),
+            "session: expected MissingField(\"id\"), got {err:?}"
         );
     }
 
@@ -2213,19 +2222,6 @@ mod tests {
         assert_eq!(
             agent.capabilities[0].config_value().clone(),
             serde_json::json!({})
-        );
-    }
-
-    #[test]
-    fn test_proto_session_missing_id_is_missing_field_error() {
-        let proto_session = proto::Session {
-            id: None,
-            ..Default::default()
-        };
-        let err = proto_session_to_schema(proto_session).unwrap_err();
-        assert!(
-            matches!(err, ConversionError::MissingField("id")),
-            "expected MissingField(\"id\"), got {err:?}"
         );
     }
 

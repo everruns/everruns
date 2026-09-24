@@ -955,125 +955,45 @@ mod tests {
     // ---- Unauthenticated rejection tests (all endpoints) ----
 
     #[tokio::test]
-    async fn test_create_schedule_unauthenticated() {
-        assert_unauthenticated_rejected("POST", "/v1/durable/schedules").await;
-    }
-
-    #[tokio::test]
-    async fn test_list_schedules_unauthenticated() {
-        assert_unauthenticated_rejected("GET", "/v1/durable/schedules").await;
-    }
-
-    #[tokio::test]
-    async fn test_get_schedule_unauthenticated() {
+    async fn schedule_routes_reject_unauthenticated() {
         let id = Uuid::now_v7();
-        assert_unauthenticated_rejected("GET", &format!("/v1/durable/schedules/{id}")).await;
-    }
-
-    #[tokio::test]
-    async fn test_update_schedule_unauthenticated() {
-        let id = Uuid::now_v7();
-        assert_unauthenticated_rejected("PATCH", &format!("/v1/durable/schedules/{id}")).await;
-    }
-
-    #[tokio::test]
-    async fn test_delete_schedule_unauthenticated() {
-        let id = Uuid::now_v7();
-        assert_unauthenticated_rejected("DELETE", &format!("/v1/durable/schedules/{id}")).await;
-    }
-
-    #[tokio::test]
-    async fn test_pause_schedule_unauthenticated() {
-        let id = Uuid::now_v7();
-        assert_unauthenticated_rejected("POST", &format!("/v1/durable/schedules/{id}/pause")).await;
-    }
-
-    #[tokio::test]
-    async fn test_resume_schedule_unauthenticated() {
-        let id = Uuid::now_v7();
-        assert_unauthenticated_rejected("POST", &format!("/v1/durable/schedules/{id}/resume"))
-            .await;
-    }
-
-    #[tokio::test]
-    async fn test_trigger_schedule_unauthenticated() {
-        let id = Uuid::now_v7();
-        assert_unauthenticated_rejected("POST", &format!("/v1/durable/schedules/{id}/trigger"))
-            .await;
-    }
-
-    #[tokio::test]
-    async fn test_list_executions_unauthenticated() {
-        let id = Uuid::now_v7();
-        assert_unauthenticated_rejected("GET", &format!("/v1/durable/schedules/{id}/executions"))
-            .await;
-    }
-
-    #[tokio::test]
-    async fn test_get_execution_unauthenticated() {
-        let id = Uuid::now_v7();
-        assert_unauthenticated_rejected("GET", &format!("/v1/durable/executions/{id}")).await;
-    }
-
-    #[tokio::test]
-    async fn test_get_stats_unauthenticated() {
-        let id = Uuid::now_v7();
-        assert_unauthenticated_rejected("GET", &format!("/v1/durable/schedules/{id}/stats")).await;
+        let cases: [(&str, String); 11] = [
+            ("POST", "/v1/durable/schedules".to_string()),
+            ("GET", "/v1/durable/schedules".to_string()),
+            ("GET", format!("/v1/durable/schedules/{id}")),
+            ("PATCH", format!("/v1/durable/schedules/{id}")),
+            ("DELETE", format!("/v1/durable/schedules/{id}")),
+            ("POST", format!("/v1/durable/schedules/{id}/pause")),
+            ("POST", format!("/v1/durable/schedules/{id}/resume")),
+            ("POST", format!("/v1/durable/schedules/{id}/trigger")),
+            ("GET", format!("/v1/durable/schedules/{id}/executions")),
+            ("GET", format!("/v1/durable/executions/{id}")),
+            ("GET", format!("/v1/durable/schedules/{id}/stats")),
+        ];
+        for (method, path) in cases {
+            assert_unauthenticated_rejected(method, &path).await;
+        }
     }
 
     // ---- Authenticated access tests (no-auth mode passes auth layer) ----
 
     #[tokio::test]
-    async fn test_list_schedules_authenticated() {
-        assert_authenticated_passes("GET", "/v1/durable/schedules").await;
-    }
-
-    #[tokio::test]
-    async fn test_get_schedule_authenticated() {
+    async fn schedule_routes_pass_authenticated() {
         let id = Uuid::now_v7();
-        assert_authenticated_passes("GET", &format!("/v1/durable/schedules/{id}")).await;
-    }
-
-    #[tokio::test]
-    async fn test_delete_schedule_authenticated() {
-        let id = Uuid::now_v7();
-        assert_authenticated_passes("DELETE", &format!("/v1/durable/schedules/{id}")).await;
-    }
-
-    #[tokio::test]
-    async fn test_pause_schedule_authenticated() {
-        let id = Uuid::now_v7();
-        assert_authenticated_passes("POST", &format!("/v1/durable/schedules/{id}/pause")).await;
-    }
-
-    #[tokio::test]
-    async fn test_resume_schedule_authenticated() {
-        let id = Uuid::now_v7();
-        assert_authenticated_passes("POST", &format!("/v1/durable/schedules/{id}/resume")).await;
-    }
-
-    #[tokio::test]
-    async fn test_trigger_schedule_authenticated() {
-        let id = Uuid::now_v7();
-        assert_authenticated_passes("POST", &format!("/v1/durable/schedules/{id}/trigger")).await;
-    }
-
-    #[tokio::test]
-    async fn test_list_executions_authenticated() {
-        let id = Uuid::now_v7();
-        assert_authenticated_passes("GET", &format!("/v1/durable/schedules/{id}/executions")).await;
-    }
-
-    #[tokio::test]
-    async fn test_get_execution_authenticated() {
-        let id = Uuid::now_v7();
-        assert_authenticated_passes("GET", &format!("/v1/durable/executions/{id}")).await;
-    }
-
-    #[tokio::test]
-    async fn test_get_stats_authenticated() {
-        let id = Uuid::now_v7();
-        assert_authenticated_passes("GET", &format!("/v1/durable/schedules/{id}/stats")).await;
+        let cases: [(&str, String); 9] = [
+            ("GET", "/v1/durable/schedules".to_string()),
+            ("GET", format!("/v1/durable/schedules/{id}")),
+            ("DELETE", format!("/v1/durable/schedules/{id}")),
+            ("POST", format!("/v1/durable/schedules/{id}/pause")),
+            ("POST", format!("/v1/durable/schedules/{id}/resume")),
+            ("POST", format!("/v1/durable/schedules/{id}/trigger")),
+            ("GET", format!("/v1/durable/schedules/{id}/executions")),
+            ("GET", format!("/v1/durable/executions/{id}")),
+            ("GET", format!("/v1/durable/schedules/{id}/stats")),
+        ];
+        for (method, path) in cases {
+            assert_authenticated_passes(method, &path).await;
+        }
     }
 
     #[derive(Clone)]
@@ -1194,17 +1114,26 @@ mod tests {
     // ---- Existing unit tests ----
 
     #[test]
-    fn test_calculate_next_trigger_valid() {
-        // 7-field cron: every minute
-        let result = calculate_next_trigger("0 * * * * * *");
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_some());
-    }
-
-    #[test]
-    fn test_calculate_next_trigger_invalid() {
-        let result = calculate_next_trigger("invalid");
-        assert!(result.is_err());
+    fn test_calculate_next_trigger() {
+        // (cron expression, expect ok-with-value)
+        let cases = [
+            ("0 * * * * * *", true), // 7-field cron: every minute
+            ("invalid", false),
+        ];
+        for (cron, expect_ok) in cases {
+            let result = calculate_next_trigger(cron);
+            assert_eq!(
+                result.is_ok(),
+                expect_ok,
+                "calculate_next_trigger({cron:?}) ok-ness mismatch"
+            );
+            if expect_ok {
+                assert!(
+                    result.unwrap().is_some(),
+                    "calculate_next_trigger({cron:?}) expected Some"
+                );
+            }
+        }
     }
 
     #[test]
