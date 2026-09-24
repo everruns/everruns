@@ -910,38 +910,6 @@ fn build_paginated_url(api_base: &str, path_and_query: &str, new_offset: u64) ->
     }
 }
 
-/// Rewrite the `Content-Type` of error responses (4xx / 5xx) carrying a
-/// `application/json` body to `application/problem+json`, per RFC 9457.
-///
-/// Bodies are not touched; only the header is updated. Non-JSON error bodies
-/// (HTML, plain text, SSE) pass through unchanged.
-pub async fn problem_json_content_type(req: Request, next: Next) -> Response {
-    let response = next.run(req).await;
-    let status = response.status();
-    if !status.is_client_error() && !status.is_server_error() {
-        return response;
-    }
-    let is_json = response
-        .headers()
-        .get(header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| {
-            value
-                .split(';')
-                .next()
-                .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))
-        });
-    if !is_json {
-        return response;
-    }
-    let (mut parts, body) = response.into_parts();
-    parts.headers.insert(
-        header::CONTENT_TYPE,
-        axum::http::HeaderValue::from_static("application/problem+json"),
-    );
-    Response::from_parts(parts, body)
-}
-
 fn response_within_link_decoration_limit(response: &Response) -> bool {
     response
         .headers()

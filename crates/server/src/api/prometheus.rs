@@ -24,6 +24,7 @@ use axum::http::header;
 use axum::response::IntoResponse;
 use axum::{Router, extract::State, routing::get};
 use everruns_core::config::{env_bool, env_opt_string};
+use sqlx::PgPool;
 use tokio::task::JoinHandle;
 
 /// Configuration for the Prometheus metrics endpoint.
@@ -127,6 +128,14 @@ pub mod names {
     pub const WORKERS_ACTIVE: &str = "everruns_workers_active";
     pub const LOAD_RATIO: &str = "everruns_load_ratio";
     pub const DLQ_SIZE: &str = "everruns_dlq_size";
+    /// Current connections opened by an sqlx pool. Label: pool.
+    pub const DATABASE_POOL_SIZE: &str = "everruns_database_pool_size";
+    /// Configured connection ceiling for an sqlx pool. Label: pool.
+    pub const DATABASE_POOL_MAX_SIZE: &str = "everruns_database_pool_max_size";
+    /// Open connections currently idle in an sqlx pool. Label: pool.
+    pub const DATABASE_POOL_IDLE: &str = "everruns_database_pool_idle";
+    /// Open connections currently checked out from an sqlx pool. Label: pool.
+    pub const DATABASE_POOL_IN_USE: &str = "everruns_database_pool_in_use";
     // DB cumulative totals as gauges (not _total — these are global state, not
     // per-instance counters). These are monotonically increasing in normal
     // operation. Use delta() in PromQL for rate-like queries on gauges.
@@ -144,7 +153,7 @@ pub mod names {
     /// Counter for every domain Command invocation across HTTP, MCP and
     /// gRPC ExecuteCommand. Labels: name, category, status (ok |
     /// bad_request | unprocessable | forbidden | not_found | conflict |
-    /// internal).
+    /// rate_limited | unavailable | internal).
     pub const COMMANDS_TOTAL: &str = "everruns_commands_total";
 
     /// Orphaned blob objects deleted by the object-storage GC sweep (objects
@@ -209,6 +218,32 @@ pub fn spawn_gauge_bridge(collector: MetricsCollector) {
             metrics::gauge!(names::WORKFLOWS_STARTED).set(latest.workflows_started_total as f64);
         }
     });
+}
+
+/// Sample the process-local request and background sqlx pools every 10 seconds.
+pub fn spawn_pool_gauge_bridge(request_pool: PgPool, background_pool: PgPool) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+        tracing::info!("Prometheus database pool gauge bridge started (10s interval)");
+
+        loop {
+            interval.tick().await;
+            record_pool_gauges(&request_pool, "request");
+            record_pool_gauges(&background_pool, "background");
+        }
+    });
+}
+
+fn record_pool_gauges(pool: &PgPool, pool_name: &'static str) {
+    let size = pool.size();
+    let idle = u32::try_from(pool.num_idle()).unwrap_or(u32::MAX);
+    let in_use = size.saturating_sub(idle);
+
+    metrics::gauge!(names::DATABASE_POOL_SIZE, "pool" => pool_name).set(size as f64);
+    metrics::gauge!(names::DATABASE_POOL_MAX_SIZE, "pool" => pool_name)
+        .set(pool.options().get_max_connections() as f64);
+    metrics::gauge!(names::DATABASE_POOL_IDLE, "pool" => pool_name).set(idle as f64);
+    metrics::gauge!(names::DATABASE_POOL_IN_USE, "pool" => pool_name).set(in_use as f64);
 }
 
 // ============================================================================

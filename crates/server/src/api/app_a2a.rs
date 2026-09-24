@@ -1422,6 +1422,10 @@ fn command_error_response(
             kind: CommandErrorKind::Unprocessable(msg),
             ..
         } => ErrorResponse::new(msg).into_response(StatusCode::UNPROCESSABLE_ENTITY),
+        error @ crate::domains::common::CommandError {
+            kind: CommandErrorKind::Unavailable(_),
+            ..
+        } => error.into(),
         crate::domains::common::CommandError {
             kind: CommandErrorKind::Internal(error),
             ..
