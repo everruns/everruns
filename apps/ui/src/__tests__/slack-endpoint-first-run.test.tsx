@@ -107,7 +107,6 @@ async function renderEditEndpointPage(reason: string) {
     await Promise.all([params, searchParams]);
   });
 }
-
 describe("Slack endpoint first run", () => {
   beforeEach(() => {
     jest.clearAllMocks();
