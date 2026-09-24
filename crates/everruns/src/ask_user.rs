@@ -16,7 +16,7 @@ pub use AskUserAnswer as Answer;
 pub use AskUserAnsweredBy as AnsweredBy;
 /// One structured question in a responder request.
 pub use AskUserQuestion as Question;
-/// The supported question kinds: a choice, or a credential.
+/// The supported question kinds: a choice, free-form text, or a credential.
 pub use AskUserQuestionKind as QuestionKind;
 /// The complete result returned by an [`AskUser`] responder.
 pub use AskUserResult as Outcome;

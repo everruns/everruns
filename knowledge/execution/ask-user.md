@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Ask User"
-description: "Structured choice and credential questions resolved by client-side or in-process hosts."
+description: "Structured choice, free-form, and credential questions resolved by client-side or in-process hosts."
 tags:
   - everruns
   - execution
@@ -44,8 +44,9 @@ being copied here.
 ## Contract decisions
 
 One call batches related questions into one host interaction. The client-side
-strategy pauses once. Two kinds exist: `choice` offers options, and `secret`
-collects one credential (see below).
+strategy pauses once. Three kinds exist: `choice` offers options, `text`
+collects a free-form string with no options, and `secret` collects one
+credential (see below).
 
 Question identifiers are stable result-correlation keys. The runtime preserves
 an identifier supplied by the model and generates a collision-free identifier
@@ -72,9 +73,11 @@ worker turn parks.
 awaits the host responder in-process and returns its outcome directly to the
 model without entering `waiting_for_tool_results`.
 
-The default in-process capability uses `DefaultsResponder`. It selects marked
-defaults, or the first option when no default is marked, and reports
-`answered_by: "unattended"`. This keeps tests and headless runs from hanging.
+The default in-process capability uses `DefaultsResponder`. For choice
+questions, it selects marked defaults or the first option when no default is
+marked, and reports `answered_by: "unattended"`. A batch containing a text or
+secret question declines because neither has an unattended value. This keeps
+tests and headless runs from hanging without inventing an answer.
 
 ## Client-side pause and resume
 
@@ -124,8 +127,9 @@ they derived, so the countdown and the resolution cannot disagree.
 At `expires_at` the tool-result sweep resolves the call with each question's
 declared default (or its first option), `status: "timed_out"` and
 `answered_by: "timeout"`. Both fields matter: the value is a default being
-applied, not consent, and only `answered_by` says so. A secret question resolves
-`declined` instead — a credential has no default worth applying.
+applied, not consent, and only `answered_by` says so. A batch containing a text
+or secret question resolves `declined` instead — neither has a default worth
+applying.
 
 The sweep keeps its 30s periodic shape rather than per-session timers, so a
 deadline survives a restart; firing up to 30s late is acceptable, losing it on
@@ -138,6 +142,24 @@ A session parked on `ask_user` never falls through to the generic
 client went away when in fact nobody answered a question. A call recorded before
 the server stamped deadlines carries no `expires_at`, and is left to that
 generic path rather than resolved on a deadline nobody wrote down.
+
+## Text questions
+
+`kind: "text"` asks one open question without inventing an option list. Its
+answer uses `other_text`; `selected` stays empty. Validation rejects any options
+on a text question and requires a non-blank string answer. The same
+credential-shape check used by a choice question's free-text path runs before a
+text answer is persisted.
+
+The browser card renders a textarea and says an unanswered question will be
+skipped. MCP form mode projects it as a plain string property without an enum.
+A2A projects a free-text answer field without option values. Framework
+responders receive `QuestionKind::Text` and return the string in
+`Answer::other_text`.
+
+Text questions have no unattended or timeout answer. A batch containing one
+resolves `declined`, so proceeding without the value is the model's explicit
+decision.
 
 ## Secret questions
 

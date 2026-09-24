@@ -163,10 +163,11 @@ async fn resolve_expired_question(
         return Ok(());
     }
 
-    // A credential has no default worth applying, so an unanswered secret
-    // declines rather than claiming a value nobody supplied (EVE-1058).
+    // Free-form text and credentials have no default worth applying, so an
+    // unanswered call containing either declines rather than claiming a value
+    // nobody supplied.
     let (status, answers) =
-        if everruns_builtins::ask_user::questions_ask_for_a_secret(&pending.questions) {
+        if everruns_builtins::ask_user::questions_have_no_default_answer(&pending.questions) {
             (AskUserStatus::Declined, Vec::new())
         } else {
             (

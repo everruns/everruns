@@ -55,6 +55,9 @@ let agent = Agent::builder()
 
 `.capability("ask_user")` on its own uses `DefaultsResponder`: it applies the options the model marked as recommended, falls back to the first option, and reports `AnsweredBy::Unattended`. Headless runs resolve immediately rather than waiting out the timeout for somebody who is not there.
 
+A text or secret question has no unattended value. `DefaultsResponder` declines
+a batch containing either kind rather than returning an empty answer.
+
 ## Report who answered
 
 `answered_by` is part of the contract, not decoration:
@@ -84,6 +87,17 @@ Two details in it are worth copying into any responder:
 **An empty answer takes the declared default** rather than returning nothing. A question the model asked and nobody addressed is something it cannot distinguish from a deliberate skip.
 
 **A secret answer carries a reference, never a value.** `Answer` has no `value` field at all, so there is no path from a collected credential into the transcript. The host keeps the value; the agent gets `session:MY_TOKEN` and tools resolve it by name.
+
+**A text answer carries its string in `other_text`.** It has no selected option:
+
+```rust
+Answer {
+    id,
+    selected: Vec::new(),
+    other_text: Some("feature/open-question".to_string()),
+    secret_ref: None,
+}
+```
 
 ```rust
 Answer {
