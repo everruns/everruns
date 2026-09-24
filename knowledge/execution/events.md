@@ -38,7 +38,7 @@ payload structs, type registry, HTTP query fields, or SQL schema.
   serialization, round trips, forward compatibility, and the type mapping.
   [`crates/server/tests/workflow_test.rs`](../../crates/server/tests/workflow_test.rs)
   covers API filtering of unsupported events, while
-  [`crates/server/tests/client_side_tools_test.rs`](../../crates/server/tests/client_side_tools_test.rs)
+  [`crates/server/tests/domain/client_side_tools_test.rs`](../../crates/server/tests/domain/client_side_tools_test.rs)
   covers the client-tool event contract.
 
 Wire examples do not live here. Exact examples belong in the generated OpenAPI

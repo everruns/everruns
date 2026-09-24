@@ -37,9 +37,9 @@ route payloads.
   definitions, foreign keys, indexes, role storage, and invitation lifecycle.
 - [`docs/api/openapi.json`](../../docs/api/openapi.json) owns exact public HTTP
   shapes.
-- [`crates/server/tests/org_isolation_test.rs`](../../crates/server/tests/org_isolation_test.rs)
+- [`crates/server/tests/domain/org_isolation_test.rs`](../../crates/server/tests/domain/org_isolation_test.rs)
   and
-  [`crates/server/tests/org_invitations_test.rs`](../../crates/server/tests/org_invitations_test.rs)
+  [`crates/server/tests/domain/org_invitations_test.rs`](../../crates/server/tests/domain/org_invitations_test.rs)
   are executable isolation and invitation contracts.
 
 ## Core decisions
