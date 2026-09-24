@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC003: Slack endpoint setup"
-description: "Verifies a Slack endpoint can create its app from an endpoint-scoped manifest and receive a signed inbound event."
+description: "Verifies a Slack endpoint can start one-click install on save and receive a signed inbound event."
 tags:
   - everruns
   - test-case
@@ -12,12 +12,13 @@ tags:
 
 ## Description
 
-Verifies a Slack endpoint can create its app from an endpoint-scoped manifest and receive a signed inbound event.
+Verifies a Slack endpoint can start one-click install on save and receive a signed inbound event.
 
 ## Preconditions
 
 - A real Everruns stack is running with `AUTH_MODE=none`
 - The Everruns API is reachable from Slack through a public HTTPS URL
+- The deployment has a Slack app provisioner configured
 - A Slack workspace is available for installing a test app
 - An active agent exists
 
@@ -32,21 +33,22 @@ Verifies a Slack endpoint can create its app from an endpoint-scoped manifest an
 ## Steps
 
 1. Open the agent's **Integrations** tab and click **Add endpoint**.
-2. Select **Slack**, keep the credentials empty, and create the endpoint.
-3. Return to the Integrations tab and publish the Slack endpoint.
-4. Expand the endpoint row.
-5. Verify **Set up** appears before **Use it** and the setup checklist includes **Create a Slack app**.
-6. Click **Create a Slack app**.
-7. Verify Slack opens the create-from-manifest flow and the manifest's Event Subscriptions request URL contains `/v1/e/{endpointId}/slack/events`.
-8. Create and install the Slack app.
-9. Copy the Slack signing secret and bot token into the endpoint's **Configure** form, then save.
-10. Invite the bot to a channel and send the test message.
-11. Return to the expanded endpoint row.
+2. Select **Slack** and verify **Configure manually** is collapsed.
+3. Keep the credentials empty and click **Save endpoint**.
+4. Verify Slack opens its consent screen without another Everruns action.
+5. Approve the installation and verify the browser returns to the saved endpoint.
+6. Verify **Connect to Slack** remains available for reconnecting.
+7. Return to the Integrations tab and publish the Slack endpoint.
+8. Invite the bot to a channel and send the test message.
+9. Return to the expanded endpoint row.
+10. On a deployment without a Slack app provisioner, repeat steps 1-2 and verify the manual fields start open.
+11. Enter a manual signing secret before saving and verify Everruns saves the endpoint without starting Slack consent.
 
 ## Expected Result
 
 - The endpoint is created without placeholder Slack credentials.
-- The setup checklist and endpoint-specific use guidance are both reachable from the expanded row.
-- The **Create a Slack app** action uses the endpoint-scoped manifest route.
-- Slack verifies the generated request URL without a hand-constructed API call.
+- Saving a credential-free endpoint starts Slack consent without a second button.
+- A deployment without a provisioner keeps the manual setup flow open.
+- Entering a manual credential does not start or overwrite the one-click flow.
+- A failed install leaves the saved endpoint reachable with the failure reason and reconnect action visible.
 - The inbound test message reaches the agent and the checklist records the first message.
