@@ -22,20 +22,13 @@
 use std::borrow::Cow;
 
 use everruns_provider::driver_registry::{Message, MessageRole};
+use everruns_provider::message::TURN_SCOPED_SYSTEM_MARKER;
+use everruns_provider::model::{CLEAR_AT_PARAMETER, MID_CONVERSATION_SYSTEM_PARAMETER};
 
 use super::{
     AnthropicCacheControl, AnthropicContentBlock, AnthropicMessage, MESSAGE_CACHE_BREAKPOINTS,
     normalize_anthropic_id, split_million_context,
 };
-
-/// Families that accept `role: "system"` entries inside `messages`.
-const MID_CONVERSATION_SYSTEM_FAMILIES: &[&str] = &[
-    "claude-fable-5-1",
-    "claude-fable-5",
-    "claude-opus-5-5",
-    "claude-opus-5",
-    "claude-opus-4-8",
-];
 
 /// Families whose thinking blocks are bound to the conversation prefix.
 const PRESERVED_THINKING_FAMILIES: &[&str] = &["claude-fable-5-1", "claude-opus-5-5"];
@@ -47,10 +40,16 @@ pub(super) const THINKING_BINDING_BETA: &str = "thinking-binding-controls-2026-0
 /// `convert_messages`, which only knows how to fold system messages away. The
 /// NUL bytes keep it from colliding with real message text.
 const IN_PLACE_MARKER: &str = "\u{0}everruns:in-place-system\u{0}";
+const IN_PLACE_CLEAR_AT_MARKER: &str = "\u{0}everruns:in-place-clear-at\u{0}";
 
 fn in_families(model: &str, families: &[&str]) -> bool {
     let family = normalize_anthropic_id(split_million_context(model).0);
     families.iter().any(|f| family.eq_ignore_ascii_case(f))
+}
+
+fn supports_parameter(model: &str, parameter: &str) -> bool {
+    everruns_provider::get_model_profile(&everruns_provider::DriverId::Anthropic, model)
+        .is_some_and(|profile| profile.supports_parameter(parameter))
 }
 
 /// Whether requests to `model` bind thinking blocks to the conversation and so
@@ -73,15 +72,24 @@ pub(super) fn keep_later_system_messages_in_place<'a>(
     let has_later = messages[leading..]
         .iter()
         .any(|m| m.role == MessageRole::System);
-    if !has_later || !in_families(model, MID_CONVERSATION_SYSTEM_FAMILIES) {
+    if !has_later || !supports_parameter(model, MID_CONVERSATION_SYSTEM_PARAMETER) {
         return Cow::Borrowed(messages);
     }
+    let supports_clear_at = supports_parameter(model, CLEAR_AT_PARAMETER);
     let marked = messages
         .iter()
         .enumerate()
         .map(|(index, message)| {
             if index >= leading && message.role == MessageRole::System {
-                let text = format!("{IN_PLACE_MARKER}{}", message.content.to_text());
+                let text = message.content.to_text();
+                let text = if supports_clear_at {
+                    match text.strip_prefix(TURN_SCOPED_SYSTEM_MARKER) {
+                        Some(text) => format!("{IN_PLACE_CLEAR_AT_MARKER}{text}"),
+                        None => format!("{IN_PLACE_MARKER}{text}"),
+                    }
+                } else {
+                    format!("{IN_PLACE_MARKER}{text}")
+                };
                 Message::text(MessageRole::User, text)
             } else {
                 message.clone()
@@ -105,14 +113,14 @@ pub(super) fn place_system_messages(
     system_prompt: &mut Option<String>,
     messages: &mut Vec<AnthropicMessage>,
 ) {
-    if !messages.iter().any(|m| in_place_text(m).is_some()) {
+    if !messages.iter().any(|m| in_place_system(m).is_some()) {
         return;
     }
     let mut placed = Vec::with_capacity(messages.len());
-    let mut pending: Vec<String> = Vec::new();
+    let mut pending: Vec<InPlaceSystem> = Vec::new();
     for message in messages.drain(..) {
-        if let Some(text) = in_place_text(&message) {
-            pending.push(text.to_string());
+        if let Some(message) = in_place_system(&message) {
+            pending.push(message);
             continue;
         }
         if message.role == "assistant" {
@@ -124,39 +132,86 @@ pub(super) fn place_system_messages(
     *messages = placed;
 }
 
-fn in_place_text(message: &AnthropicMessage) -> Option<&str> {
+struct InPlaceSystem {
+    text: String,
+    clear_at: bool,
+}
+
+fn in_place_system(message: &AnthropicMessage) -> Option<InPlaceSystem> {
     match message.content.as_slice() {
-        [AnthropicContentBlock::Text { text, .. }] if message.role == "user" => {
-            text.strip_prefix(IN_PLACE_MARKER)
-        }
+        [AnthropicContentBlock::Text { text, .. }] if message.role == "user" => text
+            .strip_prefix(IN_PLACE_CLEAR_AT_MARKER)
+            .map(|text| InPlaceSystem {
+                text: text.to_string(),
+                clear_at: true,
+            })
+            .or_else(|| {
+                text.strip_prefix(IN_PLACE_MARKER)
+                    .map(|text| InPlaceSystem {
+                        text: text.to_string(),
+                        clear_at: false,
+                    })
+            }),
         _ => None,
     }
 }
 
+fn fold_into_system(system_prompt: &mut Option<String>, text: String) {
+    if text.is_empty() {
+        return;
+    }
+    *system_prompt = Some(match system_prompt.take() {
+        Some(existing) if !existing.is_empty() => format!("{existing}\n\n{text}"),
+        _ => text,
+    });
+}
+
+fn push_system_message(placed: &mut Vec<AnthropicMessage>, text: String, clear_at: Option<String>) {
+    placed.push(AnthropicMessage {
+        role: "system".to_string(),
+        content: vec![AnthropicContentBlock::Text {
+            text,
+            cache_control: None,
+        }],
+        clear_at,
+        preserved_content: None,
+    });
+}
+
 fn flush(
-    pending: &mut Vec<String>,
+    pending: &mut Vec<InPlaceSystem>,
     placed: &mut Vec<AnthropicMessage>,
     system_prompt: &mut Option<String>,
 ) {
     if pending.is_empty() {
         return;
     }
-    let text = pending.join("\n\n");
-    pending.clear();
-    if placed.last().is_some_and(|m| m.role == "user") {
-        placed.push(AnthropicMessage {
-            role: "system".to_string(),
-            content: vec![AnthropicContentBlock::Text {
-                text,
-                cache_control: None,
-            }],
-            preserved_content: None,
-        });
+    let (scoped, permanent): (Vec<_>, Vec<_>) =
+        pending.drain(..).partition(|message| message.clear_at);
+    let permanent = permanent
+        .into_iter()
+        .map(|message| message.text)
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let scoped = scoped
+        .into_iter()
+        .map(|message| message.text)
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let follows_user = placed.last().is_some_and(|message| message.role == "user");
+
+    match (permanent.is_empty(), scoped.is_empty(), follows_user) {
+        (false, true, true) => push_system_message(placed, permanent, None),
+        (false, _, _) => fold_into_system(system_prompt, permanent),
+        _ => {}
+    }
+    if scoped.is_empty() {
+        return;
+    }
+    if follows_user {
+        push_system_message(placed, scoped, Some("next_user_message".to_string()));
     } else {
-        *system_prompt = Some(match system_prompt.take() {
-            Some(existing) if !existing.is_empty() => format!("{existing}\n\n{text}"),
-            _ => text,
-        });
+        fold_into_system(system_prompt, scoped);
     }
 }
 
@@ -235,6 +290,12 @@ mod tests {
 
     fn msg(role: MessageRole, text: &str) -> Message {
         Message::text(role, text)
+    }
+
+    fn scoped_system(text: &str) -> Message {
+        let mut message = msg(MessageRole::System, text);
+        message.mark_turn_scoped_system();
+        message
     }
 
     /// The request `system` and `messages` as JSON, roles and text only.
@@ -345,6 +406,46 @@ mod tests {
         assert_eq!(system_one, system_two);
         let one = one.as_array().unwrap();
         assert_eq!(&two.as_array().unwrap()[..one.len()], one.as_slice());
+    }
+
+    #[test]
+    fn clear_at_reminders_replay_as_an_append_only_prefix() {
+        use MessageRole::*;
+        let turn_one = vec![
+            msg(System, "agent prompt"),
+            msg(User, "task"),
+            scoped_system("<facts>10:00</facts>"),
+        ];
+        let mut turn_two = turn_one.clone();
+        turn_two.extend([
+            msg(Assistant, "call tool"),
+            msg(User, "tool result"),
+            scoped_system("<facts>10:01</facts>"),
+            scoped_system("loop warning"),
+        ]);
+
+        let prepared_one = keep_later_system_messages_in_place(&turn_one, "claude-opus-5-5");
+        let (system_one, one) = AnthropicChatDriver::convert_messages(&prepared_one, false, 0);
+        let prepared_two = keep_later_system_messages_in_place(&turn_two, "claude-opus-5-5");
+        let (system_two, two) = AnthropicChatDriver::convert_messages(&prepared_two, false, 0);
+
+        assert_eq!(system_one, system_two);
+        let one = serde_json::to_value(one).unwrap();
+        let two = serde_json::to_value(two).unwrap();
+        let one = one.as_array().unwrap();
+        assert_eq!(&two.as_array().unwrap()[..one.len()], one.as_slice());
+        assert_eq!(
+            one[1],
+            json!({
+                "role": "system",
+                "content": [{"type": "text", "text": "<facts>10:00</facts>"}],
+                "clear_at": "next_user_message"
+            })
+        );
+        assert_eq!(
+            two.as_array().unwrap().last().unwrap()["clear_at"],
+            "next_user_message"
+        );
     }
 
     #[test]

@@ -2,6 +2,7 @@
 //! to keep that file under its size ratchet.
 
 use super::*;
+use crate::{CLEAR_AT_PARAMETER, MID_CONVERSATION_SYSTEM_PARAMETER};
 
 #[test]
 fn test_claude_opus_4_8_1m_variant() {
@@ -81,6 +82,50 @@ fn test_claude_fable_5_1m_variant() {
     assert_eq!(m1.family, "claude-fable-5");
     assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
     assert_eq!(m1.cost.unwrap().input, base.cost.unwrap().input);
+}
+
+#[test]
+fn test_clear_at_capability_is_profile_gated() {
+    for id in [
+        "claude-fable-5-1",
+        "claude-fable-5",
+        "claude-opus-5-5",
+        "claude-opus-5",
+        "claude-opus-4-8",
+        "claude-opus-5-5[1m]",
+        "claude-opus-5-5-20260101[1m]",
+        "claude-fable-5-1-20260901[1m]",
+    ] {
+        let profile = get_model_profile("anthropic", id).unwrap();
+        assert!(
+            profile.supports_parameter(MID_CONVERSATION_SYSTEM_PARAMETER),
+            "{id}"
+        );
+        assert!(profile.supports_parameter(CLEAR_AT_PARAMETER), "{id}");
+    }
+
+    for id in [
+        "claude-opus-5-5-20260101[1m]",
+        "claude-fable-5-1-20260901[1m]",
+    ] {
+        let profile = get_model_profile("anthropic", id).unwrap();
+        assert_eq!(profile.limits.unwrap().context, 1_000_000, "{id}");
+    }
+
+    for id in [
+        "claude-opus-4-7",
+        "claude-opus-4-6",
+        "claude-sonnet-5",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5",
+    ] {
+        let profile = get_model_profile("anthropic", id).unwrap();
+        assert!(
+            !profile.supports_parameter(MID_CONVERSATION_SYSTEM_PARAMETER),
+            "{id}"
+        );
+        assert!(!profile.supports_parameter(CLEAR_AT_PARAMETER), "{id}");
+    }
 }
 
 #[test]

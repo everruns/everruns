@@ -16,6 +16,7 @@ use everruns_provider::driver_registry::{
     LlmStreamEvent, Message, MessageRole,
 };
 use everruns_provider::model::ReasoningEffort;
+use everruns_provider::tool_types::ToolCall;
 use everruns_provider::{Provider, StaticHeaderAuth};
 use futures::StreamExt;
 use wiremock::matchers::{method, path};
@@ -653,6 +654,107 @@ async fn cache_diagnostics_absent_when_not_requested() {
     );
 }
 
+async fn assert_clear_at_tool_loop_wire(model: &str) {
+    let server = MockServer::start().await;
+    let body = [
+        sse_event(
+            "message_start",
+            r#"{"type":"message_start","message":{"id":"msg_clear","model":"claude-opus-5-5","usage":{"input_tokens":10},"input_transformations":[]}}"#,
+        ),
+        sse_event(
+            "message_delta",
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}"#,
+        ),
+        sse_event("message_stop", r#"{"type":"message_stop"}"#),
+    ]
+    .concat();
+    mount_sse(&server, body).await;
+
+    let mut facts = Message::text(MessageRole::System, "<facts>turn one</facts>");
+    facts.mark_turn_scoped_system();
+    let turn_one = vec![
+        Message::text(MessageRole::System, "agent prompt"),
+        Message::text(MessageRole::User, "task"),
+        facts,
+    ];
+    let stream = driver(&server)
+        .chat_completion_stream(turn_one.clone(), &config(model))
+        .await
+        .expect("first stream should start");
+    let _ = drain_golden(stream).await;
+
+    let mut assistant = Message::text(MessageRole::Assistant, "");
+    assistant.tool_calls = Some(vec![ToolCall {
+        id: "call_1".to_string(),
+        name: "read_file".to_string(),
+        arguments: serde_json::json!({"path": "/tmp/a"}),
+    }]);
+    let mut result = Message::text(MessageRole::Tool, "contents");
+    result.tool_call_id = Some("call_1".to_string());
+    let mut next_facts = Message::text(MessageRole::System, "<facts>turn two</facts>");
+    next_facts.mark_turn_scoped_system();
+    let mut warning = Message::text(MessageRole::System, "loop warning");
+    warning.mark_turn_scoped_system();
+    let mut turn_two = turn_one;
+    turn_two.extend([assistant, result, next_facts, warning]);
+    let stream = driver(&server)
+        .chat_completion_stream(turn_two, &config(model))
+        .await
+        .expect("second stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.expect("recorded requests");
+    assert_eq!(requests.len(), 2);
+    let first: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let second: serde_json::Value = serde_json::from_slice(&requests[1].body).unwrap();
+    let first_messages = first["messages"].as_array().unwrap();
+    let second_messages = second["messages"].as_array().unwrap();
+    assert_eq!(
+        &second_messages[..first_messages.len()],
+        first_messages.as_slice()
+    );
+    assert_eq!(
+        first_messages[1]["clear_at"],
+        serde_json::json!("next_user_message")
+    );
+    assert_eq!(
+        second_messages.last().unwrap()["clear_at"],
+        serde_json::json!("next_user_message")
+    );
+    for (request, payload) in requests.iter().zip([&first, &second]) {
+        let beta = request
+            .headers
+            .get("anthropic-beta")
+            .expect("beta header")
+            .to_str()
+            .unwrap();
+        assert!(beta.contains("mid-conversation-system-clear-at-2026-08-21"));
+        assert!(beta.contains("thinking-binding-controls-2026-08-01"));
+        if let Some(wire_model) = model.strip_suffix("[1m]") {
+            assert!(beta.contains("context-1m-2025-08-07"));
+            assert_eq!(payload["model"], wire_model);
+        }
+        assert_eq!(
+            payload["thinking"]["block_binding"]["prefix_mismatch_behavior"],
+            "drop_block"
+        );
+    }
+}
+
+#[tokio::test]
+async fn clear_at_tool_loop_keeps_the_wire_prefix_append_only() {
+    assert_clear_at_tool_loop_wire("claude-opus-5-5").await;
+}
+
+#[tokio::test]
+async fn dated_1m_models_keep_clear_at_on_the_wire() {
+    for model in [
+        "claude-opus-5-5-20260101[1m]",
+        "claude-fable-5-1-20260901[1m]",
+    ] {
+        assert_clear_at_tool_loop_wire(model).await;
+    }
+}
 /// Interleaved thinking: two thinking blocks in one response, each signed
 /// separately, with a tool call between them.
 ///

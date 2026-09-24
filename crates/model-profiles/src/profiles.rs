@@ -1,7 +1,6 @@
 // Hardcoded LLM Model Profiles
 //
 // This module provides model profiles based on models.dev structure.
-// Profiles are matched by provider_type + model_id.
 //
 // IMPORTANT: Never guess or extrapolate profile data (pricing, limits, capabilities).
 // Always source from https://github.com/sst/models.dev/tree/dev/providers
@@ -14,7 +13,9 @@
 // Data source: https://github.com/sst/models.dev/tree/dev/providers
 // Cross-referenced with official Anthropic and OpenAI documentation
 
+mod anthropic_capabilities;
 mod gpt6;
+mod model_id_match;
 
 use crate::types::{
     CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
@@ -487,18 +488,7 @@ fn resolve_descriptor(provider_type: &str, model_id: &str) -> Option<&'static Mo
     for descriptor in REGISTRY {
         for alias in descriptor.ids {
             let alias = alias.as_bytes();
-            // Exact (case-insensitive) match, or a recognized version suffix.
-            // Do not treat semantic variants such as `o3-mini` as versions of
-            // a shorter registered model.
-            let id_matches = if id.len() == alias.len() {
-                id.eq_ignore_ascii_case(alias)
-            } else {
-                id.len() > alias.len()
-                    && id[alias.len()] == b'-'
-                    && id[..alias.len()].eq_ignore_ascii_case(alias)
-                    && is_version_suffix(&id[alias.len() + 1..])
-            };
-            if !id_matches {
+            if !model_id_match::matches_alias(id, alias) {
                 continue;
             }
 
@@ -519,27 +509,6 @@ fn resolve_descriptor(provider_type: &str, model_id: &str) -> Option<&'static Mo
         }
     }
     best_for_surface
-}
-
-fn is_version_suffix(suffix: &[u8]) -> bool {
-    suffix.eq_ignore_ascii_case(b"latest")
-        || (suffix.len() == 8 && suffix.iter().all(u8::is_ascii_digit))
-        || (suffix.len() == 5
-            && suffix[2] == b'-'
-            && suffix[..2].iter().all(u8::is_ascii_digit)
-            && suffix[3..].iter().all(u8::is_ascii_digit))
-        || (suffix.len() == 10
-            && suffix[4] == b'-'
-            && suffix[7] == b'-'
-            && suffix
-                .iter()
-                .enumerate()
-                .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit()))
-        || (suffix.len() == 13
-            && suffix[..8].eq_ignore_ascii_case(b"preview-")
-            && suffix[10] == b'-'
-            && suffix[8..10].iter().all(u8::is_ascii_digit)
-            && suffix[11..].iter().all(u8::is_ascii_digit))
 }
 
 /// Get a model profile by matching provider_type and model_id.
@@ -2558,10 +2527,10 @@ fn anthropic_family_supports_tool_search(family: &str) -> bool {
 }
 
 fn anthropic_profile_data(model_id: &str) -> Option<ModelProfile> {
-    // `tool_search` is assigned centrally by family below, so the per-literal
-    // `tool_search` value in the match arms is a placeholder and is overwritten.
+    // Assign family capabilities centrally; match arms hold model-specific data.
     anthropic_profile_data_inner(model_id).map(|mut profile| {
         profile.tool_search = anthropic_family_supports_tool_search(&profile.family);
+        anthropic_capabilities::apply(&mut profile);
         profile
     })
 }

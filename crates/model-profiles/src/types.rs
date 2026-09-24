@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
+/// Model-profile parameter for messages-array system roles.
+pub const MID_CONVERSATION_SYSTEM_PARAMETER: &str = "mid_conversation_system";
+
+/// Model-profile parameter for message expiry.
+pub const CLEAR_AT_PARAMETER: &str = "clear_at";
 
 /// A typed service a provider driver can offer (see knowledge/foundations/providers.md).
 ///
@@ -413,6 +418,15 @@ pub struct ModelProfile {
     /// Currently supported by GPT-5.4 and newer via OpenAI Responses API.
     #[serde(default)]
     pub supports_phases: bool,
+}
+
+impl ModelProfile {
+    /// Whether this profile advertises a provider request parameter.
+    pub fn supports_parameter(&self, parameter: &str) -> bool {
+        self.supported_parameters
+            .iter()
+            .any(|value| value == parameter)
+    }
 }
 
 #[cfg(test)]
