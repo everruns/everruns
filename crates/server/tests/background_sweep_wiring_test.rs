@@ -44,6 +44,10 @@ fn configure_server_environment() {
         std::env::set_var("AUTH_MODE", "none");
         std::env::set_var("WORKER_GRPC_AUTH_TOKEN", "background-sweep-wiring-test");
         std::env::set_var("TOOL_RESULT_TIMEOUT_SECS", "0");
+        // Production waits 15s/30s for the first scheduler poll and timeout
+        // sweep; the wiring under test is the same at 1s.
+        std::env::set_var("SESSION_SCHEDULER_POLL_INTERVAL_SECS", "1");
+        std::env::set_var("TOOL_RESULT_TIMEOUT_SWEEP_INTERVAL_SECS", "1");
     }
 }
 

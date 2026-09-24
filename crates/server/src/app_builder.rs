@@ -2420,6 +2420,13 @@ impl ServerAppBuilder {
         // can run their probe directly without delegating to an agent turn.
         let probe_registry =
             std::sync::Arc::new(crate::session_scheduler::monitor_probe_tool_registry());
+        // 15s in production; SESSION_SCHEDULER_POLL_INTERVAL_SECS lets the
+        // real-server wiring test avoid idling for the first poll.
+        let schedule_poll_secs = std::env::var("SESSION_SCHEDULER_POLL_INTERVAL_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|secs| *secs > 0)
+            .unwrap_or(15);
         supervisor.track(
             "session_scheduler",
             crate::session_scheduler::spawn_session_scheduler(
@@ -2428,7 +2435,7 @@ impl ServerAppBuilder {
                 background_event_service,
                 background_runner,
                 Some(probe_registry),
-                std::time::Duration::from_secs(15),
+                std::time::Duration::from_secs(schedule_poll_secs),
             ),
         );
 

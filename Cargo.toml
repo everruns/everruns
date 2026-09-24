@@ -331,6 +331,15 @@ debug = 0
 [profile.test]
 debug = 0
 
+# Password hashing runs Argon2 at production cost (19 MiB, t=2) in auth tests;
+# unoptimized it costs ~0.5s per hash and dominated auth test time. Optimizing
+# only these two small leaf crates is cheap to build and changes no behavior.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
 [profile.release]
 opt-level = 3
 # Drop the symbol table from shipped artifacts: ~19% off every binary (CLI
