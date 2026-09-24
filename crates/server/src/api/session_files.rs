@@ -69,6 +69,18 @@ pub struct CreateFileRequest {
 /// Request to update a file
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateFileRequest {
+    /// Content the file must currently hold for the write to happen.
+    ///
+    /// When set, the update is a compare-and-swap: the write lands only if the
+    /// stored bytes equal these, and a mismatch is reported as a conflict
+    /// rather than overwriting a concurrent writer.
+    #[serde(default)]
+    pub expected_content: Option<String>,
+
+    /// Encoding of `expected_content`. Defaults to `text` when omitted.
+    #[serde(default)]
+    pub expected_encoding: Option<String>,
+
     /// New file content
     #[serde(default)]
     #[schema(example = "# Project notes (rev 2)\n\nUpdated migration plan with rollback steps.\n")]
@@ -118,6 +130,43 @@ pub struct GrepRequest {
 }
 
 /// Request to get file stat
+/// Paginated content search with surrounding context.
+///
+/// Distinct from [`GrepRequest`], which answers with matches grouped by path
+/// and no context. This one streams a bounded window of matches plus the lines
+/// around them, which is what an agent reading a large repository needs.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct SearchRequest {
+    /// Regular expression to match against file contents.
+    #[schema(example = "TODO\\(perf\\)")]
+    pub pattern: String,
+
+    /// Glob limiting which paths are searched.
+    #[serde(default)]
+    #[schema(example = "**/*.rs")]
+    pub path_pattern: Option<String>,
+
+    /// Lines of context to return before each match.
+    #[serde(default)]
+    pub before_context: usize,
+
+    /// Lines of context to return after each match.
+    #[serde(default)]
+    pub after_context: usize,
+
+    /// Number of matches to skip, for paging through a large result set.
+    #[serde(default)]
+    pub offset: usize,
+
+    /// Maximum matches to return. Omitted means no limit beyond `max_bytes`.
+    #[serde(default)]
+    pub limit: Option<usize>,
+
+    /// Byte ceiling on the returned payload. Omitted uses the server default.
+    #[serde(default)]
+    pub max_bytes: Option<usize>,
+}
+
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct StatRequest {
     /// Path to the file or directory (relative to the workspace filesystem root).
