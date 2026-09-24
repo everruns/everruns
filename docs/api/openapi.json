@@ -40445,6 +40445,20 @@
             "description": "Content encoding: \"text\" or \"base64\". Defaults to text.",
             "example": "text"
           },
+          "expected_content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Content the file must currently hold for the write to happen.\n\nWhen set, the update is a compare-and-swap: the write lands only if the\nstored bytes equal these, and a mismatch is reported as a conflict\nrather than overwriting a concurrent writer."
+          },
+          "expected_encoding": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Encoding of `expected_content`. Defaults to `text` when omitted."
+          },
           "is_readonly": {
             "type": [
               "boolean",
