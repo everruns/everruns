@@ -22,7 +22,7 @@ use everruns::{
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, oneshot};
 
-use crate::app::{AgentEntry, App, Mode, strip_frontmatter};
+use crate::app::{AgentEntry, App, Mode};
 use crate::channel::{ChannelEvent, Inbound};
 use crate::config::SandboxKind;
 use crate::cx::{Cx, Decision, DeliveryTarget};
@@ -476,32 +476,32 @@ impl Host {
             &self.gateway,
         )?;
         let hot = self.mode.hot_reload();
-        let mut instructions = match &spec.instructions {
+        let instructions = match &spec.instructions {
             Some(instructions) => instructions.load(hot),
             None => match self.app.asset("instructions.md") {
                 Some(asset) => load_asset(asset, hot),
                 None => "You are a helpful assistant.".to_string(),
             },
         };
-        let skills = &self.app.inner.skills;
-        if !skills.is_empty() {
-            instructions.push_str(
-                "\n\n## Skills\n\nLoad a skill with `load_skill` before doing work it covers.\n\n",
-            );
-            for skill in skills {
-                instructions.push_str(&format!("- `{}`: {}\n", skill.name, skill.description));
-            }
-        }
-
         let mut builder = everruns::Agent::builder()
             .name(entry.name)
             .model(model)
             .instructions(instructions);
+        // Skills use the built-in capability: each embedded skill is seeded
+        // read-only where it looks (`.agents/skills/<name>/SKILL.md`), and the
+        // agent discovers and activates them with its own tools.
+        let skills = &self.app.inner.skills;
+        if !skills.is_empty() {
+            builder = builder.capability(everruns::Skills);
+            for skill in skills {
+                builder = builder.readonly_file(
+                    format!(".agents/skills/{}/SKILL.md", skill.name),
+                    load_asset(skill.asset, hot),
+                );
+            }
+        }
         for tool in self.app.tools_for(entry) {
             builder = builder.tool(function_tool(tool, cx));
-        }
-        if !skills.is_empty() {
-            builder = builder.tool(self.skill_tool());
         }
         if !entry.sub {
             for sub in self.app.inner.agents.iter().filter(|agent| agent.sub) {
@@ -534,43 +534,6 @@ impl Host {
         builder
             .build()
             .map_err(|err| anyhow!("agent `{}`: {err}", entry.name))
-    }
-
-    fn skill_tool(&self) -> FunctionTool {
-        let names: Vec<String> = self
-            .app
-            .inner
-            .skills
-            .iter()
-            .map(|s| s.name.clone())
-            .collect();
-        let app = self.app.clone();
-        let hot = self.mode.hot_reload();
-        FunctionTool::new(
-            "load_skill",
-            "Load the full instructions of a skill by name.",
-            json!({
-                "type": "object",
-                "properties": { "name": { "type": "string", "enum": names } },
-                "required": ["name"],
-            }),
-            move |args: Value| {
-                let app = app.clone();
-                async move {
-                    let name = args.get("name").and_then(Value::as_str).unwrap_or_default();
-                    let text = app
-                        .inner
-                        .skills
-                        .iter()
-                        .find(|skill| skill.name == name)
-                        .map(|skill| strip_frontmatter(&load_asset(skill.asset, hot)).to_string());
-                    Ok::<_, String>(match text {
-                        Some(text) => ToolResponse::text(text),
-                        None => ToolResponse::error(format!("no skill named `{name}`")),
-                    })
-                }
-            },
-        )
     }
 
     /// `ask_<name>`: run a subagent to completion on a task and return its
@@ -610,12 +573,14 @@ impl Host {
                         "subagent.started",
                         json!({ "agent": sub.name, "task": task }),
                     );
-                    let agent = match host.build_agent(&sub, &cx, false) {
+                    let agent = match host.build_agent(&sub, &cx, true) {
                         Ok(agent) => agent,
                         Err(err) => return Ok(ToolResponse::error(format!("{err:#}"))),
                     };
-                    // Ephemeral: the subagent's transcript is not a session.
-                    let turn = everruns::Engine::new()
+                    // A child session on the host's own engine, persisted in
+                    // the same store as its parent.
+                    let turn = host
+                        .engine
                         .create(agent)
                         .send_and_wait(task.as_str())
                         .await;

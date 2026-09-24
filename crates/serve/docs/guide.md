@@ -130,8 +130,9 @@ description: How to query the shop warehouse.
 …
 ```
 
-Every agent sees the list of skill names and descriptions in its
-instructions, and gets a `load_skill` tool to read a skill's full text. You
+Skills use the everruns built-in `Skills` capability: each one is seeded
+read-only at `.agents/skills/<name>/SKILL.md` in the session workspace, and
+every agent finds them with `list_skills` and loads one with `activate_skill`. You
 write no Rust for a skill; `build.rs` picks it up.
 
 ## 5. Connections and secrets

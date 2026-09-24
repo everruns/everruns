@@ -516,17 +516,6 @@ pub(crate) fn frontmatter(text: &str) -> (Option<String>, Option<String>) {
     (name, description)
 }
 
-/// Body of a Markdown file after its frontmatter.
-pub(crate) fn strip_frontmatter(text: &str) -> &str {
-    let Some(rest) = text.strip_prefix("---") else {
-        return text;
-    };
-    match rest.find("\n---") {
-        Some(end) => rest[end + 4..].trim_start_matches(['\r', '\n']),
-        None => text,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -546,9 +535,7 @@ mod tests {
             frontmatter(text),
             (Some("sql-style".into()), Some("How we write SQL".into()))
         );
-        assert_eq!(strip_frontmatter(text), "# Body\n");
         assert_eq!(frontmatter("# no frontmatter"), (None, None));
-        assert_eq!(strip_frontmatter("# no frontmatter"), "# no frontmatter");
     }
 
     #[test]

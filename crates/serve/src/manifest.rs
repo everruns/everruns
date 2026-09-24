@@ -138,7 +138,7 @@ impl Manifest {
                     .map(|t| t.name.to_string())
                     .collect();
                 if !inner.skills.is_empty() {
-                    tools.push("load_skill".into());
+                    tools.extend(["list_skills".into(), "activate_skill".into()]);
                 }
                 if !agent.sub {
                     tools.extend(

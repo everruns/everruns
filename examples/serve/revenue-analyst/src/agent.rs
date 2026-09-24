@@ -20,7 +20,7 @@ fn analyst() -> Agent {
 /// 3. A delegation to the reviewer subagent.
 fn offline_demo() -> serve::sim::LlmSimConfig {
     sim::script([
-        sim::call("load_skill", json!({ "name": "sql-style" })),
+        sim::call("activate_skill", json!({ "name": "sql-style" })),
         sim::call(
             "run_sql",
             json!({ "sql": "SELECT SUM(o.amount_cents - COALESCE(r.amount_cents, 0)) / 100.0 AS net_revenue \
