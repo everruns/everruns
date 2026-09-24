@@ -54,7 +54,9 @@ durable 9.1m to 2-3m.
   `crates/server/tests/domain/main.rs`, with each former file as a module; it replaced 40
   binaries that each linked the whole server crate. A test file stays its own binary only
   when it installs process-global state (a metrics recorder, env vars), since those leak
-  across tests sharing a process. New server integration tests go into `domain/` by default.
+  across tests sharing a process. New server integration tests go into `domain/` by default. The same shape
+  holds for the server shard (`contracts`, `server_integration`), `everruns` (`facade`,
+  `local`), `everruns-host` and `everruns-test-support` (`integration`).
 - **A `--no-run` prebuild does not help.** It was tried and removed: the targets it
   builds are not reused by the run steps, so it only adds a wave.
 - **One producer per `rust-cache` `shared-key`.** Cache entries are immutable, so the

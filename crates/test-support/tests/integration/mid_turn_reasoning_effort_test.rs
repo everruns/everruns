@@ -4,7 +4,7 @@
 // turn, the NEXT LLM step in the SAME turn observes the new effort, while the
 // first step used the original (message-derived) effort.
 //
-// Run with: cargo test -p everruns-core --test mid_turn_reasoning_effort_test
+// Run with: cargo test -p everruns-test-support --test integration mid_turn_reasoning_effort_test::
 
 use std::sync::{Arc, Mutex};
 

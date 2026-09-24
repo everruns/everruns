@@ -1,6 +1,6 @@
 //! PostgreSQL integration tests for the MCP catalog and personal connections.
 
-mod test_harness;
+use crate::test_harness;
 
 use serde_json::json;
 use sqlx::PgPool;

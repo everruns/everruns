@@ -867,18 +867,29 @@ pub(crate) struct FacadeEventBus {
     /// unobservable either way.
     sender: OnceLock<broadcast::Sender<SessionEvent>>,
     capacity: usize,
+    session_id: SessionId,
+    observers: std::sync::Arc<crate::observers::ObserverDispatcher>,
     active_turn: Mutex<Option<EventContext>>,
 }
 
 impl FacadeEventBus {
-    pub(crate) fn new() -> Self {
-        Self::with_capacity(EVENT_STREAM_CAPACITY)
+    pub(crate) fn new(
+        session_id: SessionId,
+        observers: std::sync::Arc<crate::observers::ObserverDispatcher>,
+    ) -> Self {
+        Self::with_capacity(session_id, observers, EVENT_STREAM_CAPACITY)
     }
 
-    fn with_capacity(capacity: usize) -> Self {
+    fn with_capacity(
+        session_id: SessionId,
+        observers: std::sync::Arc<crate::observers::ObserverDispatcher>,
+        capacity: usize,
+    ) -> Self {
         Self {
             sender: OnceLock::new(),
             capacity,
+            session_id,
+            observers,
             active_turn: Mutex::new(None),
         }
     }
@@ -932,28 +943,28 @@ impl FacadeEventBus {
     }
 
     fn observe(&self, event: &Event) -> Result<(), EventSinkError> {
-        match event.event_type.as_str() {
-            events::TURN_STARTED => {
-                *self.active_turn.lock().expect("active-turn lock poisoned") =
-                    Some(event.context.clone());
+        let projected = SessionEvent::from_core_event(event);
+        self.observers.dispatch(projected.clone());
+        if event.session_id == self.session_id {
+            match event.event_type.as_str() {
+                events::TURN_STARTED => {
+                    *self.active_turn.lock().expect("active-turn lock poisoned") =
+                        Some(event.context.clone());
+                }
+                events::TURN_COMPLETED
+                | events::TURN_FAILED
+                | events::TURN_CANCELLED
+                | events::TURN_SEALED => {
+                    self.active_turn
+                        .lock()
+                        .expect("active-turn lock poisoned")
+                        .take();
+                }
+                _ => {}
             }
-            events::TURN_COMPLETED
-            | events::TURN_FAILED
-            | events::TURN_CANCELLED
-            | events::TURN_SEALED => {
-                self.active_turn
-                    .lock()
-                    .expect("active-turn lock poisoned")
-                    .take();
+            if let Some(sender) = self.sender.get() {
+                let _ = sender.send(projected);
             }
-            _ => {}
-        }
-        // A broadcast sender with no current receiver is still open: callers
-        // can subscribe before the next turn. Observation is best-effort and
-        // absence is equivalent to the host's no-op sink, not a delivery
-        // failure worth counting on every canonical append.
-        if let Some(sender) = self.sender.get() {
-            let _ = sender.send(SessionEvent::from_core_event(event));
         }
         Ok(())
     }

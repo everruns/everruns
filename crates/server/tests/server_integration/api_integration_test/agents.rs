@@ -1,6 +1,6 @@
 //! API integration tests: agents.
 
-use crate::support::seed_archival_app;
+use super::support::seed_archival_app;
 use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_core::DEFAULT_ORG_ID;

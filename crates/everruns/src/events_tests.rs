@@ -15,10 +15,26 @@ use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use serde_json::json;
 
 use super::{EventStreamError, FacadeEventBus, SessionEvent, SessionEventKind};
+use crate::observers::{OBSERVER_QUEUE_CAPACITY, ObserverDispatcher};
 use crate::{Agent, InMemoryEngine, Model};
 
 fn host(bus: Arc<FacadeEventBus>) -> HostEventEmitter {
     HostEventEmitter::new(Arc::new(InMemoryEventLog::new()), bus)
+}
+
+fn bus(session_id: SessionId) -> Arc<FacadeEventBus> {
+    Arc::new(FacadeEventBus::new(
+        session_id,
+        ObserverDispatcher::new(Vec::new(), OBSERVER_QUEUE_CAPACITY),
+    ))
+}
+
+fn bus_with_capacity(session_id: SessionId, capacity: usize) -> Arc<FacadeEventBus> {
+    Arc::new(FacadeEventBus::with_capacity(
+        session_id,
+        ObserverDispatcher::new(Vec::new(), OBSERVER_QUEUE_CAPACITY),
+        capacity,
+    ))
 }
 
 fn turn_started(session_id: SessionId, turn_id: TurnId) -> everruns_core::EventRequest {
@@ -103,7 +119,7 @@ fn a_cancellation_field_nobody_promoted_stays_off_the_reviewed_surface() {
 async fn envelope_is_complete_while_data_stays_reviewed() {
     let session_id = SessionId::new();
     let turn_id = TurnId::new();
-    let bus = Arc::new(FacadeEventBus::new());
+    let bus = bus(session_id);
     let emitter = host(bus.clone());
     let mut stream = bus.subscribe();
 
@@ -150,7 +166,7 @@ async fn envelope_is_complete_while_data_stays_reviewed() {
 #[tokio::test]
 async fn bounded_stream_reports_lag_instead_of_hiding_loss() {
     let session_id = SessionId::new();
-    let bus = Arc::new(FacadeEventBus::with_capacity(2));
+    let bus = bus_with_capacity(session_id, 2);
     let emitter = host(bus.clone());
     let mut stream = bus.subscribe();
 
@@ -174,7 +190,7 @@ async fn subscriber_after_earlier_events_still_observes_later_ones() {
     // pins the semantics that laziness relies on: events emitted before
     // anyone subscribed are not replayed, and later events still arrive.
     let session_id = SessionId::new();
-    let bus = Arc::new(FacadeEventBus::new());
+    let bus = bus(session_id);
     let emitter = host(bus.clone());
 
     emitter
@@ -202,11 +218,12 @@ async fn subscriber_after_earlier_events_still_observes_later_ones() {
 
 #[tokio::test]
 async fn no_subscriber_is_a_noop_not_a_closed_sink_failure() {
-    let bus = Arc::new(FacadeEventBus::new());
+    let session_id = SessionId::new();
+    let bus = bus(session_id);
     let emitter = host(bus);
 
     emitter
-        .emit(turn_started(SessionId::new(), TurnId::new()))
+        .emit(turn_started(session_id, TurnId::new()))
         .await
         .expect("observation absence cannot reverse the append");
 
@@ -218,7 +235,7 @@ async fn live_arrival_interleaves_durable_and_sequence_less_ephemeral_events() {
     let session_id = SessionId::new();
     let turn_id = TurnId::new();
     let message_id = MessageId::new();
-    let bus = Arc::new(FacadeEventBus::new());
+    let bus = bus(session_id);
     let emitter = host(bus.clone());
     let mut stream = bus.subscribe();
 
@@ -273,7 +290,7 @@ async fn live_arrival_interleaves_durable_and_sequence_less_ephemeral_events() {
 async fn cancellation_uses_the_active_turn_and_canonical_sequence() {
     let session_id = SessionId::new();
     let turn_id = TurnId::new();
-    let bus = Arc::new(FacadeEventBus::new());
+    let bus = bus(session_id);
     let emitter = host(bus.clone());
     let mut stream = bus.subscribe();
     emitter
@@ -310,7 +327,7 @@ async fn output_replacement_retains_rebuildable_message_identity_and_text() {
     let session_id = SessionId::new();
     let turn_id = TurnId::new();
     let message_id = MessageId::new();
-    let bus = Arc::new(FacadeEventBus::new());
+    let bus = bus(session_id);
     let emitter = host(bus.clone());
     let mut stream = bus.subscribe();
     emitter
@@ -352,7 +369,7 @@ async fn output_replacement_retains_rebuildable_message_identity_and_text() {
 async fn tool_narration_is_preserved_for_renderers() {
     let session_id = SessionId::new();
     let turn_id = TurnId::new();
-    let bus = Arc::new(FacadeEventBus::new());
+    let bus = bus(session_id);
     let emitter = host(bus.clone());
     let mut stream = bus.subscribe();
 
@@ -386,7 +403,7 @@ async fn tool_narration_is_preserved_for_renderers() {
 async fn unpromoted_event_kind_is_identified_but_not_projected() {
     let session_id = SessionId::new();
     let turn_id = TurnId::new();
-    let bus = Arc::new(FacadeEventBus::new());
+    let bus = bus(session_id);
     let emitter = host(bus.clone());
     let mut stream = bus.subscribe();
     let canonical = emitter

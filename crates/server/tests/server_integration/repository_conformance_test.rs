@@ -1,8 +1,8 @@
 //! Dual-backend conformance tests for storage behavior that has drifted before.
 //!
-//! Run with: cargo test -p everruns-server --test repository_conformance_test -- --test-threads=1
+//! Run with: cargo test -p everruns-server --test server_integration repository_conformance_test:: -- --test-threads=1
 
-mod test_harness;
+use crate::test_harness;
 
 use chrono::Utc;
 use serde_json::json;

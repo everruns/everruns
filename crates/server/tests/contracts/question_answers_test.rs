@@ -6,7 +6,7 @@
 //! corrupting the turn, and typing in chat instead of clicking resolves the
 //! question rather than leaving it pending forever.
 
-mod test_harness;
+use crate::test_harness;
 use async_trait::async_trait;
 
 use axum::http::StatusCode;

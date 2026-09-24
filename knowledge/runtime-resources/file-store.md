@@ -286,7 +286,7 @@ persisted. Input compatibility is not model-visible identity.
 Tests use `everruns_core::path_identity` helpers (`assert_model_visible_value`,
 `assert_no_forbidden_prefixes`, `assert_tool_result_paths_conform`) and the
 runtime integration suite in
-`crates/host/tests/model_visible_path_identity_test.rs`. The harness
+`crates/host/tests/integration/model_visible_path_identity_test.rs`. The harness
 recursively scans serialized JSON for absolute path-like strings rather than
 enumerating field names, so new model-visible fields cannot bypass the check.
 

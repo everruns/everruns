@@ -24,6 +24,7 @@ use crate::events::{EventStream, FacadeEventBus, RunOptions};
 use crate::hooks::{
     AgentStartContext, CompletionContext, HookFailure, HookRunState, TurnStartContext,
 };
+use crate::observers::ObserverDispatcher;
 use crate::{Agent, Harness, SessionEnvironmentError};
 
 /// A live, multi-turn conversation with an [`Agent`](crate::Agent).
@@ -92,6 +93,7 @@ impl Session {
     pub(crate) fn new(
         execution: Arc<dyn SessionExecution>,
         environment: Option<everruns_host::Environment>,
+        observers: Arc<ObserverDispatcher>,
     ) -> Self {
         let session_id = execution.session_id();
         let agent = execution.agent_snapshot();
@@ -100,7 +102,7 @@ impl Session {
             inner: Arc::new(SessionInner {
                 execution,
                 session_id,
-                event_bus: Arc::new(FacadeEventBus::new()),
+                event_bus: Arc::new(FacadeEventBus::new(session_id, observers)),
                 hook_state,
                 harness: OnceLock::new(),
                 environment: OnceLock::new(),

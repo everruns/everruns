@@ -6,7 +6,7 @@
 // seeded envelopes project into history in order, and a subsequent turn
 // appends on top of them instead of replacing them.
 //
-// Run with: cargo test -p everruns-test-support --test seed_events_test
+// Run with: cargo test -p everruns-test-support --test integration seed_events_test::
 
 use everruns_core::MessageRetriever;
 use everruns_core::events::{EventData, InputMessageData, OutputMessageCompletedData};

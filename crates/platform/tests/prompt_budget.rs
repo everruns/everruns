@@ -84,7 +84,7 @@ async fn session_sandbox_prompt_within_budget() {
 }
 
 // Note: the `sample_data` fixture capability's budget test lives in
-// `everruns-test-support` (tests/prompt_budget_fixtures.rs) since the fixture
+// `everruns-test-support` (tests/integration/prompt_budget_fixtures.rs) since the fixture
 // moved out of core (EVE-875).
 #[tokio::test]
 async fn mounted_data_prompts_within_budget() {
