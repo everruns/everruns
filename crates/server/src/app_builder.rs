@@ -500,6 +500,7 @@ impl ServerAppBuilder {
         let crate::storage_init::StorageInit {
             db,
             runner,
+            background_runner,
             shared_durable_store,
             database_url,
             database_unpooled_url,
@@ -792,6 +793,11 @@ impl ServerAppBuilder {
 
         let event_service = Arc::new(services::EventService::with_listeners(
             db.clone(),
+            event_delivery.clone(),
+            event_listeners.clone(),
+        ));
+        let background_event_service = Arc::new(services::EventService::with_listeners(
+            background_db.clone(),
             event_delivery.clone(),
             event_listeners,
         ));
@@ -1301,6 +1307,11 @@ impl ServerAppBuilder {
         // Bridge durable MetricsCollector gauges to Prometheus
         if prometheus_handle.is_some() {
             api::prometheus::spawn_gauge_bridge(durable_state.metrics_collector().clone());
+            if let (Some(request_pool), Some(background_pool)) =
+                (db.pool().cloned(), db.background_pool().cloned())
+            {
+                api::prometheus::spawn_pool_gauge_bridge(request_pool, background_pool);
+            }
         }
         let scheduler_store = durable_store.clone();
         // The durable scheduler's own store runs on the background pool
@@ -1393,6 +1404,9 @@ impl ServerAppBuilder {
         );
         let session_schedule_service =
             Arc::new(crate::domains::session_schedules::SessionScheduleService::new(db.clone()));
+        let background_session_schedule_service = Arc::new(
+            crate::domains::session_schedules::SessionScheduleService::new(background_db.clone()),
+        );
         let session_schedules_state = api::session_schedules::AppState::new(
             session_schedule_service.clone(),
             auth_state.clone(),
@@ -1663,10 +1677,11 @@ impl ServerAppBuilder {
         }));
 
         // RFC 9457: rewrite Content-Type on JSON error responses (4xx/5xx) to
-        // `application/problem+json`. Runs after link decoration, which only
-        // touches success responses.
+        // `application/problem+json` and mirror retry metadata into
+        // `Retry-After`. Runs after link decoration, which only touches
+        // success responses.
         let api_routes = api_routes.layer(axum::middleware::from_fn(
-            api::common::problem_json_content_type,
+            api::problem_details::standard_error_headers,
         ));
 
         let api_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env_with_valkey(
@@ -2399,7 +2414,7 @@ impl ServerAppBuilder {
             "tool_result_timeout_sweep",
             crate::tool_result_timeout::spawn_tool_result_timeout_sweep(
                 background_db.clone(),
-                runner.clone(),
+                background_runner.clone(),
                 event_delivery.clone(),
             ),
         );
@@ -2413,9 +2428,9 @@ impl ServerAppBuilder {
             "session_scheduler",
             crate::session_scheduler::spawn_session_scheduler(
                 background_db.clone(),
-                session_schedule_service,
-                event_service,
-                runner,
+                background_session_schedule_service,
+                background_event_service,
+                background_runner,
                 Some(probe_registry),
                 std::time::Duration::from_secs(15),
             ),

@@ -191,7 +191,7 @@ pub fn message_to_openai(message: &Message) -> Value {
     let content = match &message.content {
         MessageContent::Text(text) => Value::String(text.clone()),
         MessageContent::Parts(parts) => {
-            Value::Array(parts.iter().map(content_part_to_openai).collect())
+            Value::Array(parts.iter().filter_map(content_part_to_openai).collect())
         }
     };
     object.insert("content".to_owned(), content);
@@ -363,12 +363,14 @@ fn content_part_from_openai(value: &Value) -> LlmContentPart {
     }
 }
 
-fn content_part_to_openai(part: &LlmContentPart) -> Value {
+fn content_part_to_openai(part: &LlmContentPart) -> Option<Value> {
     match part {
-        LlmContentPart::Text { text } => json!({"type": "text", "text": text}),
-        LlmContentPart::Image { url } => json!({"type": "image_url", "image_url": {"url": url}}),
+        LlmContentPart::Text { text } => Some(json!({"type": "text", "text": text})),
+        LlmContentPart::Image { url } => {
+            Some(json!({"type": "image_url", "image_url": {"url": url}}))
+        }
         LlmContentPart::Audio { url } => {
-            json!({"type": "input_audio", "input_audio": {"data": url}})
+            Some(json!({"type": "input_audio", "input_audio": {"data": url}}))
         }
         LlmContentPart::File { url, filename } => {
             let mut file = Map::new();
@@ -376,8 +378,9 @@ fn content_part_to_openai(part: &LlmContentPart) -> Value {
             if let Some(filename) = filename {
                 file.insert("filename".to_owned(), Value::String(filename.clone()));
             }
-            json!({"type": "file", "file": Value::Object(file)})
+            Some(json!({"type": "file", "file": Value::Object(file)}))
         }
+        LlmContentPart::ProviderOpaque(_) => None,
     }
 }
 
@@ -401,6 +404,24 @@ mod tests {
         assert_eq!(messages[1].content.to_text(), "hi");
         let back: Vec<Value> = messages.iter().map(message_to_openai).collect();
         assert_eq!(Value::Array(back), wire);
+    }
+
+    #[test]
+    fn provider_opaque_content_is_not_written_to_openai_messages() {
+        let message = Message::parts(
+            MessageRole::Assistant,
+            vec![
+                LlmContentPart::ProviderOpaque(crate::message::ProviderOpaqueContent::new(
+                    "anthropic",
+                    json!([{"signature": "PRIVATE-SIGNATURE"}]),
+                )),
+                LlmContentPart::text("answer"),
+            ],
+        );
+
+        let wire = message_to_openai(&message);
+        assert_eq!(wire["content"], json!([{"type": "text", "text": "answer"}]));
+        assert!(!wire.to_string().contains("PRIVATE-SIGNATURE"));
     }
 
     #[test]

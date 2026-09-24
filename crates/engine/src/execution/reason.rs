@@ -51,7 +51,7 @@ use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, evaluate_guardrails,
-    evaluate_post_generation_guardrails, post_generation_guardrail_text,
+    evaluate_post_generation_guardrails,
 };
 use crate::phase_effects::{PhaseEffectEmitter, PhaseEffectSink};
 use crate::runtime_context::{AssembledTurnContext, TurnContextRequest, TurnContextResolver};
@@ -88,44 +88,13 @@ use error_policy::{
     resolve_error_disclosure,
 };
 use observability::{build_request_options, capability_usage_snapshot_records};
-use output_hooks::collect_output_hooks;
+use output_hooks::{client_visible_guardrail_text, collect_output_hooks};
 use request_controls::resolve_request_controls;
 use stream_state::{
     StreamReplayState, StreamTermination, advances_stall_deadline, append_guarded_thinking_delta,
     inspect_guarded_reasoning_item, merge_retry_metadata,
 };
 use transcript::repair_dangling_tool_calls;
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-fn client_visible_guardrail_text(
-    text: &str,
-    streamed_reasoning: &str,
-    reasoning: &[ReasoningContentPart],
-    citation_annotations: &[crate::message::TextAnnotation],
-) -> String {
-    let mut guarded = streamed_reasoning.to_string();
-    if guarded.is_empty() {
-        for item_text in reasoning
-            .iter()
-            .filter_map(ReasoningContentPart::display_text)
-        {
-            if !guarded.is_empty() {
-                guarded.push_str("\n\n");
-            }
-            guarded.push_str(&item_text);
-        }
-    }
-
-    let prose = post_generation_guardrail_text(text, citation_annotations);
-    if !guarded.is_empty() && !prose.is_empty() {
-        guarded.push_str("\n\n");
-    }
-    guarded.push_str(&prose);
-    guarded
-}
 
 fn unix_now_secs() -> u64 {
     std::time::SystemTime::now()
@@ -2119,6 +2088,8 @@ impl ReasonAtom {
         };
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
+        let provider_text = text.clone();
+        let provider_tool_calls = tool_calls.clone();
 
         // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
         // once on the finalized final-answer text to attach claim-level citations
@@ -2516,6 +2487,15 @@ impl ReasonAtom {
             &resolved_capability_configs,
             text,
         );
+        let provider_opaque_content = completion_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.provider_opaque_content.clone())
+            .filter(|_| {
+                tripped.is_none()
+                    && text == provider_text
+                    && finalized_tool_calls == provider_tool_calls
+                    && rejected_tool_calls.is_empty()
+            });
         let has_tool_calls = !finalized_tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             RuntimeMessage::assistant_with_tools(&text, finalized_tool_calls.clone())
@@ -2581,6 +2561,11 @@ impl ReasonAtom {
             content.extend(reasoning.drain(..).map(ContentPart::Reasoning));
             content.append(&mut assistant_message.content);
             assistant_message.content = content;
+        }
+        if let Some(content) = provider_opaque_content {
+            assistant_message
+                .content
+                .push(ContentPart::ProviderOpaque(content));
         }
         // Emit output.message.completed event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)

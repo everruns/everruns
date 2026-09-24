@@ -174,6 +174,7 @@ fn push_system_message(placed: &mut Vec<AnthropicMessage>, text: String, clear_a
             cache_control: None,
         }],
         clear_at,
+        preserved_content: None,
     });
 }
 
@@ -237,7 +238,7 @@ pub(super) fn mark_recent_text_blocks_for_cache(
     let anchor_len = messages.len().saturating_sub(volatile_suffix_len);
     let mut remaining = MESSAGE_CACHE_BREAKPOINTS;
     for msg in messages[..anchor_len].iter_mut().rev() {
-        if msg.role == "system" {
+        if msg.role == "system" || msg.preserved_content.is_some() {
             continue;
         }
         // At most one breakpoint per message: a second marker inside the

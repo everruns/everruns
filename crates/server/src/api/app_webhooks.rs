@@ -468,6 +468,10 @@ fn command_error_response(error: CommandError) -> (StatusCode, Json<ErrorRespons
             kind: CommandErrorKind::RateLimited(message),
             ..
         } => ErrorResponse::new(message).into_response(StatusCode::TOO_MANY_REQUESTS),
+        error @ CommandError {
+            kind: CommandErrorKind::Unavailable(_),
+            ..
+        } => error.into(),
         CommandError {
             kind: CommandErrorKind::Internal(error),
             ..

@@ -8,12 +8,23 @@
 use axum::Router;
 use axum::routing::get;
 use everruns_server::api::prometheus::{
-    http_metrics_layer, install_prometheus_recorder, names, route,
+    http_metrics_layer, install_prometheus_recorder, names, route, spawn_pool_gauge_bridge,
 };
+use sqlx::postgres::PgPoolOptions;
 
 #[tokio::test]
 async fn metrics_endpoint_serves_valid_exposition_for_recorded_requests() {
     let handle = install_prometheus_recorder().expect("recorder installs once per process");
+    let request_pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect_lazy("postgres://localhost/metrics_request")
+        .unwrap();
+    let background_pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect_lazy("postgres://localhost/metrics_background")
+        .unwrap();
+    spawn_pool_gauge_bridge(request_pool, background_pool);
+    tokio::task::yield_now().await;
 
     // An instrumented application route, wired exactly as the server wires it.
     let app = Router::new()
@@ -72,6 +83,21 @@ async fn metrics_endpoint_serves_valid_exposition_for_recorded_requests() {
         !body.contains("quantile="),
         "summary quantiles must not appear:\n{body}"
     );
+
+    for (name, request_value, background_value) in [
+        (names::DATABASE_POOL_SIZE, 0, 0),
+        (names::DATABASE_POOL_MAX_SIZE, 4, 2),
+        (names::DATABASE_POOL_IDLE, 0, 0),
+        (names::DATABASE_POOL_IN_USE, 0, 0),
+    ] {
+        let request = format!("{name}{{pool=\"request\"}} {request_value}");
+        let background = format!("{name}{{pool=\"background\"}} {background_value}");
+        assert!(body.contains(&request), "missing {request} in:\n{body}");
+        assert!(
+            body.contains(&background),
+            "missing {background} in:\n{body}"
+        );
+    }
 
     assert_exposition_is_well_formed(&body);
 }

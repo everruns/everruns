@@ -5933,6 +5933,10 @@ export interface components {
       | (components["schemas"]["ReasoningContentPart"] & {
           /** @enum {string} */
           type: "reasoning";
+        })
+      | (components["schemas"]["ProviderOpaqueContent"] & {
+          /** @enum {string} */
+          type: "provider_opaque";
         });
     /** @description Data for context.compacted event (compaction completed). */
     ContextCompactedData: {
@@ -14416,6 +14420,19 @@ export interface components {
        * @description Timestamp when this provider was last updated (RFC 3339).
        */
       updated_at: string;
+    };
+    /**
+     * @description Provider-native assistant content retained for lossless replay.
+     *
+     *     Drivers use this only when a provider requires its response content to be
+     *     sent back without reconstruction. The portable text, reasoning, and tool
+     *     call fields remain the fallback for other providers.
+     */
+    ProviderOpaqueContent: {
+      /** @description Original provider-native assistant content. */
+      content: Record<string, unknown>;
+      /** @description Provider that owns and can replay this content. */
+      provider: string;
     };
     /** @description One extra HTTP header sent with every request to a provider connection. */
     ProviderRequestHeader: {

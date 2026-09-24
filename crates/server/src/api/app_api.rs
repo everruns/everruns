@@ -781,20 +781,39 @@ fn command_error_response(
     err: crate::domains::common::CommandError,
 ) -> (StatusCode, Json<ErrorResponse>) {
     use crate::domains::common::CommandErrorKind;
-    match err.kind {
-        CommandErrorKind::BadRequest(msg) => bad_request(msg),
-        CommandErrorKind::Forbidden(msg) => forbidden(msg),
-        CommandErrorKind::NotFound(_) => not_found(),
-        CommandErrorKind::Conflict(msg) => {
-            ErrorResponse::new(msg).into_response(StatusCode::CONFLICT)
-        }
-        CommandErrorKind::RateLimited(msg) => {
-            ErrorResponse::new(msg).into_response(StatusCode::TOO_MANY_REQUESTS)
-        }
-        CommandErrorKind::Unprocessable(msg) => {
-            ErrorResponse::new(msg).into_response(StatusCode::UNPROCESSABLE_ENTITY)
-        }
-        CommandErrorKind::Internal(error) => internal_error(error),
+    match err {
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::BadRequest(msg),
+            ..
+        } => bad_request(msg),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Forbidden(msg),
+            ..
+        } => forbidden(msg),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::NotFound(_),
+            ..
+        } => not_found(),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Conflict(msg),
+            ..
+        } => ErrorResponse::new(msg).into_response(StatusCode::CONFLICT),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::RateLimited(msg),
+            ..
+        } => ErrorResponse::new(msg).into_response(StatusCode::TOO_MANY_REQUESTS),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Unprocessable(msg),
+            ..
+        } => ErrorResponse::new(msg).into_response(StatusCode::UNPROCESSABLE_ENTITY),
+        error @ crate::domains::common::CommandError {
+            kind: CommandErrorKind::Unavailable(_),
+            ..
+        } => error.into(),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Internal(error),
+            ..
+        } => internal_error(error),
     }
 }
 

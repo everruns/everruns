@@ -351,29 +351,30 @@ impl OpenAIProtocolChatDriver {
             MessageContent::Parts(parts) => {
                 let openai_parts: Vec<OpenAiContentPart> = parts
                     .iter()
-                    .map(|part| match part {
-                        LlmContentPart::Text { text } => OpenAiContentPart::Text {
+                    .filter_map(|part| match part {
+                        LlmContentPart::Text { text } => Some(OpenAiContentPart::Text {
                             r#type: "text".to_string(),
                             text: text.clone(),
-                        },
-                        LlmContentPart::Image { url } => OpenAiContentPart::ImageUrl {
+                        }),
+                        LlmContentPart::Image { url } => Some(OpenAiContentPart::ImageUrl {
                             r#type: "image_url".to_string(),
                             image_url: OpenAiImageUrl { url: url.clone() },
-                        },
-                        LlmContentPart::Audio { url } => OpenAiContentPart::InputAudio {
+                        }),
+                        LlmContentPart::Audio { url } => Some(OpenAiContentPart::InputAudio {
                             r#type: "input_audio".to_string(),
                             input_audio: OpenAiInputAudio {
                                 data: url.clone(),
                                 format: "wav".to_string(),
                             },
-                        },
-                        LlmContentPart::File { url, filename } => OpenAiContentPart::File {
+                        }),
+                        LlmContentPart::File { url, filename } => Some(OpenAiContentPart::File {
                             r#type: "file".to_string(),
                             file: OpenAiFile {
                                 filename: filename.clone(),
                                 file_data: url.clone(),
                             },
-                        },
+                        }),
+                        LlmContentPart::ProviderOpaque(_) => None,
                     })
                     .collect();
                 OpenAiContent::Parts(openai_parts)
@@ -635,6 +636,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 phase: None,
                 request_body: captured_request,
                 cache_diagnostics: None,
+                provider_opaque_content: None,
             },
         })
     }
@@ -845,6 +847,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     phase: None,
                                     request_body: (*captured_request).clone(),
                                     cache_diagnostics: None,
+                                    provider_opaque_content: None,
                                 },
                             ))));
 

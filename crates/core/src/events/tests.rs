@@ -22,6 +22,12 @@ fn message_with_replay_state() -> RuntimeMessage {
                 text: "visible reasoning".to_string(),
             }),
     ));
+    message.content.push(ContentPart::ProviderOpaque(
+        everruns_provider::ProviderOpaqueContent::new(
+            "anthropic",
+            json!([{"type": "thinking", "signature": "OPAQUE-SIGNATURE"}]),
+        ),
+    ));
     message
 }
 
@@ -53,6 +59,14 @@ fn reasoning_part(message: &RuntimeMessage) -> &everruns_provider::reasoning::Re
         })
         .expect("reasoning part")
 }
+fn assert_no_provider_opaque(message: &RuntimeMessage) {
+    assert!(
+        !message
+            .content
+            .iter()
+            .any(|part| matches!(part, ContentPart::ProviderOpaque(_)))
+    );
+}
 
 /// The events read path must strip the same replay state the message read
 /// path strips, or `GET .../events` republishes what `GET .../messages`
@@ -67,6 +81,7 @@ fn into_public_strips_replay_state_from_completed_messages() {
         panic!("variant must be preserved");
     };
     let part = reasoning_part(&public.message);
+    assert_no_provider_opaque(&public.message);
 
     assert_eq!(part.signature, None, "signature must not be published");
     assert_eq!(
@@ -93,6 +108,7 @@ fn into_public_strips_replay_state_from_input_and_generation_messages() {
         panic!("variant must be preserved");
     };
     assert_eq!(reasoning_part(&input.message).signature, None);
+    assert_no_provider_opaque(&input.message);
     assert_eq!(reasoning_part(&input.message).encrypted, None);
     assert_eq!(
         reasoning_part(&input.message).display_text().as_deref(),
@@ -114,6 +130,7 @@ fn into_public_strips_replay_state_from_input_and_generation_messages() {
         panic!("variant must be preserved");
     };
     assert_eq!(reasoning_part(&public.messages[0]).signature, None);
+    assert_no_provider_opaque(&public.messages[0]);
     assert_eq!(reasoning_part(&public.messages[0]).encrypted, None);
     assert_eq!(
         reasoning_part(&public.messages[0])

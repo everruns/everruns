@@ -872,6 +872,7 @@ everruns_core::message::ContentPart	enum
 everruns_core::message::ContentPart::File	variant
 everruns_core::message::ContentPart::Image	variant
 everruns_core::message::ContentPart::ImageFile	variant
+everruns_core::message::ContentPart::ProviderOpaque	variant
 everruns_core::message::ContentPart::Reasoning	variant
 everruns_core::message::ContentPart::Text	variant
 everruns_core::message::ContentPart::ToolCall	variant
@@ -880,6 +881,7 @@ everruns_core::message::ContentType	enum
 everruns_core::message::ContentType::File	variant
 everruns_core::message::ContentType::Image	variant
 everruns_core::message::ContentType::ImageFile	variant
+everruns_core::message::ContentType::ProviderOpaque	variant
 everruns_core::message::ContentType::Reasoning	variant
 everruns_core::message::ContentType::Text	variant
 everruns_core::message::ContentType::ToolCall	variant
