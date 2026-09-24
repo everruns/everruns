@@ -58,6 +58,18 @@ pub(crate) fn monitor_probe_tool_registry() -> ToolRegistry {
     registry
 }
 
+/// Poll interval for the schedule poller: 15s, overridable with
+/// `SESSION_SCHEDULER_POLL_INTERVAL_SECS` so the real-server wiring test does
+/// not idle for the first poll. Zero or unparsable values keep the default.
+pub fn poll_interval_from_env() -> Duration {
+    let secs = std::env::var("SESSION_SCHEDULER_POLL_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .unwrap_or(15);
+    Duration::from_secs(secs)
+}
+
 /// Spawn the session schedule poller as a background task.
 ///
 /// Polls every `poll_interval` for due schedules, injects messages, and

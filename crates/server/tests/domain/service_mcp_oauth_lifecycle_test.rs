@@ -217,7 +217,8 @@ fn pending_state_value(jar: &CookieJar, provider: &str) -> String {
 fn verify_grant_in_separate_process(identity_id: AgentIdentityId, provider: &str) {
     let output = Command::new(std::env::current_exe().unwrap())
         .arg("--exact")
-        .arg("identity_grant_decrypt_helper")
+        // Test names in the merged `domain` binary carry the module prefix.
+        .arg("service_mcp_oauth_lifecycle_test::identity_grant_decrypt_helper")
         .arg("--nocapture")
         .arg("--test-threads=1")
         .env("EVE_IDENTITY_GRANT_DECRYPT_HELPER", "1")
