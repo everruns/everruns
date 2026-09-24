@@ -500,6 +500,7 @@ impl ServerAppBuilder {
         let crate::storage_init::StorageInit {
             db,
             runner,
+            background_runner,
             shared_durable_store,
             database_url,
             database_unpooled_url,
@@ -792,6 +793,11 @@ impl ServerAppBuilder {
 
         let event_service = Arc::new(services::EventService::with_listeners(
             db.clone(),
+            event_delivery.clone(),
+            event_listeners.clone(),
+        ));
+        let background_event_service = Arc::new(services::EventService::with_listeners(
+            background_db.clone(),
             event_delivery.clone(),
             event_listeners,
         ));
@@ -1393,6 +1399,9 @@ impl ServerAppBuilder {
         );
         let session_schedule_service =
             Arc::new(crate::domains::session_schedules::SessionScheduleService::new(db.clone()));
+        let background_session_schedule_service = Arc::new(
+            crate::domains::session_schedules::SessionScheduleService::new(background_db.clone()),
+        );
         let session_schedules_state = api::session_schedules::AppState::new(
             session_schedule_service.clone(),
             auth_state.clone(),
@@ -2399,7 +2408,7 @@ impl ServerAppBuilder {
             "tool_result_timeout_sweep",
             crate::tool_result_timeout::spawn_tool_result_timeout_sweep(
                 background_db.clone(),
-                runner.clone(),
+                background_runner.clone(),
                 event_delivery.clone(),
             ),
         );
@@ -2413,9 +2422,9 @@ impl ServerAppBuilder {
             "session_scheduler",
             crate::session_scheduler::spawn_session_scheduler(
                 background_db.clone(),
-                session_schedule_service,
-                event_service,
-                runner,
+                background_session_schedule_service,
+                background_event_service,
+                background_runner,
                 Some(probe_registry),
                 std::time::Duration::from_secs(15),
             ),
