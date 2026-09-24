@@ -1,35 +1,42 @@
 //! `Cx`: the one context type, handed to tools, schedules and evals.
 //!
 //! Like a Topcoat component fetching its own data through `&Cx`, a tool asks
-//! the context for what it needs (a connection, a secret, a person's approval)
-//! instead of having it threaded through the agent definition.
+//! the context for what it needs (a connection, a secret, progress reporting)
+//! instead of having it threaded through the agent definition. Approvals are
+//! declared on the tool (`#[tool(needs_approval …)]`) and enforced by the
+//! everruns runtime, not asked for from inside the tool body.
 
 use std::any::Any;
 use std::future::{Future, IntoFuture};
 use std::pin::Pin;
-use std::sync::{Arc, OnceLock, Weak};
+use std::sync::{Arc, Weak};
 
 use anyhow::anyhow;
-use serde_json::{Value, json};
+use everruns::ToolCallContext;
+use serde_json::Value;
 
 use crate::app::Mode;
-use crate::host::Host;
+use crate::host::{Host, NewSession};
 
-/// The context of one session (inside tools) or of the app (in schedules).
+/// The context of one tool call (inside tools) or of the app (in schedules).
+///
+/// Inside a tool it wraps the runtime's `everruns::ToolCallContext` (session,
+/// turn and tool call ids, progress) and adds host access: connections and
+/// secrets.
 #[derive(Clone)]
 pub struct Cx {
     host: Weak<Host>,
-    session: Arc<OnceLock<String>>,
     agent: Option<&'static str>,
-    tool: Option<&'static str>,
+    session: Option<String>,
+    call: Option<ToolCallContext>,
 }
 
 impl std::fmt::Debug for Cx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Cx")
-            .field("session", &self.session.get())
+            .field("session", &self.session)
             .field("agent", &self.agent)
-            .field("tool", &self.tool)
+            .field("call", &self.call)
             .finish()
     }
 }
@@ -39,30 +46,19 @@ impl Cx {
     pub(crate) fn app(host: &Arc<Host>) -> Self {
         Self {
             host: Arc::downgrade(host),
-            session: Arc::new(OnceLock::new()),
             agent: None,
-            tool: None,
+            session: None,
+            call: None,
         }
     }
 
-    /// Context for a session whose id is filled in once everruns assigns it.
-    pub(crate) fn session(
-        host: &Arc<Host>,
-        agent: &'static str,
-        id: Arc<OnceLock<String>>,
-    ) -> Self {
+    /// Context for one tool call.
+    pub(crate) fn tool(host: Weak<Host>, agent: &'static str, call: ToolCallContext) -> Self {
         Self {
-            host: Arc::downgrade(host),
-            session: id,
+            host,
             agent: Some(agent),
-            tool: None,
-        }
-    }
-
-    pub(crate) fn for_tool(&self, tool: &'static str) -> Self {
-        Self {
-            tool: Some(tool),
-            ..self.clone()
+            session: Some(call.session_id().to_string()),
+            call: Some(call),
         }
     }
 
@@ -74,7 +70,17 @@ impl Cx {
 
     /// The current session id, inside a tool.
     pub fn session_id(&self) -> Option<&str> {
-        self.session.get().map(String::as_str)
+        self.session.as_deref()
+    }
+
+    /// The current tool call id, inside a tool.
+    pub fn tool_call_id(&self) -> Option<&str> {
+        self.call.as_ref().map(ToolCallContext::tool_call_id)
+    }
+
+    /// The turn that made the current call, inside a tool.
+    pub fn turn_id(&self) -> Option<String> {
+        self.call.as_ref().and_then(ToolCallContext::turn_id)
     }
 
     /// The agent this context belongs to, inside a tool.
@@ -104,17 +110,12 @@ impl Cx {
         crate::Secret::named(name).value()
     }
 
-    /// Report progress. Appears as a `tool.progress` event on the session's
-    /// stream and in the dev console.
-    pub fn progress(&self, message: impl Into<String>) {
-        let (Ok(host), Some(session)) = (self.host(), self.session_id()) else {
-            return;
-        };
-        host.emit(
-            session,
-            "tool.progress",
-            json!({ "tool": self.tool, "message": message.into() }),
-        );
+    /// Report progress. Appears as a canonical `tool.progress` event on the
+    /// session's stream and in the dev console. A no-op outside a tool.
+    pub async fn progress(&self, message: impl Into<String>) {
+        if let Some(call) = &self.call {
+            call.progress(message).await;
+        }
     }
 
     /// Start a new session, e.g. from a schedule. Awaiting it runs the first
@@ -125,26 +126,9 @@ impl Cx {
             input: input.into(),
             agent: None,
             deliver_to: None,
-            metadata: Value::Null,
+            metadata: None,
         }
     }
-
-    /// Ask a person to approve a tool call and wait for the decision.
-    pub(crate) async fn approval(&self, tool: &str, arguments: &Value) -> crate::Result<Decision> {
-        let host = self.host()?;
-        let session = self
-            .session_id()
-            .ok_or_else(|| anyhow!("approvals need a session"))?
-            .to_string();
-        host.request_approval(&session, tool, arguments).await
-    }
-}
-
-/// A person's answer to an approval request.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Decision {
-    Approve,
-    Deny { note: Option<String> },
 }
 
 /// Where a session's replies go: a channel and a target on it.
@@ -180,7 +164,7 @@ pub struct StartSession {
     input: String,
     agent: Option<String>,
     deliver_to: Option<DeliveryTarget>,
-    metadata: Value,
+    metadata: Option<Value>,
 }
 
 impl StartSession {
@@ -198,7 +182,7 @@ impl StartSession {
 
     /// Attach metadata, visible on the session.
     pub fn metadata(mut self, metadata: Value) -> Self {
-        self.metadata = metadata;
+        self.metadata = Some(metadata);
         self
     }
 }
@@ -211,11 +195,12 @@ impl IntoFuture for StartSession {
         Box::pin(async move {
             let host = self.cx.host()?;
             let session = host
-                .create_session(
-                    self.agent.as_deref(),
-                    self.metadata,
-                    self.deliver_to.map(|target| target.encode()),
-                )
+                .create_session(NewSession {
+                    agent: self.agent,
+                    metadata: self.metadata,
+                    deliver_to: self.deliver_to.map(|target| target.encode()),
+                    ..NewSession::default()
+                })
                 .await?;
             let turn = host.send(&session, self.input).await?;
             let outcome = turn.wait().await?;

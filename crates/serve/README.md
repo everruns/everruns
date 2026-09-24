@@ -10,11 +10,16 @@ and its hosting model from [eve](https://vercel.com/blog/introducing-eve):
 - **Topcoat's API shape.** An app is `serve::start(App::builder().discover().build())`
   plus attribute macros. Each piece gets what it needs through one `&Cx`.
 - **eve's hosting model.** The file layout says what each piece is. The build
-  declares what it needs (a manifest), and the host provides it. The same
-  `/v1` wire API is served everywhere, and sessions survive restarts.
+  declares what it needs (a manifest), and the host provides it, and sessions
+  survive restarts.
+- **The everruns server's wire API.** Every deployment serves a subset of the
+  everruns server's `/v1` session API (sessions, messages, `/sse`, `/events`,
+  cancel, question-answers), so the everruns SDK, CLI and UI chat view can
+  drive a serve app.
 
-It adds no new runtime: agents, sessions, tools and the durable event log are
-the existing `everruns` crate.
+It is a thin layer over `everruns::Engine` and adds no new runtime: agents,
+sessions, tools, approvals, `ask_user` and the durable event log are the
+existing `everruns` crate.
 
 ```rust
 use serve::prelude::*;
@@ -31,7 +36,7 @@ fn analyst() -> Agent {
 #[tool(needs_approval = |a: &RunSql| scan_gb(&a.sql) > 50.0)]
 async fn run_sql(cx: &Cx, sql: String) -> Result<Rows> {
     let wh = cx.connection::<Warehouse>()?;   // credentials never reach the model
-    cx.progress("querying…");
+    cx.progress("querying…").await;
     Ok(wh.query(&sql)?.truncate(500))
 }
 
@@ -64,9 +69,10 @@ cargo run -p serve-example-revenue-analyst -- manifest
 In another terminal:
 
 ```sh
-curl -si localhost:3000/v1/sessions -H 'content-type: application/json' \
-  -d '{"input":"What was revenue last week?"}'
-curl -N localhost:3000/v1/sessions/<id>/events        # SSE; resume with Last-Event-ID
+ID=$(curl -s localhost:3000/v1/sessions -H 'content-type: application/json' -d '{}' | jq -r .id)
+curl -s localhost:3000/v1/sessions/$ID/messages -H 'content-type: application/json' \
+  -d '{"message":{"content":[{"type":"text","text":"What was revenue last week?"}]}}'
+curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0"   # replay, then live; resume with since_id
 ```
 
 To use a real model, set `OPENROUTER_API_KEY` (it accepts `provider/model`
@@ -121,9 +127,11 @@ cron, a filter naming an unknown tool.
 | `#[connection]` | `fn() -> T` or `fn() -> Result<T>` | A value tools get with `cx.connection::<T>()`. An `McpServer` is also attached to every agent. |
 | `#[eval]` | `async fn(&mut EvalCx) -> Result` | A conversation with assertions. It runs in-process or `--against <url>`. |
 
-`Cx` is the one context type. It gives access to the current session, typed
-connections, secrets, `progress(...)` events, `start_session(...)` and
-approvals.
+`Cx` is the one context type. Inside a tool it wraps the runtime's
+`ToolCallContext` (session, turn and tool call ids, `progress(...)`) and adds
+typed connections, secrets and `start_session(...)`. Approvals are declared on
+the tool and enforced by the runtime; every agent also has the built-in
+`ask_user` tool.
 
 ## Commands
 
@@ -149,17 +157,20 @@ what it registered.
 
 ## Status
 
-This PoC works end to end offline: discovery, the manifest, the wire API with
-resumable SSE, approvals, cancel, restart and resume, Slack and webhook
-channels, schedules, subagents, skills, sandbox selection, and evals both
-in-process and remote.
+This PoC works end to end offline: discovery, the manifest, the
+server-compatible wire API (driven by the everruns Rust SDK in tests) with
+resumable SSE, approvals, `ask_user` answers, cancel, restart and resume,
+Slack and webhook channels, schedules, subagents, skills, sandbox selection,
+and evals both in-process and remote.
 
 It does not have:
 
 - a `serve` CLI wrapper or OCI image build;
 - a real cloud deploy;
 - Postgres or NATS adapters;
-- `ask_user` or `#[memoize]` on `Cx`;
+- `#[memoize]` on `Cx`;
 - per-build routing (the manifest defines the contract, but nothing routes on it yet);
-- approvals that survive a restart;
+- approvals or questions that survive a restart, or a deny note that reaches
+  the model;
+- auth, organizations, or the server's agent, harness and workspace routes;
 - Slack signature checks without `SLACK_SIGNING_SECRET` (they are skipped in dev).

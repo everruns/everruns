@@ -20,7 +20,7 @@ async fn run_sql(
     sql: String,
 ) -> Result<Rows> {
     let wh = cx.connection::<Warehouse>()?; // credentials never reach the model
-    cx.progress("querying…");
+    cx.progress("querying…").await;
     Ok(wh.query(&sql)?.truncate(500))
 }
 

@@ -11,8 +11,10 @@ cargo run -p serve-example-hello -- manifest
 ```
 
 ```sh
-curl -si localhost:3000/v1/sessions -H 'content-type: application/json' -d '{"input":"Roll a d20"}'
-curl -N "localhost:3000/v1/sessions/<id>/events"
+ID=$(curl -s localhost:3000/v1/sessions -H 'content-type: application/json' -d '{}' | jq -r .id)
+curl -s localhost:3000/v1/sessions/$ID/messages -H 'content-type: application/json' \
+  -d '{"message":{"content":[{"type":"text","text":"Roll a d20"}]}}'
+curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0"
 ```
 
 | File | Is |

@@ -131,7 +131,7 @@ impl App {
         self.inner.agents.iter().find(|agent| agent.name == name)
     }
 
-    /// The agent served on `/v1/sessions`.
+    /// The agent `POST /v1/sessions` uses when the body names none.
     pub(crate) fn default_agent(&self) -> Option<&AgentEntry> {
         let top: Vec<_> = self.inner.agents.iter().filter(|a| !a.sub).collect();
         top.iter()
@@ -332,7 +332,7 @@ fn discover(app: &mut AppInner) {
             .push("more than one #[agent(default)]; mark exactly one".into());
     } else if top.len() > 1 && defaults == 0 {
         app.warnings.push(
-            "several agents and none is #[agent(default)]; only /v1/agents/{name}/sessions is served"
+            "several agents and none is #[agent(default)]; sessions must name one with agent_name"
                 .into(),
         );
     }

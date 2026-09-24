@@ -18,11 +18,12 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail};
 use clap::{Parser, Subcommand};
+use everruns::{EventStreamError, SessionEvent};
 use serde_json::Value;
 
 use crate::app::{App, Mode};
 use crate::host::Host;
-use crate::store::WireEvent;
+use crate::host::Notice;
 
 #[derive(Parser)]
 #[command(about = "A serve app (experimental). Runs `dev` when no command is given.")]
@@ -135,7 +136,7 @@ async fn serve(app: App, mode: Mode, port: u16) -> crate::Result {
     let host = Host::new(app.clone(), mode, Some(data_dir.clone()))?;
     // Resolve every agent once so a bad model or tool schema fails at boot.
     for agent in &app.inner.agents {
-        host.build_agent(agent, &crate::Cx::app(&host), false)?;
+        host.build_agent(agent, None, false)?;
     }
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
@@ -217,103 +218,196 @@ fn banner(host: &Arc<Host>, mode: Mode, port: u16, data_dir: &std::path::Path, m
     println!("  listen   http://localhost:{port}");
     println!();
     println!(
-        "  try:  curl -s localhost:{port}/v1/sessions -H 'content-type: application/json' -d '{{\"input\":\"hello\"}}'"
+        "  try:  curl -s localhost:{port}/v1/sessions -H 'content-type: application/json' -d '{{}}'"
     );
-    println!("        curl -N localhost:{port}/v1/sessions/<id>/events");
+    println!(
+        "        curl -s localhost:{port}/v1/sessions/<id>/messages -H 'content-type: application/json' \\\n          -d '{{\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"hello\"}}]}}}}'"
+    );
+    println!("        curl -N 'localhost:{port}/v1/sessions/<id>/sse?after_sequence=0'");
     println!();
 }
 
-/// The dev "terminal UI": one line per meaningful event, as it happens.
+/// The dev "terminal UI": one line per meaningful event, as it happens. It
+/// follows each live session's canonical events, plus the host's notices for
+/// what has no event (pending approvals and questions, deliveries).
 async fn console(host: Arc<Host>, port: u16) {
-    let mut events = host.events.subscribe();
-    let mut streaming = std::collections::HashSet::new();
+    let mut notices = host.notices.subscribe();
     loop {
-        let event = match events.recv().await {
-            Ok(event) => event,
+        let notice = match notices.recv().await {
+            Ok(notice) => notice,
             Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
             Err(_) => return,
         };
-        if let Some(line) = console_line(&event, port, &mut streaming) {
-            // Session ids share a long time-ordered prefix; the tail tells them apart.
-            let tail = event.session_id.len().saturating_sub(6);
-            let short = event.session_id.get(tail..).unwrap_or(&event.session_id);
-            println!("{} {short} {line}", event.at.get(11..19).unwrap_or(""));
+        if let Notice::Live {
+            session_id, after, ..
+        } = &notice
+        {
+            tokio::spawn(follow(host.clone(), session_id.clone(), *after));
+        }
+        if let Some((session, line)) = notice_line(&notice, port) {
+            print_line(&stamp(), &session, &line);
         }
     }
 }
 
-fn console_line(
-    event: &WireEvent,
-    port: u16,
-    streaming: &mut std::collections::HashSet<String>,
-) -> Option<String> {
-    let data = &event.data;
-    let text = |key: &str| {
-        data.get(key)
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string()
+fn stamp() -> String {
+    chrono::Utc::now().format("%H:%M:%S").to_string()
+}
+
+fn print_line(at: &str, session: &str, line: &str) {
+    // Session ids share a long time-ordered prefix; the tail tells them apart.
+    let tail = session.len().saturating_sub(6);
+    let short = session.get(tail..).unwrap_or(session);
+    println!("{at} {short} {line}");
+}
+
+/// Print one session's canonical events after `after`, replay then live.
+async fn follow(host: Arc<Host>, id: String, mut after: i32) {
+    let Ok(session) = host.session(&id).await else {
+        return;
     };
-    let clip = |value: String| {
-        let flat = value.replace('\n', " ");
-        if flat.chars().count() > 160 {
-            format!("{}…", flat.chars().take(160).collect::<String>())
-        } else {
-            flat
+    let Ok(mut events) = session.events_from(after).await else {
+        return;
+    };
+    loop {
+        match events.recv().await {
+            Ok(Some(event)) => {
+                after = event.sequence().unwrap_or(after).max(after);
+                if let Some(line) = event_line(&event) {
+                    print_line(event.timestamp().get(11..19).unwrap_or(""), &id, &line);
+                }
+            }
+            Err(EventStreamError::Lagged { .. }) => match session.events_from(after).await {
+                Ok(fresh) => events = fresh,
+                Err(_) => return,
+            },
+            _ => return,
         }
-    };
-    Some(match event.kind.as_str() {
-        "session.created" => format!("● new session on {}", text("agent")),
-        "session.resumed" => "● resumed after restart".to_string(),
-        "message.accepted" => format!("▸ {} ({})", clip(text("input")), text("disposition")),
+    }
+}
+
+fn clip(value: &str) -> String {
+    let flat = value.replace('\n', " ");
+    if flat.chars().count() > 160 {
+        format!("{}…", flat.chars().take(160).collect::<String>())
+    } else {
+        flat
+    }
+}
+
+/// Joined text parts of a canonical message.
+fn message_text(message: &Value) -> String {
+    message["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|part| part["type"] == "text")
+        .filter_map(|part| part["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+fn event_line(event: &SessionEvent) -> Option<String> {
+    let data = &event.canonical_json()["data"];
+    let text = |value: &Value| value.as_str().unwrap_or_default().to_string();
+    Some(match event.event_type() {
+        "input.message" => format!("▸ {}", clip(&message_text(&data["message"]))),
         "tool.started" => format!(
             "  ⚙ {} {}",
-            text("tool_name"),
-            clip(
-                data.get("arguments")
-                    .map(Value::to_string)
-                    .unwrap_or_default()
-            )
+            text(&data["tool_call"]["name"]),
+            clip(&data["tool_call"]["arguments"].to_string())
         ),
+        "tool.progress" => format!("  … {}", text(&data["message"])),
         "tool.completed" => {
-            let ok = data.get("success").and_then(Value::as_bool) == Some(true);
-            format!("  {} {}", if ok { "✓" } else { "✗" }, text("tool_name"))
+            let ok = data["success"].as_bool() == Some(true);
+            format!(
+                "  {} {}",
+                if ok { "✓" } else { "✗" },
+                text(&data["tool_name"])
+            )
         }
-        "tool.progress" => format!("  … {}", text("message")),
-        "approval.requested" => format!(
-            "  ⏸ {} needs approval: {}\n      curl -X POST localhost:{port}/v1/sessions/{}/approvals/{} -H 'content-type: application/json' -d '{{\"decision\":\"approve\"}}'",
-            text("tool"),
-            clip(
-                data.get("arguments")
-                    .map(Value::to_string)
-                    .unwrap_or_default()
-            ),
-            event.session_id,
-            text("approval_id"),
-        ),
-        "approval.resolved" => format!("  ▶ {} {}", text("approval_id"), text("decision")),
-        "subagent.started" => format!("  ↘ {}: {}", text("agent"), clip(text("task"))),
-        "subagent.completed" => format!("  ↗ {}", text("agent")),
-        "output.message.delta" => {
-            streaming.insert(event.session_id.clone());
-            return None;
-        }
-        "turn.result" => {
-            streaming.remove(&event.session_id);
-            if data.get("success").and_then(Value::as_bool) == Some(true) {
-                format!("◂ {}", clip(text("response")))
-            } else {
-                format!("✗ turn failed: {}", text("error"))
+        "output.message.completed" => {
+            let reply = message_text(&data["message"]);
+            if reply.is_empty() {
+                return None;
             }
+            format!("◂ {}", clip(&reply))
         }
-        "delivery.completed" => format!("  ↳ delivered to {}", text("to")),
-        "delivery.failed" => format!("  ✗ delivery to {} failed: {}", text("to"), text("error")),
-        "session.build_changed" => format!(
-            "  ⚠ session started on build {}; resuming on {}",
-            text("from"),
-            text("to")
-        ),
+        "turn.failed" => format!("✗ turn failed: {}", text(&data["error"])),
+        "turn.cancelled" => "✗ turn cancelled".to_string(),
         _ => return None,
+    })
+}
+
+fn notice_line(notice: &Notice, port: u16) -> Option<(String, String)> {
+    Some(match notice {
+        Notice::Live {
+            session_id,
+            agent,
+            resumed,
+            ..
+        } => (
+            session_id.clone(),
+            if *resumed {
+                format!("● resumed {agent} after restart")
+            } else {
+                format!("● new session on {agent}")
+            },
+        ),
+        Notice::BuildChanged { session_id, from } => (
+            session_id.clone(),
+            format!("  ⚠ session started on build {from}; resuming on this build"),
+        ),
+        Notice::ApprovalRequested(view) => (
+            view.session_id.clone(),
+            format!(
+                "  ⏸ {} needs approval: {}\n      curl -X POST localhost:{port}/v1/sessions/{}/approvals/{} -H 'content-type: application/json' -d '{{\"decision\":\"approve\"}}'",
+                view.tool_name,
+                clip(&view.arguments.to_string()),
+                view.session_id,
+                view.tool_call_id,
+            ),
+        ),
+        Notice::QuestionAsked {
+            session_id,
+            tool_call_id,
+            questions,
+        } => {
+            let asked: Vec<String> = questions
+                .iter()
+                .map(|question| {
+                    let options: Vec<&str> = question
+                        .options
+                        .iter()
+                        .map(|option| option.label.as_str())
+                        .collect();
+                    format!(
+                        "{} [{}] ({})",
+                        question.question,
+                        question.id.as_deref().unwrap_or("?"),
+                        options.join(" / ")
+                    )
+                })
+                .collect();
+            (
+                session_id.clone(),
+                format!(
+                    "  ? {}\n      curl -X POST localhost:{port}/v1/sessions/{session_id}/question-answers -H 'content-type: application/json' -d '{{\"tool_call_id\":\"{tool_call_id}\",\"answers\":[{{\"id\":\"…\",\"selected\":[\"…\"]}}]}}'",
+                    asked.join("; ")
+                ),
+            )
+        }
+        Notice::Delivered {
+            session_id,
+            to,
+            error,
+        } => (
+            session_id.clone(),
+            match error {
+                None => format!("  ↳ delivered to {to}"),
+                Some(error) => format!("  ✗ delivery to {to} failed: {error}"),
+            },
+        ),
     })
 }
 
@@ -368,34 +462,33 @@ fn deploy_plan(app: &App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::host::PendingApprovalView;
     use serde_json::json;
 
     #[test]
     fn console_explains_approvals_with_a_ready_curl() {
-        let event = WireEvent {
-            seq: 4,
+        let notice = Notice::ApprovalRequested(PendingApprovalView {
             session_id: "session_x".into(),
-            kind: "approval.requested".into(),
-            at: "2026-09-24T18:00:00.000Z".into(),
-            data: json!({ "approval_id": "apr_1", "tool": "run_sql", "arguments": { "sql": "select 1" } }),
-        };
-        let line = console_line(&event, 3000, &mut Default::default()).unwrap();
+            tool_call_id: "call_1".into(),
+            tool_name: "run_sql".into(),
+            arguments: json!({ "sql": "select 1" }),
+        });
+        let (session, line) = notice_line(&notice, 3000).unwrap();
+        assert_eq!(session, "session_x");
         assert!(line.contains("run_sql needs approval"), "{line}");
         assert!(
-            line.contains("/v1/sessions/session_x/approvals/apr_1"),
+            line.contains("/v1/sessions/session_x/approvals/call_1"),
             "{line}"
         );
     }
 
     #[test]
-    fn console_skips_deltas() {
-        let event = WireEvent {
-            seq: 1,
-            session_id: "s".into(),
-            kind: "output.message.delta".into(),
-            at: String::new(),
-            data: json!({ "delta": "x" }),
-        };
-        assert!(console_line(&event, 3000, &mut Default::default()).is_none());
+    fn message_text_joins_text_parts() {
+        let message = json!({ "content": [
+            { "type": "text", "text": "a" },
+            { "type": "image", "url": "x" },
+            { "type": "text", "text": "b" },
+        ] });
+        assert_eq!(message_text(&message), "ab");
     }
 }

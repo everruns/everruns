@@ -16,7 +16,7 @@ async fn roll_dice(
     if !(2..=100).contains(&sides) {
         bail!("a die needs between 2 and 100 sides, not {sides}");
     }
-    cx.progress(format!("rolling a d{sides}"));
+    cx.progress(format!("rolling a d{sides}")).await;
     // Not a CSPRNG; this is a board game.
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

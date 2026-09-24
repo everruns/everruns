@@ -14,25 +14,31 @@ cargo run -p serve-example-revenue-analyst -- deploy    # what a host would prov
 ## A tour, in a second terminal
 
 ```sh
+say() { curl -s localhost:3000/v1/sessions/$ID/messages -H 'content-type: application/json' \
+  -d "{\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"$1\"}]}}"; }
+
 # 1. Ask. The agent loads the sql-style skill and runs a cheap, date-filtered query.
-ID=$(curl -s localhost:3000/v1/sessions -H 'content-type: application/json' \
-  -d '{"input":"What was revenue last week?"}' | jq -r .id)
-curl -sN "localhost:3000/v1/sessions/$ID/events?follow=false" | grep '^event:'
+ID=$(curl -s localhost:3000/v1/sessions -H 'content-type: application/json' -d '{}' | jq -r .id)
+say "What was revenue last week?"
+curl -s "localhost:3000/v1/sessions/$ID/events?types=tool.started" | jq -r '.data[].data.tool_call.name'
 
 # 2. Ask for everything. A query with no WHERE clause needs approval, so the
-#    turn pauses. The dev console prints a ready-made curl to approve it:
-curl -s localhost:3000/v1/sessions/$ID/messages -H 'content-type: application/json' \
-  -d '{"input":"Now show me every order we have ever had."}'
-curl -s localhost:3000/v1/sessions/$ID/approvals/<approval_id> \
+#    turn pauses (status "waitingfortoolresults"). The dev console prints a
+#    ready-made curl; the pending call is also on the session:
+say "Now show me every order we have ever had."
+CALL=$(curl -s localhost:3000/v1/sessions/$ID | jq -r '.pending_approvals[0].tool_call_id')
+curl -s localhost:3000/v1/sessions/$ID/approvals/$CALL \
   -H 'content-type: application/json' -d '{"decision":"approve"}'
 
 # 3. Ask for a review. The analyst delegates to the reviewer subagent.
-curl -s localhost:3000/v1/sessions/$ID/messages -H 'content-type: application/json' \
-  -d '{"input":"Check the query with the reviewer"}'
+say "Check the query with the reviewer"
+
+# Follow everything live (replay first) in another terminal:
+curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0&exclude=output.message.delta"
 
 # 4. Stop the server (Ctrl+C), start it again, and message the same $ID. The
-#    session resumes from .serve/ (session.resumed on the stream). The offline
-#    script starts over in the new process; the conversation history does not.
+#    session resumes from .serve/ and its event log continues where it was.
+#    The offline script starts over in the new process; the history does not.
 
 # 5. A Slack mention (without SLACK_BOT_TOKEN the reply is printed, not posted).
 curl -s localhost:3000/v1/channels/slack -H 'content-type: application/json' \

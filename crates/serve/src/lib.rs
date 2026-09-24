@@ -22,7 +22,7 @@
 //! #[tool(needs_approval = |a: &RunSql| a.sql.len() > 500)]
 //! async fn run_sql(cx: &Cx, sql: String) -> Result<Rows> {
 //!     let wh = cx.connection::<Warehouse>()?;
-//!     cx.progress("querying…");
+//!     cx.progress("querying…").await;
 //!     wh.query(&sql)
 //! }
 //!
@@ -43,10 +43,11 @@
 //!   embedded by `serve-build`.
 //! - **[`Manifest`]** is what the build declares and the host provides:
 //!   schedules, channel routes, secrets, the sandbox, model strings.
-//! - **[`Cx`]** is the one context type: session, connections, secrets,
-//!   progress, approvals, starting sessions.
+//! - **[`Cx`]** is the one context type: the tool call (session, turn, call
+//!   id, progress), connections, secrets, starting sessions.
 //! - **[`start`]** runs the binary as `dev`, `start`, `manifest`, `eval` or
-//!   `deploy`, serving the same `/v1` wire API everywhere.
+//!   `deploy`, serving everywhere the same `/v1` wire API, a subset of the
+//!   everruns server's session API (so the everruns SDK can drive it).
 //!
 //! [Topcoat]: https://github.com/tokio-rs/topcoat
 //! [eve]: https://vercel.com/docs/eve

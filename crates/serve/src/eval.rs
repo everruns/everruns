@@ -9,14 +9,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail};
-use futures::StreamExt;
+use everruns::ask_user::{AskUser, DefaultsResponder, Question, Status};
 use serde_json::{Value, json};
 
 use crate::app::{App, Mode};
-use crate::host::Host;
-use crate::store::WireEvent;
+use crate::host::{Host, NewSession, Notice, wire_json};
 
 const TURN_TIMEOUT: Duration = Duration::from_secs(180);
+const POLL: Duration = Duration::from_millis(100);
 
 enum Target {
     Local(Arc<Host>),
@@ -33,7 +33,7 @@ pub enum OnApproval {
     Deny,
 }
 
-/// One finished turn, as the eval saw it on the wire.
+/// One finished turn, as the eval saw it.
 #[derive(Clone, Debug, Default)]
 pub struct TurnRecord {
     pub response: String,
@@ -43,7 +43,10 @@ pub struct TurnRecord {
     pub tools: Vec<String>,
     /// Tools that asked for approval.
     pub approvals: Vec<String>,
-    pub events: Vec<WireEvent>,
+    /// `ask_user` question sets answered (with their declared defaults).
+    pub questions: usize,
+    /// The turn's durable canonical events, as the wire API sends them.
+    pub events: Vec<Value>,
 }
 
 /// The eval's handle on one session.
@@ -51,7 +54,8 @@ pub struct EvalCx {
     target: Target,
     session: Option<String>,
     agent: Option<String>,
-    cursor: i64,
+    /// Last durable sequence seen; the next turn's events come after it.
+    cursor: i32,
     on_approval: OnApproval,
     turns: Vec<TurnRecord>,
 }
@@ -73,13 +77,22 @@ impl EvalCx {
         Self::new(Target::Local(host))
     }
 
+    #[cfg(test)]
+    pub(crate) fn remote_for_test(base: String) -> Self {
+        Self::new(Target::Remote {
+            base,
+            client: reqwest::Client::new(),
+        })
+    }
+
     /// Talk to this agent instead of the default one. Call before `send`.
     pub fn agent(&mut self, name: impl Into<String>) -> &mut Self {
         self.agent = Some(name.into());
         self
     }
 
-    /// How approval requests are answered (default: approve).
+    /// How approval requests are answered (default: approve). Questions from
+    /// `ask_user` are answered with their declared defaults.
     pub fn on_approval(&mut self, policy: OnApproval) -> &mut Self {
         self.on_approval = policy;
         self
@@ -100,8 +113,13 @@ impl EvalCx {
             Target::Local(host) => self.local_turn(host.clone(), &session, text).await?,
             Target::Remote { .. } => self.remote_turn(&session, text).await?,
         };
-        if let Some(last) = turn.events.last() {
-            self.cursor = last.seq;
+        if let Some(last) = turn
+            .events
+            .iter()
+            .filter_map(|e| e["sequence"].as_i64())
+            .max()
+        {
+            self.cursor = i32::try_from(last).unwrap_or(self.cursor);
         }
         self.turns.push(turn);
         Ok(())
@@ -129,17 +147,17 @@ impl EvalCx {
     async fn create(&self) -> crate::Result<String> {
         match &self.target {
             Target::Local(host) => {
-                host.create_session(self.agent.as_deref(), json!({ "eval": true }), None)
-                    .await
+                host.create_session(NewSession {
+                    agent: self.agent.clone(),
+                    metadata: Some(json!({ "eval": true })),
+                    ..NewSession::default()
+                })
+                .await
             }
             Target::Remote { base, client } => {
-                let url = match &self.agent {
-                    Some(agent) => format!("{base}/v1/agents/{agent}/sessions"),
-                    None => format!("{base}/v1/sessions"),
-                };
                 let body: Value = client
-                    .post(url)
-                    .json(&json!({ "metadata": { "eval": true } }))
+                    .post(format!("{base}/v1/sessions"))
+                    .json(&json!({ "agent_name": self.agent, "metadata": { "eval": true } }))
                     .send()
                     .await?
                     .error_for_status()?
@@ -153,196 +171,187 @@ impl EvalCx {
         }
     }
 
+    /// In-process: send, answer approvals and questions as the host parks
+    /// them, and take the outcome from the turn itself.
     async fn local_turn(
         &self,
         host: Arc<Host>,
         session: &str,
         text: String,
     ) -> crate::Result<TurnRecord> {
-        let mut live = host.events.subscribe();
-        host.send(session, text).await?;
-        let mut turn = Turn::after(self.cursor);
-        let deadline = Instant::now() + TURN_TIMEOUT;
-        for event in host.events_after(session, self.cursor)? {
-            self.observe_local(&host, &mut turn, event)?;
-        }
-        while !turn.done() {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            let event = tokio::time::timeout(remaining, live.recv())
-                .await
-                .map_err(|_| anyhow!("turn did not finish within {TURN_TIMEOUT:?}"))?;
-            match event {
-                Ok(event) if event.session_id == session => {
-                    self.observe_local(&host, &mut turn, event)?
-                }
-                Ok(_) => {}
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                    for event in host.events_after(session, turn.last)? {
-                        self.observe_local(&host, &mut turn, event)?;
+        let mut notices = host.notices.subscribe();
+        let pending = host.send(session, text).await?;
+        let mut record = TurnRecord::default();
+        let wait = pending.wait();
+        tokio::pin!(wait);
+        let deadline = tokio::time::sleep(TURN_TIMEOUT);
+        tokio::pin!(deadline);
+        let outcome = loop {
+            tokio::select! {
+                outcome = &mut wait => break outcome?,
+                () = &mut deadline => bail!("turn did not finish within {TURN_TIMEOUT:?}"),
+                notice = notices.recv() => match notice {
+                    Ok(Notice::ApprovalRequested(view)) if view.session_id == session => {
+                        record.approvals.push(view.tool_name.clone());
+                        // The turn may have moved on (cancel) in between.
+                        let _ = host.resolve_approval(
+                            session,
+                            &view.tool_call_id,
+                            self.on_approval == OnApproval::Approve,
+                        );
                     }
-                }
-                Err(err) => return Err(err.into()),
+                    Ok(Notice::QuestionAsked { session_id, tool_call_id, questions })
+                        if session_id == session =>
+                    {
+                        record.questions += 1;
+                        let outcome = DefaultsResponder.ask(&questions).await;
+                        let _ = host.answer_questions(
+                            session,
+                            Some(&tool_call_id),
+                            Status::Answered,
+                            outcome.answers,
+                        );
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        bail!("host shut down mid-turn")
+                    }
+                    _ => {}
+                },
             }
-        }
-        Ok(turn.record)
+        };
+        record.response = outcome.response;
+        record.success = outcome.success;
+        record.error = outcome.error;
+        record.events = host
+            .events_after(session, self.cursor)
+            .await?
+            .iter()
+            .map(wire_json)
+            .collect();
+        record.tools = tools_called(&record.events);
+        Ok(record)
     }
 
-    fn observe_local(&self, host: &Host, turn: &mut Turn, event: WireEvent) -> crate::Result {
-        if let Some(approval) = turn.observe(event) {
-            host.resolve_approval(
-                &approval.session,
-                &approval.id,
-                self.on_approval == OnApproval::Approve,
-                Some("answered by eval".into()),
-            )?;
-        }
-        Ok(())
-    }
-
+    /// Over the wire: send, then poll the session, answering its pending
+    /// approvals and questions, until it is idle and the turn's terminal
+    /// event is in the log.
     async fn remote_turn(&self, session: &str, text: String) -> crate::Result<TurnRecord> {
         let Target::Remote { base, client } = &self.target else {
             bail!("not a remote eval");
         };
-        // Open the stream first so nothing the turn emits is missed.
-        let response = client
-            .get(format!("{base}/v1/sessions/{session}/events"))
-            .header("last-event-id", self.cursor.to_string())
-            .send()
-            .await?
-            .error_for_status()?;
         client
             .post(format!("{base}/v1/sessions/{session}/messages"))
-            .json(&json!({ "input": text }))
+            .json(&json!({ "message": { "role": "user", "content": [{ "type": "text", "text": text }] } }))
             .send()
             .await?
             .error_for_status()?;
-
-        let mut turn = Turn::after(self.cursor);
-        let mut bytes = response.bytes_stream();
-        let mut buffer = String::new();
+        let mut record = TurnRecord::default();
         let deadline = Instant::now() + TURN_TIMEOUT;
-        while !turn.done() {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            let chunk = tokio::time::timeout(remaining, bytes.next())
-                .await
-                .map_err(|_| anyhow!("turn did not finish within {TURN_TIMEOUT:?}"))?
-                .ok_or_else(|| anyhow!("event stream closed mid-turn"))??;
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
-            while let Some(end) = buffer.find("\n\n") {
-                let block: String = buffer.drain(..end + 2).collect();
-                let Some(event) = parse_sse(&block) else {
-                    continue;
+        loop {
+            if Instant::now() > deadline {
+                bail!("turn did not finish within {TURN_TIMEOUT:?}");
+            }
+            let state: Value = client
+                .get(format!("{base}/v1/sessions/{session}"))
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+            for pending in state["pending_approvals"].as_array().into_iter().flatten() {
+                record.approvals.push(
+                    pending["tool_name"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                );
+                let decision = match self.on_approval {
+                    OnApproval::Approve => "approve",
+                    OnApproval::Deny => "deny",
                 };
-                if let Some(approval) = turn.observe(event) {
-                    let decision = match self.on_approval {
-                        OnApproval::Approve => "approve",
-                        OnApproval::Deny => "deny",
-                    };
-                    client
-                        .post(format!(
-                            "{base}/v1/sessions/{}/approvals/{}",
-                            approval.session, approval.id
-                        ))
-                        .json(&json!({ "decision": decision, "note": "answered by eval" }))
-                        .send()
-                        .await?
-                        .error_for_status()?;
+                let call = pending["tool_call_id"].as_str().unwrap_or_default();
+                client
+                    .post(format!("{base}/v1/sessions/{session}/approvals/{call}"))
+                    .json(&json!({ "decision": decision, "note": "answered by eval" }))
+                    .send()
+                    .await?;
+            }
+            for pending in state["pending_questions"].as_array().into_iter().flatten() {
+                record.questions += 1;
+                let questions: Vec<Question> =
+                    serde_json::from_value(pending["questions"].clone())?;
+                let outcome = DefaultsResponder.ask(&questions).await;
+                client
+                    .post(format!("{base}/v1/sessions/{session}/question-answers"))
+                    .json(&json!({
+                        "tool_call_id": pending["tool_call_id"],
+                        "status": "answered",
+                        "answers": outcome.answers,
+                    }))
+                    .send()
+                    .await?;
+            }
+            if state["status"] == "idle" {
+                let events: Value = client
+                    .get(format!(
+                        "{base}/v1/sessions/{session}/events?after_sequence={}",
+                        self.cursor
+                    ))
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json()
+                    .await?;
+                let events = events["data"].as_array().cloned().unwrap_or_default();
+                if let Some(terminal) = events.iter().rev().find(|event| is_terminal(event)) {
+                    record.success = terminal["type"] == "turn.completed";
+                    record.error = terminal["data"]["error"].as_str().map(str::to_string);
+                    record.response = final_response(&events);
+                    record.tools = tools_called(&events);
+                    record.events = events;
+                    return Ok(record);
                 }
             }
+            tokio::time::sleep(POLL).await;
         }
-        Ok(turn.record)
     }
 }
 
-struct PendingApproval {
-    session: String,
-    id: String,
+fn is_terminal(event: &Value) -> bool {
+    matches!(
+        event["type"].as_str(),
+        Some("turn.completed" | "turn.failed" | "turn.cancelled")
+    )
 }
 
-/// Accumulates one turn's events until both the runtime's terminal event and
-/// the host's `turn.result` have been seen, which guarantees every event of the
-/// turn is in the record.
-#[derive(Default)]
-struct Turn {
-    record: TurnRecord,
-    /// Highest sequence observed; replay and live delivery can overlap.
-    last: i64,
-    terminal: bool,
-    result: bool,
+/// Tool names from canonical `tool.started` events, in order.
+fn tools_called(events: &[Value]) -> Vec<String> {
+    events
+        .iter()
+        .filter(|event| event["type"] == "tool.started")
+        .filter_map(|event| event["data"]["tool_call"]["name"].as_str())
+        .map(str::to_string)
+        .collect()
 }
 
-impl Turn {
-    fn done(&self) -> bool {
-        self.terminal && self.result
-    }
-
-    fn after(cursor: i64) -> Self {
-        Self {
-            last: cursor,
-            ..Self::default()
-        }
-    }
-
-    fn observe(&mut self, event: WireEvent) -> Option<PendingApproval> {
-        if event.seq <= self.last {
-            return None;
-        }
-        self.last = event.seq;
-        let mut approval = None;
-        match event.kind.as_str() {
-            "tool.started" => {
-                if let Some(name) = event.data.get("tool_name").and_then(Value::as_str) {
-                    self.record.tools.push(name.to_string());
-                }
-            }
-            "approval.requested" => {
-                let tool = event
-                    .data
-                    .get("tool")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                self.record.approvals.push(tool.to_string());
-                if let Some(id) = event.data.get("approval_id").and_then(Value::as_str) {
-                    approval = Some(PendingApproval {
-                        session: event.session_id.clone(),
-                        id: id.to_string(),
-                    });
-                }
-            }
-            "turn.completed" | "turn.failed" | "turn.cancelled" => self.terminal = true,
-            "turn.result" => {
-                self.result = true;
-                self.record.response = str_field(&event.data, "response");
-                self.record.success =
-                    event.data.get("success").and_then(Value::as_bool) == Some(true);
-                self.record.error = event
-                    .data
-                    .get("error")
-                    .and_then(Value::as_str)
-                    .map(str::to_string);
-            }
-            _ => {}
-        }
-        self.record.events.push(event);
-        approval
-    }
-}
-
-fn str_field(data: &Value, key: &str) -> String {
-    data.get(key)
-        .and_then(Value::as_str)
+/// The text of the turn's last completed output message that has any.
+fn final_response(events: &[Value]) -> String {
+    events
+        .iter()
+        .rev()
+        .filter(|event| event["type"] == "output.message.completed")
+        .map(|event| {
+            event["data"]["message"]["content"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|part| part["type"] == "text")
+                .filter_map(|part| part["text"].as_str())
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .find(|text| !text.is_empty())
         .unwrap_or_default()
-        .to_string()
-}
-
-fn parse_sse(block: &str) -> Option<WireEvent> {
-    let data: String = block
-        .lines()
-        .filter_map(|line| line.strip_prefix("data:"))
-        .map(str::trim_start)
-        .collect::<Vec<_>>()
-        .join("\n");
-    serde_json::from_str(&data).ok()
 }
 
 /// Assertions on a completed turn. Each returns `Result<Self>` so they chain
@@ -468,44 +477,17 @@ pub(crate) async fn run(
 mod tests {
     use super::*;
 
-    fn event(seq: i64, kind: &str, data: Value) -> WireEvent {
-        WireEvent {
-            seq,
-            session_id: "s".into(),
-            kind: kind.into(),
-            at: String::new(),
-            data,
-        }
-    }
-
     #[test]
-    fn a_turn_is_done_only_after_both_terminal_events() {
-        let mut turn = Turn::default();
-        turn.observe(event(1, "tool.started", json!({ "tool_name": "run_sql" })));
-        turn.observe(event(
-            2,
-            "turn.result",
-            json!({ "response": "ok", "success": true }),
-        ));
-        assert!(!turn.done());
-        turn.observe(event(3, "turn.completed", json!({})));
-        assert!(turn.done());
-        assert_eq!(turn.record.tools, vec!["run_sql"]);
-        assert!(turn.record.success);
-    }
-
-    #[test]
-    fn approvals_are_surfaced_for_answering() {
-        let mut turn = Turn::default();
-        let pending = turn
-            .observe(event(
-                1,
-                "approval.requested",
-                json!({ "approval_id": "apr_1", "tool": "run_sql" }),
-            ))
-            .unwrap();
-        assert_eq!(pending.id, "apr_1");
-        assert_eq!(turn.record.approvals, vec!["run_sql"]);
+    fn remote_turns_read_tools_and_the_reply_from_canonical_events() {
+        let events = vec![
+            json!({ "type": "tool.started", "data": { "tool_call": { "name": "run_sql" } } }),
+            json!({ "type": "output.message.completed", "data": { "message": { "content": [{ "type": "text", "text": "Net of refunds." }] } } }),
+            json!({ "type": "output.message.completed", "data": { "message": { "content": [] } } }),
+            json!({ "type": "turn.completed", "data": {} }),
+        ];
+        assert_eq!(tools_called(&events), vec!["run_sql"]);
+        assert_eq!(final_response(&events), "Net of refunds.");
+        assert!(is_terminal(&events[3]));
     }
 
     #[test]
@@ -528,14 +510,5 @@ mod tests {
             .unwrap()
             .to_string();
         assert!(err.contains("run_sql"), "{err}");
-    }
-
-    #[test]
-    fn sse_blocks_parse_to_wire_events() {
-        let block = "id: 3\nevent: turn.result\ndata: {\"seq\":3,\"session_id\":\"s\",\"type\":\"turn.result\",\"at\":\"\",\"data\":{}}\n\n";
-        let event = parse_sse(block).unwrap();
-        assert_eq!(event.seq, 3);
-        assert_eq!(event.kind, "turn.result");
-        assert!(parse_sse(": keep-alive\n\n").is_none());
     }
 }

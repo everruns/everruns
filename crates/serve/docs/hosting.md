@@ -55,11 +55,13 @@ Every session records the `build_id` it started on. Across deploys:
   during a deploy finishes on its original version.
 - `start` refuses a session from another build with `409` and
   `x-serve-build: <build_id>`, which is exactly what a router needs.
-- `dev` resumes the session anyway and emits `session.build_changed`, because
-  in development every edit is a new build.
+- `dev` resumes the session anyway (the console notes the build change),
+  because in development every edit is a new build.
 
 ## Self-hosting
 
 It is the same binary. Set `PORT`, and either `SERVE_DATA_DIR` or
-`DATABASE_URL=sqlite:///path`. In the PoC, sessions and the wire log live in
-SQLite; Postgres and NATS adapters are future work. Run it with `start`.
+`DATABASE_URL=sqlite:///path`. In the PoC, the everruns local store (the
+conversation and the durable event log the wire API serves) and serve's
+session catalog live in SQLite under that path; Postgres and NATS adapters are
+future work. Run it with `start`.

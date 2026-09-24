@@ -2,6 +2,14 @@
 
 ## 2026-09-24
 
+* **serve now speaks the everruns server's `/v1` API and is a thin layer over
+  `everruns::Engine`.** Sessions, messages, `/sse` (`since_id` or
+  `after_sequence`), `/events`, cancel and `/question-answers` match the
+  server's shapes, so the official Rust SDK drives a serve app (tested
+  end to end). The eve-style wire API and serve's own event log are gone: the
+  durable log, approvals and `ask_user` are the runtime's, and serve keeps only
+  a session catalog. eve stays the ergonomics reference, not the wire shape.
+  Recorded in [serve](framework/serve.md).
 * **An experimental app framework, serve, pairs Topcoat's API shape with eve's
   hosting model on the existing runtime.** Attribute macros register agents,
   tools, channels, schedules, connections and evals at link time. The built

@@ -3,12 +3,14 @@
 # Decisions:
 # - Topcoat's application shape (`serve::start(App::builder().discover().build())`,
 #   attribute macros, one `&Cx` context) over eve's hosting model (file layout
-#   as convention, a build-time manifest as the host contract, one /v1 wire
-#   API in every deployment).
+#   as convention, a build-time manifest as the host contract).
+# - The wire API is a subset of the everruns server's `/v1` API, so the
+#   everruns SDK, CLI and UI drive a serve app unchanged.
 # - Registration is link-time (`inventory`), because Rust cannot scan the
 #   filesystem at runtime; `serve-build` embeds `agent/**` at build time.
-# - Built on the `everruns` facade only (Agent, Engine, Session, event stream,
-#   `local` SQLite persistence). No new runtime.
+# - A thin layer over `everruns::Engine`: the durable event log, approvals
+#   and ask_user are the runtime's. serve's SQLite holds only its session
+#   catalog and channel threads. No new runtime.
 # - Experimental (Alpha): `publish = false`, no compatibility promise, not
 #   covered by the everruns stability policy.
 
@@ -28,6 +30,7 @@ serve-macros = { path = "../serve-macros" }
 anyhow.workspace = true
 async-trait.workspace = true
 axum.workspace = true
+axum-extra.workspace = true
 chrono.workspace = true
 clap.workspace = true
 cron = "0.17"
@@ -46,6 +49,7 @@ toml = "1"
 uuid.workspace = true
 
 [dev-dependencies]
+everruns-sdk.workspace = true
 tempfile.workspace = true
 
 [lints]

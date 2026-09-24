@@ -71,8 +71,15 @@ fn analyst() -> Agent {
 - **Escape hatch.** `.customize(|b| b.max_iterations(8))` adjusts the
   underlying `everruns::AgentBuilder` for hooks, capabilities and limits.
 
-Several `#[agent]`s are allowed. Mark one `#[agent(default)]` to serve
-`/v1/sessions`; every agent is also served at `/v1/agents/{name}/sessions`.
+Several `#[agent]`s are allowed. `POST /v1/sessions` picks one by
+`agent_name` (as the everruns server does), and uses the `#[agent(default)]`
+one when the body names none. Keep agent names kebab-safe (`analyst`) if the
+everruns SDK should reach them; it validates `agent_name` that way.
+
+Every agent also gets the built-in `ask_user` tool. When the model asks, the
+question set waits on the session until someone answers it through
+`POST /v1/sessions/{id}/question-answers` (see
+[Wire API](wire-api.md#questions-ask_user)).
 
 ### Offline scripts
 
@@ -101,7 +108,7 @@ async fn run_sql(
     sql: String,
 ) -> Result<Rows> {
     let wh = cx.connection::<Warehouse>()?;
-    cx.progress("querying…");
+    cx.progress("querying…").await;
     Ok(wh.query(&sql)?.truncate(500))
 }
 ```
@@ -114,8 +121,13 @@ async fn run_sql(
 - `Err(e)` goes back to the model with its full cause chain, so it can
   correct itself. `Ok(v)` is serialized to JSON.
 - `#[tool(needs_approval)]` always asks. The closure form decides per call.
-  While a call waits for approval, its turn is paused, and `approval.requested`
-  appears on the event stream (see [Wire API](wire-api.md#approvals)).
+  Both become the runtime's per-tool gate (`FunctionTool::needs_approval`);
+  serve does not block inside the tool. While a call waits, the session's
+  status is `waitingfortoolresults` and the call is listed in its
+  `pending_approvals` (see [Wire API](wire-api.md#approvals)).
+- `cx.progress(…).await` emits a canonical `tool.progress` event. `Cx` also
+  gives the call's `session_id()`, `turn_id()` and `tool_call_id()`, from the
+  runtime's `ToolCallContext`.
 
 ## 4. Skills
 
@@ -200,9 +212,10 @@ fn reviewer() -> Agent { … }
 ```
 
 The other agents get an `ask_reviewer { task }` tool. It runs the subagent to
-completion in an ephemeral session and returns the answer. The subagent's tool
-calls and progress appear on the parent session's stream, bracketed by
-`subagent.started` and `subagent.completed`.
+completion in a child session on the same engine and returns the answer. The
+child's tool calls and progress are reported as `tool.progress` events of the
+`ask_reviewer` call on the parent session, and its approvals and questions
+wait on the parent session.
 
 ## 9. Evals
 
@@ -226,7 +239,10 @@ cargo run -- eval net_of_refunds               # filter by name
 
 The available checks are `called_tool`, `did_not_call`, `asked_approval` and
 `reply_contains`. Approvals are answered automatically; change that with
-`t.on_approval(OnApproval::Deny)`.
+`t.on_approval(OnApproval::Deny)`. `ask_user` questions are answered with
+their declared defaults. In-process, the eval reads the turn's outcome and the
+engine's events directly; `--against` drives the same wire API the SDK uses
+(post a message, poll the session, answer what is pending, read `/events`).
 
 ## 10. The sandbox
 

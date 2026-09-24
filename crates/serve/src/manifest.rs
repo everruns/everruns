@@ -190,12 +190,14 @@ impl Manifest {
 
         let mut routes = vec![
             "POST /v1/sessions".to_string(),
+            "GET /v1/sessions/{id}".into(),
             "POST /v1/sessions/{id}/messages".into(),
-            "GET /v1/sessions/{id}/events".into(),
             "POST /v1/sessions/{id}/cancel".into(),
-            "POST /v1/sessions/{id}/approvals/{approval_id}".into(),
+            "GET /v1/sessions/{id}/sse".into(),
+            "GET /v1/sessions/{id}/events".into(),
+            "POST /v1/sessions/{id}/question-answers".into(),
+            "POST /v1/sessions/{id}/approvals/{tool_call_id}".into(),
             "GET /v1/agent".into(),
-            "POST /v1/agents/{name}/sessions".into(),
             "GET /health".into(),
         ];
         routes.extend(

@@ -28,7 +28,8 @@ pub struct AgentRegistration {
     pub build: fn() -> crate::Agent,
 }
 
-/// When a tool call needs a person's approval before it runs.
+/// When a tool call needs a person's approval before it runs. The host maps
+/// it onto the runtime's gate (`FunctionTool::needs_approval`).
 #[derive(Clone, Copy)]
 pub enum Approval {
     Never,
@@ -38,14 +39,6 @@ pub enum Approval {
 }
 
 impl Approval {
-    pub(crate) fn required(&self, arguments: &Value) -> bool {
-        match self {
-            Approval::Never => false,
-            Approval::Always => true,
-            Approval::When(predicate) => predicate(arguments),
-        }
-    }
-
     pub(crate) fn label(&self) -> &'static str {
         match self {
             Approval::Never => "never",

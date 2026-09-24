@@ -2,74 +2,146 @@
 
 > Experimental. See the [README](../README.md) for status.
 
-`dev`, a self-hosted `start` and a hosted deploy all serve the same routes. The
-handlers are in [`src/server.rs`](../src/server.rs).
+serve's HTTP API is a subset of the everruns server's `/v1` session API, so
+the official [everruns Rust SDK](https://docs.rs/everruns-sdk), the everruns
+CLI and the UI chat view can drive a serve app. Where a route exists on the
+server, the request and response shapes match it. serve adds a few optional
+fields and serve-only routes, marked below. `dev`, a self-hosted `start` and a
+hosted deploy all serve the same routes; the handlers are in
+[`src/server.rs`](../src/server.rs).
+
+```rust
+let client = everruns_sdk::Everruns::builder()
+    .api_key("unused")                       // serve has no auth yet
+    .base_url("http://localhost:3000")
+    .build()?;
+let session = client
+    .sessions()
+    .create_with_options(CreateSessionRequest::new().agent_name("analyst"))
+    .await?;
+client.messages().create(&session.id, "What was revenue last week?").await?;
+```
+
+## Routes
 
 | Route | Body | Answer |
 |---|---|---|
-| `POST /v1/sessions` | `{input?, metadata?}` | `201`, `Location: /v1/sessions/{id}`, `{id, agent, build_id}` |
-| `POST /v1/agents/{name}/sessions` | same | same, on a named agent |
-| `GET /v1/sessions/{id}` | | the session record |
-| `POST /v1/sessions/{id}/messages` | `{input}` | `202`. Starts a turn when the session is idle, or steers the active one. |
-| `GET /v1/sessions/{id}/events` | | SSE, resumable (see below) |
-| `POST /v1/sessions/{id}/cancel` | | `{cancelled}` |
-| `POST /v1/sessions/{id}/approvals/{approval_id}` | `{decision: "approve"\|"deny", note?}` | `{resolved}`, or `404` when nothing is pending |
-| `GET /v1/agent` | | agent card: agents, tools, skills, channels, schedules, version |
-| `POST /v1/channels/{name}` | the provider's webhook | whatever the channel answers |
-| `GET /health` | | `{status, build_id}` |
-| `POST /dev/schedules/{name}` | | runs a schedule now (`dev` only) |
+| `POST /v1/sessions` | `{agent_name?, title?, tags?, hints?, metadata?}` (other fields ignored) | `201` `Session`, `Location: /v1/sessions/{id}`. `404` for an unknown agent. |
+| `GET /v1/sessions/{id}` | | `Session` |
+| `POST /v1/sessions/{id}/messages` | `{message: {role?: "user", content: [{type: "text", text}]}, metadata?, controls?}` | `201` `Message`. Starts a turn when idle, steers the running one otherwise. Non-text parts are `400`. |
+| `POST /v1/sessions/{id}/cancel` | | `{status: "cancelled" \| "no_op", message}` |
+| `GET /v1/sessions/{id}/sse` | query below | SSE stream of events |
+| `GET /v1/sessions/{id}/events` | query below | `{data: Event[]}` |
+| `POST /v1/sessions/{id}/question-answers` | `{tool_call_id?, status?: "answered" \| "declined", answers: [{id, selected?, other_text?}]}` | `{status, answered_by, session_status}` |
+| `POST /v1/sessions/{id}/approvals/{tool_call_id}` (serve) | `{decision: "approve" \| "deny", note?}` | `{status, tool_call_id, session_status}`, `404` when nothing is pending |
+| `GET /v1/agent` (serve) | | agent card: agents, tools, skills, channels, schedules, version |
+| `POST /v1/channels/{name}` (serve) | the provider's webhook | whatever the channel answers |
+| `GET /health` (serve) | | `{status, build_id}` |
+| `POST /dev/schedules/{name}` (serve, `dev` only) | | runs a schedule now |
 
-Errors are JSON `{error}`, with `404` for an unknown session, agent, channel or
-approval, `400` for a bad request, and `409` for a session pinned to another
-build.
+Errors are RFC 9457 problem details (`application/problem+json`,
+`{title, status, detail}`) like the server's: `404` for an unknown session,
+agent, channel, approval or question set, `400` for a bad request, `409` for
+an answered question set or a session pinned to another build (with an
+`x-serve-build` header naming it).
 
-## The event stream
+### Session
 
-Every session has one ordered log. Each event looks like this:
+The server's `Session` shape: `id` (`session_…`), `organization_id` (a fixed
+`org_000…`, since serve has no tenants), `harness_id` (derived from the app
+name), `agent_id` (the serve agent name), `status`, `title?`, `tags`,
+`hints?`, `created_at`, `updated_at`. `status` uses the server vocabulary:
+`active` while a turn runs, `waitingfortoolresults` while an approval or a
+question waits for a person, `idle` otherwise.
+
+serve adds `build_id`, `agent_name`, `metadata?`, and the requests waiting on
+a person:
 
 ```json
-{"seq": 14, "session_id": "session_…", "type": "tool.started", "at": "…",
- "data": {"tool_name": "run_sql", "arguments": {"sql": "…"}, "turn_id": "turn_…"}}
+"pending_approvals": [{"tool_call_id": "call_…", "tool_name": "run_sql", "arguments": {"sql": "SELECT * FROM orders"}}],
+"pending_questions": [{"tool_call_id": "call_…", "questions": [{"id": "question_1", "header": "Target", "question": "Where?", "options": […]}]}]
 ```
 
-On the SSE stream, `seq` is the event `id` and `type` is the event name.
+### Message
 
-**Resuming.** Reconnect with `Last-Event-ID: <seq>` (or `?after=<seq>`), and
-the stream replays every event after that one and then follows the log live.
-There is no continuation token. The cursor is a position in the log, so a
-client that drops, or a server that restarts, loses nothing. `?follow=false`
-replays the log and closes the stream.
+`{id, session_id, sequence?, role: "user", content, metadata?, created_at}`.
+`sequence` is the sequence of the canonical `input.message` event; it is left
+out if the runtime has not committed that event yet.
 
-Most event types come straight from the everruns runtime (`turn.started`,
-`output.message.delta`, `tool.started`, `tool.completed`, `turn.completed`,
-…). The host adds these:
+## Events
 
-| Type | When |
+Events are the everruns engine's durable canonical log, the same envelope the
+server sends:
+
+```json
+{"id": "event_…", "type": "tool.started", "ts": "…", "session_id": "session_…",
+ "context": {"turn_id": "turn_…", …}, "data": {"tool_call": {"name": "run_sql", "arguments": {…}}, …},
+ "sequence": 14}
+```
+
+serve writes no events of its own. Durable events have a dense per-session
+`sequence` starting at 1, which survives restarts. Streaming deltas
+(`output.message.delta`, …) are live-only and carry no `sequence`. As on the
+server, opaque reasoning replay state is stripped.
+
+### `GET /v1/sessions/{id}/sse`
+
+| Query | Meaning |
 |---|---|
-| `session.created`, `session.resumed` | a session was created, or reloaded after a restart |
-| `message.accepted` | input was accepted: `disposition` is `started` or `steered` |
-| `tool.progress` | a tool called `cx.progress(...)` |
-| `approval.requested`, `approval.resolved` | a tool call is waiting for a person, or a person decided |
-| `subagent.started`, `subagent.completed` | an `ask_<name>` delegation |
-| `turn.result` | the last event of every turn: `{response, success, error, tool_calls}` |
-| `delivery.completed`, `delivery.failed` | a reply was, or was not, posted to a channel |
-| `session.build_changed` | `dev` resumed a session that started on an older build |
-| `stream.lagged` | the host fell behind the runtime's live feed |
+| `after_sequence=N` | replay durable events with `sequence > N`, then follow live. `0` replays everything. |
+| `since_id=event_…` | replay events whose id sorts after it (ids are time-ordered, so an ephemeral event's id works too), then follow live |
+| `types=…`, `exclude=…` | repeatable type filters |
 
-Order is guaranteed within the runtime's events and within the host's events.
-Between the two, it is only approximate: a `tool.progress` can land just
-before the `tool.started` of the same call. `turn.result` is always last.
+`since_id` with `after_sequence` is `400`. Without either, the stream starts
+live, as on the server; a client with no events yet sends `after_sequence=0`.
+
+The stream opens with `event: connected` / `data: {"status":"connected"}`.
+Each event is `event: <type>`, `data: <envelope>`, a `retry:` hint, and
+`id: <event id>` on durable events only, so a reconnecting client (the SDK
+does this itself) resumes with `since_id` from the last id it saw and loses
+nothing. A `:heartbeat` comment is sent every 30 s.
+
+### `GET /v1/sessions/{id}/events`
+
+Durable events, oldest first, as `{data: [...]}`. Query: `after_sequence`,
+`before_sequence`, `since_id`, `types`, `exclude`, and `limit` (1 to 1000,
+the last N; sets `X-Total-Count` to the session's durable event count).
 
 ## Approvals
 
+A `#[tool(needs_approval …)]` becomes the runtime's per-tool gate
+(`FunctionTool::needs_approval`), answered by serve's approver:
+
 ```text
-tool call ──► approval.requested {approval_id, tool, arguments}
+gated call ──► session status "waitingfortoolresults", pending_approvals: [{tool_call_id, …}]
                     │
-POST /v1/sessions/{id}/approvals/{approval_id} {"decision":"approve"}
+POST /v1/sessions/{id}/approvals/{tool_call_id} {"decision":"approve"}
                     │
-          approval.resolved ──► the tool runs (or the model is told it was declined)
+          tool.started … tool.completed   (or, on deny, a tool error: "rejected by user")
 ```
 
-A denied call returns to the model as a tool error, with the note attached.
-Cancelling the turn drops its pending approvals. In this PoC, approvals do not
-survive a restart.
+The runtime tells the model only that the call was rejected; a `note` is not
+passed on. Cancelling the turn drops its pending approvals. In this PoC they
+do not survive a restart. There is no canonical event for a pending approval:
+clients find it on the session (and `dev` prints it with a ready `curl`).
+
+## Questions (`ask_user`)
+
+Every serve agent has the built-in `ask_user` tool. When the model calls it,
+the question set appears in `pending_questions`, and
+`POST /v1/sessions/{id}/question-answers` answers it exactly as on the
+server: every question answered by its `id`, only offered option labels, one
+selection for a single-select question. `status: "declined"` is a finished
+refusal the model must not re-ask. Without `tool_call_id`, the one pending set
+is answered. Nothing pending is `404`; answering twice is `409`. serve stores
+no secrets, so `secret` questions cannot be answered.
+
+## Differences from the server
+
+- No auth, organizations, agents CRUD, harnesses, workspaces or files routes.
+- `agent_name` names a serve agent from `#[agent]`; `agent_id` is that name,
+  not an `agent_…` id. The SDK validates `agent_name` as kebab-case, so an
+  agent reachable through the SDK needs a name like `analyst`, not `run_sql`.
+- No `tool-results` route (serve has no client-side tools); approvals use the
+  serve-only route above.
+- `events` supports the listed filters only (no `around`, `q`, `turn_id` …).
