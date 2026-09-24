@@ -214,6 +214,7 @@ macro_rules! mock_worker_adapters {
             }
             async fn read_file(
                 &self,
+                _org_id: i64,
                 _session_id: Uuid,
                 _path: &str,
             ) -> CoreResult<Option<everruns_core::session_file::SessionFile>> {
@@ -221,6 +222,7 @@ macro_rules! mock_worker_adapters {
             }
             async fn write_file(
                 &self,
+                _org_id: i64,
                 _session_id: Uuid,
                 _path: &str,
                 _content: &str,
@@ -230,6 +232,7 @@ macro_rules! mock_worker_adapters {
             }
             async fn delete_file(
                 &self,
+                _org_id: i64,
                 _session_id: Uuid,
                 _path: &str,
                 _recursive: bool,
@@ -238,6 +241,7 @@ macro_rules! mock_worker_adapters {
             }
             async fn list_directory(
                 &self,
+                _org_id: i64,
                 _session_id: Uuid,
                 _path: &str,
             ) -> CoreResult<Vec<everruns_core::session_file::FileInfo>> {
@@ -245,6 +249,7 @@ macro_rules! mock_worker_adapters {
             }
             async fn stat_file(
                 &self,
+                _org_id: i64,
                 _session_id: Uuid,
                 _path: &str,
             ) -> CoreResult<Option<everruns_core::session_file::FileStat>> {
@@ -252,6 +257,7 @@ macro_rules! mock_worker_adapters {
             }
             async fn grep_files(
                 &self,
+                _org_id: i64,
                 _session_id: Uuid,
                 _pattern: &str,
                 _path_pattern: Option<&str>,
@@ -260,6 +266,7 @@ macro_rules! mock_worker_adapters {
             }
             async fn create_directory(
                 &self,
+                _org_id: i64,
                 _session_id: Uuid,
                 _path: &str,
             ) -> CoreResult<everruns_core::session_file::FileInfo> {

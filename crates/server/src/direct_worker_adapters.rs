@@ -930,7 +930,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // Session File Operations
     // =========================================================================
 
-    async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
+    async fn read_file(
+        &self,
+        _org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Option<SessionFile>> {
         // Check virtual mounts first
         if let Some(registry) = &self.virtual_registry
             && let Some(vf) = registry.read_file(&session_id, path)
@@ -998,6 +1003,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn write_file(
         &self,
+        _org_id: i64,
         session_id: Uuid,
         path: &str,
         content: &str,
@@ -1114,6 +1120,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn write_file_if_content_matches(
         &self,
+        _org_id: i64,
         session_id: Uuid,
         path: &str,
         expected_content: &str,
@@ -1206,7 +1213,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
         }))
     }
 
-    async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
+    async fn delete_file(
+        &self,
+        _org_id: i64,
+        session_id: Uuid,
+        path: &str,
+        recursive: bool,
+    ) -> Result<bool> {
         if let Some(registry) = &self.virtual_registry
             && registry.is_virtual_path(&session_id, path)
         {
@@ -1236,7 +1249,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
         }
     }
 
-    async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
+    async fn list_directory(
+        &self,
+        _org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Vec<FileInfo>> {
         let rows = self
             .db
             .list_session_files(session_id, path)
@@ -1295,7 +1313,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
         Ok(entries)
     }
 
-    async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
+    async fn stat_file(
+        &self,
+        _org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Option<FileStat>> {
         // Check virtual mounts first
         if let Some(registry) = &self.virtual_registry
             && let Some(vf) = registry.read_file(&session_id, path)
@@ -1333,6 +1356,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn grep_files(
         &self,
+        _org_id: i64,
         session_id: Uuid,
         pattern: &str,
         path_pattern: Option<&str>,
@@ -1381,6 +1405,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn grep_files_with_options(
         &self,
+        _org_id: i64,
         session_id: Uuid,
         pattern: &str,
         options: &GrepOptions,
@@ -1396,7 +1421,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
         .map_err(|error| store_error(format!("Failed to grep files: {error}")))
     }
 
-    async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
+    async fn create_directory(
+        &self,
+        _org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<FileInfo> {
         use crate::storage::models::CreateSessionFileRow;
 
         let create = CreateSessionFileRow {
@@ -3546,7 +3576,7 @@ mod tests {
         .await;
 
         let results = adapters
-            .grep_files(session_id, "hello", None)
+            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, "hello", None)
             .await
             .unwrap();
 
@@ -3570,7 +3600,12 @@ mod tests {
         .await;
 
         let results = adapters
-            .grep_files(session_id, "nonexistent_pattern", None)
+            .grep_files(
+                everruns_core::DEFAULT_ORG_ID,
+                session_id,
+                "nonexistent_pattern",
+                None,
+            )
             .await
             .unwrap();
 
@@ -3597,7 +3632,10 @@ mod tests {
         )
         .await;
 
-        let results = adapters.grep_files(session_id, "TODO", None).await.unwrap();
+        let results = adapters
+            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, "TODO", None)
+            .await
+            .unwrap();
 
         assert_eq!(results.len(), 3);
         // Verify line numbers
@@ -3625,7 +3663,7 @@ mod tests {
         .await;
 
         let results = adapters
-            .grep_files(session_id, r"\d{3}", None)
+            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, r"\d{3}", None)
             .await
             .unwrap();
 
@@ -3638,7 +3676,9 @@ mod tests {
         let adapters = test_adapters();
         let session_id = Uuid::new_v4();
 
-        let result = adapters.grep_files(session_id, "[invalid", None).await;
+        let result = adapters
+            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, "[invalid", None)
+            .await;
         assert!(result.is_err());
     }
 
@@ -3656,6 +3696,7 @@ mod tests {
 
         let result = adapters
             .grep_files_with_options(
+                everruns_core::DEFAULT_ORG_ID,
                 session_id,
                 "Error",
                 &GrepOptions {
@@ -4259,7 +4300,10 @@ mod tests {
                     let (adapters, db) = $make_adapters;
                     let sid = Uuid::new_v4();
                     seed_file(&db, sid, "/hello.rs", "fn main() {\n    hello();\n}\n").await;
-                    let results = adapters.grep_files(sid, "hello", None).await.unwrap();
+                    let results = adapters
+                        .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "hello", None)
+                        .await
+                        .unwrap();
                     assert_eq!(results.len(), 1);
                     assert_eq!(results[0].path, "/hello.rs");
                     assert_eq!(results[0].line_number, 2);
@@ -4272,7 +4316,7 @@ mod tests {
                     let sid = Uuid::new_v4();
                     seed_file(&db, sid, "/code.rs", "let x = 1;\n").await;
                     let results = adapters
-                        .grep_files(sid, "no_such_pattern", None)
+                        .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "no_such_pattern", None)
                         .await
                         .unwrap();
                     assert!(results.is_empty());
@@ -4284,7 +4328,10 @@ mod tests {
                     let sid = Uuid::new_v4();
                     seed_file(&db, sid, "/a.txt", "ERR line1\nok\nERR line3\n").await;
                     seed_file(&db, sid, "/b.txt", "ok\nERR line2\n").await;
-                    let results = adapters.grep_files(sid, "ERR", None).await.unwrap();
+                    let results = adapters
+                        .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "ERR", None)
+                        .await
+                        .unwrap();
                     assert_eq!(results.len(), 3);
                     let a: Vec<_> = results.iter().filter(|m| m.path == "/a.txt").collect();
                     assert_eq!(a.len(), 2);
@@ -4300,7 +4347,10 @@ mod tests {
                     let (adapters, db) = $make_adapters;
                     let sid = Uuid::new_v4();
                     seed_file(&db, sid, "/nums.txt", "val 1\nval 22\nval 333\n").await;
-                    let results = adapters.grep_files(sid, r"\d{2,}", None).await.unwrap();
+                    let results = adapters
+                        .grep_files(everruns_core::DEFAULT_ORG_ID, sid, r"\d{2,}", None)
+                        .await
+                        .unwrap();
                     assert_eq!(results.len(), 2);
                 }
 
@@ -4308,14 +4358,22 @@ mod tests {
                 async fn grep_invalid_regex_is_error() {
                     let (adapters, _db) = $make_adapters;
                     let sid = Uuid::new_v4();
-                    assert!(adapters.grep_files(sid, "[bad", None).await.is_err());
+                    assert!(
+                        adapters
+                            .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "[bad", None)
+                            .await
+                            .is_err()
+                    );
                 }
 
                 #[tokio::test]
                 async fn grep_empty_session_returns_empty() {
                     let (adapters, _db) = $make_adapters;
                     let sid = Uuid::new_v4();
-                    let results = adapters.grep_files(sid, "anything", None).await.unwrap();
+                    let results = adapters
+                        .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "anything", None)
+                        .await
+                        .unwrap();
                     assert!(results.is_empty());
                 }
 
@@ -4324,11 +4382,20 @@ mod tests {
                     let (adapters, _db) = $make_adapters;
                     let sid = Uuid::new_v4();
                     let written = adapters
-                        .write_file(sid, "/test.txt", "content", "text")
+                        .write_file(
+                            everruns_core::DEFAULT_ORG_ID,
+                            sid,
+                            "/test.txt",
+                            "content",
+                            "text",
+                        )
                         .await
                         .unwrap();
                     assert_eq!(written.path, "/test.txt");
-                    let read = adapters.read_file(sid, "/test.txt").await.unwrap();
+                    let read = adapters
+                        .read_file(everruns_core::DEFAULT_ORG_ID, sid, "/test.txt")
+                        .await
+                        .unwrap();
                     assert!(read.is_some());
                     assert_eq!(read.unwrap().path, "/test.txt");
                 }
@@ -4339,7 +4406,7 @@ mod tests {
                     let sid = Uuid::new_v4();
                     assert!(
                         adapters
-                            .read_file(sid, "/nope.txt")
+                            .read_file(everruns_core::DEFAULT_ORG_ID, sid, "/nope.txt")
                             .await
                             .unwrap()
                             .is_none()
@@ -4351,11 +4418,28 @@ mod tests {
                     let (adapters, _db) = $make_adapters;
                     let sid = Uuid::new_v4();
                     adapters
-                        .write_file(sid, "/del.txt", "bye", "text")
+                        .write_file(
+                            everruns_core::DEFAULT_ORG_ID,
+                            sid,
+                            "/del.txt",
+                            "bye",
+                            "text",
+                        )
                         .await
                         .unwrap();
-                    assert!(adapters.delete_file(sid, "/del.txt", false).await.unwrap());
-                    assert!(adapters.read_file(sid, "/del.txt").await.unwrap().is_none());
+                    assert!(
+                        adapters
+                            .delete_file(everruns_core::DEFAULT_ORG_ID, sid, "/del.txt", false)
+                            .await
+                            .unwrap()
+                    );
+                    assert!(
+                        adapters
+                            .read_file(everruns_core::DEFAULT_ORG_ID, sid, "/del.txt")
+                            .await
+                            .unwrap()
+                            .is_none()
+                    );
                 }
 
                 #[tokio::test]

@@ -187,7 +187,7 @@ impl RuntimeHostAdapter for MockHostAdapter {
         self.event_emitter.clone()
     }
 
-    fn file_store(&self) -> Arc<dyn SessionFileSystem> {
+    fn file_store(&self, _org_id: i64) -> Arc<dyn SessionFileSystem> {
         self.file_store.clone()
     }
 
