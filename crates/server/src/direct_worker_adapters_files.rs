@@ -50,7 +50,7 @@ impl DirectWorkerAdapters {
             .get_session_file(session_id, path)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to read file: {}", e);
+                tracing::error!(error = %e, "Failed to read file");
                 store_error("Failed to read file")
             })?;
 
@@ -117,7 +117,7 @@ impl DirectWorkerAdapters {
             .get_session_file(session_id, path)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to check existing file: {}", e);
+                tracing::error!(error = %e, "Failed to check existing file");
                 store_error("Failed to write file")
             })?;
 
@@ -140,7 +140,7 @@ impl DirectWorkerAdapters {
                 .update_session_file(session_id, path, update)
                 .await
                 .map_err(|e| {
-                    tracing::error!("Failed to update file: {}", e);
+                    tracing::error!(error = %e, "Failed to update file");
                     store_error("Failed to write file")
                 })?
                 .ok_or_else(|| store_error("File disappeared during update"))?
@@ -174,12 +174,12 @@ impl DirectWorkerAdapters {
                             .update_session_file(session_id, path, update)
                             .await
                             .map_err(|e| {
-                                tracing::error!("Failed to update file after race: {}", e);
+                                tracing::error!(error = %e, "Failed to update file after race");
                                 store_error("Failed to write file")
                             })?
                             .ok_or_else(|| store_error("File disappeared during update"))?
                     } else {
-                        tracing::error!("Failed to create file: {}", e);
+                        tracing::error!(error = %e, "Failed to create file");
                         return Err(store_error("Failed to write file"));
                     }
                 }
@@ -235,7 +235,7 @@ impl DirectWorkerAdapters {
             .get_session_file_info(session_id, path)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to check existing file: {}", e);
+                tracing::error!(error = %e, "Failed to check existing file");
                 store_error("Failed to write file")
             })?;
         let Some(existing) = existing else {
@@ -271,7 +271,7 @@ impl DirectWorkerAdapters {
             )
             .await
             .map_err(|e| {
-                tracing::error!("Failed to conditionally update file: {}", e);
+                tracing::error!(error = %e, "Failed to conditionally update file");
                 store_error("Failed to write file")
             })?;
 
@@ -319,7 +319,7 @@ impl DirectWorkerAdapters {
                 .delete_session_file_recursive(session_id, path)
                 .await
                 .map_err(|e| {
-                    tracing::error!("Failed to delete file recursively: {}", e);
+                    tracing::error!(error = %e, "Failed to delete file recursively");
                     store_error("Failed to delete file")
                 })?;
             Ok(count > 0)
@@ -328,7 +328,7 @@ impl DirectWorkerAdapters {
                 .delete_session_file(session_id, path)
                 .await
                 .map_err(|e| {
-                    tracing::error!("Failed to delete file: {}", e);
+                    tracing::error!(error = %e, "Failed to delete file");
                     store_error("Failed to delete file")
                 })
         }
@@ -349,7 +349,7 @@ impl DirectWorkerAdapters {
                 if msg.contains("not found") || msg.contains("not a directory") {
                     tracing::debug!("Directory not found: {}", path);
                 } else {
-                    tracing::error!("Failed to list directory: {}", e);
+                    tracing::error!(error = %e, "Failed to list directory");
                 }
                 store_error("Failed to list directory")
             })?;
@@ -424,7 +424,7 @@ impl DirectWorkerAdapters {
             .get_session_file(session_id, path)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to stat file: {}", e);
+                tracing::error!(error = %e, "Failed to stat file");
                 store_error("Failed to stat file")
             })?;
 
@@ -454,7 +454,7 @@ impl DirectWorkerAdapters {
         )
         .await
         .map_err(|e| {
-            tracing::error!("Failed to grep files: {}", e);
+            tracing::error!(error = %e, "Failed to grep files");
             store_error(format!("Failed to grep files: {}", e))
         })?;
 
@@ -523,7 +523,7 @@ impl DirectWorkerAdapters {
         };
 
         let row = self.db.create_session_file(create).await.map_err(|e| {
-            tracing::error!("Failed to create directory: {}", e);
+            tracing::error!(error = %e, "Failed to create directory");
             store_error("Failed to create directory")
         })?;
 

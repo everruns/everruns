@@ -22,7 +22,7 @@
 6 crates/server/src/auth/mcp_oauth.rs
 3 crates/server/src/auth/personal_access_token_routes.rs
 20 crates/server/src/auth/routes.rs
-26 crates/server/src/direct_worker_adapters.rs
+13 crates/server/src/direct_worker_adapters.rs
 4 crates/server/src/domains/budgets/service.rs
 1 crates/server/src/domains/messages/service.rs
 3 crates/server/src/event_notifications.rs
