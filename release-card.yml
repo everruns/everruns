@@ -1,19 +1,19 @@
-version: 0.30.0
-date: 2026-09-23
+version: 0.31.0
+date: 2026-09-24
 headline:
-  - Agents that
-  - ask, and run.
+  - Ask User,
+  - everywhere.
 summary:
-  - Agents can pause to ask a person a question,
-  - a host_shell tool runs bash under a policy,
-  - and Slack installs in one click.
+  - Ask User reaches agents over MCP and A2A,
+  - always-thinking models stay reliable,
+  - and the server holds up under load.
 highlights:
-  - title: Ask User
-    description: Agents pause mid-run to ask a person, keeping credentials out of the log.
-    source: "#3735"
-  - title: Host Shell
-    description: A host_shell capability runs the bash tool as real child processes under a kernel policy.
-    source: "#3719"
-  - title: Slack one-click install
-    description: Install the Slack app in one click, taking its credentials straight from OAuth.
-    source: "#3724"
+  - title: Ask User over MCP and A2A
+    description: The Ask User capability now reaches agents over MCP form-mode elicitation and inbound A2A.
+    source: "#3781"
+  - title: Always-thinking reliability
+    description: Always-thinking models no longer return 400s or empty answers.
+    source: "#3782"
+  - title: Server resilience under load
+    description: Background sweeps get their own database pool; the server returns 503 on pool exhaustion.
+    source: "#3788"
