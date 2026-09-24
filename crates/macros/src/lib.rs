@@ -92,6 +92,96 @@ pub fn tool(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
+#[cfg(feature = "serve")]
+mod serve;
+
+/// Expand one of serve's attributes, reporting a parse failure as a compile
+/// error at the attribute.
+#[cfg(feature = "serve")]
+fn serve_expand(
+    attr: TokenStream,
+    item: TokenStream,
+    expand: fn(serve::Args, ItemFn) -> syn::Result<TokenStream2>,
+) -> TokenStream {
+    let args = parse_macro_input!(attr as serve::Args);
+    let func = parse_macro_input!(item as ItemFn);
+    match expand(args, func) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// serve (experimental): register a function returning `serve::Agent` as an
+/// agent of the app. Re-exported as `serve::agent`.
+///
+/// ```text
+/// #[agent]                 // name = function name
+/// #[agent(default)]        // served on /v1/sessions when the app has several agents
+/// #[agent(sub)]            // a subagent: exposed to the other agents as `ask_<name>`
+/// #[agent(name = "triage")]
+/// ```
+#[cfg(feature = "serve")]
+#[proc_macro_attribute]
+pub fn serve_agent(attr: TokenStream, item: TokenStream) -> TokenStream {
+    serve_expand(attr, item, serve::expand_agent)
+}
+
+/// serve (experimental): register an async function as a tool. Re-exported
+/// as `serve::tool`.
+///
+/// Like [`macro@tool`], the doc comment is the description and the
+/// parameters become the JSON arguments (with `#[tool(rename = "…")]`). In
+/// addition, an optional first parameter `cx: &Cx` receives the per-session
+/// context, and a `pub struct` named after the function in PascalCase
+/// (`run_sql` → `RunSql`) holds the arguments so an approval predicate can
+/// inspect them:
+///
+/// ```text
+/// #[tool(needs_approval = |a: &RunSql| a.sql.contains("DELETE"))]
+/// async fn run_sql(cx: &Cx, sql: String) -> Result<Rows> { … }
+/// ```
+///
+/// `#[tool(needs_approval)]` always asks.
+#[cfg(feature = "serve")]
+#[proc_macro_attribute]
+pub fn serve_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
+    serve_expand(attr, item, serve::expand_tool)
+}
+
+/// serve (experimental): register a function returning a `serve::Channel`.
+/// Its inbound webhook is served at `POST /v1/channels/{name}`, and a
+/// companion module of the same name addresses it: `slack::channel("C0123")`.
+#[cfg(feature = "serve")]
+#[proc_macro_attribute]
+pub fn serve_channel(attr: TokenStream, item: TokenStream) -> TokenStream {
+    serve_expand(attr, item, serve::expand_channel)
+}
+
+/// serve (experimental): run an async function `(cx: &Cx) -> Result` on a
+/// cron schedule, e.g. `#[schedule("0 9 * * MON")]`.
+#[cfg(feature = "serve")]
+#[proc_macro_attribute]
+pub fn serve_schedule(attr: TokenStream, item: TokenStream) -> TokenStream {
+    serve_expand(attr, item, serve::expand_schedule)
+}
+
+/// serve (experimental): register a function whose return value is a
+/// connection, read by tools with `cx.connection::<T>()`. A `serve::McpServer`
+/// is attached to every agent. `-> Result<T>` makes a failure a discovery error.
+#[cfg(feature = "serve")]
+#[proc_macro_attribute]
+pub fn serve_connection(attr: TokenStream, item: TokenStream) -> TokenStream {
+    serve_expand(attr, item, serve::expand_connection)
+}
+
+/// serve (experimental): register an async function `(t: &mut EvalCx) ->
+/// Result` as an eval, run with `cargo run -- eval [--against <url>]`.
+#[cfg(feature = "serve")]
+#[proc_macro_attribute]
+pub fn serve_eval(attr: TokenStream, item: TokenStream) -> TokenStream {
+    serve_expand(attr, item, serve::expand_eval)
+}
+
 /// Parsed `#[everruns::tool(...)]` attribute arguments.
 #[derive(Default)]
 struct ToolArgs {

@@ -38,7 +38,6 @@ members = [
     "crates/integrations-catalog",
     # serve: experimental agent framework (Alpha, unpublished). See crates/serve/README.md.
     "crates/serve",
-    "crates/serve-macros",
     "crates/serve-build",
     "integrations/docker",
     "integrations/filesystem",

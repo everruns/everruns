@@ -84,7 +84,10 @@ pub use cx::{Cx, DeliveryTarget, StartSession};
 pub use eval::{EvalCx, EvalReport, EvalResult, OnApproval, TurnCheck, TurnRecord};
 pub use manifest::Manifest;
 
-pub use serve_macros::{agent, channel, connection, eval, schedule, tool};
+pub use everruns_macros::{
+    serve_agent as agent, serve_channel as channel, serve_connection as connection,
+    serve_eval as eval, serve_schedule as schedule, serve_tool as tool,
+};
 
 /// Simulated models for running agents offline, re-exported from `everruns`.
 pub mod sim {

@@ -861,7 +861,7 @@ jobs:
             -p everruns-research-agent -p everruns-incident-commander-agent \
             -p everruns-framework-support-agent -p everruns-bashkit-repo-agent \
             -p everruns-foreman-agent -p everruns-example-demo \
-            -p serve -p serve-macros -p serve-build \
+            -p serve -p serve-build \
             -p serve-example-hello -p serve-example-revenue-analyst
           for example in support-agent everruns-support-agent coding-review-agent research-agent incident-commander-agent bashkit-repo-agent foreman-agent; do
             unexpected="$(find "examples/$example" -mindepth 1 -maxdepth 1 \
