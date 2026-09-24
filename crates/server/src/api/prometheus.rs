@@ -221,10 +221,9 @@ pub fn spawn_gauge_bridge(collector: MetricsCollector) {
 }
 
 pub(crate) fn spawn_storage_pool_gauge_bridge(storage: &crate::storage::StorageBackend) {
-    let (Some(request_pool), Some(background_pool)) = (
-        storage.pool().cloned(),
-        storage.background_pool().cloned(),
-    ) else {
+    let (Some(request_pool), Some(background_pool)) =
+        (storage.pool().cloned(), storage.background_pool().cloned())
+    else {
         return;
     };
     spawn_pool_gauge_bridge(request_pool, background_pool);
