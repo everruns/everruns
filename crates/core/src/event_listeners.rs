@@ -51,6 +51,9 @@ pub trait EventListener: Send + Sync {
     /// assigned ID and sequence number.
     async fn on_event(&self, event: &Event);
 
+    /// Flush buffered listener state before process shutdown.
+    async fn flush(&self) {}
+
     /// Optional: Filter which event types this listener cares about.
     ///
     /// Return `None` to receive all events (default).
