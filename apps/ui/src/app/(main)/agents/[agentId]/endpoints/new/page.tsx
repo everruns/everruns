@@ -29,6 +29,7 @@ import {
 } from "@/components/layout";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import { beginSlackInstall } from "@/lib/api/agent-endpoints";
+import { navigateToExternalUrl } from "@/lib/browser-navigation";
 
 export default function NewAgentEndpointPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params);
@@ -122,7 +123,7 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
                 }
                 try {
                   const { authorize_url } = await beginSlackInstall(endpoint.id);
-                  window.location.href = authorize_url;
+                  navigateToExternalUrl(authorize_url);
                 } catch (caught) {
                   const reason =
                     caught instanceof Error ? caught.message : "Could not start the Slack install.";

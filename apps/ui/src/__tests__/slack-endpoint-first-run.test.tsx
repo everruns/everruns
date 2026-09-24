@@ -1,9 +1,11 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Suspense } from "react";
+import EditAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/[endpointId]/page";
 import NewAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/new/page";
 import { AgentEndpointEditor } from "@/components/agents/agent-endpoint-editor";
 import { ChannelForm, getDefaultChannelFormState } from "@/components/apps/channel-form";
 import { beginSlackInstall } from "@/lib/api/agent-endpoints";
+import { navigateToExternalUrl } from "@/lib/browser-navigation";
 import type { Agent, AppChannel } from "@/lib/api/types";
 
 const push = jest.fn();
@@ -71,6 +73,9 @@ jest.mock("@/lib/api/agent-endpoints", () => ({
   ...jest.requireActual("@/lib/api/agent-endpoints"),
   beginSlackInstall: jest.fn(),
 }));
+jest.mock("@/lib/browser-navigation", () => ({
+  navigateToExternalUrl: jest.fn(),
+}));
 
 function slackEndpoint(): AppChannel {
   return {
@@ -96,6 +101,21 @@ async function renderNewEndpointPage() {
   });
 }
 
+async function renderEditEndpointPage(slackInstallFailure: string) {
+  const params = Promise.resolve({ agentId: "agent_123", endpointId: "appchan_123" });
+  const searchParams = Promise.resolve({
+    slack_install: "failed",
+    reason: slackInstallFailure,
+  });
+  await act(async () => {
+    render(
+      <Suspense fallback={<div>Loading...</div>}>
+        <EditAgentEndpointPage params={params} searchParams={searchParams} />
+      </Suspense>,
+    );
+    await Promise.all([params, searchParams]);
+  });
+}
 describe("Slack endpoint first run", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -144,6 +164,8 @@ describe("Slack endpoint first run", () => {
   });
 
   it("starts Slack install immediately after saving a credential-free endpoint", async () => {
+    const authorizeUrl = "https://slack.com/oauth/v2/authorize?client_id=client_123";
+    (beginSlackInstall as jest.Mock).mockResolvedValue({ authorize_url: authorizeUrl });
     await renderNewEndpointPage();
     fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
 
@@ -152,6 +174,7 @@ describe("Slack endpoint first run", () => {
     });
 
     expect(beginSlackInstall).toHaveBeenCalledWith("appchan_123");
+    await waitFor(() => expect(navigateToExternalUrl).toHaveBeenCalledWith(authorizeUrl));
   });
 
   it("does not hijack manually entered credentials", async () => {
@@ -199,13 +222,7 @@ describe("Slack endpoint first run", () => {
       "/agents/agent_123/endpoints/appchan_123?slack_install=failed&reason=Slack%20rejected%20the%20app%20creation%3A%20ratelimited",
     );
 
-    render(
-      <AgentEndpointEditor
-        agentId="agent_123"
-        endpointId="appchan_123"
-        slackInstallFailure="Slack rejected the app creation: ratelimited"
-      />,
-    );
+    await renderEditEndpointPage("Slack rejected the app creation: ratelimited");
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Slack rejected the app creation: ratelimited",
