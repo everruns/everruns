@@ -25,11 +25,6 @@ categories = ["development-tools", "rust-patterns"]
 [lib]
 proc-macro = true
 
-[features]
-# Experimental attributes for the unpublished `serve` framework
-# (`serve_agent`, `serve_tool`, ...). Off by default; `serve` enables it.
-serve = []
-
 [dependencies]
 proc-macro2.workspace = true
 quote.workspace = true

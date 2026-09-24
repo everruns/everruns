@@ -24,7 +24,7 @@ readme = "README.md"
 
 [dependencies]
 everruns = { workspace = true, features = ["local", "openai", "openrouter", "mcp", "bashkit"] }
-everruns-macros = { workspace = true, features = ["serve"] }
+serve-macros = { path = "../serve-macros" }
 anyhow.workspace = true
 async-trait.workspace = true
 axum.workspace = true

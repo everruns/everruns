@@ -12,9 +12,8 @@ tags:
 # serve: Experimental App Framework and Hosting Contract
 
 **Status: experimental proof of concept.** The code is in `crates/serve`,
-`crates/serve-build`, and `examples/serve/`; its attributes are in
-`everruns-macros` behind the `serve` feature, sharing parsing with
-`#[everruns::tool]`. It is unpublished (`publish = false`) and outside [API Stability](api-stability.md).
+`crates/serve-macros`, `crates/serve-build`, and `examples/serve/`. It is
+unpublished (`publish = false`) and outside [API Stability](api-stability.md).
 
 ## Problem
 
