@@ -903,5 +903,6 @@ const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
     "preview_harness",
     "run_report_query",
     "run_saved_report",
+    "search_workspace_files",
     "stat_workspace_file",
 ];
