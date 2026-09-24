@@ -37,7 +37,7 @@ pub(crate) fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         extensions
     };
     ToolContextServices {
-        file_store: Some(adapter.file_store()),
+        file_store: Some(adapter.file_store(org_id)),
         storage_store: adapter.storage_store(org_id),
         image_store: adapter.image_artifact_store(org_id),
         provider_credential_store: adapter.provider_credential_store(org_id),

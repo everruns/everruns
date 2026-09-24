@@ -6,6 +6,7 @@ mod catalog_cli;
 pub mod durable_runner;
 pub mod grpc_adapters;
 pub mod grpc_durable_store;
+pub mod grpc_files_adapter;
 pub mod grpc_slack_actions;
 pub mod grpc_sqldb_adapter;
 pub mod grpc_worker_adapters;

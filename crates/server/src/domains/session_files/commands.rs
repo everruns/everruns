@@ -1151,4 +1151,68 @@ mod tests {
             "the matching line must be flagged: {block:?}"
         );
     }
+
+    /// A session may be attached to an existing workspace at creation, which
+    /// grants its agent read/write access to that workspace's files. Since
+    /// migration 056 re-keyed `workspace_files` by `workspace_id`, everything
+    /// reaching `WorkspaceFileService` must pass the session's *workspace*, not
+    /// its id — the parameter there is still spelled `session_id`, which is what
+    /// makes passing the wrong one look right.
+    ///
+    /// Ported from the worker file RPCs' own guard when those RPCs were deleted
+    /// in favour of these commands: the property is the same, and the commands
+    /// are now the only path to it.
+    #[tokio::test]
+    async fn commands_address_the_sessions_workspace_not_its_id() {
+        let db = Arc::new(StorageBackend::in_memory());
+
+        // A workspace owner, then a second session attached to that workspace.
+        let owner = db
+            .create_session(session_row(None))
+            .await
+            .expect("owner session");
+        let attached = db
+            .create_session(session_row(Some(owner.workspace_id)))
+            .await
+            .expect("attached session");
+        assert_ne!(
+            attached.id.uuid(),
+            attached.workspace_id,
+            "the attached session's id must differ from its workspace for this to prove anything"
+        );
+
+        // Seed through the workspace the owner established.
+        crate::domains::session_files::WorkspaceFileService::new(db.clone())
+            .create_file(
+                owner.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: "/shared.txt".to_string(),
+                    content: Some("shared bytes".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed shared file");
+
+        let ctx = Ctx::minimal_for_test(owner_caller(), db, None);
+
+        // The attached session must see the workspace's file, not an empty
+        // store of its own keyed by session id.
+        let got = GetWorkspaceFile {
+            session_id: attached.id.to_string(),
+            path: "/shared.txt".to_string(),
+            recursive: false,
+        }
+        .run(&ctx)
+        .await
+        .expect("attached session must reach the shared workspace");
+
+        match got {
+            super::GetResponse::File(file) => {
+                assert_eq!(file.content.as_deref(), Some("shared bytes"));
+            }
+            other => panic!("expected the shared file, got {other:?}"),
+        }
+    }
 }

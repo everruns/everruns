@@ -81,7 +81,7 @@ fn resolved_mcp_server_to_worker_info(
 }
 
 /// Extract file name from path
-fn name_from_path(path: &str) -> String {
+pub(crate) fn name_from_path(path: &str) -> String {
     if path == "/" {
         return "/".to_string();
     }
@@ -289,7 +289,7 @@ impl BudgetChecker for DirectBudgetChecker {
 /// Direct storage-backed worker adapters for in-process worker
 #[derive(Clone)]
 pub struct DirectWorkerAdapters {
-    db: Arc<StorageBackend>,
+    pub(crate) db: Arc<StorageBackend>,
     event_service: Arc<EventService>,
     budget_service: Option<Arc<BudgetService>>,
     provider_resolver: Arc<ProviderResolverService>,
@@ -312,10 +312,10 @@ pub struct DirectWorkerAdapters {
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
-    virtual_registry:
+    pub(crate) virtual_registry:
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
     org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
-    quota: crate::domains::session_files::limits::QuotaLimits,
+    pub(crate) quota: crate::domains::session_files::limits::QuotaLimits,
 }
 
 impl DirectWorkerAdapters {
@@ -595,7 +595,7 @@ impl DirectWorkerAdapters {
     }
 
     /// Ensure a directory exists, creating it and parents if needed
-    async fn ensure_directory_exists(&self, session_id: Uuid, path: &str) -> Result<()> {
+    pub(crate) async fn ensure_directory_exists(&self, session_id: Uuid, path: &str) -> Result<()> {
         use crate::storage::models::CreateSessionFileRow;
 
         if path == "/" {
@@ -929,191 +929,33 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // =========================================================================
     // Session File Operations
     // =========================================================================
+    //
+    // Bodies live in `direct_worker_adapters_files`; a trait impl cannot span
+    // modules, so these forward.
 
-    async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
-        // Check virtual mounts first
-        if let Some(registry) = &self.virtual_registry
-            && let Some(vf) = registry.read_file(&session_id, path)
-        {
-            let now = chrono::Utc::now();
-            let (content, encoding) = if vf.is_directory {
-                (None, "text".to_string())
-            } else {
-                let (c, e) = SessionFile::encode_content(&vf.content);
-                (Some(c), e)
-            };
-            return Ok(Some(SessionFile {
-                id: uuid::Uuid::nil(),
-                session_id,
-                path: vf.path.clone(),
-                name: name_from_path(&vf.path),
-                content,
-                encoding,
-                is_directory: vf.is_directory,
-                is_readonly: true,
-                size_bytes: vf.content.len() as i64,
-                created_at: now,
-                updated_at: now,
-            }));
-        }
-
-        let row = self
-            .db
-            .get_session_file(session_id, path)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to read file: {}", e);
-                store_error("Failed to read file")
-            })?;
-
-        Ok(row.map(|r| {
-            let (content, encoding) = if let Some(bytes) = &r.content {
-                match String::from_utf8(bytes.clone()) {
-                    Ok(text) => (Some(text), "text".to_string()),
-                    Err(_) => {
-                        use base64::Engine;
-                        let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
-                        (Some(b64), "base64".to_string())
-                    }
-                }
-            } else {
-                (None, "text".to_string())
-            };
-
-            SessionFile {
-                id: r.id,
-                session_id: r.session_id.uuid(),
-                path: r.path.clone(),
-                name: name_from_path(&r.path),
-                content,
-                encoding,
-                is_directory: r.is_directory,
-                is_readonly: r.is_readonly,
-                size_bytes: r.size_bytes,
-                created_at: r.created_at,
-                updated_at: r.updated_at,
-            }
-        }))
+    async fn read_file(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Option<SessionFile>> {
+        DirectWorkerAdapters::read_file(self, org_id, session_id, path).await
     }
 
     async fn write_file(
         &self,
+        org_id: i64,
         session_id: Uuid,
         path: &str,
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
-        // Virtual files are readonly
-        if let Some(registry) = &self.virtual_registry
-            && registry.is_virtual_path(&session_id, path)
-        {
-            return Err(store_error(format!(
-                "Cannot modify readonly file: {}",
-                path
-            )));
-        }
-        use crate::storage::models::{CreateSessionFileRow, UpdateSessionFile};
-
-        let content_bytes = if encoding == "base64" {
-            use base64::Engine;
-            base64::engine::general_purpose::STANDARD
-                .decode(content)
-                .map_err(|e| store_error(format!("Invalid base64 content: {}", e)))?
-        } else {
-            content.as_bytes().to_vec()
-        };
-
-        let existing = self
-            .db
-            .get_session_file(session_id, path)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to check existing file: {}", e);
-                store_error("Failed to write file")
-            })?;
-
-        // Quota check (TM-FS-008 / TM-DOS-005)
-        {
-            use crate::domains::session_files::limits::check_write_quota;
-            let incoming = content_bytes.len() as i64;
-            let existing_size = existing.as_ref().map(|f| f.size_bytes).unwrap_or(0);
-            check_write_quota(&self.db, session_id, incoming, existing_size, &self.quota)
-                .await
-                .map_err(|e| store_error(e.to_string()))?;
-        }
-
-        let row = if existing.is_some() {
-            let update = UpdateSessionFile {
-                content: Some(content_bytes.clone()),
-                ..Default::default()
-            };
-            self.db
-                .update_session_file(session_id, path, update)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to update file: {}", e);
-                    store_error("Failed to write file")
-                })?
-                .ok_or_else(|| store_error("File disappeared during update"))?
-        } else {
-            // Ensure parent directory exists
-            if let Some(parent) = FileInfo::parent_path(path) {
-                self.ensure_directory_exists(session_id, &parent).await?;
-            }
-
-            let create = CreateSessionFileRow {
-                session_id: SessionId::from_uuid(session_id),
-                path: path.to_string(),
-                content: Some(content_bytes.clone()),
-                is_directory: false,
-                is_readonly: false,
-            };
-            match self.db.create_session_file(create).await {
-                Ok(row) => row,
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("duplicate key")
-                        || msg.contains("unique constraint")
-                        || msg.contains("UNIQUE constraint")
-                    {
-                        // Race: file was created concurrently; fall back to update
-                        let update = UpdateSessionFile {
-                            content: Some(content_bytes.clone()),
-                            ..Default::default()
-                        };
-                        self.db
-                            .update_session_file(session_id, path, update)
-                            .await
-                            .map_err(|e| {
-                                tracing::error!("Failed to update file after race: {}", e);
-                                store_error("Failed to write file")
-                            })?
-                            .ok_or_else(|| store_error("File disappeared during update"))?
-                    } else {
-                        tracing::error!("Failed to create file: {}", e);
-                        return Err(store_error("Failed to write file"));
-                    }
-                }
-            }
-        };
-
-        Ok(SessionFile {
-            id: row.id,
-            session_id: row.session_id.uuid(),
-            path: row.path.clone(),
-            name: name_from_path(&row.path),
-            content: Some(content.to_string()),
-            encoding: encoding.to_string(),
-            is_directory: row.is_directory,
-            is_readonly: row.is_readonly,
-            size_bytes: row.size_bytes,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-        })
+        DirectWorkerAdapters::write_file(self, org_id, session_id, path, content, encoding).await
     }
 
     async fn write_file_if_content_matches(
         &self,
+        org_id: i64,
         session_id: Uuid,
         path: &str,
         expected_content: &str,
@@ -1121,308 +963,75 @@ impl WorkerAdapters for DirectWorkerAdapters {
         content: &str,
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
-        if let Some(registry) = &self.virtual_registry
-            && registry.is_virtual_path(&session_id, path)
-        {
-            return Err(store_error(format!(
-                "Cannot modify readonly file: {}",
-                path
-            )));
-        }
-        use crate::storage::models::UpdateSessionFile;
-
-        let expected_bytes = SessionFile::decode_content(expected_content, expected_encoding)
-            .map_err(|e| store_error(format!("Invalid expected content encoding: {}", e)))?;
-        let content_bytes = SessionFile::decode_content(content, encoding)
-            .map_err(|e| store_error(format!("Invalid content encoding: {}", e)))?;
-
-        // Fetch metadata only (no content blob) — content equality is enforced
-        // atomically in SQL by update_session_file_if_content_matches below.
-        let existing = self
-            .db
-            .get_session_file_info(session_id, path)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to check existing file: {}", e);
-                store_error("Failed to write file")
-            })?;
-        let Some(existing) = existing else {
-            return Ok(None);
-        };
-        if existing.is_directory || existing.is_readonly {
-            return Ok(None);
-        }
-
-        {
-            use crate::domains::session_files::limits::check_write_quota;
-            check_write_quota(
-                &self.db,
-                session_id,
-                content_bytes.len() as i64,
-                existing.size_bytes,
-                &self.quota,
-            )
-            .await
-            .map_err(|e| store_error(e.to_string()))?;
-        }
-
-        let row = self
-            .db
-            .update_session_file_if_content_matches(
-                session_id,
-                path,
-                expected_bytes,
-                UpdateSessionFile {
-                    content: Some(content_bytes),
-                    ..Default::default()
-                },
-            )
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to conditionally update file: {}", e);
-                store_error("Failed to write file")
-            })?;
-
-        Ok(row.map(|row| {
-            let (content, encoding) = if let Some(bytes) = row.content {
-                SessionFile::encode_content(&bytes)
-            } else {
-                (String::new(), "text".to_string())
-            };
-
-            SessionFile {
-                id: row.id,
-                session_id: row.session_id.uuid(),
-                path: row.path.clone(),
-                name: name_from_path(&row.path),
-                content: Some(content),
-                encoding,
-                is_directory: row.is_directory,
-                is_readonly: row.is_readonly,
-                size_bytes: row.size_bytes,
-                created_at: row.created_at,
-                updated_at: row.updated_at,
-            }
-        }))
+        DirectWorkerAdapters::write_file_if_content_matches(
+            self,
+            org_id,
+            session_id,
+            path,
+            expected_content,
+            expected_encoding,
+            content,
+            encoding,
+        )
+        .await
     }
 
-    async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
-        if let Some(registry) = &self.virtual_registry
-            && registry.is_virtual_path(&session_id, path)
-        {
-            return Err(store_error(format!(
-                "Cannot delete readonly file: {}",
-                path
-            )));
-        }
-        if recursive {
-            let count = self
-                .db
-                .delete_session_file_recursive(session_id, path)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to delete file recursively: {}", e);
-                    store_error("Failed to delete file")
-                })?;
-            Ok(count > 0)
-        } else {
-            self.db
-                .delete_session_file(session_id, path)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to delete file: {}", e);
-                    store_error("Failed to delete file")
-                })
-        }
+    async fn delete_file(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        path: &str,
+        recursive: bool,
+    ) -> Result<bool> {
+        DirectWorkerAdapters::delete_file(self, org_id, session_id, path, recursive).await
     }
 
-    async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
-        let rows = self
-            .db
-            .list_session_files(session_id, path)
-            .await
-            .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("not found") || msg.contains("not a directory") {
-                    tracing::debug!("Directory not found: {}", path);
-                } else {
-                    tracing::error!("Failed to list directory: {}", e);
-                }
-                store_error("Failed to list directory")
-            })?;
-
-        let mut entries: Vec<FileInfo> = rows
-            .into_iter()
-            .map(|r| FileInfo {
-                id: r.id,
-                session_id: r.session_id.uuid(),
-                path: r.path.clone(),
-                name: name_from_path(&r.path),
-                is_directory: r.is_directory,
-                is_readonly: r.is_readonly,
-                size_bytes: r.size_bytes,
-                created_at: r.created_at,
-                updated_at: r.updated_at,
-            })
-            .collect();
-
-        // Merge virtual entries (virtual wins on name conflict)
-        if let Some(registry) = &self.virtual_registry {
-            let virtual_entries = registry.list_directory(&session_id, path);
-            let now = chrono::Utc::now();
-            for vf in virtual_entries {
-                let name = name_from_path(&vf.path);
-                entries.retain(|e| e.name != name);
-                entries.push(FileInfo {
-                    id: uuid::Uuid::nil(),
-                    session_id,
-                    path: vf.path,
-                    name,
-                    is_directory: vf.is_directory,
-                    is_readonly: true,
-                    size_bytes: vf.size_bytes,
-                    created_at: now,
-                    updated_at: now,
-                });
-            }
-            entries.sort_by(|a, b| {
-                b.is_directory
-                    .cmp(&a.is_directory)
-                    .then_with(|| a.path.cmp(&b.path))
-            });
-        }
-
-        Ok(entries)
+    async fn list_directory(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Vec<FileInfo>> {
+        DirectWorkerAdapters::list_directory(self, org_id, session_id, path).await
     }
 
-    async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
-        // Check virtual mounts first
-        if let Some(registry) = &self.virtual_registry
-            && let Some(vf) = registry.read_file(&session_id, path)
-        {
-            return Ok(Some(FileStat {
-                path: vf.path.clone(),
-                name: name_from_path(&vf.path),
-                is_directory: vf.is_directory,
-                is_readonly: true,
-                size_bytes: vf.content.len() as i64,
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-            }));
-        }
-
-        let row = self
-            .db
-            .get_session_file(session_id, path)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to stat file: {}", e);
-                store_error("Failed to stat file")
-            })?;
-
-        Ok(row.map(|r| FileStat {
-            path: r.path.clone(),
-            name: name_from_path(&r.path),
-            is_directory: r.is_directory,
-            is_readonly: r.is_readonly,
-            size_bytes: r.size_bytes,
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-        }))
+    async fn stat_file(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Option<FileStat>> {
+        DirectWorkerAdapters::stat_file(self, org_id, session_id, path).await
     }
 
     async fn grep_files(
         &self,
+        org_id: i64,
         session_id: Uuid,
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
-        let results = crate::domains::session_files::grep_session_files(
-            &self.db,
-            session_id,
-            pattern,
-            path_pattern,
-        )
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to grep files: {}", e);
-            store_error(format!("Failed to grep files: {}", e))
-        })?;
-
-        let mut matches: Vec<GrepMatch> = results.into_iter().flat_map(|r| r.matches).collect();
-
-        // Also search virtual mounts with the shared canonical-path glob semantics.
-        if let Some(registry) = &self.virtual_registry
-            && let Ok(regex) = regex::Regex::new(pattern)
-        {
-            let path_matcher = path_pattern
-                .map(everruns_core::session_path::GrepPathPattern::new)
-                .transpose()
-                .unwrap_or(None);
-            let virtual_matches = registry.grep(&session_id, &regex, None, None, 512 * 1024);
-            matches.extend(
-                virtual_matches
-                    .into_iter()
-                    .filter(|vm| {
-                        path_matcher
-                            .as_ref()
-                            .is_none_or(|matcher| matcher.is_match(&vm.path))
-                    })
-                    .map(|vm| GrepMatch {
-                        path: vm.path,
-                        line_number: vm.line_number,
-                        line: vm.line,
-                    }),
-            );
-        }
-
-        Ok(matches)
+        DirectWorkerAdapters::grep_files(self, org_id, session_id, pattern, path_pattern).await
     }
 
     async fn grep_files_with_options(
         &self,
+        org_id: i64,
         session_id: Uuid,
         pattern: &str,
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
-        crate::domains::session_files::service::grep_session_files_with_options(
-            &self.db,
-            self.virtual_registry.as_deref(),
-            session_id,
-            pattern,
-            options,
-        )
-        .await
-        .map_err(|error| store_error(format!("Failed to grep files: {error}")))
+        DirectWorkerAdapters::grep_files_with_options(self, org_id, session_id, pattern, options)
+            .await
     }
 
-    async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
-        use crate::storage::models::CreateSessionFileRow;
-
-        let create = CreateSessionFileRow {
-            session_id: SessionId::from_uuid(session_id),
-            path: path.to_string(),
-            content: None,
-            is_directory: true,
-            is_readonly: false,
-        };
-
-        let row = self.db.create_session_file(create).await.map_err(|e| {
-            tracing::error!("Failed to create directory: {}", e);
-            store_error("Failed to create directory")
-        })?;
-
-        Ok(FileInfo {
-            id: row.id,
-            session_id: row.session_id.uuid(),
-            path: row.path.clone(),
-            name: name_from_path(&row.path),
-            is_directory: row.is_directory,
-            is_readonly: row.is_readonly,
-            size_bytes: row.size_bytes,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-        })
+    async fn create_directory(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<FileInfo> {
+        DirectWorkerAdapters::create_directory(self, org_id, session_id, path).await
     }
 
     // =========================================================================
@@ -3546,7 +3155,7 @@ mod tests {
         .await;
 
         let results = adapters
-            .grep_files(session_id, "hello", None)
+            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, "hello", None)
             .await
             .unwrap();
 
@@ -3570,7 +3179,12 @@ mod tests {
         .await;
 
         let results = adapters
-            .grep_files(session_id, "nonexistent_pattern", None)
+            .grep_files(
+                everruns_core::DEFAULT_ORG_ID,
+                session_id,
+                "nonexistent_pattern",
+                None,
+            )
             .await
             .unwrap();
 
@@ -3597,7 +3211,10 @@ mod tests {
         )
         .await;
 
-        let results = adapters.grep_files(session_id, "TODO", None).await.unwrap();
+        let results = adapters
+            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, "TODO", None)
+            .await
+            .unwrap();
 
         assert_eq!(results.len(), 3);
         // Verify line numbers
@@ -3625,7 +3242,7 @@ mod tests {
         .await;
 
         let results = adapters
-            .grep_files(session_id, r"\d{3}", None)
+            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, r"\d{3}", None)
             .await
             .unwrap();
 
@@ -3638,7 +3255,9 @@ mod tests {
         let adapters = test_adapters();
         let session_id = Uuid::new_v4();
 
-        let result = adapters.grep_files(session_id, "[invalid", None).await;
+        let result = adapters
+            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, "[invalid", None)
+            .await;
         assert!(result.is_err());
     }
 
@@ -3656,6 +3275,7 @@ mod tests {
 
         let result = adapters
             .grep_files_with_options(
+                everruns_core::DEFAULT_ORG_ID,
                 session_id,
                 "Error",
                 &GrepOptions {
@@ -4259,7 +3879,10 @@ mod tests {
                     let (adapters, db) = $make_adapters;
                     let sid = Uuid::new_v4();
                     seed_file(&db, sid, "/hello.rs", "fn main() {\n    hello();\n}\n").await;
-                    let results = adapters.grep_files(sid, "hello", None).await.unwrap();
+                    let results = adapters
+                        .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "hello", None)
+                        .await
+                        .unwrap();
                     assert_eq!(results.len(), 1);
                     assert_eq!(results[0].path, "/hello.rs");
                     assert_eq!(results[0].line_number, 2);
@@ -4272,7 +3895,7 @@ mod tests {
                     let sid = Uuid::new_v4();
                     seed_file(&db, sid, "/code.rs", "let x = 1;\n").await;
                     let results = adapters
-                        .grep_files(sid, "no_such_pattern", None)
+                        .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "no_such_pattern", None)
                         .await
                         .unwrap();
                     assert!(results.is_empty());
@@ -4284,7 +3907,10 @@ mod tests {
                     let sid = Uuid::new_v4();
                     seed_file(&db, sid, "/a.txt", "ERR line1\nok\nERR line3\n").await;
                     seed_file(&db, sid, "/b.txt", "ok\nERR line2\n").await;
-                    let results = adapters.grep_files(sid, "ERR", None).await.unwrap();
+                    let results = adapters
+                        .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "ERR", None)
+                        .await
+                        .unwrap();
                     assert_eq!(results.len(), 3);
                     let a: Vec<_> = results.iter().filter(|m| m.path == "/a.txt").collect();
                     assert_eq!(a.len(), 2);
@@ -4300,7 +3926,10 @@ mod tests {
                     let (adapters, db) = $make_adapters;
                     let sid = Uuid::new_v4();
                     seed_file(&db, sid, "/nums.txt", "val 1\nval 22\nval 333\n").await;
-                    let results = adapters.grep_files(sid, r"\d{2,}", None).await.unwrap();
+                    let results = adapters
+                        .grep_files(everruns_core::DEFAULT_ORG_ID, sid, r"\d{2,}", None)
+                        .await
+                        .unwrap();
                     assert_eq!(results.len(), 2);
                 }
 
@@ -4308,14 +3937,22 @@ mod tests {
                 async fn grep_invalid_regex_is_error() {
                     let (adapters, _db) = $make_adapters;
                     let sid = Uuid::new_v4();
-                    assert!(adapters.grep_files(sid, "[bad", None).await.is_err());
+                    assert!(
+                        adapters
+                            .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "[bad", None)
+                            .await
+                            .is_err()
+                    );
                 }
 
                 #[tokio::test]
                 async fn grep_empty_session_returns_empty() {
                     let (adapters, _db) = $make_adapters;
                     let sid = Uuid::new_v4();
-                    let results = adapters.grep_files(sid, "anything", None).await.unwrap();
+                    let results = adapters
+                        .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "anything", None)
+                        .await
+                        .unwrap();
                     assert!(results.is_empty());
                 }
 
@@ -4324,11 +3961,20 @@ mod tests {
                     let (adapters, _db) = $make_adapters;
                     let sid = Uuid::new_v4();
                     let written = adapters
-                        .write_file(sid, "/test.txt", "content", "text")
+                        .write_file(
+                            everruns_core::DEFAULT_ORG_ID,
+                            sid,
+                            "/test.txt",
+                            "content",
+                            "text",
+                        )
                         .await
                         .unwrap();
                     assert_eq!(written.path, "/test.txt");
-                    let read = adapters.read_file(sid, "/test.txt").await.unwrap();
+                    let read = adapters
+                        .read_file(everruns_core::DEFAULT_ORG_ID, sid, "/test.txt")
+                        .await
+                        .unwrap();
                     assert!(read.is_some());
                     assert_eq!(read.unwrap().path, "/test.txt");
                 }
@@ -4339,7 +3985,7 @@ mod tests {
                     let sid = Uuid::new_v4();
                     assert!(
                         adapters
-                            .read_file(sid, "/nope.txt")
+                            .read_file(everruns_core::DEFAULT_ORG_ID, sid, "/nope.txt")
                             .await
                             .unwrap()
                             .is_none()
@@ -4351,11 +3997,28 @@ mod tests {
                     let (adapters, _db) = $make_adapters;
                     let sid = Uuid::new_v4();
                     adapters
-                        .write_file(sid, "/del.txt", "bye", "text")
+                        .write_file(
+                            everruns_core::DEFAULT_ORG_ID,
+                            sid,
+                            "/del.txt",
+                            "bye",
+                            "text",
+                        )
                         .await
                         .unwrap();
-                    assert!(adapters.delete_file(sid, "/del.txt", false).await.unwrap());
-                    assert!(adapters.read_file(sid, "/del.txt").await.unwrap().is_none());
+                    assert!(
+                        adapters
+                            .delete_file(everruns_core::DEFAULT_ORG_ID, sid, "/del.txt", false)
+                            .await
+                            .unwrap()
+                    );
+                    assert!(
+                        adapters
+                            .read_file(everruns_core::DEFAULT_ORG_ID, sid, "/del.txt")
+                            .await
+                            .unwrap()
+                            .is_none()
+                    );
                 }
 
                 #[tokio::test]
