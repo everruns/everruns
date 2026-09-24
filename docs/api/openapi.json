@@ -20162,6 +20162,29 @@
               }
             ],
             "description": "Provider reasoning artifact, ordered against the text and tool calls it\nwas interleaved with."
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProviderOpaqueContent",
+                "description": "Provider-native assistant content retained only for internal replay."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "provider_opaque"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Provider-native assistant content retained only for internal replay."
           }
         ],
         "description": "A part of message content - can be text, image, image_file, tool_call, or tool_result\n\nThis is the canonical content part type used across the system.\nAPI layer enables the \"openapi\" feature to add ToSchema derive."
@@ -34866,6 +34889,24 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when this provider was last updated (RFC 3339)."
+          }
+        }
+      },
+      "ProviderOpaqueContent": {
+        "type": "object",
+        "description": "Provider-native assistant content retained for lossless replay.\n\nDrivers use this only when a provider requires its response content to be\nsent back without reconstruction. The portable text, reasoning, and tool\ncall fields remain the fallback for other providers.",
+        "required": [
+          "provider",
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "object",
+            "description": "Original provider-native assistant content."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider that owns and can replay this content."
           }
         }
       },

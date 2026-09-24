@@ -150,6 +150,7 @@ fn flush(
                 text,
                 cache_control: None,
             }],
+            preserved_content: None,
         });
     } else {
         *system_prompt = Some(match system_prompt.take() {
@@ -182,7 +183,7 @@ pub(super) fn mark_recent_text_blocks_for_cache(
     let anchor_len = messages.len().saturating_sub(volatile_suffix_len);
     let mut remaining = MESSAGE_CACHE_BREAKPOINTS;
     for msg in messages[..anchor_len].iter_mut().rev() {
-        if msg.role == "system" {
+        if msg.role == "system" || msg.preserved_content.is_some() {
             continue;
         }
         // At most one breakpoint per message: a second marker inside the

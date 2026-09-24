@@ -44,6 +44,26 @@ pub fn llm_message_from_message(msg: &RuntimeMessage) -> Message {
             arguments: tc.arguments.clone(),
         })
         .collect();
+    let opaque: Vec<LlmContentPart> = msg
+        .content
+        .iter()
+        .filter_map(|part| match part {
+            ContentPart::ProviderOpaque(content) => {
+                Some(LlmContentPart::ProviderOpaque(content.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    let fallback = msg.content_to_llm_string();
+    let content = if opaque.is_empty() {
+        MessageContent::Text(fallback)
+    } else {
+        let mut parts = opaque;
+        if !fallback.is_empty() {
+            parts.push(LlmContentPart::Text { text: fallback });
+        }
+        MessageContent::Parts(parts)
+    };
 
     Message {
         configuration_update: None,
@@ -53,7 +73,7 @@ pub fn llm_message_from_message(msg: &RuntimeMessage) -> Message {
             .filter_map(|call| call.native.clone())
             .collect(),
         role,
-        content: MessageContent::Text(msg.content_to_llm_string()),
+        content,
         tool_calls: if tool_calls.is_empty() {
             None
         } else {
@@ -105,6 +125,9 @@ pub fn llm_message_from_message_with_attachments(
             // parts: drivers replay it in provider-native form and it must
             // never be flattened into prompt text.
             ContentPart::Reasoning(_) => {}
+            ContentPart::ProviderOpaque(content) => {
+                parts.push(LlmContentPart::ProviderOpaque(content.clone()));
+            }
             ContentPart::Text(t) => {
                 parts.push(LlmContentPart::Text {
                     text: t.text.clone(),

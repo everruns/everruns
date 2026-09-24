@@ -13,7 +13,6 @@
 1811 crates/cli/src/commands/agents.rs
 1635 crates/core/src/guardrail_checks.rs
 1870 crates/core/src/mcp_server.rs
-1704 crates/core/src/message.rs
 1673 crates/core/src/skill.rs
 2277 crates/core/src/tool_narration.rs
 3143 crates/drivers/anthropic/src/driver.rs
