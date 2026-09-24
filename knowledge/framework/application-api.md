@@ -383,10 +383,10 @@ entrypoints.
 - `crates/everruns/src/decisions.rs`
 - `crates/everruns/src/local.rs`
 - `crates/everruns/src/work.rs`
-- `crates/everruns/tests/application_parity.rs`
-- `crates/everruns/tests/capability_configuration.rs`
-- `crates/everruns/tests/session_work.rs`
-- `crates/everruns/tests/lifecycle_hooks.rs`
+- `crates/everruns/tests/facade/application_parity.rs`
+- `crates/everruns/tests/facade/capability_configuration.rs`
+- `crates/everruns/tests/facade/session_work.rs`
+- `crates/everruns/tests/facade/lifecycle_hooks.rs`
 - `examples/coding-cli/tests/application_parity.rs`
 - `crates/host/src/runtime.rs`
 - `crates/host/src/events.rs`

@@ -8,7 +8,7 @@
 //! that must *not* happen — an incapable client being failed instead of served,
 //! and a credential question ever becoming a form field.
 
-mod test_harness;
+use crate::test_harness;
 
 use async_trait::async_trait;
 use axum::http::{Method, StatusCode};

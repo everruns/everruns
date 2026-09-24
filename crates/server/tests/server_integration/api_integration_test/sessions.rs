@@ -1,6 +1,6 @@
 //! API integration tests: sessions.
 
-use crate::support::*;
+use super::support::*;
 use crate::test_harness;
 use axum::http::StatusCode;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};

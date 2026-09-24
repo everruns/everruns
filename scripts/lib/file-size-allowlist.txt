@@ -29,7 +29,7 @@
 3996 crates/host/src/observability/braintrust.rs
 1531 crates/host/src/observability/otel.rs
 2213 crates/host/src/runtime.rs
-2807 crates/host/tests/runtime_host_test.rs
+2807 crates/host/tests/integration/runtime_host_test.rs
 2593 crates/internal-protocol/src/lib.rs
 4729 crates/model-profiles/src/profiles.rs
 1649 crates/platform/src/app.rs
@@ -73,9 +73,9 @@
 1897 crates/server/tests/domain/app_a2a_integration_test.rs
 1745 crates/server/tests/domain/evals_integration_test.rs
 4190 crates/server/tests/domain/mcp_endpoint_test.rs
-4917 crates/server/tests/repository_integration_test.rs
+4917 crates/server/tests/server_integration/repository_integration_test.rs
 1737 crates/test-support/src/capabilities/fake_aws.rs
-4744 crates/test-support/tests/reason_atom_test.rs
+4744 crates/test-support/tests/integration/reason_atom_test.rs
 4210 crates/worker/src/grpc_adapters.rs
 2209 crates/worker/src/unified_worker.rs
 3816 integrations/bashkit/src/lib.rs

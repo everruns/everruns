@@ -6,7 +6,7 @@
 //! event, not from the request body — and that an accept leaves a consent the
 //! MCP client can find on the retry.
 
-mod test_harness;
+use crate::test_harness;
 use std::sync::Arc;
 
 use async_trait::async_trait;

@@ -7,9 +7,9 @@
 //! subscription — never reached the transcript, and the optimistic bubble for it
 //! stayed pinned below every later message.
 //!
-//! Run with: cargo test -p everruns-server --test sse_replay_test
+//! Run with: cargo test -p everruns-server --lib --test contracts sse_replay_test::
 
-mod test_harness;
+use crate::test_harness;
 
 use std::time::Duration;
 

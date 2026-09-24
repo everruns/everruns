@@ -32,35 +32,15 @@ required-features = ["macros", "openai"]
 name = "tls_startup"
 required-features = ["openai"]
 
+# `workspace_environment` and the `local_*` suites exercise the SQLite-backed
+# platform `local` turns on. Without the declaration they build under any
+# feature set and fail to resolve `everruns_platform`, so `--all-targets` on
+# the default build is red. Merged into one `tests/local/main.rs` target
+# (knowledge/project/ci-build-time.md) so the crate links once instead of once
+# per file.
 [[test]]
-name = "workspace_environment"
-required-features = ["local"]
-
-# The `local_*` suites exercise the SQLite-backed platform `local` turns on.
-# Without the declaration they build under any feature set and fail to resolve
-# `everruns_platform`, so `--all-targets` on the default build is red.
-[[test]]
-name = "local_composability_and_seam_test"
-required-features = ["local"]
-
-[[test]]
-name = "local_platform_store_test"
-required-features = ["local"]
-
-[[test]]
-name = "local_schedule_runner_test"
-required-features = ["local"]
-
-[[test]]
-name = "local_schedule_store_test"
-required-features = ["local"]
-
-[[test]]
-name = "local_spawn_agent_runtime_test"
-required-features = ["local"]
-
-[[test]]
-name = "local_task_registry_test"
+name = "local"
+path = "tests/local/main.rs"
 required-features = ["local"]
 
 [features]

@@ -2,7 +2,7 @@
 //!
 //! These run against the in-memory backend, which implements the same
 //! predicate as the Postgres repository. The Postgres side is covered by
-//! `crates/server/tests/repository_integration_test.rs`.
+//! `crates/server/tests/server_integration/repository_integration_test.rs`.
 
 use super::{
     ArchiveSession, GetSessionFacets, ListSessions, SessionFilterArgs, SessionService,

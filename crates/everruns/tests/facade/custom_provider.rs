@@ -54,7 +54,7 @@ fn fixture_has_no_private_runtime_imports() {
 
 #[test]
 fn facade_has_no_builtin_provider_dispatch() {
-    let source = include_str!("../src/agent.rs");
+    let source = include_str!("../../src/agent.rs");
     assert!(!source.contains("DriverId"));
     assert!(!source.contains(concat!("is_", "openai")));
     assert!(!source.contains("provider_type =="));
