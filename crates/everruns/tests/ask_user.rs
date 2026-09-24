@@ -1,12 +1,32 @@
 use std::sync::{Arc, Mutex};
 
-use everruns::ask_user::{Answer, AnsweredBy, AskUser, Outcome, Question, Status, async_trait};
+use everruns::ask_user::{
+    Answer, AnsweredBy, AskUser, Outcome, Question, QuestionKind, Status, async_trait,
+};
 use everruns::{Agent, InMemoryEngine, LlmSimConfig, Model, ToolCall};
 use serde_json::json;
 
 #[derive(Clone, Default)]
 struct RecordingResponder {
     questions: Arc<Mutex<Vec<Question>>>,
+}
+
+struct TextResponder;
+
+#[async_trait]
+impl AskUser for TextResponder {
+    async fn ask(&self, questions: &[Question]) -> Outcome {
+        Outcome {
+            status: Status::Answered,
+            answered_by: AnsweredBy::User,
+            answers: vec![Answer {
+                id: questions[0].id.clone().unwrap(),
+                selected: Vec::new(),
+                other_text: Some("feature/open-question".to_string()),
+                secret_ref: None,
+            }],
+        }
+    }
 }
 
 #[async_trait]
@@ -69,6 +89,27 @@ async fn builder_responder_answers_in_process() {
     let questions = questions.lock().unwrap();
     assert_eq!(questions.len(), 1);
     assert_eq!(questions[0].id.as_deref(), Some("question_1"));
+}
+
+#[tokio::test]
+async fn text_answer_round_trips_through_the_public_responder_contract() {
+    let questions: Vec<Question> = serde_json::from_value(json!([{
+        "kind": "text",
+        "id": "branch_name",
+        "header": "Branch",
+        "question": "What should I call this branch?"
+    }]))
+    .expect("Text question uses the public contract");
+    assert_eq!(questions[0].kind, QuestionKind::Text);
+
+    let outcome = TextResponder.ask(&questions).await;
+    let wire = serde_json::to_value(&outcome).expect("outcome serializes");
+    let decoded: Outcome = serde_json::from_value(wire).expect("outcome deserializes");
+    assert!(decoded.answers[0].selected.is_empty());
+    assert_eq!(
+        decoded.answers[0].other_text.as_deref(),
+        Some("feature/open-question")
+    );
 }
 
 #[tokio::test]

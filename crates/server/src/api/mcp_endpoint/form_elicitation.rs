@@ -100,6 +100,18 @@ pub(super) fn requested_schema(questions: &[AskUserQuestion]) -> Option<Value> {
             return None;
         }
         let id = question.id.as_deref()?;
+        if question.kind == AskUserQuestionKind::Text {
+            properties.insert(
+                id.to_string(),
+                json!({
+                    "type": "string",
+                    "title": question.header,
+                    "description": question.question,
+                }),
+            );
+            required.push(json!(id));
+            continue;
+        }
         if question.options.is_empty() {
             return None;
         }
@@ -223,30 +235,38 @@ fn answers_from_content(questions: &[AskUserQuestion], content: &Value) -> Vec<A
         let Some(id) = question.id.as_deref() else {
             continue;
         };
-        let selected = if question.multi_select {
+        let (selected, other_text) = if question.kind == AskUserQuestionKind::Text {
+            match content.get(id).and_then(Value::as_str) {
+                Some(text) => (Vec::new(), Some(text.to_string())),
+                None => continue,
+            }
+        } else if question.multi_select {
             let keys: Vec<String> = (0..question.options.len())
                 .map(|index| option_key(id, index))
                 .collect();
             if keys.iter().all(|key| content.get(key).is_none()) {
                 continue;
             }
-            question
-                .options
-                .iter()
-                .zip(&keys)
-                .filter(|(_, key)| content.get(key).and_then(Value::as_bool) == Some(true))
-                .map(|(option, _)| option.label.clone())
-                .collect()
+            (
+                question
+                    .options
+                    .iter()
+                    .zip(&keys)
+                    .filter(|(_, key)| content.get(key).and_then(Value::as_bool) == Some(true))
+                    .map(|(option, _)| option.label.clone())
+                    .collect(),
+                None,
+            )
         } else {
             match content.get(id).and_then(Value::as_str) {
-                Some(label) => vec![label.to_string()],
+                Some(label) => (vec![label.to_string()], None),
                 None => continue,
             }
         };
         answers.push(AskUserAnswer {
             id: id.to_string(),
             selected,
-            other_text: None,
+            other_text,
             secret_ref: None,
         });
     }
@@ -327,7 +347,11 @@ pub(super) async fn ask_user_form_elicitation(
     // plaintext in the event log and in model context for the rest of the
     // session. A secret question set is left to the URL mode path
     // (`ElicitationIntent::SessionSecret`) and the browser card.
-    if everruns_builtins::ask_user::questions_ask_for_a_secret(&pending.questions) {
+    if pending
+        .questions
+        .iter()
+        .any(|question| question.kind == AskUserQuestionKind::Secret)
+    {
         return None;
     }
 
@@ -481,6 +505,20 @@ mod tests {
         }
     }
 
+    fn text_question(id: &str) -> AskUserQuestion {
+        AskUserQuestion {
+            kind: AskUserQuestionKind::Text,
+            id: Some(id.to_string()),
+            header: "Branch".to_string(),
+            question: "What should I call this branch?".to_string(),
+            multi_select: false,
+            allow_other: true,
+            options: Vec::new(),
+            secret_name: None,
+            purpose: None,
+        }
+    }
+
     #[test]
     fn a_single_select_question_becomes_one_enum_property() {
         let questions = vec![question(
@@ -519,6 +557,19 @@ mod tests {
         assert!(schema["properties"]["areas__0"].get("default").is_none());
         assert_eq!(schema["properties"]["areas__1"]["default"], json!(true));
         assert_eq!(schema["properties"]["areas__1"]["title"], "Target: UI");
+    }
+
+    #[test]
+    fn a_text_question_becomes_a_plain_string_property() {
+        let questions = vec![text_question("branch_name")];
+        let schema = requested_schema(&questions).expect("projectable");
+        assert_eq!(schema["required"], json!(["branch_name"]));
+        let property = &schema["properties"]["branch_name"];
+        assert_eq!(property["type"], "string");
+        assert_eq!(property["title"], "Branch");
+        assert_eq!(property["description"], "What should I call this branch?");
+        assert!(property.get("enum").is_none());
+        assert!(property.get("default").is_none());
     }
 
     /// THREAT[TM-AGENT-016]: the schema builder itself refuses a credential
@@ -597,6 +648,27 @@ mod tests {
         assert_eq!(answers[0].selected, vec!["Production".to_string()]);
         assert_eq!(answers[1].selected, vec!["API".to_string()]);
         assert!(answers.iter().all(|answer| answer.secret_ref.is_none()));
+    }
+
+    #[test]
+    fn an_accepted_form_round_trips_a_text_answer() {
+        let questions = vec![text_question("branch_name")];
+        let response = json!({
+            "action": "accept",
+            "content": { "branch_name": "feature/open-question" }
+        });
+        let FormOutcome::Answered(answers) = outcome_from_response(&questions, &response).unwrap()
+        else {
+            panic!("expected answers");
+        };
+
+        assert_eq!(answers.len(), 1);
+        assert_eq!(answers[0].id, "branch_name");
+        assert!(answers[0].selected.is_empty());
+        assert_eq!(
+            answers[0].other_text.as_deref(),
+            Some("feature/open-question")
+        );
     }
 
     #[test]

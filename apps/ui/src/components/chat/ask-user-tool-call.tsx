@@ -5,6 +5,7 @@ import { Check, CircleQuestionMark, Clock3, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { submitQuestionAnswers, type SubmittedQuestionAnswer } from "@/lib/api/sessions";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { getFullText } from "@/components/chat/tool-call-utils";
@@ -23,7 +24,7 @@ export interface AskUserQuestion {
   id: string;
   header: string;
   question: string;
-  kind?: "choice" | "secret";
+  kind?: "choice" | "text" | "secret";
   multi_select?: boolean;
   allow_other?: boolean;
   options: AskUserOption[];
@@ -251,7 +252,10 @@ export function AskUserToolCall({
     return {
       id: question.id,
       selected: selection?.selected ?? [],
-      other_text: selection?.otherSelected ? selection.otherText.trim() || null : null,
+      other_text:
+        question.kind === "text" || selection?.otherSelected
+          ? selection?.otherText.trim() || null
+          : null,
     };
   };
   const isComplete = request.questions.every((question) => {
@@ -330,7 +334,7 @@ export function AskUserToolCall({
         <div>
           <p className="text-sm font-medium text-foreground">The agent needs your input</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Choose an answer to continue the conversation.
+            Answer each question to continue the conversation.
           </p>
         </div>
       </div>
@@ -352,75 +356,93 @@ export function AskUserToolCall({
               <p id={labelId} className="text-sm font-medium text-foreground">
                 {question.question}
               </p>
-              <div className="space-y-2">
-                {(question.options ?? []).map((option) => {
-                  const checked = selection.selected.includes(option.label);
-                  return (
-                    <label
-                      key={option.label}
-                      className="flex cursor-pointer items-start gap-3 border border-border bg-background px-3 py-2.5 hover:border-primary/60"
-                    >
-                      <input
-                        type={inputType}
-                        name={inputName}
-                        value={option.label}
-                        checked={checked}
-                        disabled={status === "submitting"}
-                        onChange={() => selectOption(question, option.label)}
-                        className="mt-1 h-4 w-4 accent-primary"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
-                          {option.label}
-                          {option.default && (
-                            <Badge variant="accent" className="py-0">
-                              Recommended
-                            </Badge>
-                          )}
+              {question.kind === "text" ? (
+                <Textarea
+                  aria-label={`${question.header} answer`}
+                  placeholder="Type your answer"
+                  value={selection.otherText}
+                  disabled={status === "submitting"}
+                  onChange={(event) =>
+                    setSelections((current) => ({
+                      ...current,
+                      [question.id]: {
+                        ...current[question.id],
+                        otherText: event.target.value,
+                      },
+                    }))
+                  }
+                />
+              ) : (
+                <div className="space-y-2">
+                  {(question.options ?? []).map((option) => {
+                    const checked = selection.selected.includes(option.label);
+                    return (
+                      <label
+                        key={option.label}
+                        className="flex cursor-pointer items-start gap-3 border border-border bg-background px-3 py-2.5 hover:border-primary/60"
+                      >
+                        <input
+                          type={inputType}
+                          name={inputName}
+                          value={option.label}
+                          checked={checked}
+                          disabled={status === "submitting"}
+                          onChange={() => selectOption(question, option.label)}
+                          className="mt-1 h-4 w-4 accent-primary"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
+                            {option.label}
+                            {option.default && (
+                              <Badge variant="accent" className="py-0">
+                                Recommended
+                              </Badge>
+                            )}
+                          </span>
+                          <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                            {option.description}
+                          </span>
                         </span>
-                        <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                          {option.description}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
+                      </label>
+                    );
+                  })}
 
-                {question.allow_other && (
-                  <div className="border border-border bg-background px-3 py-2.5">
-                    <label className="flex cursor-pointer items-center gap-3 text-sm font-medium text-foreground">
-                      <input
-                        type={inputType}
-                        name={inputName}
-                        value="other"
-                        checked={selection.otherSelected}
-                        disabled={status === "submitting"}
-                        onChange={() => selectOther(question)}
-                        className="h-4 w-4 accent-primary"
-                      />
-                      Other
-                    </label>
-                    {selection.otherSelected && (
-                      <Input
-                        aria-label={`${question.header} other answer`}
-                        className="mt-2"
-                        placeholder="Type another answer"
-                        value={selection.otherText}
-                        disabled={status === "submitting"}
-                        onChange={(event) =>
-                          setSelections((current) => ({
-                            ...current,
-                            [question.id]: {
-                              ...current[question.id],
-                              otherText: event.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
+                  {question.allow_other && (
+                    <div className="border border-border bg-background px-3 py-2.5">
+                      <label className="flex cursor-pointer items-center gap-3 text-sm font-medium text-foreground">
+                        <input
+                          type={inputType}
+                          name={inputName}
+                          value="other"
+                          checked={selection.otherSelected}
+                          disabled={status === "submitting"}
+                          onChange={() => selectOther(question)}
+                          className="h-4 w-4 accent-primary"
+                        />
+                        Other
+                      </label>
+                      {selection.otherSelected && (
+                        <Input
+                          aria-label={`${question.header} other answer`}
+                          className="mt-2"
+                          placeholder="Type another answer"
+                          value={selection.otherText}
+                          disabled={status === "submitting"}
+                          onChange={(event) =>
+                            setSelections((current) => ({
+                              ...current,
+                              [question.id]: {
+                                ...current[question.id],
+                                otherText: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </fieldset>
           );
         })}
@@ -430,9 +452,13 @@ export function AskUserToolCall({
         {showCountdown && (
           <p className="mb-3 flex items-center gap-1.5 text-xs text-warning">
             <Clock3 className="h-3.5 w-3.5" />
-            {now >= expiresAt
-              ? `Continuing with ${defaults} now`
-              : `Continuing with ${defaults} in ${formatCountdown(expiresAt - now)}`}
+            {request.questions.some((question) => question.kind === "text")
+              ? now >= expiresAt
+                ? "Skipping unanswered questions now"
+                : `Skipping unanswered questions in ${formatCountdown(expiresAt - now)}`
+              : now >= expiresAt
+                ? `Continuing with ${defaults} now`
+                : `Continuing with ${defaults} in ${formatCountdown(expiresAt - now)}`}
           </p>
         )}
         {error && <p className="mb-3 text-xs text-destructive">{error}</p>}

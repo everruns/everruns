@@ -16558,7 +16558,10 @@ export interface components {
     SubmittedAnswer: {
       /** @description Question id, as carried in the `tool.call_requested` payload. */
       id: string;
-      /** @description Free text, accepted only when the question allows it. */
+      /**
+       * @description Free text. Required for a `text` question, and accepted on a `choice`
+       *     question only when it allows another answer.
+       */
       other_text?: string | null;
       /**
        * @description Handle to the stored credential, on a `secret` question only — the value

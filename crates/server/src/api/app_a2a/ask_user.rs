@@ -235,6 +235,7 @@ fn ask_user_answer_schema(pending: &crate::api::question_answers::PendingQuestio
         .questions
         .iter()
         .map(|question| {
+            use everruns_builtins::ask_user::AskUserQuestionKind;
             let labels: Vec<&str> = question
                 .options
                 .iter()
@@ -245,6 +246,22 @@ fn ask_user_answer_schema(pending: &crate::api::question_answers::PendingQuestio
                 "id".to_string(),
                 json!({ "const": question.id.clone().unwrap_or_default() }),
             );
+            if question.kind == AskUserQuestionKind::Text {
+                properties.insert(
+                    "other_text".to_string(),
+                    json!({
+                        "type": "string",
+                        "description": "The free-form answer.",
+                    }),
+                );
+                return json!({
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "other_text"],
+                    "properties": properties,
+                    "description": question.question,
+                });
+            }
             let mut selected = json!({
                 "type": "array",
                 "items": { "enum": labels },
@@ -306,9 +323,15 @@ fn render_questions_prose(
     let mut out =
         String::from("This task is waiting on an answer before the agent can continue.\n");
     if let Some(expires_at) = pending.expires_at {
+        let resolution =
+            if everruns_builtins::ask_user::questions_have_no_default_answer(&pending.questions) {
+                "it skips the unanswered question set"
+            } else {
+                "it continues with the defaults marked below"
+            };
         out.push_str(&format!(
-            "Unanswered by {}, it continues with the defaults marked below.\n",
-            expires_at.to_rfc3339()
+            "Unanswered by {}, {resolution}.\n",
+            expires_at.to_rfc3339(),
         ));
     }
     for (index, question) in pending.questions.iter().enumerate() {
@@ -333,7 +356,9 @@ fn render_questions_prose(
                 ));
             }
         }
-        if question.allow_other {
+        if question.kind == everruns_builtins::ask_user::AskUserQuestionKind::Text {
+            out.push_str("   Answer in your own words with `other_text`.\n");
+        } else if question.allow_other {
             out.push_str("   Or answer in your own words with `other_text`.\n");
         }
     }
@@ -578,6 +603,20 @@ mod tests {
         }
     }
 
+    fn text_question() -> everruns_builtins::ask_user::AskUserQuestion {
+        everruns_builtins::ask_user::AskUserQuestion {
+            kind: everruns_builtins::ask_user::AskUserQuestionKind::Text,
+            id: Some("branch_name".to_string()),
+            header: "Branch".to_string(),
+            question: "What should I call this branch?".to_string(),
+            multi_select: false,
+            allow_other: true,
+            options: Vec::new(),
+            secret_name: None,
+            purpose: None,
+        }
+    }
+
     fn pending(
         questions: Vec<everruns_builtins::ask_user::AskUserQuestion>,
     ) -> crate::api::question_answers::PendingQuestions {
@@ -623,6 +662,38 @@ mod tests {
                 ["maxItems"],
             json!(1)
         );
+    }
+
+    #[test]
+    fn text_question_projects_as_a_free_text_field_without_options() {
+        let projection = project_ask_user(&pending(vec![text_question()]), "task-1", "");
+        assert_eq!(projection.state, "input_required");
+        let data = projection.message["parts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|part| part["kind"] == "data")
+            .map(|part| &part["data"][ASK_USER_QUESTION_KEY])
+            .expect("a data part");
+        let answer = &data["answer_schema"]["properties"]["answers"]["items"]["oneOf"][0];
+        assert_eq!(answer["required"], json!(["id", "other_text"]));
+        assert_eq!(answer["properties"]["other_text"]["type"], "string");
+        assert!(answer["properties"].get("selected").is_none());
+        assert!(
+            data["questions"][0]["options"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+
+        let text = projection.message["parts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|part| part["kind"] == "text")
+            .and_then(|part| part["text"].as_str())
+            .expect("a text part");
+        assert!(text.contains("Answer in your own words with `other_text`."));
     }
 
     /// THREAT[TM-AGENT-016]: the credential question is never projected as

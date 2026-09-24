@@ -38457,7 +38457,7 @@
               "string",
               "null"
             ],
-            "description": "Free text, accepted only when the question allows it."
+            "description": "Free text. Required for a `text` question, and accepted on a `choice`\nquestion only when it allows another answer."
           },
           "secret_ref": {
             "type": [
