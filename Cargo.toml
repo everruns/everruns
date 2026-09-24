@@ -169,10 +169,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # OpenTelemetry (exporter deps are activated only by everruns-host's
 # observability feature; scripts/lib/check-observability-isolation.sh enforces it)
-opentelemetry = "0.32"
-opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.32", features = ["http-proto", "reqwest-client"] }
-tracing-opentelemetry = "0.33"
+opentelemetry = "0.33"
+opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.33", features = ["http-proto", "reqwest-client"] }
+tracing-opentelemetry = "0.34"
 
 # OpenAPI documentation (used by export-openapi binary for spec generation)
 utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
