@@ -20,6 +20,7 @@
 //   - Histograms from local observations (naturally partitioned per instance)
 
 use super::prometheus_recorder::{self, PrometheusHandle};
+use crate::storage::StorageBackend;
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::{Router, extract::State, routing::get};
@@ -221,6 +222,15 @@ pub fn spawn_gauge_bridge(collector: MetricsCollector) {
 }
 
 /// Sample the process-local request and background sqlx pools every 10 seconds.
+pub fn spawn_database_pool_gauge_bridge(storage: &StorageBackend) {
+    if let (Some(request_pool), Some(background_pool)) =
+        (storage.pool().cloned(), storage.background_pool().cloned())
+    {
+        spawn_pool_gauge_bridge(request_pool, background_pool);
+    }
+}
+
+/// Sample the provided request and background sqlx pools every 10 seconds.
 pub fn spawn_pool_gauge_bridge(request_pool: PgPool, background_pool: PgPool) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
