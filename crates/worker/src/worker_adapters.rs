@@ -174,6 +174,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     ) -> Result<SessionFile>;
 
     /// Write a file only if its current content snapshot still matches.
+    ///
+    /// Eight arguments because the compare-and-swap needs both the expected and
+    /// the incoming content with their encodings, on top of the org and session
+    /// every file method carries. Bundling them into a struct would buy nothing
+    /// here: the call sites are the trait's own default body and two adapters.
+    #[allow(clippy::too_many_arguments)]
     async fn write_file_if_content_matches(
         &self,
         org_id: i64,

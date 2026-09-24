@@ -32,7 +32,6 @@
 4 crates/server/src/grpc_service/worker/credentials.rs
 16 crates/server/src/grpc_service/worker/durable.rs
 3 crates/server/src/grpc_service/worker/events.rs
-10 crates/server/src/grpc_service/worker/files.rs
 7 crates/server/src/grpc_service/worker/leases.rs
 8 crates/server/src/grpc_service/worker/messages.rs
 3 crates/server/src/grpc_service/worker/resilience.rs
