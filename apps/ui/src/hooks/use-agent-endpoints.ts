@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createAgentEndpoint,
   deleteAgentEndpoint,
+  getSlackInstallCapability,
   listAgentEndpoints,
   publishAgentEndpoint,
   triggerAgentEndpoint,
@@ -59,6 +60,12 @@ export function useCreateAgentEndpoint(agentId: string) {
   return useEndpointMutation(agentId, (request: CreateAgentEndpointRequest) =>
     createAgentEndpoint(agentId, request),
   );
+}
+export function useSlackInstallCapability() {
+  return useQuery({
+    queryKey: ["slack-install-capability"],
+    queryFn: getSlackInstallCapability,
+  });
 }
 
 export function useUpdateAgentEndpoint(agentId: string, endpointId: string) {
