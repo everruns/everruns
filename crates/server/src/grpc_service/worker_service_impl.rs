@@ -133,64 +133,6 @@ impl WorkerService for WorkerServiceImpl {
         self.handle_get_default_model(request).await
     }
 
-    // Session filesystem operations.
-    async fn session_read_file(
-        &self,
-        request: Request<SessionReadFileRequest>,
-    ) -> Result<Response<SessionReadFileResponse>, Status> {
-        self.handle_session_read_file(request).await
-    }
-
-    async fn session_write_file(
-        &self,
-        request: Request<SessionWriteFileRequest>,
-    ) -> Result<Response<SessionWriteFileResponse>, Status> {
-        self.handle_session_write_file(request).await
-    }
-
-    async fn session_write_file_if_content_matches(
-        &self,
-        request: Request<SessionWriteFileIfContentMatchesRequest>,
-    ) -> Result<Response<SessionWriteFileIfContentMatchesResponse>, Status> {
-        self.handle_session_write_file_if_content_matches(request)
-            .await
-    }
-
-    async fn session_delete_file(
-        &self,
-        request: Request<SessionDeleteFileRequest>,
-    ) -> Result<Response<SessionDeleteFileResponse>, Status> {
-        self.handle_session_delete_file(request).await
-    }
-
-    async fn session_list_directory(
-        &self,
-        request: Request<SessionListDirectoryRequest>,
-    ) -> Result<Response<SessionListDirectoryResponse>, Status> {
-        self.handle_session_list_directory(request).await
-    }
-
-    async fn session_stat_file(
-        &self,
-        request: Request<SessionStatFileRequest>,
-    ) -> Result<Response<SessionStatFileResponse>, Status> {
-        self.handle_session_stat_file(request).await
-    }
-
-    async fn session_grep_files(
-        &self,
-        request: Request<SessionGrepFilesRequest>,
-    ) -> Result<Response<SessionGrepFilesResponse>, Status> {
-        self.handle_session_grep_files(request).await
-    }
-
-    async fn session_create_directory(
-        &self,
-        request: Request<SessionCreateDirectoryRequest>,
-    ) -> Result<Response<SessionCreateDirectoryResponse>, Status> {
-        self.handle_session_create_directory(request).await
-    }
-
     // Durable workflows, tasks, and workers.
     async fn create_durable_workflow(
         &self,
