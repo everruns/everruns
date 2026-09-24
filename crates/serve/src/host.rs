@@ -579,11 +579,7 @@ impl Host {
                     };
                     // A child session on the host's own engine, persisted in
                     // the same store as its parent.
-                    let turn = host
-                        .engine
-                        .create(agent)
-                        .send_and_wait(task.as_str())
-                        .await;
+                    let turn = host.engine.create(agent).send_and_wait(task.as_str()).await;
                     let (response, success) = match turn {
                         Ok(turn) => (turn.response, turn.success),
                         Err(err) => (err.to_string(), false),
