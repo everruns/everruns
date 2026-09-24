@@ -9,7 +9,9 @@ use std::sync::Arc;
 
 use crate::storage::StorageBackend;
 use everruns_durable::InMemoryWorkflowEventStore;
-use everruns_worker::{AgentRunner, RunnerBackend, create_runner_with_backend};
+use everruns_worker::{
+    AgentRunner, DurableTaskNotifier, RunnerBackend, create_runner_with_backend,
+};
 
 use crate::app_builder::{MigrationFn, ServerTaskNotifier};
 use crate::server::ServerConfig;
@@ -17,6 +19,7 @@ use crate::server::ServerConfig;
 pub(crate) struct StorageInit {
     pub(crate) db: Arc<StorageBackend>,
     pub(crate) runner: Arc<dyn AgentRunner>,
+    pub(crate) background_runner: Arc<dyn AgentRunner>,
     pub(crate) shared_durable_store: Option<Arc<InMemoryWorkflowEventStore>>,
     pub(crate) database_url: Option<String>,
     pub(crate) database_unpooled_url: Option<String>,
@@ -44,6 +47,7 @@ pub(crate) async fn init_storage(
         );
         return Ok(StorageInit {
             db,
+            background_runner: runner.clone(),
             runner,
             shared_durable_store: Some(shared_store),
             database_url: None,
@@ -103,9 +107,13 @@ pub(crate) async fn init_storage(
         tracing::info!("Skipping database migrations (--no-migrations)");
     }
 
-    let pool = backend
+    let request_pool = backend
         .pool()
         .expect("PostgreSQL backend should have pool")
+        .clone();
+    let background_pool = backend
+        .background_pool()
+        .expect("PostgreSQL backend should have background pool")
         .clone();
     let task_broadcaster = crate::task_notifications::TaskBroadcaster::from_env(
         Some(database_url.as_str()),
@@ -113,25 +121,63 @@ pub(crate) async fn init_storage(
     )
     .await
     .map(Arc::new);
-    let runner_backend = if let Some(broadcaster) = task_broadcaster.clone() {
+    let task_notifier = task_broadcaster.clone().map(|broadcaster| {
+        Arc::new(ServerTaskNotifier { broadcaster }) as Arc<dyn DurableTaskNotifier>
+    });
+    let runner_backend = if let Some(task_notifier) = task_notifier.clone() {
         RunnerBackend::PostgresWithNotifier {
-            pool,
-            task_notifier: Arc::new(ServerTaskNotifier { broadcaster }),
+            pool: request_pool,
+            task_notifier,
         }
     } else {
-        RunnerBackend::Postgres(pool)
+        RunnerBackend::Postgres(request_pool)
     };
     let runner = create_runner_with_backend(runner_backend)
         .await
         .context("Failed to create agent runner")?;
+    let background_runner_backend = if let Some(task_notifier) = task_notifier {
+        RunnerBackend::PostgresWithNotifier {
+            pool: background_pool,
+            task_notifier,
+        }
+    } else {
+        RunnerBackend::Postgres(background_pool)
+    };
+    let background_runner = create_runner_with_backend(background_runner_backend)
+        .await
+        .context("Failed to create background agent runner")?;
 
     tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
     Ok(StorageInit {
         db: Arc::new(backend),
         runner,
+        background_runner,
         shared_durable_store: None,
         database_url: Some(database_url),
         database_unpooled_url,
         task_broadcaster,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn dev_mode_shares_the_request_runner_with_background_work() {
+        let config = ServerConfig {
+            dev_mode: true,
+            no_migrations: true,
+            api_prefix: String::new(),
+            cors_origins: vec![],
+            addr: "127.0.0.1:0".to_string(),
+            grpc_addr: "127.0.0.1:0".to_string(),
+        };
+
+        let storage = init_storage(&config, vec![])
+            .await
+            .expect("initialize in-memory storage");
+
+        assert!(Arc::ptr_eq(&storage.runner, &storage.background_runner));
+    }
 }

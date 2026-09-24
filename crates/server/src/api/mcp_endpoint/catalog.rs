@@ -704,6 +704,7 @@ fn command_error_kind(err: &CommandError) -> &'static str {
         CommandErrorKind::NotFound(_) => "not_found",
         CommandErrorKind::Conflict(_) => "conflict",
         CommandErrorKind::RateLimited(_) => "rate_limited",
+        CommandErrorKind::Unavailable(_) => "unavailable",
         CommandErrorKind::Internal(_) => "internal",
     }
 }

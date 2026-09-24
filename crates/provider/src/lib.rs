@@ -91,6 +91,7 @@ pub use error::{
 };
 pub use execution_phase::{ExecutionPhase, PhaseSource};
 pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
+pub use message::ProviderOpaqueContent;
 pub use model::{
     CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,
     ModelVendor, ModelWithProvider, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,

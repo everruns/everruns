@@ -339,7 +339,7 @@ impl CompactInputItem {
                                 filename: filename.clone(),
                             })
                         }
-                        LlmContentPart::Audio { .. } => None,
+                        LlmContentPart::Audio { .. } | LlmContentPart::ProviderOpaque(_) => None,
                     })
                     .collect::<Vec<_>>();
                 if compact_parts.len() == 1

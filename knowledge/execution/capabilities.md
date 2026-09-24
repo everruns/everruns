@@ -978,6 +978,7 @@ Following the agentskills.io specification:
 - **Tools**: None (uses `MessageFilterProvider::post_load` only)
 - **Config**: `{"threshold": N}`, number of repeated identical results, identical tool-call batches, or read ranges before warning (default 3)
 - **Source**: `crates/builtins/src/loop_detection.rs`
+- **Behavior**: Reconstructs each warning after the input that triggered it, so later prompt views replay the same warning even after the loop clears. Models with turn-scoped system support expire it with `clear_at`; other providers retain their existing system-message handling.
 
 #### ToolApproval
 

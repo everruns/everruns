@@ -51,7 +51,7 @@ use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, evaluate_guardrails,
-    evaluate_post_generation_guardrails, post_generation_guardrail_text,
+    evaluate_post_generation_guardrails,
 };
 use crate::phase_effects::{PhaseEffectEmitter, PhaseEffectSink};
 use crate::runtime_context::{AssembledTurnContext, TurnContextRequest, TurnContextResolver};
@@ -88,44 +88,13 @@ use error_policy::{
     resolve_error_disclosure,
 };
 use observability::{build_request_options, capability_usage_snapshot_records};
-use output_hooks::collect_output_hooks;
+use output_hooks::{client_visible_guardrail_text, collect_output_hooks};
 use request_controls::resolve_request_controls;
 use stream_state::{
     StreamReplayState, StreamTermination, advances_stall_deadline, append_guarded_thinking_delta,
     inspect_guarded_reasoning_item, merge_retry_metadata,
 };
 use transcript::repair_dangling_tool_calls;
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-fn client_visible_guardrail_text(
-    text: &str,
-    streamed_reasoning: &str,
-    reasoning: &[ReasoningContentPart],
-    citation_annotations: &[crate::message::TextAnnotation],
-) -> String {
-    let mut guarded = streamed_reasoning.to_string();
-    if guarded.is_empty() {
-        for item_text in reasoning
-            .iter()
-            .filter_map(ReasoningContentPart::display_text)
-        {
-            if !guarded.is_empty() {
-                guarded.push_str("\n\n");
-            }
-            guarded.push_str(&item_text);
-        }
-    }
-
-    let prose = post_generation_guardrail_text(text, citation_annotations);
-    if !guarded.is_empty() && !prose.is_empty() {
-        guarded.push_str("\n\n");
-    }
-    guarded.push_str(&prose);
-    guarded
-}
 
 fn unix_now_secs() -> u64 {
     std::time::SystemTime::now()
@@ -876,6 +845,10 @@ impl ReasonAtom {
         let mut messages = transcript::order_native_results(assembled.messages);
         let mut message_source_sequence = assembled.message_source_sequence;
         let model_with_provider = assembled.model;
+        let supports_clear_at = facts::supports_clear_at(
+            &model_with_provider.provider_type,
+            &model_with_provider.model,
+        );
         let resolved_model_id = assembled.resolved_model_id;
         let resolved_locale = assembled.resolved_locale;
         let compaction_policy = assembled.compaction_policy;
@@ -1097,9 +1070,9 @@ impl ReasonAtom {
             stateful_response_continuation || restored_checkpoint.is_some(),
         );
 
-        // 9c. Dynamic facts (e.g. the current time) as `<facts>` user messages
-        // after each input the model answered, as of that input, so a replayed
-        // history is byte-identical to what was sent (see `facts`).
+        // 9c. Dynamic facts after each answered input, rendered as of that input.
+        // Capable Anthropic models use turn-scoped system messages; others keep
+        // the user-message fallback (see `facts`).
         let render_facts = |at| {
             crate::capabilities::render_facts_block(&crate::capabilities::collect_dynamic_facts(
                 &resolved_capability_configs,
@@ -1109,7 +1082,7 @@ impl ReasonAtom {
             ))
         };
         let (context_messages, volatile_suffix_len) =
-            facts::interleave_facts(context_messages, render_facts);
+            facts::interleave_facts(context_messages, render_facts, supports_clear_at);
         let mut context_messages = context_messages;
 
         // 9d. Prepend conversation context (e.g. hierarchical AGENTS.md) as
@@ -1184,6 +1157,7 @@ impl ReasonAtom {
             {
                 llm_msg.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
             }
+            facts::mark_turn_scoped(&mut llm_msg, msg, supports_clear_at);
             llm_messages.push(llm_msg);
         }
         if stripped_error_count > 0 {
@@ -2114,6 +2088,8 @@ impl ReasonAtom {
         };
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
+        let provider_text = text.clone();
+        let provider_tool_calls = tool_calls.clone();
 
         // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
         // once on the finalized final-answer text to attach claim-level citations
@@ -2511,6 +2487,15 @@ impl ReasonAtom {
             &resolved_capability_configs,
             text,
         );
+        let provider_opaque_content = completion_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.provider_opaque_content.clone())
+            .filter(|_| {
+                tripped.is_none()
+                    && text == provider_text
+                    && finalized_tool_calls == provider_tool_calls
+                    && rejected_tool_calls.is_empty()
+            });
         let has_tool_calls = !finalized_tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             RuntimeMessage::assistant_with_tools(&text, finalized_tool_calls.clone())
@@ -2576,6 +2561,11 @@ impl ReasonAtom {
             content.extend(reasoning.drain(..).map(ContentPart::Reasoning));
             content.append(&mut assistant_message.content);
             assistant_message.content = content;
+        }
+        if let Some(content) = provider_opaque_content {
+            assistant_message
+                .content
+                .push(ContentPart::ProviderOpaque(content));
         }
         // Emit output.message.completed event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)

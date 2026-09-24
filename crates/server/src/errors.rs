@@ -6,6 +6,10 @@ use thiserror::Error;
 
 pub(crate) const ALREADY_EXISTS_CODE: &str = "already_exists";
 pub(crate) const ALREADY_EXISTS_DETAIL: &str = "Resource already exists";
+pub(crate) const DATABASE_POOL_EXHAUSTED_CODE: &str = "database_pool_exhausted";
+pub(crate) const DATABASE_POOL_EXHAUSTED_DETAIL: &str =
+    "Database capacity is temporarily unavailable";
+pub(crate) const DATABASE_POOL_RETRY_AFTER_SECONDS: u32 = 1;
 
 pub(crate) fn is_database_unique_violation(error: &anyhow::Error) -> bool {
     if error.chain().any(|source| {
@@ -26,6 +30,15 @@ pub(crate) fn is_database_unique_violation(error: &anyhow::Error) -> bool {
     })
 }
 
+pub(crate) fn is_database_pool_exhausted(error: &anyhow::Error) -> bool {
+    error.chain().any(|source| {
+        matches!(
+            source.downcast_ref::<sqlx::Error>(),
+            Some(sqlx::Error::PoolTimedOut)
+        ) || everruns_core::DatabaseFailureKind::classify(&source.to_string())
+            == everruns_core::DatabaseFailureKind::PoolExhausted
+    })
+}
 pub(crate) fn is_domain_already_exists_message(message: &str) -> bool {
     message.to_ascii_lowercase().contains("already exists")
 }
