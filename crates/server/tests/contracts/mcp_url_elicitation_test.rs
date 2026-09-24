@@ -7,7 +7,7 @@
 //! a form from the server itself, stores what the form posts, and refuses a
 //! token presented by anyone but the user it was minted for.
 
-mod test_harness;
+use crate::test_harness;
 
 use axum::http::{Method, StatusCode};
 use everruns_platform::{Agent, Session};

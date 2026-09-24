@@ -3,7 +3,7 @@
 // These tests verify the full ReasonAtom workflow using the simulated LLM driver,
 // enabling deterministic testing without real LLM API calls.
 //
-// Run with: cargo test -p everruns-core --test reason_atom_test
+// Run with: cargo test -p everruns-test-support --test integration reason_atom_test::
 
 use async_trait::async_trait;
 use everruns_core::AgentDefinition;

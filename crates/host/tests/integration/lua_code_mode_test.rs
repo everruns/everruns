@@ -7,7 +7,7 @@
 //! deterministic and runs without credentials.
 //!
 //! Requires the `lua` feature (compiles the mlua engine):
-//!   cargo test -p everruns-host --features lua --test lua_code_mode_test
+//!   cargo test -p everruns-host --features lua --test integration lua_code_mode_test::
 
 #![cfg(feature = "lua")]
 

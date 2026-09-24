@@ -299,9 +299,9 @@ just test-unit  # Runs in ~30s, no Docker needed
 **Goal:** Validate API endpoints, repository layer, and durable execution against real PostgreSQL.
 
 **Test files:**
-- `crates/server/tests/api_integration_test.rs` - HTTP API tests (in-process, no TCP)
-- `crates/server/tests/repository_conformance_test.rs` - Shared PostgreSQL/in-memory storage contract tests
-- `crates/server/tests/repository_integration_test.rs` - Direct repository layer tests
+- `crates/server/tests/server_integration/api_integration_test.rs` - HTTP API tests (in-process, no TCP)
+- `crates/server/tests/server_integration/repository_conformance_test.rs` - Shared PostgreSQL/in-memory storage contract tests
+- `crates/server/tests/server_integration/repository_integration_test.rs` - Direct repository layer tests
 - `crates/server/tests/domain/ag_ui_integration_test.rs` - AG-UI embedding + publish gating
 - `crates/server/tests/domain/auth_integration_test.rs` - Refresh/revocation, cookie flags, JWT paths
 - `crates/server/tests/domain/cli_auth_test.rs` - CLI login flow (start/callback/success)

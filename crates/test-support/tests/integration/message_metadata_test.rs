@@ -5,7 +5,7 @@
 // the timestamp annotation must be visible in the reply while the stored
 // user message stays unannotated.
 //
-// Run with: cargo test -p everruns-core --test message_metadata_test
+// Run with: cargo test -p everruns-test-support --test integration message_metadata_test::
 
 use everruns_builtins::MessageMetadataCapability;
 use everruns_core::MessageRetriever;

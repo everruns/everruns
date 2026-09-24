@@ -3,13 +3,13 @@
 //! These tests focus on SQL query correctness and type mappings,
 //! testing the storage layer directly with PostgreSQL.
 //!
-//! Run with: cargo test -p everruns-server --test repository_integration_test -- --test-threads=1
+//! Run with: cargo test -p everruns-server --test server_integration repository_integration_test:: -- --test-threads=1
 //!
 //! Requirements:
 //! - PostgreSQL running with DATABASE_URL set
 //! - Migrations applied (run migrations from crates/server/migrations/)
 
-mod test_harness;
+use crate::test_harness;
 
 use chrono::Utc;
 use serde_json::json;
@@ -4654,7 +4654,7 @@ async fn expired_session_schedule_claim_is_reclaimable_pg() {
 }
 
 const SYNTHESIZE_AGENTLESS_APPS_MIGRATION: &str =
-    include_str!("../migrations/134_synthesize_agents_for_agentless_apps.sql");
+    include_str!("../../migrations/134_synthesize_agents_for_agentless_apps.sql");
 
 async fn create_agent_synthesis_fixture_schema(conn: &mut PgConnection) {
     sqlx::raw_sql(

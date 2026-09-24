@@ -1,6 +1,6 @@
 //! Platform Chat starter uniqueness and archived identity.
 
-mod test_harness;
+use crate::test_harness;
 
 use everruns_provider::typed_id::PrincipalId;
 use everruns_server::org_init;

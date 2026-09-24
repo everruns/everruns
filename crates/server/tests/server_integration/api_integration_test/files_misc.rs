@@ -1,6 +1,6 @@
 //! API integration tests: files misc.
 
-use crate::support::*;
+use super::support::*;
 use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_core::SessionFile;
