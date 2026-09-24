@@ -74,7 +74,12 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   thread bound to the built-in `platform-chat` harness on first entry, pins it so it stays at the
   top, and ends onboarding there. It is an ordinary session, adopted rather than duplicated when
   one already exists, and never recreated once archived — archiving is the user saying they do
-  not want it.
+  not want it. The starter carries a dedicated tag with a database uniqueness constraint per
+  organization and owner. The browser's existence check is only a convenience; it cannot decide
+  uniqueness across tabs, retries, and stale caches. Existing untagged threads are adopted by
+  the migration before that constraint is installed. The server also recognizes the starter
+  request shape from older browser bundles and marks it before insertion. Empty, pinned duplicate
+  starters are archived during migration; chats with any activity remain available.
 * **A thread is bound to exactly one counterpart.** The counterpart may be an Agent or a Harness,
   so users can talk to a configured runtime without creating an otherwise-empty Agent. Switching
   counterparts starts a new thread rather than re-pointing an existing one; the transcript is only

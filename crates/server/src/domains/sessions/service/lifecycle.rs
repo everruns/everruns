@@ -12,9 +12,10 @@ impl SessionService {
         if !caller.is_internal
             && req.tags.as_ref().is_some_and(|tags| {
                 tags.iter().any(|tag| {
-                    RESERVED_SESSION_TAG_PREFIXES
-                        .iter()
-                        .any(|prefix| tag.starts_with(prefix))
+                    tag == PLATFORM_CHAT_STARTER_TAG
+                        || RESERVED_SESSION_TAG_PREFIXES
+                            .iter()
+                            .any(|prefix| tag.starts_with(prefix))
                 })
             })
         {

@@ -37,7 +37,7 @@ fn syntax_rules(root_name: &str) -> String {
 2. `root` is the entry point — every program must define `root = {root_name}(...)`
 3. Expressions are: strings ("..."), numbers, booleans (true/false), arrays ([...]), objects ({{...}}), or component calls TypeName(arg1, arg2, ...)
 4. Use references for readability: define `name = ...` on one line, then use `name` later
-5. EVERY variable (except root) MUST be referenced by at least one other variable. Unreferenced variables are silently dropped and will NOT render.
+5. Every variable (except root) must be referenced by at least one other variable: unreferenced variables are silently dropped and do not render.
 6. Arguments are POSITIONAL (order matters, not names)
 7. Optional arguments can be omitted from the end
 8. No operators, no logic, no variables — only declarations
@@ -50,14 +50,13 @@ fn syntax_rules(root_name: &str) -> String {
 /// Ref: packages/react-lang/src/parser/prompt.ts `streamingRules()`
 fn streaming_rules(root_name: &str) -> String {
     format!(
-        r#"## Hoisting & Streaming (CRITICAL)
+        r#"## Hoisting & Streaming
 openui-lang supports hoisting: a reference can be used BEFORE it is defined. The parser resolves all references after the full input is parsed.
 During streaming, the output is re-parsed on every chunk. Undefined references are temporarily unresolved and appear once their definitions stream in.
 **Recommended statement order for optimal streaming:**
 1. `root = {root_name}(...)` — UI shell appears immediately
 2. Component definitions — fill in as they stream
-3. Data values — leaf content last
-Always write the root = {root_name}(...) statement first so the UI shell appears immediately."#
+3. Data values — leaf content last"#
     )
 }
 
@@ -67,12 +66,10 @@ Always write the root = {root_name}(...) statement first so the UI shell appears
 fn important_rules(root_name: &str) -> String {
     format!(
         r#"## Important Rules
-- ALWAYS start with root = {root_name}(...)
-- Write statements in TOP-DOWN order: root → components → data (leverages hoisting for progressive streaming)
+- Start with root = {root_name}(...), then write statements top-down: root → components → data (hoisting makes this stream progressively)
 - Each statement on its own line
-- When asked about data, generate realistic/plausible data
+- Use the real data from the conversation or tool results; when there is none, use realistic sample data and say it is illustrative
 - Choose components that best represent the content (tables for comparisons, charts for trends, forms for input, etc.)
-- NEVER define a variable without referencing it from the tree. Every variable must be reachable from root.
 - Wrap your openui-lang code in a ```openui fenced code block
 - You may include explanatory text before or after the code block"#
     )
@@ -297,7 +294,7 @@ mod tests {
         let lib = test_library();
         let prompt = generate_prompt(&lib, &PromptOptions::default());
         assert!(prompt.contains("## Important Rules"));
-        assert!(prompt.contains("ALWAYS start with root = Stack(...)"));
+        assert!(prompt.contains("Start with root = Stack(...)"));
     }
 
     #[test]

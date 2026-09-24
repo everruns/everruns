@@ -39,6 +39,15 @@ cost data; discovered data fills gaps for newer models.
 a value from the model profile (falling back to a safe default) and will retry
 once with a lower limit if a stale profile causes the provider to reject it.
 
+Thinking counts toward `max_tokens`. When you set `max_tokens` yourself, Everruns
+treats it as the budget for the visible answer and adds room for thinking on top,
+so a small limit does not come back empty.
+
+Claude models that always think (Opus 5.5, Fable 5.x) always get an explicit
+effort: the model's default when you choose none, and `low` when you choose
+`none`. These and the other adaptive-thinking models reject assistant prefill, so
+a conversation must end with a user or tool message.
+
 ## Links
 
 - [Anthropic](https://www.anthropic.com/)

@@ -1,7 +1,7 @@
 //! The command line, in Foreman's shape.
 //!
 //! `run` and `demo` are the original's two entry points and mean the same
-//! things here. Both supervise a real worker with a real classifier; they
+//! things here. Both supervise a real worker with a real decision service; they
 //! differ only in who picked the repository and the job. `demo` picked them, so
 //! there is something to run before you have a project in mind.
 
@@ -11,7 +11,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::worker::{ExternalAgent, TemplateError};
 
-/// A classifier supervising a coding agent it never has to stop.
+/// A decision service supervising a coding agent it never has to stop.
 #[derive(Debug, Parser)]
 #[command(name = "foreman", version, about, long_about = None)]
 pub struct Cli {

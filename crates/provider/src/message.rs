@@ -5,6 +5,35 @@
 //! [`openai_wire`](crate::openai_wire) rather than building these by hand.
 
 use crate::tool_types::ToolCall;
+use serde::{Deserialize, Serialize};
+
+/// Provider-native assistant content retained for lossless replay.
+///
+/// Drivers use this only when a provider requires its response content to be
+/// sent back without reconstruction. The portable text, reasoning, and tool
+/// call fields remain the fallback for other providers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ProviderOpaqueContent {
+    /// Provider that owns and can replay this content.
+    pub provider: String,
+    /// Original provider-native assistant content.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub content: serde_json::Value,
+}
+
+impl ProviderOpaqueContent {
+    pub fn new(provider: impl Into<String>, content: serde_json::Value) -> Self {
+        Self {
+            provider: provider.into(),
+            content,
+        }
+    }
+}
+
+/// Internal marker that asks a capable driver to expire a system reminder at
+/// the next user message. Drivers must remove it before serialization.
+pub const TURN_SCOPED_SYSTEM_MARKER: &str = "\u{0}everruns:turn-scoped-system\u{0}";
 
 /// Message format for LLM calls (provider-agnostic): the request-shaped view a
 /// driver turns into provider wire format. Distinct from the lossless stored
@@ -93,6 +122,12 @@ impl Message {
                 );
             }
         }
+    }
+
+    /// Mark this system message as scoped to the current model turn.
+    pub fn mark_turn_scoped_system(&mut self) {
+        debug_assert_eq!(self.role, MessageRole::System);
+        self.prepend_text_prefix(TURN_SCOPED_SYSTEM_MARKER);
     }
 }
 
@@ -186,6 +221,8 @@ pub enum LlmContentPart {
         url: String,
         filename: Option<String>,
     },
+    /// Provider-native assistant content used only by the issuing provider.
+    ProviderOpaque(ProviderOpaqueContent),
 }
 
 impl LlmContentPart {

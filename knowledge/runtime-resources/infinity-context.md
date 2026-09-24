@@ -58,7 +58,7 @@ Agent can work with 1000+ message conversations, accessing any historical contex
 
 ### R2: History Awareness
 
-- When messages are excluded, system MUST inject a notice: "Note: {N} earlier messages not shown. Use `query_history` tool to search."
+- When messages are excluded, system MUST inject a notice naming the hidden count and the `query_history` tool (see History Notice Format).
 - Notice MUST include count of excluded messages and approximate timespan
 
 ### R3: History Query Tool
@@ -215,11 +215,11 @@ prompt anchor.
 
 ### History Notice Format
 
-```
-[Context Notice: This conversation has 247 messages spanning 3 hours.
-The 198 oldest messages are not shown to fit context limits.
-Use the `query_history` tool to search or retrieve earlier messages.]
-```
+The notice states how many earlier messages are hidden and points at `query_history`, in plain
+language rather than emphasis so the model does not call the tool for questions the visible
+context already answers. The exact text lives in `ExcludedNoticeTransform::infinity_context`
+(`crates/core/src/message_filter.rs`); `parse_excluded_notice_count`
+(`crates/builtins/src/infinity_context.rs`) must match it.
 
 ### Query History Tool Schema
 

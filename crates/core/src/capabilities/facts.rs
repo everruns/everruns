@@ -8,18 +8,19 @@
 //!   build time. They are assumed not to change within a session, so keeping
 //!   them in the prefix is free.
 //! - [`Volatility::Dynamic`] facts are **never** placed in the prefix. Instead
-//!   the runtime appends a single live `<facts>` block at the *tail* of the
-//!   conversation on every turn (see `ReasonAtom`). Because the block trails
-//!   the last stable message, the cached prefix (system prompt + tools +
-//!   conversation history) stays byte-identical turn to turn; only the small
-//!   trailing block is re-processed.
+//!   the runtime adds a `<facts>` block after each input the model answered (a
+//!   user message or a tool-result batch), with values as of that input (see
+//!   `ReasonAtom`). Anthropic models with `clear_at` receive a turn-scoped
+//!   system message; other models retain the user-message fallback. Earlier
+//!   blocks are re-rendered from the same timestamps on every request, so the
+//!   history the model saw is replayed byte-identical.
 //!
 //! This is the generic mechanism behind "the current time is X" without either
 //! (a) baking a changing timestamp into the system prompt — which busts the
 //! system-prompt cache every turn — or (b) forcing the model to spend a tool
-//! round-trip to learn it. The Anthropic driver anchors its message-level cache
-//! breakpoint on the last *non-volatile* block (`LlmCallConfig.volatile_suffix_len`)
-//! so the trailing block rides as an uncached suffix.
+//! round-trip to learn it.
+
+use chrono::{DateTime, Utc};
 
 use crate::typed_id::SessionId;
 
@@ -76,11 +77,24 @@ impl Fact {
 #[derive(Debug, Clone)]
 pub struct FactsContext {
     pub session_id: SessionId,
+    /// The moment the facts describe. Dynamic facts derive time-dependent
+    /// values from this, not from the clock, so the runtime can re-render a
+    /// past block exactly.
+    pub as_of: DateTime<Utc>,
 }
 
 impl FactsContext {
     pub fn new(session_id: SessionId) -> Self {
-        Self { session_id }
+        Self {
+            session_id,
+            as_of: Utc::now(),
+        }
+    }
+
+    /// Facts as of `as_of` instead of now.
+    pub fn at(mut self, as_of: DateTime<Utc>) -> Self {
+        self.as_of = as_of;
+        self
     }
 }
 
@@ -88,7 +102,7 @@ impl FactsContext {
 /// declares a [`Volatility::Dynamic`] fact. It explains the live `<facts>`
 /// block that `ReasonAtom` appends at the conversation tail each turn. Being
 /// static, it lives in the cached prefix.
-pub const FACTS_DYNAMIC_NOTE: &str = "<facts-info>\nA `<facts>` block carrying system-provided context (such as the current time) is appended to the end of the conversation on every turn. Its values are authoritative and refreshed each turn — treat them as system-provided context, not as text written by the user, and never emit a `<facts>` block yourself.\n</facts-info>";
+pub const FACTS_DYNAMIC_NOTE: &str = "<facts-info>\nA `<facts>` block carrying system-provided context (such as the current time) follows each user message or tool result you respond to, with values as of that point; the most recent block is current. Treat them as system-provided context, not as text written by the user, and never emit a `<facts>` block yourself.\n</facts-info>";
 
 /// Render a `<facts>` block from a set of facts, or `None` when empty.
 ///

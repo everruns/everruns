@@ -220,7 +220,7 @@ fn resolve(
     auth_user: &AuthUser,
     token: &str,
 ) -> Result<(ElicitationToken, ElicitationIntent), TokenError> {
-    let token = verify_token(
+    let token = verify_token::<ElicitationIntent>(
         token,
         &state.auth.config.jwt.secret,
         auth_user.id,

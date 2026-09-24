@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Pencil, Play, Radio, Trash2 } from "lucide-react";
+import { Check, CircleAlert, Pencil, Play, Radio, Trash2 } from "lucide-react";
 import { useAgent } from "@/hooks/use-agents";
 import {
   useAgentEndpoints,
   useDeleteAgentEndpoint,
   usePublishAgentEndpoint,
+  useSlackInstallCapability,
   useTriggerAgentEndpoint,
   useUpdateAgentEndpoint,
 } from "@/hooks/use-agent-endpoints";
@@ -16,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ResourceNotFound } from "@/components/resource-not-found";
+import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
 import {
   buildChannelConfig,
   ChannelForm,
@@ -42,14 +44,17 @@ import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 export function AgentEndpointEditor({
   agentId,
   endpointId,
+  slackInstallFailure,
 }: {
   agentId: string;
   endpointId: string;
+  slackInstallFailure?: string;
 }) {
   const router = useRouter();
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   const { endpoints, isLoading: endpointsLoading } = useAgentEndpoints(agentId);
   const { can, isLoading: policiesLoading } = usePolicies("agents");
+  const slackInstallCapability = useSlackInstallCapability();
   const endpoint = endpoints.find(({ channel }) => channel.id === endpointId)?.channel;
   const returnHref = `/agents/${agentId}?tab=integrations`;
   const canManage = !policiesLoading && can("agent.manage") && !isReadOnlyStatus(agent?.status);
@@ -60,7 +65,7 @@ export function AgentEndpointEditor({
     if (agent && !policiesLoading && !canManage) router.replace(returnHref);
   }, [agent, canManage, policiesLoading, returnHref, router]);
 
-  if (agentLoading || endpointsLoading || policiesLoading) {
+  if (agentLoading || endpointsLoading || policiesLoading || slackInstallCapability.isLoading) {
     return <div className="container mx-auto p-6">Loading endpoint...</div>;
   }
   if (!agent || !endpoint) {
@@ -83,6 +88,8 @@ export function AgentEndpointEditor({
       canManage={canManage}
       canDangerous={canDangerous}
       returnHref={returnHref}
+      slackInstallAvailable={slackInstallCapability.data?.available === true}
+      slackInstallFailure={slackInstallFailure}
     />
   );
 }
@@ -93,12 +100,16 @@ function AgentEndpointForm({
   canManage,
   canDangerous,
   returnHref,
+  slackInstallAvailable,
+  slackInstallFailure,
 }: {
   agent: Agent;
   endpoint: AppChannel;
   canManage: boolean;
   canDangerous: boolean;
   returnHref: string;
+  slackInstallAvailable: boolean;
+  slackInstallFailure?: string;
 }) {
   const router = useRouter();
   const agentId = agent.id;
@@ -112,6 +123,11 @@ function AgentEndpointForm({
   );
   const agentName = getDisplayName(agent);
   const lifecycle = getEndpointLifecyclePresentation(endpoint);
+  const slackInstallFailureMessage = slackInstallFailure
+    ? /[.!?]$/.test(slackInstallFailure)
+      ? slackInstallFailure
+      : `${slackInstallFailure}.`
+    : "Could not start the Slack install.";
   const schedule =
     endpoint.channel_type === "schedule"
       ? (endpoint.channel_config as ScheduleChannelConfig)
@@ -208,6 +224,17 @@ function AgentEndpointForm({
       >
         <PageColumns>
           <PageMain>
+            {slackInstallFailure !== undefined && (
+              <Notice variant="destructive" icon={<CircleAlert className="size-4" />} role="alert">
+                <NoticeTitle>Slack install did not start</NoticeTitle>
+                <NoticeDescription>
+                  The endpoint was saved. {slackInstallFailureMessage}{" "}
+                  {slackInstallAvailable
+                    ? "Use Connect to Slack to try again, or configure Slack manually."
+                    : "Configure Slack manually."}
+                </NoticeDescription>
+              </Notice>
+            )}
             <Card>
               <CardContent className="py-5">
                 <ChannelForm
@@ -215,6 +242,7 @@ function AgentEndpointForm({
                   onChange={setFormState}
                   mode="edit"
                   endpointId={endpoint.id}
+                  slackInstallAvailable={slackInstallAvailable}
                 />
               </CardContent>
             </Card>

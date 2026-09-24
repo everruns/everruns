@@ -70,6 +70,6 @@ impl Handler for Jev {
     ) -> Result<Value, Self::Error> {
         evaluate::evaluate(&self.client, input)
             .await
-            .map_err(|error| definition::Error::user("jev_evaluate_failed", error))
+            .map_err(|error| definition::Error::user("jev_decision_failed", error))
     }
 }

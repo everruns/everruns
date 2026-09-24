@@ -57,6 +57,7 @@ pub mod organizations;
 pub mod pagination;
 pub mod payments;
 pub mod plugins;
+pub mod problem_details;
 pub mod prometheus;
 pub mod prometheus_recorder;
 pub mod providers;

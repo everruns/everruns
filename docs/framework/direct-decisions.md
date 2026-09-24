@@ -1,6 +1,6 @@
 ---
-title: Direct Classification
-description: Ask a classifier for a number instead of prose, without building an agent.
+title: Direct Decisions
+description: Ask Decisions for a number instead of prose, without building an agent.
 ---
 
 Some questions have typed answers. *Is this claim supported by the source? How
@@ -8,13 +8,13 @@ severe is this complaint? Which queue does this ticket belong in?* A chat model
 answers those in prose, so the call site ends up with a prompt asking for JSON,
 a parser, and a fallback for when the parse fails.
 
-A classifier answers them as numbers instead, and the decision stays in your
+A decisions answers them as numbers instead, and the decision stays in your
 code.
 
 This is the counterpart to [direct model calls](/framework/direct-model-calls/):
 the same shape, a different contract.
 
-| | `Model` | `Classifier` |
+| | `Model` | `Decisions` |
 |---|---|---|
 | you send | messages | state plus typed questions |
 | you get back | text | calibrated numbers |
@@ -30,14 +30,14 @@ export TYPESAFE_API_KEY=...   # a key from typesafe.ai
 ```
 
 ```rust
-use everruns::{Classifier, TypeSafeAI};
+use everruns::{Decisions, TypeSafeAI};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let classifier = Classifier::new("jev-latest", TypeSafeAI::from_env()?);
+    let decisions = Decisions::new("jev-latest", TypeSafeAI::from_env()?);
 
     let text = "CONGRATULATIONS! You've WON $1,000,000. Click here to claim your prize now!";
-    let spam = classifier.probability("Is this message spam?", text).await?;
+    let spam = decisions.probability("Is this message spam?", text).await?;
 
     println!("spam: {spam:.2}");
     if spam > 0.9 {
@@ -57,18 +57,18 @@ to do. The same call answers `0.03` for "Standup moved to 10am." and `0.74` for 
 bare "Claim your prize now!"; the middling ones are what a threshold is for.
 
 `--features typesafe` adds `TypeSafeAI` and the `Jev` capability. Without it
-`everruns` names no vendor: `Classifier::new` takes any `ClassifierService`.
+`everruns` names no vendor: `Decisions::new` takes any `DecisionsService`.
 
 ## Three primitives
 
-A classification asks one or more questions about the same state. Each is one of
+A decision asks one or more questions about the same state. Each is one of
 three shapes:
 
 ```rust
-use everruns::Classifier;
+use everruns::Decisions;
 
-# async fn run(classifier: Classifier) -> Result<(), Box<dyn std::error::Error>> {
-let answers = classifier
+# async fn run(decisions: Decisions) -> Result<(), Box<dyn std::error::Error>> {
+let answers = decisions
     .about("I've been on hold for two hours and my card was charged twice.")
     .noul("urgent", "Does this convey urgency?")
     .score(
@@ -150,11 +150,11 @@ if serious > 0.3 {
 
 ## Errors
 
-`ClassifierError` separates configuration mistakes from service failures, the
+`DecisionsError` separates configuration mistakes from service failures, the
 same split [`CompletionError`](/framework/direct-model-calls/#errors) makes:
 
-- `MissingService` — the classifier was built without a service to reach.
-- `NoQuestions` — the classification was sent with nothing to ask.
+- `MissingService` — the decisions was built without a service to reach.
+- `NoQuestions` — the decision was sent with nothing to ask.
 - `Unconfigured` — the service exists but the deployment never configured its
   credential, so it would answer nothing.
 - `NoSuchAnswer(id)` — you read an id that was not asked, or read an answer as
@@ -168,20 +168,20 @@ read a confident-looking default.
 
 ## Going lower
 
-`Classification` is a thin value-first layer over `ClassifierService`, which is
+`Decision` is a thin value-first layer over `DecisionsService`, which is
 public. Applications that already hold a service — or implement their own, over
 a different vendor or a local model — can call it directly with `everruns`'s
-`ClassificationRequest`, `ClassificationQuestion`, and `ClassificationAnswer`
+`DecisionRequest`, `DecisionQuestion`, and `DecisionAnswer`
 re-exports:
 
 ```rust
-use everruns::{ClassificationQuestion, ClassificationRequest, ClassifierService};
+use everruns::{DecisionQuestion, DecisionRequest, DecisionsService};
 
-# async fn run(service: std::sync::Arc<dyn ClassifierService>) -> Result<(), Box<dyn std::error::Error>> {
+# async fn run(service: std::sync::Arc<dyn DecisionsService>) -> Result<(), Box<dyn std::error::Error>> {
 let outcome = service
     .evaluate(
-        ClassificationRequest::new("Claim your prize now!")
-            .ask("spam", ClassificationQuestion::noul("Is this message spam?")),
+        DecisionRequest::new("Claim your prize now!")
+            .ask("spam", DecisionQuestion::noul("Is this message spam?")),
     )
     .await?;
 # let _ = outcome;
@@ -190,9 +190,9 @@ let outcome = service
 ```
 
 That surface is the contract itself: every question type and the full
-`ClassificationOutcome`, including usage, with nothing defaulted for you.
-Implementing `ClassifierService` is also how a different classifier — another
-vendor, or a fine-tuned local model — plugs into the same `Classifier`,
+`DecisionOutcome`, including usage, with nothing defaulted for you.
+Implementing `DecisionsService` is also how a different decisions — another
+vendor, or a fine-tuned local model — plugs into the same `Decisions`,
 guardrails included.
 
 ## Choosing a model
@@ -223,9 +223,9 @@ A single call can name a different model with the same method on the request
 builder, and it wins for that call:
 
 ```rust
-# use everruns::Classifier;
-# async fn run(classifier: Classifier) -> Result<(), Box<dyn std::error::Error>> {
-let answers = classifier
+# use everruns::Decisions;
+# async fn run(decisions: Decisions) -> Result<(), Box<dyn std::error::Error>> {
+let answers = decisions
     .about("...")
     .noul("urgent", "Does this convey urgency?")
     .model("jev-1.13.0")
@@ -238,19 +238,19 @@ let answers = classifier
 
 A deployment that must pin a model does so by never exposing the knob in the
 config an agent writes — not by the type being unable to carry one, because
-there will be other classifiers and other models.
+there will be other decision services and other models.
 
 A deployment running the Everruns platform configures a separate
 `UTILITY_TYPESAFE_API_KEY` for its [guardrails](/capabilities/guardrails/) — a
 different account from the one an embedding application holds.
 
-## Giving an agent the classifier
+## Giving an agent the decisions
 
 Everything above is agentless: your code asks, your code decides. The other
 half is letting an *agent* classify as part of its own work — checking a claim
 against a source before citing it, rating a draft before sending it.
 
-`Jev` is the same classifier as a capability, so an agent gets it as a tool:
+`Jev` is the same decisions as a capability, so an agent gets it as a tool:
 
 ```rust
 use everruns::{Agent, Engine, Jev, Model, OpenAI};
@@ -260,7 +260,7 @@ let agent = Agent::builder()
     .name("reviewer")
     .instructions(
         "You review copy. When asked how something reads, measure it with \
-         jev_evaluate and report the numbers rather than judging by eye.",
+         jev_decision and report the numbers rather than judging by eye.",
     )
     .model(Model::new("gpt-5.6-terra", OpenAI::from_env()?))
     .capability(Jev::from_env()?)
@@ -274,7 +274,7 @@ let turn = session
 # }
 ```
 
-The agent calls `jev_evaluate`, writing its own questions about whatever it is
+The agent calls `jev_decision`, writing its own questions about whatever it is
 looking at, and gets the same calibrated numbers back. It is the identical tool
 the hosted [TypeSafe integration](/integrations/typesafe/) gives platform
 agents — same name, same schema — so behavior matches whether you embed the
@@ -285,12 +285,12 @@ Which one to reach for:
 | | you decide | the agent decides |
 |---|---|---|
 | **who asks** | your code writes the questions | the model writes the questions |
-| **use** | `Classifier` | the `Jev` capability |
+| **use** | `Decisions` | the `Jev` capability |
 | **good for** | a policy check, a routing rule, a gate | verification inside a longer task |
 
 ## What stays with an agent
 
-A classification owns no session, no history, and no workspace, and runs no
+A decision owns no session, no history, and no workspace, and runs no
 tools.
 Reach for an [agent](/framework/agents/) as soon as the work needs any of those.
 Typed output guarantees the interface, not the truth: validate thresholds
@@ -298,20 +298,20 @@ against your own data and consequences.
 
 ## Testing without a credential
 
-`Classifier::simulated` returns a fixed number from an in-process stub. It is a
-**test double**, not a local classifier: it runs no inference, reads nothing
+`Decisions::simulated` returns a fixed number from an in-process stub. It is a
+**test double**, not a local decisions: it runs no inference, reads nothing
 from the state you pass it, and is not a way to classify without a provider. It
-exists so tests and examples can assert on the code around a classification
+exists so tests and examples can assert on the code around a decision
 without a network call or an API key.
 
-Real work always goes through a classifier service — `TypeSafeAI` above, or
-your own `ClassifierService`.
+Real work always goes through a decisions service — `TypeSafeAI` above, or
+your own `DecisionsService`.
 
 ```rust
-use everruns::Classifier;
+use everruns::Decisions;
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-let p = Classifier::simulated(0.93)
+let p = Decisions::simulated(0.93)
     .probability("Does this convey urgency?", "Two hours on hold.")
     .await?;
 assert!(p > 0.9);
@@ -319,12 +319,12 @@ assert!(p > 0.9);
 # }
 ```
 
-Because the answer is fixed, a simulated classification proves your threshold
-logic runs — never that a real classifier would return that number.
+Because the answer is fixed, a simulated decision proves your threshold
+logic runs — never that a real decisions would return that number.
 
 The runnable version of this page is
-[`direct_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_classification.rs).
+[`direct_decisions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_decisions.rs).
 It uses the stub by default so it runs with no key; pass `--live` (with
 `--features typesafe` and `TYPESAFE_API_KEY` set) to send the same questions to a
-real classifier. [`agent_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_classification.rs)
+real decisions. [`agent_decisions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_decisions.rs)
 does the same for the agent path.

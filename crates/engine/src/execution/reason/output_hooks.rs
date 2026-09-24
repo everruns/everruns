@@ -2,7 +2,37 @@ use std::sync::Arc;
 
 use crate::annotation_hook::{AnnotationProvider, VerifierProvider};
 use crate::capabilities::CapabilityRegistry;
-use crate::output_guardrail::{OutputGuardrail, PostGenerationProvider};
+use crate::output_guardrail::{
+    OutputGuardrail, PostGenerationProvider, post_generation_guardrail_text,
+};
+use everruns_provider::reasoning::ReasoningContentPart;
+
+pub(super) fn client_visible_guardrail_text(
+    text: &str,
+    streamed_reasoning: &str,
+    reasoning: &[ReasoningContentPart],
+    citation_annotations: &[crate::message::TextAnnotation],
+) -> String {
+    let mut guarded = streamed_reasoning.to_string();
+    if guarded.is_empty() {
+        for item_text in reasoning
+            .iter()
+            .filter_map(ReasoningContentPart::display_text)
+        {
+            if !guarded.is_empty() {
+                guarded.push_str("\n\n");
+            }
+            guarded.push_str(&item_text);
+        }
+    }
+
+    let prose = post_generation_guardrail_text(text, citation_annotations);
+    if !guarded.is_empty() && !prose.is_empty() {
+        guarded.push_str("\n\n");
+    }
+    guarded.push_str(&prose);
+    guarded
+}
 
 pub(super) struct OutputHooks {
     pub(super) streaming: Vec<(String, serde_json::Value, Arc<dyn OutputGuardrail>)>,

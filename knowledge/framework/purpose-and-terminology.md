@@ -50,5 +50,5 @@ backend control-plane entities.
 Those implementation relationships do not make the focused crates alternative
 application entrypoints. Advanced hosts may depend on the focused crates they
 need, while normal applications remain on `everruns`. The durable
-promote-versus-host-only classification is owned by
+promote-versus-host-only decision is owned by
 [Application API Boundaries](application-api.md).

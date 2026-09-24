@@ -148,8 +148,8 @@ pub enum GuardrailRule {
     /// server-not-configured: the verdict defaults to `allow` so a guardrail
     /// outage never wedges a turn.
     Mcp { server: String, tool: String },
-    /// Model-backed moderation/classifier check (EVE-573). Sends the stage
-    /// text to the utility LLM as a content classifier and blocks/logs when
+    /// Model-backed moderation/decisions check (EVE-573). Sends the stage
+    /// text to the utility LLM as a content decisions and blocks/logs when
     /// any configured category scores at or above `threshold` (a percentage,
     /// `0..=100`). `categories` defaults to a built-in safety set when empty.
     /// Valid only on the `output` stage — it runs on the end-of-message
@@ -191,11 +191,11 @@ pub enum GuardrailEngine {
     #[default]
     UtilityLlm,
     /// Jev, TypeSafe's System One model, asked a typed question through the
-    /// deployment's classifier.
+    /// deployment's decisions.
     ///
     /// The config names the model rather than the service because that is what
     /// an author is choosing between: prose a parser has to trust, or a
-    /// calibrated number. If the classifier is ever backed by a different
+    /// calibrated number. If the decisions is ever backed by a different
     /// model, this value gains a sibling rather than changing meaning.
     Jev,
 }
@@ -367,7 +367,7 @@ pub struct CompiledJudgeCheck {
     pub prompt: String,
     /// Which system model answers this check.
     pub engine: GuardrailEngine,
-    /// Block threshold as a percentage, honored by the classifier.
+    /// Block threshold as a percentage, honored by the decisions.
     pub threshold: u8,
 }
 
@@ -388,7 +388,7 @@ pub struct CompiledMcpCheck {
 }
 
 /// A compiled `moderation` check, carried separately from the sync checks
-/// because it must be evaluated asynchronously (utility-LLM classifier call)
+/// because it must be evaluated asynchronously (utility-LLM decisions call)
 /// on the end-of-message output seam (EVE-573).
 #[derive(Debug)]
 pub struct CompiledModerationCheck {
@@ -1347,7 +1347,7 @@ mod tests {
         let hits = compiled.evaluate(GuardrailStage::ToolUse, "{}", Some("bash_exec"), &no_skip());
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].rule_type, "tool_pattern");
-        // Classifier check is available for async evaluation
+        // Decisions check is available for async evaluation
         let judges: Vec<_> = compiled
             .judge_checks_for_stage(GuardrailStage::ToolUse)
             .collect();

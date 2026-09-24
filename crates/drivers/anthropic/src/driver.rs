@@ -15,11 +15,13 @@ use async_trait::async_trait;
 use chrono::DateTime;
 use futures::StreamExt;
 use reqwest::Client;
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
 
+use everruns_provider::ProviderOpaqueContent;
 use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_helpers::{
     self, ANTHROPIC_NOT_FOUND_PATTERNS, ANTHROPIC_TOO_LARGE_PATTERNS, AUDIO_CONTENT_PLACEHOLDER,
@@ -61,6 +63,36 @@ pub fn provider(
         ))
 }
 
+fn append_raw_block_field(
+    blocks: &Mutex<BTreeMap<u32, Value>>,
+    index: u32,
+    field: &str,
+    fragment: &str,
+) {
+    let mut blocks = blocks.lock().unwrap();
+    let Some(Value::Object(block)) = blocks.get_mut(&index) else {
+        return;
+    };
+    let value = block
+        .entry(field.to_string())
+        .or_insert_with(|| Value::String(String::new()));
+    if let Value::String(value) = value {
+        value.push_str(fragment);
+    }
+}
+
+fn set_raw_block_field(
+    blocks: &Mutex<BTreeMap<u32, Value>>,
+    index: u32,
+    field: &str,
+    value: Value,
+) {
+    let mut blocks = blocks.lock().unwrap();
+    if let Some(Value::Object(block)) = blocks.get_mut(&index) {
+        block.insert(field.to_string(), value);
+    }
+}
+
 /// Message-level prompt-cache breakpoints per request. Anthropic allows four
 /// in total; the system prompt and the tool array take one each, leaving two
 /// for the transcript. See `mark_recent_text_blocks_for_cache`.
@@ -95,6 +127,7 @@ struct SendMessagesOptions<'a> {
     needs_interleaved_thinking: bool,
     wants_million_context: bool,
     wants_cache_diagnostics: bool,
+    wants_clear_at: bool,
     max_tokens_from_profile: bool,
     model: &'a str,
     /// Caller-supplied per-request headers, applied over everything the driver
@@ -150,6 +183,7 @@ impl AnthropicChatDriver {
             needs_interleaved_thinking,
             wants_million_context,
             wants_cache_diagnostics,
+            wants_clear_at,
             max_tokens_from_profile,
             model,
             extra_headers,
@@ -157,6 +191,7 @@ impl AnthropicChatDriver {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let max_tokens_fallback_attempted = Arc::new(Mutex::new(false));
         let beta_logged = Arc::new(Mutex::new(false));
+        let binds_thinking = layout::binds_thinking_to_conversation(model);
         let mut retry_config = self.retry_config.clone();
         retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
 
@@ -197,6 +232,12 @@ impl AnthropicChatDriver {
                     }
                     if wants_cache_diagnostics {
                         beta_features.push(CACHE_DIAGNOSTICS_BETA);
+                    }
+                    if binds_thinking {
+                        beta_features.push(layout::THINKING_BINDING_BETA);
+                    }
+                    if wants_clear_at {
+                        beta_features.push("mid-conversation-system-clear-at-2026-08-21");
                     }
                     if !beta_features.is_empty() {
                         let beta = beta_features.join(",");
@@ -439,6 +480,27 @@ impl AnthropicChatDriver {
         }
     }
 
+    fn preserved_content(content: &MessageContent) -> Option<Value> {
+        let MessageContent::Parts(parts) = content else {
+            return None;
+        };
+        parts.iter().find_map(|part| {
+            let LlmContentPart::ProviderOpaque(opaque) = part else {
+                return None;
+            };
+            if opaque.provider != "anthropic" {
+                return None;
+            }
+            match &opaque.content {
+                Value::Array(_) => Some(opaque.content.clone()),
+                _ => {
+                    tracing::warn!("AnthropicDriver: preserved assistant content is not an array");
+                    None
+                }
+            }
+        })
+    }
+
     fn system_prompt_for_request(
         system_prompt: Option<String>,
         prompt_cache_enabled: bool,
@@ -455,46 +517,6 @@ impl AnthropicChatDriver {
         })
     }
 
-    /// Place the message-level prompt-cache breakpoints on the last text
-    /// blocks, skipping `volatile_suffix_len` trailing messages.
-    ///
-    /// The runtime appends volatile content (a live `<facts>` block that changes
-    /// every turn) after the last stable message. Anchoring a breakpoint on
-    /// that volatile tail would make the cached prefix diverge from the next
-    /// turn's prefix right after the last stable message, evicting the
-    /// conversation-history cache. Skipping the volatile suffix keeps the
-    /// breakpoints on stable blocks, so the trailing block rides as an
-    /// uncached suffix while everything before it stays cached.
-    ///
-    /// Two breakpoints, not one, and the pair is what makes caching
-    /// *incremental*: the newest marks where this turn's history gets written,
-    /// the one behind it sits at a position the previous turn already wrote, so
-    /// each turn reads the cache its predecessor created instead of re-paying
-    /// for the whole transcript. With the system prompt and the tool array this
-    /// totals four, Anthropic's per-request maximum.
-    fn mark_recent_text_blocks_for_cache(
-        messages: &mut [AnthropicMessage],
-        volatile_suffix_len: usize,
-    ) {
-        let anchor_len = messages.len().saturating_sub(volatile_suffix_len);
-        let mut remaining = MESSAGE_CACHE_BREAKPOINTS;
-        for msg in messages[..anchor_len].iter_mut().rev() {
-            // At most one breakpoint per message: a second marker inside the
-            // same message would spend a scarce breakpoint on a position the
-            // first one already covers.
-            for block in msg.content.iter_mut().rev() {
-                if let AnthropicContentBlock::Text { cache_control, .. } = block {
-                    *cache_control = Some(AnthropicCacheControl::ephemeral());
-                    remaining -= 1;
-                    break;
-                }
-            }
-            if remaining == 0 {
-                return;
-            }
-        }
-    }
-
     fn convert_messages(
         messages: &[Message],
         prompt_cache_enabled: bool,
@@ -504,7 +526,7 @@ impl AnthropicChatDriver {
         // `system` field. Overwriting on each System message would drop the agent
         // system prompt whenever a later notice/summary System message is present
         // (infinity_context / compaction). See `fold_system_messages`.
-        let system_prompt = fold_system_messages(messages);
+        let mut system_prompt = fold_system_messages(messages);
         let mut converted = Vec::new();
         let visible_tool_use_ids = visible_tool_call_ids(messages);
 
@@ -572,10 +594,21 @@ impl AnthropicChatDriver {
                                 content,
                                 is_error: None,
                             }],
+                            clear_at: None,
+                            preserved_content: None,
                         });
                     }
                 }
                 MessageRole::Assistant => {
+                    if let Some(preserved_content) = Self::preserved_content(&msg.content) {
+                        converted.push(AnthropicMessage {
+                            role: Self::convert_role(&msg.role).to_string(),
+                            content: Vec::new(),
+                            clear_at: None,
+                            preserved_content: Some(preserved_content),
+                        });
+                        continue;
+                    }
                     let mut content = Vec::new();
 
                     tracing::debug!(
@@ -632,23 +665,27 @@ impl AnthropicChatDriver {
                             });
                         }
                     }
-
                     converted.push(AnthropicMessage {
                         role: Self::convert_role(&msg.role).to_string(),
                         content,
+                        clear_at: None,
+                        preserved_content: None,
                     });
                 }
                 _ => {
                     converted.push(AnthropicMessage {
                         role: Self::convert_role(&msg.role).to_string(),
                         content: Self::convert_content(&msg.content),
+                        clear_at: None,
+                        preserved_content: None,
                     });
                 }
             }
         }
 
+        layout::place_system_messages(&mut system_prompt, &mut converted);
         if prompt_cache_enabled {
-            Self::mark_recent_text_blocks_for_cache(&mut converted, volatile_suffix_len);
+            layout::mark_recent_text_blocks_for_cache(&mut converted, volatile_suffix_len);
         }
 
         (system_prompt, converted)
@@ -779,8 +816,14 @@ impl ChatDriver for AnthropicChatDriver {
         // ReasonAtom emits llm.generation events, and OtelEventListener
         // creates gen-ai spans from those events.
         let prompt_cache_enabled = config.prompt_cache.as_ref().is_some_and(|cfg| cfg.enabled);
-        let (system_prompt, anthropic_messages) =
-            Self::convert_messages(&messages, prompt_cache_enabled, config.volatile_suffix_len);
+        let (system_prompt, anthropic_messages) = Self::convert_messages(
+            &layout::keep_later_system_messages_in_place(&messages, &config.model),
+            prompt_cache_enabled,
+            config.volatile_suffix_len,
+        );
+        let wants_clear_at = anthropic_messages
+            .iter()
+            .any(|message| message.clear_at.is_some());
         let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
 
         // `[1m]` model ids (e.g. `claude-opus-4-8[1m]`) are the gateway's
@@ -790,6 +833,7 @@ impl ChatDriver for AnthropicChatDriver {
         // suffix for everything that reasons about the canonical model, and
         // keep the flag for the header.
         let (wire_model, wants_million_context) = split_million_context(&config.model);
+        crate::prefill::reject_trailing_assistant(wire_model, &messages)?;
 
         let profile = everruns_provider::get_model_profile(
             &everruns_provider::DriverId::Anthropic,
@@ -842,11 +886,11 @@ impl ChatDriver for AnthropicChatDriver {
         // `output_config.effort`. On Fable 5.x and Opus 5.5/5/4.8/4.7 the budget-based
         // `thinking: {type: "enabled", budget_tokens}` form is removed and
         // returns 400, so this split is load-bearing, not stylistic.
-        let (thinking, output_config) = match config.reasoning_effort {
+        let (thinking, output_config) = match crate::effort::resolve(config, wire_model, &profile) {
             Some(effort) if uses_adaptive_thinking(wire_model) => {
                 match adaptive_effort_level(effort) {
                     Some(level) => (
-                        Some(AnthropicThinking::adaptive()),
+                        Some(AnthropicThinking::adaptive(wire_model)),
                         Some(AnthropicOutputConfig {
                             effort: level.to_string(),
                         }),
@@ -866,29 +910,15 @@ impl ChatDriver for AnthropicChatDriver {
             "AnthropicDriver: building request with thinking config"
         );
 
-        // Calculate max_tokens - use caller's limit, or model's max output from profile, or 16384 fallback.
-        // Anthropic requires max_tokens (can't omit), so we look up the model's native limit.
+        // Caller's cap is the answer budget; thinking room goes on top.
         let max_tokens_from_profile = config.max_tokens.is_none();
-        let base_max_tokens = config.max_tokens.unwrap_or_else(|| {
-            profile
-                .as_ref()
-                .and_then(|p| {
-                    p.limits.as_ref().and_then(|l| {
-                        u32::try_from(l.output)
-                            .ok()
-                            .and_then(|v| if v > 0 { Some(v) } else { None })
-                    })
-                })
-                .unwrap_or(16_384)
-        });
-        let max_tokens = if let Some(AnthropicThinking::Enabled { budget_tokens }) = thinking {
-            // max_tokens must be > thinking.budget_tokens per Anthropic requirements
-            // Only increase if the caller's limit is too low for the thinking budget
-            let min_for_thinking = budget_tokens + 1024; // minimum headroom for response
-            base_max_tokens.max(min_for_thinking)
-        } else {
-            base_max_tokens
+        let budget = match thinking {
+            Some(AnthropicThinking::Enabled { budget_tokens }) => Some(budget_tokens),
+            _ => None,
         };
+        let adaptive_effort = output_config.as_ref().map(|c| c.effort.as_str());
+        let max_tokens =
+            crate::effort::max_tokens(config.max_tokens, profile.as_ref(), budget, adaptive_effort);
 
         // Budget-based thinking with tools needs the interleaved-thinking beta
         // header; adaptive thinking interleaves automatically (no header).
@@ -953,6 +983,7 @@ impl ChatDriver for AnthropicChatDriver {
                         needs_interleaved_thinking,
                         wants_million_context,
                         wants_cache_diagnostics,
+                        wants_clear_at,
                         max_tokens_from_profile,
                         model: &config.model,
                         extra_headers: &config.extra_headers,
@@ -970,6 +1001,8 @@ impl ChatDriver for AnthropicChatDriver {
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
         let current_thinking = Arc::new(Mutex::new(Option::<OpenThinkingBlock>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
+        let response_content = Arc::new(Mutex::new(BTreeMap::<u32, Value>::new()));
+        let input_json = Arc::new(Mutex::new(BTreeMap::<u32, String>::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
         let response_id = Arc::new(Mutex::new(Option::<String>::None));
         let response_model = Arc::new(Mutex::new(Option::<String>::None));
@@ -990,6 +1023,8 @@ impl ChatDriver for AnthropicChatDriver {
             let current_tool_call = Arc::clone(&current_tool_call);
             let current_thinking = Arc::clone(&current_thinking);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
+            let response_content = Arc::clone(&response_content);
+            let input_json = Arc::clone(&input_json);
             let finish_reason = Arc::clone(&finish_reason);
             let response_id = Arc::clone(&response_id);
             let response_model = Arc::clone(&response_model);
@@ -1010,6 +1045,8 @@ impl ChatDriver for AnthropicChatDriver {
                                         // Following requests use this for prompt-cache diagnostics.
                                         *response_id.lock().unwrap() = Some(id);
                                     }
+                                    let transformations = &data.message.input_transformations;
+                                    layout::log_input_transformations(data.message.model.as_deref(), transformations);
                                     *response_model.lock().unwrap() = data.message.model;
                                     if let Some(diagnostics) =
                                         data.message.diagnostics.or(data.diagnostics)
@@ -1038,7 +1075,16 @@ impl ChatDriver for AnthropicChatDriver {
                                 if let Ok(data) =
                                     serde_json::from_str::<AnthropicContentBlockStart>(&event.data)
                                 {
-                                    match data.content_block {
+                                    response_content
+                                        .lock()
+                                        .unwrap()
+                                        .insert(data.index, data.content_block.clone());
+                                    let Ok(content_block) =
+                                        serde_json::from_value(data.content_block)
+                                    else {
+                                        return Ok(LlmStreamEvent::TextDelta(String::new()));
+                                    };
+                                    match content_block {
                                         AnthropicContentBlockDelta::ToolUse { id, name } => {
                                             let mut current = current_tool_call.lock().unwrap();
                                             *current = Some(ToolCall {
@@ -1064,7 +1110,8 @@ impl ChatDriver for AnthropicChatDriver {
                                                     ..Default::default()
                                                 });
                                         }
-                                        AnthropicContentBlockDelta::Text { .. } => {}
+                                        AnthropicContentBlockDelta::Text { .. }
+                                        | AnthropicContentBlockDelta::Unknown => {}
                                     }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
@@ -1076,6 +1123,12 @@ impl ChatDriver for AnthropicChatDriver {
                                 {
                                     match data.delta {
                                         AnthropicDelta::TextDelta { text } => {
+                                            append_raw_block_field(
+                                                &response_content,
+                                                data.index,
+                                                "text",
+                                                &text,
+                                            );
                                             // EVE-636: do not count deltas as tokens here —
                                             // deltas != tokens, and this took a mutex on every
                                             // token. Authoritative `output_tokens` is set from
@@ -1083,6 +1136,12 @@ impl ChatDriver for AnthropicChatDriver {
                                             return Ok(LlmStreamEvent::TextDelta(text));
                                         }
                                         AnthropicDelta::InputJsonDelta { partial_json } => {
+                                            input_json
+                                                .lock()
+                                                .unwrap()
+                                                .entry(data.index)
+                                                .or_default()
+                                                .push_str(&partial_json);
                                             // EVE-636: accumulate tool-input JSON in place via
                                             // push_str (amortized O(total)) instead of
                                             // re-copying + re-boxing into a Value per delta
@@ -1094,6 +1153,12 @@ impl ChatDriver for AnthropicChatDriver {
                                             return Ok(LlmStreamEvent::TextDelta(String::new()));
                                         }
                                         AnthropicDelta::ThinkingDelta { thinking } => {
+                                            append_raw_block_field(
+                                                &response_content,
+                                                data.index,
+                                                "thinking",
+                                                &thinking,
+                                            );
                                             let mut open = current_thinking.lock().unwrap();
                                             open.get_or_insert_with(OpenThinkingBlock::default)
                                                 .text
@@ -1104,6 +1169,12 @@ impl ChatDriver for AnthropicChatDriver {
                                             });
                                         }
                                         AnthropicDelta::SignatureDelta { signature } => {
+                                            set_raw_block_field(
+                                                &response_content,
+                                                data.index,
+                                                "signature",
+                                                Value::String(signature.clone()),
+                                            );
                                             // Signs the block currently open, and
                                             // only that block.
                                             tracing::debug!(
@@ -1136,15 +1207,42 @@ impl ChatDriver for AnthropicChatDriver {
                                     }
                                 }
 
-                                // Some responses carry the completed block
-                                // inline; prefer its signature when present,
-                                // otherwise the one accumulated from
-                                // signature_delta.
-                                let completed = serde_json::from_str::<AnthropicContentBlockStop>(
+                                let stop = serde_json::from_str::<AnthropicContentBlockStop>(
                                     &event.data,
                                 )
-                                .ok()
-                                .and_then(|data| data.content_block);
+                                .ok();
+                                let completed = stop.as_ref().and_then(|data| {
+                                    let index = data.index;
+                                    if let Some(partial_json) =
+                                        input_json.lock().unwrap().remove(&index)
+                                    {
+                                        match serde_json::from_str(&partial_json) {
+                                            Ok(input) => set_raw_block_field(
+                                                &response_content,
+                                                index,
+                                                "input",
+                                                input,
+                                            ),
+                                            Err(error) => tracing::warn!(
+                                                %error,
+                                                index,
+                                                "AnthropicDriver: invalid streamed tool input"
+                                            ),
+                                        }
+                                    }
+                                    if let Some(content_block) = &data.content_block {
+                                        response_content
+                                            .lock()
+                                            .unwrap()
+                                            .insert(index, content_block.clone());
+                                    }
+                                    response_content
+                                        .lock()
+                                        .unwrap()
+                                        .get(&index)
+                                        .cloned()
+                                        .and_then(|value| serde_json::from_value(value).ok())
+                                });
 
                                 let mut open = current_thinking.lock().unwrap();
                                 if let Some(mut block) = open.take() {
@@ -1253,6 +1351,19 @@ impl ChatDriver for AnthropicChatDriver {
                                         .lock()
                                         .unwrap()
                                         .clone();
+                                    let content = response_content
+                                        .lock()
+                                        .unwrap()
+                                        .values()
+                                        .cloned()
+                                        .collect::<Vec<_>>();
+                                    if !content.is_empty() {
+                                        metadata.provider_opaque_content =
+                                            Some(ProviderOpaqueContent::new(
+                                                "anthropic",
+                                                Value::Array(content),
+                                            ));
+                                    }
                                     metadata
                                 })))
                             }
@@ -1601,7 +1712,16 @@ enum AnthropicThinking {
         /// (`display: "omitted"`); "summarized" restores it so assistant
         /// messages keep their thinking content like on budget-based models.
         display: &'static str,
+        /// What the API does with a replayed block whose conversation prefix
+        /// changed; set on preserved-thinking models (see `layout`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        block_binding: Option<AnthropicBlockBinding>,
     },
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+struct AnthropicBlockBinding {
+    prefix_mismatch_behavior: &'static str,
 }
 
 impl AnthropicThinking {
@@ -1612,9 +1732,14 @@ impl AnthropicThinking {
     }
 
     /// Adaptive thinking with summarized (visible) thinking content
-    fn adaptive() -> Self {
+    fn adaptive(model: &str) -> Self {
         Self::Adaptive {
             display: "summarized",
+            block_binding: layout::binds_thinking_to_conversation(model).then_some(
+                AnthropicBlockBinding {
+                    prefix_mismatch_behavior: "drop_block",
+                },
+            ),
         }
     }
 }
@@ -1692,7 +1817,7 @@ fn is_million_context_family(model_id: &str) -> bool {
 
 /// Whether a model id (optionally date-suffixed) belongs to an
 /// adaptive-thinking family.
-fn uses_adaptive_thinking(model_id: &str) -> bool {
+pub(crate) fn uses_adaptive_thinking(model_id: &str) -> bool {
     let family = normalize_anthropic_id(model_id);
     ADAPTIVE_THINKING_FAMILIES
         .iter()
@@ -1720,10 +1845,31 @@ fn adaptive_effort_level(effort: ReasoningEffort) -> Option<&'static str> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 struct AnthropicMessage {
     role: String,
     content: Vec<AnthropicContentBlock>,
+    clear_at: Option<String>,
+    // Keep provider-returned blocks raw so future fields and block types survive replay.
+    preserved_content: Option<Value>,
+}
+
+impl Serialize for AnthropicMessage {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut message = serializer.serialize_struct("AnthropicMessage", 3)?;
+        message.serialize_field("role", &self.role)?;
+        match &self.preserved_content {
+            Some(content) => message.serialize_field("content", content)?,
+            None => message.serialize_field("content", &self.content)?,
+        }
+        if let Some(clear_at) = &self.clear_at {
+            message.serialize_field("clear_at", clear_at)?;
+        }
+        message.end()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1753,6 +1899,21 @@ enum AnthropicContentBlock {
         id: String,
         name: String,
         input: Value,
+    },
+    #[serde(rename = "server_tool_use")]
+    ServerToolUse {
+        id: String,
+        name: String,
+        input: Value,
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
+    },
+    #[serde(rename = "tool_search_tool_result")]
+    ToolSearchToolResult {
+        tool_use_id: String,
+        content: Value,
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
     },
     #[serde(rename = "tool_result")]
     ToolResult {
@@ -1861,6 +2022,8 @@ struct AnthropicMessageInfo {
     /// request opted into the `cache-diagnosis` beta.
     #[serde(default)]
     diagnostics: Option<serde_json::Value>,
+    #[serde(default)]
+    input_transformations: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1879,15 +2042,17 @@ struct AnthropicUsage {
 
 #[derive(Debug, Deserialize)]
 struct AnthropicContentBlockStart {
-    content_block: AnthropicContentBlockDelta,
+    index: u32,
+    content_block: Value,
 }
 
 /// Completed content block from content_block_stop event
 /// Includes the cryptographic signature for thinking blocks
 #[derive(Debug, Deserialize)]
 struct AnthropicContentBlockStop {
+    index: u32,
     #[serde(default)]
-    content_block: Option<AnthropicCompletedContentBlock>,
+    content_block: Option<Value>,
 }
 
 /// Completed content block variants (from content_block_stop)
@@ -1957,10 +2122,13 @@ enum AnthropicContentBlockDelta {
     /// and carries no readable text, but must still be replayed verbatim.
     #[serde(rename = "redacted_thinking")]
     RedactedThinking { data: String },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Deserialize)]
 struct AnthropicContentBlockDeltaEvent {
+    index: u32,
     delta: AnthropicDelta,
 }
 
@@ -2094,7 +2262,7 @@ struct AnthropicModelCapabilities {
 
 /// Normalize Anthropic model ID to a family base name by stripping trailing
 /// date suffix (e.g., "claude-opus-4-5-20251101" -> "claude-opus-4-5").
-fn normalize_anthropic_id(model_id: &str) -> &str {
+pub(crate) fn normalize_anthropic_id(model_id: &str) -> &str {
     // Anthropic date suffixes are always -YYYYMMDD (8 digits after a dash)
     if let Some((base, suffix)) = model_id.rsplit_once('-')
         && !base.is_empty()
@@ -2313,831 +2481,13 @@ impl AnthropicModelInfo {
 // Tests
 // ============================================================================
 
+#[path = "driver_layout.rs"]
+mod layout;
+
 #[cfg(test)]
 #[path = "driver_family_tests.rs"]
 mod family_tests;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use everruns_provider::driver_registry::ChatDriver;
-    use everruns_provider::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
-
-    fn contract_config(model: &str, max_tokens: Option<u32>) -> LlmCallConfig {
-        let mut config = LlmCallConfig::new(model);
-        config.max_tokens = max_tokens;
-        config
-    }
-
-    fn contract_tool(name: &str, deferrable: DeferrablePolicy) -> ToolDefinition {
-        ToolDefinition::Builtin(BuiltinTool {
-            name: name.into(),
-            display_name: None,
-            description: "Search records".into(),
-            parameters: json!({"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable,
-            hints: ToolHints::default(),
-            full_parameters: None,
-        })
-    }
-
-    async fn assert_contract_request(config: LlmCallConfig, registered: bool, expected: Value) {
-        use everruns_provider::{Provider, StaticHeaderAuth};
-        use wiremock::matchers::{body_json, header, method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-        let server = MockServer::builder().start().await;
-        Mock::given(method("POST"))
-            .and(path("/v1/messages"))
-            .and(header("x-api-key", "synthetic-key"))
-            .and(header("anthropic-version", "2023-06-01"))
-            .and(body_json(expected))
-            .respond_with(
-                ResponseTemplate::new(400)
-                    .set_body_json(json!({"error":{"message":"request captured"}})),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-        let base = format!("{}/v1", server.uri());
-        let driver = if registered {
-            let mut registry = DriverRegistry::new();
-            register_driver(&mut registry);
-            registry
-                .create_chat_driver(
-                    &everruns_provider::driver_registry::ProviderConfig::new(DriverId::Anthropic)
-                        .with_api_key("synthetic-key")
-                        .with_base_url(base),
-                )
-                .unwrap()
-        } else {
-            Provider::new("test", AnthropicChatDriver::new())
-                .base_url(base)
-                .auth(StaticHeaderAuth::new("x-api-key", "synthetic-key"))
-                .into_boxed_driver()
-        };
-        let error = match driver
-            .chat_completion_stream(
-                &everruns_provider::ProviderEndpoint::default(),
-                vec![Message::text(MessageRole::User, "hello")],
-                &config,
-            )
-            .await
-        {
-            Ok(_) => panic!("expected capture response"),
-            Err(error) => error,
-        };
-        assert_eq!(error.llm_error_kind(), Some(LlmErrorKind::InvalidRequest));
-        assert!(error.to_string().contains("request captured"), "{error}");
-        server.verify().await;
-        let requests = server.received_requests().await.unwrap();
-        assert_eq!(requests.len(), 1);
-        assert!(!requests[0].headers.contains_key("authorization"));
-    }
-
-    #[tokio::test]
-    async fn registered_and_direct_requests_apply_parallel_preferences_only_with_tools() {
-        for registered in [false, true] {
-            for tools in [false, true] {
-                for preference in [None, Some(true), Some(false)] {
-                    let mut config = contract_config("claude-test", Some(32));
-                    config.parallel_tool_calls = preference;
-                    let mut expected = json!({"model":"claude-test","max_tokens":32,"stream":true,
-                        "messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]});
-                    if tools {
-                        config
-                            .tools
-                            .push(contract_tool("lookup", DeferrablePolicy::Never));
-                        expected["tools"] = json!([{"name":"lookup","description":"Search records","input_schema":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}}]);
-                        if let Some(allow) = preference {
-                            expected["tool_choice"] =
-                                json!({"type":"auto","disable_parallel_tool_use":!allow});
-                        }
-                    }
-                    assert_contract_request(config, registered, expected).await;
-                }
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn requests_resolve_model_limits_and_complete_reasoning_policies() {
-        for (model, requested, expected_limit) in [
-            ("claude-sonnet-4-5-20250514", None, 64000),
-            ("claude-test", None, 16384),
-            ("claude-sonnet-4-5", Some(99), 99),
-            ("claude-test", Some(99), 99),
-        ] {
-            assert_contract_request(
-                contract_config(model, requested),
-                false,
-                json!({"model":model,"max_tokens":expected_limit,"stream":true,
-                "messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}),
-            )
-            .await;
-        }
-        for (effort, budget, adaptive) in [
-            (ReasoningEffort::None, None, None),
-            (ReasoningEffort::Minimal, Some(1024), Some("low")),
-            (ReasoningEffort::Low, Some(1024), Some("low")),
-            (ReasoningEffort::Medium, Some(4096), Some("medium")),
-            (ReasoningEffort::High, Some(16384), Some("high")),
-            (ReasoningEffort::Xhigh, Some(32768), Some("max")),
-            (ReasoningEffort::Max, Some(32768), Some("max")),
-        ] {
-            for model in ["claude-sonnet-4-5", "claude-opus-4-8"] {
-                let mut config = contract_config(model, Some(1));
-                config.reasoning_effort = Some(effort);
-                let mut expected = json!({"model":model,"max_tokens":1,"stream":true,
-                    "messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]});
-                if model == "claude-sonnet-4-5" {
-                    if let Some(budget) = budget {
-                        expected["max_tokens"] = json!(budget + 1024);
-                        expected["thinking"] = json!({"type":"enabled","budget_tokens":budget});
-                    }
-                } else if let Some(level) = adaptive {
-                    expected["thinking"] = json!({"type":"adaptive","display":"summarized"});
-                    expected["output_config"] = json!({"effort":level});
-                }
-                assert_contract_request(config, false, expected).await;
-            }
-        }
-    }
-
-    #[test]
-    fn cache_markers_preserve_system_text_and_target_stable_message_blocks() {
-        for (text, enabled, expected) in [
-            (None, true, Value::Null),
-            (Some(""), true, json!("")),
-            (Some("prompt"), false, json!("prompt")),
-            (
-                Some("prompt"),
-                true,
-                json!([{"type":"text","text":"prompt","cache_control":{"type":"ephemeral"}}]),
-            ),
-        ] {
-            assert_eq!(
-                serde_json::to_value(AnthropicChatDriver::system_prompt_for_request(
-                    text.map(str::to_owned),
-                    enabled
-                ))
-                .unwrap(),
-                expected
-            );
-        }
-        let mut first = Message::text(MessageRole::User, "");
-        first.content = MessageContent::Parts(vec![
-            LlmContentPart::Text {
-                text: "first".into(),
-            },
-            LlmContentPart::Text {
-                text: "last".into(),
-            },
-            LlmContentPart::Image {
-                url: "https://example.com/a.png".into(),
-            },
-        ]);
-        let messages = [
-            first,
-            Message::text(MessageRole::Assistant, "reply"),
-            Message::text(MessageRole::User, "question"),
-            Message::text(MessageRole::Assistant, "volatile"),
-        ];
-        for (enabled, volatile, positions) in [
-            (false, 0, vec![]),
-            (true, 0, vec![(2, 0), (3, 0)]),
-            (true, 1, vec![(1, 0), (2, 0)]),
-            (true, 2, vec![(0, 1), (1, 0)]),
-            (true, 3, vec![(0, 1)]),
-            (true, 4, vec![]),
-            (true, usize::MAX, vec![]),
-        ] {
-            let mut expected = json!([
-                {"role":"user","content":[{"type":"text","text":"first"},{"type":"text","text":"last"},{"type":"image","source":{"type":"url","url":"https://example.com/a.png"}}]},
-                {"role":"assistant","content":[{"type":"text","text":"reply"}]},
-                {"role":"user","content":[{"type":"text","text":"question"}]},
-                {"role":"assistant","content":[{"type":"text","text":"volatile"}]}
-            ]);
-            for (message, block) in positions {
-                expected[message]["content"][block]["cache_control"] = json!({"type":"ephemeral"});
-            }
-            let (_, actual) = AnthropicChatDriver::convert_messages(&messages, enabled, volatile);
-            assert_eq!(
-                serde_json::to_value(actual).unwrap(),
-                expected,
-                "enabled={enabled} volatile={volatile}"
-            );
-        }
-        let (_, empty) = AnthropicChatDriver::convert_messages(&[], true, 0);
-        assert!(empty.is_empty());
-    }
-
-    #[test]
-    fn tool_search_preserves_complete_schemas_and_cache_thresholds() {
-        let tools = [
-            contract_tool("automatic", DeferrablePolicy::Automatic),
-            contract_tool("always", DeferrablePolicy::Always),
-            contract_tool("never", DeferrablePolicy::Never),
-        ];
-        for enabled in [false, true] {
-            assert!(AnthropicChatDriver::convert_tools(&[], enabled).is_empty());
-            for threshold in [2, 3, 4] {
-                let mut expected = json!([
-                    {"name":"automatic","description":"Search records","input_schema":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}},
-                    {"name":"always","description":"Search records","input_schema":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}},
-                    {"name":"never","description":"Search records","input_schema":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}}
-                ]);
-                if threshold <= 3 {
-                    expected[0]["defer_loading"] = json!(true);
-                    expected[1]["defer_loading"] = json!(true);
-                    expected.as_array_mut().unwrap().insert(0,json!({"type":"tool_search_tool_bm25_20251119","name":"tool_search_tool_bm25"}));
-                } else if enabled {
-                    expected[2]["cache_control"] = json!({"type":"ephemeral"});
-                }
-                assert_eq!(
-                    serde_json::to_value(AnthropicChatDriver::convert_tools_with_search(
-                        &tools, threshold, enabled
-                    ))
-                    .unwrap(),
-                    expected,
-                    "threshold={threshold} cache={enabled}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn message_conversion_folds_system_text_without_losing_the_transcript() {
-        for with_system in [false, true] {
-            let mut messages = vec![Message::text(MessageRole::User, "hello")];
-            if with_system {
-                messages.insert(0, Message::text(MessageRole::System, "first instruction"));
-                messages.push(Message::text(MessageRole::System, "later summary"));
-            }
-            messages.push(Message::text(MessageRole::Assistant, "reply"));
-            let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
-            assert_eq!(
-                system.as_deref(),
-                with_system.then_some("first instruction\n\nlater summary")
-            );
-            assert_eq!(
-                serde_json::to_value(converted).unwrap(),
-                json!([
-                    {"role":"user","content":[{"type":"text","text":"hello"}]},
-                    {"role":"assistant","content":[{"type":"text","text":"reply"}]}
-                ])
-            );
-        }
-    }
-
-    #[test]
-    fn tool_exchanges_preserve_identity_and_filter_only_orphan_results() {
-        let mut assistant = Message::text(MessageRole::Assistant, "");
-        assistant.tool_calls = Some(vec![ToolCall {
-            id: "call_123".into(),
-            name: "get_weather".into(),
-            arguments: json!({"city":"London"}),
-        }]);
-        let mut valid = Message::text(MessageRole::Tool, "{\"temp\":20}");
-        valid.tool_call_id = Some("call_123".into());
-        let mut orphan = Message::text(MessageRole::Tool, "orphan result");
-        orphan.tool_call_id = Some("trimmed_call".into());
-        let missing_id = Message::text(MessageRole::Tool, "missing ID");
-        let (system, converted) = AnthropicChatDriver::convert_messages(
-            &[orphan, assistant, missing_id, valid],
-            false,
-            0,
-        );
-        assert!(system.is_none());
-        assert_eq!(
-            serde_json::to_value(converted).unwrap(),
-            json!([
-                {"role":"assistant","content":[{"type":"tool_use","id":"call_123","name":"get_weather","input":{"city":"London"}}]},
-                {"role":"user","content":[{"type":"tool_result","tool_use_id":"call_123","content":"{\"temp\":20}"}]}
-            ])
-        );
-    }
-
-    #[test]
-    fn model_family_normalization_requires_a_nonempty_base_and_eight_ascii_digits() {
-        for (input, expected) in [
-            ("claude-opus-4-5-20251101", "claude-opus-4-5"),
-            ("claude-sonnet-4-6-20260217", "claude-sonnet-4-6"),
-            ("claude-opus-4-5", "claude-opus-4-5"),
-            ("claude-sonnet-4-6", "claude-sonnet-4-6"),
-            ("claudé-opus-20251101", "claudé-opus"),
-            ("claudé-opus-experimental", "claudé-opus-experimental"),
-            ("", ""),
-            ("-20251101", "-20251101"),
-            ("claude-2025110", "claude-2025110"),
-            ("claude-202511011", "claude-202511011"),
-            ("claude-2025x101", "claude-2025x101"),
-            ("claude-２０２５１１０１", "claude-２０２５１１０１"),
-        ] {
-            assert_eq!(normalize_anthropic_id(input), expected, "{input}");
-        }
-    }
-
-    #[test]
-    fn fragmented_tool_arguments_preserve_payloads_and_handle_incomplete_json() {
-        let payload = r#"{"path":"src/main.rs","contents":"fn main() { println!(\"hello — 世界\"); }","count":1234567}"#;
-        let mut call = ToolCall {
-            id: "call".into(),
-            name: "write_file".into(),
-            arguments: json!(""),
-        };
-        for (offset, ch) in payload.char_indices() {
-            append_tool_input_delta(&mut call, &ch.to_string());
-            assert_eq!(
-                call.arguments.as_str(),
-                Some(&payload[..offset + ch.len_utf8()])
-            );
-        }
-        finalize_tool_arguments(&mut call);
-        assert_eq!(
-            serde_json::to_value(&call).unwrap(),
-            json!({
-                "id":"call","name":"write_file","arguments":{"path":"src/main.rs","contents":"fn main() { println!(\"hello — 世界\"); }","count":1234567}
-            })
-        );
-        for incomplete in ["", "{", r#"{"x":"unterminated"#] {
-            call.arguments = json!(incomplete);
-            finalize_tool_arguments(&mut call);
-            assert_eq!(call.arguments, json!({}), "{incomplete}");
-        }
-    }
-
-    // These tests verify that empty text blocks are filtered out to avoid
-    // Anthropic API error: "text content blocks must be non-empty"
-
-    #[test]
-    fn content_conversion_preserves_text_and_filters_only_empty_blocks() {
-        for text in ["", "Hello, world!", "   ", "\n\t", "héllo 世界"] {
-            let expected = if text.is_empty() {
-                json!([])
-            } else {
-                json!([{"type":"text","text":text}])
-            };
-            for content in [
-                MessageContent::Text(text.into()),
-                MessageContent::Parts(vec![
-                    LlmContentPart::Text {
-                        text: String::new(),
-                    },
-                    LlmContentPart::Text { text: text.into() },
-                    LlmContentPart::Text {
-                        text: String::new(),
-                    },
-                ]),
-            ] {
-                assert_eq!(
-                    serde_json::to_value(AnthropicChatDriver::convert_content(&content)).unwrap(),
-                    expected,
-                    "content={content:?}"
-                );
-            }
-        }
-        assert_eq!(
-            serde_json::to_value(AnthropicChatDriver::convert_content(
-                &MessageContent::Parts(vec![])
-            ))
-            .unwrap(),
-            json!([])
-        );
-    }
-
-    #[test]
-    fn content_conversion_preserves_order_and_complete_media_payloads() {
-        let content = MessageContent::Parts(vec![
-            LlmContentPart::Text {
-                text: String::new(),
-            },
-            LlmContentPart::Text {
-                text: "caption".into(),
-            },
-            LlmContentPart::Image {
-                url: "data:image/png;base64,iVBORw0KGgo=".into(),
-            },
-            LlmContentPart::Text {
-                text: String::new(),
-            },
-            LlmContentPart::Image {
-                url: "https://example.com/photo.jpg?size=large".into(),
-            },
-            LlmContentPart::Audio {
-                url: "data:audio/wav;base64,AAAA".into(),
-            },
-            LlmContentPart::Text { text: "  ".into() },
-        ]);
-        assert_eq!(
-            serde_json::to_value(AnthropicChatDriver::convert_content(&content)).unwrap(),
-            json!([
-                {"type":"text","text":"caption"},
-                {"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}},
-                {"type":"image","source":{"type":"url","url":"https://example.com/photo.jpg?size=large"}},
-                {"type":"text","text":"[Audio content not supported]"},
-                {"type":"text","text":"  "}
-            ])
-        );
-    }
-
-    #[test]
-    fn file_pdf_serializes_to_document_block() {
-        let content = MessageContent::Parts(vec![
-            LlmContentPart::Text {
-                text: "summarize".into(),
-            },
-            LlmContentPart::File {
-                url: "data:application/pdf;base64,JVBERi0=".into(),
-                filename: Some("report.pdf".into()),
-            },
-            LlmContentPart::File {
-                url: "https://example.com/report.pdf".into(),
-                filename: None,
-            },
-        ]);
-        assert_eq!(
-            serde_json::to_value(AnthropicChatDriver::convert_content(&content)).unwrap(),
-            json!([
-                {"type":"text","text":"summarize"},
-                {"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0="}},
-                {"type":"document","source":{"type":"url","url":"https://example.com/report.pdf"}},
-            ])
-        );
-    }
-
-    #[test]
-    fn test_thinking_config_serialization() {
-        // Adaptive must not carry budget_tokens (400 on Fable 5.x / Opus 4.8 /
-        // 4.7); display:"summarized" opts back into visible thinking text,
-        // which those models omit by default.
-        let adaptive = serde_json::to_value(AnthropicThinking::adaptive()).unwrap();
-        assert_eq!(
-            adaptive,
-            json!({"type": "adaptive", "display": "summarized"})
-        );
-
-        let enabled = serde_json::to_value(AnthropicThinking::Enabled {
-            budget_tokens: 4096,
-        })
-        .unwrap();
-        assert_eq!(enabled, json!({"type": "enabled", "budget_tokens": 4096}));
-    }
-
-    #[test]
-    fn test_convert_tools_strips_top_level_composition_keywords() {
-        let make_tool = |name: &str, parameters: Value| {
-            ToolDefinition::Builtin(BuiltinTool {
-                name: name.to_string(),
-                display_name: None,
-                description: "test tool".to_string(),
-                parameters,
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-                hints: ToolHints::default(),
-                full_parameters: None,
-            })
-        };
-        let tools = vec![
-            make_tool(
-                "top_level_one_of",
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "target": {
-                            "type": "object",
-                            // Nested composition is accepted by Anthropic and
-                            // must survive.
-                            "oneOf": [{"required": ["id"]}]
-                        }
-                    },
-                    "required": ["target"],
-                    "oneOf": [{"required": ["name"]}],
-                    "anyOf": [{"required": ["name"]}],
-                    "allOf": [{"required": ["name"]}]
-                }),
-            ),
-            // Degenerate caller-supplied schema: nothing but composition.
-            make_tool("bare_any_of", json!({"anyOf": [{"type": "object"}]})),
-        ];
-
-        let converted = AnthropicChatDriver::convert_tools(&tools, false);
-        let json = serde_json::to_value(&converted).unwrap();
-
-        let schema = &json[0]["input_schema"];
-        assert!(schema.get("oneOf").is_none());
-        assert!(schema.get("anyOf").is_none());
-        assert!(schema.get("allOf").is_none());
-        assert_eq!(schema["required"], json!(["target"]));
-        assert_eq!(
-            schema["properties"]["target"]["oneOf"],
-            json!([{"required": ["id"]}])
-        );
-
-        let bare = &json[1]["input_schema"];
-        assert!(bare.get("anyOf").is_none());
-        assert_eq!(bare["type"], "object");
-    }
-
-    #[test]
-    fn test_tool_result_with_images_conversion() {
-        // Tool result with text + image content
-        let msg = Message {
-            native_tool_calls: Vec::new(),
-            role: MessageRole::Tool,
-            content: MessageContent::Parts(vec![
-                LlmContentPart::Text {
-                    text: "{\"status\": \"ok\"}".to_string(),
-                },
-                LlmContentPart::Image {
-                    url: "data:image/png;base64,AAAA".to_string(),
-                },
-            ]),
-            tool_calls: None,
-            tool_call_id: Some("call_img".to_string()),
-            phase: None,
-            reasoning: Vec::new(),
-            configuration_update: None,
-        };
-
-        let assistant = Message {
-            native_tool_calls: Vec::new(),
-            role: MessageRole::Assistant,
-            content: MessageContent::Text(String::new()),
-            tool_calls: Some(vec![ToolCall {
-                id: "call_img".to_string(),
-                name: "capture".to_string(),
-                arguments: json!({}),
-            }]),
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-            configuration_update: None,
-        };
-        let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
-
-        assert_eq!(converted.len(), 2);
-        assert_eq!(converted[1].role, "user");
-        assert_eq!(converted[1].content.len(), 1);
-
-        match &converted[1].content[0] {
-            AnthropicContentBlock::ToolResult {
-                tool_use_id,
-                content,
-                ..
-            } => {
-                assert_eq!(tool_use_id, "call_img");
-                match content {
-                    AnthropicToolResultContent::Blocks(blocks) => {
-                        assert_eq!(blocks.len(), 2);
-                        match &blocks[0] {
-                            AnthropicToolResultBlock::Text { text } => {
-                                assert_eq!(text, "{\"status\": \"ok\"}");
-                            }
-                            _ => panic!("Expected text block"),
-                        }
-                        match &blocks[1] {
-                            AnthropicToolResultBlock::Image { source } => match source {
-                                AnthropicImageSource::Base64 { media_type, data } => {
-                                    assert_eq!(media_type, "image/png");
-                                    assert_eq!(data, "AAAA");
-                                }
-                                _ => panic!("Expected base64 image source"),
-                            },
-                            _ => panic!("Expected image block"),
-                        }
-                    }
-                    _ => panic!("Expected Blocks content for multimodal tool result"),
-                }
-            }
-            _ => panic!("Expected ToolResult block"),
-        }
-    }
-
-    // ========================================================================
-    // HTTP error classification
-    // ========================================================================
-
-    #[tokio::test]
-    async fn http_errors_preserve_semantic_classification_without_retrying() {
-        use everruns_provider::{Provider, StaticHeaderAuth};
-        use wiremock::matchers::{body_json, header, method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-        let mut config = LlmCallConfig::new("claude-test");
-        config.max_tokens = Some(32);
-        for (status, message, category) in [
-            (413, "Request too large", "size"),
-            (
-                400,
-                "prompt is too long: 250000 tokens > 200000 maximum",
-                "size",
-            ),
-            (400, "request size exceeded maximum", "size"),
-            (400, "too many tokens in request", "size"),
-            (401, "Invalid API key", "auth"),
-            (429, "Rate limit exceeded", "rate"),
-            (500, "Internal server error", "unavailable"),
-            (404, "not_found_error: model: claude-test", "model"),
-            (404, "Model not found", "model"),
-            (404, "Endpoint not found", "invalid"),
-            (400, "not_found_error: model: claude-test", "invalid"),
-            (500, "prompt is too long", "unavailable"),
-        ] {
-            let server = MockServer::builder().start().await;
-            let body = json!({"error":{"message":message}});
-            Mock::given(method("POST")).and(path("/v1/messages"))
-                .and(header("x-api-key","synthetic-key"))
-                .and(header("anthropic-version","2023-06-01"))
-                .and(body_json(json!({"model":"claude-test","max_tokens":32,"stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]})))
-                .respond_with(ResponseTemplate::new(status).set_body_json(body.clone())).expect(1).mount(&server).await;
-            let provider = Provider::new(
-                "test",
-                AnthropicChatDriver::new().with_retry_config(LlmRetryConfig::no_retry()),
-            )
-            .base_url(format!("{}/v1", server.uri()))
-            .auth(StaticHeaderAuth::new("x-api-key", "synthetic-key"));
-            let error = match provider
-                .chat_completion_stream(vec![Message::text(MessageRole::User, "hello")], &config)
-                .await
-            {
-                Ok(_) => panic!("expected HTTP error for {status}: {message}"),
-                Err(error) => error,
-            };
-            match category {
-                "size" => assert!(error.is_request_too_large(), "{error:?}"),
-                "model" => assert_eq!(error.model_not_available_id(), Some("claude-test")),
-                kind => {
-                    let expected = match kind {
-                        "auth" => LlmErrorKind::Authentication,
-                        "rate" => LlmErrorKind::RateLimited,
-                        "unavailable" => LlmErrorKind::Unavailable,
-                        _ => LlmErrorKind::InvalidRequest,
-                    };
-                    assert_eq!(
-                        error.llm_error_kind(),
-                        Some(expected),
-                        "{status}: {message}"
-                    );
-                    assert!(!error.is_request_too_large());
-                    assert!(!error.is_model_not_available());
-                }
-            }
-            if category != "model" {
-                assert!(error.to_string().contains(message), "{error:?}");
-            }
-            server.verify().await;
-        }
-    }
-
-    // ========================================================================
-    // Discovered profile construction tests
-    // ========================================================================
-
-    #[test]
-    fn discovered_profile_preserves_complete_catalog_metadata() {
-        let info: AnthropicModelInfo = serde_json::from_value(json!({
-            "id":"claude-sonnet-4-6-20260217", "display_name":"Claude Sonnet 4.6",
-            "created_at":"2026-02-17T00:00:00Z", "max_input_tokens":200000,
-            "max_tokens":64000
-        }))
-        .unwrap();
-        assert_eq!(
-            serde_json::to_value(info.to_discovered_profile()).unwrap(),
-            json!({
-                "name":"Claude Sonnet 4.6", "family":"claude-sonnet-4-6", "release_date":"2026-02-17",
-                "attachment":false, "reasoning":false, "temperature":true, "tool_call":true,
-                "structured_output":false, "open_weights":false,
-                "limits":{"context":200000,"output":64000},
-                "modalities":{"input":["text"],"output":["text"]},
-                "tool_search":false, "supports_phases":false
-            })
-        );
-    }
-
-    #[test]
-    fn discovered_limits_do_not_wrap_and_require_both_bounds() {
-        for (input, output, expected) in [
-            (Some(0_u32), Some(0_u32), Some((0, 0))),
-            (Some(2147483647), Some(64000), Some((2147483647, 64000))),
-            (
-                Some(2147483648),
-                Some(u32::MAX),
-                Some((2147483647, 2147483647)),
-            ),
-            (Some(u32::MAX), Some(1), Some((2147483647, 1))),
-            (None, Some(64000), None),
-            (Some(200000), None, None),
-            (None, None, None),
-        ] {
-            let info: AnthropicModelInfo = serde_json::from_value(json!({
-                "id":"claude-test", "display_name":"Test", "max_input_tokens":input, "max_tokens":output
-            })).unwrap();
-            let profile = info.to_discovered_profile();
-            assert_eq!(
-                profile.limits.map(|l| (l.context, l.output)),
-                expected,
-                "input={input:?} output={output:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn discovered_capabilities_and_effort_defaults_match_supported_choices() {
-        for capabilities in [
-            json!({"thinking":{"supported":false},"effort":{"supported":true,"high":{"supported":true}}}),
-            json!({"thinking":{"supported":true},"effort":{"supported":true}}),
-            json!({"thinking":{"supported":true},"effort":{"supported":true,"low":{"supported":false}}}),
-        ] {
-            let info: AnthropicModelInfo = serde_json::from_value(json!({
-                "id":"claude-test","display_name":"Test","capabilities":capabilities
-            }))
-            .unwrap();
-            assert!(info.to_discovered_profile().reasoning_effort.is_none());
-        }
-        for effort in [
-            Value::Null,
-            json!({"supported":false,"high":{"supported":true}}),
-        ] {
-            let info: AnthropicModelInfo = serde_json::from_value(json!({
-                "id":"claude-test","display_name":"Test","capabilities":{
-                    "thinking":{"supported":true},"effort":effort
-                }
-            }))
-            .unwrap();
-            assert_eq!(
-                serde_json::to_value(info.to_discovered_profile().reasoning_effort).unwrap(),
-                json!({
-                    "values":[
-                        {"value":"low","name":"Low (1K tokens)"},
-                        {"value":"medium","name":"Medium (4K tokens)"},
-                        {"value":"high","name":"High (16K tokens)"},
-                        {"value":"xhigh","name":"Extra High (32K tokens)"}
-                    ],"default":"medium"
-                })
-            );
-        }
-        for (image, pdf, expected) in [
-            (false, false, json!(["text"])),
-            (true, false, json!(["text", "image"])),
-            (false, true, json!(["text", "pdf"])),
-            (true, true, json!(["text", "image", "pdf"])),
-        ] {
-            let info: AnthropicModelInfo = serde_json::from_value(json!({
-                "id":"claude-test", "display_name":"Test", "capabilities":{
-                    "image_input":{"supported":image},"pdf_input":{"supported":pdf},
-                    "structured_outputs":{"supported":true}
-                }
-            }))
-            .unwrap();
-            let profile = info.to_discovered_profile();
-            assert_eq!(profile.attachment, image || pdf);
-            assert!(profile.structured_output);
-            assert_eq!(
-                serde_json::to_value(profile.modalities).unwrap(),
-                json!({"input":expected,"output":["text"]})
-            );
-            assert!(!profile.reasoning);
-            assert!(profile.reasoning_effort.is_none());
-        }
-        for adaptive in [false, true] {
-            for (levels, default) in [
-                (vec!["low"], "low"),
-                (vec!["medium"], "medium"),
-                (vec!["high"], "high"),
-                (vec!["max"], "xhigh"),
-                (
-                    vec!["low", "medium", "high", "max"],
-                    if adaptive { "high" } else { "medium" },
-                ),
-            ] {
-                let mut effort = json!({"supported":true});
-                for level in &levels {
-                    effort[*level] = json!({"supported":true});
-                }
-                let info: AnthropicModelInfo = serde_json::from_value(json!({
-                    "id":"claude-test", "display_name":"Test", "capabilities":{
-                        "thinking":{"supported":true,"types":{"adaptive":{"supported":adaptive}}},
-                        "effort":effort
-                    }
-                }))
-                .unwrap();
-                let profile = info.to_discovered_profile();
-                assert!(profile.reasoning);
-                let expected:Vec<Value>=levels.iter().map(|level|json!({
-                    "value":if *level=="max" {"xhigh"} else {level},
-                    "name":match (*level,adaptive) {
-                        ("low",true)=>"Low",("medium",true)=>"Medium",("high",true)=>"High",("max",true)=>"Max",
-                        ("low",false)=>"Low (1K tokens)",("medium",false)=>"Medium (4K tokens)",("high",false)=>"High (16K tokens)",_=>"Extra High (32K tokens)"
-                    }
-                })).collect();
-                assert_eq!(
-                    serde_json::to_value(profile.reasoning_effort).unwrap(),
-                    json!({"values":expected,"default":default}),
-                    "adaptive={adaptive} levels={levels:?}"
-                );
-            }
-        }
-    }
-}
+#[path = "driver_tests.rs"]
+mod tests;

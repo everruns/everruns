@@ -28,6 +28,7 @@
 mod caching;
 mod cards;
 pub mod elicitation;
+mod form_elicitation;
 mod tasks;
 mod tool_registry;
 
@@ -868,6 +869,7 @@ fn resource_error(resource: &str, e: CommandError) -> String {
         | CommandErrorKind::NotFound(msg)
         | CommandErrorKind::Conflict(msg)
         | CommandErrorKind::RateLimited(msg)
+        | CommandErrorKind::Unavailable(msg)
         | CommandErrorKind::Unprocessable(msg) => msg,
         CommandErrorKind::Internal(err) => format!("Failed to list {resource}: {err}"),
     }
@@ -997,6 +999,8 @@ async fn handle_tools_call(
     // carries the per-request `_meta` opt-in, so we evaluate it here.
     let tasks_enabled = tasks::tasks_enabled(protocol_version, &params);
 
+    let ask_user_capable = form_elicitation::client_can_answer_questions(&params, protocol_version);
+
     let tool_name = match params.get("name").and_then(|v| v.as_str()) {
         Some(name) => name,
         None => return JsonRpcResponse::invalid_params(id, "Missing 'name' in params"),
@@ -1021,7 +1025,7 @@ async fn handle_tools_call(
     // Everruns renders, so the credential never passes through the client or
     // the model. See `elicitation`.
     if matches!(tool_name, "session_set_secret" | "connect") {
-        return handle_elicited_tool(
+        return elicitation::handle_elicited_tool(
             id,
             tool_name,
             &params,
@@ -1032,6 +1036,23 @@ async fn handle_tools_call(
             protocol_version,
         )
         .await;
+    }
+
+    // A parked `ask_user` question set is served to a capable client as a form
+    // mode elicitation, and answered on the retry. See `form_elicitation`.
+    if tool_name == "session_get_status"
+        && let Some(response) = form_elicitation::ask_user_form_elicitation(
+            &id,
+            &params,
+            &arguments,
+            auth_user,
+            org,
+            state,
+            protocol_version,
+        )
+        .await
+    {
+        return response;
     }
 
     // Card tools return an MCP content array directly (resource + summary
@@ -1069,7 +1090,7 @@ async fn handle_tools_call(
                 // Tier 1: agent conversation (org-scoped — accept organization_id override)
                 "agent_run" => {
                     match resolve_org_override(&arguments, auth_user, org, state).await {
-                        Ok(org) => tool_agent_run(&arguments, &org, state).await,
+                        Ok(org) => tool_agent_run(&arguments, &org, state, ask_user_capable).await,
                         Err(e) => Err(e),
                     }
                 }
@@ -1173,209 +1194,6 @@ fn augment_with_task_handle(result: &mut Value, content: &str) {
 //
 // A task handle is a `session_id`; each method delegates to the session logic
 // the equivalent tool already uses. See `tasks.rs` for the mapping rationale.
-
-/// Serve a tool whose answer may be a URL mode elicitation
-/// (`session_set_secret`, `connect`).
-///
-/// The flow is the same for both, and is driven entirely by the request — the
-/// endpoint stores nothing between rounds:
-///
-/// 1. If the thing already exists (the secret is stored, the connection is
-///    live), answer normally. A retry after a completed interaction lands here,
-///    which is how the client learns it worked.
-/// 2. If the client echoed a `requestState`, verify it — MRTR treats it as
-///    attacker-controlled input — and honor a `decline`/`cancel` as a real
-///    answer rather than asking again.
-/// 3. Otherwise elicit: mint a signed intent token, and hand back the URL of
-///    the page that collects it. A client that never declared URL mode
-///    elicitation gets `MissingRequiredClientCapability` instead, because the
-///    only other way to serve the call would be to ask it for the credential.
-#[allow(clippy::too_many_arguments)]
-async fn handle_elicited_tool(
-    id: Option<Value>,
-    tool_name: &str,
-    params: &Value,
-    arguments: &Value,
-    auth_user: &AuthUser,
-    org: &ResolvedOrg,
-    state: &AppState,
-    protocol_version: &str,
-) -> JsonRpcResponse {
-    if !tool_registry::supports_url_elicitation(protocol_version) {
-        return JsonRpcResponse::method_not_found(id);
-    }
-    let Some(base_url) = state.elicitation_base_url.clone() else {
-        let msg = "URL elicitation is not configured on this deployment";
-        return JsonRpcResponse::success(id, error_result_payload(msg, None));
-    };
-    let org = match resolve_org_override(arguments, auth_user, org, state).await {
-        Ok(org) => org,
-        Err(e) => return JsonRpcResponse::invalid_params(id, e),
-    };
-    let intent = match elicitation_intent(tool_name, arguments) {
-        Ok(intent) => intent,
-        Err(e) => return JsonRpcResponse::invalid_params(id, e),
-    };
-
-    match elicitation_satisfied(&intent, auth_user, &org, state).await {
-        Ok(true) => return JsonRpcResponse::success(id, satisfied_payload(&intent)),
-        Ok(false) => {}
-        Err(msg) => {
-            let envelope = classify_mcp_execute_error(&msg);
-            return JsonRpcResponse::success(id, error_result_payload(&msg, Some(&envelope)));
-        }
-    }
-
-    let signing_secret = state.auth.config.jwt.secret.clone();
-    if let Some(request_state) = elicitation::request_state(params) {
-        let verified = elicitation::verify_token(
-            request_state,
-            &signing_secret,
-            auth_user.id,
-            chrono::Utc::now().timestamp(),
-        );
-        match verified {
-            // Only an answer to *this* elicitation counts. State for another
-            // intent is stale, not fatal: fall through and elicit afresh.
-            Ok(token) if token.intent == intent => {
-                if elicitation::accepted(params, intent.request_key()) == Some(false) {
-                    return JsonRpcResponse::success(id, declined_payload(&intent));
-                }
-            }
-            Ok(_) => {}
-            Err(error) => {
-                return JsonRpcResponse::invalid_params(id, error.message());
-            }
-        }
-    }
-
-    if !elicitation::client_supports_url_elicitation(params) {
-        let mut response = JsonRpcResponse::error(
-            id,
-            elicitation::MISSING_CAPABILITY_ERROR_CODE,
-            "This tool collects a credential, which requires URL mode elicitation. \
-             Declare elicitation.url in clientCapabilities, or have the user set the \
-             value in the Everruns web app.",
-        );
-        if let Some(error) = response.error.as_mut() {
-            error.data = Some(elicitation::missing_capability_data());
-        }
-        return response;
-    }
-
-    let token = elicitation::ElicitationToken::new(
-        auth_user.id,
-        org.public_id.clone(),
-        intent.clone(),
-        chrono::Utc::now().timestamp(),
-    );
-    let signed = elicitation::sign_token(&token, &signing_secret);
-    let url = elicitation::elicitation_url(&base_url, &intent, &signed);
-    tracing::info!(
-        mcp.tool = %tool_name,
-        org.id = %org.public_id,
-        "MCP URL elicitation issued"
-    );
-    JsonRpcResponse::success(
-        id,
-        elicitation::url_elicitation_result(&intent, &url, &signed),
-    )
-}
-
-/// Read the intent out of a tool call's arguments. Neither tool has a parameter
-/// that could carry a credential — that is the point — so this only names the
-/// subject.
-fn elicitation_intent(
-    tool_name: &str,
-    arguments: &Value,
-) -> Result<elicitation::ElicitationIntent, String> {
-    let string_arg = |key: &str| {
-        arguments
-            .get(key)
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-            .ok_or_else(|| format!("Missing '{key}' in arguments"))
-    };
-    match tool_name {
-        "session_set_secret" => Ok(elicitation::ElicitationIntent::SessionSecret {
-            session_id: string_arg("session_id")?,
-            name: string_arg("name")?,
-        }),
-        "connect" => Ok(elicitation::ElicitationIntent::Connect {
-            provider: string_arg("provider")?,
-        }),
-        other => Err(format!("Unknown tool: {other}")),
-    }
-}
-
-/// Is the thing the elicitation would collect already in place?
-async fn elicitation_satisfied(
-    intent: &elicitation::ElicitationIntent,
-    auth_user: &AuthUser,
-    org: &ResolvedOrg,
-    state: &AppState,
-) -> Result<bool, String> {
-    match intent {
-        elicitation::ElicitationIntent::SessionSecret { session_id, name } => {
-            let secrets = crate::domains::session_storage::ListSessionSecrets {
-                session_id: session_id.clone(),
-            }
-            .run(&mcp_ctx(org, state))
-            .await
-            .map_err(|e| e.to_string())?;
-            Ok(secrets.iter().any(|secret| &secret.name == name))
-        }
-        elicitation::ElicitationIntent::Connect { provider } => {
-            // The connection belongs to the authenticated user, not the org:
-            // it is that person's authorization at the third party.
-            let connection = state
-                .db
-                .get_user_connection(auth_user.id, provider)
-                .await
-                .map_err(|e| format!("Failed to check connection: {e}"))?;
-            Ok(connection.is_some())
-        }
-    }
-}
-
-/// Structured result for an intent that is already satisfied.
-fn satisfied_payload(intent: &elicitation::ElicitationIntent) -> Value {
-    let structured = match intent {
-        elicitation::ElicitationIntent::SessionSecret { session_id, name } => json!({
-            "name": name,
-            "session_id": session_id,
-            "stored": true,
-            "message": format!("Secret '{name}' is stored for session {session_id}."),
-        }),
-        elicitation::ElicitationIntent::Connect { provider } => json!({
-            "provider": provider,
-            "connected": true,
-            "message": format!("'{provider}' is connected for this user."),
-        }),
-    };
-    json_result_payload(&structured)
-}
-
-/// Structured result for an elicitation the user turned down. Not an error:
-/// the model should tell the user nothing was stored, not retry.
-fn declined_payload(intent: &elicitation::ElicitationIntent) -> Value {
-    let structured = match intent {
-        elicitation::ElicitationIntent::SessionSecret { session_id, name } => json!({
-            "name": name,
-            "session_id": session_id,
-            "stored": false,
-            "message": "The user declined to open the secure form, so nothing was stored.",
-        }),
-        elicitation::ElicitationIntent::Connect { provider } => json!({
-            "provider": provider,
-            "connected": false,
-            "message": "The user declined to open the connection page, so nothing was connected.",
-        }),
-    };
-    json_result_payload(&structured)
-}
 
 async fn handle_tasks_method(
     method: &str,
@@ -1778,18 +1596,22 @@ async fn tool_agent_run(
     args: &Value,
     org: &ResolvedOrg,
     state: &AppState,
+    ask_user_capable: bool,
 ) -> Result<String, String> {
     let message_text = args
         .get("message")
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: message")?;
 
-    let session_params = json!({
+    let mut session_params = json!({
         "agent_id": args.get("agent_id"),
         "harness_id": args.get("harness_id"),
         "title": args.get("title"),
         "model_id": args.get("model_id"),
     });
+    if ask_user_capable {
+        session_params["hints"] = form_elicitation::ask_user_pause_hint();
+    }
     let session = dispatch_command("create_session", session_params, org, state).await?;
     let session_id = session["id"]
         .as_str()

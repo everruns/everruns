@@ -12,7 +12,7 @@ tags:
 # Secret-leak guardrails
 
 Status: active design. The model-backed `llm_judge` preset ships. A dedicated
-secret-leak classifier, output-stage semantic checks, and deterministic
+secret-leak decisions, output-stage semantic checks, and deterministic
 known-value redaction remain proposed.
 
 ## The scenario
@@ -28,11 +28,11 @@ verify propagation. Two guardrail behaviors are visible:
 ## What kind of guardrail this is
 
 The guardrail in the screenshot is almost certainly **model-backed**: a
-classifier or LLM judge, **not** a match against a pre-known secret value. It
+decisions or LLM judge, **not** a match against a pre-known secret value. It
 did not need the `clientSecret` enrolled ahead of time; it recognized
 *semantically* that the command was about to print credential material, then
 recognized the hash-only retry as safe. Generic secret detection with no prior
-knowledge of the value is exactly what a judge/classifier is for, and what a
+knowledge of the value is exactly what a judge/decisions is for, and what a
 substring or regex matcher structurally cannot do.
 
 This reframes the everruns answer. There are two families of check, and the
@@ -50,7 +50,7 @@ check on the `tool_use` stage reproduces the screenshot end-to-end today:
 dynamic, value-agnostic, block-and-feed-reason-back so the model self-corrects.
 Full parity needs one thing everruns hasn't enabled yet (judge on the `output`
 stage, EVE-572) and benefits from one new thing (a dedicated, cheaper
-secret-leak classifier). A deterministic known-value redactor is a valuable
+secret-leak decisions). A deterministic known-value redactor is a valuable
 *complementary* layer, not the primary mechanism.
 
 ## The faithful match: `llm_judge` on `tool_use` (already shipped)
@@ -97,18 +97,18 @@ secret before it reaches context.
 - **`output` stage not yet enabled.** Today only `moderation` runs on `output`
   (the end-of-message boundary, EVE-573); `llm_judge`/`mcp` on `output` is tracked in
   EVE-572. So the prose-echo case ("model writes the secret in its answer") needs
-  either EVE-572 or a `moderation`-style classifier on `output`.
+  either EVE-572 or a `moderation`-style decisions on `output`.
 
-## A better fit for the hot/common case: a dedicated secret-leak classifier
+## A better fit for the hot/common case: a dedicated secret-leak decisions
 
 A general LLM judge on *every* tool call is heavy. The screenshot's guardrail is
-more plausibly a **narrow, cheap classifier** (as Claude Code likely uses),
+more plausibly a **narrow, cheap decisions** (as Claude Code likely uses),
 analogous to everruns' existing `moderation` check, which already runs the
-utility LLM "acting as a content classifier" with a fixed
+utility LLM "acting as a content decisions" with a fixed
 `MODERATION_SYSTEM_PROMPT` and a category/threshold verdict. The natural
 addition:
 
-- A `secret_leak` classifier check (a sibling of `moderation`) with a fixed
+- A `secret_leak` decisions check (a sibling of `moderation`) with a fixed
   system prompt tuned for one job, "does this content reveal secret/credential
   material in cleartext?", returning a score/threshold verdict. Cheaper and more
   consistent than an open-ended judge prompt, and enable-able on `output`,
@@ -141,28 +141,28 @@ The two layers cover each other's weaknesses:
 
 | Layer | Catches | Fails | Cost |
 |---|---|---|---|
-| `llm_judge` / `secret_leak` classifier (model-backed) | *unknown* secrets, by shape/intent, the screenshot | open | utility-LLM round trip |
+| `llm_judge` / `secret_leak` decisions (model-backed) | *unknown* secrets, by shape/intent, the screenshot | open | utility-LLM round trip |
 | `SecretValues` redactor (deterministic) | *known/enrolled* values, exactly | closed | in-process, ~free |
 
-Run both: the classifier is the dynamic front line (reproduces the screenshot),
+Run both: the decisions is the dynamic front line (reproduces the screenshot),
 the deterministic redactor is the exact, fail-closed net for values the platform
 already holds. Advisory mode + dry-run
-(`POST /v1/capabilities/guardrails/dry-run`) tune the classifier's false
+(`POST /v1/capabilities/guardrails/dry-run`) tune the decisions's false
 positives before it goes active.
 
 ## Honest limits
 
-- **Model-backed checks fail open.** A judge/classifier outage degrades to no
+- **Model-backed checks fail open.** A judge/decisions outage degrades to no
   protection. The deterministic layer is the fail-closed complement, but only for
   known values.
 - **Encoding evades the deterministic layer.** base64/URL-encoding/hashing a
   secret defeats substring matching; `normalize` covers whitespace/case only. The
-  classifier is more robust here but still probabilistic. The model's hash-compare
+  decisions is more robust here but still probabilistic. The model's hash-compare
   self-correction is the *right* pattern precisely because it emits no value in
   any encoding.
 - **Self-correction is not guaranteed.** Feeding the reason back usually yields a
   compliant retry; per-turn tool-call limits bound loops.
-- **`output`-stage semantic checks are gated on EVE-572** (or a new classifier);
+- **`output`-stage semantic checks are gated on EVE-572** (or a new decisions);
   today only `moderation` runs on `output`.
 
 ## Phasing
@@ -171,12 +171,12 @@ positives before it goes active.
    `tool_use` + `tool_output` (`guardrail_gallery.rs`). Reproduces the screenshot
    for tool calls today; the gallery's `data_egress` is now derived from check
    types (`utility_llm` for model-backed presets). Run advisory-first to tune.
-2. **Dedicated `secret_leak` classifier** (a `moderation` sibling), enable-able on
+2. **Dedicated `secret_leak` decisions** (a `moderation` sibling), enable-able on
    all three stages, cheaper, more consistent, and covers prose echo on `output`.
 3. **Deterministic `SecretValues` redactor** + `redact` action, sourced from
    `secret_store`, as the fail-closed exact layer.
 4. **EVE-572** (`llm_judge`/`mcp` on `output`) if an open-ended judge is wanted on
-   prose output rather than the fixed classifier.
+   prose output rather than the fixed decisions.
 
 Phase 1 is configuration-only and reproduces the screenshot's tool-call behavior
 immediately; phases 2–3 add coverage and a fail-closed backstop.

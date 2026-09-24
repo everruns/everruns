@@ -1,19 +1,19 @@
-version: 0.29.0
-date: 2026-09-18
+version: 0.31.0
+date: 2026-09-24
 headline:
-  - One command line,
-  - Platform Chat v2.
+  - Ask User,
+  - everywhere.
 summary:
-  - A unified command line serves people and agents,
-  - soft approval ships on by default,
-  - and typed judgments back a new guardrail engine.
+  - Ask User reaches agents over MCP and A2A,
+  - always-thinking models stay reliable,
+  - and the server holds up under load.
 highlights:
-  - title: Platform Chat v2
-    description: One command line serves people and agents, with Platform Chat rebuilt on it.
-    source: "#3680"
-  - title: Soft approval
-    description: A soft-approval capability, on by default for Generic and Platform Chat.
-    source: "#3655"
-  - title: Typed judgments and guardrails
-    description: Typed judgments become a capability backing a guardrail engine.
-    source: "#3644"
+  - title: Ask User over MCP and A2A
+    description: The Ask User capability now reaches agents over MCP form-mode elicitation and inbound A2A.
+    source: "#3781"
+  - title: Always-thinking reliability
+    description: Always-thinking models no longer return 400s or empty answers.
+    source: "#3782"
+  - title: Server resilience under load
+    description: Background sweeps get their own database pool; the server returns 503 on pool exhaustion.
+    source: "#3788"

@@ -10,7 +10,7 @@ use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::deployment::DeploymentGrade;
 use everruns_host::DirectEgressService;
 use everruns_host::{HostComposition, SystemUtilityLlmConfig};
-use everruns_integrations_typesafe::SystemClassifierConfig;
+use everruns_integrations_typesafe::SystemDecisionsConfig;
 use everruns_platform::BuiltInHarnessDefinition;
 use everruns_platform::connector::ConnectorRegistry;
 use everruns_platform::email::{EmailSender, SystemEmailConfig};
@@ -43,10 +43,10 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
     // paths.
     let egress_service = Arc::new(DirectEgressService::for_runtime_traffic_from_env());
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
-    // Deployment-owned typed-classifier (UTILITY_TYPESAFE_API_KEY).
+    // Deployment-owned typed-decisions (UTILITY_TYPESAFE_API_KEY).
     // Absent key = disabled service; guardrail checks configured for it then
     // fail open, the same contract as a missing utility model.
-    let classifier = SystemClassifierConfig::from_env().into_service();
+    let decisions = SystemDecisionsConfig::from_env().into_service();
 
     // EVE-879: the connector registry and system email sender are hosted
     // control-plane services, composed on `ServerAppBuilder` (see
@@ -57,7 +57,7 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
         .driver_registry(driver_registry)
         .egress_service(egress_service)
         .utility_llm_service(utility_llm_service)
-        .classifier(classifier)
+        .decisions(decisions)
         .session_file_system_factory(Arc::new(
             crate::domains::session_files::StorageSessionFileSystemFactory,
         ));
@@ -149,13 +149,13 @@ mod tests {
     use super::*;
 
     /// The wiring a full-stack run would exercise: the OSS composition a server
-    /// actually builds carries a classifier, and it is the disabled one
+    /// actually builds carries a decisions, and it is the disabled one
     /// unless the deployment configured a key. A composition that silently
     /// carried no service would make every `jev` guardrail check a no-op.
     #[test]
     fn oss_composition_carries_a_classifier() {
         let composition = oss_host_composition_for_grade(DeploymentGrade::Dev);
-        let service = composition.classifier();
+        let service = composition.decisions();
         // Process env decides which one; both are valid, a missing service is not.
         let configured =
             std::env::var(everruns_integrations_typesafe::UTILITY_TYPESAFE_API_KEY_ENV)
@@ -163,7 +163,7 @@ mod tests {
         assert_eq!(
             service.is_configured(),
             configured,
-            "classifier configuration must follow {}",
+            "decisions configuration must follow {}",
             everruns_integrations_typesafe::UTILITY_TYPESAFE_API_KEY_ENV
         );
         assert_eq!(
@@ -171,7 +171,7 @@ mod tests {
             if configured {
                 "TypeSafeAI"
             } else {
-                "DisabledClassifierService"
+                "DisabledDecisionsService"
             }
         );
     }

@@ -1573,6 +1573,7 @@ message CommandError {
         KIND_NOT_FOUND = 3;
         KIND_CONFLICT = 4;
         KIND_INTERNAL = 5;
+        KIND_UNAVAILABLE = 6;
     }
 
     Kind kind = 1;

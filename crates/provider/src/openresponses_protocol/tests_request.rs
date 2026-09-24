@@ -366,7 +366,7 @@ fn test_build_input_concatenates_multiple_system_messages() {
         Message::text(MessageRole::User, "Hello"),
         Message::text(
             MessageRole::System,
-            "[IMPORTANT: 3 earlier messages are NOT visible in this context.]",
+            "[3 earlier messages are not in this context.]",
         ),
     ];
 
@@ -375,7 +375,7 @@ fn test_build_input_concatenates_multiple_system_messages() {
     assert_eq!(
         instructions,
         Some(
-            "You are a helpful assistant\n\n[IMPORTANT: 3 earlier messages are NOT visible in this context.]"
+            "You are a helpful assistant\n\n[3 earlier messages are not in this context.]"
                 .to_string()
         )
     );

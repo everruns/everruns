@@ -20,7 +20,7 @@ use everruns::{Agent, BashkitShell, BuildError, Model, WorkspacePolicy};
 /// and the supervisor is meant to be cheaper still: a worker nobody can afford
 /// to run often is a poor subject for an experiment about watching one.
 pub const WORKER_MODEL: &str = "meta/muse-spark-1.3-contributor";
-/// The supervising classifier's model.
+/// The supervising decisions's model.
 pub const FOREMAN_MODEL: &str = "jev-latest";
 
 /// A worker that edits the repository.

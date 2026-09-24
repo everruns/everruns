@@ -4,6 +4,7 @@ pub mod commands;
 pub mod limits;
 #[cfg(test)]
 mod list_filters_tests;
+pub(crate) mod platform_chat_starter;
 pub mod queries;
 pub mod service;
 pub mod types;

@@ -134,7 +134,7 @@ fn message_has_visible_content(message: &RuntimeMessage) -> bool {
         ContentPart::ToolCall(_) | ContentPart::ToolResult(_) => true,
         // Reasoning is never user-visible content on its own: a message
         // carrying only reasoning has nothing to show and nothing to act on.
-        ContentPart::Reasoning(_) => false,
+        ContentPart::Reasoning(_) | ContentPart::ProviderOpaque(_) => false,
     })
 }
 

@@ -28,7 +28,7 @@ same kind of error-recovery hook.
 
 ## How It Works
 
-1. **Classification**: The provider error is classified as
+1. **Decision**: The provider error is classified as
    `provider_usage_limit_reached`, which captures the absolute reset time
    (`resets_at`, unix seconds) reported by the provider. This is
    driver-agnostic: any driver whose error body carries the `usage_limit_reached`

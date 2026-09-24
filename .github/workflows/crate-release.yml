@@ -57,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' > release-plan.json
-          import json, subprocess, sys, urllib.request, urllib.error
+          import json, os, subprocess, sys, urllib.request, urllib.error
 
           def index_path(name: str) -> str:
               n = name.lower()
@@ -103,18 +103,74 @@ jobs:
           # from `publish = false` mid-cycle. Defer it to the next platform
           # version, where every crate publishes from one commit again.
           #
-          # Scoped to never-published crates so a re-run can still finish a
-          # partially published cascade: an existing crate resuming at the
-          # version being cut is the normal case, not this one. The cost is that
-          # a new crate added in a release whose cascade then fails ships one
-          # release later instead; a deferred crate is named below either way.
-          if any(pkg["version"] in existing[name] for name, pkg in published.items()):
-              for name in sorted(n for n in to_release if not existing[n]):
+          # "Already cut" means cut at some *earlier* commit, which is not the
+          # same question as "is any sibling already at this version". Every
+          # publish is anchored by a crate/<name>/v<version> tag, so a sibling
+          # at this version whose tag names this same commit is proof the cut is
+          # ours: an earlier attempt of this very cascade published it from this
+          # tree, and a new crate joining it compiles against fresh source.
+          #
+          # Asking the weaker question read a resumed cascade as a late join: on
+          # the v0.30.0 re-run the siblings published by attempt 1 made every
+          # never-published crate look late, so everruns-integrations-openrouter
+          # was deferred and everruns-platform -- still in the plan, still
+          # pinning it at 0.30.0 -- could not resolve it and failed to package.
+          head = os.environ.get("GITHUB_SHA", "")
+
+          def release_tag_commit(name: str, version: str) -> str:
+              """Commit that crate/<name>/v<version> anchors, or "" if untagged."""
+              try:
+                  return subprocess.check_output(
+                      ["git", "rev-list", "-n", "1", f"crate/{name}/v{version}^{{commit}}"],
+                      text=True,
+                      stderr=subprocess.DEVNULL,
+                  ).strip()
+              except subprocess.CalledProcessError:
+                  return ""
+
+          # Absent a tag, or absent GITHUB_SHA, provenance cannot be established
+          # and the conservative reading -- cut earlier -- is the one that holds.
+          cut_earlier = any(
+              pkg["version"] in existing[name]
+              and not (head and release_tag_commit(name, pkg["version"]) == head)
+              for name, pkg in published.items()
+          )
+
+          if cut_earlier:
+              deferred = {n for n in to_release if not existing[n]}
+              for name in sorted(deferred):
                   print(
                       f"::notice::{name} {to_release[name]} is new and this platform "
                       f"version is already cut; it joins the next one",
                       file=sys.stderr,
                   )
+
+              # A deferral has to carry across dependency edges. A dependant pins
+              # the deferred crate at exactly this version, so `cargo package`
+              # cannot resolve it from the index; leaving it in the plan only
+              # tags it and then halts the cascade on a failure decided here.
+              while True:
+                  stranded = sorted(
+                      name
+                      for name in to_release
+                      if name not in deferred
+                      and any(
+                          dep["name"] in deferred
+                          for dep in published[name]["dependencies"]
+                          if dep.get("kind") in (None, "normal", "build")
+                      )
+                  )
+                  if not stranded:
+                      break
+                  for name in stranded:
+                      print(
+                          f"::notice::{name} {to_release[name]} pins a crate held back "
+                          f"to the next platform version; it joins that one too",
+                          file=sys.stderr,
+                      )
+                  deferred.update(stranded)
+
+              for name in deferred:
                   del to_release[name]
 
           # Topologically sort the release set so dependencies publish first.

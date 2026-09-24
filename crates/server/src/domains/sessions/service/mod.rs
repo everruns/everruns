@@ -6,6 +6,7 @@
 // to the session filesystem. Session capabilities are applied after agent capabilities
 // (additive behavior).
 
+use super::platform_chat_starter::PLATFORM_CHAT_STARTER_TAG;
 use super::types::{SessionFacetCount, SessionFacetsResponse};
 use crate::api::common::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
@@ -83,7 +84,7 @@ const RESERVED_SESSION_TAG_PREFIXES: &[&str] = &[
 ];
 const RESERVED_SESSION_TAG_ERROR: &str = "Tags with '__internal:', 'app:', 'app_channel:', \
     'slack:app:', 'slack:endpoint:', 'fcp:endpoint:', 'ag_ui:app:', 'agent:', or 'endpoint:' \
-    prefixes are reserved for internal subsystems";
+    prefixes, or the 'platform-chat-starter' tag, are reserved for internal subsystems";
 
 /// Policy: View sessions (read-only).
 pub const SESSION_VIEW: Policy = Policy {

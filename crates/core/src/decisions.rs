@@ -1,6 +1,6 @@
-//! System classifier.
+//! System decisions.
 //!
-//! A classifier answers *typed questions* about state: a probability, a
+//! A decisions answers *typed questions* about state: a probability, a
 //! selected option, a graded level. Unlike [`crate::UtilityLlmService`], which
 //! returns text a caller has to parse, this returns values the caller can act
 //! on, so a malformed answer is not a failure mode a call site has to defend
@@ -24,7 +24,7 @@ use crate::{AgentLoopError, Result};
 
 /// One typed question.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ClassificationQuestion {
+pub enum DecisionQuestion {
     /// Whether a condition holds, answered as the probability of yes.
     Noul {
         /// The yes/no question.
@@ -50,7 +50,7 @@ pub enum ClassificationQuestion {
     },
 }
 
-impl ClassificationQuestion {
+impl DecisionQuestion {
     /// A yes/no question with no explicit criteria.
     pub fn noul(instructions: impl Into<String>) -> Self {
         Self::Noul {
@@ -90,12 +90,12 @@ impl ClassificationQuestion {
 /// See `knowledge/framework/api-stability.md`.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
-pub struct ClassificationRequest {
+pub struct DecisionRequest {
     /// The content being classified: text, or structured data.
     pub state: serde_json::Value,
     /// Questions keyed by caller-chosen ids, in insertion order. Ids are for
     /// the caller's code and are never sent to the model.
-    pub questions: Vec<(String, ClassificationQuestion)>,
+    pub questions: Vec<(String, DecisionQuestion)>,
     /// Which model to ask, when the caller wants one in particular.
     ///
     /// `None` leaves the choice to the service, which uses its own default.
@@ -107,7 +107,7 @@ pub struct ClassificationRequest {
     pub metadata: HashMap<String, String>,
 }
 
-impl ClassificationRequest {
+impl DecisionRequest {
     /// Start a request over `state`.
     pub fn new(state: impl Into<serde_json::Value>) -> Self {
         Self {
@@ -119,7 +119,7 @@ impl ClassificationRequest {
     }
 
     /// Add a question under `id`.
-    pub fn ask(mut self, id: impl Into<String>, question: ClassificationQuestion) -> Self {
+    pub fn ask(mut self, id: impl Into<String>, question: DecisionQuestion) -> Self {
         self.questions.push((id.into(), question));
         self
     }
@@ -149,7 +149,7 @@ impl ClassificationRequest {
 
 /// One typed answer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ClassificationAnswer {
+pub enum DecisionAnswer {
     /// Probability that the answer is yes, 0..=1.
     ///
     /// A value near 0.5 means yes and no are near-equally likely — not medium
@@ -178,7 +178,7 @@ pub enum ClassificationAnswer {
     },
 }
 
-impl ClassificationAnswer {
+impl DecisionAnswer {
     /// The primitive name, for logs and metrics.
     pub fn kind(&self) -> &'static str {
         match self {
@@ -225,7 +225,7 @@ impl ClassificationAnswer {
 
 /// Token usage for one request.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ClassificationUsage {
+pub struct DecisionUsage {
     /// Tokens consumed by state and questions.
     pub input_tokens: u64,
     /// Tokens produced by the model.
@@ -234,55 +234,55 @@ pub struct ClassificationUsage {
 
 /// The result of one evaluation.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct ClassificationOutcome {
+pub struct DecisionOutcome {
     /// The model that answered, as the service resolved it.
     pub model: String,
     /// One answer per question id.
-    pub answers: BTreeMap<String, ClassificationAnswer>,
+    pub answers: BTreeMap<String, DecisionAnswer>,
     /// Token usage for the request.
-    pub usage: ClassificationUsage,
+    pub usage: DecisionUsage,
 }
 
-impl ClassificationOutcome {
+impl DecisionOutcome {
     /// The answer under `id`, if present.
-    pub fn get(&self, id: &str) -> Option<&ClassificationAnswer> {
+    pub fn get(&self, id: &str) -> Option<&DecisionAnswer> {
         self.answers.get(id)
     }
 }
 
 /// Host-owned service answering typed questions.
 #[async_trait]
-pub trait ClassifierService: Send + Sync {
+pub trait DecisionsService: Send + Sync {
     /// Whether the deployment configured a real service.
     fn is_configured(&self) -> bool;
 
     /// Answer every question in `request` over its state.
-    async fn evaluate(&self, request: ClassificationRequest) -> Result<ClassificationOutcome>;
+    async fn evaluate(&self, request: DecisionRequest) -> Result<DecisionOutcome>;
 
     /// Implementation name, for logs.
     fn name(&self) -> &'static str {
-        "ClassifierService"
+        "DecisionsService"
     }
 }
 
-/// The service a deployment gets when no classifier is configured.
+/// The service a deployment gets when no decisions is configured.
 #[derive(Debug, Clone, Default)]
-pub struct DisabledClassifierService;
+pub struct DisabledDecisionsService;
 
 #[async_trait]
-impl ClassifierService for DisabledClassifierService {
+impl DecisionsService for DisabledDecisionsService {
     fn is_configured(&self) -> bool {
         false
     }
 
-    async fn evaluate(&self, _request: ClassificationRequest) -> Result<ClassificationOutcome> {
+    async fn evaluate(&self, _request: DecisionRequest) -> Result<DecisionOutcome> {
         Err(AgentLoopError::llm(
-            "classifier is disabled (no UTILITY_TYPESAFE_API_KEY configured)",
+            "decisions is disabled (no UTILITY_TYPESAFE_API_KEY configured)",
         ))
     }
 
     fn name(&self) -> &'static str {
-        "DisabledClassifierService"
+        "DisabledDecisionsService"
     }
 }
 
@@ -292,13 +292,10 @@ mod tests {
 
     #[tokio::test]
     async fn disabled_service_reports_itself_and_rejects_requests() {
-        let service = DisabledClassifierService;
+        let service = DisabledDecisionsService;
         assert!(!service.is_configured());
         let error = service
-            .evaluate(
-                ClassificationRequest::new("anything")
-                    .ask("q", ClassificationQuestion::noul("Yes?")),
-            )
+            .evaluate(DecisionRequest::new("anything").ask("q", DecisionQuestion::noul("Yes?")))
             .await
             .unwrap_err();
         assert!(
@@ -309,9 +306,9 @@ mod tests {
 
     #[test]
     fn requests_keep_question_order_and_carry_metadata() {
-        let request = ClassificationRequest::new(serde_json::json!({"text": "hi"}))
-            .ask("second", ClassificationQuestion::noul("b"))
-            .ask("first", ClassificationQuestion::score("a", ["low", "high"]))
+        let request = DecisionRequest::new(serde_json::json!({"text": "hi"}))
+            .ask("second", DecisionQuestion::noul("b"))
+            .ask("first", DecisionQuestion::score("a", ["low", "high"]))
             .with_metadata("purpose", "guardrails");
         assert_eq!(request.len(), 2);
         assert_eq!(request.questions[0].0, "second");
@@ -323,7 +320,7 @@ mod tests {
     #[test]
     fn score_tail_mass_is_read_from_the_distribution_not_the_mean() {
         // Probably fine, possibly severe: the mean says 0.6, the tail says 30%.
-        let answer = ClassificationAnswer::Score {
+        let answer = DecisionAnswer::Score {
             score: 0.6,
             probabilities: BTreeMap::from([(0, 0.7), (1, 0.0), (2, 0.3)]),
             confidence: 0.4,
@@ -336,7 +333,7 @@ mod tests {
 
     #[test]
     fn noul_answers_have_no_separate_confidence() {
-        let answer = ClassificationAnswer::Noul { probability: 0.92 };
+        let answer = DecisionAnswer::Noul { probability: 0.92 };
         assert_eq!(answer.probability_yes(), Some(0.92));
         assert_eq!(answer.confidence(), None);
         assert_eq!(answer.probability_at_or_above(1), None);

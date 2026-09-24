@@ -14,6 +14,7 @@
 // - POST   /fs/_/move - Move/rename file
 // - POST   /fs/_/copy - Copy file
 // - POST   /fs/_/grep - Search files
+// - POST   /fs/_/search - Search files with context and paging
 // - POST   /fs/_/stat - Get file metadata
 // - GET    /fs/_/download/*path - Download raw file bytes
 //
@@ -24,8 +25,8 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, CommandError, CommandErrorKind, Ctx};
 use crate::domains::session_files::{
     CopyWorkspaceFile, CreateWorkspaceFile, DeleteWorkspaceFile, GetWorkspaceFile,
-    GrepWorkspaceFiles, ListWorkspaceFiles, MoveWorkspaceFile, StatWorkspaceFile,
-    UpdateWorkspaceFile, WorkspaceFileService,
+    GrepWorkspaceFiles, ListWorkspaceFiles, MoveWorkspaceFile, SearchWorkspaceFiles,
+    StatWorkspaceFile, UpdateWorkspaceFile, WorkspaceFileService,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -37,7 +38,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::Caller;
-use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
+use everruns_core::{FileInfo, FileStat, GrepResult, GrepSearchResult, SessionFile};
 use mime_guess::from_path;
 
 use super::common::{ListResponse, impl_auth_state};
@@ -446,6 +447,7 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/sessions/{session_id}/fs/_/move", post(move_file))
         .route("/v1/sessions/{session_id}/fs/_/copy", post(copy_file))
         .route("/v1/sessions/{session_id}/fs/_/grep", post(grep_files))
+        .route("/v1/sessions/{session_id}/fs/_/search", post(search_files))
         .route("/v1/sessions/{session_id}/fs/_/stat", post(stat_file))
         .route(
             "/v1/sessions/{session_id}/fs/_/download/{*path}",
@@ -836,6 +838,38 @@ pub async fn grep_files(
         .await
         .map_err(file_error)?;
     Ok(Json(ListResponse::new(results)))
+}
+
+/// POST /fs/_/search - Search files with context and paging
+///
+/// Deliberately carries no utoipa path annotation. This whole
+/// `/v1/sessions/{session_id}/fs/*` family is delisted from the published spec
+/// (see the note in `openapi.rs`), so the annotation would describe an
+/// operation `ApiDoc` never registers — which
+/// `openapi_coverage_test::every_utoipa_handler_is_registered_in_apidoc`
+/// rejects. (The guard scans for that attribute as plain text, so naming it
+/// literally here would re-trip it on this very comment.) The sibling handlers
+/// here keep theirs only because
+/// `api::workspace_files` happens to expose functions of the same name, and
+/// the guard matches on the function name; `search_files` has no such twin.
+///
+/// The canonical home for this capability is the workspace surface. That is
+/// not a rename: `workspace_files::grep_files` pre-excludes `/memory/user`
+/// through `GrepInput::excluded_path_prefix` because it cannot establish
+/// session ownership, and `GrepOptions` carries no equivalent — so a workspace
+/// search would need that threaded through the service first, or its match
+/// counts would betray private files it correctly refuses to return.
+pub async fn search_files(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+    Json(req): Json<SearchRequest>,
+) -> Result<Json<GrepSearchResult>, (StatusCode, String)> {
+    let result = SearchWorkspaceFiles { session_id, req }
+        .run(&state.ctx(&org))
+        .await
+        .map_err(file_error)?;
+    Ok(Json(result))
 }
 
 /// POST /fs/_/stat - Get file or directory stat

@@ -105,7 +105,7 @@ let ids = match models::list(provider).await {
 ```
 
 `CatalogError::Call` carries the provider failure verbatim, with the full
-`LlmError` classification intact.
+`LlmError` decision intact.
 
 ## Metadata without a provider call
 

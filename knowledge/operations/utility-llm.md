@@ -61,7 +61,7 @@ Key presence selects the backend rather than a separate provider variable: an
 operator who moves the deployment to OpenRouter sets one secret instead of
 keeping a name and a key in sync. OpenRouter wins when both keys are present,
 with a warning at startup, because the newly added key is the deliberate one.
-Defaults are `gpt-5.6-luna` on OpenAI and `openai/gpt-5.6-luna` on OpenRouter —
+Defaults are `gpt-6-luna` on OpenAI and `openai/gpt-6-luna` on OpenRouter —
 the same model, named the way each backend names it.
 
 When no key is set, the service is disabled. Disabled deployments should call

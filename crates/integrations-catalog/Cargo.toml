@@ -23,19 +23,19 @@ everruns-core.workspace = true
 everruns-platform.workspace = true
 
 everruns-ard.workspace = true
-everruns-integrations-brave-search = { path = "../../integrations/brave-search", version = "0.29.0", features = ["hosted"] }
-everruns-integrations-browserless = { path = "../../integrations/browserless", version = "0.29.0" }
-everruns-integrations-cursor = { path = "../../integrations/cursor", version = "0.29.0" }
-everruns-integrations-daytona = { path = "../../integrations/daytona", version = "0.29.0" }
-everruns-integrations-deno = { path = "../../integrations/deno", version = "0.29.0" }
-everruns-integrations-docker = { path = "../../integrations/docker", version = "0.29.0" }
-everruns-integrations-duckduckgo = { path = "../../integrations/duckduckgo", version = "0.29.0" }
-everruns-integrations-e2b = { path = "../../integrations/e2b", version = "0.29.0" }
-everruns-integrations-github = { path = "../../integrations/github", version = "0.29.0" }
-everruns-integrations-openai-image = { path = "../../integrations/openai-image", version = "0.29.0" }
-everruns-integrations-parallel = { path = "../../integrations/parallel", version = "0.29.0" }
-everruns-integrations-sprites = { path = "../../integrations/sprites", version = "0.29.0" }
-everruns-integrations-typesafe = { path = "../../integrations/typesafe", version = "0.29.0", features = ["hosted"] }
+everruns-integrations-brave-search = { path = "../../integrations/brave-search", version = "0.31.0", features = ["hosted"] }
+everruns-integrations-browserless = { path = "../../integrations/browserless", version = "0.31.0" }
+everruns-integrations-cursor = { path = "../../integrations/cursor", version = "0.31.0" }
+everruns-integrations-daytona = { path = "../../integrations/daytona", version = "0.31.0" }
+everruns-integrations-deno = { path = "../../integrations/deno", version = "0.31.0" }
+everruns-integrations-docker = { path = "../../integrations/docker", version = "0.31.0" }
+everruns-integrations-duckduckgo = { path = "../../integrations/duckduckgo", version = "0.31.0" }
+everruns-integrations-e2b = { path = "../../integrations/e2b", version = "0.31.0" }
+everruns-integrations-github = { path = "../../integrations/github", version = "0.31.0" }
+everruns-integrations-openai-image = { path = "../../integrations/openai-image", version = "0.31.0" }
+everruns-integrations-parallel = { path = "../../integrations/parallel", version = "0.31.0" }
+everruns-integrations-sprites = { path = "../../integrations/sprites", version = "0.31.0" }
+everruns-integrations-typesafe = { path = "../../integrations/typesafe", version = "0.31.0", features = ["hosted"] }
 
 [lints]
 workspace = true

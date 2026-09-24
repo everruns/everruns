@@ -95,6 +95,15 @@ export interface BeginSlackInstallResult {
   authorize_url: string;
 }
 
+export interface SlackInstallCapability {
+  available: boolean;
+}
+
+export async function getSlackInstallCapability(): Promise<SlackInstallCapability> {
+  const response = await api.get<SlackInstallCapability>("/v1/slack/install");
+  return response.data;
+}
+
 /**
  * Start the one-click Slack install for an endpoint (EVE-1069).
  *

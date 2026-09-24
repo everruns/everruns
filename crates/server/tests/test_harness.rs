@@ -908,6 +908,7 @@ impl TestServer {
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("a2a"),
             api::a2a_signing::A2aReplayStore::in_memory(),
+            "https://app.everruns.test".to_string(),
         );
         let app_api_state = api::app_api::AppApiState::new(
             db.clone(),
