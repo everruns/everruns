@@ -3560,7 +3560,7 @@ mod tests {
             ];
 
             for (path, body) in cases {
-                let status = post_with_auth(test_app(false), &path, &body).await;
+                let status = post_with_auth(test_app(false), &path, body).await;
                 assert_eq!(status, StatusCode::FORBIDDEN, "path: {path}");
             }
         }
