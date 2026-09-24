@@ -94,7 +94,7 @@ impl Command for CreateAgent {
 - `dispatch()` (used by MCP and gRPC `ExecuteCommand`) routes through `run`, enforcement is identical across HTTP and RPC paths.
 - The resolver is threaded through `Ctx::new` from `AuthState.permission_resolver`. Internal callers (`Caller::internal`) use `DefaultPermissionResolver` so SaaS-custom restrictions never block internal ops.
 
-**Inventory coverage test.** `crates/server/tests/command_policy_enforcement_test.rs` iterates `inventory::iter::<CommandDescriptor>` and asserts every non-GET command declares a policy. New mutating commands that forget `policy()` fail the build.
+**Inventory coverage test.** `crates/server/tests/domain/command_policy_enforcement_test.rs` iterates `inventory::iter::<CommandDescriptor>` and asserts every non-GET command declares a policy. New mutating commands that forget `policy()` fail the build.
 
 ### Retired: `#[policy]` Macro
 
@@ -170,7 +170,7 @@ pub async fn harness_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
 
 ## Policy Requirements for New Features
 
-Every non-GET domain command MUST declare `Command::policy() -> Option<&'static Policy>`. The command runner enforces the declared policy via `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)` before `execute`. `crates/server/tests/command_policy_enforcement_test.rs::every_non_readonly_command_declares_policy` walks `inventory::iter::<CommandDescriptor>` at test time and fails the build for any mutating command without a policy declaration.
+Every non-GET domain command MUST declare `Command::policy() -> Option<&'static Policy>`. The command runner enforces the declared policy via `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)` before `execute`. `crates/server/tests/domain/command_policy_enforcement_test.rs::every_non_readonly_command_declares_policy` walks `inventory::iter::<CommandDescriptor>` at test time and fails the build for any mutating command without a policy declaration.
 
 ### Checklist for New Resources
 
@@ -206,5 +206,5 @@ Every non-GET domain command MUST declare `Command::policy() -> Option<&'static 
 | `crates/server/src/domains/common.rs` | `Command::run`, `Ctx.permission_resolver`, dispatch |
 | `crates/server/src/domains/*/mod.rs` | Per-domain `Policy` constants |
 | `crates/server/src/domains/*/commands.rs` | `Command::policy()` declarations |
-| `crates/server/tests/command_policy_enforcement_test.rs` | Inventory coverage test + resolver enforcement tests |
+| `crates/server/tests/domain/command_policy_enforcement_test.rs` | Inventory coverage test + resolver enforcement tests |
 | `crates/server/src/auth/middleware.rs` | `Caller` extraction from `ResolvedOrg`, `AuthState.permission_resolver` |

@@ -29,8 +29,8 @@ format in `knowledge/security/threat-model.md`:
 ```
 
 Tests for these live alongside the code they protect (for example
-`crates/server/tests/auth_integration_test.rs`,
-`crates/server/tests/mcp_endpoint_test.rs`, and the channel integration tests).
+`crates/server/tests/domain/auth_integration_test.rs`,
+`crates/server/tests/domain/mcp_endpoint_test.rs`, and the channel integration tests).
 
 ### 2. Failure injection (fail-rs)
 

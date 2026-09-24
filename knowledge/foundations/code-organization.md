@@ -302,18 +302,22 @@ just test-unit  # Runs in ~30s, no Docker needed
 - `crates/server/tests/api_integration_test.rs` - HTTP API tests (in-process, no TCP)
 - `crates/server/tests/repository_conformance_test.rs` - Shared PostgreSQL/in-memory storage contract tests
 - `crates/server/tests/repository_integration_test.rs` - Direct repository layer tests
-- `crates/server/tests/ag_ui_integration_test.rs` - AG-UI embedding + publish gating
-- `crates/server/tests/auth_integration_test.rs` - Refresh/revocation, cookie flags, JWT paths
-- `crates/server/tests/cli_auth_test.rs` - CLI login flow (start/callback/success)
-- `crates/server/tests/cli_auth_no_org_test.rs` - CLI exchange rejects no-org users (EVE-195)
-- `crates/server/tests/client_side_tools_test.rs` - Tool call / result wire format
-- `crates/server/tests/evals_integration_test.rs` - Eval case/score/run HTTP surface
-- `crates/server/tests/llm_model_default_test.rs` - Org default model upsert/clear
-- `crates/server/tests/org_creation_test.rs` - Organization + membership reconciliation
-- `crates/server/tests/org_isolation_test.rs` - Cross-org isolation (agents, mcp, models, sessions)
-- `crates/server/tests/org_lifecycle_test.rs` - Switch org, cookie scoping, unknown org rejection
-- `crates/server/tests/schedule_integration_test.rs` - Scheduled-task CRUD + pause/resume
-- `crates/server/tests/session_git_integration_test.rs` - Per-session git log/diff/refs
+- `crates/server/tests/domain/ag_ui_integration_test.rs` - AG-UI embedding + publish gating
+- `crates/server/tests/domain/auth_integration_test.rs` - Refresh/revocation, cookie flags, JWT paths
+- `crates/server/tests/domain/cli_auth_test.rs` - CLI login flow (start/callback/success)
+- `crates/server/tests/domain/cli_auth_no_org_test.rs` - CLI exchange rejects no-org users (EVE-195)
+- `crates/server/tests/domain/client_side_tools_test.rs` - Tool call / result wire format
+- `crates/server/tests/domain/evals_integration_test.rs` - Eval case/score/run HTTP surface
+- `crates/server/tests/domain/llm_model_default_test.rs` - Org default model upsert/clear
+- `crates/server/tests/domain/org_creation_test.rs` - Organization + membership reconciliation
+- `crates/server/tests/domain/org_isolation_test.rs` - Cross-org isolation (agents, mcp, models, sessions)
+- `crates/server/tests/domain/org_lifecycle_test.rs` - Switch org, cookie scoping, unknown org rejection
+- `crates/server/tests/domain/schedule_integration_test.rs` - Scheduled-task CRUD + pause/resume
+- `crates/server/tests/domain/session_git_integration_test.rs` - Per-session git log/diff/refs
+- These, plus the rest of the "domain" CI shard's suites, build into one
+  `tests/domain/main.rs` binary (`cargo test -p everruns-server --test domain`)
+  so the shard pays one crate link instead of one per file; see
+  `knowledge/project/ci-build-time.md`.
 - `crates/durable/tests/postgres_integration_test.rs` - Durable execution task queue, workflows
 - `crates/durable/tests/postgres_repository_test.rs` - Durable SQL queries, circuit breakers
 - `crates/durable/tests/failure_injection_test.rs` - fail-rs rollback and retry coverage (`failpoints,postgres-tests`)

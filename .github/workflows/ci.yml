@@ -1332,53 +1332,13 @@ jobs:
         if: ${{ matrix.shard == 'domain' }}
         run: |
           cargo test -p everruns-server \
+            --test domain \
             --test blob_offload_integration_test \
-            --test ag_ui_integration_test \
-            --test agent_trigger_invocation_integration_test \
-            --test app_a2a_integration_test \
-            --test app_a2a_ask_user_test \
-            --test app_invocation_channels_integration_test \
-            --test auth_integration_test \
-            --test cli_auth_test \
-            --test cli_auth_no_org_test \
-            --test client_side_tools_test \
-            --test evals_integration_test \
-            --test observers_integration_test \
             --test prometheus_metrics_test \
-            --test llm_model_default_test \
-            --test mcp_acts_as_grpc_test \
-            --test mcp_oauth_user_switch_test \
-            --test service_mcp_oauth_lifecycle_test \
-            --test org_creation_test \
-            --test org_isolation_test \
-            --test org_lifecycle_test \
-            --test schedule_integration_test \
-            --test session_git_integration_test \
-            --test session_tab_counts_integration_test \
-            --test webhook_trigger_migration_test \
-            --test agent_endpoints_migration_test \
-            --test app_api_integration_test \
             --test background_sweep_wiring_test \
-            --test endpoint_attribution_test \
-            --test endpoint_publish_test \
-            --test command_policy_enforcement_test \
-            --test db_pool_isolation_test \
-            --test fcp_integration_test \
-            --test guardrails_integration_test \
-            --test mcp_endpoint_test \
-            --test migration_history_test \
-            --test openapi_coverage_test \
-            --test openapi_descriptions_test \
-            --test openapi_sdk_metadata_test \
-            --test org_invitations_test \
             --test plugins_integration_test \
             --test plugins_remote_test \
-            --test reporting_integration_test \
-            --test session_workspace_attach_test \
-            --test skills_integration_test \
             --test strict_client_tools \
-            --test subagent_spawn_handles_test \
-            --test workspace_files_integration_test \
             -- --test-threads=1
 
       - name: Run durable integration tests

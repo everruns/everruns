@@ -1,5 +1,7 @@
 // Background sweep: time out sessions stuck in `waiting_for_tool_results`.
 // Decision: periodic sweep (every 30s) rather than per-session timers; survives restarts.
+// Decision: the interval is overridable via TOOL_RESULT_TIMEOUT_SWEEP_INTERVAL_SECS so the
+// real-server wiring test does not idle 30s for the first tick.
 // Decision: timeout is 5 minutes per knowledge/execution/client-side-tools.md, configurable via env var.
 
 use crate::services::EventService;
@@ -19,8 +21,8 @@ use tokio::task::JoinHandle;
 /// Default timeout for waiting_for_tool_results sessions (5 minutes).
 const DEFAULT_TIMEOUT_SECS: u64 = 300;
 
-/// How often the sweep runs (30 seconds).
-const SWEEP_INTERVAL_SECS: u64 = 30;
+/// How often the sweep runs by default (30 seconds).
+const DEFAULT_SWEEP_INTERVAL_SECS: u64 = 30;
 
 /// Spawn a background task that periodically times out stale
 /// `waiting_for_tool_results` sessions.
@@ -33,18 +35,23 @@ pub fn spawn_tool_result_timeout_sweep(
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(DEFAULT_TIMEOUT_SECS);
+    let sweep_interval_secs = std::env::var("TOOL_RESULT_TIMEOUT_SWEEP_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|secs: &u64| *secs > 0)
+        .unwrap_or(DEFAULT_SWEEP_INTERVAL_SECS);
 
     tokio::spawn(async move {
         tracing::info!(
             timeout_secs,
-            sweep_interval_secs = SWEEP_INTERVAL_SECS,
+            sweep_interval_secs,
             "Tool result timeout sweep started"
         );
 
         let event_service = EventService::new(db.clone(), event_delivery);
 
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(SWEEP_INTERVAL_SECS)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(sweep_interval_secs)).await;
 
             if let Err(e) =
                 sweep_timed_out_sessions(&db, &runner, &event_service, timeout_secs).await

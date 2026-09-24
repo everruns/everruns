@@ -22,13 +22,13 @@ callers, MCP, A2A). Six guidelines guide every endpoint:
    operationId from the handler fn name; the convention is lower_snake_case
    matching the corresponding domain command name (e.g. `create_agent`),
    which keeps the OpenAPI tool catalog aligned with the MCP `execute`
-   builtin set. `crates/server/tests/openapi_coverage_test.rs` enforces
+   builtin set. `crates/server/tests/domain/openapi_coverage_test.rs` enforces
    that every annotated handler is registered in `openapi::ApiDoc` and
    that every operationId is snake_case.
 2. **Self-sufficient OpenAPI**: every operation, schema, and field carries
    a `description` (and ideally an `example` for non-trivial fields) so
    agents can do "preflight thinking" from the spec alone.
-   `crates/server/tests/openapi_descriptions_test.rs` enforces ratcheting
+   `crates/server/tests/domain/openapi_descriptions_test.rs` enforces ratcheting
    coverage floors, each merge can only raise the percentage, never lower
    it.
 3. **Domain language**: concepts from [`concepts.md`](../foundations/concepts.md) used

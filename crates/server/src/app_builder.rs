@@ -2428,7 +2428,7 @@ impl ServerAppBuilder {
                 background_event_service,
                 background_runner,
                 Some(probe_registry),
-                std::time::Duration::from_secs(15),
+                crate::session_scheduler::poll_interval_from_env(),
             ),
         );
 
