@@ -17639,6 +17639,16 @@ export interface components {
        */
       encoding?: string | null;
       /**
+       * @description Content the file must currently hold for the write to happen.
+       *
+       *     When set, the update is a compare-and-swap: the write lands only if the
+       *     stored bytes equal these, and a mismatch is reported as a conflict
+       *     rather than overwriting a concurrent writer.
+       */
+      expected_content?: string | null;
+      /** @description Encoding of `expected_content`. Defaults to `text` when omitted. */
+      expected_encoding?: string | null;
+      /**
        * @description Whether file is read-only
        * @example false
        */

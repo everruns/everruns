@@ -1,7 +1,7 @@
 use super::queries as q;
 use super::types::{
     CopyFileRequest, CreateFileRequest, DeleteResponse, GetResponse, GrepRequest, MoveFileRequest,
-    StatRequest, UpdateFileRequest,
+    SearchRequest, StatRequest, UpdateFileRequest,
 };
 use super::{
     CopyFileInput, CreateDirectoryInput, CreateFileInput, GrepInput, MoveFileInput, UpdateFileInput,
@@ -318,19 +318,55 @@ impl Command for UpdateWorkspaceFile {
             ));
         }
 
-        let file = q::service(ctx)
-            .update_file(
-                workspace_key,
-                &path,
-                UpdateFileInput {
-                    content: self.req.content,
-                    encoding: self.req.encoding,
-                    is_readonly: self.req.is_readonly,
-                },
-            )
-            .await
-            .map_err(map_update_error)?
-            .ok_or_else(|| CommandError::not_found("File"))?;
+        // A compare-and-swap write when the caller states what it expects to
+        // find. `update_file_if_content_matches` answers `None` both for "no
+        // such file" and "content moved under you"; only the latter is a
+        // conflict, so the existence check comes first and the two stay
+        // distinguishable to the caller.
+        let file = if let Some(expected_content) = self.req.expected_content {
+            let content = self.req.content.ok_or_else(|| {
+                CommandError::bad_request("expected_content requires content to write")
+            })?;
+            let service = q::service(ctx);
+            if service
+                .stat(workspace_key, &path)
+                .await
+                .map_err(q::classify_storage)?
+                .is_none()
+            {
+                return Err(CommandError::not_found("File"));
+            }
+            service
+                .update_file_if_content_matches(
+                    workspace_key,
+                    &path,
+                    &expected_content,
+                    self.req.expected_encoding.as_deref().unwrap_or("text"),
+                    &content,
+                    self.req.encoding.as_deref().unwrap_or("text"),
+                )
+                .await
+                .map_err(map_update_error)?
+                .ok_or_else(|| {
+                    CommandError::conflict(
+                        "File content changed since it was read; re-read and retry",
+                    )
+                })?
+        } else {
+            q::service(ctx)
+                .update_file(
+                    workspace_key,
+                    &path,
+                    UpdateFileInput {
+                        content: self.req.content,
+                        encoding: self.req.encoding,
+                        is_readonly: self.req.is_readonly,
+                    },
+                )
+                .await
+                .map_err(map_update_error)?
+                .ok_or_else(|| CommandError::not_found("File"))?
+        };
 
         if let Some(event_service) = &ctx.event_service {
             let event = EventRequest::new(
@@ -547,6 +583,82 @@ impl Command for GrepWorkspaceFiles {
 inventory::submit! { CommandDescriptor::of::<GrepWorkspaceFiles>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct SearchWorkspaceFiles {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+    #[serde(flatten)]
+    pub req: SearchRequest,
+}
+
+impl Command for SearchWorkspaceFiles {
+    type Output = everruns_core::GrepSearchResult;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "search_workspace_files",
+            category: "files",
+            description: "Search files in the session filesystem, with surrounding context and paging.",
+            method: "POST",
+            path: "/v1/sessions/{session_id}/fs/_/search",
+        }
+    }
+
+    fn read_only() -> bool {
+        true
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<everruns_core::GrepSearchResult, CommandError> {
+        use everruns_core::session_files::SessionFileSystem;
+
+        let session_id = q::parse_session_id(&self.session_id)?;
+        let access = q::verify_session(ctx, session_id).await?;
+
+        let defaults = everruns_core::GrepOptions::default();
+        let options = everruns_core::GrepOptions {
+            path_pattern: self.req.path_pattern,
+            before_context: self.req.before_context,
+            after_context: self.req.after_context,
+            offset: self.req.offset,
+            limit: self.req.limit.unwrap_or(defaults.limit),
+            max_bytes: self.req.max_bytes.unwrap_or(defaults.max_bytes),
+        };
+
+        let mut result = q::service(ctx)
+            .grep_files_with_options(
+                everruns_provider::typed_id::SessionId::from_uuid(access.workspace_key),
+                &self.req.pattern,
+                &options,
+            )
+            .await
+            .map_err(|error| {
+                let msg = error.to_string();
+                if msg.contains("regex") || msg.contains("pattern") {
+                    CommandError::bad_request(format!("Invalid regex: {msg}"))
+                } else {
+                    tracing::error!("Session file search error: {error}");
+                    CommandError::internal(anyhow::anyhow!("{error}"))
+                }
+            })?;
+
+        // The private memory mount is redacted from both projections; the
+        // counts stay as the search reported them, so paging is unaffected by
+        // what this caller may not see.
+        if !access.user_memory_allowed {
+            result.matches = q::redact_user_memory_files(result.matches, |m| &m.path);
+            result.blocks = q::redact_user_memory_files(result.blocks, |b| &b.path);
+        }
+
+        Ok(result)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<SearchWorkspaceFiles>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct StatWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -592,10 +704,15 @@ inventory::submit! { CommandDescriptor::of::<StatWorkspaceFile>() }
 
 #[cfg(test)]
 mod tests {
-    use super::{CreateWorkspaceFile, GetWorkspaceFile, GrepWorkspaceFiles};
+    use super::{
+        CreateWorkspaceFile, GetWorkspaceFile, GrepWorkspaceFiles, SearchWorkspaceFiles,
+        UpdateWorkspaceFile,
+    };
     use crate::domains::common::{Command, CommandErrorKind, Ctx};
     use crate::domains::session_files::queries as q;
-    use crate::domains::session_files::types::{CreateFileRequest, GrepRequest};
+    use crate::domains::session_files::types::{
+        CreateFileRequest, GrepRequest, SearchRequest, UpdateFileRequest,
+    };
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
     use crate::storage::models::{CreateSessionRow, CreateWorkspaceRow};
@@ -892,5 +1009,146 @@ mod tests {
         .await
         .expect_err("shared workspace write must require WORKSPACE_MANAGE");
         assert!(matches!(err.kind, CommandErrorKind::Forbidden(_)));
+    }
+
+    fn update_req(content: &str, expected: Option<&str>) -> UpdateFileRequest {
+        UpdateFileRequest {
+            content: Some(content.to_string()),
+            encoding: None,
+            is_readonly: None,
+            expected_content: expected.map(str::to_string),
+            expected_encoding: None,
+        }
+    }
+
+    /// Seed one session with a single file and return (db, session, ctx).
+    async fn seeded(
+        path: &str,
+        content: &str,
+    ) -> (Arc<StorageBackend>, crate::storage::models::SessionRow, Ctx) {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session = db
+            .create_session(session_row(None))
+            .await
+            .expect("create session");
+        crate::domains::session_files::WorkspaceFileService::new(db.clone())
+            .create_file(
+                session.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: path.to_string(),
+                    content: Some(content.to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed file");
+        let ctx = Ctx::minimal_for_test(owner_caller(), db.clone(), None);
+        (db, session, ctx)
+    }
+
+    /// A compare-and-swap write lands when the file still holds what the caller
+    /// last read. This is the worker's `write_file_if_content_matches`.
+    #[tokio::test]
+    async fn update_with_matching_expected_content_writes() {
+        let (_db, session, ctx) = seeded("/notes.txt", "before").await;
+
+        let file = UpdateWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "/notes.txt".to_string(),
+            req: update_req("after", Some("before")),
+        }
+        .run(&ctx)
+        .await
+        .expect("matching expected content must write");
+
+        assert_eq!(file.content.as_deref(), Some("after"));
+    }
+
+    /// A mismatch must not overwrite the concurrent writer, and must be
+    /// distinguishable from "no such file" so the caller can re-read and retry.
+    #[tokio::test]
+    async fn update_with_stale_expected_content_conflicts() {
+        let (db, session, ctx) = seeded("/notes.txt", "moved on").await;
+
+        let err = UpdateWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "/notes.txt".to_string(),
+            req: update_req("after", Some("what I last read")),
+        }
+        .run(&ctx)
+        .await
+        .expect_err("stale expected content must not overwrite");
+        assert!(
+            matches!(err.kind, CommandErrorKind::Conflict(_)),
+            "a lost race is a conflict, not a not-found: {err:?}"
+        );
+
+        let still = crate::domains::session_files::WorkspaceFileService::new(db)
+            .read_file(session.workspace_id, "/notes.txt")
+            .await
+            .expect("read back")
+            .expect("file still there");
+        assert_eq!(
+            still.content.as_deref(),
+            Some("moved on"),
+            "the concurrent writer's content must survive"
+        );
+    }
+
+    /// A CAS against a path that does not exist is a not-found, not a conflict.
+    #[tokio::test]
+    async fn update_with_expected_content_on_missing_file_is_not_found() {
+        let (_db, session, ctx) = seeded("/notes.txt", "x").await;
+
+        let err = UpdateWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "/absent.txt".to_string(),
+            req: update_req("after", Some("anything")),
+        }
+        .run(&ctx)
+        .await
+        .expect_err("missing file must not be reported as a conflict");
+        assert!(matches!(err.kind, CommandErrorKind::NotFound(_)));
+    }
+
+    /// The search command returns the context lines the grouped grep cannot,
+    /// which is why it exists alongside it.
+    #[tokio::test]
+    async fn search_returns_surrounding_context() {
+        let (_db, session, ctx) = seeded("/notes.txt", "alpha\nneedle\nomega\n").await;
+
+        let result = SearchWorkspaceFiles {
+            session_id: session.id.to_string(),
+            req: SearchRequest {
+                pattern: "needle".to_string(),
+                path_pattern: None,
+                before_context: 1,
+                after_context: 1,
+                offset: 0,
+                limit: None,
+                max_bytes: None,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("search must succeed");
+
+        // With context requested the results arrive as blocks rather than flat
+        // matches; `total_matches` is the count either way.
+        assert_eq!(result.total_matches, 1, "one match expected");
+        let block = result
+            .blocks
+            .iter()
+            .find(|b| b.path == "/notes.txt")
+            .expect("a context block for the matching file");
+        assert!(
+            block.lines.iter().any(|l| l.line == "alpha" && !l.is_match),
+            "the line before the match must come back as context: {block:?}"
+        );
+        assert!(
+            block.lines.iter().any(|l| l.line == "needle" && l.is_match),
+            "the matching line must be flagged: {block:?}"
+        );
     }
 }
