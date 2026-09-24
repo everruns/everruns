@@ -220,6 +220,16 @@ pub fn spawn_gauge_bridge(collector: MetricsCollector) {
     });
 }
 
+/// Start the pool gauge bridge when the storage backend exposes PostgreSQL pools.
+pub fn spawn_storage_pool_gauge_bridge(storage: &crate::storage::StorageBackend) {
+    let (Some(request_pool), Some(background_pool)) =
+        (storage.pool().cloned(), storage.background_pool().cloned())
+    else {
+        return;
+    };
+    spawn_pool_gauge_bridge(request_pool, background_pool);
+}
+
 /// Sample the process-local request and background sqlx pools every 10 seconds.
 pub fn spawn_pool_gauge_bridge(request_pool: PgPool, background_pool: PgPool) {
     tokio::spawn(async move {
