@@ -253,6 +253,53 @@ impl Session {
         self.inner.event_bus.subscribe()
     }
 
+    /// Read this session's durable events with a sequence greater than
+    /// `after`, oldest first.
+    ///
+    /// Durable sequences are dense per session and start at 1, so
+    /// `events_after(0)` returns the whole persisted log and a client that has
+    /// seen sequence `n` resumes with `events_after(n)`. Negative values read
+    /// from the start. Ephemeral streaming deltas are never persisted and do
+    /// not appear here. Works on a session reopened with
+    /// [`Engine::resume`](crate::Engine::resume) as long as its backend keeps
+    /// events (for example [`LocalConfig`](crate::LocalConfig)).
+    ///
+    /// Reads one stable snapshot of at most 100,000 events; a larger backlog
+    /// returns [`HistoryError::HistoryTooLarge`](crate::HistoryError::HistoryTooLarge).
+    ///
+    /// Stability: alpha — may change without a major bump; see
+    /// [`stability`](crate::stability).
+    pub async fn events_after(
+        &self,
+        after: i32,
+    ) -> Result<Vec<crate::SessionEvent>, crate::HistoryError> {
+        crate::history::durable_events_after(
+            self.inner.execution.as_ref(),
+            self.inner.session_id,
+            after,
+        )
+        .await
+    }
+
+    /// Replay durable events after `after`, then continue live.
+    ///
+    /// The stream subscribes to the live feed first, then reads the backlog
+    /// with [`events_after`](Self::events_after), so nothing committed in
+    /// between is lost. It yields the backlog in sequence order, then live
+    /// events; a live durable event whose sequence was already replayed is
+    /// dropped, so no event is delivered twice. Ephemeral deltas carry no
+    /// sequence and always pass through. Lag on the live half is reported
+    /// exactly as on [`events`](Self::events); recover by calling this method
+    /// again with the last sequence seen.
+    ///
+    /// Stability: alpha — may change without a major bump; see
+    /// [`stability`](crate::stability).
+    pub async fn events_from(&self, after: i32) -> Result<EventStream, crate::HistoryError> {
+        let live = self.inner.event_bus.subscribe();
+        let backlog = self.events_after(after).await?;
+        Ok(live.with_replay(after.max(0), backlog))
+    }
+
     /// Accept a message without waiting for the agent's response.
     ///
     /// When the session is idle, the message starts a new turn. While a turn is

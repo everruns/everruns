@@ -8,3 +8,4 @@
 * [Library Experience](library-experience.md) - Ergonomic and behavioral success bars for application-facing use.
 * [Documentation and Examples](documentation-and-examples.md) - The maintained public learning path and runnable-example contract.
 * [API Stability](api-stability.md) - Stable versus alpha markers, promises, and the marking convention.
+* [serve (experimental)](serve.md) - Why the experimental serve crates pair Topcoat's API shape with eve's hosting model, and what is still open.

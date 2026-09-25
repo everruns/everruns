@@ -3266,6 +3266,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-serve"
+version = "0.31.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "axum-extra",
+ "chrono",
+ "clap",
+ "cron",
+ "everruns",
+ "everruns-sdk",
+ "everruns-serve-macros",
+ "futures",
+ "hex",
+ "hmac",
+ "inventory",
+ "reqwest 0.13.5",
+ "rusqlite",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "everruns-serve-build"
+version = "0.31.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
+name = "everruns-serve-macros"
+version = "0.31.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
+]
+
+[[package]]
 name = "everruns-server"
 version = "0.31.0"
 dependencies = [
@@ -7594,6 +7640,29 @@ checksum = "66cf8fedced2fcf12406bcb34223dffb92eaf34908ede12fed414c82b7f00b3e"
 dependencies = [
  "base16ct",
  "serde",
+]
+
+[[package]]
+name = "serve-example-hello"
+version = "0.1.0"
+dependencies = [
+ "everruns-serve",
+ "everruns-serve-build",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "serve-example-revenue-analyst"
+version = "0.1.0"
+dependencies = [
+ "everruns-serve",
+ "everruns-serve-build",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

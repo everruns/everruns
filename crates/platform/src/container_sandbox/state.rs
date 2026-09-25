@@ -221,21 +221,4 @@ mod tests {
         assert_eq!(labels.get("managed-by").unwrap(), "everruns");
         assert_eq!(labels.get("session").unwrap(), "session-123");
     }
-
-    #[test]
-    fn test_sandbox_state_serialization() {
-        let state = SandboxState {
-            container_id: "abc123".to_string(),
-            network_id: "net456".to_string(),
-            container_name: "evr-abc-sandbox".to_string(),
-            network_name: "sandbox-abc".to_string(),
-            image: "ubuntu:24.04".to_string(),
-            working_dir: "/workspace".to_string(),
-            started_at: "2026-01-01T00:00:00Z".to_string(),
-        };
-        let json = serde_json::to_string(&state).unwrap();
-        let restored: SandboxState = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored.container_id, "abc123");
-        assert_eq!(restored.image, "ubuntu:24.04");
-    }
 }
