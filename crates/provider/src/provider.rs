@@ -65,22 +65,6 @@ impl DriverId {
         self.0.as_ref()
     }
 
-    /// Default trace-link URL templates for this driver, as
-    /// `(generation_url_template, session_url_template)`.
-    ///
-    /// These are best-effort defaults for vendors that expose an observability
-    /// dashboard. They are only *defaults*: an org overrides them per provider
-    /// (`ProviderTraceConfig`) and must opt in via `enabled`, since most vendors
-    /// retain prompt/completion content only when logging is explicitly turned
-    /// on. Templates support the `{response_id}`, `{session_id}`, `{turn_id}`
-    /// and `{model}` placeholders.
-    ///
-    /// OpenRouter stores logged generations on its **Logs** page
-    /// (<https://openrouter.ai/logs>, gated behind the account's
-    /// "Input & Output Logging" Observability setting). OpenRouter does not
-    /// document a public deep-link by generation id, so the generation template
-    /// passes the id best-effort; worst case it lands on the Logs page where the
-    /// generation can be found by recency.
     /// The driver whose vendor serves `base_url`, by host.
     ///
     /// A configured base URL is often the only thing an embedder has — it comes
@@ -103,6 +87,12 @@ impl DriverId {
     ///     Some(DriverId::OpenRouter)
     /// );
     /// assert_eq!(DriverId::for_base_url("http://127.0.0.1:8081/v1"), None);
+    ///
+    /// // A host that accepts any base URL picks the vendor driver when there
+    /// // is one, and the OpenAI-compatible wire otherwise.
+    /// let pick = |url: &str| DriverId::for_base_url(url).unwrap_or(DriverId::OpenAICompletions);
+    /// assert_eq!(pick("https://api.anthropic.com"), DriverId::Anthropic);
+    /// assert_eq!(pick("http://localhost:11434/v1"), DriverId::OpenAICompletions);
     /// ```
     pub fn for_base_url(base_url: &str) -> Option<DriverId> {
         let host = url::Url::parse(base_url.trim())
@@ -147,6 +137,22 @@ impl DriverId {
         }
     }
 
+    /// Default trace-link URL templates for this driver, as
+    /// `(generation_url_template, session_url_template)`.
+    ///
+    /// These are best-effort defaults for vendors that expose an observability
+    /// dashboard. They are only *defaults*: an org overrides them per provider
+    /// (`ProviderTraceConfig`) and must opt in via `enabled`, since most vendors
+    /// retain prompt/completion content only when logging is explicitly turned
+    /// on. Templates support the `{response_id}`, `{session_id}`, `{turn_id}`
+    /// and `{model}` placeholders.
+    ///
+    /// OpenRouter stores logged generations on its **Logs** page
+    /// (<https://openrouter.ai/logs>, gated behind the account's
+    /// "Input & Output Logging" Observability setting). OpenRouter does not
+    /// document a public deep-link by generation id, so the generation template
+    /// passes the id best-effort; worst case it lands on the Logs page where the
+    /// generation can be found by recency.
     pub fn default_trace_templates(&self) -> (Option<String>, Option<String>) {
         if self == &DriverId::OpenRouter {
             (

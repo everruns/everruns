@@ -287,13 +287,7 @@ pub async fn collect_turn(
                 turn.metadata = *metadata;
                 turn.complete = true;
             }
-            LlmStreamEvent::Error(error) => {
-                let mut failure = AgentLoopError::llm_kind(error.kind(), error.to_string());
-                if let Some(status) = error.status {
-                    failure = failure.with_status(status);
-                }
-                return Err(failure);
-            }
+            LlmStreamEvent::Error(error) => return Err(error.into_agent_error()),
         }
     }
 

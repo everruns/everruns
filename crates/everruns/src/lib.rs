@@ -258,6 +258,11 @@ pub use everruns_provider::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart,
     LlmResponse, LlmResponseStream, LlmStreamEvent,
 };
+// Pre-0.31 names for the provider message types, which now live in [`llm`] as
+// `Message`, `MessageContent` and `MessageRole`. Deprecated aliases, so an
+// application that defines its own `Message` upgrades with a warning.
+#[allow(deprecated)]
+pub use everruns_provider::message::{LlmMessage, LlmMessageContent, LlmMessageRole};
 // Reasoning is part of the public surface: `ReasoningConfig` above carries a
 // `ReasoningEffort`, and the artifact types appear on assistant messages.
 pub use everruns_provider::model::ReasoningEffort;

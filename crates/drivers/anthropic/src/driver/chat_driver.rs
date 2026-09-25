@@ -641,11 +641,10 @@ impl ChatDriver for AnthropicChatDriver {
                                     metadata.cache_creation_tokens = cache_creation;
                                     metadata.model = Some(model);
                                     metadata.response_model = response_model.lock().unwrap().clone();
-                                    metadata.finish_reason = finish_reason
-                                        .lock()
-                                        .unwrap()
-                                        .clone()
-                                        .or_else(|| Some("stop".to_string()));
+                                    // `None` when no `stop_reason` arrived: kept
+                                    // distinct from an explicit stop.
+                                    metadata.finish_reason =
+                                        finish_reason.lock().unwrap().clone();
                                     metadata.retry_metadata = retry_metadata_for_done
                                         .map(|arc| (*arc).clone());
                                     metadata.response_id = response_id.lock().unwrap().clone();
