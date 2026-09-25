@@ -97,7 +97,7 @@ async fn report_boundary(workspace: &Path) {
             false,
         ),
     ] {
-        let allowed = match sandbox.command(workspace, script) {
+        let allowed = match sandbox.command(workspace, workspace, script) {
             Ok(mut command) => {
                 everruns::configure_contained_stdio(&mut command);
                 match command.output().await {

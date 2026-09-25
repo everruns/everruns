@@ -243,6 +243,7 @@ impl BashTool {
     /// THREAT[TM-BASH-022]: every path to full access passes a host gate first;
     /// THREAT[TM-BASH-020]: the model supplies the script only, never the
     /// executable, the mount set, or the containment mode.
+    #[allow(clippy::too_many_arguments)]
     async fn execute_with_policy(
         &self,
         command: &str,
