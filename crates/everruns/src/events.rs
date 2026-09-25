@@ -64,10 +64,10 @@ pub const EVENT_STREAM_CAPACITY: usize = 4096;
 ///
 /// Envelope fields — timestamp, optional persisted sequence, correlation
 /// context, metadata, and tags — are complete on both. For
-/// `output.message.delta` events, the redundant `data.accumulated` prefix is
+/// streaming delta events, the redundant `data.accumulated` prefix is
 /// omitted from both to keep buffered stream memory proportional to output size
-/// rather than quadratic in it. Incremental text remains in
-/// [`SessionEventKind::TextDelta`].
+/// rather than quadratic in it. Incremental text and reasoning remain in the
+/// corresponding typed delta variants.
 ///
 /// The correlation ids (`event_id`, `session_id`, and the optional `turn_id`)
 /// are also promoted as strings for common logging and matching tasks.
@@ -310,10 +310,9 @@ impl SessionEvent {
     ///
     /// Nothing is withheld, so nothing observable is lost: this is the escape
     /// hatch for auditing, recording, and replay. `data.accumulated` on
-    /// `output.message.delta` is the one exception — that redundant growing
+    /// streaming delta events is the one exception — that redundant growing
     /// prefix is dropped at ingest so a slow subscriber cannot retain quadratic
-    /// memory, and the incremental text is in
-    /// [`SessionEventKind::TextDelta`].
+    /// memory. Consumers can reconstruct it from the ordered incremental deltas.
     ///
     /// The payload here follows the runtime's internal shape rather than this
     /// crate's reviewed surface. It can contain prompts, tool arguments, and
@@ -349,8 +348,11 @@ impl SessionEvent {
         let mut raw = serde_json::to_value(event).expect("canonical events are JSON serializable");
         let mut data = serde_json::to_value(&event.data)
             .expect("canonical event payloads are JSON serializable");
-        if event.event_type == events::OUTPUT_MESSAGE_DELTA {
-            // THREAT[TM-DOS-040]: accumulated repeats the entire output prefix
+        if matches!(
+            event.event_type.as_str(),
+            events::OUTPUT_MESSAGE_DELTA | events::REASON_THINKING_DELTA
+        ) {
+            // THREAT[TM-DOS-040]: accumulated repeats the entire streamed prefix
             // in every delta. Retaining those prefixes in the broadcast ring
             // would turn an n-byte streamed response into O(n^2) memory.
             data.as_object_mut()
@@ -480,7 +482,9 @@ impl SessionEvent {
             events::REASON_THINKING_DELTA => match &event.data {
                 EventData::ReasonThinkingDelta(data) => SessionEventKind::ReasoningDelta {
                     delta: data.delta.clone(),
-                    accumulated: data.accumulated.clone(),
+                    // Consumers can reconstruct this from the ordered deltas. Keeping every
+                    // prefix would make a slow event consumer retain quadratic memory.
+                    accumulated: String::new(),
                 },
                 _ => Self::other_kind(event),
             },
@@ -592,9 +596,7 @@ impl SessionEvent {
                 "stream": stream,
                 "delta": delta,
             }),
-            SessionEventKind::ReasoningDelta { delta, accumulated } => {
-                serde_json::json!({ "delta": delta, "accumulated": accumulated })
-            }
+            SessionEventKind::ReasoningDelta { delta, .. } => serde_json::json!({ "delta": delta }),
             SessionEventKind::ReasonCompleted { success, error } => {
                 serde_json::json!({ "success": success, "error": error })
             }

@@ -265,6 +265,8 @@ pub async fn collect_turn(
                 if delta.is_empty() {
                     continue;
                 }
+                accumulated += delta.len() as u64;
+                check_cap(accumulated, limits)?;
                 content_events += 1;
                 last_event_at = Some(now);
             }
@@ -370,6 +372,7 @@ pub fn limit_stream(stream: LlmResponseStream, limits: TurnLimits) -> LlmRespons
         if let Ok(event) = &item {
             let produced = match event {
                 LlmStreamEvent::TextDelta(delta) => delta.len() as u64,
+                LlmStreamEvent::ReasoningDelta { delta, .. } => delta.len() as u64,
                 LlmStreamEvent::ReasoningItem(item) => {
                     item.display_text().map_or(0, |text| text.len() as u64)
                 }
@@ -606,6 +609,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reasoning_deltas_count_against_the_response_byte_cap() {
+        let events = vec![
+            LlmStreamEvent::ReasoningDelta {
+                delta: "r".repeat(11),
+                summary: false,
+            },
+            done("stop"),
+        ];
+        let error = collect_turn(
+            streamed(events),
+            &TurnLimits::default().with_max_response_bytes(10),
+            |_| {},
+        )
+        .await
+        .expect_err("reasoning deltas must not bypass the response byte cap");
+        assert_eq!(
+            error.llm_error_kind(),
+            Some(LlmErrorKind::MalformedResponse)
+        );
+    }
+
+    #[tokio::test]
     async fn a_stream_error_keeps_its_kind_and_status() {
         let events = vec![Err(AgentLoopError::llm("upstream reset"))];
         let stream: LlmResponseStream = Box::pin(stream::iter(events));
@@ -714,6 +739,22 @@ mod tests {
             error.llm_error_kind(),
             Some(LlmErrorKind::MalformedResponse)
         );
+    }
+
+    #[tokio::test]
+    async fn limit_stream_counts_reasoning_deltas() {
+        let stream = streamed(vec![
+            LlmStreamEvent::ReasoningDelta {
+                delta: "r".repeat(11),
+                summary: false,
+            },
+            done("stop"),
+        ]);
+        let items: Vec<_> = limit_stream(stream, TurnLimits::default().with_max_response_bytes(10))
+            .collect()
+            .await;
+        assert_eq!(items.len(), 1);
+        assert!(items[0].is_err());
     }
 
     #[tokio::test]

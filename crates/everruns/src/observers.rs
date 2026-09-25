@@ -3,7 +3,7 @@
 //! Stability: alpha — may change without a major bump; see [`crate::stability`].
 
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -19,6 +19,9 @@ use crate::SessionEvent;
 /// Default number of pending events retained for each Engine listener.
 // THREAT[TM-DOS-040]: fixed retention and prefix-free deltas bound observer memory growth.
 pub const OBSERVER_QUEUE_CAPACITY: usize = 8192;
+
+/// Maximum serialized event bytes retained by one Engine listener.
+pub const OBSERVER_QUEUE_BYTE_CAPACITY: usize = 8 * 1024 * 1024;
 
 /// Selects the event types delivered to an [`EventListener`].
 ///
@@ -89,11 +92,44 @@ pub(crate) enum ListenerRegistration {
     Host(Arc<dyn CoreEventListener>),
 }
 
-#[derive(Clone)]
 struct DispatchEvent {
     #[cfg(any(feature = "otel", feature = "braintrust"))]
     core: CoreEvent,
     facade: SessionEvent,
+}
+
+impl DispatchEvent {
+    fn retained_bytes(&self) -> usize {
+        let facade = self.facade.as_json().to_string().len()
+            + self.facade.canonical_json().to_string().len();
+        #[cfg(any(feature = "otel", feature = "braintrust"))]
+        let core = serde_json::to_vec(&self.core).map_or(0, |value| value.len());
+        #[cfg(not(any(feature = "otel", feature = "braintrust")))]
+        let core = 0;
+        facade.saturating_add(core)
+    }
+}
+
+struct QueuedEvent {
+    event: Arc<DispatchEvent>,
+    retained_bytes: Arc<AtomicUsize>,
+    bytes: usize,
+}
+
+impl Drop for QueuedEvent {
+    fn drop(&mut self) {
+        self.retained_bytes.fetch_sub(self.bytes, Ordering::AcqRel);
+    }
+}
+
+fn reserve_retained_bytes(retained: &AtomicUsize, bytes: usize, capacity: usize) -> bool {
+    retained
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            current
+                .checked_add(bytes)
+                .filter(|total| *total <= capacity)
+        })
+        .is_ok()
 }
 
 enum ListenerTarget {
@@ -271,7 +307,7 @@ async fn finish_shutdown(
 }
 
 struct WorkerState {
-    receiver: Option<mpsc::Receiver<DispatchEvent>>,
+    receiver: Option<mpsc::Receiver<QueuedEvent>>,
     handle: Option<JoinHandle<()>>,
 }
 struct AbortOnDrop<T>(JoinHandle<T>);
@@ -287,9 +323,10 @@ struct ListenerSlot {
     name: String,
     listener: Arc<ListenerTarget>,
     filter: ListenerFilter,
-    sender: Mutex<Option<mpsc::Sender<DispatchEvent>>>,
+    sender: Mutex<Option<mpsc::Sender<QueuedEvent>>>,
     worker: Mutex<WorkerState>,
     counters: Arc<ListenerCounters>,
+    retained_bytes: Arc<AtomicUsize>,
 }
 
 impl ListenerSlot {
@@ -319,6 +356,7 @@ impl ListenerSlot {
                 handle: None,
             }),
             counters: Arc::new(ListenerCounters::new()),
+            retained_bytes: Arc::new(AtomicUsize::new(0)),
         })
     }
 
@@ -340,8 +378,19 @@ impl ListenerSlot {
         )));
     }
 
-    fn try_send(&self, event: DispatchEvent) {
+    fn try_send(&self, event: Arc<DispatchEvent>) {
         self.ensure_worker();
+        let bytes = event.retained_bytes();
+        if !reserve_retained_bytes(&self.retained_bytes, bytes, OBSERVER_QUEUE_BYTE_CAPACITY) {
+            self.counters.dropped.fetch_add(1, Ordering::Relaxed);
+            self.warn_overflow();
+            return;
+        }
+        let event = QueuedEvent {
+            event,
+            retained_bytes: self.retained_bytes.clone(),
+            bytes,
+        };
         let sender = self
             .sender
             .lock()
@@ -416,13 +465,14 @@ impl ListenerSlot {
 
 async fn drain_listener(
     listener: Arc<ListenerTarget>,
-    mut receiver: mpsc::Receiver<DispatchEvent>,
+    mut receiver: mpsc::Receiver<QueuedEvent>,
     counters: Arc<ListenerCounters>,
 ) {
     while let Some(event) = receiver.recv().await {
         let listener = listener.clone();
-        let mut invocation =
-            AbortOnDrop(tokio::spawn(async move { listener.on_event(&event).await }));
+        let mut invocation = AbortOnDrop(tokio::spawn(async move {
+            listener.on_event(&event.event).await
+        }));
         match (&mut invocation.0).await {
             Ok(()) => {
                 counters.delivered.fetch_add(1, Ordering::Relaxed);
@@ -473,14 +523,14 @@ impl ObserverDispatcher {
             return;
         }
         let _ = core;
-        let event = DispatchEvent {
+        let event = Arc::new(DispatchEvent {
             #[cfg(any(feature = "otel", feature = "braintrust"))]
             core: core.clone(),
             facade: facade.clone(),
-        };
+        });
         for slot in &self.slots {
             if slot.filter.matches(&event) {
-                slot.try_send(event.clone());
+                slot.try_send(Arc::clone(&event));
             }
         }
     }
@@ -542,7 +592,7 @@ impl Drop for ObserverDispatcher {
 #[cfg(test)]
 mod tests {
     use std::future::pending;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
@@ -557,7 +607,7 @@ mod tests {
 
     use super::{
         EventFilter, EventListener, ListenerRegistration, OBSERVER_QUEUE_CAPACITY,
-        ObserverDispatcher,
+        ObserverDispatcher, reserve_retained_bytes,
     };
     use crate::events::FacadeEventBus;
     use crate::{Agent, Engine, FunctionTool, Model, SessionEvent};
@@ -647,6 +697,22 @@ mod tests {
             .model(Model::simulated("done"))
             .build()
             .expect("valid agent")
+    }
+
+    #[test]
+    fn growing_prefixes_cannot_exceed_listener_byte_budget() {
+        let retained = AtomicUsize::new(0);
+        let capacity = 1024;
+        let mut dropped = 0;
+
+        for prefix_bytes in (64..=2048).step_by(64) {
+            if !reserve_retained_bytes(&retained, prefix_bytes, capacity) {
+                dropped += 1;
+            }
+        }
+
+        assert!(dropped > 0);
+        assert!(retained.load(Ordering::Acquire) <= capacity);
     }
 
     #[tokio::test]
