@@ -906,13 +906,15 @@ pub fn unattended_ask_user_result(arguments: &serde_json::Value) -> serde_json::
         .get("questions")
         .and_then(|value| value.as_array());
 
-    // A secret question has no unattended answer: a "default credential" is
-    // meaningless, and fabricating one would be worse than waiting. Declining
-    // leaves proceeding without it as the model's explicit decision (EVE-1058).
+    // Free-form text and credentials have no unattended answer. Declining
+    // leaves proceeding without one as the model's explicit decision.
     if questions.is_some_and(|questions| {
-        questions
-            .iter()
-            .any(|question| question.get("kind").and_then(|v| v.as_str()) == Some("secret"))
+        questions.iter().any(|question| {
+            matches!(
+                question.get("kind").and_then(|v| v.as_str()),
+                Some("text" | "secret")
+            )
+        })
     }) {
         return serde_json::json!({
             "status": "declined",

@@ -61,7 +61,7 @@ mod in_process_execution;
 mod mcp;
 #[cfg(feature = "mcp")]
 mod mcp_cache;
-#[cfg(feature = "observability")]
+#[cfg(any(feature = "otel", feature = "braintrust"))]
 pub mod observability;
 #[cfg(feature = "process")]
 mod process_command;

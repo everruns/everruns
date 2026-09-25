@@ -38,7 +38,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "uuid",
 ]
 
@@ -137,7 +137,7 @@ checksum = "2cfd1ace43da05cf4dc0ffeb6d55dc16003df69b9c6959f1ac1262611137c2e2"
 dependencies = [
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "uuid",
 ]
 
@@ -337,7 +337,7 @@ dependencies = [
  "serde_json",
  "serde_nanos",
  "serde_repr",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "time",
  "tokio",
  "tokio-rustls",
@@ -888,7 +888,7 @@ dependencies = [
  "serde_yaml_ng",
  "sha1",
  "sha2 0.11.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tower",
  "unit-prefix",
@@ -1040,7 +1040,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smoothutf8",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1055,7 +1055,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1347,7 +1347,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sync_wrapper",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-rustls",
  "tokio-util",
@@ -1830,7 +1830,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
 dependencies = [
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2186,7 +2186,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2217,17 +2217,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-util",
  "tracing",
  "trybuild",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2244,7 +2245,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-ard"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2273,7 +2274,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-bedrock"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "aws-sdk-bedrockruntime",
@@ -2291,7 +2292,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2310,7 +2311,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capability"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "schemars",
@@ -2320,7 +2321,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2347,7 +2348,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli-contract"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "clap",
  "serde",
@@ -2386,7 +2387,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2407,7 +2408,7 @@ dependencies = [
  "serde_yaml",
  "sha2 0.11.0",
  "tempfile",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-util",
  "toml",
@@ -2423,7 +2424,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2440,7 +2441,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-util",
  "tracing",
@@ -2450,7 +2451,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2477,7 +2478,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-fireworks"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2537,7 +2538,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "eventsource-stream",
@@ -2553,7 +2554,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2589,7 +2590,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tempfile",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "tracing-opentelemetry",
@@ -2623,7 +2624,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-bashkit"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2644,7 +2645,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2664,7 +2665,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2686,7 +2687,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-catalog"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "everruns-ard",
  "everruns-core",
@@ -2708,7 +2709,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-cursor"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2724,7 +2725,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2744,7 +2745,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2768,7 +2769,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2783,7 +2784,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "everruns-capability",
@@ -2799,7 +2800,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "buffa",
@@ -2827,7 +2828,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2847,7 +2848,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-github"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2865,7 +2866,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-lua"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2881,7 +2882,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-openai-image"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2900,7 +2901,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-openrouter"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "everruns-capability",
@@ -2915,7 +2916,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-parallel"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "everruns-capability",
@@ -2930,7 +2931,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2947,7 +2948,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-typesafe"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "everruns",
@@ -2959,7 +2960,7 @@ dependencies = [
  "reqwest 0.13.5",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "wiremock",
@@ -2967,7 +2968,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-web-fetch"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2989,7 +2990,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "chrono",
  "everruns-capability",
@@ -3013,7 +3014,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3045,7 +3046,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3059,7 +3060,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3068,7 +3069,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mai"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3084,7 +3085,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mcp"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3098,7 +3099,7 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "sha2 0.11.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "url",
@@ -3108,7 +3109,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-meta"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3122,7 +3123,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-model-profiles"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3131,7 +3132,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3146,7 +3147,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3161,7 +3162,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-platform"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3191,7 +3192,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tar",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "url",
@@ -3203,7 +3204,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-provider"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3223,7 +3224,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "sqlx",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "url",
@@ -3258,7 +3259,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "url",
@@ -3266,7 +3267,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3338,7 +3339,7 @@ dependencies = [
  "sqlx",
  "tar",
  "tempfile",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "time",
  "tokio",
  "tokio-stream",
@@ -3367,7 +3368,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-test-support"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3388,14 +3389,14 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "sha2 0.11.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "uuid",
 ]
 
 [[package]]
 name = "everruns-turbopuffer"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3405,7 +3406,7 @@ dependencies = [
  "reqwest 0.13.5",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "wiremock",
@@ -3413,7 +3414,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3538,7 +3539,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tower",
  "tracing",
@@ -4088,7 +4089,7 @@ dependencies = [
  "ipnet",
  "jni",
  "rand 0.10.3",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tinyvec",
  "tokio",
  "tracing",
@@ -4109,7 +4110,7 @@ dependencies = [
  "prefix-trie",
  "rand 0.10.3",
  "ring",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tinyvec",
  "tracing",
  "url",
@@ -4136,7 +4137,7 @@ dependencies = [
  "resolv-conf",
  "smallvec",
  "system-configuration",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
 ]
@@ -4822,7 +4823,7 @@ dependencies = [
  "jni-sys",
  "log",
  "simd_cesu8",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "walkdir",
  "windows-link",
 ]
@@ -4973,7 +4974,7 @@ checksum = "bde5057d6143cc94e861d90f591b9303d6716c6b9602309150bd068853c10899"
 dependencies = [
  "hashbrown 0.16.1",
  "portable-atomic",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -5020,7 +5021,7 @@ checksum = "4cca98e95f35b29d469dade6724c6f96cec9236640f745a0e99b0334ec320ab1"
 dependencies = [
  "enumflags2",
  "libc",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -5130,7 +5131,7 @@ dependencies = [
  "rand 0.10.3",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "toml",
  "tracing",
@@ -5219,9 +5220,9 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.18.4"
+version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff9840bcc50b71349309900da0ce7279aa336ae71d73250b07998932c7d97c25"
+checksum = "ef9ac18847474e638e3702b76c65d4eb93428471a74778ef0f1be711717f89b5"
 dependencies = [
  "hashbrown 0.17.1",
 ]
@@ -5774,7 +5775,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "url",
@@ -5808,23 +5809,23 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
 name = "opentelemetry"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0142c63252a9e054e68a4c61a5778f7b14f576274d593f8ce883d191a099682"
+checksum = "6cdb0b1b267eb9db3331b434ed9ddab10d50e280a9adf9d13e5233e2002b61b5"
 dependencies = [
  "futures-core",
  "futures-sink",
  "js-sys",
  "pin-project-lite",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
 [[package]]
 name = "opentelemetry-http"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5683015d09e2df236ef005b17f6f196f0d5f6313c4fa43a7b6a53b52776e4331"
+checksum = "ee2c3625b8aa04209f7e01e513bc8044da9687fa38a9eacf59628ca5f3b87300"
 dependencies = [
  "async-trait",
  "bytes",
@@ -5835,25 +5836,27 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-otlp"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9966929966d17620d7c316c643ba62631826e10021409357772d5eea84f62c35"
+checksum = "699a67345e21962a231955b9059a157e428b219fa5df8efe11f08346fb23a344"
 dependencies = [
  "http",
+ "httpdate",
  "opentelemetry",
  "opentelemetry-http",
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "prost",
  "reqwest 0.13.5",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]
 name = "opentelemetry-proto"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56d658ba1faf63f7b9c492cfbe6e0ec365440a16132d3270c1065f7b33f1b638"
+checksum = "25da1ac11a0aeccf38d7f77ee0348715adaf8340f65ad46c94a02c6b20e2f65d"
 dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
@@ -5862,9 +5865,9 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry_sdk"
-version = "0.32.1"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b59f80e1ac4d5ff7a2db8fb6c80badb7f0f3f858211fba08dd9aaec750894f9"
+checksum = "cb39533d9d1c912123efd7d41d7e0c29d16917b60ce15b4c8d87cb1af7f67520"
 dependencies = [
  "futures-channel",
  "futures-executor",
@@ -5873,7 +5876,7 @@ dependencies = [
  "percent-encoding",
  "portable-atomic",
  "rand 0.9.5",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
 ]
@@ -6509,7 +6512,7 @@ dependencies = [
  "prost-reflect",
  "prost-types",
  "protox-parse",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -6521,7 +6524,7 @@ dependencies = [
  "logos 0.15.1",
  "miette",
  "prost-types",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -6595,7 +6598,7 @@ dependencies = [
  "rustc-hash",
  "rustls",
  "socket2 0.6.5",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "web-time",
@@ -6618,7 +6621,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "slab",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tinyvec",
  "tracing",
  "web-time",
@@ -6795,7 +6798,7 @@ dependencies = [
  "palette",
  "serde",
  "strum",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "unicode-segmentation",
  "unicode-truncate",
  "unicode-width 0.2.2",
@@ -7119,7 +7122,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c51c9ae4df8a7fba42103df5c621fa3c37eccf3a3c650879e90fc48b11cc192c"
 dependencies = [
  "hashbrown 0.16.1",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -7772,7 +7775,7 @@ checksum = "0d585997b0ac10be3c5ee635f1bab02d512760d14b7c468801ac8a01d9ae5f1d"
 dependencies = [
  "num-bigint",
  "num-traits",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "time",
 ]
 
@@ -7936,7 +7939,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -7979,7 +7982,7 @@ dependencies = [
  "sqlx-postgres",
  "sqlx-sqlite",
  "syn 2.0.119",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "url",
 ]
@@ -8007,7 +8010,7 @@ dependencies = [
  "sha1",
  "sha2 0.11.0",
  "sqlx-core",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "uuid",
 ]
@@ -8043,7 +8046,7 @@ dependencies = [
  "smallvec",
  "sqlx-core",
  "stringprep",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "uuid",
  "whoami",
@@ -8069,7 +8072,7 @@ dependencies = [
  "percent-encoding",
  "serde",
  "sqlx-core",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "url",
  "uuid",
@@ -8354,11 +8357,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
 dependencies = [
- "thiserror-impl 2.0.20",
+ "thiserror-impl 2.0.21",
 ]
 
 [[package]]
@@ -8374,9 +8377,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8779,9 +8782,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-opentelemetry"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adbc64cba7137545b8044cb1fe9814f7aacf3c6b5f9b45be8bb5db538befdb26"
+checksum = "0a904802a1b902f43638b677ff2a650847e3b4404101b6c586d648e8c1e3e8fe"
 dependencies = [
  "js-sys",
  "opentelemetry",
@@ -8916,7 +8919,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "sha1",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

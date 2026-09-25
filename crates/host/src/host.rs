@@ -198,7 +198,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     fn event_emitter(&self) -> Arc<dyn EventEmitter>;
 
-    fn file_store(&self) -> Arc<dyn SessionFileSystem>;
+    fn file_store(&self, org_id: i64) -> Arc<dyn SessionFileSystem>;
 
     fn image_resolver(&self, _org_id: i64) -> Option<Arc<dyn ImageResolver>> {
         None
@@ -530,7 +530,7 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
         &capability_registry,
         tool_augmentor.as_deref(),
     );
-    let dispatcher = bash_hook_dispatcher(adapter.file_store());
+    let dispatcher = bash_hook_dispatcher(adapter.file_store(org_id));
     Ok((specs, dispatcher))
 }
 
@@ -606,7 +606,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         // embedder's backend-native display policy survives here too (it must
         // match the reason path — see its doc); server stores stay on `/workspace`.
         file_store: Some(everruns_core::scoped_prompt_file_store(
-            adapter.file_store(),
+            adapter.file_store(org_id),
             session.workspace_id,
         )),
         model: None,
@@ -683,7 +683,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         })
         .collect();
     if !user_hook_specs.is_empty() {
-        let dispatcher = bash_hook_dispatcher(adapter.file_store());
+        let dispatcher = bash_hook_dispatcher(adapter.file_store(org_id));
         post_tool_hooks.extend(everruns_core::hook_adapter::build_post_tool_use_hooks(
             &user_hook_specs,
             dispatcher.clone(),
@@ -1437,7 +1437,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         reason_capability_registry.clone(),
         adapter.driver_registry(),
     )
-    .with_file_store(adapter.file_store());
+    .with_file_store(adapter.file_store(org_id));
     let context_resolver = match adapter.storage_store(org_id) {
         Some(store) => context_resolver.with_session_storage(store),
         None => context_resolver,
@@ -1494,7 +1494,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         &reason_capability_registry,
         &adapter.driver_registry(),
         &turn_inputs.mcp_tool_definitions,
-        Some(adapter.file_store()),
+        Some(adapter.file_store(org_id)),
         // Lets `channel_context` read the session's persisted ThreadContext at
         // prompt-assembly time (EVE-977). `None` when the adapter has no store;
         // the capability then contributes nothing.
@@ -1661,7 +1661,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
                 input.context.session_id,
                 adapter.session_store(org_id),
                 adapter.session_task_registry(),
-                adapter.file_store(),
+                adapter.file_store(org_id),
                 &input.tool_definitions,
                 &mut tool_registry,
             )

@@ -16558,7 +16558,10 @@ export interface components {
     SubmittedAnswer: {
       /** @description Question id, as carried in the `tool.call_requested` payload. */
       id: string;
-      /** @description Free text, accepted only when the question allows it. */
+      /**
+       * @description Free text. Required for a `text` question, and accepted on a `choice`
+       *     question only when it allows another answer.
+       */
       other_text?: string | null;
       /**
        * @description Handle to the stored credential, on a `secret` question only — the value
@@ -17635,6 +17638,16 @@ export interface components {
        * @example text
        */
       encoding?: string | null;
+      /**
+       * @description Content the file must currently hold for the write to happen.
+       *
+       *     When set, the update is a compare-and-swap: the write lands only if the
+       *     stored bytes equal these, and a mismatch is reported as a conflict
+       *     rather than overwriting a concurrent writer.
+       */
+      expected_content?: string | null;
+      /** @description Encoding of `expected_content`. Defaults to `text` when omitted. */
+      expected_encoding?: string | null;
       /**
        * @description Whether file is read-only
        * @example false

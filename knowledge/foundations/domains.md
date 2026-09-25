@@ -35,7 +35,7 @@ operation the unit of reuse and registration.
   behavior shared by MCP and the built-in `platform` capability.
 - [`crates/internal-protocol/proto/`](../../crates/internal-protocol/proto) owns
   exact gRPC messages.
-- [`crates/server/tests/command_policy_enforcement_test.rs`](../../crates/server/tests/command_policy_enforcement_test.rs)
+- [`crates/server/tests/domain/command_policy_enforcement_test.rs`](../../crates/server/tests/domain/command_policy_enforcement_test.rs)
   verifies policy coverage from command inventory.
 
 Do not copy the command trait, context fields, error enum, registry descriptor,

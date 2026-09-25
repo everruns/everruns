@@ -2,11 +2,10 @@
 //!
 //! A request ends on an input: a user message or a batch of tool results. The
 //! runtime adds the live facts (such as the current time) right after that
-//! input, and the model answers. On the next request that answer is history,
-//! and the facts block before it has to come back unchanged. Dropping or
-//! rebuilding it rewrites the conversation the answer was produced from, which
-//! restarts the provider's prompt cache and invalidates thinking blocks that
-//! Claude binds to their conversation.
+//! input, and the model answers. Models with `clear_at` receive a turn-scoped
+//! system message; other models receive the existing user-message fallback. On
+//! the next request that answer is history, and the facts block before it has
+//! to come back unchanged.
 //!
 //! So a block goes after every input that an answer followed, rendered as of
 //! that input's own timestamp. The input is stored history with a fixed
@@ -15,6 +14,24 @@
 use chrono::{DateTime, Utc};
 
 use crate::message::{RuntimeMessage, RuntimeMessageRole};
+
+pub(super) fn supports_clear_at(provider: &everruns_provider::DriverId, model: &str) -> bool {
+    provider == &everruns_provider::DriverId::Anthropic
+        && everruns_provider::get_model_profile(provider, model).is_some_and(|profile| {
+            profile.supports_parameter(everruns_provider::model::MID_CONVERSATION_SYSTEM_PARAMETER)
+                && profile.supports_parameter(everruns_provider::model::CLEAR_AT_PARAMETER)
+        })
+}
+
+pub(super) fn mark_turn_scoped(
+    target: &mut everruns_provider::driver_registry::Message,
+    source: &RuntimeMessage,
+    supported: bool,
+) {
+    if supported && source.is_turn_scoped_reminder() {
+        target.mark_turn_scoped_system();
+    }
+}
 
 /// Insert a facts block after each input the model answered or is about to
 /// answer. `render` returns the block as of a moment, or `None` when no active
@@ -28,7 +45,15 @@ use crate::message::{RuntimeMessage, RuntimeMessageRole};
 pub(super) fn interleave_facts(
     messages: Vec<RuntimeMessage>,
     render: impl Fn(DateTime<Utc>) -> Option<String>,
+    turn_scoped_system: bool,
 ) -> (Vec<RuntimeMessage>, usize) {
+    let fact_message = |block| {
+        if turn_scoped_system {
+            RuntimeMessage::turn_scoped_system(block)
+        } else {
+            RuntimeMessage::user(block)
+        }
+    };
     let answered =
         |next: Option<&RuntimeMessageRole>| matches!(next, None | Some(RuntimeMessageRole::Agent));
     let roles: Vec<RuntimeMessageRole> = messages.iter().map(|m| m.role.clone()).collect();
@@ -54,11 +79,11 @@ pub(super) fn interleave_facts(
             && answered(next)
             && let Some(block) = render(at)
         {
-            placed.push(RuntimeMessage::user(block));
+            placed.push(fact_message(block));
         }
     }
     if ends_on_answer && let Some(block) = render(Utc::now()) {
-        placed.push(RuntimeMessage::user(block));
+        placed.push(fact_message(block));
         return (placed, 1);
     }
     (placed, 0)
@@ -108,7 +133,7 @@ mod tests {
             message(Agent, "done", 5),
             message(User, "next", 6),
         ];
-        let (placed, volatile) = interleave_facts(history, render);
+        let (placed, volatile) = interleave_facts(history, render, false);
         assert_eq!(
             texts(&placed),
             [
@@ -139,8 +164,8 @@ mod tests {
             message(Agent, "call tool", 1),
             message(ToolResult, "result", 2),
         ]);
-        let (one, _) = interleave_facts(turn_one, render);
-        let (two, _) = interleave_facts(turn_two, render);
+        let (one, _) = interleave_facts(turn_one, render, false);
+        let (two, _) = interleave_facts(turn_two, render, false);
         assert_eq!(texts(&two)[..one.len()], texts(&one)[..]);
         assert_eq!(texts(&two).len(), one.len() + 3);
     }
@@ -149,7 +174,7 @@ mod tests {
     fn a_continuation_gets_a_trailing_block_marked_volatile() {
         use RuntimeMessageRole::*;
         let history = vec![message(User, "task", 0), message(Agent, "partial", 1)];
-        let (placed, volatile) = interleave_facts(history, render);
+        let (placed, volatile) = interleave_facts(history, render, false);
         assert_eq!(
             texts(&placed)[..3],
             ["task", "<facts>10:00</facts>", "partial"]
@@ -162,8 +187,19 @@ mod tests {
     fn no_dynamic_facts_leaves_the_messages_alone() {
         use RuntimeMessageRole::*;
         let history = vec![message(User, "task", 0), message(Agent, "answer", 1)];
-        let (placed, volatile) = interleave_facts(history, |_| None);
+        let (placed, volatile) = interleave_facts(history, |_| None, false);
         assert_eq!(texts(&placed), ["task", "answer"]);
+        assert_eq!(volatile, 0);
+    }
+
+    #[test]
+    fn clear_at_capable_models_get_turn_scoped_system_facts() {
+        use RuntimeMessageRole::*;
+        let history = vec![message(User, "task", 0)];
+        let (placed, volatile) = interleave_facts(history, render, true);
+        assert_eq!(placed[1].role, System);
+        assert!(placed[1].is_turn_scoped_reminder());
+        assert_eq!(placed[1].text(), Some("<facts>10:00</facts>"));
         assert_eq!(volatile, 0);
     }
 }

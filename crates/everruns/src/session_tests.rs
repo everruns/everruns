@@ -173,7 +173,7 @@ fn turn_preserves_failure_and_stop_reason() {
 // These reach the crate-internal simulator helpers (`simulated_scripted`,
 // `simulated_delayed`) that an external integration test cannot see. The
 // public-surface event/cancellation behaviors live in
-// `tests/session_events.rs`.
+// `tests/facade/session_events.rs`.
 
 use std::time::Duration;
 

@@ -268,6 +268,13 @@ export function getDevChatFixture(
       ],
       { multi_select: true, allow_other: false },
     );
+    const branchQuestion = question(
+      "branch_name",
+      "Branch",
+      "What should I call this branch?",
+      [],
+      { kind: "text" },
+    );
     const regionQuestion = question("region", "Region", "Where should the release start?", [
       { label: "US East", description: "Closest to most current traffic.", default: true },
       { label: "EU West", description: "Keeps the first wave in the EU." },
@@ -312,6 +319,14 @@ export function getDevChatFixture(
         "ask-multi",
         "Multi select after nudge",
         [checksQuestion],
+        iso(-270_000),
+        iso(-30_000),
+        iso(30_000),
+      ),
+      askEvent(
+        "ask-text",
+        "Free-form text",
+        [branchQuestion],
         iso(-270_000),
         iso(-30_000),
         iso(30_000),

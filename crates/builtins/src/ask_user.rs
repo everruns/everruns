@@ -73,6 +73,9 @@ fn default_allow_other() -> bool {
 pub enum AskUserQuestionKind {
     #[default]
     Choice,
+    /// Collect a free-form answer. Unlike a choice, this has no options or
+    /// unattended default.
+    Text,
     /// Collect a credential. The answer carries a `secret_ref`, never a value:
     /// an `ask_user` answer is a tool result, so a value here would be
     /// plaintext in the event log *and* permanently in model context
@@ -102,7 +105,7 @@ pub struct AskUserQuestion {
     pub multi_select: bool,
     #[serde(default = "default_allow_other")]
     pub allow_other: bool,
-    /// Offered choices. A `secret` question carries none.
+    /// Offered choices. `text` and `secret` questions carry none.
     #[serde(default)]
     pub options: Vec<AskUserOption>,
     /// Name to store the credential under, on a `secret` question only.
@@ -197,10 +200,10 @@ pub struct DefaultsResponder;
 #[async_trait]
 impl AskUser for DefaultsResponder {
     async fn ask(&self, questions: &[AskUserQuestion]) -> AskUserResult {
-        // A "default credential" is meaningless, so a secret question has no
-        // unattended answer to apply. Declining says so; proceeding without the
-        // credential is then the model's explicit decision (EVE-1058).
-        if questions_ask_for_a_secret(questions) {
+        // Free-form text and credentials have no value an unattended responder
+        // can supply. Declining leaves proceeding without one as the model's
+        // explicit decision.
+        if questions_have_no_default_answer(questions) {
             return AskUserResult {
                 status: AskUserStatus::Declined,
                 answered_by: AskUserAnsweredBy::Unattended,
@@ -219,9 +222,10 @@ impl AskUser for DefaultsResponder {
 /// default, or its first option when the model declared none.
 ///
 /// Shared by the unattended responder and the deadline sweep (EVE-1056) so the
-/// two cannot drift. Callers must check [`questions_ask_for_a_secret`] first —
-/// a credential has no default, and this would hand back an empty `selected`
-/// that reads as an answer.
+/// two cannot drift. Callers must check
+/// [`questions_have_no_default_answer`] first — text and credentials have no
+/// default, and this would hand back an empty `selected` that reads as an
+/// answer.
 pub fn declared_defaults(questions: &[AskUserQuestion]) -> Vec<AskUserAnswer> {
     questions
         .iter()
@@ -245,11 +249,14 @@ pub fn declared_defaults(questions: &[AskUserQuestion]) -> Vec<AskUserAnswer> {
         .collect()
 }
 
-/// Whether any question in a batch collects a credential.
-pub fn questions_ask_for_a_secret(questions: &[AskUserQuestion]) -> bool {
-    questions
-        .iter()
-        .any(|question| question.kind == AskUserQuestionKind::Secret)
+/// Whether any question in a batch has no unattended/default answer.
+pub fn questions_have_no_default_answer(questions: &[AskUserQuestion]) -> bool {
+    questions.iter().any(|question| {
+        matches!(
+            question.kind,
+            AskUserQuestionKind::Text | AskUserQuestionKind::Secret
+        )
+    })
 }
 
 pub fn validate_ask_user_request(request: &AskUserRequest) -> Result<(), String> {
@@ -326,8 +333,16 @@ pub fn validate_ask_user_request(request: &AskUserRequest) -> Result<(), String>
 
         if question.secret_name.is_some() || question.purpose.is_some() {
             return Err(format!(
-                "question {position} is a choice and must not carry secret_name or purpose"
+                "question {position} is not a secret and must not carry secret_name or purpose"
             ));
+        }
+        if question.kind == AskUserQuestionKind::Text {
+            if !question.options.is_empty() {
+                return Err(format!(
+                    "question {position} is text and must not offer options"
+                ));
+            }
+            continue;
         }
         if !(2..=MAX_ASK_USER_OPTIONS).contains(&question.options.len()) {
             return Err(format!(
@@ -382,14 +397,19 @@ pub fn normalize_ask_user_arguments(arguments: &Value) -> Result<Value, String> 
         .filter_map(|question| question.id.clone())
         .collect();
     for (index, question) in request.questions.iter_mut().enumerate() {
-        if question.kind == AskUserQuestionKind::Secret {
-            // `allow_other` defaults to true, and free text is exactly the trap
-            // this kind exists to close: it would carry the typed credential
-            // into the tool result. There is no free-text or multi-select path
-            // for a secret, so normalize rather than reject a model that left
-            // the defaults alone.
-            question.allow_other = false;
-            question.multi_select = false;
+        match question.kind {
+            AskUserQuestionKind::Secret => {
+                // `allow_other` defaults to true, and free text is exactly the
+                // trap this kind exists to close: it would carry the typed
+                // credential into the tool result.
+                question.allow_other = false;
+                question.multi_select = false;
+            }
+            AskUserQuestionKind::Text => {
+                question.allow_other = true;
+                question.multi_select = false;
+            }
+            AskUserQuestionKind::Choice => {}
         }
         if question.id.is_some() {
             continue;
@@ -465,7 +485,7 @@ impl Capability for AskUserCapability {
     }
 
     fn description(&self) -> &str {
-        "Lets an agent ask structured choice questions, or collect a credential, through its host."
+        "Lets an agent ask choice or free-form questions, or collect a credential, through its host."
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {
@@ -486,7 +506,7 @@ impl Capability for AskUserCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "`ask_user` handles decisions/preferences. Ask only when blocked; batch questions, and never ask what code or context answers. Put likely options first; timeout uses default/first, and `answered_by` names its source. Do not re-ask a declined question. Never use `ask_user` as a consent gate: destructive, irreversible, or outward-facing actions require `request_approval`, which does not auto-resolve. For A2A `input_required` unanswered, ask the user and relay with `message_task`; never answer for them. For a credential use `kind: \"secret\"` with `secret_name`/`purpose`, alone in the call — never ask for one in prose or an option. It returns a `secret_ref`, never the value, and never auto-resolves.",
+            "`ask_user` handles decisions/preferences. Ask only when blocked; batch questions, and never ask what code or context answers. Use `kind: \"text\"` for an open question with no options; it never auto-resolves. Put likely choice options first; timeout uses default/first, and `answered_by` names its source. Do not re-ask a declined question. Never use `ask_user` as a consent gate: destructive, irreversible, or outward-facing actions require `request_approval`, which does not auto-resolve. For A2A `input_required` unanswered, ask the user and relay with `message_task`; never answer for them. For a credential use `kind: \"secret\"` with `secret_name`/`purpose`, alone in the call — never ask for one in prose or an option. It returns a `secret_ref`, never the value, and never auto-resolves.",
         )
     }
 
@@ -495,7 +515,7 @@ impl Capability for AskUserCapability {
             AskUserStrategy::ClientSide => vec![ToolDefinition::ClientSide(
                 ClientSideTool::new(
                     ASK_USER_TOOL_NAME,
-                    "Ask the user 1–4 structured choice questions, or collect one credential, then wait for the answer. Use for decisions and preferences, never for consent to destructive, irreversible, or outward-facing actions.",
+                    "Ask the user 1–4 choice or free-form questions, or collect one credential, then wait for the answer. Use for decisions and preferences, never for consent to destructive, irreversible, or outward-facing actions.",
                     ask_user_parameters_schema(),
                 )
                 .with_display_name("Ask User")
@@ -556,7 +576,7 @@ impl Tool for AskUserTool {
     }
 
     fn description(&self) -> &str {
-        "Ask the user 1–4 structured choice questions, or collect one credential. Use for decisions and preferences, never for consent to destructive, irreversible, or outward-facing actions."
+        "Ask the user 1–4 choice or free-form questions, or collect one credential. Use for decisions and preferences, never for consent to destructive, irreversible, or outward-facing actions."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -642,9 +662,9 @@ fn ask_user_parameters_schema() -> Value {
                     "properties": {
                         "kind": {
                             "type": "string",
-                            "enum": ["choice", "secret"],
+                            "enum": ["choice", "text", "secret"],
                             "default": "choice",
-                            "description": "`choice` offers options. `secret` collects one credential and must be the only question in the call; its answer returns a reference, never the value."
+                            "description": "`choice` offers options. `text` collects free-form text and never auto-resolves. `secret` collects one credential and must be the only question in the call; its answer returns a reference, never the value."
                         },
                         "id": {
                             "type": "string",
@@ -679,7 +699,7 @@ fn ask_user_parameters_schema() -> Value {
                             "type": "array",
                             "minItems": 0,
                             "maxItems": MAX_ASK_USER_OPTIONS,
-                            "description": "Required on a `choice` question, which offers 2 to 6. A `secret` question offers none.",
+                            "description": "Required on a `choice` question, which offers 2 to 6. `text` and `secret` questions offer none.",
                             "items": {
                                 "type": "object",
                                 "properties": {
@@ -927,7 +947,7 @@ mod tests {
         assert_eq!(questions["maxItems"], MAX_ASK_USER_QUESTIONS);
         assert_eq!(
             questions["items"]["properties"]["kind"]["enum"],
-            json!(["choice", "secret"])
+            json!(["choice", "text", "secret"])
         );
         assert_eq!(
             questions["items"]["properties"]["header"]["maxLength"],
@@ -967,6 +987,11 @@ mod tests {
                 "multi_select": true,
                 "options": [option("Staging", true), option("Prod", true)]
             })),
+            request(json!({
+                "kind": "text",
+                "header": "Branch",
+                "question": "What should I call this branch?"
+            })),
         ] {
             assert!(normalize_ask_user_arguments(&value).is_ok(), "{value}");
         }
@@ -983,6 +1008,12 @@ mod tests {
             ),
             request(question(vec![option("Only", false)])),
             request(question(vec![option("Yes", true), option("No", true)])),
+            request(json!({
+                "kind": "text",
+                "header": "Branch",
+                "question": "What should I call this branch?",
+                "options": [option("One", false), option("Two", false)]
+            })),
             // A secret that offers options, has no name, has no purpose, or
             // shares the call with another question.
             request(
@@ -1033,6 +1064,24 @@ mod tests {
             DEFAULT_ASK_USER_TIMEOUT_SECONDS
         );
         assert_eq!(normalized["human_intent"], "Asking where to deploy");
+    }
+
+    #[test]
+    fn text_normalization_materializes_its_free_text_shape() {
+        let normalized = normalize_ask_user_arguments(&request(json!({
+            "kind": "text",
+            "header": "Branch",
+            "question": "What should I call this branch?",
+            "multi_select": true,
+            "allow_other": false
+        })))
+        .unwrap();
+
+        assert_eq!(normalized["questions"][0]["kind"], "text");
+        assert_eq!(normalized["questions"][0]["id"], "question_1");
+        assert_eq!(normalized["questions"][0]["options"], json!([]));
+        assert_eq!(normalized["questions"][0]["multi_select"], false);
+        assert_eq!(normalized["questions"][0]["allow_other"], true);
     }
 
     #[test]
@@ -1169,6 +1218,32 @@ mod tests {
         assert!(outcome.answers.is_empty());
     }
 
+    #[tokio::test]
+    async fn a_text_question_never_auto_resolves() {
+        let capability = AskUserCapability::default();
+        let tools = capability.tools();
+        let [tool] = tools.as_slice() else {
+            panic!("default ask_user strategy must contribute one tool");
+        };
+        let ToolExecutionResult::Success(result) = tool
+            .execute(json!({
+                "questions": [{
+                    "kind": "text",
+                    "header": "Branch",
+                    "question": "What should I call this branch?"
+                }]
+            }))
+            .await
+        else {
+            panic!("the responder must return a successful tool result");
+        };
+        let outcome: AskUserResult = serde_json::from_value(result).unwrap();
+
+        assert_eq!(outcome.status, AskUserStatus::Declined);
+        assert_eq!(outcome.answered_by, AskUserAnsweredBy::Unattended);
+        assert!(outcome.answers.is_empty());
+    }
+
     #[test]
     fn a_secret_question_has_no_free_text_or_multi_select_path() {
         let normalized = normalize_ask_user_arguments(&json!({
@@ -1268,6 +1343,12 @@ mod tests {
                 "multi_select": false, "allow_other": false, "options": [],
                 "secret_name": "STRIPE_API_KEY",
                 "purpose": "Read-only charge lookups."
+            }]}),
+            // Free-form text likewise has no unattended value.
+            serde_json::json!({"questions": [{
+                "kind": "text", "id": "branch_name", "header": "Branch",
+                "question": "What should I call this branch?",
+                "multi_select": false, "allow_other": true, "options": []
             }]}),
             // Two questions at once.
             serde_json::json!({"questions": [

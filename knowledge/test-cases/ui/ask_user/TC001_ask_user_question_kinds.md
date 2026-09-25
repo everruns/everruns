@@ -32,7 +32,7 @@ answer are all exercised in one pass.
    described alternatives (for example: "Ask me which database to use — Postgres
    or SQLite — and recommend one. Give each option a description.").
    - Confirm the card header reads **The agent needs your input** above
-     *Choose an answer to continue the conversation.*
+     *Answer each question to continue the conversation.*
    - Confirm the options are **radio** inputs, each showing its description, and
      that the recommended option carries a **Recommended** badge.
    - Confirm **Continue** is disabled until an option is selected.

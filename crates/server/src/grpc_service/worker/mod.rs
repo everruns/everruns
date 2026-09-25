@@ -13,7 +13,6 @@ mod connections;
 mod credentials;
 mod durable;
 mod events;
-mod files;
 mod leases;
 mod messages;
 mod notifications;

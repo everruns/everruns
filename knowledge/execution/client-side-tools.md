@@ -37,7 +37,7 @@ status-code tables.
   owns timeout recovery.
 - [`docs/api/openapi.json`](../../docs/api/openapi.json) is the exact SDK/wire
   contract.
-- [`crates/server/tests/client_side_tools_test.rs`](../../crates/server/tests/client_side_tools_test.rs)
+- [`crates/server/tests/domain/client_side_tools_test.rs`](../../crates/server/tests/domain/client_side_tools_test.rs)
   and strict-mode tests cover serialization and compatibility behavior.
 
 Wire examples belong in OpenAPI and contract tests, not in this spec.

@@ -51,6 +51,7 @@ pub mod harnesses;
 
 // Direct worker adapters for in-process task worker
 pub mod direct_worker_adapters;
+pub mod direct_worker_adapters_files;
 pub mod execution_metadata;
 mod kernel_imports;
 pub mod knowledge_store;

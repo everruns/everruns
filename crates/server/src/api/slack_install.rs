@@ -53,6 +53,7 @@ pub struct SlackInstallState {
     pub slack: SlackState,
     pub auth: AuthState,
     pub provisioner: Arc<dyn SlackAppProvisioner>,
+    pub provisioner_available: bool,
     /// Where `oauth.v2.access` is posted. Overridden in tests.
     pub slack_api_base: String,
     /// Where the callback sends the operator's browser when it is done.
@@ -75,10 +76,13 @@ impl SlackInstallState {
         ui_base_url: String,
         provisioner: Option<Arc<dyn SlackAppProvisioner>>,
     ) -> Self {
+        let provisioner = provisioner.unwrap_or_else(|| Arc::new(UnavailableSlackAppProvisioner));
+        let provisioner_available = provisioner.is_available();
         Self {
             slack,
             auth,
-            provisioner: provisioner.unwrap_or_else(|| Arc::new(UnavailableSlackAppProvisioner)),
+            provisioner,
+            provisioner_available,
             slack_api_base: super::slack_events::SLACK_API_BASE.to_string(),
             ui_base_url,
         }
@@ -87,6 +91,7 @@ impl SlackInstallState {
 
 pub fn routes(state: SlackInstallState) -> Router {
     Router::new()
+        .route("/v1/slack/install", get(install_capability))
         .route("/v1/e/{channel_id}/slack/install", post(begin_install))
         .route(
             "/v1/e/{channel_id}/slack/oauth/callback",
@@ -95,6 +100,19 @@ pub fn routes(state: SlackInstallState) -> Router {
         .with_state(state)
 }
 
+#[derive(Serialize)]
+pub struct SlackInstallCapability {
+    pub available: bool,
+}
+
+async fn install_capability(
+    _org: ResolvedOrg,
+    State(state): State<SlackInstallState>,
+) -> Json<SlackInstallCapability> {
+    Json(SlackInstallCapability {
+        available: state.provisioner_available,
+    })
+}
 #[derive(Serialize)]
 pub struct BeginInstallResponse {
     /// Send the operator here. Slack shows one consent screen and then

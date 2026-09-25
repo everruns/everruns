@@ -135,6 +135,7 @@ Use Braintrust grouping, timeline, or thread views on `metadata.session_id` to a
 - The exporter flushes batches to `POST /v1/project_logs/{project_id}/insert`.
 - `429`, `5xx`, timeout, and connect failures are retried with jittered backoff.
 - If the queue fills, new events are dropped and the exporter logs the drop counter.
+- Framework applications that register `Braintrust::from_env()` and call `Engine::shutdown` wait for the final HTTP batch.
 
 This is best-effort durability, not a disk-backed queue.
 

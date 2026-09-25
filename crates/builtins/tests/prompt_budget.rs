@@ -56,11 +56,10 @@ async fn soft_approval_prompt_within_budget() {
     assert_contribution_under(&SoftApprovalCapability::new(), 1750).await;
 }
 
-/// Raised from 550 for the `secret` question kind (EVE-1058). Its guidance is
-/// load-bearing rather than advisory: the only thing stopping a model asking for
-/// a credential in prose, where it lands in the transcript in plaintext, is the
-/// prompt naming `kind: "secret"` as the affordance that exists instead.
+/// Raised for the `secret` and `text` question kinds. Their guidance is
+/// load-bearing rather than advisory: it directs open answers through the
+/// structured path and credentials through the safe collection path.
 #[tokio::test]
 async fn ask_user_prompt_within_budget() {
-    assert_contribution_under(&AskUserCapability::client_side(), 760).await;
+    assert_contribution_under(&AskUserCapability::client_side(), 850).await;
 }

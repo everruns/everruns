@@ -3,12 +3,12 @@
 //! The `secret` question kind (EVE-1058) gives a credential a safe path: the
 //! value goes to the encrypted session-secret store and the model is handed a
 //! name to resolve. This module closes the unsafe path (EVE-1059). A plain
-//! choice question with `allow_other: true` renders a free-text box, and a
-//! person can paste an API key into it — and *that* text becomes a tool result,
-//! persisted in `events` and replayed into model context every turn. There is
-//! no un-persisting an event, so the check has to run before the write rather
-//! than redact after it. This is TM-AGENT-016's mechanism arriving through a
-//! new door.
+//! choice question with `allow_other: true` or a `text` question accepts free
+//! text, and a person can paste an API key into either — and *that* text becomes
+//! a tool result, persisted in `events` and replayed into model context every
+//! turn. There is no un-persisting an event, so the check has to run before the
+//! write rather than redact after it. This is TM-AGENT-016's mechanism arriving
+//! through a new door.
 //!
 //! Deterministic by design. `knowledge/security/secret-leak-guardrails.md`
 //! splits the families: deterministic checks catch known *formats*, model-backed

@@ -115,6 +115,7 @@ impl WorkerAdapters for NoopAdapters {
     }
     async fn read_file(
         &self,
+        _org_id: i64,
         _session_id: Uuid,
         _path: &str,
     ) -> CoreResult<Option<everruns_core::session_file::SessionFile>> {
@@ -122,6 +123,7 @@ impl WorkerAdapters for NoopAdapters {
     }
     async fn write_file(
         &self,
+        _org_id: i64,
         _session_id: Uuid,
         _path: &str,
         _content: &str,
@@ -131,6 +133,7 @@ impl WorkerAdapters for NoopAdapters {
     }
     async fn delete_file(
         &self,
+        _org_id: i64,
         _session_id: Uuid,
         _path: &str,
         _recursive: bool,
@@ -139,6 +142,7 @@ impl WorkerAdapters for NoopAdapters {
     }
     async fn list_directory(
         &self,
+        _org_id: i64,
         _session_id: Uuid,
         _path: &str,
     ) -> CoreResult<Vec<everruns_core::session_file::FileInfo>> {
@@ -146,6 +150,7 @@ impl WorkerAdapters for NoopAdapters {
     }
     async fn stat_file(
         &self,
+        _org_id: i64,
         _session_id: Uuid,
         _path: &str,
     ) -> CoreResult<Option<everruns_core::session_file::FileStat>> {
@@ -153,6 +158,7 @@ impl WorkerAdapters for NoopAdapters {
     }
     async fn grep_files(
         &self,
+        _org_id: i64,
         _session_id: Uuid,
         _pattern: &str,
         _path_pattern: Option<&str>,
@@ -161,6 +167,7 @@ impl WorkerAdapters for NoopAdapters {
     }
     async fn create_directory(
         &self,
+        _org_id: i64,
         _session_id: Uuid,
         _path: &str,
     ) -> CoreResult<everruns_core::session_file::FileInfo> {

@@ -95,6 +95,46 @@ describe("AskUserToolCall", () => {
     expect(screen.queryByText(/Continuing with/)).not.toBeInTheDocument();
   });
 
+  it("renders and submits a text question without choice affordances", async () => {
+    renderCard({
+      questions: [
+        {
+          kind: "text",
+          id: "branch_name",
+          header: "Branch",
+          question: "What should I call this branch?",
+          options: [],
+        },
+      ],
+    });
+
+    const input = screen.getByRole("textbox", { name: "Branch answer" });
+    expect(input.tagName).toBe("TEXTAREA");
+    expect(input).toHaveAttribute("placeholder", "Type your answer");
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recommended")).not.toBeInTheDocument();
+    expect(screen.getByText("Skipping unanswered questions in 0:47")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+
+    fireEvent.change(input, { target: { value: "feature/open-question" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() =>
+      expect(submitQuestionAnswers).toHaveBeenCalledWith("session_1", {
+        tool_call_id: "ask_1",
+        status: "answered",
+        answers: [
+          {
+            id: "branch_name",
+            selected: [],
+            other_text: "feature/open-question",
+          },
+        ],
+      }),
+    );
+    expect(screen.getByText("Answered: feature/open-question")).toBeInTheDocument();
+  });
+
   it("reveals Other and submits its free text through the typed answer endpoint", async () => {
     renderCard();
 

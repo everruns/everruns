@@ -2401,53 +2401,58 @@ mod tests {
     }
 
     #[test]
-    fn test_health_status_degraded_when_no_active_workers() {
-        let health = SystemHealth {
-            total_workers: 5,
-            active_workers: 0,
-            workers_accepting: 0,
-            total_capacity: 0,
-            current_load: 0,
-            pending_tasks: 0,
-            claimed_tasks: 0,
-            completed_tasks: 0,
-            failed_tasks: 0,
-            started_tasks: 0,
-            running_workflows: 0,
-            pending_workflows: 0,
-            completed_workflows: 0,
-            failed_workflows: 0,
-            started_workflows: 0,
-            dlq_size: 0,
-        };
-
-        let response = HealthResponse::from(health);
-        assert_eq!(response.status, "degraded");
-    }
-
-    #[test]
-    fn test_health_status_warning_when_dlq_has_items() {
-        let health = SystemHealth {
-            total_workers: 2,
-            active_workers: 2,
-            workers_accepting: 2,
-            total_capacity: 10,
-            current_load: 0,
-            pending_tasks: 0,
-            claimed_tasks: 0,
-            completed_tasks: 0,
-            failed_tasks: 0,
-            started_tasks: 0,
-            running_workflows: 0,
-            pending_workflows: 0,
-            completed_workflows: 0,
-            failed_workflows: 0,
-            started_workflows: 0,
-            dlq_size: 5,
-        };
-
-        let response = HealthResponse::from(health);
-        assert_eq!(response.status, "warning");
+    fn test_health_status_reflects_worker_and_dlq_state() {
+        // (system health, expected status)
+        let cases = [
+            (
+                "no active workers",
+                SystemHealth {
+                    total_workers: 5,
+                    active_workers: 0,
+                    workers_accepting: 0,
+                    total_capacity: 0,
+                    current_load: 0,
+                    pending_tasks: 0,
+                    claimed_tasks: 0,
+                    completed_tasks: 0,
+                    failed_tasks: 0,
+                    started_tasks: 0,
+                    running_workflows: 0,
+                    pending_workflows: 0,
+                    completed_workflows: 0,
+                    failed_workflows: 0,
+                    started_workflows: 0,
+                    dlq_size: 0,
+                },
+                "degraded",
+            ),
+            (
+                "dlq has items",
+                SystemHealth {
+                    total_workers: 2,
+                    active_workers: 2,
+                    workers_accepting: 2,
+                    total_capacity: 10,
+                    current_load: 0,
+                    pending_tasks: 0,
+                    claimed_tasks: 0,
+                    completed_tasks: 0,
+                    failed_tasks: 0,
+                    started_tasks: 0,
+                    running_workflows: 0,
+                    pending_workflows: 0,
+                    completed_workflows: 0,
+                    failed_workflows: 0,
+                    started_workflows: 0,
+                    dlq_size: 5,
+                },
+                "warning",
+            ),
+        ];
+        for (case, health, expected_status) in cases {
+            let response = HealthResponse::from(health);
+            assert_eq!(response.status, expected_status, "case: {case}");
+        }
     }
 
     #[test]
@@ -2568,112 +2573,144 @@ mod tests {
         }
     }
 
+    /// Expected WorkersSummaryResponse shape for a table case below.
+    struct WorkersSummaryCase {
+        name: &'static str,
+        workers: Vec<WorkerResponse>,
+        total: usize,
+        active: usize,
+        draining: usize,
+        stopped: usize,
+        total_capacity: usize,
+        total_load: usize,
+    }
+
     #[test]
-    fn test_workers_summary_mixed_statuses() {
-        let workers = vec![
-            make_worker("w1", "active", 10, 3),
-            make_worker("w2", "active", 8, 5),
-            make_worker("w3", "draining", 10, 2),
-            make_worker("w4", "stopped", 10, 0),
+    fn test_workers_summary_counts_and_capacity() {
+        // Only active workers count toward capacity/load; draining/stopped never do,
+        // no matter how much load or capacity they report.
+        let cases = [
+            WorkersSummaryCase {
+                name: "mixed_statuses",
+                workers: vec![
+                    make_worker("w1", "active", 10, 3),
+                    make_worker("w2", "active", 8, 5),
+                    make_worker("w3", "draining", 10, 2),
+                    make_worker("w4", "stopped", 10, 0),
+                ],
+                total: 4,
+                active: 2,
+                draining: 1,
+                stopped: 1,
+                total_capacity: 18, // 10 + 8
+                total_load: 8,      // 3 + 5
+            },
+            WorkersSummaryCase {
+                name: "all_active",
+                workers: vec![
+                    make_worker("w1", "active", 10, 5),
+                    make_worker("w2", "active", 10, 3),
+                    make_worker("w3", "active", 10, 7),
+                ],
+                total: 3,
+                active: 3,
+                draining: 0,
+                stopped: 0,
+                total_capacity: 30,
+                total_load: 15,
+            },
+            WorkersSummaryCase {
+                name: "no_active_workers",
+                workers: vec![
+                    make_worker("w1", "draining", 10, 2),
+                    make_worker("w2", "stopped", 10, 0),
+                ],
+                total: 2,
+                active: 0,
+                draining: 1,
+                stopped: 1,
+                total_capacity: 0,
+                total_load: 0,
+            },
+            WorkersSummaryCase {
+                name: "empty_list",
+                workers: vec![],
+                total: 0,
+                active: 0,
+                draining: 0,
+                stopped: 0,
+                total_capacity: 0,
+                total_load: 0,
+            },
+            WorkersSummaryCase {
+                name: "only_active_contribute_to_capacity",
+                // A draining worker with high load must NOT inflate totals.
+                workers: vec![
+                    make_worker("w1", "active", 5, 2),
+                    make_worker("w2", "draining", 100, 80),
+                    make_worker("w3", "stopped", 50, 0),
+                ],
+                total: 3,
+                active: 1,
+                draining: 1,
+                stopped: 1,
+                total_capacity: 5, // Only w1
+                total_load: 2,     // Only w1
+            },
+            WorkersSummaryCase {
+                name: "single_active_worker",
+                workers: vec![make_worker("w1", "active", 20, 15)],
+                total: 1,
+                active: 1,
+                draining: 0,
+                stopped: 0,
+                total_capacity: 20,
+                total_load: 15,
+            },
+            WorkersSummaryCase {
+                name: "zero_load_active_workers",
+                workers: vec![
+                    make_worker("w1", "active", 10, 0),
+                    make_worker("w2", "active", 10, 0),
+                ],
+                total: 2,
+                active: 2,
+                draining: 0,
+                stopped: 0,
+                total_capacity: 20,
+                total_load: 0,
+            },
         ];
 
-        let resp = build_workers_list(workers);
-
-        assert_eq!(resp.total, 4);
-        assert_eq!(resp.summary.active, 2);
-        assert_eq!(resp.summary.draining, 1);
-        assert_eq!(resp.summary.stopped, 1);
-        // Only active workers count toward capacity/load
-        assert_eq!(resp.summary.total_capacity, 18); // 10 + 8
-        assert_eq!(resp.summary.total_load, 8); // 3 + 5
-    }
-
-    #[test]
-    fn test_workers_summary_all_active() {
-        let workers = vec![
-            make_worker("w1", "active", 10, 5),
-            make_worker("w2", "active", 10, 3),
-            make_worker("w3", "active", 10, 7),
-        ];
-
-        let resp = build_workers_list(workers);
-
-        assert_eq!(resp.summary.active, 3);
-        assert_eq!(resp.summary.draining, 0);
-        assert_eq!(resp.summary.stopped, 0);
-        assert_eq!(resp.summary.total_capacity, 30);
-        assert_eq!(resp.summary.total_load, 15);
-    }
-
-    #[test]
-    fn test_workers_summary_no_active_workers() {
-        let workers = vec![
-            make_worker("w1", "draining", 10, 2),
-            make_worker("w2", "stopped", 10, 0),
-        ];
-
-        let resp = build_workers_list(workers);
-
-        assert_eq!(resp.summary.active, 0);
-        assert_eq!(resp.summary.draining, 1);
-        assert_eq!(resp.summary.stopped, 1);
-        // Draining/stopped workers don't count toward capacity/load
-        assert_eq!(resp.summary.total_capacity, 0);
-        assert_eq!(resp.summary.total_load, 0);
-    }
-
-    #[test]
-    fn test_workers_summary_empty_list() {
-        let resp = build_workers_list(vec![]);
-
-        assert_eq!(resp.total, 0);
-        assert_eq!(resp.summary.active, 0);
-        assert_eq!(resp.summary.draining, 0);
-        assert_eq!(resp.summary.stopped, 0);
-        assert_eq!(resp.summary.total_capacity, 0);
-        assert_eq!(resp.summary.total_load, 0);
-    }
-
-    #[test]
-    fn test_workers_summary_only_active_contribute_to_capacity() {
-        // Edge case: a draining worker with high load should NOT inflate totals
-        let workers = vec![
-            make_worker("w1", "active", 5, 2),
-            make_worker("w2", "draining", 100, 80),
-            make_worker("w3", "stopped", 50, 0),
-        ];
-
-        let resp = build_workers_list(workers);
-
-        assert_eq!(resp.summary.total_capacity, 5); // Only w1
-        assert_eq!(resp.summary.total_load, 2); // Only w1
-    }
-
-    #[test]
-    fn test_workers_summary_single_active_worker() {
-        let workers = vec![make_worker("w1", "active", 20, 15)];
-
-        let resp = build_workers_list(workers);
-
-        assert_eq!(resp.summary.active, 1);
-        assert_eq!(resp.summary.draining, 0);
-        assert_eq!(resp.summary.stopped, 0);
-        assert_eq!(resp.summary.total_capacity, 20);
-        assert_eq!(resp.summary.total_load, 15);
-    }
-
-    #[test]
-    fn test_workers_summary_zero_load_active_workers() {
-        let workers = vec![
-            make_worker("w1", "active", 10, 0),
-            make_worker("w2", "active", 10, 0),
-        ];
-
-        let resp = build_workers_list(workers);
-
-        assert_eq!(resp.summary.active, 2);
-        assert_eq!(resp.summary.total_capacity, 20);
-        assert_eq!(resp.summary.total_load, 0);
+        for case in cases {
+            let resp = build_workers_list(case.workers);
+            assert_eq!(resp.total, case.total, "case {}: total", case.name);
+            assert_eq!(
+                resp.summary.active, case.active,
+                "case {}: active",
+                case.name
+            );
+            assert_eq!(
+                resp.summary.draining, case.draining,
+                "case {}: draining",
+                case.name
+            );
+            assert_eq!(
+                resp.summary.stopped, case.stopped,
+                "case {}: stopped",
+                case.name
+            );
+            assert_eq!(
+                resp.summary.total_capacity, case.total_capacity,
+                "case {}: total_capacity",
+                case.name
+            );
+            assert_eq!(
+                resp.summary.total_load, case.total_load,
+                "case {}: total_load",
+                case.name
+            );
+        }
     }
 
     // ============================================
@@ -3460,45 +3497,21 @@ mod tests {
         // --- Non-platform user gets 403 on protected read endpoints ---
 
         #[tokio::test]
-        async fn non_platform_user_cannot_get_health() {
-            let status = get_with_auth(test_app(false), "/v1/durable/health").await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_platform_user_cannot_list_workers() {
-            let status = get_with_auth(test_app(false), "/v1/durable/workers").await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_platform_user_cannot_list_workflows() {
-            let status = get_with_auth(test_app(false), "/v1/durable/workflows").await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_platform_user_cannot_list_tasks() {
-            let status = get_with_auth(test_app(false), "/v1/durable/tasks").await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_platform_user_cannot_list_dlq() {
-            let status = get_with_auth(test_app(false), "/v1/durable/dlq").await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_platform_user_cannot_list_circuit_breakers() {
-            let status = get_with_auth(test_app(false), "/v1/durable/circuit-breakers").await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_platform_user_cannot_get_metrics() {
-            let status = get_with_auth(test_app(false), "/v1/durable/metrics/timeseries").await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
+        async fn non_platform_user_cannot_read_protected_endpoints() {
+            let paths = [
+                "/v1/durable/health",
+                "/v1/durable/workers",
+                "/v1/durable/workflows",
+                "/v1/durable/tasks",
+                "/v1/durable/dlq",
+                "/v1/durable/circuit-breakers",
+                "/v1/durable/metrics/timeseries",
+                "/v1/durable/sse",
+            ];
+            for path in paths {
+                let status = get_with_auth(test_app(false), path).await;
+                assert_eq!(status, StatusCode::FORBIDDEN, "path: {path}");
+            }
         }
 
         #[tokio::test]
@@ -3525,120 +3538,50 @@ mod tests {
         // --- Non-platform user gets 403 on mutate endpoints ---
 
         #[tokio::test]
-        async fn non_platform_user_cannot_drain_worker() {
-            let status =
-                post_with_auth(test_app(false), "/v1/durable/workers/w1/drain", "{}").await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_platform_user_cannot_cancel_workflow() {
+        async fn non_platform_user_cannot_mutate_protected_endpoints() {
             let wf_id = Uuid::nil();
-            let status = post_with_auth(
-                test_app(false),
-                &format!("/v1/durable/workflows/{wf_id}/cancel"),
-                "{}",
-            )
-            .await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_platform_user_cannot_send_signal() {
-            let wf_id = Uuid::nil();
-            let status = post_with_auth(
-                test_app(false),
-                &format!("/v1/durable/workflows/{wf_id}/signal"),
-                r#"{"signal_type":"test","payload":{}}"#,
-            )
-            .await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_platform_user_cannot_enqueue_task() {
-            let status = post_with_auth(
-                test_app(false),
-                "/v1/durable/tasks",
-                r#"{"activity_type":"test","input":{}}"#,
-            )
-            .await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_platform_user_cannot_retry_dlq() {
             let dlq_id = Uuid::nil();
-            let status = post_with_auth(
-                test_app(false),
-                &format!("/v1/durable/dlq/{dlq_id}/retry"),
-                "{}",
-            )
-            .await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
+            let cases: Vec<(String, &str)> = vec![
+                ("/v1/durable/workers/w1/drain".to_string(), "{}"),
+                (format!("/v1/durable/workflows/{wf_id}/cancel"), "{}"),
+                (
+                    format!("/v1/durable/workflows/{wf_id}/signal"),
+                    r#"{"signal_type":"test","payload":{}}"#,
+                ),
+                (
+                    "/v1/durable/tasks".to_string(),
+                    r#"{"activity_type":"test","input":{}}"#,
+                ),
+                (format!("/v1/durable/dlq/{dlq_id}/retry"), "{}"),
+                (
+                    "/v1/durable/circuit-breakers/test-key/open".to_string(),
+                    "{}",
+                ),
+            ];
 
-        #[tokio::test]
-        async fn non_platform_user_cannot_force_open_circuit_breaker() {
-            let status = post_with_auth(
-                test_app(false),
-                "/v1/durable/circuit-breakers/test-key/open",
-                "{}",
-            )
-            .await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        // --- Non-platform user gets 403 on SSE ---
-
-        #[tokio::test]
-        async fn non_platform_user_cannot_stream_durable_sse() {
-            let status = get_with_auth(test_app(false), "/v1/durable/sse").await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
+            for (path, body) in cases {
+                let status = post_with_auth(test_app(false), &path, body).await;
+                assert_eq!(status, StatusCode::FORBIDDEN, "path: {path}");
+            }
         }
 
         // --- Platform user gets access (503 = store unavailable, not 403) ---
 
         #[tokio::test]
-        async fn platform_user_can_get_health() {
-            let status = get_with_auth(test_app(true), "/v1/durable/health").await;
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        }
-
-        #[tokio::test]
-        async fn platform_user_can_list_workers() {
-            let status = get_with_auth(test_app(true), "/v1/durable/workers").await;
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        }
-
-        #[tokio::test]
-        async fn platform_user_can_list_workflows() {
-            let status = get_with_auth(test_app(true), "/v1/durable/workflows").await;
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        }
-
-        #[tokio::test]
-        async fn platform_user_can_list_tasks() {
-            let status = get_with_auth(test_app(true), "/v1/durable/tasks").await;
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        }
-
-        #[tokio::test]
-        async fn platform_user_can_list_dlq() {
-            let status = get_with_auth(test_app(true), "/v1/durable/dlq").await;
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        }
-
-        #[tokio::test]
-        async fn platform_user_can_list_circuit_breakers() {
-            let status = get_with_auth(test_app(true), "/v1/durable/circuit-breakers").await;
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        }
-
-        #[tokio::test]
-        async fn platform_user_can_stream_durable_sse() {
-            let status = get_with_auth(test_app(true), "/v1/durable/sse").await;
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        async fn platform_user_can_access_protected_endpoints() {
+            let paths = [
+                "/v1/durable/health",
+                "/v1/durable/workers",
+                "/v1/durable/workflows",
+                "/v1/durable/tasks",
+                "/v1/durable/dlq",
+                "/v1/durable/circuit-breakers",
+                "/v1/durable/sse",
+            ];
+            for path in paths {
+                let status = get_with_auth(test_app(true), path).await;
+                assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "path: {path}");
+            }
         }
 
         #[tokio::test]

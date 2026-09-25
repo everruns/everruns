@@ -2,7 +2,9 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::future::Future;
 use std::sync::{Arc, Mutex, Weak};
+use std::time::Duration;
 
 #[cfg(feature = "local")]
 use std::sync::OnceLock;
@@ -14,7 +16,14 @@ use everruns_host::{
 use tokio::sync::OnceCell;
 
 use crate::agent::BackendInitError;
-use crate::{Agent, Harness, ResumeError, Session, SessionEnvironmentError, SessionId};
+use crate::observers::{
+    ClosureEventListener, EventListener, ListenerRegistration, OBSERVER_QUEUE_CAPACITY,
+    ObserverDispatcher,
+};
+use crate::{
+    Agent, Harness, ObserverReport, ObserverStats, ResumeError, Session, SessionEnvironmentError,
+    SessionEvent, SessionId,
+};
 
 /// The runtime resources owned by an [`Engine`].
 pub(crate) struct EngineBackends {
@@ -75,17 +84,86 @@ pub(crate) trait SessionExecution: Send + Sync + fmt::Debug {
 /// one backend bundle across engines in the same process, preventing divergent
 /// JSONL indexes and SQLite handles when an application constructs more than
 /// one engine for the same profile.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Engine {
     inner: Arc<EngineInner>,
 }
 
-#[derive(Default)]
 struct EngineInner {
     sessions: Mutex<HashMap<SessionId, EngineSessionEntry>>,
     memory_backends: Arc<OnceCell<Arc<EngineBackends>>>,
+    observers: Arc<ObserverDispatcher>,
     #[cfg(feature = "local")]
     local_backends: Mutex<HashMap<std::path::PathBuf, Arc<OnceCell<Arc<EngineBackends>>>>>,
+}
+
+/// Configures an application-owned [`Engine`].
+///
+/// Stability: alpha.
+pub struct EngineBuilder {
+    listeners: Vec<ListenerRegistration>,
+    observer_queue_capacity: usize,
+}
+
+impl Default for EngineBuilder {
+    fn default() -> Self {
+        Self {
+            listeners: Vec::new(),
+            observer_queue_capacity: OBSERVER_QUEUE_CAPACITY,
+        }
+    }
+}
+
+impl EngineBuilder {
+    /// Register an event listener for every session this Engine runs.
+    pub fn listener(mut self, listener: impl EventListener) -> Self {
+        self.listeners
+            .push(ListenerRegistration::App(Arc::new(listener)));
+        self
+    }
+
+    /// Register a built-in observability integration for every Engine session.
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    pub fn observe(mut self, observer: impl crate::observability::Observation) -> Self {
+        self.listeners.push(ListenerRegistration::Host(
+            crate::observability::into_listener(observer),
+        ));
+        self
+    }
+
+    /// Register an async closure that receives owned session events.
+    pub fn on_event<F, Fut>(self, handler: F) -> Self
+    where
+        F: Fn(SessionEvent) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.listener(ClosureEventListener::new(handler))
+    }
+
+    /// Build the Engine and its observer registry.
+    pub fn build(self) -> Engine {
+        Engine {
+            inner: Arc::new(EngineInner {
+                sessions: Mutex::new(HashMap::new()),
+                memory_backends: Arc::new(OnceCell::new()),
+                observers: ObserverDispatcher::new(self.listeners, self.observer_queue_capacity),
+                #[cfg(feature = "local")]
+                local_backends: Mutex::new(HashMap::new()),
+            }),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn observer_queue_capacity(mut self, capacity: usize) -> Self {
+        self.observer_queue_capacity = capacity;
+        self
+    }
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Self::builder().build()
+    }
 }
 
 struct EngineSessionEntry {
@@ -122,16 +200,20 @@ impl fmt::Debug for Engine {
 }
 
 impl Engine {
+    /// Begin configuring an application-owned engine.
+    pub fn builder() -> EngineBuilder {
+        EngineBuilder::default()
+    }
     /// Construct an empty process-local engine.
     pub fn new() -> Self {
-        Self::default()
+        Self::builder().build()
     }
 
     /// Create a new engine-owned session from an immutable Agent snapshot.
     pub fn create(&self, agent: Agent) -> Session {
         let session_id = SessionId::new();
         self.attach_unchecked(session_id, agent);
-        let session = Session::new(self.binding(session_id), None);
+        let session = Session::new(self.binding(session_id), None, self.inner.observers.clone());
         self.remember_state(session_id, &session);
         session
     }
@@ -153,9 +235,23 @@ impl Engine {
                 .negotiate(environment)
                 .map_err(ResumeError::Environment)?;
         }
-        let session = Session::new(binding, environment);
+        let session = Session::new(binding, environment, self.inner.observers.clone());
         self.remember_state(session_id, &session);
         Ok(session)
+    }
+
+    /// Return a snapshot of listener delivery counters.
+    pub fn observer_stats(&self) -> ObserverStats {
+        self.inner.observers.stats()
+    }
+
+    /// Stop listener intake, drain queued events, and flush each listener.
+    ///
+    /// Listener tasks that do not finish within `deadline` are cancelled and
+    /// reported through [`ObserverReport::timed_out`]. Concurrent calls wait
+    /// for the same shutdown result; the first call supplies the shared deadline.
+    pub async fn shutdown(&self, deadline: Duration) -> ObserverReport {
+        self.inner.observers.shutdown(deadline).await
     }
 
     /// Attach a persisted local session without an explicit Harness.

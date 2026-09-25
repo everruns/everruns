@@ -99,10 +99,10 @@ fails closed.
 
 ## Integration and validation
 
-The [HTTP integration tests](../../crates/host/tests/native_async_http.rs) exercise
+The [HTTP integration tests](../../crates/host/tests/integration/native_async_http.rs) exercise
 both custom-host composition and the normal Reason/Act runtime, including raw
 custom input, original-call outputs, transcript metadata, and completion gating.
-The [PostgreSQL conformance test](../../crates/server/tests/repository_conformance_test.rs)
+The [PostgreSQL conformance test](../../crates/server/tests/server_integration/repository_conformance_test.rs)
 checks tenant isolation, competing owners, expiry, stale writes, encryption, and
 recovery. A regression test exercises journal writes and tool jobs sharing one
 transport lock. An isolated PostgreSQL/gRPC/API/worker run also verified early

@@ -17,9 +17,7 @@ mod tests_platform_command_surface;
 mod tests_sqldb_sharing;
 
 use crate::domains::mcp_servers::McpServerService;
-use crate::domains::session_files::{
-    CreateDirectoryInput, CreateFileInput, UpdateFileInput, WorkspaceFileService,
-};
+use crate::domains::session_files::WorkspaceFileService;
 use crate::domains::sessions::SessionService;
 use crate::services::{CapabilityService, EventService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
@@ -192,22 +190,10 @@ use everruns_internal_protocol::proto::{
     ResolvedImageData,
     SendDurableWorkflowSignalRequest,
     SendDurableWorkflowSignalResponse,
-    SessionCreateDirectoryRequest,
-    SessionCreateDirectoryResponse,
-    SessionDeleteFileRequest,
-    SessionDeleteFileResponse,
-    SessionGrepFilesRequest,
-    SessionGrepFilesResponse,
-    SessionListDirectoryRequest,
-    SessionListDirectoryResponse,
-    SessionReadFileRequest,
-    SessionReadFileResponse,
     SessionSqlDbExecuteRequest,
     SessionSqlDbExecuteResponse,
     SessionSqlDbQueryRequest,
     SessionSqlDbQueryResponse,
-    SessionStatFileRequest,
-    SessionStatFileResponse,
     SessionStorageDeleteSecretRequest,
     SessionStorageDeleteSecretResponse,
     SessionStorageDeleteValueRequest,
@@ -226,10 +212,6 @@ use everruns_internal_protocol::proto::{
     SessionStorageSetValueResponse,
     SessionTaskMessageResponse,
     SessionTaskResponse,
-    SessionWriteFileIfContentMatchesRequest,
-    SessionWriteFileIfContentMatchesResponse,
-    SessionWriteFileRequest,
-    SessionWriteFileResponse,
     SetSessionStatusRequest,
     SetSessionStatusResponse,
     SetSessionTitleRequest,
@@ -470,7 +452,7 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
 pub struct WorkerServiceImpl {
     event_service: EventService,
     session_service: Arc<SessionService>,
-    session_file_service: WorkspaceFileService,
+    session_file_service: Arc<WorkspaceFileService>,
     provider_resolver_service: Arc<ProviderResolverService>,
     mcp_server_service: McpServerService,
     capability_service: Arc<CapabilityService>,
@@ -545,11 +527,11 @@ impl WorkerServiceImpl {
                 svc
             }
         };
-        let session_file_service = if let Some(ref reg) = virtual_registry {
+        let session_file_service = Arc::new(if let Some(ref reg) = virtual_registry {
             WorkspaceFileService::new(db.clone()).with_virtual_registry(reg.clone())
         } else {
             WorkspaceFileService::new(db.clone())
-        };
+        });
         let provider_resolver_service = provider_resolver_service.unwrap_or_else(|| {
             Arc::new(
                 ProviderResolverService::new(db.clone(), encryption.clone())
@@ -721,6 +703,12 @@ impl WorkerServiceImpl {
                 .map(|store| store as Arc<dyn WorkflowEventStore + Send + Sync>),
         )
         .with_session_service(self.session_service.clone())
+        // The worker's file operations run as `session_files` commands, and
+        // those resolve their store from the ctx. Without this they would build
+        // a bare `WorkspaceFileService` and the session's virtual mounts would
+        // be invisible to the agent — the RPCs this replaced always carried the
+        // registry-aware service.
+        .with_session_file_service(self.session_file_service.clone())
         // Wire the event service so event-backed platform commands (e.g.
         // list_events, used by subagent/handoff idle-settling) work over the
         // gRPC worker dispatch, not just the in-process direct path.

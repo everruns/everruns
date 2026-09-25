@@ -130,6 +130,11 @@ pub trait SlackAppProvisioner: Send + Sync {
     /// state the UI cannot explain.
     async fn delete_app(&self, app_id: &str) -> SlackProvisioningResult<()>;
 
+    /// Whether the deployment can offer one-click install before an endpoint exists.
+    fn is_available(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &'static str {
         "SlackAppProvisioner"
     }
@@ -154,6 +159,9 @@ impl SlackAppProvisioner for UnavailableSlackAppProvisioner {
 
     async fn delete_app(&self, _app_id: &str) -> SlackProvisioningResult<()> {
         Err(SlackProvisioningError::Unavailable)
+    }
+    fn is_available(&self) -> bool {
+        false
     }
 
     fn name(&self) -> &'static str {
@@ -185,6 +193,7 @@ mod tests {
     #[tokio::test]
     async fn absent_provisioner_reports_unavailable_rather_than_failing() {
         let provisioner = UnavailableSlackAppProvisioner;
+        assert!(!provisioner.is_available());
         assert!(matches!(
             provisioner.create_app("_meta: {}").await,
             Err(SlackProvisioningError::Unavailable)

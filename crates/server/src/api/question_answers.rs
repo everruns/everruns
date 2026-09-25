@@ -107,6 +107,11 @@ pub(crate) fn validate_answers(
         if answer.secret_ref.is_some() {
             return Err(format!("question {id:?} is not a secret question"));
         }
+        if question.kind == AskUserQuestionKind::Text && !answer.selected.is_empty() {
+            return Err(format!(
+                "question {id:?} is text and must not select options"
+            ));
+        }
 
         for label in &answer.selected {
             if !question.options.iter().any(|option| &option.label == label) {
@@ -130,7 +135,7 @@ pub(crate) fn validate_answers(
             .as_deref()
             .map(str::trim)
             .filter(|text| !text.is_empty());
-        if other.is_some() && !question.allow_other {
+        if other.is_some() && question.kind != AskUserQuestionKind::Text && !question.allow_other {
             return Err(format!("question {id:?} does not allow free text"));
         }
 
@@ -464,7 +469,8 @@ pub struct SubmittedAnswer {
     /// Chosen option labels. Must be labels that were actually offered.
     #[serde(default)]
     pub selected: Vec<String>,
-    /// Free text, accepted only when the question allows it.
+    /// Free text. Required for a `text` question, and accepted on a `choice`
+    /// question only when it allows another answer.
     #[serde(default)]
     pub other_text: Option<String>,
     /// Handle to the stored credential, on a `secret` question only — the value
@@ -671,6 +677,20 @@ mod tests {
         }
     }
 
+    fn text_question(id: &str) -> AskUserQuestion {
+        AskUserQuestion {
+            kind: AskUserQuestionKind::Text,
+            id: Some(id.to_string()),
+            header: "Branch".to_string(),
+            question: "What should I call this branch?".to_string(),
+            multi_select: false,
+            allow_other: true,
+            options: Vec::new(),
+            secret_name: None,
+            purpose: None,
+        }
+    }
+
     fn answer(id: &str, selected: &[&str], other: Option<&str>) -> AskUserAnswer {
         AskUserAnswer {
             id: id.to_string(),
@@ -773,6 +793,28 @@ mod tests {
     }
 
     #[test]
+    fn a_text_question_accepts_only_free_text() {
+        let questions = vec![text_question("branch_name")];
+        let validated = validate_answers(
+            &questions,
+            &[answer("branch_name", &[], Some(" feature/open-question "))],
+        )
+        .expect("free text is the Text answer");
+        assert!(validated[0].selected.is_empty());
+        assert_eq!(
+            validated[0].other_text.as_deref(),
+            Some("feature/open-question")
+        );
+
+        let error = validate_answers(
+            &questions,
+            &[answer("branch_name", &["feature/open-question"], None)],
+        )
+        .expect_err("Text must not accept an option selection");
+        assert!(error.contains("must not select options"), "{error}");
+    }
+
+    #[test]
     fn every_asked_question_must_be_answered() {
         let questions = vec![
             question("target", false, true),
@@ -858,6 +900,20 @@ mod tests {
                 "the error leaked the value: {error}"
             );
         }
+    }
+
+    #[test]
+    fn a_credential_pasted_into_a_text_answer_is_refused() {
+        let questions = vec![text_question("branch_name")];
+        let secret = "sk-abcdefghijklmnopqrstuvwxyz012345";
+        let error = validate_answers(&questions, &[answer("branch_name", &[], Some(secret))])
+            .expect_err("a credential-shaped Text answer must be refused");
+
+        assert!(error.contains("secret"), "no safe path forward: {error}");
+        assert!(
+            !error.contains(secret),
+            "the error leaked the value: {error}"
+        );
     }
 
     /// The tuning bar from EVE-1059: blocking an ordinary answer is worse than

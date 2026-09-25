@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Radio } from "lucide-react";
 import { useAgent } from "@/hooks/use-agents";
-import { useCreateAgentEndpoint } from "@/hooks/use-agent-endpoints";
+import { useCreateAgentEndpoint, useSlackInstallCapability } from "@/hooks/use-agent-endpoints";
 import { usePolicies } from "@/hooks/use-policies";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,7 @@ import {
   PageRail,
 } from "@/components/layout";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
+import { beginSlackInstall } from "@/lib/api/agent-endpoints";
 
 export default function NewAgentEndpointPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params);
@@ -35,6 +36,7 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
   const { data: agent, isLoading } = useAgent(agentId);
   const { can, isLoading: policiesLoading } = usePolicies("agents");
   const createEndpoint = useCreateAgentEndpoint(agentId);
+  const slackInstallCapability = useSlackInstallCapability();
   const [formState, setFormState] = useState(() => getDefaultChannelFormState("webhook"));
   const returnHref = `/agents/${agentId}?tab=integrations`;
   const canManage = !policiesLoading && can("agent.manage") && !isReadOnlyStatus(agent?.status);
@@ -43,7 +45,7 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
     if (agent && !policiesLoading && !canManage) router.replace(returnHref);
   }, [agent, canManage, policiesLoading, returnHref, router]);
 
-  if (isLoading || policiesLoading) {
+  if (isLoading || policiesLoading || slackInstallCapability.isLoading) {
     return <div className="container mx-auto p-6">Loading endpoint form...</div>;
   }
   if (!agent) {
@@ -59,6 +61,7 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
   }
 
   const agentName = getDisplayName(agent);
+  const slackInstallAvailable = slackInstallCapability.data?.available === true;
 
   return (
     <PageContainer>
@@ -93,6 +96,13 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
         id="endpoint-edit-form"
         onSubmit={(event) => {
           event.preventDefault();
+          const hasManualSlackCredentials = Boolean(
+            formState.slackCredentialsConfigured ||
+            formState.slackSigningSecret ||
+            formState.slackBotToken ||
+            formState.slackTeamId ||
+            formState.slackChannelId,
+          );
           createEndpoint.mutate(
             {
               channel_type: formState.kind,
@@ -100,7 +110,27 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
               enabled: formState.enabled,
             },
             {
-              onSuccess: (endpoint) => router.push(`/agents/${agentId}/endpoints/${endpoint.id}`),
+              onSuccess: async (endpoint) => {
+                const endpointHref = `/agents/${agentId}/endpoints/${endpoint.id}`;
+                if (
+                  formState.kind !== "slack" ||
+                  hasManualSlackCredentials ||
+                  !slackInstallAvailable
+                ) {
+                  router.push(endpointHref);
+                  return;
+                }
+                try {
+                  const { authorize_url } = await beginSlackInstall(endpoint.id);
+                  window.location.href = authorize_url;
+                } catch (caught) {
+                  const reason =
+                    caught instanceof Error ? caught.message : "Could not start the Slack install.";
+                  router.push(
+                    `${endpointHref}?slack_install=failed&reason=${encodeURIComponent(reason)}`,
+                  );
+                }
+              },
             },
           );
         }}
@@ -125,7 +155,12 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ChannelForm state={formState} onChange={setFormState} mode="new" />
+                <ChannelForm
+                  state={formState}
+                  onChange={setFormState}
+                  mode="new"
+                  slackInstallAvailable={slackInstallAvailable}
+                />
               </CardContent>
             </Card>
           </PageMain>

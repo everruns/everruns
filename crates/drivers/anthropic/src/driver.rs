@@ -127,6 +127,7 @@ struct SendMessagesOptions<'a> {
     needs_interleaved_thinking: bool,
     wants_million_context: bool,
     wants_cache_diagnostics: bool,
+    wants_clear_at: bool,
     max_tokens_from_profile: bool,
     model: &'a str,
     /// Caller-supplied per-request headers, applied over everything the driver
@@ -182,6 +183,7 @@ impl AnthropicChatDriver {
             needs_interleaved_thinking,
             wants_million_context,
             wants_cache_diagnostics,
+            wants_clear_at,
             max_tokens_from_profile,
             model,
             extra_headers,
@@ -233,6 +235,9 @@ impl AnthropicChatDriver {
                     }
                     if binds_thinking {
                         beta_features.push(layout::THINKING_BINDING_BETA);
+                    }
+                    if wants_clear_at {
+                        beta_features.push("mid-conversation-system-clear-at-2026-08-21");
                     }
                     if !beta_features.is_empty() {
                         let beta = beta_features.join(",");
@@ -589,6 +594,7 @@ impl AnthropicChatDriver {
                                 content,
                                 is_error: None,
                             }],
+                            clear_at: None,
                             preserved_content: None,
                         });
                     }
@@ -598,6 +604,7 @@ impl AnthropicChatDriver {
                         converted.push(AnthropicMessage {
                             role: Self::convert_role(&msg.role).to_string(),
                             content: Vec::new(),
+                            clear_at: None,
                             preserved_content: Some(preserved_content),
                         });
                         continue;
@@ -661,6 +668,7 @@ impl AnthropicChatDriver {
                     converted.push(AnthropicMessage {
                         role: Self::convert_role(&msg.role).to_string(),
                         content,
+                        clear_at: None,
                         preserved_content: None,
                     });
                 }
@@ -668,6 +676,7 @@ impl AnthropicChatDriver {
                     converted.push(AnthropicMessage {
                         role: Self::convert_role(&msg.role).to_string(),
                         content: Self::convert_content(&msg.content),
+                        clear_at: None,
                         preserved_content: None,
                     });
                 }
@@ -812,6 +821,9 @@ impl ChatDriver for AnthropicChatDriver {
             prompt_cache_enabled,
             config.volatile_suffix_len,
         );
+        let wants_clear_at = anthropic_messages
+            .iter()
+            .any(|message| message.clear_at.is_some());
         let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
 
         // `[1m]` model ids (e.g. `claude-opus-4-8[1m]`) are the gateway's
@@ -971,6 +983,7 @@ impl ChatDriver for AnthropicChatDriver {
                         needs_interleaved_thinking,
                         wants_million_context,
                         wants_cache_diagnostics,
+                        wants_clear_at,
                         max_tokens_from_profile,
                         model: &config.model,
                         extra_headers: &config.extra_headers,
@@ -1836,6 +1849,7 @@ fn adaptive_effort_level(effort: ReasoningEffort) -> Option<&'static str> {
 struct AnthropicMessage {
     role: String,
     content: Vec<AnthropicContentBlock>,
+    clear_at: Option<String>,
     // Keep provider-returned blocks raw so future fields and block types survive replay.
     preserved_content: Option<Value>,
 }
@@ -1845,11 +1859,14 @@ impl Serialize for AnthropicMessage {
     where
         S: serde::Serializer,
     {
-        let mut message = serializer.serialize_struct("AnthropicMessage", 2)?;
+        let mut message = serializer.serialize_struct("AnthropicMessage", 3)?;
         message.serialize_field("role", &self.role)?;
         match &self.preserved_content {
             Some(content) => message.serialize_field("content", content)?,
             None => message.serialize_field("content", &self.content)?,
+        }
+        if let Some(clear_at) = &self.clear_at {
+            message.serialize_field("clear_at", clear_at)?;
         }
         message.end()
     }
