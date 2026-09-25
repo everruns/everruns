@@ -90,10 +90,10 @@ pub(crate) enum ListenerRegistration {
 }
 
 #[derive(Clone)]
-struct DispatchEvent {
+enum DispatchEvent {
+    App(Box<SessionEvent>),
     #[cfg(any(feature = "otel", feature = "braintrust"))]
-    core: CoreEvent,
-    facade: SessionEvent,
+    Host(Box<CoreEvent>),
 }
 
 enum ListenerTarget {
@@ -104,10 +104,17 @@ enum ListenerTarget {
 
 impl ListenerTarget {
     async fn on_event(&self, event: &DispatchEvent) {
-        match self {
-            Self::App(listener) => listener.on_event(&event.facade).await,
+        match event {
+            DispatchEvent::App(event) => match self {
+                Self::App(listener) => listener.on_event(event).await,
+                #[cfg(any(feature = "otel", feature = "braintrust"))]
+                Self::Host(_) => unreachable!("host listener received an app event"),
+            },
             #[cfg(any(feature = "otel", feature = "braintrust"))]
-            Self::Host(listener) => listener.on_event(&event.core).await,
+            DispatchEvent::Host(event) => match self {
+                Self::Host(listener) => listener.on_event(event).await,
+                Self::App(_) => unreachable!("app listener received a host event"),
+            },
         }
     }
 
@@ -127,13 +134,13 @@ enum ListenerFilter {
 }
 
 impl ListenerFilter {
-    fn matches(&self, event: &DispatchEvent) -> bool {
+    fn matches(&self, _core: &CoreEvent, facade: &SessionEvent) -> bool {
         match self {
-            Self::App(filter) => filter.matches(&event.facade),
+            Self::App(filter) => filter.matches(facade),
             #[cfg(any(feature = "otel", feature = "braintrust"))]
             Self::Host(None) => true,
             #[cfg(any(feature = "otel", feature = "braintrust"))]
-            Self::Host(Some(types)) => types.contains(&event.core.event_type.as_str()),
+            Self::Host(Some(types)) => types.contains(&_core.event_type.as_str()),
         }
     }
 }
@@ -340,6 +347,17 @@ impl ListenerSlot {
         )));
     }
 
+    fn prepare_event(&self, core: &CoreEvent, facade: &SessionEvent) -> Option<DispatchEvent> {
+        if !self.filter.matches(core, facade) {
+            return None;
+        }
+        Some(match &self.filter {
+            ListenerFilter::App(_) => DispatchEvent::App(Box::new(facade.clone())),
+            #[cfg(any(feature = "otel", feature = "braintrust"))]
+            ListenerFilter::Host(_) => DispatchEvent::Host(Box::new(core.clone())),
+        })
+    }
+
     fn try_send(&self, event: DispatchEvent) {
         self.ensure_worker();
         let sender = self
@@ -472,15 +490,9 @@ impl ObserverDispatcher {
         if !self.accepting.load(Ordering::Acquire) {
             return;
         }
-        let _ = core;
-        let event = DispatchEvent {
-            #[cfg(any(feature = "otel", feature = "braintrust"))]
-            core: core.clone(),
-            facade: facade.clone(),
-        };
         for slot in &self.slots {
-            if slot.filter.matches(&event) {
-                slot.try_send(event.clone());
+            if let Some(event) = slot.prepare_event(core, facade) {
+                slot.try_send(event);
             }
         }
     }
@@ -549,12 +561,18 @@ mod tests {
     use async_trait::async_trait;
     use everruns_core::event_emitter::EventEmitter;
     use everruns_core::events::{EventContext, EventRequest, TurnStartedData};
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    use everruns_core::events::{EventData, OutputMessageDeltaData};
     use everruns_host::{HostBackends, HostEventEmitter, InMemoryEventLog};
     use everruns_provider::tool_types::ToolCall;
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    use everruns_provider::typed_id::EventId;
     use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
     use serde_json::json;
     use tokio::sync::Notify;
 
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    use super::{DispatchEvent, ListenerSlot};
     use super::{
         EventFilter, EventListener, ListenerRegistration, OBSERVER_QUEUE_CAPACITY,
         ObserverDispatcher,
@@ -608,6 +626,47 @@ mod tests {
         fn name(&self) -> &'static str {
             "recorder"
         }
+    }
+
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    #[test]
+    fn app_queue_payload_does_not_retain_accumulated_output_prefix() {
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let message_id = MessageId::new();
+        let accumulated = "x".repeat(1024 * 1024);
+        let core = EventRequest::new(
+            session_id,
+            EventContext::turn(turn_id, message_id),
+            OutputMessageDeltaData {
+                turn_id,
+                message_id,
+                delta: "x".to_string(),
+                accumulated: accumulated.clone(),
+                phase: None,
+            },
+        )
+        .into_event(EventId::new(), 1);
+        let facade = SessionEvent::from_core_event(&core);
+        let slot = ListenerSlot::new(
+            0,
+            ListenerRegistration::App(Arc::new(Recorder::all())),
+            OBSERVER_QUEUE_CAPACITY,
+        );
+
+        let queued = slot
+            .prepare_event(&core, &facade)
+            .expect("app listener accepts output deltas");
+
+        let EventData::OutputMessageDelta(core_delta) = &core.data else {
+            panic!("core event is not an output delta")
+        };
+        assert_eq!(core_delta.accumulated, accumulated);
+        let DispatchEvent::App(queued) = queued else {
+            panic!("app listener queue retained a host event")
+        };
+        assert!(queued.data().get("accumulated").is_none());
+        assert!(queued.canonical_json()["data"].get("accumulated").is_none());
     }
 
     fn tool_agent() -> Agent {
