@@ -137,7 +137,7 @@ host-owned platform services: provider endpoints and credentials come from
 deployment/org provider configuration, not from agent-authored URLs or
 tenant/agent egress policy. Runtime providers own endpoint, auth, and service
 headers. Drivers own protocol request construction, streaming parse logic,
-retry classification, and error mapping. Shared clients disable redirects and
+retry decision, and error mapping. Shared clients disable redirects and
 pin DNS only after private-range validation.
 
 ### Message Types
@@ -175,7 +175,7 @@ Prompt caching is modeled as request intent on `LlmCallConfig.prompt_cache`. Dri
 Current provider mappings:
 
 - **OpenAI Responses API**: derives a deterministic cache routing key from stable cache-family inputs. On GPT-5.6 and Astra, auto mode uses implicit caching; opt-in explicit strategy caches the developer-instruction prefix and leaves the conversation suffix unwritten. Explicit mode uses full transcript replay to avoid duplicating developer instructions through stateful continuation. Without developer instructions, explicit mode creates no breakpoint. Older models and non-native gateways retain their existing behavior. The [wire implementation](../../crates/provider/src/openresponses_protocol/mod.rs) owns exact options and breakpoint placement; [OpenAI's cache contract](https://developers.openai.com/api/docs/guides/prompt-caching) owns API semantics.
-- **Anthropic**: adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental, the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Volatile trailing content (a live `<facts>` block) is skipped so the cached prefix does not diverge every turn
+- **Anthropic**: adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental, the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Trailing content the caller marks volatile (`volatile_suffix_len`) and mid-conversation system messages are skipped
 - **Gemini**: uses `cachedContent` when the config includes an existing cached-content resource name; otherwise the request remains in implicit/default Gemini behavior
 
 `llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
@@ -244,6 +244,20 @@ When `config.max_tokens` is `None`, drivers resolve the default from model profi
 4. OpenAI drivers omit `max_tokens` entirely (API decides)
 
 Anthropic requires `max_tokens` in every request (cannot be omitted), so the driver always resolves a value.
+
+**Thinking room on caller caps (Anthropic)**: thinking tokens count toward `max_tokens`, so a caller cap
+sized for the visible answer would be spent on thinking and return empty. The driver treats a caller's
+`max_tokens` as the answer budget and adds thinking room on top: the budget for budget-based thinking,
+an effort-sized allowance for adaptive thinking, capped at the model's output limit. Source:
+`crates/drivers/anthropic/src/effort.rs`.
+
+**Append-only history (Anthropic)**: Claude Opus 5.5 and Fable 5.1 bind each thinking block to the conversation prefix that produced it (`system`, tools, every earlier message), and every model's prompt cache needs the same prefix. Only the leading run of system messages goes into top-level `system`; later system messages stay in place on models whose profile advertises `mid_conversation_system`. Turn-scoped facts and reminders additionally carry `clear_at: "next_user_message"` under beta `mid-conversation-system-clear-at-2026-08-21`, so the transcript retains each copy while the API stops rendering it after the turn. Models without that profile capability retain the user facts and system-fold fallbacks. Requests to Opus 5.5 and Fable 5.1 set `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`): context management edits earlier history by design, and a dropped block degrades that turn instead of failing it. Drops are logged from `input_transformations`. Source: `crates/drivers/anthropic/src/driver_layout.rs`.
+
+**Always-thinking Claude models**: on families where thinking cannot be disabled (Opus 5.5, Fable 5.x)
+the driver always sends an explicit effort. No caller effort sends the profile default, and an explicit
+`none` sends `low`, the closest level the API accepts. Requests that end on an assistant turn (prefill)
+are rejected with a configuration error before any network call on every adaptive-thinking family,
+because the API answers them with a 400.
 
 **Stale profile fallback**: If the Anthropic API returns 400 because `max_tokens` exceeds the model's actual limit (e.g., stale profile data), the driver retries once with 16,384 and logs a warning to update the model profile. If the retry also fails, the error propagates normally.
 
@@ -451,7 +465,7 @@ decides whether to recover. Transport loss, a stream that makes no output
 progress, overload, ordinary rate limiting, and retryable server failures may
 be retried. Invalid credentials, exhausted billing quota, unavailable models,
 invalid/unsafe requests, and long-horizon usage limits fail fast with their
-specific classification.
+specific decision.
 
 Recovery is bounded by both attempts and elapsed wall-clock time. Backoff is
 exponential with jitter, honors reasonable provider retry hints, and lower

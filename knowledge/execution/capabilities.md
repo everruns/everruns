@@ -437,13 +437,13 @@ resets); see `crates/core/src/llm_error_hook.rs`.
 | Volatility | Rendered | Cache effect |
 |---|---|---|
 | `Static` | Folded into a `<facts>` block in the cached system-prompt prefix at build time. | In the cached prefix; assumed stable for the session, so free to cache. |
-| `Dynamic` | Appended as a live `<facts>` block at the **conversation tail** on every request (`ReasonAtom`), delivered as a trailing user-role message. | Outside the cached prefix. The system prompt, tools, and conversation history stay byte-identical turn to turn; only the small trailing block is re-processed. |
+| `Dynamic` | Rendered as a `<facts>` user-role message after **each input the model answered** (a user message or a tool-result batch), with values as of that input's timestamp (`ReasonAtom`, `FactsContext::as_of`). | Never in the system prompt. Past blocks are re-rendered from the same timestamps, so each request replays the previous one byte-identical and only appends: the cached prefix holds, and so do thinking blocks that providers bind to their conversation. |
 
 This is the generic mechanism behind "the current time is X": baking a changing timestamp into the system prompt would bust the system-prompt cache every turn, and a tool round-trip is slower and only informs the model when it asks. `current_time` contributes its value as a `Dynamic` fact (and keeps `get_current_time` for explicit timezone/format queries). Static facts share the same `<facts>` wire format; a single explanatory note (`FACTS_DYNAMIC_NOTE`) is added to the cached prompt once whenever any active capability declares a dynamic fact.
 
-`facts()` is called both at prompt-assembly time (to fold static facts and detect whether any dynamic facts exist) and once per request (to render the live tail block via `collect_dynamic_facts`), so implementations must be cheap and side-effect free. See `crates/core/src/capabilities/facts.rs`.
+`facts()` is called both at prompt-assembly time (to fold static facts and detect whether any dynamic facts exist) and once per answered input on every request (via `collect_dynamic_facts`), so implementations must be cheap, side-effect free, and derive time-dependent values from `ctx.as_of`, never from the clock: a past block has to render the same text on every later request. See `crates/core/src/capabilities/facts.rs` and `crates/engine/src/execution/reason/facts.rs`.
 
-**Cache-anchor interaction.** Appending a volatile tail would, by default, pull a driver's message-level cache breakpoint onto content that changes every turn, evicting the conversation-history cache. `ReasonAtom` therefore sets `LlmCallConfig.volatile_suffix_len` to the number of trailing volatile messages; the Anthropic driver anchors its breakpoint on the last *stable* block, letting the volatile tail ride as an uncached suffix. Drivers that do not implement message-level anchoring ignore the field and behave exactly as before (`0` is the default).
+**Cache-anchor interaction.** Every facts block is replayed on the next request, so none is volatile and cache breakpoints may sit on them. The one exception is a conversation that ends on an answer (a continuation): the block then trails the answer as of now and nothing reproduces it, so `ReasonAtom` sets `LlmCallConfig.volatile_suffix_len` to 1 and the Anthropic driver anchors its breakpoint before it. Drivers that do not implement message-level anchoring ignore the field (`0` is the default).
 
 ##### System Prompt Content Contract
 
@@ -978,6 +978,7 @@ Following the agentskills.io specification:
 - **Tools**: None (uses `MessageFilterProvider::post_load` only)
 - **Config**: `{"threshold": N}`, number of repeated identical results, identical tool-call batches, or read ranges before warning (default 3)
 - **Source**: `crates/builtins/src/loop_detection.rs`
+- **Behavior**: Reconstructs each warning after the input that triggered it, so later prompt views replay the same warning even after the loop clears. Models with turn-scoped system support expire it with `clear_at`; other providers retain their existing system-message handling.
 
 #### ToolApproval
 
@@ -1259,7 +1260,7 @@ carries mounts in product registries.
   a user or raise the caller.
 - **Command contract**: MCP and capability adapters share catalog search,
   positional rewriting, script limits, output formatting, and safe error
-  classification in `crates/server/src/services/platform_command_surface.rs`.
+  decision in `crates/server/src/services/platform_command_surface.rs`.
   Multi-match searches omit schemas and return a refinement hint so catalog
   browsing stays below model/tool-output limits. An exact command-name search
   returns only that operation with `bash_usage`, rendered from the registered

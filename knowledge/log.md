@@ -1,5 +1,20 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-24
+
+* **Framework observability has a design: listeners on the Engine, OTel and
+  Braintrust as opt-in values.** The `everruns` crate could only be observed by
+  pulling `Session::events()` per session, and the existing OTel and Braintrust
+  exporters were wired only by the server. The proposal registers push listeners
+  once on `Engine::builder()`, so new, resumed and spawned sessions are all
+  covered; app listeners see the reviewed `SessionEvent` while the built-in
+  exporters get the lossless core event internally. Each listener drains its own
+  bounded queue in commit order, so an observer can drop events but never slow a
+  turn, and `Engine::shutdown` flushes what short-lived programs would otherwise
+  lose. The framework never installs global tracing state. Tracked as EVE-1100
+  and EVE-1101. See [Framework Event Listeners and
+  Observability](framework/observability.md).
+
 ## 2026-09-19
 
 * **A live PoC settled how far Slack one-click install can go, and disproved two
@@ -117,7 +132,7 @@
   reads as one shape: the service is transport, the model is what answers.
   `ClassificationRequest::model` stays optional, because the platform composes
   requests that deliberately name none (THREAT[TM-LLM-037]). See
-  [Classifier Service](operations/classifier-service.md).
+  [Classifier Service](operations/decisions-service.md).
 
 * **A vendor name can collide with the host language.** The provider type was
   `TypeSafe`, which is the company — but in Rust `TypeSafe` reads as a marker
@@ -128,7 +143,7 @@
   the `TYPESAFE_API_KEY` variables, the `typesafe` feature and crate, and the
   stored `typesafe` connection provider did not — they are not type positions,
   and the provider string is persisted. See
-  [Classifier Service](operations/classifier-service.md).
+  [Classifier Service](operations/decisions-service.md).
 
 * **The agent-facing surface is named for the model, the credential surface for
   the vendor.** The capability is `jev` and its tool is `jev_evaluate`, matching
@@ -175,7 +190,7 @@
   in one request instead of one per check. `utility_llm` stays the default, so
   existing configs are unchanged and the two are directly comparable on the same
   agent. Recorded in [Guardrails](execution/guardrails.md) and the new
-  [Classifier Service](operations/classifier-service.md), with the egress and
+  [Classifier Service](operations/decisions-service.md), with the egress and
   steering analysis in TM-LLM-037/038.
 
 * **Operators had no single place to learn what the system model keys do.**

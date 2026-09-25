@@ -82,6 +82,7 @@ export type ChannelFormState = {
   slackBotToken: string;
   slackTeamId: string;
   slackChannelId: string;
+  slackCredentialsConfigured: boolean;
   slackSessionStrategy: SessionStrategy;
   slackReplyMode: SlackReplyMode;
   scheduleCronExpression: string;
@@ -136,6 +137,7 @@ export function getDefaultChannelFormState(
     slackBotToken: "",
     slackTeamId: "",
     slackChannelId: "",
+    slackCredentialsConfigured: false,
     slackSessionStrategy: "per_thread",
     slackReplyMode: "all_messages",
     scheduleCronExpression: "0 0 * * * * *",
@@ -284,6 +286,9 @@ export function getDefaultChannelFormState(
       slackBotToken: secretValue(config.bot_token, config.bot_token_configured),
       slackTeamId: config.team_id || "",
       slackChannelId: config.channel_id || "",
+      slackCredentialsConfigured: Boolean(
+        config.signing_secret_configured || config.bot_token_configured,
+      ),
       slackSessionStrategy: config.session_strategy || "per_thread",
       slackReplyMode: config.reply_mode || "all_messages",
     };
@@ -547,7 +552,7 @@ function FieldGrid({ children }: { children: React.ReactNode }) {
  * manual fields are that deployment's supported path, not a fallback from a
  * failure, so the UI opens them rather than reporting something went wrong.
  */
-function useSlackInstall(endpointId?: string) {
+function useSlackInstall(endpointId?: string, onUnavailable?: () => void) {
   const [pending, setPending] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -564,12 +569,13 @@ function useSlackInstall(endpointId?: string) {
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 501) {
         setUnavailable(true);
+        onUnavailable?.();
       } else {
         setError(caught instanceof Error ? caught.message : "Could not start the Slack install.");
       }
       setPending(false);
     }
-  }, [endpointId]);
+  }, [endpointId, onUnavailable]);
 
   return { begin, pending, unavailable, error } as const;
 }
@@ -580,6 +586,7 @@ export function ChannelForm({
   mode,
   section = "all",
   endpointId,
+  slackInstallAvailable = true,
 }: {
   state: ChannelFormState;
   onChange: (state: ChannelFormState) => void;
@@ -591,15 +598,24 @@ export function ChannelForm({
    * callback route, so the button appears only after the endpoint is saved.
    */
   endpointId?: string;
+  slackInstallAvailable?: boolean;
 }) {
   const update = <K extends keyof ChannelFormState>(key: K, value: ChannelFormState[K]) =>
     onChange({ ...state, [key]: value });
-  const slackInstall = useSlackInstall(endpointId);
   // An endpoint already carrying credentials opens the manual block, so an
   // operator who configured it by hand is not hunting for their own values.
   const slackCredentialsEntered = Boolean(
-    state.slackSigningSecret || state.slackBotToken || state.slackTeamId || state.slackChannelId,
+    state.slackCredentialsConfigured ||
+    state.slackSigningSecret ||
+    state.slackBotToken ||
+    state.slackTeamId ||
+    state.slackChannelId,
   );
+  const [manualSlackOpen, setManualSlackOpen] = useState(
+    slackCredentialsEntered || !slackInstallAvailable,
+  );
+  const openManualSlack = useCallback(() => setManualSlackOpen(true), []);
+  const slackInstall = useSlackInstall(endpointId, openManualSlack);
 
   if (section === "runs") {
     return (
@@ -1105,7 +1121,7 @@ export function ChannelForm({
 
       {state.kind === "slack" && (section === "all" || section === "invocation") && (
         <div className="space-y-4">
-          {mode === "edit" && endpointId && !slackInstall.unavailable && (
+          {mode === "edit" && endpointId && slackInstallAvailable && !slackInstall.unavailable && (
             <div className="border p-4 space-y-3">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Connect to Slack</p>
@@ -1124,13 +1140,13 @@ export function ChannelForm({
               )}
             </div>
           )}
-          {mode === "new" && (
+          {mode === "new" && slackInstallAvailable && (
             <p className="text-xs text-muted-foreground">
               Save the endpoint to connect it to Slack in one click, or fill the fields below in now
               if you already have a Slack app.
             </p>
           )}
-          <Collapsible defaultOpen={slackCredentialsEntered || mode === "new"}>
+          <Collapsible open={manualSlackOpen} onOpenChange={setManualSlackOpen}>
             <CollapsibleTrigger asChild>
               <button
                 type="button"

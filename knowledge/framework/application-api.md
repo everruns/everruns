@@ -40,6 +40,12 @@ The Framework owns value-first configuration for:
   credential-free model identity;
 - canonical, lossless session events and lifecycle hooks through curated
   application values rather than engine or worker phase records;
+- alpha Engine-level push listeners over the same curated session events, with
+  bounded non-blocking delivery, explicit drop statistics, and deadline-bounded
+  shutdown flushing;
+- opt-in OpenTelemetry and Braintrust Engine observers behind independent
+  offline-by-default features, with opaque facade values and no implicit global
+  telemetry installation;
 - high-level context-compaction and model-adaptive tool-search behavior without
   checkpoint-store or provider-specific plumbing;
 - high-level task, background-message, wake, and workspace-policy behavior
@@ -53,7 +59,7 @@ The Framework owns value-first configuration for:
   stores or their file format into the application API.
 - direct, agentless model calls over the same provider values an agent uses,
   for work that is one prompt and one answer;
-- direct, agentless classification over the same `ClassifierService` the platform's
+- direct, agentless decision over the same `DecisionsService` the platform's
   guardrails use, for work whose answer is a number rather than prose;
 - provider model catalogs and curated model metadata, so an application can
   offer a model choice instead of hard-coding ids.
@@ -139,7 +145,7 @@ that examples do not: the offline
 [worker host](../../crates/worker/src/unified_worker.rs), the
 [local host builder](../../crates/everruns/src/local/runtime_builder.rs), and the
 [live subagent host test](../../crates/llm-tests/tests/subagent_live_test.rs).
-The classification below is the durable decision for each family; individual
+The decision below is the durable decision for each family; individual
 implementation tests inside `crates/host` remain host coverage, not additional
 application entrypoints.
 
@@ -165,9 +171,9 @@ specialized embedding hosts. Re-exporting their backend-oriented entities from
 the Framework would recreate the coupling the application API is intended to
 remove. Advanced integrations depend on `everruns-host` directly.
 
-## Classification of existing public use cases
+## Decision of existing public use cases
 
-| Audited use case | Classification | Why / Framework mapping |
+| Audited use case | Decision | Why / Framework mapping |
 |---|---|---|
 | Host README, skill, and documentation quickstarts | Promote | Ordinary agent/model/session execution is the Framework's primary path. |
 | Built-in simulation and real or custom model providers | Promote | Applications select a model value that may carry its provider, or pair a plain credential-free model id with one provider configuration, without constructing a `ModelSpec` or platform registry. |
@@ -194,7 +200,7 @@ remove. Advanced integrations depend on `everruns-host` directly.
 | Worker, durable recovery, and phase-adapter tests | Host-only | They verify execution-host contracts below the application boundary. |
 | Local subagent tests with a custom platform store/task registry/session runner | Host-only | The public local profile does not claim to own that specialized topology or its runner lifecycle. |
 
-The classification names the owning entrypoint for each use case; host-only
+The decision names the owning entrypoint for each use case; host-only
 rows stay reachable through `everruns-host` and its focused siblings.
 
 ## Session work boundary
@@ -209,7 +215,7 @@ and multi-host lifecycle management remain host concerns.
 
 ## Direct model call boundary
 
-Not every application need is an agent. Classification, extraction, summary,
+Not every application need is an agent. Decision, extraction, summary,
 and similar one-shot work wants the provider edge — driver, endpoint,
 credentials, retries, error classification — without the agent loop. The
 Framework previously offered no promoted path for it: the pieces were public
@@ -230,7 +236,7 @@ The low-level path stays open and is now self-sufficient from the facade: the
 re-exported from `everruns`, so calling the driver boundary directly no longer
 forces a second crate dependency.
 
-## Direct classification boundary
+## Direct decision boundary
 
 The counterpart to the direct model call, for work whose answer is a number
 rather than prose. *Is this claim supported? How severe is this? Which queue?*
@@ -239,25 +245,25 @@ such site grows the same three things: a prompt asking for JSON, a parser, and
 a fallback for when the parse fails. In anything enforcing a policy that
 fallback is a silent bypass.
 
-`Classifier::probability` and `Classifier::about` close that the same way `Model` closed
-the direct completion: a thin value-first layer over the `ClassifierService`
-contract core already owns, reaching a classifier the way `Model` reaches a
+`Decisions::probability` and `Decisions::about` close that the same way `Model` closed
+the direct completion: a thin value-first layer over the `DecisionsService`
+contract core already owns, reaching a decisions the way `Model` reaches a
 chat model. The contract differs because the work differs — state plus typed
 questions in, calibrated answers out, and the threshold that decides an outcome
-stays in the caller's code. There is nothing to stream, because a classification is
+stays in the caller's code. There is nothing to stream, because a decision is
 one round trip.
 
-The concrete service is supplied, never assumed: `Classifier::new` takes a model
-id and any `ClassifierService`, exactly as `Model::new` takes an id and any
+The concrete service is supplied, never assumed: `Decisions::new` takes a model
+id and any `DecisionsService`, exactly as `Model::new` takes an id and any
 `Provider`, so the facade depends on no vendor and the model is a caller's
-decision rather than an inherited default. `Classifier::simulated` keeps tests and examples offline, the
+decision rather than an inherited default. `Decisions::simulated` keeps tests and examples offline, the
 role `Model::simulated` plays for completions. `everruns` re-exports the `TypeSafeAI`
 provider behind its `typesafe` feature, the way it re-exports `OpenAI`, so one
 import reaches both halves without the vendor entering the default build.
 
 The model is named, not fixed. `Model::new` takes a model id because a provider
-is transport and serves many; a classifier service has a default of its own, so
-`Classifier::model` and `Classification::model` are overrides — per classifier
+is transport and serves many; a decisions service has a default of its own, so
+`Decisions::model` and `Decision::model` are overrides — per decisions
 and per call. That asymmetry is the whole of it: there will be other
 classifiers, and pinning a version rather than tracking a vendor default is the
 caller's decision. A deployment that must pin one does so by not exposing the
@@ -265,14 +271,14 @@ knob in the config it accepts, not by the type being unable to carry one.
 
 Deliberately excluded, and for the same reasons as the completion layer:
 history, tools, workspaces, durability, events, hooks. Also excluded: retry and
-threshold policy. A classification returns the distribution; what counts as a block,
+threshold policy. A decision returns the distribution; what counts as a block,
 a routing decision, or an escalation is the application's, and burying it in
 the layer would recreate the parse-and-trust problem one level down.
 
-- Direct classification stays a thin layer over `ClassifierService` with no
+- Direct decision stays a thin layer over `DecisionsService` with no
   policy of its own. The number is the layer's output; the decision is the
   caller's.
-- Two paths, split by who writes the questions: `Classifier` when the
+- Two paths, split by who writes the questions: `Decisions` when the
   application asks and decides, the `jev` capability when the agent asks as part
   of its own work. Both reach the same tool contract, so behavior matches
   whether the Framework is embedded or the platform runs it.
@@ -321,6 +327,9 @@ it from the driver descriptor they were built from.
 - The host log owns coherent append and bounded snapshot replay. In-memory
   durability is process-lifetime only; JSONL acknowledges only a flushed and
   synchronized canonical envelope. Any projection index is rebuildable.
+- Engine listeners observe new events only. Resume does not replay persisted
+  history. Listener backpressure, overflow, or failure cannot change turn
+  success, event persistence, or per-session event-stream isolation.
 - Promoting an application concern must not expose credentials, tenant records,
   backend stores, or host lifecycle entities.
 - Resume authority is engine-scoped. An in-memory engine must reject an id from
@@ -374,19 +383,20 @@ entrypoints.
 - `crates/everruns/src/capability_config.rs`
 - `crates/everruns/src/tool_search.rs`
 - `crates/everruns/src/hooks.rs`
+- `crates/everruns/src/observers.rs`
 - `crates/everruns/src/compaction.rs`
 - `crates/everruns/src/session.rs`
 - `crates/everruns/src/context.rs`
 - `crates/everruns/src/mcp.rs`
 - `crates/everruns/src/plugin.rs`
 - `crates/everruns/src/llm.rs`
-- `crates/everruns/src/classifier.rs`
+- `crates/everruns/src/decisions.rs`
 - `crates/everruns/src/local.rs`
 - `crates/everruns/src/work.rs`
-- `crates/everruns/tests/application_parity.rs`
-- `crates/everruns/tests/capability_configuration.rs`
-- `crates/everruns/tests/session_work.rs`
-- `crates/everruns/tests/lifecycle_hooks.rs`
+- `crates/everruns/tests/facade/application_parity.rs`
+- `crates/everruns/tests/facade/capability_configuration.rs`
+- `crates/everruns/tests/facade/session_work.rs`
+- `crates/everruns/tests/facade/lifecycle_hooks.rs`
 - `examples/coding-cli/tests/application_parity.rs`
 - `crates/host/src/runtime.rs`
 - `crates/host/src/events.rs`

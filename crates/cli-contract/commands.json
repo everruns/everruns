@@ -8016,6 +8016,76 @@
     ]
   },
   {
+    "wire_name": "search_workspace_files",
+    "path": [
+      "sessions",
+      "fs",
+      "-"
+    ],
+    "verb": "search",
+    "description": "Search files in the session filesystem, with surrounding context and paging.",
+    "method": "POST",
+    "http_path": "/v1/sessions/{session_id}/fs/_/search",
+    "args": [
+      {
+        "field": "after_context",
+        "long": "after-context",
+        "kind": "integer",
+        "required": false,
+        "help": "Lines of context to return after each match."
+      },
+      {
+        "field": "before_context",
+        "long": "before-context",
+        "kind": "integer",
+        "required": false,
+        "help": "Lines of context to return before each match."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum matches to return."
+      },
+      {
+        "field": "max_bytes",
+        "long": "max-bytes",
+        "kind": "integer",
+        "required": false,
+        "help": "Byte ceiling on the returned payload."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "Number of matches to skip, for paging through a large result set."
+      },
+      {
+        "field": "path_pattern",
+        "long": "path-pattern",
+        "kind": "string",
+        "required": false,
+        "help": "Glob limiting which paths are searched."
+      },
+      {
+        "field": "pattern",
+        "long": "pattern",
+        "kind": "string",
+        "required": true,
+        "help": "Regular expression to match against file contents."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ]
+  },
+  {
     "wire_name": "stat_workspace_file",
     "path": [
       "sessions",
@@ -8211,6 +8281,20 @@
         "kind": "string",
         "required": false,
         "help": "Content encoding: \"text\" or \"base64\"."
+      },
+      {
+        "field": "expected_content",
+        "long": "expected-content",
+        "kind": "string",
+        "required": false,
+        "help": "Content the file must currently hold for the write to happen.  When set, the update is a comp..."
+      },
+      {
+        "field": "expected_encoding",
+        "long": "expected-encoding",
+        "kind": "string",
+        "required": false,
+        "help": "Encoding of `expected_content`."
       },
       {
         "field": "is_readonly",

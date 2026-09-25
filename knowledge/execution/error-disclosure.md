@@ -20,7 +20,7 @@ HTTP status and response body are still available, into `LlmErrorKind`
 (`crates/provider/src/error.rs`): authentication, quota exhaustion, rate limit,
 provider unavailable, invalid request, or other. All drivers (OpenAI chat,
 OpenAI Responses, Anthropic, Gemini, Bedrock) attach a kind; `other` falls
-back to the legacy string classifier (`classify_runtime_error_message`), so
+back to the legacy string decisions (`classify_runtime_error_message`), so
 untyped error paths keep working.
 
 Provider rejections that identify an invalid model-facing tool schema are
@@ -29,7 +29,7 @@ viewer an actionable integration/provider message and bounded schema path,
 without copying the provider response body or pattern into the transcript.
 Detailed disclosure retains the existing operator opt-in for raw driver text.
 
-Rationale: string classification conflated distinct operator problems. The
+Rationale: string decision conflated distinct operator problems. The
 motivating case: OpenAI `insufficient_quota` (out of credits, top up the
 account) classified as `provider_misconfigured`, the same code shown for a
 bad API key. Quota/billing exhaustion now has its own user-facing code,
@@ -41,7 +41,7 @@ Subscription/plan usage limits (e.g. the ChatGPT/Codex `429`
 `provider_usage_limit_reached`. Unlike an ordinary rate limit they do not
 recover within the driver backoff window, they reset hours later, and unlike
 quota exhaustion they need no operator action, recovering on their own at the
-reported reset time. The string classifier detects the `usage_limit_reached`
+reported reset time. The string decisions detects the `usage_limit_reached`
 wording provider-agnostically (so any driver surfacing it is covered), captures
 the absolute `resets_at` unix timestamp as an `error_fields` value for clients
 to localize, and `is_transient_error_message` treats it as non-transient so the
@@ -88,7 +88,7 @@ unchanged (consistent with `knowledge/execution/public-endpoints.md` §4):
   `error_disclosure` (the applied mode) alongside the disclosed
   `error_code`/`error_fields`.
 - Error message metadata records `error_disclosure` and `source_error_code`
-  (the pre-disclosure classification), so generic-mode failures remain
+  (the pre-disclosure decision), so generic-mode failures remain
   attributable in analytics.
 - Full diagnostic detail (raw provider error strings) stays available to
   operators via `reason.completed` failure events, logs, and tracing in every

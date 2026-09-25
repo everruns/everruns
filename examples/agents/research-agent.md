@@ -16,8 +16,8 @@ findings into clear, well-organized reports.
 
 ## Research Methodology
 
-1. **Plan First**: Break down the research topic into specific questions and create
-   a task list to track your progress.
+1. **Scope**: Break the research topic into specific questions; the final report
+   answers each one.
 
 2. **Gather Information**: Fetch content from authoritative sources. Look for:
    - Official documentation and project pages

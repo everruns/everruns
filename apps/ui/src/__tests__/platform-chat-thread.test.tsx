@@ -11,6 +11,12 @@ import type { Session } from "@/lib/api/types";
 
 const mockCreate = jest.fn();
 const mockPin = jest.fn();
+const mockInvalidate = jest.fn();
+
+jest.mock("@tanstack/react-query", () => ({
+  ...jest.requireActual("@tanstack/react-query"),
+  useQueryClient: () => ({ invalidateQueries: mockInvalidate }),
+}));
 
 jest.mock("@/hooks/use-chat-threads", () => ({
   useChatThreads: jest.fn(),
@@ -72,6 +78,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockCreate.mockResolvedValue({ id: "ses_new" });
   mockPin.mockResolvedValue(undefined);
+  mockInvalidate.mockResolvedValue(undefined);
 });
 
 test("creates and pins a Platform Chat thread when the user has none", async () => {
@@ -85,7 +92,7 @@ test("creates and pins a Platform Chat thread when the user has none", async () 
       source: "chat",
       harness_name: "platform-chat",
       title: "Platform Chat",
-      tags: [CHAT_THREAD_TAG],
+      tags: [CHAT_THREAD_TAG, "platform-chat-starter"],
     },
   });
   await waitFor(() => expect(mockPin).toHaveBeenCalledWith({ sessionId: "ses_new" }));
@@ -198,6 +205,17 @@ test("does not create a second thread when only the pin failed", async () => {
   const { rerender } = render(<Probe ensure />);
 
   await waitFor(() => expect(mockPin).toHaveBeenCalledTimes(1));
+  rerender(<Probe ensure />);
+  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+});
+
+test("refreshes threads after a competing client wins creation", async () => {
+  mockCreate.mockRejectedValue(new Error("Starter already exists"));
+  mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, isRead: true, error: null });
+
+  const { rerender } = render(<Probe ensure />);
+
+  await waitFor(() => expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["sessions"] }));
   rerender(<Probe ensure />);
   await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
 });

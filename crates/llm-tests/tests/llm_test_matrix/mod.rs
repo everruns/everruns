@@ -162,12 +162,11 @@ fn coverage_suppressed() -> bool {
 /// Suppresses coverage recording on the current thread until dropped.
 ///
 /// This module's own unit tests drive `run_live_turn!` and `skip_if_quota!`
-/// with synthetic `TurnResult`s to assert the retry and skip behaviour, and
-/// they carry a *real* config (`ANTHROPIC_OPUS5`) as the label. Without this
-/// guard those tests append genuine-looking records — a live matrix run would
-/// then report `claude-opus-5` as quota-skipped when nothing of the sort
-/// happened, which is precisely the false coverage picture EVE-951 exists to
-/// remove.
+/// with synthetic `TurnResult`s to assert the retry and skip behaviour. Their
+/// config is a fake `synthetic-unit-test` cell, but without this guard they
+/// would still append coverage records — a live matrix run would then report
+/// a quota skip that never happened, which is precisely the false coverage
+/// picture EVE-951 exists to remove.
 ///
 /// Thread-local rather than an env var: the harness runs tests in parallel, so
 /// mutating process environment here would race across tests. Every test that
@@ -237,7 +236,7 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
 // Current Anthropic tiers only; superseded Opus 4.7 / Sonnet 4.6 entries were
 // dropped when Opus 5 / Sonnet 5 took their matrix rows, and Opus 5.5 took the
 // Opus row from Opus 5. `ANTHROPIC_OPUS5` stays for the Opus 5-specific
-// regression in `tool_search_test.rs` and as a label in this module's tests.
+// regression in `tool_search_test.rs`.
 pub const ANTHROPIC_OPUS55: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-5-5", "ANTHROPIC_API_KEY");
 pub const ANTHROPIC_OPUS5: ProviderModelConfig =
@@ -720,6 +719,16 @@ mod quota_detector_tests {
     use everruns_provider::typed_id::TurnId;
     use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
 
+    /// Label for the synthetic retry/skip tests below. Deliberately not a real
+    /// matrix cell: the macros print `SKIP: <label> out of quota` for a
+    /// synthetic quota error, and a real model id there reads in CI logs as a
+    /// genuine quota skip of that model.
+    const SYNTHETIC: super::ProviderModelConfig = super::ProviderModelConfig::new(
+        super::DriverId::Anthropic,
+        "synthetic-unit-test",
+        "SYNTHETIC_UNIT_TEST",
+    );
+
     /// A turn that failed with `error`, for driving the retry macro.
     fn failed_result(error: &str) -> TurnResult {
         TurnResult {
@@ -949,7 +958,7 @@ mod quota_detector_tests {
 
         // Synthetic results against a real config: must not record coverage.
         let _no_coverage = super::CoverageSuppressed::new();
-        let config = super::ANTHROPIC_OPUS5;
+        let config = SYNTHETIC;
         let attempts = Cell::new(0usize);
         let started = Instant::now();
 
@@ -977,7 +986,7 @@ mod quota_detector_tests {
 
         // Synthetic results against a real config: must not record coverage.
         let _no_coverage = super::CoverageSuppressed::new();
-        let config = super::ANTHROPIC_OPUS5;
+        let config = SYNTHETIC;
         let attempts = Cell::new(0usize);
         let started = Instant::now();
 
@@ -1001,7 +1010,7 @@ mod quota_detector_tests {
 
         // Synthetic results against a real config: must not record coverage.
         let _no_coverage = super::CoverageSuppressed::new();
-        let config = super::ANTHROPIC_OPUS5;
+        let config = SYNTHETIC;
         let attempts = Cell::new(0usize);
         let started = Instant::now();
 

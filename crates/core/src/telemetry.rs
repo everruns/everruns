@@ -406,6 +406,7 @@ pub mod content {
                     "content": text,
                 }))
             }
+            ContentPart::ProviderOpaque(_) => None,
         }
     }
 }
@@ -719,6 +720,10 @@ mod tests {
             ContentPart::Reasoning(artifact().with_text(ReasoningText::Summary {
                 parts: vec!["first".into(), "second".into()],
             })),
+            ContentPart::ProviderOpaque(everruns_provider::ProviderOpaqueContent::new(
+                "anthropic",
+                json!([{"signature": "PRIVATE-OPAQUE"}]),
+            )),
         ];
         assert_eq!(
             content::input_messages(&[message]),

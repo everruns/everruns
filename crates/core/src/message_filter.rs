@@ -205,9 +205,9 @@ impl ExcludedNoticeTransform {
     /// Default format for infinity context
     pub fn infinity_context() -> Self {
         Self::new(
-            "[IMPORTANT: {} earlier messages are NOT visible in this context. \
+            "[{} earlier messages are not in this context. \
 To answer questions about earlier parts of the conversation, \
-you MUST call the `query_history` tool to search for the relevant information.]",
+search them with the `query_history` tool.]",
         )
     }
 }

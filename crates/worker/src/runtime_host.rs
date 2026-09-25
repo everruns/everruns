@@ -385,8 +385,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         )
     }
 
-    fn file_store(&self) -> Arc<dyn SessionFileSystem> {
-        Arc::new(SessionAdapter::new(self.adapters.clone()))
+    fn file_store(&self, org_id: i64) -> Arc<dyn SessionFileSystem> {
+        // Org-scoped like `provider_store` and `sqldb_store`: the file surface
+        // reaches the server through the org's command transport, so it needs
+        // the org the turn is running for.
+        Arc::new(SessionAdapter::new(self.adapters.clone()).for_org(org_id))
     }
 
     fn image_resolver(&self, org_id: i64) -> Option<Arc<dyn ImageResolver>> {
@@ -409,8 +412,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.utility_llm_service()
     }
 
-    fn classifier(&self) -> Option<Arc<dyn everruns_core::ClassifierService>> {
-        self.adapters.classifier()
+    fn decisions(&self) -> Option<Arc<dyn everruns_core::DecisionsService>> {
+        self.adapters.decisions()
     }
 
     fn egress_service(&self) -> Option<Arc<dyn EgressService>> {
@@ -1038,6 +1041,7 @@ mod mcp_credential_tests {
         }
         async fn read_file(
             &self,
+            _org_id: i64,
             _session_id: Uuid,
             _path: &str,
         ) -> CoreResult<Option<everruns_core::session_file::SessionFile>> {
@@ -1045,6 +1049,7 @@ mod mcp_credential_tests {
         }
         async fn write_file(
             &self,
+            _org_id: i64,
             _session_id: Uuid,
             _path: &str,
             _content: &str,
@@ -1054,6 +1059,7 @@ mod mcp_credential_tests {
         }
         async fn delete_file(
             &self,
+            _org_id: i64,
             _session_id: Uuid,
             _path: &str,
             _recursive: bool,
@@ -1062,6 +1068,7 @@ mod mcp_credential_tests {
         }
         async fn list_directory(
             &self,
+            _org_id: i64,
             _session_id: Uuid,
             _path: &str,
         ) -> CoreResult<Vec<everruns_core::session_file::FileInfo>> {
@@ -1069,6 +1076,7 @@ mod mcp_credential_tests {
         }
         async fn stat_file(
             &self,
+            _org_id: i64,
             _session_id: Uuid,
             _path: &str,
         ) -> CoreResult<Option<everruns_core::session_file::FileStat>> {
@@ -1076,6 +1084,7 @@ mod mcp_credential_tests {
         }
         async fn grep_files(
             &self,
+            _org_id: i64,
             _session_id: Uuid,
             _pattern: &str,
             _path_pattern: Option<&str>,
@@ -1084,6 +1093,7 @@ mod mcp_credential_tests {
         }
         async fn create_directory(
             &self,
+            _org_id: i64,
             _session_id: Uuid,
             _path: &str,
         ) -> CoreResult<everruns_core::session_file::FileInfo> {

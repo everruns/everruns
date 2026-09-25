@@ -52,9 +52,9 @@ pub mod ask_user;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;
-/// Stability: alpha — may change without a major bump; see [`stability`].
-pub mod classifier;
 mod context;
+/// Stability: alpha — may change without a major bump; see [`stability`].
+pub mod decisions;
 mod default_workspace;
 mod engine;
 mod events;
@@ -66,6 +66,12 @@ pub mod llm;
 mod mcp;
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod models;
+/// Built-in Engine observability integrations.
+///
+/// Stability: alpha — may change without a major bump; see [`stability`].
+#[cfg(any(feature = "otel", feature = "braintrust"))]
+pub mod observability;
+mod observers;
 mod plugin;
 mod session;
 mod session_environment;
@@ -76,9 +82,9 @@ mod tool;
 pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
-pub use classifier::{Answers, Classification, Classifier, ClassifierError};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
-pub use engine::{Engine, InMemoryEngine};
+pub use decisions::{Answers, Decision, Decisions, DecisionsError};
+pub use engine::{Engine, EngineBuilder, InMemoryEngine};
 pub use events::{
     CancellationToken, EVENT_STREAM_CAPACITY, EventStream, EventStreamError, RunOptions,
     SessionEvent, SessionEventKind,
@@ -88,9 +94,8 @@ pub use everruns_builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
 };
-pub use everruns_core::classifier::{
-    ClassificationAnswer, ClassificationOutcome, ClassificationQuestion, ClassificationRequest,
-    ClassifierService,
+pub use everruns_core::decisions::{
+    DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionsService,
 };
 #[deprecated(note = "use WorkspaceBackend")]
 pub use everruns_host::WorkspaceBackend as WorkspaceProvider;
@@ -131,7 +136,7 @@ pub use everruns_integrations_bashkit::BashkitShell;
 pub use everruns_integrations_duckduckgo::DuckDuckGo;
 #[cfg(feature = "filesystem")]
 pub use everruns_integrations_filesystem::FileSystem;
-/// The TypeSafe classifier provider, for [`Classifier::new`], and the
+/// The TypeSafe decisions provider, for [`Decisions::new`], and the
 /// capability that hands the same tool to an agent.
 #[cfg(feature = "typesafe")]
 pub use everruns_integrations_typesafe::{Jev, TypeSafeAI};
@@ -152,6 +157,10 @@ pub use hooks::{
 pub use llm::{Completion, CompletionError};
 pub use mcp::McpServer;
 pub use models::{CatalogError, ModelInfo};
+pub use observers::{
+    EventFilter, EventListener, ListenerStats, OBSERVER_QUEUE_CAPACITY, ObserverReport,
+    ObserverStats,
+};
 pub use plugin::PluginError;
 pub use session::{
     CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session, Turn,
@@ -324,18 +333,19 @@ pub mod prelude {
     };
     pub use crate::{
         Agent, AgentBuilder, AgentStartContext, Answers, BuildError, CancelError,
-        CancellationToken, CapabilityRef, CapabilitySpec, Classification, Classifier,
-        ClassifierError, Completion, CompletionContext, CompletionError, Engine, Environment,
-        EventStream, EventStreamError, FunctionTool, Harness, HarnessBuildError, HarnessBuilder,
-        HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages,
-        HistoryQuery, HookFailure, HookPoint, InMemoryEngine, InitialFile, IntoCapability,
-        IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model, PluginError,
-        ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session, SessionContext,
-        SessionEnvironmentError, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
-        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle,
-        TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff,
-        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
-        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+        CancellationToken, CapabilityRef, CapabilitySpec, Completion, CompletionContext,
+        CompletionError, Decision, Decisions, DecisionsError, Engine, Environment, EventFilter,
+        EventListener, EventStream, EventStreamError, FunctionTool, Harness, HarnessBuildError,
+        HarnessBuilder, HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage,
+        HistoryPages, HistoryQuery, HookFailure, HookPoint, InMemoryEngine, InitialFile,
+        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model,
+        ObserverReport, ObserverStats, PluginError, ResumeError, RunError, RunOptions,
+        SendDisposition, SentMessage, Session, SessionContext, SessionEnvironmentError,
+        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo,
+        ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace,
+        WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff, WorkspaceError, WorkspaceHead,
+        WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
+        WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{

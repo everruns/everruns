@@ -469,30 +469,33 @@ impl OpenResponsesProtocolChatDriver {
             MessageContent::Parts(parts) => {
                 let responses_parts: Vec<ResponsesContentPart> = parts
                     .iter()
-                    .map(|part| match part {
-                        LlmContentPart::Text { text } => ResponsesContentPart::InputText {
+                    .filter_map(|part| match part {
+                        LlmContentPart::Text { text } => Some(ResponsesContentPart::InputText {
                             r#type: "input_text".to_string(),
                             text: text.clone(),
-                        },
-                        LlmContentPart::Image { url } => ResponsesContentPart::InputImage {
+                        }),
+                        LlmContentPart::Image { url } => Some(ResponsesContentPart::InputImage {
                             r#type: "input_image".to_string(),
                             image_url: url.clone(),
-                        },
-                        LlmContentPart::Audio { url } => ResponsesContentPart::InputAudio {
+                        }),
+                        LlmContentPart::Audio { url } => Some(ResponsesContentPart::InputAudio {
                             r#type: "input_audio".to_string(),
                             input_audio: ResponsesInputAudio {
                                 data: url.clone(),
                                 format: "wav".to_string(),
                             },
-                        },
-                        LlmContentPart::File { url, filename } => ResponsesContentPart::InputFile {
-                            r#type: "input_file".to_string(),
-                            input_file: ResponsesInputFile {
-                                file_data: Some(url.clone()),
-                                file_url: None,
-                                filename: filename.clone(),
-                            },
-                        },
+                        }),
+                        LlmContentPart::File { url, filename } => {
+                            Some(ResponsesContentPart::InputFile {
+                                r#type: "input_file".to_string(),
+                                input_file: ResponsesInputFile {
+                                    file_data: Some(url.clone()),
+                                    file_url: None,
+                                    filename: filename.clone(),
+                                },
+                            })
+                        }
+                        LlmContentPart::ProviderOpaque(_) => None,
                     })
                     .collect();
                 ResponsesContent::Parts(responses_parts)

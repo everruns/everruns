@@ -78,7 +78,7 @@ test-unit:
     cargo test -p everruns-openai --lib --all-features
     cargo test -p everruns-internal-protocol --lib --all-features
     cargo test -p everruns-core --lib --all-features
-    cargo test -p everruns-host --test in_process_runtime_test --test runtime_host_test -- --test-threads=1
+    cargo test -p everruns-host --test integration -- --test-threads=1
     cargo test -p everruns-cli --test auth_integration_test --test chat_integration_test --test files_integration_test -- --test-threads=1
 
 # Run integration tests (requires PostgreSQL via start-infra or externally)
@@ -104,22 +104,9 @@ test-integration: start-infra
     sqlx migrate run --source crates/server/migrations
     # Run tests
     cargo test -p everruns-server --lib
-    cargo test -p everruns-server --test api_integration_test -- --test-threads=1
-    cargo test -p everruns-server --test repository_integration_test --test repository_conformance_test -- --test-threads=1
-    cargo test -p everruns-server \
-        --test ag_ui_integration_test \
-        --test auth_integration_test \
-        --test cli_auth_test \
-        --test cli_auth_no_org_test \
-        --test client_side_tools_test \
-        --test evals_integration_test \
-        --test llm_model_default_test \
-        --test org_creation_test \
-        --test org_isolation_test \
-        --test org_lifecycle_test \
-        --test schedule_integration_test \
-        --test session_git_integration_test \
-        -- --test-threads=1
+    cargo test -p everruns-server --test contracts
+    cargo test -p everruns-server --test server_integration -- --test-threads=1
+    cargo test -p everruns-server --test domain -- --test-threads=1
     cargo test -p everruns-durable --test postgres_integration_test --features postgres-tests -- --test-threads=1
     cargo test -p everruns-durable --test postgres_repository_test --features postgres-tests -- --test-threads=1
     cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1

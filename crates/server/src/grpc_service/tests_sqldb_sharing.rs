@@ -56,3 +56,24 @@ async fn injected_sqldb_store_replaces_the_services_own() {
         "the worker must see what the HTTP app created: {shared:?}"
     );
 }
+
+/// The worker's file operations run as `session_files` commands, and those
+/// resolve their store from the ctx — falling back to a bare
+/// `WorkspaceFileService` when the ctx carries none. That fallback has no
+/// virtual-mount registry, so a session's virtual files would simply not exist
+/// for the agent, while every unit test that builds its own service still
+/// passed. The deleted file RPCs always used the registry-aware service; the
+/// command path has to carry it too.
+#[tokio::test]
+async fn the_grpc_command_ctx_carries_the_registry_aware_file_service() {
+    let service = super::tests::test_worker_service().await;
+    let ctx = service.domain_ctx_for_caller(everruns_core::Caller::internal(
+        everruns_core::DEFAULT_ORG_ID,
+    ));
+
+    assert!(
+        ctx.session_file_service.is_some(),
+        "without this the session_files commands build a registry-less service \
+         and the session's virtual mounts vanish for the worker"
+    );
+}

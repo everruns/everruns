@@ -133,14 +133,30 @@ while IFS= read -r manifest; do
   [ -d "$tests_dir" ] || continue
   shopt -s nullglob
   test_files=("$tests_dir"/*.rs)
+  # A directory-form integration target (tests/<name>/main.rs) is one test
+  # binary named <name> that merges several modules into a single link,
+  # e.g. tests/domain/main.rs for everruns-server. Cargo names the target
+  # after the directory, not "main", so include it here rather than missing
+  # it because the glob above is non-recursive.
+  test_files+=("$tests_dir"/*/main.rs)
   shopt -u nullglob
   [ "${#test_files[@]}" -gt 0 ] || continue
 
+  # A test file's target name is its stem, except a directory-form target
+  # (tests/<name>/main.rs), whose target name is the directory name.
+  target_name() {
+    if [ "$(basename "$1")" = "main.rs" ]; then
+      basename "$(dirname "$1")"
+    else
+      basename "$1" .rs
+    fi
+  }
+
   if [ -z "$invocations" ]; then
     for path in "${test_files[@]}"; do
-      name="$(basename "$path" .rs)"
+      name="$(target_name "$path")"
       allowlist_reason "${package}:${name}" >/dev/null && continue
-      violations+=("${package}: ${crate_dir#"$PROJECT_ROOT"/}/tests/${name}.rs — no workflow runs 'cargo test -p ${package}'")
+      violations+=("${package}: ${path#"$PROJECT_ROOT"/} — no workflow runs 'cargo test -p ${package}'")
       checked=$((checked + 1))
     done
     continue
@@ -154,11 +170,11 @@ while IFS= read -r manifest; do
   fi
 
   for path in "${test_files[@]}"; do
-    name="$(basename "$path" .rs)"
+    name="$(target_name "$path")"
     checked=$((checked + 1))
     allowlist_reason "${package}:${name}" >/dev/null && continue
     grep -qE -- "--test[[:space:]]+${name}([[:space:]]|$)" <<<"$invocations" && continue
-    violations+=("${package}: ${crate_dir#"$PROJECT_ROOT"/}/tests/${name}.rs — not run as '--test ${name}'")
+    violations+=("${package}: ${path#"$PROJECT_ROOT"/} — not run as '--test ${name}'")
   done
 done < <(git -C "$PROJECT_ROOT" ls-files -- 'crates/**/Cargo.toml' 'integrations/**/Cargo.toml' | sort)
 

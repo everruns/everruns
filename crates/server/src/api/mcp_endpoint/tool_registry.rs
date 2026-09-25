@@ -76,10 +76,15 @@ pub fn tool_definitions(
     tools
 }
 
-/// Whether the negotiated protocol can carry a URL mode elicitation (MRTR,
-/// 2026-07-28).
-pub(super) fn supports_url_elicitation(protocol_version: &str) -> bool {
+/// Whether the negotiated protocol can carry a multi-round tool result (MRTR),
+/// which is what both elicitation modes ride in. 2026-07-28 only.
+pub(super) fn supports_mrtr(protocol_version: &str) -> bool {
     protocol_version == super::MCP_PROTOCOL_VERSION_LATEST
+}
+
+/// Whether the negotiated protocol can carry a URL mode elicitation.
+pub(super) fn supports_url_elicitation(protocol_version: &str) -> bool {
+    supports_mrtr(protocol_version)
 }
 
 fn session_set_secret_tool(

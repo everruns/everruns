@@ -14148,6 +14148,91 @@
     "read_only": true
   },
   {
+    "category": "files",
+    "cli": null,
+    "description": "Search files in the session filesystem, with surrounding context and paging.",
+    "input_schema": {
+      "$defs": {
+        "SearchRequest": {
+          "description": "Request to get file stat\nPaginated content search with surrounding context.\n\nDistinct from [`GrepRequest`], which answers with matches grouped by path\nand no context. This one streams a bounded window of matches plus the lines\naround them, which is what an agent reading a large repository needs.",
+          "properties": {
+            "after_context": {
+              "description": "Lines of context to return after each match.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "before_context": {
+              "description": "Lines of context to return before each match.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "limit": {
+              "description": "Maximum matches to return. Omitted means no limit beyond `max_bytes`.",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max_bytes": {
+              "description": "Byte ceiling on the returned payload. Omitted uses the server default.",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "offset": {
+              "description": "Number of matches to skip, for paging through a large result set.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "path_pattern": {
+              "description": "Glob limiting which paths are searched.",
+              "example": "**/*.rs",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "pattern": {
+              "description": "Regular expression to match against file contents.",
+              "example": "TODO\\(perf\\)",
+              "type": "string"
+            }
+          },
+          "required": [
+            "pattern"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SearchRequest"
+        },
+        {
+          "properties": {
+            "session_id": {
+              "description": "Session's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "session_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "search_workspace_files",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/fs/_/search",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "agents",
     "cli": "agents versions set-default",
     "description": "Set an agent's default immutable version.",
@@ -14200,7 +14285,6 @@
     "input_schema": {
       "$defs": {
         "StatRequest": {
-          "description": "Request to get file stat",
           "properties": {
             "path": {
               "description": "Path to the file or directory (relative to the workspace filesystem root).",
@@ -19330,6 +19414,20 @@
             "encoding": {
               "description": "Content encoding: \"text\" or \"base64\". Defaults to text.",
               "example": "text",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "expected_content": {
+              "description": "Content the file must currently hold for the write to happen.\n\nWhen set, the update is a compare-and-swap: the write lands only if the\nstored bytes equal these, and a mismatch is reported as a conflict\nrather than overwriting a concurrent writer.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "expected_encoding": {
+              "description": "Encoding of `expected_content`. Defaults to `text` when omitted.",
               "type": [
                 "string",
                 "null"

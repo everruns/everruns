@@ -51,14 +51,6 @@ service WorkerService {
     rpc GetDefaultModel(GetDefaultModelRequest) returns (GetDefaultModelResponse);
 
     // Session file operations (virtual filesystem)
-    rpc SessionReadFile(SessionReadFileRequest) returns (SessionReadFileResponse);
-    rpc SessionWriteFile(SessionWriteFileRequest) returns (SessionWriteFileResponse);
-    rpc SessionWriteFileIfContentMatches(SessionWriteFileIfContentMatchesRequest) returns (SessionWriteFileIfContentMatchesResponse);
-    rpc SessionDeleteFile(SessionDeleteFileRequest) returns (SessionDeleteFileResponse);
-    rpc SessionListDirectory(SessionListDirectoryRequest) returns (SessionListDirectoryResponse);
-    rpc SessionStatFile(SessionStatFileRequest) returns (SessionStatFileResponse);
-    rpc SessionGrepFiles(SessionGrepFilesRequest) returns (SessionGrepFilesResponse);
-    rpc SessionCreateDirectory(SessionCreateDirectoryRequest) returns (SessionCreateDirectoryResponse);
 
     // === Durable execution operations ===
     // These operations allow workers to interact with the durable task queue
@@ -723,98 +715,6 @@ message GrepContextBlock {
     uint64 end_line = 3;
     repeated uint64 match_line_numbers = 4;
     repeated GrepContextLine lines = 5;
-}
-
-message SessionReadFileRequest {
-    Uuid session_id = 1;
-    string path = 2;
-}
-
-message SessionReadFileResponse {
-    optional SessionFile file = 1;
-}
-
-message SessionWriteFileRequest {
-    Uuid session_id = 1;
-    string path = 2;
-    string content = 3;
-    string encoding = 4;
-}
-
-message SessionWriteFileResponse {
-    SessionFile file = 1;
-}
-
-message SessionWriteFileIfContentMatchesRequest {
-    Uuid session_id = 1;
-    string path = 2;
-    string expected_content = 3;
-    string expected_encoding = 4;
-    string content = 5;
-    string encoding = 6;
-}
-
-message SessionWriteFileIfContentMatchesResponse {
-    optional SessionFile file = 1;
-}
-
-message SessionDeleteFileRequest {
-    Uuid session_id = 1;
-    string path = 2;
-    bool recursive = 3;
-}
-
-message SessionDeleteFileResponse {
-    bool deleted = 1;
-}
-
-message SessionListDirectoryRequest {
-    Uuid session_id = 1;
-    string path = 2;
-}
-
-message SessionListDirectoryResponse {
-    repeated FileInfo files = 1;
-}
-
-message SessionStatFileRequest {
-    Uuid session_id = 1;
-    string path = 2;
-}
-
-message SessionStatFileResponse {
-    optional FileStat stat = 1;
-}
-
-message SessionGrepFilesRequest {
-    Uuid session_id = 1;
-    string pattern = 2;
-    optional string path_pattern = 3;
-    uint64 before_context = 4;
-    uint64 after_context = 5;
-    uint64 offset = 6;
-    uint64 limit = 7;
-    uint64 max_bytes = 8;
-}
-
-message SessionGrepFilesResponse {
-    repeated GrepMatch matches = 1;
-    repeated GrepContextBlock blocks = 2;
-    uint64 total_matches = 3;
-    uint64 returned_matches = 4;
-    uint64 bytes_returned = 5;
-    uint64 bytes_total = 6;
-    optional uint64 next_offset = 7;
-    bool byte_truncated = 8;
-}
-
-message SessionCreateDirectoryRequest {
-    Uuid session_id = 1;
-    string path = 2;
-}
-
-message SessionCreateDirectoryResponse {
-    FileInfo directory = 1;
 }
 
 // ============================================================================
@@ -1675,6 +1575,7 @@ message CommandError {
         KIND_NOT_FOUND = 3;
         KIND_CONFLICT = 4;
         KIND_INTERNAL = 5;
+        KIND_UNAVAILABLE = 6;
     }
 
     Kind kind = 1;

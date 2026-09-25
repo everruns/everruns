@@ -466,9 +466,9 @@ fn take_existing_excluded_notice(messages: &mut Vec<RuntimeMessage>) -> usize {
 
 fn parse_excluded_notice_count(message: &RuntimeMessage) -> Option<usize> {
     let text = message.text()?;
-    let rest = text.strip_prefix("[IMPORTANT: ")?;
+    let rest = text.strip_prefix('[')?;
     let (count, rest) = rest.split_once(' ')?;
-    if !rest.starts_with("earlier messages are NOT visible in this context.") {
+    if !rest.starts_with("earlier messages are not in this context.") {
         return None;
     }
     count.parse().ok()
@@ -1046,7 +1046,7 @@ mod tests {
         assert_eq!(messages.len(), 3);
         assert!(
             extract_text_content(&messages[0])
-                .contains("2 earlier messages are NOT visible in this context")
+                .contains("2 earlier messages are not in this context")
         );
         assert_eq!(extract_text_content(&messages[1]), "recent one");
         assert_eq!(extract_text_content(&messages[2]), "recent two");
@@ -1081,7 +1081,7 @@ mod tests {
         assert_eq!(messages.len(), 3);
         assert!(
             extract_text_content(&messages[0])
-                .contains("3 earlier messages are NOT visible in this context")
+                .contains("3 earlier messages are not in this context")
         );
         assert_eq!(extract_text_content(&messages[1]), "four");
         assert_eq!(extract_text_content(&messages[2]), "five");
@@ -1114,8 +1114,7 @@ mod tests {
         // the recent tail is intact — the model still knows what it is doing.
         assert_eq!(extract_text_content(&messages[0]), "TASK: build the widget");
         assert!(
-            extract_text_content(&messages[1])
-                .contains("earlier messages are NOT visible in this context")
+            extract_text_content(&messages[1]).contains("earlier messages are not in this context")
         );
         assert_eq!(extract_text_content(messages.last().unwrap()), "recent b");
         // The huge first assistant turn was dropped from the middle.
@@ -1167,7 +1166,7 @@ mod tests {
         assert!(
             messages
                 .iter()
-                .all(|m| !extract_text_content(m).contains("NOT visible"))
+                .all(|m| !extract_text_content(m).contains("not in this context"))
         );
     }
 
@@ -1192,7 +1191,7 @@ mod tests {
             extract_text_content(&messages[MAX_KEEP_FIRST_MESSAGES - 1]),
             format!("message {}", MAX_KEEP_FIRST_MESSAGES - 1)
         );
-        assert!(extract_text_content(&messages[MAX_KEEP_FIRST_MESSAGES]).contains("NOT visible"));
+        assert!(extract_text_content(&messages[MAX_KEEP_FIRST_MESSAGES]).contains("are not in"));
         assert_eq!(extract_text_content(messages.last().unwrap()), "message 19");
     }
 
@@ -1218,7 +1217,7 @@ mod tests {
         assert_eq!(messages.len(), 3);
         assert!(
             extract_text_content(&messages[0])
-                .contains("2 earlier messages are NOT visible in this context")
+                .contains("2 earlier messages are not in this context")
         );
         assert_eq!(extract_text_content(&messages[1]), "recent one");
         assert_eq!(extract_text_content(&messages[2]), "recent two");
@@ -1250,7 +1249,7 @@ mod tests {
 
         assert_eq!(extract_text_content(&messages[0]), "anchor one");
         assert_eq!(extract_text_content(&messages[1]), "anchor two");
-        assert!(extract_text_content(&messages[2]).contains("NOT visible"));
+        assert!(extract_text_content(&messages[2]).contains("not in this context"));
         assert_eq!(extract_text_content(messages.last().unwrap()), "recent");
     }
 

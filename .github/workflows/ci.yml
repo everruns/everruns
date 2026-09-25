@@ -851,10 +851,10 @@ jobs:
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini \
             -p everruns-bedrock -p everruns-fireworks -p everruns-mai \
             -p everruns-meta -p everruns-openrouter -p everruns-internal-protocol --all-features
-          # Core and the local embedder: run the WHOLE suite (lib + integration +
-          # doctests), not just --lib, so integration tests aren't silently skipped.
-          # Both are pure (llmsim-based, no credentials or network).
-          cargo test -p everruns-core -p everruns --all-features
+          # Core: run the WHOLE suite (lib + integration + doctests), not just
+          # --lib, so integration tests aren't silently skipped. Pure (llmsim-based,
+          # no credentials or network). The `everruns` facade runs in facade-cli.
+          cargo test -p everruns-core --all-features
           # Offline tool behavior, fixed-code reproduction, and presentation tests.
           # Live model quality is checked separately with provider credentials.
           cargo test -p everruns-support-agent -p everruns-coding-review-agent \
@@ -1307,14 +1307,11 @@ jobs:
         run: |
           cargo test -p everruns-server \
             --lib \
-            --test mcp_url_consent_test \
-            --test mcp_url_elicitation_test \
-            --test question_answers_test \
-            --test sse_replay_test
+            --test contracts
 
       - name: Run server integration tests (API + repository)
         if: ${{ matrix.shard == 'server' }}
-        run: cargo test -p everruns-server --test api_integration_test --test mcp_catalog_integration_test --test repository_integration_test --test repository_conformance_test -- --test-threads=1
+        run: cargo test -p everruns-server --test server_integration -- --test-threads=1
 
       # Domain suite: the blob-offload contracts against the in-memory
       # object_store backend, the domain-focused integration tests, and the
@@ -1331,50 +1328,13 @@ jobs:
         if: ${{ matrix.shard == 'domain' }}
         run: |
           cargo test -p everruns-server \
+            --test domain \
             --test blob_offload_integration_test \
-            --test ag_ui_integration_test \
-            --test agent_trigger_invocation_integration_test \
-            --test app_a2a_integration_test \
-            --test app_invocation_channels_integration_test \
-            --test auth_integration_test \
-            --test cli_auth_test \
-            --test cli_auth_no_org_test \
-            --test client_side_tools_test \
-            --test evals_integration_test \
-            --test observers_integration_test \
             --test prometheus_metrics_test \
-            --test llm_model_default_test \
-            --test mcp_acts_as_grpc_test \
-            --test mcp_oauth_user_switch_test \
-            --test service_mcp_oauth_lifecycle_test \
-            --test org_creation_test \
-            --test org_isolation_test \
-            --test org_lifecycle_test \
-            --test schedule_integration_test \
-            --test session_git_integration_test \
-            --test session_tab_counts_integration_test \
-            --test webhook_trigger_migration_test \
-            --test agent_endpoints_migration_test \
-            --test app_api_integration_test \
-            --test endpoint_attribution_test \
-            --test endpoint_publish_test \
-            --test command_policy_enforcement_test \
-            --test fcp_integration_test \
-            --test guardrails_integration_test \
-            --test mcp_endpoint_test \
-            --test migration_history_test \
-            --test openapi_coverage_test \
-            --test openapi_descriptions_test \
-            --test openapi_sdk_metadata_test \
-            --test org_invitations_test \
+            --test background_sweep_wiring_test \
             --test plugins_integration_test \
             --test plugins_remote_test \
-            --test reporting_integration_test \
-            --test session_workspace_attach_test \
-            --test skills_integration_test \
             --test strict_client_tools \
-            --test subagent_spawn_handles_test \
-            --test workspace_files_integration_test \
             -- --test-threads=1
 
       - name: Run durable integration tests

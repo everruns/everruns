@@ -35,7 +35,7 @@ operation the unit of reuse and registration.
   behavior shared by MCP and the built-in `platform` capability.
 - [`crates/internal-protocol/proto/`](../../crates/internal-protocol/proto) owns
   exact gRPC messages.
-- [`crates/server/tests/command_policy_enforcement_test.rs`](../../crates/server/tests/command_policy_enforcement_test.rs)
+- [`crates/server/tests/domain/command_policy_enforcement_test.rs`](../../crates/server/tests/domain/command_policy_enforcement_test.rs)
   verifies policy coverage from command inventory.
 
 Do not copy the command trait, context fields, error enum, registry descriptor,
@@ -141,7 +141,7 @@ mapping plus their tests. A copied variant table in this spec would hide that
 compiler-enforced work, so it is deliberately omitted.
 
 Classify caller mistakes with typed domain errors. String-pattern
-classification exists only for older paths and should not grow when a typed
+decision exists only for older paths and should not grow when a typed
 boundary is available.
 
 ## Inventory and dispatch
@@ -189,7 +189,7 @@ OpenAPI export, not this spec.
 Internal workers execute registered management operations through the generic
 command RPC instead of bespoke messages per CRUD operation. The request carries
 an operation name, API version, serialized parameters, and organization scope.
-Responses preserve typed domain failure classification.
+Responses preserve typed domain failure decision.
 
 Workers can discover the command catalog and schema hash. A
 non-backward-compatible command contract requires an explicit API-version

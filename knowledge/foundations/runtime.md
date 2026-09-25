@@ -130,7 +130,7 @@ returns that snapshot plus the turn's message and MCP tool inputs; adapters
 perform the platform projection (`ResolvedExecutionSnapshot::project`) so
 missing, mismatched, or inactive records fail before host execution begins.
 Session status mutation stays a separate host effect that exposes no session
-record. A source guard (`crates/host/tests/execution_contract_guard.rs`)
+record. A source guard (`crates/host/tests/integration/execution_contract_guard.rs`)
 prevents the contract module from naming the record types again; the
 `InProcessRuntimeBuilder` seeding APIs still accept records as host
 configuration until they are separately replaced.
@@ -209,7 +209,7 @@ Required behavior:
    not persist a second user message, schedule another act for already-completed
    tools, or discard provider continuation state that remains valid. Terminal
    transient exhaustion is reported as safe to resume from persisted history;
-   permanent provider failures retain their precise classification.
+   permanent provider failures retain their precise decision.
 
 ## Shared Context Assembly
 
@@ -385,7 +385,7 @@ Schedules keep an extensible per-record metadata bag (name/color/kind/etc.) in a
 local `metadata` JSON column rather than by widening the shared core
 `SessionSchedule` primitive; the trait-level store surface is unchanged. See
 `crates/everruns/src/local/` for the implementation and
-`crates/everruns/tests/local_*` for the
+`crates/everruns/tests/local/` for the
 task-lifecycle, restart-survivability, schedule round-trip, composability, and
 embedded-turn coverage.
 
@@ -482,10 +482,10 @@ Those remain separate concerns outside the runtime host orchestration contract.
 The in-process runtime contract is regression-tested in CI with the pure Rust
 test binaries in `crates/host/tests/`.
 
-- `crates/host/tests/in_process_runtime_test.rs` proves embedded runtimes
+- `crates/host/tests/integration/in_process_runtime_test.rs` proves embedded runtimes
   can execute turns, persist message history, seed files, and emit the shared
   event shapes without PostgreSQL or worker infrastructure.
-- `crates/host/tests/runtime_host_test.rs` proves the reusable host adapter
+- `crates/host/tests/integration/runtime_host_test.rs` proves the reusable host adapter
   contract drives `input -> reason -> act` planning and lifecycle state changes
   for server-backed or durable hosts.
 
@@ -502,8 +502,8 @@ test binaries in `crates/host/tests/`.
 - `crates/host/examples/inspect_context.rs`
 - `examples/weekend-concierge-host/src/lib.rs`
 - `examples/weekend-concierge-host/src/main.rs`
-- `crates/host/tests/in_process_runtime_test.rs`
-- `crates/host/tests/runtime_host_test.rs`
+- `crates/host/tests/integration/in_process_runtime_test.rs`
+- `crates/host/tests/integration/runtime_host_test.rs`
 - `crates/worker/src/runtime_host.rs`
 - `crates/core/src/runtime_context.rs`
 - `crates/core/src/turn.rs`

@@ -1,6 +1,6 @@
 # Foreman
 
-A fast classifier watching a slow coding agent, and a policy in ordinary Rust
+A fast decisions watching a slow coding agent, and a policy in ordinary Rust
 deciding what to do about the numbers. A Framework port of
 [thruwire/foreman](https://github.com/thruwire/foreman), which put
 [TypeSafe's Jev](https://docs.typesafe.ai/introduction) above a Codex worker and
@@ -13,7 +13,7 @@ asked whether semantic supervision can run *while* the work happens.
 ## What you learn
 
 How to run a worker session and observe it at the same time: a
-[`Classifier`](https://docs.rs/everruns/latest/everruns/classifier/) turning
+[`Decisions`](https://docs.rs/everruns/latest/everruns/decisions/) turning
 bounded evidence into nine probabilities in one request, and a deterministic
 policy that owns every threshold, every limit, and the closed vocabulary of
 things the supervisor may do.
@@ -28,7 +28,7 @@ reason                                    observe
 tool                                      assess
   │                                         │
   ▼                                         ▼
-observe ──── canonical events ───────────► Classifier · 9 nouls, 1 request
+observe ──── canonical events ───────────► Decisions · 9 nouls, 1 request
   │                                         │
   ▼                                         ▼
 edit                                      decide (Rust policy)
@@ -63,13 +63,13 @@ one request, so asking nine costs one round trip:
 | `ready_to_finish` | |
 
 Question wording is carried over from Foreman unchanged, and lives in
-`src/foreman.rs`. Wording is the interface to a classifier the way a schema is
+`src/foreman.rs`. Wording is the interface to a decision service the way a schema is
 the interface to an API: a threshold calibrated against one phrasing is not
 evidence about another.
 
 ## What it may do about them
 
-The classifier only estimates. `src/policy.rs` decides, in this order — safety
+The decision service only estimates. `src/policy.rs` decides, in this order — safety
 and hard limits before productivity:
 
 `ESCALATE` on `needs_human` · `ESCALATE` at the iteration ceiling ·
@@ -93,7 +93,7 @@ character diff, 12,000 characters per tail, 30 events, and 10 workers of
 history. An unbounded observation would make supervision as slow as the work it
 is watching.
 
-That snapshot goes to the classifier's service on every reading, so a bounded
+That snapshot goes to the decision service on every reading, so a bounded
 slice of the repository — the diff, the changed paths, whatever the worker
 printed — leaves the machine on every run. There is no mode in which it does
 not. Point `--repo` at a private repository only if that is acceptable for it,
@@ -101,8 +101,8 @@ the same judgment any third-party search or model call asks for; `demo` works on
 a fixture it materializes itself, so it carries nothing of yours.
 
 The repository content in an observation is also untrusted input to the
-classifier, so a hostile repository can try to talk it into a number. That it
-can only produce a *number* is the point: the classifier never names an action,
+decisions, so a hostile repository can try to talk it into a number. That it
+can only produce a *number* is the point: the decision service never names an action,
 and every action the policy can take is in `src/policy.rs` where it can be read.
 The worst a poisoned reading buys is a wrong intervention on a worker that is
 already sandboxed.
@@ -122,7 +122,7 @@ foreman run --repo ./my-project --job "Add rate limiting, and test it."
 ```
 
 Both are real runs. Nothing in this crate is simulated — same worker, same
-classifier, same credentials — and the only difference is who chose the
+decisions, same credentials — and the only difference is who chose the
 repository and the job:
 
 | Command | Repository | Job | Needs |
@@ -225,21 +225,21 @@ reading the tests rather than on one having passed.
 
 ## One supervisor
 
-There is one, and it is always real: `src/foreman.rs` holds a `Classifier` and
+There is one, and it is always real: `src/foreman.rs` holds a `Decisions` and
 a budget, builds one request, and parses nine answers. There is no offline mode
 and no second supervisor with fabricated numbers — every run of this binary asks
 a vendor the nine questions.
 
 CI cannot do that, so the test suite substitutes the seam the Framework provides
 for it,
-[`ClassifierService`](https://docs.rs/everruns/latest/everruns/trait.ClassifierService.html),
+[`DecisionsService`](https://docs.rs/everruns/latest/everruns/trait.DecisionsService.html),
 rather than adding a branch to the supervisor:
 
 ```rust
 #[async_trait]
-impl ClassifierService for Readings {
-    async fn evaluate(&self, request: ClassificationRequest)
-        -> Result<ClassificationOutcome, AgentLoopError>
+impl DecisionsService for Readings {
+    async fn evaluate(&self, request: DecisionRequest)
+        -> Result<DecisionOutcome, AgentLoopError>
     {
         let reading = &self.readings[Self::phase(&request.state)];
         // one Noul per question id
@@ -256,11 +256,11 @@ an example gets read as part of it.
 ## Ask the nine questions
 
 ```rust
-let mut classification = classifier.about(serde_json::to_value(observation)?);
+let mut decision = decisions.about(serde_json::to_value(observation)?);
 for dimension in &DIMENSIONS {
-    classification = classification.noul(dimension.id, dimension.question);
+    decision = decision.noul(dimension.id, dimension.question);
 }
-let answers = classification.send().await?;
+let answers = decision.send().await?;
 ```
 
 Ids label answers for your code and never reach the model, so every question has
@@ -275,7 +275,7 @@ bash examples/foreman-agent/demo/record.sh --check
 
 The suite is offline, which is the one thing `foreman` itself is not. It covers
 every policy branch, the observation bounds, the nine-question round trip
-against a simulated classifier, both worker backends' command lines, and seven
+against a simulated decisions, both worker backends' command lines, and seven
 whole runs through the real runtime: readings landing mid-turn, a stuck worker
 stopped and retried once and escalated, a supervisor that cannot answer, an
 external worker watched while it streams, a missing external binary failing by
@@ -321,7 +321,7 @@ The architecture is Foreman's; the runtime underneath it is not.
 ## Limits
 
 This is an architectural experiment, and porting it does not make it a proven
-one. Classifier accuracy for this use is unproven and the thresholds are
+one. Decisions accuracy for this use is unproven and the thresholds are
 uncalibrated: false positives stop useful workers, false negatives let bad work
 continue. Observations are bounded and therefore incomplete. One coding worker
 runs at a time. A verifier reports evidence, not proof, and a green suite is
@@ -334,7 +334,7 @@ sandbox for the shell, not a safe harness for an untrusted repository.
 `src/cli.rs`: the command line; `src/main.rs`: wiring, and nothing else;
 `src/factory.rs`: the two loops, the state, and the interventions;
 `src/worker.rs`: both crews and the evidence pumps; `src/foreman.rs`: the nine
-questions and the classifier call; `src/policy.rs`: thresholds, limits, and the
+questions and the decision service call; `src/policy.rs`: thresholds, limits, and the
 decision; `src/observation.rs`: the bounded snapshot; `src/agent.rs`: the two
 agents; `src/run.rs`: one run, rendered; `src/terminal.rs`: layout only, over
 `everruns-example-demo::style`; `src/fixture.rs` and
@@ -351,7 +351,7 @@ script that records it, the GIF, and the transcript.
 - [thruwire/foreman](https://github.com/thruwire/foreman) — the original, in
   Python over the Codex CLI, and its
   [theory of semantic supervision](https://github.com/thruwire/foreman/blob/main/docs/theory.md)
-- [Classification](https://docs.everruns.com/framework/examples/) — asking for
+- [Decision](https://docs.everruns.com/framework/examples/) — asking for
   numbers instead of prose
 - [`bashkit-repo-agent`](../bashkit-repo-agent) — one supervised worker, without
   the supervisor

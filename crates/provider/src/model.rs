@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 pub use crate::provider::{DriverId, ProviderStatus};
 use crate::typed_id::{ModelId, ProviderId};
 pub use everruns_model_profiles::{
-    CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
-    ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue, Speed, SpeedConfig, SpeedValue,
-    Verbosity, VerbosityConfig, VerbosityValue,
+    CLEAR_AT_PARAMETER, CostTier, MID_CONVERSATION_SYSTEM_PARAMETER, Modality, ModelCost,
+    ModelLimits, ModelModalities, ModelProfile, ModelVendor, ReasoningEffort,
+    ReasoningEffortConfig, ReasoningEffortValue, Speed, SpeedConfig, SpeedValue, Verbosity,
+    VerbosityConfig, VerbosityValue,
 };
 
 #[cfg(feature = "openapi")]

@@ -1050,85 +1050,61 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_app_status_display() {
-        assert_eq!(AppStatus::Draft.to_string(), "draft");
-        assert_eq!(AppStatus::Published.to_string(), "published");
-        assert_eq!(AppStatus::Archived.to_string(), "archived");
-        assert_eq!(AppStatus::Deleted.to_string(), "deleted");
-    }
-
-    #[test]
-    fn test_app_status_from_str() {
-        assert_eq!(AppStatus::from("draft"), AppStatus::Draft);
-        assert_eq!(AppStatus::from("published"), AppStatus::Published);
-        assert_eq!(AppStatus::from("archived"), AppStatus::Archived);
-        assert_eq!(AppStatus::from("deleted"), AppStatus::Deleted);
+    fn test_app_status_mapping() {
+        // (variant, wire string) for Display, FromStr and serde over the same enum mapping.
+        let cases = [
+            (AppStatus::Draft, "draft"),
+            (AppStatus::Published, "published"),
+            (AppStatus::Archived, "archived"),
+            (AppStatus::Deleted, "deleted"),
+        ];
+        for (variant, s) in cases {
+            assert_eq!(variant.to_string(), s, "Display mismatch for {variant:?}");
+            assert_eq!(AppStatus::from(s), variant, "from_str mismatch for {s:?}");
+            let json = serde_json::to_string(&variant).unwrap();
+            assert_eq!(
+                json,
+                format!("\"{s}\""),
+                "serde wire format mismatch for {variant:?}"
+            );
+            let parsed: AppStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, variant, "serde roundtrip mismatch for {variant:?}");
+        }
+        // Unrecognized/empty input falls back to Draft.
         assert_eq!(AppStatus::from("unknown"), AppStatus::Draft);
         assert_eq!(AppStatus::from(""), AppStatus::Draft);
     }
 
     #[test]
-    fn test_app_status_serde_roundtrip() {
-        let json = serde_json::to_string(&AppStatus::Published).unwrap();
-        assert_eq!(json, r#""published""#);
-        let parsed: AppStatus = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, AppStatus::Published);
-    }
-
-    #[test]
-    fn test_channel_type_display() {
-        assert_eq!(ChannelType::Slack.to_string(), "slack");
-        assert_eq!(ChannelType::AgUi.to_string(), "ag_ui");
-        assert_eq!(ChannelType::Schedule.to_string(), "schedule");
-        assert_eq!(ChannelType::Webhook.to_string(), "webhook");
-        assert_eq!(ChannelType::A2a.to_string(), "a2a");
-        assert_eq!(ChannelType::Fcp.to_string(), "fcp");
-        assert_eq!(ChannelType::PublicChat.to_string(), "public_chat");
-    }
-
-    #[test]
-    fn test_channel_type_from_str_opt() {
-        assert_eq!(ChannelType::from_str_opt("slack"), Some(ChannelType::Slack));
-        assert_eq!(ChannelType::from_str_opt("ag_ui"), Some(ChannelType::AgUi));
-        assert_eq!(
-            ChannelType::from_str_opt("schedule"),
-            Some(ChannelType::Schedule)
-        );
-        assert_eq!(
-            ChannelType::from_str_opt("webhook"),
-            Some(ChannelType::Webhook)
-        );
-        assert_eq!(ChannelType::from_str_opt("a2a"), Some(ChannelType::A2a));
-        assert_eq!(ChannelType::from_str_opt("fcp"), Some(ChannelType::Fcp));
-        assert_eq!(
-            ChannelType::from_str_opt("public_chat"),
-            Some(ChannelType::PublicChat)
-        );
+    fn test_channel_type_mapping() {
+        // (variant, wire string) for Display, from_str_opt and serde over the same enum mapping.
+        let cases = [
+            (ChannelType::Slack, "slack"),
+            (ChannelType::AgUi, "ag_ui"),
+            (ChannelType::Schedule, "schedule"),
+            (ChannelType::Webhook, "webhook"),
+            (ChannelType::A2a, "a2a"),
+            (ChannelType::Fcp, "fcp"),
+            (ChannelType::PublicChat, "public_chat"),
+        ];
+        for (variant, s) in cases {
+            assert_eq!(variant.to_string(), s, "Display mismatch for {variant:?}");
+            assert_eq!(
+                ChannelType::from_str_opt(s),
+                Some(variant.clone()),
+                "from_str_opt mismatch for {s:?}"
+            );
+            let json = serde_json::to_string(&variant).unwrap();
+            assert_eq!(
+                json,
+                format!("\"{s}\""),
+                "serde wire format mismatch for {variant:?}"
+            );
+            let parsed: ChannelType = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, variant, "serde roundtrip mismatch for {variant:?}");
+        }
         assert_eq!(ChannelType::from_str_opt("unknown"), None);
         assert_eq!(ChannelType::from_str_opt(""), None);
-    }
-
-    #[test]
-    fn test_channel_type_serde_roundtrip() {
-        let json = serde_json::to_string(&ChannelType::Slack).unwrap();
-        assert_eq!(json, r#""slack""#);
-        let parsed: ChannelType = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, ChannelType::Slack);
-
-        let json = serde_json::to_string(&ChannelType::AgUi).unwrap();
-        assert_eq!(json, r#""ag_ui""#);
-        let parsed: ChannelType = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, ChannelType::AgUi);
-
-        let json = serde_json::to_string(&ChannelType::Schedule).unwrap();
-        assert_eq!(json, r#""schedule""#);
-        let parsed: ChannelType = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, ChannelType::Schedule);
-
-        let json = serde_json::to_string(&ChannelType::Webhook).unwrap();
-        assert_eq!(json, r#""webhook""#);
-        let parsed: ChannelType = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, ChannelType::Webhook);
     }
 
     #[test]
@@ -1542,14 +1518,6 @@ mod tests {
         );
         let app = test_app(vec![ch]);
         assert!(app.a2a_channel().is_some());
-    }
-
-    #[test]
-    fn test_channel_type_public_chat_serde_roundtrip() {
-        let json = serde_json::to_string(&ChannelType::PublicChat).unwrap();
-        assert_eq!(json, r#""public_chat""#);
-        let parsed: ChannelType = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, ChannelType::PublicChat);
     }
 
     #[test]

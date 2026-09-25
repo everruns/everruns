@@ -156,11 +156,17 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // =========================================================================
 
     /// Read a file from session filesystem
-    async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>>;
+    async fn read_file(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Option<SessionFile>>;
 
     /// Write a file to session filesystem
     async fn write_file(
         &self,
+        org_id: i64,
         session_id: Uuid,
         path: &str,
         content: &str,
@@ -168,8 +174,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     ) -> Result<SessionFile>;
 
     /// Write a file only if its current content snapshot still matches.
+    ///
+    /// Eight arguments because the compare-and-swap needs both the expected and
+    /// the incoming content with their encodings, on top of the org and session
+    /// every file method carries. Bundling them into a struct would buy nothing
+    /// here: the call sites are the trait's own default body and two adapters.
+    #[allow(clippy::too_many_arguments)]
     async fn write_file_if_content_matches(
         &self,
+        org_id: i64,
         session_id: Uuid,
         path: &str,
         expected_content: &str,
@@ -177,7 +190,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         content: &str,
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
-        let Some(existing) = self.read_file(session_id, path).await? else {
+        let Some(existing) = self.read_file(org_id, session_id, path).await? else {
             return Ok(None);
         };
 
@@ -190,23 +203,40 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
             return Ok(None);
         }
 
-        self.write_file(session_id, path, content, encoding)
+        self.write_file(org_id, session_id, path, content, encoding)
             .await
             .map(Some)
     }
 
     /// Delete a file from session filesystem
-    async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool>;
+    async fn delete_file(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        path: &str,
+        recursive: bool,
+    ) -> Result<bool>;
 
     /// List directory contents
-    async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>>;
+    async fn list_directory(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Vec<FileInfo>>;
 
     /// Get file stats
-    async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>>;
+    async fn stat_file(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Option<FileStat>>;
 
     /// Search files by pattern
     async fn grep_files(
         &self,
+        org_id: i64,
         session_id: Uuid,
         pattern: &str,
         path_pattern: Option<&str>,
@@ -214,6 +244,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     async fn grep_files_with_options(
         &self,
+        org_id: i64,
         session_id: Uuid,
         pattern: &str,
         options: &GrepOptions,
@@ -224,7 +255,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
             ));
         }
         let matches = self
-            .grep_files(session_id, pattern, options.path_pattern.as_deref())
+            .grep_files(org_id, session_id, pattern, options.path_pattern.as_deref())
             .await?;
         Ok(everruns_core::session_file::bound_grep_matches(
             matches, options,
@@ -232,7 +263,8 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     }
 
     /// Create a directory
-    async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo>;
+    async fn create_directory(&self, org_id: i64, session_id: Uuid, path: &str)
+    -> Result<FileInfo>;
 
     // =========================================================================
     // MCP Server Operations
@@ -352,9 +384,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get the system utility LLM service for capability internals.
     fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>>;
 
-    /// Get the system classifier for capability internals that ask typed
+    /// Get the system decisions for capability internals that ask typed
     /// questions. Defaults to none, which makes dependent checks fail open.
-    fn classifier(&self) -> Option<Arc<dyn everruns_core::ClassifierService>> {
+    fn decisions(&self) -> Option<Arc<dyn everruns_core::DecisionsService>> {
         None
     }
 
@@ -602,13 +634,34 @@ pub struct TurnContext {
 pub struct SessionAdapter<A: WorkerAdapters> {
     adapters: A,
     event_metadata: Option<serde_json::Map<String, serde_json::Value>>,
+    /// The org whose turn this adapter serves, for the surfaces that reach the
+    /// org-scoped command transport. `None` outside a turn (the message and
+    /// event surfaces do not need one).
+    org_id: Option<i64>,
 }
 
 impl<A: WorkerAdapters> SessionAdapter<A> {
+    /// Scope this adapter to an org, which the file surface requires.
+    pub fn for_org(mut self, org_id: i64) -> Self {
+        self.org_id = Some(org_id);
+        self
+    }
+
+    /// The org this adapter serves, or an error naming the surface that needs
+    /// one rather than inventing a default.
+    fn require_org(&self, surface: &str) -> Result<i64> {
+        self.org_id.ok_or_else(|| {
+            everruns_provider::error::AgentLoopError::store(format!(
+                "{surface} requires an org-scoped session adapter"
+            ))
+        })
+    }
+
     pub fn new(adapters: A) -> Self {
         Self {
             adapters,
             event_metadata: None,
+            org_id: None,
         }
     }
 
@@ -812,7 +865,10 @@ impl<A: WorkerAdapters> everruns_core::event_emitter::EventEmitter for SessionAd
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::session_files::SessionFileSystem for SessionAdapter<A> {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
-        self.adapters.read_file(session_id.uuid(), path).await
+        let org_id = self.require_org("read_file")?;
+        self.adapters
+            .read_file(org_id, session_id.uuid(), path)
+            .await
     }
 
     async fn write_file(
@@ -822,8 +878,9 @@ impl<A: WorkerAdapters> everruns_core::session_files::SessionFileSystem for Sess
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
+        let org_id = self.require_org("write_file")?;
         self.adapters
-            .write_file(session_id.uuid(), path, content, encoding)
+            .write_file(org_id, session_id.uuid(), path, content, encoding)
             .await
     }
 
@@ -836,8 +893,10 @@ impl<A: WorkerAdapters> everruns_core::session_files::SessionFileSystem for Sess
         content: &str,
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
+        let org_id = self.require_org("write_file_if_content_matches")?;
         self.adapters
             .write_file_if_content_matches(
+                org_id,
                 session_id.uuid(),
                 path,
                 expected_content,
@@ -854,17 +913,24 @@ impl<A: WorkerAdapters> everruns_core::session_files::SessionFileSystem for Sess
         path: &str,
         recursive: bool,
     ) -> Result<bool> {
+        let org_id = self.require_org("delete_file")?;
         self.adapters
-            .delete_file(session_id.uuid(), path, recursive)
+            .delete_file(org_id, session_id.uuid(), path, recursive)
             .await
     }
 
     async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
-        self.adapters.list_directory(session_id.uuid(), path).await
+        let org_id = self.require_org("list_directory")?;
+        self.adapters
+            .list_directory(org_id, session_id.uuid(), path)
+            .await
     }
 
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
-        self.adapters.stat_file(session_id.uuid(), path).await
+        let org_id = self.require_org("stat_file")?;
+        self.adapters
+            .stat_file(org_id, session_id.uuid(), path)
+            .await
     }
 
     async fn grep_files(
@@ -873,8 +939,9 @@ impl<A: WorkerAdapters> everruns_core::session_files::SessionFileSystem for Sess
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
+        let org_id = self.require_org("grep_files")?;
         self.adapters
-            .grep_files(session_id.uuid(), pattern, path_pattern)
+            .grep_files(org_id, session_id.uuid(), pattern, path_pattern)
             .await
     }
 
@@ -884,14 +951,16 @@ impl<A: WorkerAdapters> everruns_core::session_files::SessionFileSystem for Sess
         pattern: &str,
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
+        let org_id = self.require_org("grep_files_with_options")?;
         self.adapters
-            .grep_files_with_options(session_id.uuid(), pattern, options)
+            .grep_files_with_options(org_id, session_id.uuid(), pattern, options)
             .await
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
+        let org_id = self.require_org("create_directory")?;
         self.adapters
-            .create_directory(session_id.uuid(), path)
+            .create_directory(org_id, session_id.uuid(), path)
             .await
     }
 

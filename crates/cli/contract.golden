@@ -237,12 +237,13 @@ sessions fork	--overrides --session <session_id>
 sessions fs - copy	--dst-path! --session-id! --src-path!
 sessions fs - grep	--path-pattern --pattern! --session-id!
 sessions fs - move	--dst-path! --session-id! --src-path!
+sessions fs - search	--after-context --before-context --limit --max-bytes --offset --path-pattern --pattern! --session-id!
 sessions fs - stat	--path! --session-id!
 sessions fs create	--content --encoding --is-directory --is-readonly --path! --session-id!
 sessions fs delete	--path! --recursive --session-id!
 sessions fs get	--path! --recursive --session-id!
 sessions fs list	--recursive --session-id!
-sessions fs update	--content --encoding --is-readonly --path! --session-id!
+sessions fs update	--content --encoding --expected-content --expected-encoding --is-readonly --path! --session-id!
 sessions get	<session>!
 sessions list	
 sessions messages create	--addressed-participant-id --controls --external-actor --message! --metadata --request-id --session-id! --tags...

@@ -192,9 +192,9 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cc"
-version = "1.4.6"
+version = "1.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3eb0f42d6c360dc3f8a821f6bf2fdea7f72bfd36b3076eb0e6d1e9e0752fff4"
+checksum = "54413ede23c2daf518f35156dfde027feb2374004d63bd497f983c8db9c0e313"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -423,7 +423,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.29.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -440,12 +440,13 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+ "tracing",
  "uuid",
 ]
 
 [[package]]
 name = "everruns-builtins"
-version = "0.29.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -463,7 +464,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capability"
-version = "0.29.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "schemars",
@@ -473,7 +474,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.29.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -486,7 +487,7 @@ dependencies = [
  "globset",
  "inventory",
  "jsonschema",
- "rand 0.10.2",
+ "rand 0.10.3",
  "regex",
  "serde",
  "serde_json",
@@ -503,7 +504,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.29.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -522,7 +523,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.29.0"
+version = "0.31.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -548,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.29.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -564,7 +565,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.29.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -578,7 +579,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.29.0"
+version = "0.31.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -587,14 +588,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-model-profiles"
-version = "0.29.0"
+version = "0.31.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "everruns-provider"
-version = "0.29.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -606,7 +607,7 @@ dependencies = [
  "futures",
  "hex",
  "http",
- "rand 0.10.2",
+ "rand 0.10.3",
  "regex",
  "reqwest",
  "rustls",
@@ -703,9 +704,9 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e0f1c7c3a72c66fd80abe965175f7523475c0489a87d3ff9d6e8c87d87a9d2d"
+checksum = "ef25905e51abafe4dcea6c15fec58c57b601cdbd0ee53d22ea1d3016c587d39b"
 
 [[package]]
 name = "fluent-uri"
@@ -994,9 +995,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
-version = "0.27.9"
+version = "0.27.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33ca68d021ef39cf6463ab54c1d0f5daf03377b70561305bb89a8f83aab66e0f"
+checksum = "dfa8e654703247911e29c23fbeaa261834bd9bb74efba2f9acddc37bfb127f53"
 dependencies = [
  "http",
  "hyper",
@@ -1349,7 +1350,7 @@ dependencies = [
  "async-stream",
  "futures-core",
  "futures-util",
- "rand 0.10.2",
+ "rand 0.10.3",
  "serde",
  "serde_json",
  "thiserror",
@@ -1663,7 +1664,7 @@ dependencies = [
  "bytes",
  "getrandom 0.4.3",
  "lru-slab",
- "rand 0.10.2",
+ "rand 0.10.3",
  "rand_pcg",
  "ring",
  "rustc-hash",
@@ -1722,9 +1723,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.2"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80"
+checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
 dependencies = [
  "chacha20",
  "getrandom 0.4.3",
@@ -2314,18 +2315,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",

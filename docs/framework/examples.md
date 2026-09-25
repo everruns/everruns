@@ -37,7 +37,7 @@ in [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/a
 | Example | Provider and model | What it does |
 | --- | --- | --- |
 | [Bashkit Repo Agent](/framework/examples/bashkit-repo-agent/) | OpenAI `gpt-5.6-terra` | Cuts a release in a real repository with the sandboxed Bashkit shell as its only tool, then verifies the result on disk. |
-| [Foreman](/framework/examples/foreman-agent/) | TypeSafe `jev-latest` over an Everruns session, Codex, or yolop | Supervises a live coding session with nine classifier questions per reading, and stops, verifies, or finishes it from a deterministic policy. |
+| [Foreman](/framework/examples/foreman-agent/) | TypeSafe `jev-latest` over an Everruns session, Codex, or yolop | Supervises a live coding session with nine decisions questions per reading, and stops, verifies, or finishes it from a deterministic policy. |
 
 ## Core crate catalog
 
@@ -46,8 +46,8 @@ in [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/a
 | [`capability_configuration.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/capability_configuration.rs) | Typed Compaction and ToolSearch, a code-defined Definition, and a dynamic third-party reference through one entrypoint | `cargo run -p everruns --example capability_configuration` |
 | [`workspace_policy.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/workspace_policy.rs) | Safe workspace scopes and trusted starter files, fully offline | `cargo run -p everruns --example workspace_policy` |
 | [`direct_llm.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_llm.rs) | One-shot, builder, and streamed model calls with no agent, fully offline | `cargo run -p everruns --example direct_llm` |
-| [`direct_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_classification.rs) | Typed questions and calibrated answers with no agent, fully offline | `cargo run -p everruns --example direct_classification` |
-| [`agent_classification.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_classification.rs) | An agent that classifies with its own questions, offline by default | `cargo run -p everruns --example agent_classification` |
+| [`direct_decisions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_decisions.rs) | Typed questions and calibrated answers with no agent, fully offline | `cargo run -p everruns --example direct_decisions` |
+| [`agent_decisions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/agent_decisions.rs) | An agent that classifies with its own questions, offline by default | `cargo run -p everruns --example agent_decisions` |
 | [`live_session.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/live_session.rs) | Non-blocking send, automatic steering, and optional waiting, fully offline | `cargo run -p everruns --example live_session` |
 | [`hello.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/hello.rs) | Small live-provider agent | `cargo run -p everruns --features openai --example hello` |
 | [`production_agent.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/production_agent.rs) | Tools, files, and production-style setup | `cargo run -p everruns --features openai --example production_agent` |
@@ -57,6 +57,7 @@ in [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/a
 | [`engine_sessions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/engine_sessions.rs) | Concrete Engine ownership, isolated sessions, and engine-scoped resume | `cargo run -p everruns --example engine_sessions` |
 | [`workspace_heads.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/workspace_heads.rs) | Isolated Git workspace heads, Environment binding, and durable reopening | `cargo run -p everruns --features local --example workspace_heads -- /path/to/repo /path/to/state` |
 | [`canonical_events.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/canonical_events.rs) | Offline bounded recording and typed rendering of live events | `cargo run -p everruns --example canonical_events` |
+| [`framework_observability.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/framework_observability.rs) | Engine-wide OpenTelemetry and optional Braintrust export with explicit shutdown flushing | `cargo run -p everruns --features otel,braintrust --example framework_observability` |
 | [`subagents.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/subagents.rs) | Public facade composition for delegated work | `cargo run -p everruns --features openai --example subagents` |
 | [`observe_and_cancel.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/observe_and_cancel.rs) | Live events and cancellation | `cargo run -p everruns --features openai --example observe_and_cancel` |
 | [`advanced_capability.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/advanced_capability.rs) | Code-defined capability through the unified `capability(...)` entrypoint | `cargo run -p everruns --features openai --example advanced_capability` |

@@ -228,7 +228,7 @@ prompt) means it is paid only when `lua` is present.
 - **Risk:** `High`, inseparable from `lua` (scripted execution) and admin-gated
   like its dependency. Registered only when `FEATURE_LUA` is on, next to `lua`.
 - **Evidence:** runnable end-to-end smoke test
-  `crates/host/tests/lua_code_mode_test.rs` and the documented example
+  `crates/host/tests/integration/lua_code_mode_test.rs` and the documented example
   `crates/host/examples/lua_code_mode_agent.rs` (both behind the host
   `lua` feature, run in CI) assert that the math tools are hidden from the model
   yet executed through one `lua` script.

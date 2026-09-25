@@ -44,7 +44,7 @@ Do not rename, rewrite, or delete an existing migration just to match a release 
 
 Historical `NNN_vX.Y.Z.sql` files remain valid and must stay unchanged, but new releases do not require creating one. If a release needs new schema work, land it as a normal sequential feature migration before cutting the release.
 
-`crates/server/tests/migration_history_test.rs` locks specific historical filenames and SQL bodies that must not change.
+`crates/server/tests/domain/migration_history_test.rs` locks specific historical filenames and SQL bodies that must not change.
 
 ## Sequential Ordering Validation
 

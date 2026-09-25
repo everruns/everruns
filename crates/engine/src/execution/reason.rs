@@ -51,7 +51,7 @@ use crate::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, evaluate_guardrails,
-    evaluate_post_generation_guardrails, post_generation_guardrail_text,
+    evaluate_post_generation_guardrails,
 };
 use crate::phase_effects::{PhaseEffectEmitter, PhaseEffectSink};
 use crate::runtime_context::{AssembledTurnContext, TurnContextRequest, TurnContextResolver};
@@ -70,6 +70,7 @@ use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 
 mod compaction;
 mod error_policy;
+mod facts;
 mod finalized_calls;
 mod observability;
 mod output_hooks;
@@ -87,44 +88,13 @@ use error_policy::{
     resolve_error_disclosure,
 };
 use observability::{build_request_options, capability_usage_snapshot_records};
-use output_hooks::collect_output_hooks;
+use output_hooks::{client_visible_guardrail_text, collect_output_hooks};
 use request_controls::resolve_request_controls;
 use stream_state::{
     StreamReplayState, StreamTermination, advances_stall_deadline, append_guarded_thinking_delta,
     inspect_guarded_reasoning_item, merge_retry_metadata,
 };
 use transcript::repair_dangling_tool_calls;
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-fn client_visible_guardrail_text(
-    text: &str,
-    streamed_reasoning: &str,
-    reasoning: &[ReasoningContentPart],
-    citation_annotations: &[crate::message::TextAnnotation],
-) -> String {
-    let mut guarded = streamed_reasoning.to_string();
-    if guarded.is_empty() {
-        for item_text in reasoning
-            .iter()
-            .filter_map(ReasoningContentPart::display_text)
-        {
-            if !guarded.is_empty() {
-                guarded.push_str("\n\n");
-            }
-            guarded.push_str(&item_text);
-        }
-    }
-
-    let prose = post_generation_guardrail_text(text, citation_annotations);
-    if !guarded.is_empty() && !prose.is_empty() {
-        guarded.push_str("\n\n");
-    }
-    guarded.push_str(&prose);
-    guarded
-}
 
 fn unix_now_secs() -> u64 {
     std::time::SystemTime::now()
@@ -195,7 +165,7 @@ pub struct ReasonResult {
     /// Error message if the call failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// Disclosed user-facing classification of the failure, already filtered
+    /// Disclosed user-facing decision of the failure, already filtered
     /// through the resolved error-disclosure mode. Hosts must prefer this over
     /// re-classifying `error`/`text` strings so disclosure stays consistent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -280,10 +250,10 @@ pub struct ReasonAtom {
     /// end-of-message output guardrails (e.g. moderation). When absent, those
     /// guardrails fail open and the seam is a no-op.
     utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
-    /// Optional classifier. Powers guardrail checks that ask for a
+    /// Optional decisions. Powers guardrail checks that ask for a
     /// calibrated number rather than text to parse. When absent, those checks
     /// fail open exactly like the utility-model-backed ones.
-    classifier: Option<Arc<dyn crate::ClassifierService>>,
+    decisions: Option<Arc<dyn crate::DecisionsService>>,
     /// Optional session schedule store. Used by the `usage_limit_auto_continue`
     /// capability to schedule a one-shot continuation after a provider usage
     /// limit resets. When absent, the capability degrades to a no-op (no
@@ -325,7 +295,7 @@ impl ReasonAtom {
             partial_stream_store: None,
             reasoning_effort_handle: None,
             utility_llm_service: None,
-            classifier: None,
+            decisions: None,
             schedule_store: None,
             compaction_checkpoint_store: None,
         }
@@ -455,10 +425,10 @@ impl ReasonAtom {
         self
     }
 
-    /// Set the classifier used by guardrail checks that ask for typed
+    /// Set the decisions used by guardrail checks that ask for typed
     /// answers. When unset, those checks fail open.
-    pub fn with_classifier(mut self, service: Arc<dyn crate::ClassifierService>) -> Self {
-        self.classifier = Some(service);
+    pub fn with_decisions(mut self, service: Arc<dyn crate::DecisionsService>) -> Self {
+        self.decisions = Some(service);
         self
     }
 }
@@ -875,6 +845,10 @@ impl ReasonAtom {
         let mut messages = transcript::order_native_results(assembled.messages);
         let mut message_source_sequence = assembled.message_source_sequence;
         let model_with_provider = assembled.model;
+        let supports_clear_at = facts::supports_clear_at(
+            &model_with_provider.provider_type,
+            &model_with_provider.model,
+        );
         let resolved_model_id = assembled.resolved_model_id;
         let resolved_locale = assembled.resolved_locale;
         let compaction_policy = assembled.compaction_policy;
@@ -1096,26 +1070,20 @@ impl ReasonAtom {
             stateful_response_continuation || restored_checkpoint.is_some(),
         );
 
-        // 9c. Append live dynamic facts (e.g. the current time) at the tail.
-        // Collected fresh each request so values are current, and delivered as a
-        // trailing user-role message so they never fold into the cached system
-        // prompt. `volatile_suffix_len` tells the Anthropic driver to anchor its
-        // message cache breakpoint *before* this block, so the volatile tail
-        // rides uncached while the conversation prefix stays cached.
-        let mut volatile_suffix_len = 0usize;
-        {
-            let facts_ctx = crate::capabilities::FactsContext::new(session_id);
-            let dynamic_facts = crate::capabilities::collect_dynamic_facts(
+        // 9c. Dynamic facts after each answered input, rendered as of that input.
+        // Capable Anthropic models use turn-scoped system messages; others keep
+        // the user-message fallback (see `facts`).
+        let render_facts = |at| {
+            crate::capabilities::render_facts_block(&crate::capabilities::collect_dynamic_facts(
                 &resolved_capability_configs,
                 &self.capability_registry,
                 Some(model_with_provider.model.as_str()),
-                &facts_ctx,
-            );
-            if let Some(block) = crate::capabilities::render_facts_block(&dynamic_facts) {
-                context_messages.push(RuntimeMessage::user(block));
-                volatile_suffix_len = 1;
-            }
-        }
+                &crate::capabilities::FactsContext::new(session_id).at(at),
+            ))
+        };
+        let (context_messages, volatile_suffix_len) =
+            facts::interleave_facts(context_messages, render_facts, supports_clear_at);
+        let mut context_messages = context_messages;
 
         // 9d. Prepend conversation context (e.g. hierarchical AGENTS.md) as
         // the leading user-role message.
@@ -1189,6 +1157,7 @@ impl ReasonAtom {
             {
                 llm_msg.prepend_text_prefix(&format!("[{}] ", actor.display_label()));
             }
+            facts::mark_turn_scoped(&mut llm_msg, msg, supports_clear_at);
             llm_messages.push(llm_msg);
         }
         if stripped_error_count > 0 {
@@ -2119,6 +2088,8 @@ impl ReasonAtom {
         };
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
+        let provider_text = text.clone();
+        let provider_tool_calls = tool_calls.clone();
 
         // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
         // once on the finalized final-answer text to attach claim-level citations
@@ -2167,7 +2138,7 @@ impl ReasonAtom {
                     system_prompt: &runtime_agent.system_prompt,
                     message_text: &guarded_output,
                     utility_llm_service: self.utility_llm_service.as_ref(),
-                    classifier: self.classifier.as_ref(),
+                    decisions: self.decisions.as_ref(),
                 };
                 tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
             }
@@ -2200,7 +2171,7 @@ impl ReasonAtom {
                 system_prompt: &runtime_agent.system_prompt,
                 message_text: &guarded_output,
                 utility_llm_service: self.utility_llm_service.as_ref(),
-                classifier: self.classifier.as_ref(),
+                decisions: self.decisions.as_ref(),
             };
             tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
         }
@@ -2516,6 +2487,15 @@ impl ReasonAtom {
             &resolved_capability_configs,
             text,
         );
+        let provider_opaque_content = completion_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.provider_opaque_content.clone())
+            .filter(|_| {
+                tripped.is_none()
+                    && text == provider_text
+                    && finalized_tool_calls == provider_tool_calls
+                    && rejected_tool_calls.is_empty()
+            });
         let has_tool_calls = !finalized_tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             RuntimeMessage::assistant_with_tools(&text, finalized_tool_calls.clone())
@@ -2543,8 +2523,8 @@ impl ReasonAtom {
         // calls), FinalAnswer for the completed response.
         let provider_type_for_reasoning = model_with_provider.provider_type.to_string();
         // Record where the phase came from. A provider-reported phase is a real
-        // classification; a derived one is just `has_tool_calls` wearing a
-        // classification's name, and consumers must be able to tell.
+        // decision; a derived one is just `has_tool_calls` wearing a
+        // decision's name, and consumers must be able to tell.
         let provider_phase = completion_metadata
             .as_ref()
             .and_then(|meta| meta.phase.as_deref())
@@ -2581,6 +2561,11 @@ impl ReasonAtom {
             content.extend(reasoning.drain(..).map(ContentPart::Reasoning));
             content.append(&mut assistant_message.content);
             assistant_message.content = content;
+        }
+        if let Some(content) = provider_opaque_content {
+            assistant_message
+                .content
+                .push(ContentPart::ProviderOpaque(content));
         }
         // Emit output.message.completed event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)

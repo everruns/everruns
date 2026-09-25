@@ -29,7 +29,7 @@ configuration, and returns an `LlmResponseStream`. Exact trait methods and event
 
 Keep credential lookup and refresh in trusted host/provider configuration.
 Model ids must remain safe to log, compare, store, and pass across application
-boundaries. Provider errors should preserve useful classifications without
+boundaries. Provider errors should preserve useful decisions without
 including secrets.
 
 A driver registered through a `DriverDescriptor` also declares which

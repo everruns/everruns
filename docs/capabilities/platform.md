@@ -26,7 +26,7 @@ the capability is high-risk and follows the normal admin-only assignment rule.
 ### `discover`
 
 Search for operations by name, category, description, or schema terms. Results
-include command metadata, read-only classification, and output-shape hints.
+include command metadata, read-only decision, and output-shape hints.
 Searches with multiple matches omit schemas and return a refinement hint to
 keep the result compact. A query that exactly matches a command name returns
 only that command with its schemas and `bash_usage`, a copyable invocation with

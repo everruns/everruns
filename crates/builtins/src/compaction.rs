@@ -2442,31 +2442,27 @@ mod tests {
     }
 
     #[test]
-    fn test_strategy_serialization_roundtrip() {
-        for strategy in [
-            CompactionStrategy::Auto,
-            CompactionStrategy::Native,
-            CompactionStrategy::ObservationMasking,
-            CompactionStrategy::Summarization,
-        ] {
+    fn test_strategy_mapping() {
+        // (variant, wire string) for Display and serde over the same enum mapping.
+        let cases = [
+            (CompactionStrategy::Auto, "auto"),
+            (CompactionStrategy::Native, "native"),
+            (
+                CompactionStrategy::ObservationMasking,
+                "observation_masking",
+            ),
+            (CompactionStrategy::Summarization, "summarization"),
+        ];
+        for (strategy, s) in cases {
+            assert_eq!(strategy.to_string(), s, "Display mismatch for {strategy:?}");
             let json = serde_json::to_value(strategy).unwrap();
+            assert_eq!(json, s, "serde wire format mismatch for {strategy:?}");
             let deserialized: CompactionStrategy = serde_json::from_value(json).unwrap();
-            assert_eq!(strategy, deserialized);
+            assert_eq!(
+                strategy, deserialized,
+                "serde roundtrip mismatch for {strategy:?}"
+            );
         }
-    }
-
-    #[test]
-    fn test_strategy_display() {
-        assert_eq!(CompactionStrategy::Auto.to_string(), "auto");
-        assert_eq!(CompactionStrategy::Native.to_string(), "native");
-        assert_eq!(
-            CompactionStrategy::ObservationMasking.to_string(),
-            "observation_masking"
-        );
-        assert_eq!(
-            CompactionStrategy::Summarization.to_string(),
-            "summarization"
-        );
     }
 
     #[test]

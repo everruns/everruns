@@ -81,6 +81,28 @@ impl StorageBackend {
         }
     }
 
+    /// The pool reserved for background sweeps (EVE-1081). `None` for the
+    /// in-memory backend, which has no pool to contend for.
+    pub fn background_pool(&self) -> Option<&PgPool> {
+        match self {
+            Self::Postgres(db) => Some(db.background_pool()),
+            Self::InMemory(_) => None,
+        }
+    }
+
+    /// The same storage, routed onto the background pool.
+    ///
+    /// Background loops take this instead of the request-path backend so a
+    /// burst of HTTP traffic cannot starve them, and so their own sweeps
+    /// cannot eat the connections requests are waiting for. The in-memory
+    /// backend has no pools, so it is returned unchanged.
+    pub fn for_background(&self) -> Self {
+        match self {
+            Self::Postgres(db) => Self::Postgres(db.for_background()),
+            Self::InMemory(db) => Self::InMemory(db.clone()),
+        }
+    }
+
     /// Attach an object-storage blob backend for content offload
     /// (knowledge/runtime-resources/object-storage.md). Only the PostgreSQL backend offloads content;
     /// the in-memory dev backend always stores bytes inline.

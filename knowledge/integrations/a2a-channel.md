@@ -179,7 +179,7 @@ that key off the JSON-RPC `id` and `error.code` see a structured response:
 | 400  |, | Invalid path-level input (e.g. malformed channel ID) |
 | 400  | `-32600`      | Invalid Request (malformed envelope, returned with HTTP 400) |
 | 200  | `-32601`      | Method not found (only canonical `message/send`, `message/stream`, `tasks/get`, `tasks/cancel` and their legacy linked-client aliases are supported) |
-| 200  | `-32602`      | Invalid params (e.g. no non-empty text parts, malformed task id) |
+| 200  | `-32602`      | Invalid params (e.g. no non-empty text parts, malformed task id, an `ask_user` answer that does not match what was asked) |
 | 200  | `-32001`      | Task not found (`tasks/get` / `tasks/cancel` against an unknown task id) |
 
 ### Streaming (`message/stream`)
@@ -204,6 +204,11 @@ Frame kinds emitted:
   `state = "completed" | "failed" | "canceled"`, emitted from the
   corresponding `turn.completed` / `turn.failed` / `turn.cancelled` event.
   The stream closes after this frame.
+
+- A `status-update` with `state = "input_required"` (or `auth_required`) and
+  `final = true` when the session parks on a question, see "Questions"
+  below. The turn that asked is still open, so without this frame the stream
+  would hold the caller on a question it cannot see.
 
 If the session subscription drops without a terminal turn event, the channel
 emits a synthetic `status-update` with `state = "failed"` and `final = true`
@@ -235,6 +240,11 @@ separate task table in this iteration:
 | `turn.cancelled`        | `canceled`   |
 | `turn.started`          | `working`    |
 | (no turn events yet)    | `submitted`  |
+
+A session parked on `ask_user` overrides that derivation with
+`input_required` (or `auth_required`, see "Questions" below): the turn that
+asked is still open, so the table above would report `working` for a task that
+is in fact waiting on a person.
 
 `tasks/get` returns the current task with `id` and `contextId` echoing the
 session id. An unknown but well-formed task id surfaces `-32001 Task not
@@ -281,6 +291,57 @@ contract because:
   task identity; clients that need that should use `message/stream`.
 - Persistent multi-task state across the lifetime of a session is a
   separate concern that belongs to a future iteration if required.
+
+### Questions (`ask_user`)
+
+A2A 0.3 has no elicitation or form primitive, so a session parked on `ask_user`
+([`knowledge/execution/ask-user.md`](../execution/ask-user.md)) is projected onto the two things the
+protocol does have: a task state, and typed parts on `TaskStatus.message`.
+
+**Outbound.** While the session waits, `tasks/get` reports
+`state = "input_required"` and `status.message` carries the question twice:
+
+- a **text part** rendering the question, its options and how to answer, in
+  prose. Every A2A consumer reads text and the ones written before this
+  projection read nothing else, so the prose is what makes this additive
+  rather than a breaking change.
+- a **data part** whose `data` holds the `everruns/ask_user` envelope: the
+  question set exactly as [`crates/builtins/src/ask_user.rs`](../../crates/builtins/src/ask_user.rs) serializes it,
+  the `tool_call_id`, the server-stamped `expires_at`, and an `answer_schema`
+  (JSON Schema) describing the object to answer with, down to the option
+  labels that may be selected. The schema is what stands in for the
+  elicitation primitive the protocol lacks.
+
+`message/stream` emits the same projection as a `status-update` frame with
+`final = true`.
+
+**Inbound.** A caller answers with `message/send` on the same `taskId`,
+carrying a data part whose `data` holds `everruns/ask_user_answer`. That
+payload is the `POST /v1/sessions/{session_id}/question-answers` request body
+verbatim, and it resolves through the same surface-agnostic operation the
+browser card and `/mcp` use — validation against what was actually asked,
+attribution, and first-writer-wins idempotency are not re-implemented per
+channel. The channel adds only what is channel-specific: the answer must name
+a task bound to the authenticating channel (TM-A2A-012), and a credential is
+refused outright (below). A refused answer surfaces `-32602` carrying the
+reason and leaves the turn parked.
+
+A **text-only** reply keeps its existing meaning: it is delivered as an
+ordinary message and the question it superseded resolves as `cancelled`, the
+chat-supersedes-question rule that `MessageService::create` owns.
+`message/stream` refuses an answer data part, because it opens a new task
+rather than resuming the one that asked.
+
+**Credentials.** A `secret` question is never projected as something a remote
+agent could fill in (TM-AGENT-016). It reports `state = "auth_required"`, and
+`status.message` carries prose plus an `everruns/auth_required` data part
+naming what is wanted, what it is for, and the session URL where a person
+provides it (absent when the deployment configures no public UI origin). There
+is no answer shape at all, and an `everruns/ask_user_answer` against a task
+parked on a secret question is refused at the channel boundary rather than
+downstream.
+
+Source: [`crates/server/src/api/app_a2a.rs`](../../crates/server/src/api/app_a2a.rs).
 
 ### Agent Card
 
@@ -409,6 +470,13 @@ Coverage required:
    surfaces it as the `tasks/get` artifact `DataPart`; a session with no
    reported result has no `artifacts`; the artifact is not leaked to a
    different channel's API key (cross-channel lookup stays `-32001`).
+9. `ask_user`: a parked question set reaches `tasks/get` as both prose and a
+   typed `DataPart`; a `DataPart` answer resolves it and resumes the turn; an
+   answer naming an option nobody offered is refused without resuming; an
+   answer with no `taskId` is refused; a text-only reply still supersedes the
+   question as `cancelled` and is delivered as a message; a `secret` question
+   projects as `auth_required` with a URL and cannot be answered over the
+   channel.
 
 ## Rate Limiting
 

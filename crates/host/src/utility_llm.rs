@@ -30,7 +30,7 @@ const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 /// Default utility model when OpenRouter is the backend. OpenRouter model ids
 /// are namespaced by upstream provider, so the OpenAI default does not carry
 /// over unchanged.
-pub const UTILITY_OPENROUTER_LLM_MODEL: &str = "openai/gpt-5.6-luna";
+pub const UTILITY_OPENROUTER_LLM_MODEL: &str = "openai/gpt-6-luna";
 
 /// Which deployment-owned backend serves utility model calls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

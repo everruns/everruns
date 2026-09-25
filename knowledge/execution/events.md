@@ -38,7 +38,7 @@ payload structs, type registry, HTTP query fields, or SQL schema.
   serialization, round trips, forward compatibility, and the type mapping.
   [`crates/server/tests/workflow_test.rs`](../../crates/server/tests/workflow_test.rs)
   covers API filtering of unsupported events, while
-  [`crates/server/tests/client_side_tools_test.rs`](../../crates/server/tests/client_side_tools_test.rs)
+  [`crates/server/tests/domain/client_side_tools_test.rs`](../../crates/server/tests/domain/client_side_tools_test.rs)
   covers the client-tool event contract.
 
 Wire examples do not live here. Exact examples belong in the generated OpenAPI
@@ -110,7 +110,7 @@ correlate with the durable record. `reviewed_data_never_exceeds_the_canonical_pa
 is the executable form of that invariant.
 
 Promoting a field is the intended way to answer "the reviewed surface lacks
-what I need". Classifier it on whether it carries conversation content: identity,
+what I need". Decisions it on whether it carries conversation content: identity,
 outcome, token usage, timing, and operator-authored display text are promoted;
 prompts, tool arguments, tool results, and unrecognized event payloads are not.
 Model-generation accounting is promoted precisely because tracking spend must
