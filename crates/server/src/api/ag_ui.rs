@@ -895,25 +895,9 @@ async fn find_or_create_session(
         .ok_or_else(|| anyhow::anyhow!("Organization not found for app"))?;
     let org_public_id = org_row.public_id;
 
-    let existing = match app.historical_app_id {
-        Some(app_id) => {
-            state
-                .db
-                .find_app_session_by_tags(app.org_id, app_id, routing_tags)
-                .await?
-        }
-        None => {
-            state
-                .db
-                .find_endpoint_session_by_tags_and_owner(
-                    app.org_id,
-                    endpoint_internal_id,
-                    app.owner_principal_id,
-                    routing_tags,
-                )
-                .await?
-        }
-    };
+    let existing = app
+        .find_session_by_tags(&state.db, endpoint_internal_id, routing_tags)
+        .await?;
 
     match existing {
         Some(row) => {
