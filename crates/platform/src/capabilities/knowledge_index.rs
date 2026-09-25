@@ -538,13 +538,56 @@ mod tests {
         assert_eq!(props["top_k"]["maximum"], json!(50));
     }
 
-    #[test]
-    fn config_top_k_is_clamped() {
+    #[tokio::test]
+    async fn config_top_k_is_clamped() {
+        struct RecordingSearch {
+            seen_top_k: Arc<Mutex<Option<usize>>>,
+        }
+
+        #[async_trait]
+        impl crate::vector_store::KnowledgeIndexSearch for RecordingSearch {
+            async fn search(
+                &self,
+                _org_id: i64,
+                _index_ids: &[String],
+                _query: &str,
+                top_k: usize,
+            ) -> anyhow::Result<crate::vector_store::KnowledgeIndexSearchOutcome> {
+                *self.seen_top_k.lock().unwrap() = Some(top_k);
+                Ok(crate::vector_store::KnowledgeIndexSearchOutcome {
+                    citations: Vec::new(),
+                    embedding_usage: Vec::new(),
+                })
+            }
+        }
+
+        use std::sync::{Arc, Mutex};
+
+        // top_k far exceeds MAX_TOP_K; tools_with_config must clamp it rather
+        // than pass it through unchecked, since it does not run validate_config.
         let cap = KnowledgeIndexCapability;
-        // Build the tool directly via config and inspect its default cap by
-        // exercising the clamp logic through tools_with_config.
-        let tools = cap.tools_with_config(&json!({ "indexes": [VALID_ID], "top_k": 50 }));
+        let tools = cap.tools_with_config(&json!({ "indexes": [VALID_ID], "top_k": 999_999 }));
         assert_eq!(tools.len(), 1);
+
+        let seen_top_k = Arc::new(Mutex::new(None));
+        let mut ctx = ToolContext::new(everruns_provider::typed_id::SessionId::new());
+        ctx.org_id = Some(everruns_provider::typed_id::OrgId::new());
+        ctx.extensions
+            .insert(Arc::new(KnowledgeIndexSearchExt(Arc::new(
+                RecordingSearch {
+                    seen_top_k: Arc::clone(&seen_top_k),
+                },
+            ))));
+
+        // No top_k in the call arguments, so the tool's clamped default is used.
+        let result = tools[0]
+            .execute_with_context(json!({ "query": "alpha" }), &ctx)
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::Success { .. }),
+            "search should succeed, got {result:?}"
+        );
+        assert_eq!(*seen_top_k.lock().unwrap(), Some(MAX_TOP_K as usize));
     }
 
     #[tokio::test]
@@ -558,7 +601,10 @@ mod tests {
         let result = tool
             .execute_with_context(json!({ "query": "hello" }), &ctx)
             .await;
-        matches!(result, ToolExecutionResult::ToolError(_));
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(_)),
+            "expected tool error without a bound search service, got {result:?}"
+        );
     }
 
     #[tokio::test]

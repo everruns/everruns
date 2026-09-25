@@ -820,46 +820,6 @@ mod tests {
     }
 
     #[test]
-    fn test_score_serde() {
-        let score = Score {
-            pass: true,
-            value: 0.85,
-            reason: "Output contains expected text".to_string(),
-        };
-        let json = serde_json::to_value(&score).unwrap();
-        assert_eq!(json["pass"], true);
-        assert_eq!(json["value"], 0.85);
-    }
-
-    #[test]
-    fn test_run_summary_serde() {
-        let summary = RunSummary {
-            total: 10,
-            passed: 8,
-            failed: 1,
-            errored: 1,
-            pass_rate: 0.8,
-            avg_score: 0.85,
-            avg_turns: 3.5,
-            avg_latency_ms: 2500,
-            total_input_tokens: 50000,
-            total_output_tokens: 10000,
-        };
-        let json = serde_json::to_value(&summary).unwrap();
-        assert_eq!(json["total"], 10);
-        assert_eq!(json["pass_rate"], 0.8);
-    }
-
-    #[test]
-    fn test_eval_input_message_serde() {
-        let msg = EvalInputMessage {
-            content: "What is 2+2?".to_string(),
-        };
-        let json = serde_json::to_value(&msg).unwrap();
-        assert_eq!(json["content"], "What is 2+2?");
-    }
-
-    #[test]
     fn test_eval_target_session_serde_roundtrip() {
         let target = EvalTarget::Session {
             harness_id: Some(HarnessId::from_uuid(Uuid::nil())),

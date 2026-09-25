@@ -1947,13 +1947,8 @@ mod tests {
     use everruns_core::Tool;
     use everruns_core::session_task::{TaskMessageDirection, TaskMessagePart, task_result_path};
 
-    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn capability_features() {
-        let cap = SubagentCapability;
-        assert_eq!(cap.features(), vec!["subagents"]);
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants
+    // and by subagent_test.rs::test_subagent_capability_registration (features()).
 
     #[test]
     fn terminal_subagent_status_maps_only_terminal_wait_states() {
@@ -2047,102 +2042,13 @@ mod tests {
         );
     }
 
-    // =========================================================================
-    // Spawn handle tests (EVE-535)
-    // =========================================================================
-
-    use everruns_core::{
-        delegation_services::SpawnClaimResult, delegation_services::SubagentSpawnStore,
-    };
     use std::sync::Arc;
 
-    struct TestSubagentSpawnStore;
-
-    #[async_trait]
-    impl SubagentSpawnStore for TestSubagentSpawnStore {
-        async fn try_claim_spawn(
-            &self,
-            _parent_session_id: SessionId,
-            _tool_call_id: &str,
-            claim_token: uuid::Uuid,
-        ) -> everruns_provider::error::Result<SpawnClaimResult> {
-            Ok(SpawnClaimResult::Claimed {
-                spawn_handle_id: uuid::Uuid::new_v4(),
-                claim_token,
-            })
-        }
-
-        async fn register_child_session(
-            &self,
-            _spawn_handle_id: uuid::Uuid,
-            _claim_token: uuid::Uuid,
-            _child_session_id: SessionId,
-        ) -> everruns_provider::error::Result<()> {
-            Ok(())
-        }
-
-        async fn settle_spawn(
-            &self,
-            _parent_session_id: SessionId,
-            _tool_call_id: &str,
-            _claim_token: uuid::Uuid,
-            _terminal_status: &str,
-            _terminal_result: &str,
-        ) -> everruns_provider::error::Result<()> {
-            Ok(())
-        }
-    }
-
-    #[tokio::test]
-    async fn spawn_store_contract_can_claim() {
-        let store = TestSubagentSpawnStore;
-        let parent = everruns_provider::typed_id::SessionId::new();
-        let token = uuid::Uuid::new_v4();
-
-        let result = store
-            .try_claim_spawn(parent, "call-1", token)
-            .await
-            .expect("noop should not error");
-
-        assert!(
-            matches!(result, SpawnClaimResult::Claimed { claim_token, .. } if claim_token == token),
-            "noop store should return Claimed with the supplied token"
-        );
-    }
-
-    #[tokio::test]
-    async fn spawn_store_contract_registers_and_settles() {
-        let store = TestSubagentSpawnStore;
-        let parent = everruns_provider::typed_id::SessionId::new();
-        let child = everruns_provider::typed_id::SessionId::new();
-        let handle_id = uuid::Uuid::new_v4();
-        let token = uuid::Uuid::new_v4();
-
-        store
-            .register_child_session(handle_id, token, child)
-            .await
-            .expect("noop register should not error");
-
-        store
-            .settle_spawn(parent, "call-1", token, "idle", "result text")
-            .await
-            .expect("noop settle should not error");
-    }
-
-    /// Arc<dyn SubagentSpawnStore> blanket impl delegates correctly.
-    #[tokio::test]
-    async fn arc_spawn_store_delegates() {
-        let store: Arc<dyn SubagentSpawnStore> = Arc::new(TestSubagentSpawnStore);
-        let parent = everruns_provider::typed_id::SessionId::new();
-        let token = uuid::Uuid::new_v4();
-
-        let result = store
-            .try_claim_spawn(parent, "call-arc", token)
-            .await
-            .expect("arc delegation should not error");
-
-        assert!(matches!(result, SpawnClaimResult::Claimed { .. }));
-    }
+    // spawn_store_contract_* and arc_spawn_store_delegates were removed: they
+    // only asserted a test-local SubagentSpawnStore mock's own hardcoded
+    // return values, and the Arc<dyn SubagentSpawnStore> blanket impl is
+    // compiler-checked trivial delegation exercised end-to-end by the spawn
+    // tests below.
 
     // =========================================================================
     // Background mode
