@@ -137,6 +137,36 @@ impl ChatDriver for AnthropicChatDriver {
             None => (None, None),
         };
 
+        // A caller-provided cap is a hard limit on everything generated, thinking
+        // included. When thinking cannot fit underneath it, drop thinking rather
+        // than overrun the cap: the whole cap then goes to the answer, which is
+        // what the caller sized it for. Both forms are covered — budget-based
+        // thinking against its own budget, adaptive thinking (which carries no
+        // budget) against the effort-sized room it needs. Missing the adaptive
+        // case would leave a 64-token cap on Fable 5.x or Opus 5.5 thinking with
+        // a 64-token ceiling and returning nothing.
+        let thinking_fits = {
+            let budget = match thinking {
+                Some(AnthropicThinking::Enabled { budget_tokens }) => Some(budget_tokens),
+                _ => None,
+            };
+            let adaptive_effort = output_config.as_ref().map(|c| c.effort.as_str());
+            config
+                .max_tokens
+                .is_none_or(|cap| crate::effort::thinking_fits(cap, budget, adaptive_effort))
+        };
+        let (thinking, output_config) = if thinking_fits {
+            (thinking, output_config)
+        } else {
+            tracing::warn!(
+                model = %config.model,
+                max_tokens = ?config.max_tokens,
+                thinking = ?thinking,
+                "AnthropicDriver: dropping thinking; it does not fit the caller's cap"
+            );
+            (None, None)
+        };
+
         tracing::info!(
             model = %config.model,
             reasoning_effort = ?config.reasoning_effort,
@@ -145,15 +175,12 @@ impl ChatDriver for AnthropicChatDriver {
             "AnthropicDriver: building request with thinking config"
         );
 
-        // Caller's cap is the answer budget; thinking room goes on top.
         let max_tokens_from_profile = config.max_tokens.is_none();
         let budget = match thinking {
             Some(AnthropicThinking::Enabled { budget_tokens }) => Some(budget_tokens),
             _ => None,
         };
-        let adaptive_effort = output_config.as_ref().map(|c| c.effort.as_str());
-        let max_tokens =
-            crate::effort::max_tokens(config.max_tokens, profile.as_ref(), budget, adaptive_effort);
+        let max_tokens = crate::effort::max_tokens(config.max_tokens, profile.as_ref(), budget);
         let context_management = if wants_server_compaction {
             let context_window = profile
                 .as_ref()
@@ -752,26 +779,22 @@ impl ChatDriver for AnthropicChatDriver {
             return None;
         }
         let context_window = profile.limits.as_ref()?.context.max(0) as usize;
+        // Mirror the request path's reservation: with a caller cap that is the
+        // cap itself, so this estimate cannot disagree with what is actually
+        // sent. Adaptive thinking contributes no budget here for the same reason
+        // it contributes none there.
         let effort = crate::effort::resolve(config, wire_model, &Some(profile.clone()));
-        let (thinking_budget, adaptive_effort) = match effort {
-            Some(effort) if uses_adaptive_thinking(wire_model) => {
-                (None, adaptive_effort_level(effort))
-            }
-            Some(effort) => {
-                let budget = match AnthropicThinking::enabled_from_effort(effort) {
+        let thinking_budget = match effort {
+            Some(effort) if !uses_adaptive_thinking(wire_model) => {
+                match AnthropicThinking::enabled_from_effort(effort) {
                     Some(AnthropicThinking::Enabled { budget_tokens }) => Some(budget_tokens),
                     _ => None,
-                };
-                (budget, None)
+                }
             }
-            None => (None, None),
+            _ => None,
         };
-        let max_tokens = crate::effort::max_tokens(
-            config.max_tokens,
-            Some(&profile),
-            thinking_budget,
-            adaptive_effort,
-        );
+        let max_tokens =
+            crate::effort::max_tokens(config.max_tokens, Some(&profile), thinking_budget);
         (context_window.saturating_sub(max_tokens as usize) < SERVER_COMPACTION_MIN_TOKENS)
             .then_some("configured_output_budget")
     }

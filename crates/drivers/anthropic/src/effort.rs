@@ -31,40 +31,60 @@ pub(crate) fn resolve(
 
 /// The request's `max_tokens`.
 ///
-/// Thinking counts toward `max_tokens`, so a caller cap sized for the visible
-/// answer (a 64-token classifier, a 700-token judge) is spent entirely on
-/// thinking and comes back empty. A caller's cap is therefore treated as the
-/// answer budget and thinking room is added on top: the budget itself for
-/// budget-based thinking, or an effort-sized allowance for adaptive thinking,
-/// capped at the model's output limit. With no caller cap the model's output
-/// limit is used as-is, which already leaves room for thinking.
+/// An explicit caller value is a hard cap on all generated tokens, including
+/// thinking. Without one, the model's output limit is used as-is. The fallback
+/// for budget-based thinking must exceed its thinking budget because the API
+/// rejects requests that do not leave room for an answer.
+/// Output room an adaptive-thinking request needs, by effort level.
+///
+/// Adaptive thinking carries no `budget_tokens` to measure against, so this is
+/// the allowance the driver previously added on top of a caller's cap, reused
+/// as the test for whether thinking fits underneath one.
+pub(crate) fn adaptive_room(effort: &str) -> u32 {
+    match effort {
+        "low" => 4_096,
+        "medium" => 8_192,
+        "high" => 16_384,
+        _ => 32_768,
+    }
+}
+
+/// Whether a thinking configuration fits under an explicit caller cap.
+///
+/// Thinking counts toward `max_tokens`. A cap sized for the visible answer (a
+/// 64-token classifier, a 700-token judge) would otherwise be spent entirely on
+/// thinking and come back empty, so the caller asks for more than the cap can
+/// give. Rather than overrun a limit the caller set deliberately, the driver
+/// drops thinking when this returns false and spends the whole cap on the
+/// answer.
+pub(crate) fn thinking_fits(cap: u32, budget: Option<u32>, adaptive_effort: Option<&str>) -> bool {
+    match (budget, adaptive_effort) {
+        // The API rejects a request whose `max_tokens` does not exceed the budget.
+        (Some(budget), _) => cap > budget,
+        (None, Some(effort)) => cap > adaptive_room(effort),
+        (None, None) => true,
+    }
+}
+
 pub(crate) fn max_tokens(
     caller: Option<u32>,
     profile: Option<&ModelProfile>,
     thinking_budget: Option<u32>,
-    adaptive_effort: Option<&str>,
 ) -> u32 {
+    if let Some(caller) = caller {
+        return caller;
+    }
+
     let model_limit = profile
         .and_then(|p| p.limits.as_ref())
         .and_then(|l| u32::try_from(l.output).ok())
         .filter(|v| *v > 0);
-    let base = caller.or(model_limit).unwrap_or(16_384);
+    let base = model_limit.unwrap_or(16_384);
     if let Some(budget) = thinking_budget {
         // The API requires `max_tokens` above the budget.
         return base.max(budget + 1024);
     }
-    let Some(caller) = caller else {
-        return base;
-    };
-    let room = match adaptive_effort {
-        Some("low") => 4_096,
-        Some("medium") => 8_192,
-        Some("high") => 16_384,
-        Some(_) => 32_768,
-        None => return caller,
-    };
-    let wanted = caller.saturating_add(room);
-    model_limit.map_or(wanted, |limit| wanted.min(limit.max(caller)))
+    base
 }
 
 /// The effort to send when the caller chose none.
@@ -130,23 +150,42 @@ mod tests {
     }
 
     #[test]
-    fn a_caller_cap_gets_thinking_room_on_top() {
+    fn an_explicit_caller_cap_is_never_expanded() {
         let profile = everruns_provider::get_model_profile(&DriverId::Anthropic, "claude-opus-5-5");
         let p = profile.as_ref();
-        // Adaptive thinking: the caller's cap stays the answer budget.
-        assert_eq!(max_tokens(Some(64), p, None, Some("low")), 64 + 4_096);
-        assert_eq!(max_tokens(Some(700), p, None, Some("high")), 700 + 16_384);
-        assert_eq!(max_tokens(Some(64), p, None, Some("max")), 64 + 32_768);
-        // Never above the model's output limit, never below the caller's cap.
-        assert_eq!(max_tokens(Some(127_000), p, None, Some("max")), 128_000);
-        assert_eq!(max_tokens(Some(200_000), p, None, Some("max")), 200_000);
-        // No thinking: the caller's cap as-is. No cap: the model limit.
-        assert_eq!(max_tokens(Some(64), p, None, None), 64);
-        assert_eq!(max_tokens(None, p, None, Some("high")), 128_000);
-        assert_eq!(max_tokens(None, None, None, None), 16_384);
-        // Budget-based thinking keeps the API's "above the budget" rule.
-        assert_eq!(max_tokens(Some(64), p, Some(4_096), None), 5_120);
-        assert_eq!(max_tokens(None, None, Some(32_768), None), 33_792);
+        // Adaptive and budget-based thinking both stay within the caller's
+        // resource limit, even when the model supports a larger output.
+        assert_eq!(max_tokens(Some(64), p, None), 64);
+        assert_eq!(max_tokens(Some(700), p, None), 700);
+        assert_eq!(max_tokens(Some(200_000), p, None), 200_000);
+        assert_eq!(max_tokens(Some(64), p, Some(4_096)), 64);
+
+        // No cap uses the model limit. The missing-profile fallback still
+        // accommodates budget-based thinking so Anthropic accepts the request.
+        assert_eq!(max_tokens(None, p, None), 128_000);
+        assert_eq!(max_tokens(None, None, None), 16_384);
+        assert_eq!(max_tokens(None, None, Some(32_768)), 33_792);
+    }
+
+    #[test]
+    fn thinking_has_to_fit_under_an_explicit_cap() {
+        // Budget-based: the API needs max_tokens strictly above the budget.
+        assert!(!thinking_fits(4_096, Some(4_096), None));
+        assert!(!thinking_fits(64, Some(4_096), None));
+        assert!(thinking_fits(4_097, Some(4_096), None));
+
+        // Adaptive carries no budget, so the effort-sized room is the test.
+        // Without this, a 64-token cap on an adaptive model keeps thinking on
+        // and the answer comes back empty.
+        assert!(!thinking_fits(64, None, Some("low")));
+        assert!(!thinking_fits(4_096, None, Some("low")));
+        assert!(thinking_fits(4_097, None, Some("low")));
+        assert!(!thinking_fits(16_384, None, Some("high")));
+        assert!(!thinking_fits(32_768, None, Some("max")));
+        assert!(thinking_fits(32_769, None, Some("max")));
+
+        // No thinking always fits.
+        assert!(thinking_fits(1, None, None));
     }
 
     #[test]
