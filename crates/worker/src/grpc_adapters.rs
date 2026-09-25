@@ -2295,6 +2295,23 @@ impl SessionStorageStore for GrpcAdapter {
         Ok(response.into_inner().deleted)
     }
 
+    async fn take_value(
+        &self,
+        session_id: everruns_provider::typed_id::SessionId,
+        key: &str,
+    ) -> Result<Option<String>> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::SessionStorageTakeValueRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            key: key.to_string(),
+        };
+        let response = client
+            .session_storage_take_value(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+        Ok(response.into_inner().value)
+    }
+
     async fn list_keys(
         &self,
         session_id: everruns_provider::typed_id::SessionId,
