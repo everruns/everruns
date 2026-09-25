@@ -1,6 +1,8 @@
 use super::compaction::materially_reduced;
 use super::*;
-use crate::driver_registry::{LlmCallConfig, PromptCacheConfig, PromptCacheStrategy};
+use crate::driver_registry::{
+    LlmCallConfig, LlmCompletionMetadata, PromptCacheConfig, PromptCacheStrategy,
+};
 use crate::events::CapabilityUsageKind;
 use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use serde_json::json;
@@ -25,6 +27,37 @@ fn compaction_cost_combines_with_actual_generation_cost() {
 
     assert_eq!(usage.actual_cost_usd, Some(0.2625));
     assert_eq!(usage.effective_cost_usd(), Some(0.2625));
+}
+
+fn replay_metadata() -> LlmCompletionMetadata {
+    let mut metadata = LlmCompletionMetadata::default();
+    metadata.provider_opaque_content = Some(everruns_provider::ProviderOpaqueContent::new(
+        "anthropic",
+        json!([{"type":"text","text":"provider text"}]),
+    ));
+    metadata.provider_checkpoint_candidate =
+        Some(crate::driver_registry::ProviderCheckpointCandidate {
+            format_version: crate::ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION,
+            context: crate::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix {
+                messages_json: "[]".to_string(),
+            },
+        });
+    metadata
+}
+
+#[test]
+fn blocked_or_rejected_output_discards_provider_replay_artifacts() {
+    let metadata = replay_metadata();
+
+    for (guardrail_allowed, rejected_tool_calls) in [(false, false), (true, true)] {
+        let (opaque, checkpoint) = provider_managed_compaction::replay_artifacts(
+            Some(&metadata),
+            guardrail_allowed,
+            rejected_tool_calls,
+        );
+        assert!(opaque.is_none());
+        assert!(checkpoint.is_none());
+    }
 }
 
 #[test]

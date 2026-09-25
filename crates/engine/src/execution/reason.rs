@@ -37,8 +37,8 @@ use crate::capabilities::CapabilityRegistry;
 use crate::driver_registry::{LlmStreamEvent, Message, MessageContent, MessageRole};
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    CapabilityUsageData, EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData,
-    LlmRetryInfo, OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
+    EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, LlmRetryInfo,
+    OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
     OutputMessageStartedData, ReasonCompletedData, ReasonItemData, ReasonRecoveredData,
     ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
     ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolCompletedData, ToolDefinitionSummary,
@@ -74,6 +74,7 @@ mod facts;
 mod finalized_calls;
 mod observability;
 mod output_hooks;
+mod provider_managed_compaction;
 mod reasoning_updates;
 mod request_controls;
 mod stream_state;
@@ -83,11 +84,10 @@ use compaction::{
     ProactiveCompactionContext, ReactiveCompactionContext, apply_proactive_compaction,
     apply_reactive_compaction,
 };
-use error_policy::{
-    error_disclosure_override, filter_response_text, is_error_placeholder_message,
-    resolve_error_disclosure,
-};
-use observability::{build_request_options, capability_usage_snapshot_records};
+use error_policy::{filter_response_text, is_error_placeholder_message};
+#[cfg(test)]
+use observability::capability_usage_snapshot_records;
+use observability::{build_request_options, emit_capability_usage_snapshot};
 use output_hooks::{client_visible_guardrail_text, collect_output_hooks};
 use request_controls::resolve_request_controls;
 use stream_state::{
@@ -458,63 +458,6 @@ impl ReasonAtom {
         self.execute_inner(input, Some(assembled)).await
     }
 
-    async fn emit_capability_usage_snapshot(
-        &self,
-        session_id: SessionId,
-        context: &ExecutionContext,
-        resolved_capability_configs: &[crate::CapabilityRef],
-        tool_definitions: &[ToolDefinition],
-    ) {
-        let records = capability_usage_snapshot_records(
-            &self.capability_registry,
-            resolved_capability_configs,
-            tool_definitions,
-        );
-        if records.is_empty() {
-            return;
-        }
-
-        if let Err(error) = self
-            .event_emitter
-            .emit(EventRequest::new(
-                session_id,
-                EventContext::from_execution_context(context),
-                CapabilityUsageData { records },
-            ))
-            .await
-        {
-            tracing::warn!(
-                session_id = %session_id,
-                error = %error,
-                "ReasonAtom: failed to emit capability.usage event"
-            );
-        }
-    }
-
-    /// Run configured capability hooks after model tool calls are finalized and
-    /// before the assistant message is persisted.
-    async fn apply_finalized_tool_call_hooks(
-        &self,
-        session_id: SessionId,
-        context: &ExecutionContext,
-        resolved_capability_configs: &[crate::CapabilityRef],
-        tool_definitions: &[ToolDefinition],
-        tool_calls: &mut [ToolCall],
-        iteration: u32,
-    ) -> Vec<crate::finalized_tool_calls::FinalizedToolCallRejection> {
-        finalized_calls::apply_finalized_tool_calls_hooks(
-            &self.capability_registry,
-            self.event_emitter.as_ref(),
-            session_id,
-            context,
-            resolved_capability_configs,
-            tool_definitions,
-            tool_calls,
-            iteration,
-        )
-        .await
-    }
-
     async fn execute_inner(
         &self,
         input: ReasonInput,
@@ -594,6 +537,7 @@ impl ReasonAtom {
                         harness_id,
                         agent_id,
                         mcp_tool_definitions: mcp_tool_definitions.clone(),
+                        allow_provider_managed_reduction: true,
                     })
                     .await
             }
@@ -601,34 +545,29 @@ impl ReasonAtom {
 
         let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
-                let error_disclosure = resolve_error_disclosure(
-                    &self.capability_registry,
-                    &assembled.resolved_capability_configs,
-                    error_disclosure_override(&assembled.messages).as_deref(),
-                );
-                // Collected before `assembled` is consumed by the LLM call so the
-                // terminal-error path below can run capability error hooks even
-                // though it no longer has the capability configs.
-                let error_hooks =
-                    self.collect_llm_error_hooks(&assembled.resolved_capability_configs);
-                let error_context = UserFacingErrorContext::default()
-                    .with_provider(assembled.model.provider_type.to_string())
-                    .with_model_id(assembled.model.model.clone());
-                let call_result = self
-                    .execute_llm_call(
-                        context.session_id,
+                let outcome = provider_managed_compaction::execute_with_fallback(
+                    provider_managed_compaction::Call {
+                        atom: self,
+                        session_id: context.session_id,
                         harness_id,
                         agent_id,
                         org_id,
-                        &context,
-                        &trace_id,
-                        &reason_span_id,
+                        context: &context,
+                        trace_id: &trace_id,
+                        reason_span_id: &reason_span_id,
                         previous_response_id,
                         iteration,
+                        mcp_tool_definitions: &mcp_tool_definitions,
                         assembled,
-                    )
-                    .await;
-                (error_disclosure, error_context, error_hooks, call_result)
+                    },
+                )
+                .await;
+                (
+                    outcome.disclosure,
+                    outcome.error_context,
+                    outcome.error_hooks,
+                    outcome.result,
+                )
             }
             Err(error) => (
                 ErrorDisclosure::default(),
@@ -845,6 +784,9 @@ impl ReasonAtom {
         let mut messages = transcript::order_native_results(assembled.messages);
         let mut message_source_sequence = assembled.message_source_sequence;
         let model_with_provider = assembled.model;
+        let provider_managed = model_with_provider
+            .provider_managed_reduction_option
+            .is_some();
         let supports_clear_at = facts::supports_clear_at(
             &model_with_provider.provider_type,
             &model_with_provider.model,
@@ -856,7 +798,9 @@ impl ReasonAtom {
         let runtime_agent = assembled.runtime_agent;
         let embedder_metadata = assembled.embedder_metadata;
 
-        self.emit_capability_usage_snapshot(
+        emit_capability_usage_snapshot(
+            self.event_emitter.as_ref(),
+            &self.capability_registry,
             session_id,
             context,
             &resolved_capability_configs,
@@ -885,33 +829,30 @@ impl ReasonAtom {
             ) && chat_driver.supports_compact()
         });
 
-        if compaction_policy.is_some()
+        let checkpoint_format = super::provider_checkpoint::format_version(provider_managed);
+        if (compaction_policy.is_some() || provider_managed)
             && let Some(store) = self.compaction_checkpoint_store.as_ref()
             && let Some(checkpoint) = store
-                .get_latest(
+                .get_latest_format(
                     session_id,
                     model_with_provider.provider_type.as_str(),
                     &model_with_provider.model,
+                    checkpoint_format,
                 )
                 .await?
-            && checkpoint.is_compatible(
+            && super::provider_checkpoint::is_restorable(
+                &checkpoint,
+                chat_driver.as_ref(),
                 model_with_provider.provider_type.as_str(),
                 &model_with_provider.model,
+                provider_managed,
+                native_reasoning_compaction,
             )
-            // Local summary/trim cannot interpret an Astra native checkpoint.
-            // Rebuild from lossless events when the builder changes strategy.
-            && (native_reasoning_compaction || !matches!(
-                &checkpoint.payload,
-                crate::CompactionCheckpointPayload::ProviderOpaque {
-                    context: crate::ProviderOpaqueContext::OpenResponsesCompact {
-                        reasoning_state: Some(_), ..
-                    }
-                }
-            ))
         {
-            let filters = crate::capabilities::collect_message_filters_only(
+            let filters = crate::capabilities::collect_message_filters_only_with_context(
                 &resolved_capability_configs,
                 &self.capability_registry,
+                provider_managed,
             );
             let mut query =
                 crate::MessageQuery::new(session_id).after_sequence(checkpoint.source_sequence);
@@ -942,17 +883,7 @@ impl ReasonAtom {
         let speed = controls.speed;
         let verbosity = controls.verbosity;
         let checkpoint_reasoning =
-            restored_checkpoint
-                .as_ref()
-                .and_then(|checkpoint| match &checkpoint.payload {
-                    crate::CompactionCheckpointPayload::ProviderOpaque {
-                        context:
-                            crate::ProviderOpaqueContext::OpenResponsesCompact {
-                                reasoning_state, ..
-                            },
-                    } => reasoning_state.as_ref(),
-                    _ => None,
-                });
+            super::provider_checkpoint::reasoning_state(restored_checkpoint.as_ref());
         let mut reasoning_replay = reasoning_updates::prepare(
             &messages,
             model_with_provider.provider_type.as_str(),
@@ -1062,6 +993,7 @@ impl ReasonAtom {
         let model_view_context = crate::capabilities::ModelViewContext {
             session_id,
             prior_usage: prior_usage.as_ref(),
+            provider_managed_reduction: provider_managed,
         };
         let mut context_messages =
             model_view_providers.apply_model_view(patched_messages, &model_view_context);
@@ -1243,6 +1175,11 @@ impl ReasonAtom {
             llm_config.previous_response_id = None;
             llm_config.provider_opaque_context = Some(context.clone());
         }
+        provider_managed_compaction::decorate_request(
+            &mut llm_config,
+            provider_managed,
+            restored_checkpoint.is_some(),
+        );
 
         tracing::debug!(
             session_id = %session_id,
@@ -1365,8 +1302,18 @@ impl ReasonAtom {
         // Stream-level errors are not retried here to avoid duplicate user-visible messages.
         let mut compaction_info: Option<LlmCompactionInfo> = None;
         let mut llm_messages_for_call = llm_messages.clone();
+        let compaction_lifecycle = provider_managed_compaction::Lifecycle::new(
+            self.event_emitter.as_ref(),
+            session_id,
+            &streaming_event_context,
+            &model_with_provider.model,
+            model_with_provider.provider_type.as_str(),
+            llm_messages_for_call.len(),
+            message_source_sequence,
+            &llm_config,
+        );
 
-        if let Some(policy) = compaction_policy.as_deref() {
+        if !provider_managed && let Some(policy) = compaction_policy.as_deref() {
             compaction_info = apply_proactive_compaction(
                 ProactiveCompactionContext {
                     chat_driver: chat_driver.as_ref(),
@@ -1417,6 +1364,7 @@ impl ReasonAtom {
         // retry loop so it is available to the post-loop guarded delta emission.
         let mut streamed_phase: Option<everruns_provider::ExecutionPhase> = None;
         let mut native_calls = std::collections::BTreeMap::new();
+        let mut compaction_started_at: Option<Instant> = None;
         let (
             text,
             thinking,
@@ -1442,6 +1390,7 @@ impl ReasonAtom {
                 {
                     Ok(result) => result,
                     Err(_) => {
+                        compaction_lifecycle.fail_if(provider_managed).await;
                         return Err(AgentLoopError::llm_kind(
                             crate::error::LlmErrorKind::Unavailable,
                             format!(
@@ -1465,6 +1414,10 @@ impl ReasonAtom {
             let mut stream = match stream_result {
                 Ok(stream) => stream,
                 Err(e) if e.is_request_too_large() => {
+                    compaction_lifecycle.fail_if(provider_managed).await;
+                    if provider_managed {
+                        return Err(e);
+                    }
                     let Some(policy) = compaction_policy.as_deref() else {
                         tracing::warn!(
                             session_id = %session_id,
@@ -1519,6 +1472,7 @@ impl ReasonAtom {
                     let Some(wait_duration) =
                         reserve_retry_wait(&retry_config, &mut retry_started_at, proposed_wait)
                     else {
+                        compaction_lifecycle.fail_if(provider_managed).await;
                         return Err(AgentLoopError::llm_kind(
                             e.llm_error_kind()
                                 .unwrap_or(crate::error::LlmErrorKind::Unavailable),
@@ -1542,7 +1496,11 @@ impl ReasonAtom {
                     tokio::time::sleep(wait_duration).await;
                     continue 'stream_attempt;
                 }
-                Err(e) => return Err(e),
+                Err(error) => {
+                    return compaction_lifecycle
+                        .fail_start(error, provider_managed)
+                        .await;
+                }
             };
 
             if let Some(coordinator) = &self.native_async {
@@ -1639,6 +1597,9 @@ impl ReasonAtom {
                                 &mut retry_started_at,
                                 proposed_wait,
                             ) else {
+                                compaction_lifecycle
+                                    .fail_if(provider_managed)
+                                    .await;
                                 return Err(AgentLoopError::llm_kind(
                                     crate::error::LlmErrorKind::Unavailable,
                                     format!(
@@ -1661,6 +1622,9 @@ impl ReasonAtom {
                             tokio::time::sleep(wait_duration).await;
                             continue 'stream_attempt;
                         }
+                        compaction_lifecycle
+                            .fail_if(compaction_started_at.is_some())
+                            .await;
                         return Err(AgentLoopError::llm(stall_error.message));
                     },
                     _ = keepalive_ticker.tick() => {
@@ -1675,7 +1639,15 @@ impl ReasonAtom {
                         continue;
                     },
                 };
-                let event = event?;
+                let event = match event {
+                    Ok(event) => event,
+                    Err(error) => {
+                        compaction_lifecycle
+                            .fail_if(compaction_started_at.is_some())
+                            .await;
+                        return Err(error);
+                    }
+                };
                 replay_state.observe(&event);
                 let advanced_stall_deadline = advances_stall_deadline(&event);
                 if advanced_stall_deadline {
@@ -1888,6 +1860,9 @@ impl ReasonAtom {
                             phase,
                         );
                     }
+                    LlmStreamEvent::ProviderCompactionStarted => {
+                        compaction_lifecycle.start(&mut compaction_started_at).await;
+                    }
                     LlmStreamEvent::Done(metadata) => {
                         // Emit any remaining pending delta before completing,
                         // unless a post-generation guardrail must first inspect
@@ -1966,7 +1941,8 @@ impl ReasonAtom {
                         // the error arrived, treat it as a partial success. This
                         // handles OpenAI Responses API behaviour where a trailing
                         // server_error can follow fully-streamed function calls.
-                        let has_partial_output = !tool_calls.is_empty() || !text.is_empty();
+                        let has_partial_output = compaction_started_at.is_none()
+                            && (!tool_calls.is_empty() || !text.is_empty());
 
                         if has_partial_output {
                             tracing::warn!(
@@ -2047,6 +2023,9 @@ impl ReasonAtom {
                                 generation_data,
                             ))
                             .await;
+                        if compaction_started_at.is_some() {
+                            compaction_lifecycle.fail().await;
+                        }
                         return Err(AgentLoopError::llm_kind(err.kind(), err.to_string()));
                     }
                     // `LlmStreamEvent` is `#[non_exhaustive]`, so a driver may
@@ -2069,6 +2048,9 @@ impl ReasonAtom {
                     last_stream_heartbeat = Instant::now();
                 }
             }
+            compaction_lifecycle
+                .reject_incomplete(compaction_started_at, &termination)
+                .await?;
             let (mut completion_metadata, tripped) = termination.into_parts();
             if let Some(metadata) = completion_metadata.as_mut() {
                 metadata.retry_metadata =
@@ -2088,8 +2070,7 @@ impl ReasonAtom {
         };
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
-        let provider_text = text.clone();
-        let provider_tool_calls = tool_calls.clone();
+        compaction_lifecycle.record_observed(&mut llm_config, compaction_started_at);
 
         // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
         // once on the finalized final-answer text to attach claim-level citations
@@ -2286,7 +2267,9 @@ impl ReasonAtom {
         let rejected_tool_calls = if tool_calls.is_empty() {
             Vec::new()
         } else {
-            self.apply_finalized_tool_call_hooks(
+            finalized_calls::apply_finalized_tool_calls_hooks(
+                &self.capability_registry,
+                self.event_emitter.as_ref(),
                 session_id,
                 context,
                 &resolved_capability_configs,
@@ -2487,15 +2470,12 @@ impl ReasonAtom {
             &resolved_capability_configs,
             text,
         );
-        let provider_opaque_content = completion_metadata
-            .as_ref()
-            .and_then(|metadata| metadata.provider_opaque_content.clone())
-            .filter(|_| {
-                tripped.is_none()
-                    && text == provider_text
-                    && finalized_tool_calls == provider_tool_calls
-                    && rejected_tool_calls.is_empty()
-            });
+        let (provider_opaque_content, provider_checkpoint_candidate) =
+            provider_managed_compaction::replay_artifacts(
+                completion_metadata.as_ref(),
+                tripped.is_none(),
+                !rejected_tool_calls.is_empty(),
+            );
         let has_tool_calls = !finalized_tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             RuntimeMessage::assistant_with_tools(&text, finalized_tool_calls.clone())
@@ -2608,13 +2588,24 @@ impl ReasonAtom {
                 )
                 .await?;
         }
-        self.event_emitter
+        let completed_output_event = self
+            .event_emitter
             .emit(EventRequest::new(
                 session_id,
                 message_event_context,
                 output_message_data,
             ))
             .await?;
+        compaction_lifecycle
+            .finish_after_output(
+                self.compaction_checkpoint_store.as_deref(),
+                completed_output_event.sequence,
+                provider_checkpoint_candidate,
+                compaction_started_at,
+                restored_checkpoint.is_some(),
+                completion_metadata.as_ref(),
+            )
+            .await;
 
         if let Some(coordinator) = &self.native_async {
             coordinator

@@ -7,9 +7,7 @@ use crate::SessionMutator;
 use crate::turn_tool_context::{RuntimeToolCapabilityContext, runtime_tool_context_services};
 use async_trait::async_trait;
 use everruns_capability::CapabilityRef;
-use everruns_core::capabilities::{
-    Capability, SystemPromptContext, collect_capabilities_with_configs,
-};
+use everruns_core::capabilities::{SystemPromptContext, collect_capabilities_with_configs};
 use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     SessionModelChangedData, TurnCompletedData, TurnFailedData, TurnStartedData,
@@ -19,7 +17,7 @@ use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::runtime_context::AssembledTurnContext;
 use everruns_core::session::SessionExecutionState;
 use everruns_core::{
-    CapabilityRegistry, CapabilityStatus, DecisionsService, DependencyBlocker, EgressService,
+    CapabilityRegistry, DecisionsService, DependencyBlocker, EgressService,
     ResolvedExecutionSnapshot, TokenUsage, ToolRegistry, UtilityLlmService,
     org_public_id_from_internal, resolve_runtime_capabilities,
 };
@@ -44,46 +42,6 @@ use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, ModelId, Sessio
 use everruns_provider::user_facing_error::{ErrorDisclosure, UserFacingError};
 use std::sync::Arc;
 use tracing::warn;
-
-/// Turn-local view that preserves a capability's message filtering while
-/// suppressing every model-visible contribution.
-struct MessageFilterOnlyCapability(Arc<dyn Capability>);
-
-impl Capability for MessageFilterOnlyCapability {
-    fn id(&self) -> &str {
-        self.0.id()
-    }
-
-    fn aliases(&self) -> Vec<&'static str> {
-        self.0.aliases()
-    }
-
-    fn name(&self) -> &str {
-        self.0.name()
-    }
-
-    fn description(&self) -> &str {
-        self.0.description()
-    }
-
-    fn status(&self) -> CapabilityStatus {
-        self.0.status()
-    }
-
-    fn message_filter_provider(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::message_filter::MessageFilterProvider>> {
-        self.0.message_filter_provider()
-    }
-
-    fn message_filter_config(
-        &self,
-        config: &serde_json::Value,
-        compaction_enabled: bool,
-    ) -> serde_json::Value {
-        self.0.message_filter_config(config, compaction_enabled)
-    }
-}
 
 #[cfg(feature = "bashkit")]
 fn bash_hook_dispatcher(
@@ -113,6 +71,9 @@ fn bash_hook_dispatcher(
 
     Arc::new(DisabledDispatcher)
 }
+
+mod message_filter_only;
+use message_filter_only::MessageFilterOnlyCapability;
 
 /// Resolved inputs loaded in one batched call for runtime host execution.
 ///

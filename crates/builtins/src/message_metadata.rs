@@ -288,6 +288,7 @@ mod tests {
         ModelViewContext {
             session_id: SessionId::new(),
             prior_usage: None,
+            provider_managed_reduction: false,
         }
     }
 

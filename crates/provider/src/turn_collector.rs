@@ -282,6 +282,7 @@ pub async fn collect_turn(
                 ));
             }
             LlmStreamEvent::MessagePhase(phase) => turn.phase = Some(phase),
+            LlmStreamEvent::ProviderCompactionStarted => {}
             LlmStreamEvent::Done(metadata) => {
                 turn.metadata = *metadata;
                 turn.complete = true;

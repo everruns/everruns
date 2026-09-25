@@ -11,9 +11,6 @@
 // llm.generation events are emitted by ReasonAtom, and OtelEventListener
 // creates the appropriate gen-ai spans. No direct tracing in drivers.
 
-use async_trait::async_trait;
-use chrono::DateTime;
-use futures::StreamExt;
 use reqwest::Client;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
@@ -21,7 +18,8 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-use everruns_provider::ProviderOpaqueContent;
+use crate::server_compaction;
+use everruns_provider::RejectedProviderCapability;
 use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_helpers::{
     self, ANTHROPIC_NOT_FOUND_PATTERNS, ANTHROPIC_TOO_LARGE_PATTERNS, AUDIO_CONTENT_PLACEHOLDER,
@@ -30,7 +28,7 @@ use everruns_provider::driver_helpers::{
 use everruns_provider::driver_registry::{
     ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmCompletionMetadata, LlmContentPart, LlmResponseStream, LlmStreamEvent, Message,
-    MessageContent, MessageRole, fold_system_messages,
+    MessageContent, MessageRole, ProviderCheckpointCandidate, fold_system_messages,
 };
 use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_provider::is_provider_quota_message;
@@ -42,6 +40,7 @@ use everruns_provider::model::ReasoningEffort;
 use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_provider::stream_reconnect::connect_sse_with_reconnect;
 use everruns_provider::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
+use everruns_provider::{ProviderOpaqueContent, ProviderOpaqueContext};
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -49,6 +48,10 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// fingerprints each request and, on the next one, reports where the prompt
 /// prefix diverged instead of leaving a silent cache miss.
 const CACHE_DIAGNOSTICS_BETA: &str = "cache-diagnosis-2026-04-07";
+const SERVER_COMPACTION_BETA: &str = "compact-2026-01-12";
+const SERVER_COMPACTION_OPTION: &str = "anthropic/server_compaction";
+const SERVER_COMPACTION_MIN_TOKENS: usize = 50_000;
+const SERVER_COMPACTION_CHECKPOINT_FORMAT: u32 = 2;
 
 /// Ready-to-use Anthropic Messages provider assembly.
 pub fn provider(
@@ -61,6 +64,48 @@ pub fn provider(
             "x-api-key",
             api_key,
         ))
+}
+
+#[derive(Debug, Serialize)]
+struct AnthropicContextManagement {
+    edits: Vec<AnthropicContextEdit>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type")]
+enum AnthropicContextEdit {
+    #[serde(rename = "compact_20260112")]
+    Compact {
+        trigger: AnthropicCompactionTrigger,
+        pause_after_compaction: bool,
+    },
+}
+
+#[derive(Debug, Serialize)]
+struct AnthropicCompactionTrigger {
+    r#type: &'static str,
+    value: usize,
+}
+
+fn append_nullable_raw_block_field(
+    blocks: &Mutex<BTreeMap<u32, Value>>,
+    index: u32,
+    field: &str,
+    fragment: &str,
+) {
+    let mut blocks = blocks.lock().unwrap();
+    let Some(Value::Object(block)) = blocks.get_mut(&index) else {
+        return;
+    };
+    let value = block
+        .entry(field.to_string())
+        .or_insert_with(|| Value::String(String::new()));
+    if value.is_null() {
+        *value = Value::String(String::new());
+    }
+    if let Value::String(value) = value {
+        value.push_str(fragment);
+    }
 }
 
 fn append_raw_block_field(
@@ -93,6 +138,52 @@ fn set_raw_block_field(
     }
 }
 
+fn anthropic_checkpoint_candidate(
+    enabled: bool,
+    request_messages: &[Value],
+    response_content: &[Value],
+) -> Result<Option<ProviderCheckpointCandidate>> {
+    if !enabled {
+        return Ok(None);
+    }
+    let mut observed_compaction = false;
+    for block in response_content {
+        if block.get("type").and_then(Value::as_str) != Some("compaction") {
+            continue;
+        }
+        observed_compaction = true;
+        let complete = block
+            .get("content")
+            .and_then(Value::as_str)
+            .is_some_and(|content| !content.is_empty())
+            && block
+                .get("encrypted_content")
+                .and_then(Value::as_str)
+                .is_some_and(|content| !content.is_empty());
+        if !complete {
+            return Err(AgentLoopError::llm(
+                "Anthropic completed a response with an incomplete compaction block",
+            ));
+        }
+    }
+    if !observed_compaction {
+        return Ok(None);
+    }
+    let mut messages = request_messages.to_vec();
+    messages.push(json!({
+        "role": "assistant",
+        "content": response_content,
+    }));
+    let messages_json = serde_json::to_string(&messages).map_err(|error| {
+        AgentLoopError::llm(format!(
+            "failed to serialize Anthropic messages-prefix checkpoint: {error}"
+        ))
+    })?;
+    Ok(Some(ProviderCheckpointCandidate {
+        format_version: SERVER_COMPACTION_CHECKPOINT_FORMAT,
+        context: ProviderOpaqueContext::AnthropicMessagesPrefix { messages_json },
+    }))
+}
 /// Message-level prompt-cache breakpoints per request. Anthropic allows four
 /// in total; the system prompt and the tool array take one each, leaving two
 /// for the transcript. See `mark_recent_text_blocks_for_cache`.
@@ -128,6 +219,7 @@ struct SendMessagesOptions<'a> {
     wants_million_context: bool,
     wants_cache_diagnostics: bool,
     wants_clear_at: bool,
+    wants_server_compaction: bool,
     max_tokens_from_profile: bool,
     model: &'a str,
     /// Caller-supplied per-request headers, applied over everything the driver
@@ -184,6 +276,7 @@ impl AnthropicChatDriver {
             wants_million_context,
             wants_cache_diagnostics,
             wants_clear_at,
+            wants_server_compaction,
             max_tokens_from_profile,
             model,
             extra_headers,
@@ -238,6 +331,9 @@ impl AnthropicChatDriver {
                     }
                     if wants_clear_at {
                         beta_features.push("mid-conversation-system-clear-at-2026-08-21");
+                    }
+                    if wants_server_compaction {
+                        beta_features.push(SERVER_COMPACTION_BETA);
                     }
                     if !beta_features.is_empty() {
                         let beta = beta_features.join(",");
@@ -360,6 +456,25 @@ impl AnthropicChatDriver {
                     // Check if this is a request-too-large error
                     if is_anthropic_request_too_large(status, &error_text) {
                         return RetryDecision::Terminal(AgentLoopError::request_too_large(error_msg));
+                    }
+
+                    if wants_server_compaction
+                        && server_compaction::is_rejection_response(status, &error_text)
+                        && server_compaction::record_rejection(endpoint, &model)
+                    {
+                        tracing::warn!(
+                            model = %model,
+                            status = status.as_u16(),
+                            "AnthropicDriver: server compaction rejected; caching legacy fallback"
+                        );
+                        return RetryDecision::Terminal(
+                            AgentLoopError::provider_capability_rejected(
+                                RejectedProviderCapability::AnthropicServerCompaction,
+                                status.as_u16(),
+                                &error_text,
+                                error_msg,
+                            ),
+                        );
                     }
 
                     // Classified, and its status preserved, while the HTTP
@@ -517,10 +632,25 @@ impl AnthropicChatDriver {
         })
     }
 
+    #[cfg(test)]
     fn convert_messages(
         messages: &[Message],
         prompt_cache_enabled: bool,
         volatile_suffix_len: usize,
+    ) -> (Option<String>, Vec<AnthropicMessage>) {
+        Self::convert_messages_with_options(
+            messages,
+            prompt_cache_enabled,
+            volatile_suffix_len,
+            false,
+        )
+    }
+
+    fn convert_messages_with_options(
+        messages: &[Message],
+        prompt_cache_enabled: bool,
+        volatile_suffix_len: usize,
+        allow_unmatched_tool_results: bool,
     ) -> (Option<String>, Vec<AnthropicMessage>) {
         // Accumulate all system messages into Anthropic's separate top-level
         // `system` field. Overwriting on each System message would drop the agent
@@ -542,7 +672,9 @@ impl AnthropicChatDriver {
                     if let Some(tool_call_id) = &msg.tool_call_id {
                         // Anthropic rejects tool_result blocks unless the matching tool_use
                         // is present in the visible request after context trimming.
-                        if !visible_tool_use_ids.contains(tool_call_id.as_str()) {
+                        if !allow_unmatched_tool_results
+                            && !visible_tool_use_ids.contains(tool_call_id.as_str())
+                        {
                             continue;
                         }
 
@@ -804,662 +936,7 @@ fn record_cache_diagnostics(slot: &Arc<Mutex<Option<serde_json::Value>>>, diagno
     *slot.lock().unwrap() = Some(diagnostics);
 }
 
-#[async_trait]
-impl ChatDriver for AnthropicChatDriver {
-    async fn chat_completion_stream(
-        &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
-        messages: Vec<Message>,
-        config: &LlmCallConfig,
-    ) -> Result<LlmResponseStream> {
-        // Note: OTel instrumentation is handled via event listeners.
-        // ReasonAtom emits llm.generation events, and OtelEventListener
-        // creates gen-ai spans from those events.
-        let prompt_cache_enabled = config.prompt_cache.as_ref().is_some_and(|cfg| cfg.enabled);
-        let (system_prompt, anthropic_messages) = Self::convert_messages(
-            &layout::keep_later_system_messages_in_place(&messages, &config.model),
-            prompt_cache_enabled,
-            config.volatile_suffix_len,
-        );
-        let wants_clear_at = anthropic_messages
-            .iter()
-            .any(|message| message.clear_at.is_some());
-        let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
-
-        // `[1m]` model ids (e.g. `claude-opus-4-8[1m]`) are the gateway's
-        // large-context twins of the 200K base models. Anthropic's wire `model`
-        // field only accepts the bare id; the 1M window is requested via the
-        // `context-1m` beta header (added in the retry loop below). Strip the
-        // suffix for everything that reasons about the canonical model, and
-        // keep the flag for the header.
-        let (wire_model, wants_million_context) = split_million_context(&config.model);
-        crate::prefill::reject_trailing_assistant(wire_model, &messages)?;
-
-        let profile = everruns_provider::get_model_profile(
-            &everruns_provider::DriverId::Anthropic,
-            wire_model,
-        );
-
-        // Hosted tool_search (deferred tool loading) is gated on the Anthropic
-        // model profile. When a hosted `ToolSearchConfig` is present and the
-        // model supports it, defer tool schemas server-side via
-        // `tool_search_tool_bm25_20251119` + per-tool `defer_loading`; otherwise
-        // send full schemas. The config is provider-agnostic — set by the
-        // `claude_tool_search` / `auto_tool_search` capability — and reaches here
-        // on `config.tool_search`.
-        let supports_tool_search = profile.as_ref().is_some_and(|p| p.tool_search);
-        let tools = if config.tools.is_empty() {
-            None
-        } else if let Some(ref ts_config) = config.tool_search {
-            if ts_config.enabled && supports_tool_search {
-                Some(Self::convert_tools_with_search(
-                    &config.tools,
-                    ts_config.threshold,
-                    prompt_cache_enabled,
-                ))
-            } else {
-                Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
-            }
-        } else {
-            Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
-        };
-
-        // Sampling parameters are removed on Fable 5.x and Opus 5.5/5/4.8/4.7 —
-        // sending `temperature` returns 400 ("`temperature` is deprecated for
-        // this model"). The model profile's `temperature` flag is the source
-        // of truth; drop the parameter for models that reject it.
-        let temperature = config.temperature.filter(|_| {
-            let supported = profile.as_ref().is_none_or(|p| p.temperature);
-            if !supported {
-                tracing::warn!(
-                    model = %config.model,
-                    "AnthropicDriver: dropping temperature — not supported by this model"
-                );
-            }
-            supported
-        });
-
-        // Build thinking config from reasoning effort.
-        //
-        // Recent Claude models (Fable 5.x, Opus 5.5/5/4.8/4.7, and the 4.6 family)
-        // use adaptive thinking: `thinking: {type: "adaptive"}` plus
-        // `output_config.effort`. On Fable 5.x and Opus 5.5/5/4.8/4.7 the budget-based
-        // `thinking: {type: "enabled", budget_tokens}` form is removed and
-        // returns 400, so this split is load-bearing, not stylistic.
-        let (thinking, output_config) = match crate::effort::resolve(config, wire_model, &profile) {
-            Some(effort) if uses_adaptive_thinking(wire_model) => {
-                match adaptive_effort_level(effort) {
-                    Some(level) => (
-                        Some(AnthropicThinking::adaptive(wire_model)),
-                        Some(AnthropicOutputConfig {
-                            effort: level.to_string(),
-                        }),
-                    ),
-                    None => (None, None),
-                }
-            }
-            Some(effort) => (AnthropicThinking::enabled_from_effort(effort), None),
-            None => (None, None),
-        };
-
-        tracing::info!(
-            model = %config.model,
-            reasoning_effort = ?config.reasoning_effort,
-            thinking = ?thinking,
-            adaptive_effort = ?output_config.as_ref().map(|c| c.effort.as_str()),
-            "AnthropicDriver: building request with thinking config"
-        );
-
-        // Caller's cap is the answer budget; thinking room goes on top.
-        let max_tokens_from_profile = config.max_tokens.is_none();
-        let budget = match thinking {
-            Some(AnthropicThinking::Enabled { budget_tokens }) => Some(budget_tokens),
-            _ => None,
-        };
-        let adaptive_effort = output_config.as_ref().map(|c| c.effort.as_str());
-        let max_tokens =
-            crate::effort::max_tokens(config.max_tokens, profile.as_ref(), budget, adaptive_effort);
-
-        // Budget-based thinking with tools needs the interleaved-thinking beta
-        // header; adaptive thinking interleaves automatically (no header).
-        let needs_interleaved_thinking =
-            matches!(thinking, Some(AnthropicThinking::Enabled { .. })) && tools.is_some();
-
-        // Map the request-level parallel preference (EVE-598) onto Anthropic's
-        // `tool_choice.disable_parallel_tool_use`. `tool_choice` is only valid
-        // when tools are present, so skip it for tool-less requests.
-        let tool_choice = if tools.is_some() {
-            AnthropicToolChoice::from_parallel_preference(
-                config
-                    .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
-            )
-        } else {
-            None
-        };
-
-        // Prompt-cache diagnostics (`cache-diagnosis` beta): opt in per request
-        // and, from the second turn on, name the response the API should
-        // compare this request against.
-        let cache_diagnostics = config
-            .cache_diagnostics
-            .as_ref()
-            .filter(|diagnostics| diagnostics.enabled);
-        let diagnostics = cache_diagnostics.map(|diagnostics| AnthropicDiagnosticsRequest {
-            previous_message_id: diagnostics.previous_message_id.clone(),
-        });
-        let wants_cache_diagnostics = diagnostics.is_some();
-
-        let request = AnthropicRequest {
-            model: wire_model.to_string(),
-            messages: anthropic_messages,
-            max_tokens,
-            temperature,
-            system,
-            stream: true,
-            tools,
-            tool_choice,
-            thinking,
-            output_config,
-            diagnostics,
-        };
-
-        // Share the (possibly fallback-mutated) request across reconnect
-        // attempts: the classify closure mutates it for the one-shot max_tokens
-        // fallback, and reusing the Arc means a reconnect re-sends the corrected
-        // request.
-        let request = Arc::new(Mutex::new(request));
-
-        // Establish the SSE stream, transparently reconnecting on a transport
-        // failure that lands before the first event (the "error decoding
-        // response body" flake). Header-phase retries (429/5xx, transient send
-        // failures, and the max_tokens fallback) are handled inside the
-        // per-attempt send.
-        let (event_stream, retry_metadata) =
-            connect_sse_with_reconnect(&self.retry_config, "AnthropicDriver", |attempts| {
-                self.send_messages_request(
-                    endpoint,
-                    Arc::clone(&request),
-                    SendMessagesOptions {
-                        needs_interleaved_thinking,
-                        wants_million_context,
-                        wants_cache_diagnostics,
-                        wants_clear_at,
-                        max_tokens_from_profile,
-                        model: &config.model,
-                        extra_headers: &config.extra_headers,
-                    },
-                    attempts,
-                )
-            })
-            .await?;
-
-        let model = config.model.clone();
-        let input_tokens = Arc::new(Mutex::new(0u32));
-        let output_tokens = Arc::new(Mutex::new(0u32));
-        let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
-        let cache_creation_tokens = Arc::new(Mutex::new(Option::<u32>::None));
-        let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
-        let current_thinking = Arc::new(Mutex::new(Option::<OpenThinkingBlock>::None));
-        let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
-        let response_content = Arc::new(Mutex::new(BTreeMap::<u32, Value>::new()));
-        let input_json = Arc::new(Mutex::new(BTreeMap::<u32, String>::new()));
-        let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
-        let response_id = Arc::new(Mutex::new(Option::<String>::None));
-        let response_model = Arc::new(Mutex::new(Option::<String>::None));
-        let diagnostics_payload = Arc::new(Mutex::new(Option::<serde_json::Value>::None));
-        // Share retry metadata with stream closure (only set if retries occurred)
-        let shared_retry_metadata = if retry_metadata.had_retries() {
-            Some(Arc::new(retry_metadata))
-        } else {
-            None
-        };
-
-        let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
-            let model = model.clone();
-            let input_tokens = Arc::clone(&input_tokens);
-            let output_tokens = Arc::clone(&output_tokens);
-            let cache_read_tokens = Arc::clone(&cache_read_tokens);
-            let cache_creation_tokens = Arc::clone(&cache_creation_tokens);
-            let current_tool_call = Arc::clone(&current_tool_call);
-            let current_thinking = Arc::clone(&current_thinking);
-            let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
-            let response_content = Arc::clone(&response_content);
-            let input_json = Arc::clone(&input_json);
-            let finish_reason = Arc::clone(&finish_reason);
-            let response_id = Arc::clone(&response_id);
-            let response_model = Arc::clone(&response_model);
-            let diagnostics_payload = Arc::clone(&diagnostics_payload);
-            let retry_metadata_for_done = shared_retry_metadata.clone();
-
-            async move {
-                match result {
-                    Ok(event) => {
-                        // Anthropic uses different event types
-                        match event.event.as_str() {
-                            "message_start" => {
-                                // Parse response identity/model, usage, and prompt-cache diagnostics.
-                                if let Ok(data) =
-                                    serde_json::from_str::<AnthropicMessageStart>(&event.data)
-                                {
-                                    if let Some(id) = data.message.id {
-                                        // Following requests use this for prompt-cache diagnostics.
-                                        *response_id.lock().unwrap() = Some(id);
-                                    }
-                                    let transformations = &data.message.input_transformations;
-                                    layout::log_input_transformations(data.message.model.as_deref(), transformations);
-                                    *response_model.lock().unwrap() = data.message.model;
-                                    if let Some(diagnostics) =
-                                        data.message.diagnostics.or(data.diagnostics)
-                                    {
-                                        record_cache_diagnostics(
-                                            &diagnostics_payload,
-                                            diagnostics,
-                                        );
-                                    }
-                                    if let Some(usage) = data.message.usage {
-                                        *input_tokens.lock().unwrap() = usage.input_tokens;
-                                        if let Some(cache_read) = usage.cache_read_input_tokens {
-                                            *cache_read_tokens.lock().unwrap() = Some(cache_read);
-                                        }
-                                        if let Some(cache_creation) =
-                                            usage.cache_creation_input_tokens
-                                        {
-                                            *cache_creation_tokens.lock().unwrap() =
-                                                Some(cache_creation);
-                                        }
-                                    }
-                                }
-                                Ok(LlmStreamEvent::TextDelta(String::new()))
-                            }
-                            "content_block_start" => {
-                                if let Ok(data) =
-                                    serde_json::from_str::<AnthropicContentBlockStart>(&event.data)
-                                {
-                                    response_content
-                                        .lock()
-                                        .unwrap()
-                                        .insert(data.index, data.content_block.clone());
-                                    let Ok(content_block) =
-                                        serde_json::from_value(data.content_block)
-                                    else {
-                                        return Ok(LlmStreamEvent::TextDelta(String::new()));
-                                    };
-                                    match content_block {
-                                        AnthropicContentBlockDelta::ToolUse { id, name } => {
-                                            let mut current = current_tool_call.lock().unwrap();
-                                            *current = Some(ToolCall {
-                                                id,
-                                                name,
-                                                arguments: json!(""),
-                                            });
-                                        }
-                                        AnthropicContentBlockDelta::Thinking { thinking } => {
-                                            // Opens a block; text arrives as
-                                            // thinking_delta and the signature
-                                            // as signature_delta.
-                                            *current_thinking.lock().unwrap() =
-                                                Some(OpenThinkingBlock {
-                                                    text: thinking,
-                                                    ..Default::default()
-                                                });
-                                        }
-                                        AnthropicContentBlockDelta::RedactedThinking { data } => {
-                                            *current_thinking.lock().unwrap() =
-                                                Some(OpenThinkingBlock {
-                                                    redacted_payload: Some(data),
-                                                    ..Default::default()
-                                                });
-                                        }
-                                        AnthropicContentBlockDelta::Text { .. }
-                                        | AnthropicContentBlockDelta::Unknown => {}
-                                    }
-                                }
-                                Ok(LlmStreamEvent::TextDelta(String::new()))
-                            }
-                            "content_block_delta" => {
-                                if let Ok(data) = serde_json::from_str::<
-                                    AnthropicContentBlockDeltaEvent,
-                                >(&event.data)
-                                {
-                                    match data.delta {
-                                        AnthropicDelta::TextDelta { text } => {
-                                            append_raw_block_field(
-                                                &response_content,
-                                                data.index,
-                                                "text",
-                                                &text,
-                                            );
-                                            // EVE-636: do not count deltas as tokens here —
-                                            // deltas != tokens, and this took a mutex on every
-                                            // token. Authoritative `output_tokens` is set from
-                                            // the terminal `message_delta` usage event below.
-                                            return Ok(LlmStreamEvent::TextDelta(text));
-                                        }
-                                        AnthropicDelta::InputJsonDelta { partial_json } => {
-                                            input_json
-                                                .lock()
-                                                .unwrap()
-                                                .entry(data.index)
-                                                .or_default()
-                                                .push_str(&partial_json);
-                                            // EVE-636: accumulate tool-input JSON in place via
-                                            // push_str (amortized O(total)) instead of
-                                            // re-copying + re-boxing into a Value per delta
-                                            // (O(n^2)). Parsed once at content_block_stop.
-                                            let mut current = current_tool_call.lock().unwrap();
-                                            if let Some(ref mut tc) = *current {
-                                                append_tool_input_delta(tc, &partial_json);
-                                            }
-                                            return Ok(LlmStreamEvent::TextDelta(String::new()));
-                                        }
-                                        AnthropicDelta::ThinkingDelta { thinking } => {
-                                            append_raw_block_field(
-                                                &response_content,
-                                                data.index,
-                                                "thinking",
-                                                &thinking,
-                                            );
-                                            let mut open = current_thinking.lock().unwrap();
-                                            open.get_or_insert_with(OpenThinkingBlock::default)
-                                                .text
-                                                .push_str(&thinking);
-                                            return Ok(LlmStreamEvent::ReasoningDelta {
-                                                delta: thinking,
-                                                summary: false,
-                                            });
-                                        }
-                                        AnthropicDelta::SignatureDelta { signature } => {
-                                            set_raw_block_field(
-                                                &response_content,
-                                                data.index,
-                                                "signature",
-                                                Value::String(signature.clone()),
-                                            );
-                                            // Signs the block currently open, and
-                                            // only that block.
-                                            tracing::debug!(
-                                                signature_len = signature.len(),
-                                                "AnthropicDriver: received signature_delta from API"
-                                            );
-                                            let mut open = current_thinking.lock().unwrap();
-                                            open.get_or_insert_with(OpenThinkingBlock::default)
-                                                .signature = Some(signature);
-                                            return Ok(LlmStreamEvent::TextDelta(String::new()));
-                                        }
-                                    }
-                                }
-                                Ok(LlmStreamEvent::TextDelta(String::new()))
-                            }
-                            "content_block_stop" => {
-                                // Debug: log raw content_block_stop data
-                                tracing::debug!(
-                                    raw_data = %event.data,
-                                    "AnthropicDriver: received content_block_stop event"
-                                );
-
-                                // Finalize current tool call if any
-                                {
-                                    let mut current = current_tool_call.lock().unwrap();
-                                    if let Some(mut tc) = current.take() {
-                                        // EVE-636: parse the accumulated JSON string exactly once.
-                                        finalize_tool_arguments(&mut tc);
-                                        accumulated_tool_calls.lock().unwrap().push(tc);
-                                    }
-                                }
-
-                                let stop = serde_json::from_str::<AnthropicContentBlockStop>(
-                                    &event.data,
-                                )
-                                .ok();
-                                let completed = stop.as_ref().and_then(|data| {
-                                    let index = data.index;
-                                    if let Some(partial_json) =
-                                        input_json.lock().unwrap().remove(&index)
-                                    {
-                                        match serde_json::from_str(&partial_json) {
-                                            Ok(input) => set_raw_block_field(
-                                                &response_content,
-                                                index,
-                                                "input",
-                                                input,
-                                            ),
-                                            Err(error) => tracing::warn!(
-                                                %error,
-                                                index,
-                                                "AnthropicDriver: invalid streamed tool input"
-                                            ),
-                                        }
-                                    }
-                                    if let Some(content_block) = &data.content_block {
-                                        response_content
-                                            .lock()
-                                            .unwrap()
-                                            .insert(index, content_block.clone());
-                                    }
-                                    response_content
-                                        .lock()
-                                        .unwrap()
-                                        .get(&index)
-                                        .cloned()
-                                        .and_then(|value| serde_json::from_value(value).ok())
-                                });
-
-                                let mut open = current_thinking.lock().unwrap();
-                                if let Some(mut block) = open.take() {
-                                    match completed {
-                                        Some(AnthropicCompletedContentBlock::Thinking {
-                                            thinking,
-                                            signature,
-                                        }) => {
-                                            if !thinking.is_empty() {
-                                                block.text = thinking;
-                                            }
-                                            block.signature = Some(signature);
-                                        }
-                                        Some(AnthropicCompletedContentBlock::RedactedThinking {
-                                            data,
-                                        }) => {
-                                            block.redacted_payload = Some(data);
-                                        }
-                                        _ => {}
-                                    }
-                                    // A block without a signature cannot be
-                                    // replayed: Anthropic rejects thinking it
-                                    // did not sign. Drop it rather than send
-                                    // an artifact that will fail verification.
-                                    if block.signature.is_none()
-                                        && block.redacted_payload.is_none()
-                                    {
-                                        tracing::warn!(
-                                            thinking_len = block.text.len(),
-                                            "AnthropicDriver: thinking block closed without a signature; not replayable"
-                                        );
-                                        return Ok(LlmStreamEvent::TextDelta(String::new()));
-                                    }
-                                    return Ok(LlmStreamEvent::ReasoningItem(
-                                        block.into_reasoning_part(),
-                                    ));
-                                }
-                                Ok(LlmStreamEvent::TextDelta(String::new()))
-                            }
-                            "message_delta" => {
-                                // Check for stop_reason and output tokens
-                                if let Ok(data) =
-                                    serde_json::from_str::<AnthropicMessageDelta>(&event.data)
-                                {
-                                    if let Some(diagnostics) = data.diagnostics {
-                                        record_cache_diagnostics(&diagnostics_payload, diagnostics);
-                                    }
-                                    if let Some(usage) = data.usage {
-                                        *output_tokens.lock().unwrap() = usage.output_tokens;
-                                        // Cache tokens may also appear in delta
-                                        if usage.cache_read_input_tokens.is_some() {
-                                            *cache_read_tokens.lock().unwrap() =
-                                                usage.cache_read_input_tokens;
-                                        }
-                                        if usage.cache_creation_input_tokens.is_some() {
-                                            *cache_creation_tokens.lock().unwrap() =
-                                                usage.cache_creation_input_tokens;
-                                        }
-                                    }
-
-                                    if let Some(stop_reason) = data.delta.stop_reason {
-                                        let normalized = match stop_reason.as_str() {
-                                            "max_tokens" => "length",
-                                            "tool_use" => "tool_calls",
-                                            "refusal" => "refusal",
-                                            _ => "stop",
-                                        };
-                                        *finish_reason.lock().unwrap() =
-                                            Some(normalized.to_string());
-
-                                        if stop_reason == "tool_use" {
-                                            let tool_calls =
-                                                accumulated_tool_calls.lock().unwrap().clone();
-                                            if !tool_calls.is_empty() {
-                                                return Ok(LlmStreamEvent::ToolCalls(tool_calls));
-                                            }
-                                        }
-                                    }
-                                }
-                                Ok(LlmStreamEvent::TextDelta(String::new()))
-                            }
-                            "message_stop" => {
-                                let in_tokens = *input_tokens.lock().unwrap();
-                                let out_tokens = *output_tokens.lock().unwrap();
-                                let cache_read = *cache_read_tokens.lock().unwrap();
-                                let cache_creation = *cache_creation_tokens.lock().unwrap();
-
-                                Ok(LlmStreamEvent::Done(Box::new({
-                                    let mut metadata = LlmCompletionMetadata::default();
-                                    metadata.total_tokens = Some(in_tokens + out_tokens);
-                                    metadata.prompt_tokens = Some(in_tokens);
-                                    metadata.completion_tokens = Some(out_tokens);
-                                    metadata.cache_read_tokens = cache_read;
-                                    metadata.cache_creation_tokens = cache_creation;
-                                    metadata.model = Some(model);
-                                    metadata.response_model = response_model.lock().unwrap().clone();
-                                    metadata.finish_reason = finish_reason
-                                        .lock()
-                                        .unwrap()
-                                        .clone()
-                                        .or_else(|| Some("stop".to_string()));
-                                    metadata.retry_metadata = retry_metadata_for_done
-                                        .map(|arc| (*arc).clone());
-                                    metadata.response_id = response_id.lock().unwrap().clone();
-                                    metadata.cache_diagnostics = diagnostics_payload
-                                        .lock()
-                                        .unwrap()
-                                        .clone();
-                                    let content = response_content
-                                        .lock()
-                                        .unwrap()
-                                        .values()
-                                        .cloned()
-                                        .collect::<Vec<_>>();
-                                    if !content.is_empty() {
-                                        metadata.provider_opaque_content =
-                                            Some(ProviderOpaqueContent::new(
-                                                "anthropic",
-                                                Value::Array(content),
-                                            ));
-                                    }
-                                    metadata
-                                })))
-                            }
-                            "error" => Ok(LlmStreamEvent::Error(
-                                format!("Anthropic stream error: {}", event.data).into(),
-                            )),
-                            "ping" => {
-                                // Keep-alive ping, ignore
-                                Ok(LlmStreamEvent::TextDelta(String::new()))
-                            }
-                            _ => {
-                                // Unknown event type, ignore
-                                Ok(LlmStreamEvent::TextDelta(String::new()))
-                            }
-                        }
-                    }
-                    Err(e) => Ok(LlmStreamEvent::Error(
-                        format!("Stream error: {}", e).into(),
-                    )),
-                }
-            }
-        }));
-
-        Ok(converted_stream)
-    }
-
-    /// Anthropic maps the preference onto `tool_choice.disable_parallel_tool_use`
-    /// for every tool-capable Claude model.
-    fn supports_parallel_tool_calls(&self, _model: &str) -> bool {
-        true
-    }
-
-    async fn list_models(
-        &self,
-        endpoint: &everruns_provider::ProviderEndpoint,
-    ) -> Result<Option<Vec<DiscoveredModel>>> {
-        // Skip discovery for custom URLs (proxies, self-hosted)
-        if endpoint.base_url() != Some(DEFAULT_BASE_URL) {
-            return Ok(None);
-        }
-
-        let url = endpoint
-            .url("models")
-            .ok_or_else(|| AgentLoopError::config("Anthropic provider has no base URL"))?;
-        let resolved = endpoint.resolve("GET", url, &[]).await?;
-        let mut request = self
-            .client()
-            .get(&resolved.url)
-            .header("anthropic-version", ANTHROPIC_VERSION);
-        for (name, value) in resolved.headers {
-            request = request.header(name, value);
-        }
-        let response = request
-            .send()
-            .await
-            .map_err(|e| AgentLoopError::llm(format!("Failed to fetch models: {}", e)))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            // Classified at the boundary: a rejected key is not an outage.
-            return Err(AgentLoopError::llm_http(
-                status.as_u16(),
-                &body,
-                format!("Models API returned {}: {}", status, body),
-            ));
-        }
-
-        let models_response: AnthropicModelsResponse = response
-            .json()
-            .await
-            .map_err(|e| AgentLoopError::llm(format!("Failed to parse models response: {}", e)))?;
-
-        // All Anthropic models are chat models, no filtering needed
-        let discovered: Vec<DiscoveredModel> = models_response
-            .data
-            .into_iter()
-            .map(|m| {
-                let profile = Some(m.to_discovered_profile());
-                DiscoveredModel {
-                    capabilities: vec!["chat".to_string()],
-                    model_id: m.id,
-                    display_name: Some(m.display_name),
-                    created_at: m
-                        .created_at
-                        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                        .map(|dt| dt.with_timezone(&chrono::Utc)),
-                    owned_by: Some("anthropic".to_string()),
-                    discovered_profile: profile,
-                }
-            })
-            .collect();
-
-        Ok(Some(discovered))
-    }
-}
+mod chat_driver;
 
 impl std::fmt::Debug for AnthropicChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1603,7 +1080,7 @@ fn is_anthropic_request_too_large(status: reqwest::StatusCode, error_text: &str)
 #[derive(Debug, Serialize)]
 struct AnthropicRequest {
     model: String,
-    messages: Vec<AnthropicMessage>,
+    messages: Vec<Value>,
     max_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
@@ -1626,6 +1103,10 @@ struct AnthropicRequest {
     /// Prompt-cache diagnostics opt-in (`cache-diagnosis` beta).
     #[serde(skip_serializing_if = "Option::is_none")]
     diagnostics: Option<AnthropicDiagnosticsRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context_management: Option<AnthropicContextManagement>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<AnthropicCacheControl>,
 }
 
 /// Request-level `diagnostics` object.
@@ -1799,7 +1280,7 @@ const MILLION_CONTEXT_FAMILIES: &[&str] = &[
 /// silently truncate on models where the header was retired). Date-suffixed 1M
 /// ids (`claude-opus-4-8-20260101[1m]`) are still honored via family
 /// normalization.
-fn split_million_context(model_id: &str) -> (&str, bool) {
+pub(crate) fn split_million_context(model_id: &str) -> (&str, bool) {
     match model_id.strip_suffix("[1m]") {
         Some(bare) if is_million_context_family(bare) => (bare, true),
         _ => (model_id, false),
@@ -2122,6 +1603,8 @@ enum AnthropicContentBlockDelta {
     /// and carries no readable text, but must still be replayed verbatim.
     #[serde(rename = "redacted_thinking")]
     RedactedThinking { data: String },
+    #[serde(rename = "compaction")]
+    Compaction,
     #[serde(other)]
     Unknown,
 }
@@ -2145,6 +1628,13 @@ enum AnthropicDelta {
     /// Cryptographic signature for thinking content (sent after thinking_delta completes)
     #[serde(rename = "signature_delta")]
     SignatureDelta { signature: String },
+    #[serde(rename = "compaction_delta")]
+    CompactionDelta {
+        #[serde(default)]
+        content: Option<String>,
+        #[serde(default)]
+        encrypted_content: Option<String>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -2360,6 +1850,9 @@ impl AnthropicModelInfo {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            // Discovery cannot prove the direct-endpoint and family contract.
+            // Curated direct Anthropic profiles opt in explicitly.
+            supports_server_compaction: false,
         }
     }
 

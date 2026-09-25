@@ -110,6 +110,7 @@ async fn kernel_executes_from_resolved_values_without_stores() {
                 provider: ProviderKey::new("external-provider"),
                 provider_type: DriverId::LlmSim,
                 driver: Arc::new(FixedDriver),
+                provider_managed_reduction_option: None,
             },
             resolved_model_id: Some(model_id),
             mcp_tool_definitions: vec![],

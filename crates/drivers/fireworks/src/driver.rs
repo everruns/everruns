@@ -284,6 +284,7 @@ impl FireworksModelInfo {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }
     }
 }
@@ -526,7 +527,7 @@ mod tests {
         tools: bool,
         limits: Option<i32>,
     ) -> Value {
-        let mut expected = json!({"name":name,"family":family,"attachment":image,"reasoning":false,"temperature":true,"tool_call":tools,"structured_output":true,"open_weights":true,"modalities":{"input":if image { vec!["text","image"] } else { vec!["text"] },"output":["text"]},"tool_search":false,"supports_phases":false});
+        let mut expected = json!({"name":name,"family":family,"attachment":image,"reasoning":false,"temperature":true,"tool_call":tools,"structured_output":true,"open_weights":true,"modalities":{"input":if image { vec!["text","image"] } else { vec!["text"] },"output":["text"]},"tool_search":false,"supports_phases":false,"supports_server_compaction":false});
         if let Some(limit) = limits {
             expected["limits"] = json!({"context":limit,"output":limit});
         }

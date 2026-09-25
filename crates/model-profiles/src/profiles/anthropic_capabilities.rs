@@ -1,6 +1,17 @@
 use crate::types::{CLEAR_AT_PARAMETER, MID_CONVERSATION_SYSTEM_PARAMETER, ModelProfile};
 
 pub(super) fn apply(profile: &mut ModelProfile) {
+    profile.supports_server_compaction = matches!(
+        profile.family.as_str(),
+        "claude-fable-5-1"
+            | "claude-fable-5"
+            | "claude-opus-5"
+            | "claude-opus-4-8"
+            | "claude-opus-4-7"
+            | "claude-opus-4-6"
+            | "claude-sonnet-5"
+            | "claude-sonnet-4-6"
+    );
     if !matches!(
         profile.family.as_str(),
         "claude-fable-5-1"

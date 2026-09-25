@@ -272,6 +272,12 @@ pub struct ContextCompactedData {
     /// Provider-reported output tokens after compaction, when available.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tokens_after: Option<u64>,
+    /// Serialized provider checkpoint size in bytes, when measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_bytes: Option<u64>,
+    /// Source used to reconstruct the provider prefix (`checkpoint` or `raw`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay_source: Option<String>,
     /// Serialized request-context bytes before compaction, when measurable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bytes_before: Option<u64>,

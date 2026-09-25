@@ -528,6 +528,7 @@ pub(crate) fn handle_streaming_event(
                 request_body: None,
                 cache_diagnostics: None,
                 provider_opaque_content: None,
+                provider_checkpoint_candidate: None,
             }))
         }
 

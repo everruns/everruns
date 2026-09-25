@@ -12,11 +12,19 @@ use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use everruns_core::{tool_context::ToolContext, tool_context::ToolContextService};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::cmp::Ordering;
 use std::io::{self, Write};
 use std::sync::Arc;
+
+#[path = "infinity_context/config.rs"]
+mod config;
+use config::{
+    CANDIDATE_AVG_TOKENS_PER_MESSAGE, CANDIDATE_MAX_MESSAGES, CANDIDATE_OVERFETCH_FACTOR,
+    InfinityContextConfig, MAX_KEEP_FIRST_MESSAGES, default_context_budget_tokens,
+    default_keep_first_messages, default_min_recent_messages,
+};
 
 /// Capability ID for infinity context.
 pub const INFINITY_CONTEXT_CAPABILITY_ID: &str = "infinity_context";
@@ -51,8 +59,13 @@ impl Capability for InfinityContextFilterOnlyCapability {
         Some(Arc::new(InfinityContextFilterProvider))
     }
 
-    fn message_filter_config(&self, config: &Value, compaction_enabled: bool) -> Value {
-        message_filter_config(config, compaction_enabled)
+    fn message_filter_config(
+        &self,
+        config: &Value,
+        compaction_enabled: bool,
+        provider_managed_reduction: bool,
+    ) -> Value {
+        message_filter_config(config, compaction_enabled, provider_managed_reduction)
     }
 }
 
@@ -96,8 +109,21 @@ impl Capability for InfinityContextCapability {
         Some(Arc::new(InfinityContextFilterProvider))
     }
 
-    fn message_filter_config(&self, config: &Value, compaction_enabled: bool) -> Value {
-        message_filter_config(config, compaction_enabled)
+    fn message_filter_config(
+        &self,
+        config: &Value,
+        compaction_enabled: bool,
+        provider_managed_reduction: bool,
+    ) -> Value {
+        message_filter_config(config, compaction_enabled, provider_managed_reduction)
+    }
+
+    fn provider_managed_reduction_budget(&self, config: &Value) -> Option<usize> {
+        Some(
+            serde_json::from_value::<InfinityContextConfig>(config.clone())
+                .unwrap_or_default()
+                .context_budget_tokens,
+        )
     }
 
     /// All three `InfinityContextConfig` fields are simple numeric knobs users
@@ -207,16 +233,32 @@ impl Capability for InfinityContextCapability {
     }
 }
 
-fn message_filter_config(base: &Value, compaction_enabled: bool) -> Value {
-    if !compaction_enabled {
+fn message_filter_config(
+    base: &Value,
+    compaction_enabled: bool,
+    provider_managed_reduction: bool,
+) -> Value {
+    if !compaction_enabled && !provider_managed_reduction {
         return base.clone();
     }
     let mut config = base.clone();
     match config.as_object_mut() {
         Some(map) => {
-            map.insert("compaction_active".to_string(), Value::Bool(true));
+            map.insert(
+                "compaction_active".to_string(),
+                Value::Bool(compaction_enabled),
+            );
+            map.insert(
+                "provider_managed_reduction".to_string(),
+                Value::Bool(provider_managed_reduction),
+            );
         }
-        None => config = json!({ "compaction_active": true }),
+        None => {
+            config = json!({
+                "compaction_active": compaction_enabled,
+                "provider_managed_reduction": provider_managed_reduction,
+            })
+        }
     }
     config
 }
@@ -228,73 +270,16 @@ to retrieve them when needed. The window is trimmed automatically; do not
 abandon tasks for token reasons — persist important state via file or
 memory tools when available."#;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct InfinityContextConfig {
-    /// Maximum prompt budget reserved for message history.
-    #[serde(default = "default_context_budget_tokens")]
-    context_budget_tokens: usize,
-
-    /// Minimum number of recent messages to keep even when the budget is tight.
-    #[serde(default = "default_min_recent_messages")]
-    min_recent_messages: usize,
-
-    /// Optional hard cap on recent messages kept in the live prompt.
-    ///
-    /// Useful for public support chats where the prompt must stay small even
-    /// when the token-budget estimate would allow more messages.
-    #[serde(default)]
-    max_recent_messages: Option<usize>,
-
-    /// Optional leading messages kept as an anchor (the original task / goal),
-    /// regardless of token budget. Defaults to 0 so untrusted first messages
-    /// cannot bypass the configured token budget or recent-message cap. The
-    /// anchor is additional to `max_recent_messages` when explicitly enabled.
-    #[serde(default = "default_keep_first_messages")]
-    keep_first_messages: usize,
-
-    /// Derived (not user-facing): set by capability collection when the
-    /// `compaction` capability is also enabled. When true, infinity context
-    /// stops doing token-budget eviction and lets compaction own reduction, so
-    /// compaction's summary — not a bare "hidden" notice — covers old turns.
-    #[serde(default)]
-    compaction_active: bool,
-}
-
-fn default_context_budget_tokens() -> usize {
-    100_000
-}
-
-fn default_min_recent_messages() -> usize {
-    10
-}
-
-fn default_keep_first_messages() -> usize {
-    0
-}
-
-impl Default for InfinityContextConfig {
-    fn default() -> Self {
-        Self {
-            context_budget_tokens: default_context_budget_tokens(),
-            min_recent_messages: default_min_recent_messages(),
-            max_recent_messages: None,
-            keep_first_messages: default_keep_first_messages(),
-            compaction_active: false,
-        }
-    }
-}
-
-const CANDIDATE_AVG_TOKENS_PER_MESSAGE: usize = 250;
-const CANDIDATE_OVERFETCH_FACTOR: usize = 4;
-const CANDIDATE_MAX_MESSAGES: usize = 2_000;
-const MAX_KEEP_FIRST_MESSAGES: usize = 16;
-
 struct InfinityContextFilterProvider;
 
 impl MessageFilterProvider for InfinityContextFilterProvider {
     fn apply_filters(&self, query: &mut MessageQuery, config: &Value) {
         let config: InfinityContextConfig =
             serde_json::from_value(config.clone()).unwrap_or_default();
+
+        if config.provider_managed_reduction {
+            return;
+        }
 
         query.limit = Some(resolve_candidate_load_limit(&config) as i64);
         // When explicitly configured (`keep_first_messages > 0`), fetch the first
@@ -314,6 +299,9 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
     fn post_load(&self, messages: &mut Vec<RuntimeMessage>, config: &Value) {
         let config: InfinityContextConfig =
             serde_json::from_value(config.clone()).unwrap_or_default();
+        if config.provider_managed_reduction {
+            return;
+        }
         let existing_notice_count = take_existing_excluded_notice(messages);
 
         // P2 composition: when compaction is the active reducer, defer
@@ -826,6 +814,10 @@ fn format_recent_result(messages: &[&RuntimeMessage], total: usize) -> ToolExecu
 }
 
 #[cfg(test)]
+#[path = "infinity_context/provider_managed_tests.rs"]
+mod provider_managed_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_fixtures::TestMessageRetriever;
@@ -1129,15 +1121,18 @@ mod tests {
     fn message_filter_hook_coordinates_with_compaction_without_changing_user_config() {
         let base = json!({ "context_budget_tokens": 1000 });
 
-        let coordinated = message_filter_config(&base, true);
+        let coordinated = message_filter_config(&base, true, false);
         assert_eq!(coordinated["compaction_active"], json!(true));
         assert_eq!(coordinated["context_budget_tokens"], json!(1000));
         assert!(base.get("compaction_active").is_none());
 
-        assert_eq!(message_filter_config(&base, false), base);
+        assert_eq!(message_filter_config(&base, false, false), base);
         assert_eq!(
-            message_filter_config(&Value::Null, true),
-            json!({ "compaction_active": true })
+            message_filter_config(&Value::Null, true, false),
+            json!({
+                "compaction_active": true,
+                "provider_managed_reduction": false
+            })
         );
     }
 

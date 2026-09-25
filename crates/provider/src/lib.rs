@@ -50,9 +50,11 @@ pub mod openai_wire;
 pub mod openresponses_protocol;
 pub mod openresponses_types;
 pub mod provider;
+mod provider_managed;
 pub mod reasoning;
 pub mod runtime_provider;
 pub mod stream_accumulator;
+mod stream_error;
 #[cfg(feature = "http")]
 pub mod stream_reconnect;
 pub mod tool_schema_compat;
@@ -90,6 +92,7 @@ pub use error::{
     LlmErrorKind, Result, StoreResultExt, classify_fs_error, from_json, json_val,
 };
 pub use execution_phase::{ExecutionPhase, PhaseSource};
+pub use llm_error::RejectedProviderCapability;
 pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
 pub use message::ProviderOpaqueContent;
 pub use model::{

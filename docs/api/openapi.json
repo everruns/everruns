@@ -20247,6 +20247,15 @@
             "example": 90210,
             "minimum": 0
           },
+          "checkpoint_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Serialized provider checkpoint size in bytes, when measured.",
+            "minimum": 0
+          },
           "checkpoint_id": {
             "type": [
               "string",
@@ -20292,6 +20301,13 @@
             ],
             "description": "Provider backend (e.g. \"openai\"), when known.",
             "example": "openai"
+          },
+          "replay_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Source used to reconstruct the provider prefix (`checkpoint` or `raw`)."
           },
           "source_sequence": {
             "type": [
@@ -32241,6 +32257,10 @@
           "supports_phases": {
             "type": "boolean",
             "description": "Whether the model supports native execution phases (\"commentary\" / \"final_answer\").\nWhen true, the driver sends the `phase` field on assistant messages in the wire format.\nCurrently supported by GPT-5.4 and newer via OpenAI Responses API."
+          },
+          "supports_server_compaction": {
+            "type": "boolean",
+            "description": "Whether the direct provider API supports threshold server-side compaction.\n\nThis is an explicit rollout control. Unknown models and provider\nsurfaces that do not opt in remain disabled."
           },
           "temperature": {
             "type": "boolean",

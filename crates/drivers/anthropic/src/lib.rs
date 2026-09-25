@@ -27,6 +27,7 @@
 mod driver;
 mod effort;
 mod prefill;
+mod server_compaction;
 
 pub use driver::{AnthropicChatDriver, descriptor, from_env, provider, register_driver};
 
