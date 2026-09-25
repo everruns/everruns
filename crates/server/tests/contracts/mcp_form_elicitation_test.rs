@@ -12,13 +12,14 @@ use crate::test_harness;
 
 use async_trait::async_trait;
 use axum::http::{Method, StatusCode};
+use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_platform::{Agent, Session};
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
 use std::sync::{
     Arc,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use test_harness::TestServer;
 use uuid::Uuid;
@@ -31,6 +32,38 @@ const CLIENT_CAPABILITIES_META_KEY: &str = "io.modelcontextprotocol/clientCapabi
 /// Counts the durable resumes, which is how a test sees the turn restart.
 struct RecordingRunner {
     resume_calls: Arc<AtomicUsize>,
+}
+
+/// Withholds `org:sessions:manage`, but only once armed.
+///
+/// `session.view` and `session.manage` both rest on that one permission, which
+/// is the point of the test — a caller who cannot manage a session must not be
+/// able to read its pending questions either. It also means the fixture cannot
+/// build the parked session while the denial is live, since creating one needs
+/// the same permission. So arm it after setup, not before.
+#[derive(Default)]
+struct DenySessionManagement {
+    armed: AtomicBool,
+}
+
+impl DenySessionManagement {
+    fn arm(&self) {
+        self.armed.store(true, Ordering::SeqCst);
+    }
+}
+
+impl PermissionResolver for DenySessionManagement {
+    fn has_permission(&self, _caller: &Caller, permission: &Permission) -> bool {
+        !(self.armed.load(Ordering::SeqCst) && permission == &Permission::OrgSessionsManage)
+    }
+
+    fn caller_permissions(&self, caller: &Caller) -> Vec<Permission> {
+        Permission::ALL
+            .iter()
+            .copied()
+            .filter(|permission| self.has_permission(caller, permission))
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -366,6 +399,36 @@ async fn a_parked_question_set_reaches_a_capable_client_as_a_form() {
         assert_ne!(property["type"], "array");
         assert_ne!(property["type"], "object");
     }
+}
+
+#[tokio::test]
+async fn session_policy_denial_does_not_disclose_or_resolve_a_question_set() {
+    let resumes = Arc::new(AtomicUsize::new(0));
+    let policy = Arc::new(DenySessionManagement::default());
+    let server = TestServer::in_memory_with_runner_and_permission_resolver(
+        Arc::new(RecordingRunner {
+            resume_calls: resumes.clone(),
+        }),
+        policy.clone(),
+    )
+    .await;
+    let session_id = parked_session(&server).await;
+    emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
+    policy.arm();
+
+    let response = poll_status(&server, session_id, json!({ "_meta": elicitation_meta() })).await;
+
+    assert_eq!(response["result"]["isError"], true, "got {response}");
+    assert!(
+        response["result"]["requestState"].is_null(),
+        "got {response}"
+    );
+    assert!(
+        response["result"]["inputRequests"].is_null(),
+        "got {response}"
+    );
+    assert!(completed_results(&server, session_id).await.is_empty());
+    assert_eq!(resumes.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
