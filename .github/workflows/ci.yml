@@ -737,7 +737,11 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      # Growth is measured against the merge base with origin/main, so the job
+      # needs history rather than the default single commit.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Check no file gained a log site that interpolates an error
         run: bash scripts/lib/check-log-error-field.sh
