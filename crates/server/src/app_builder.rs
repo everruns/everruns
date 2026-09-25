@@ -344,11 +344,7 @@ impl ServerAppBuilder {
         self
     }
 
-    /// Supply the Slack app provisioner that backs one-click install (EVE-1069).
-    ///
-    /// The app configuration token it needs is a company credential, not
-    /// something a self-hosted deployment holds; unset, the install route
-    /// answers 501 and the copy-paste flow is unchanged.
+    /// Supply a deployment-owned Slack app provisioner.
     pub fn slack_app_provisioner(
         mut self,
         provisioner: Arc<dyn everruns_platform::slack_provisioning::SlackAppProvisioner>,
@@ -534,6 +530,12 @@ impl ServerAppBuilder {
                 None
             }
         };
+        let slack_provisioning = crate::slack_provisioning::configure(
+            &mut supervisor,
+            db.clone(),
+            encryption.clone(),
+            self.slack_app_provisioner.clone(),
+        )?;
 
         // Seed must run after encryption is resolved: single-tenant/dev seeding
         // materializes DEFAULT_*_API_KEY env vars into the default org's
@@ -1578,14 +1580,12 @@ impl ServerAppBuilder {
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))
             .merge(api::slack_events::routes(slack_state.clone()))
-            // One-click Slack install (EVE-1069); without a provisioner the
-            // route answers 501 and the copy-paste flow is unchanged.
             .merge(api::slack_install::routes(
                 api::slack_install::SlackInstallState::new(
                     slack_state,
                     auth_state.clone(),
                     auth_config.frontend_url.clone(),
-                    self.slack_app_provisioner.clone(),
+                    slack_provisioning,
                 ),
             ))
             .merge(api::app_webhooks::routes(app_webhooks_state))

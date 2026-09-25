@@ -27,6 +27,7 @@ mod memory;
 mod notifications;
 mod observers;
 mod org_feature_flags;
+mod org_slack_connections;
 mod organizations;
 mod payments;
 mod plugins;

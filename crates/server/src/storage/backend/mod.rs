@@ -27,6 +27,7 @@ use super::mcp_catalog::*;
 use super::mcp_tool_cache::*;
 use super::memory::InMemoryDatabase;
 use super::models::*;
+use super::org_slack_connections::*;
 use super::reporting::models::ReportingOutboxRow;
 use super::repositories::Database;
 use super::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};

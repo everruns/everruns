@@ -96,12 +96,27 @@ export interface BeginSlackInstallResult {
 }
 
 export interface SlackInstallCapability {
-  available: boolean;
+  supported: boolean;
+  connected: boolean;
+  reconnect_required: boolean;
+  can_manage: boolean;
 }
 
 export async function getSlackInstallCapability(): Promise<SlackInstallCapability> {
   const response = await api.get<SlackInstallCapability>("/v1/slack/install");
   return response.data;
+}
+
+export async function setSlackConnection(refreshToken: string): Promise<void> {
+  await api.put("/v1/slack/connection", { refresh_token: refreshToken });
+}
+
+export async function testSlackConnection(): Promise<void> {
+  await api.post("/v1/slack/connection/test");
+}
+
+export async function clearSlackConnection(): Promise<void> {
+  await api.delete("/v1/slack/connection");
 }
 
 /**

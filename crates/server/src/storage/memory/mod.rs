@@ -32,6 +32,7 @@ mod memories;
 mod notifications;
 mod observers;
 mod org_feature_flags;
+mod org_slack_connections;
 mod organizations;
 mod payments;
 mod plugins;
@@ -79,6 +80,7 @@ use uuid::Uuid;
 use super::IngressEndpointRow;
 use super::mcp_tool_cache::*;
 use super::models::*;
+use super::org_slack_connections::*;
 
 /// Max search tokens to prevent performance degradation from long inputs.
 const MAX_SEARCH_TOKENS: usize = 8;
@@ -196,6 +198,7 @@ pub struct InMemoryDatabase {
     // Organization settings (default model, etc.)
     org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
     org_feature_flags: RwLock<HashMap<i64, HashMap<String, bool>>>,
+    org_slack_connections: RwLock<HashMap<i64, OrgSlackConnectionRow>>,
     // Evals (user-facing behavioral tests)
     evals: RwLock<HashMap<Uuid, EvalRow>>,
     eval_cases: RwLock<HashMap<Uuid, EvalCaseRow>>,
@@ -354,6 +357,7 @@ impl Default for InMemoryDatabase {
             agent_identity_connections: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
             org_feature_flags: RwLock::new(HashMap::new()),
+            org_slack_connections: RwLock::new(HashMap::new()),
             evals: RwLock::new(HashMap::new()),
             eval_cases: RwLock::new(HashMap::new()),
             eval_runs: RwLock::new(HashMap::new()),

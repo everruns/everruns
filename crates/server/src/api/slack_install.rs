@@ -23,11 +23,11 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use everruns_platform::slack_provisioning::{
-    ProvisionedSlackApp, SlackAppProvisioner, SlackProvisioningError,
-    UnavailableSlackAppProvisioner,
+    ProvisionedSlackApp, SlackAppProvisioner, SlackProvisioningConnectionStatus,
+    SlackProvisioningError, UnavailableSlackAppProvisioner,
 };
 use everruns_platform::{ChannelType, SlackChannelConfig};
 use serde::{Deserialize, Serialize};
@@ -36,6 +36,7 @@ use std::sync::Arc;
 use super::common::ErrorResponse;
 use super::slack_events::{SlackState, SlackTarget};
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::slack_provisioning::{SlackApiProvisioner, SlackProvisioningSetup};
 
 /// How long a minted `install_state` stays valid.
 ///
@@ -53,11 +54,82 @@ pub struct SlackInstallState {
     pub slack: SlackState,
     pub auth: AuthState,
     pub provisioner: Arc<dyn SlackAppProvisioner>,
-    pub provisioner_available: bool,
+    pub connection_manager: Option<Arc<SlackApiProvisioner>>,
     /// Where `oauth.v2.access` is posted. Overridden in tests.
     pub slack_api_base: String,
     /// Where the callback sends the operator's browser when it is done.
     pub ui_base_url: String,
+}
+
+#[derive(Deserialize)]
+pub struct SetSlackConnectionRequest {
+    refresh_token: String,
+}
+
+async fn set_connection(
+    org: ResolvedOrg,
+    State(state): State<SlackInstallState>,
+    Json(request): Json<SetSlackConnectionRequest>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    require_org_admin(&org)?;
+    let manager = state.connection_manager.ok_or_else(unsupported_response)?;
+    manager
+        .connect(org.org_id, &request.refresh_token)
+        .await
+        .map_err(connection_error_response)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn test_connection(
+    org: ResolvedOrg,
+    State(state): State<SlackInstallState>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    require_org_admin(&org)?;
+    let manager = state.connection_manager.ok_or_else(unsupported_response)?;
+    manager
+        .test_connection(org.org_id)
+        .await
+        .map_err(connection_error_response)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn clear_connection(
+    org: ResolvedOrg,
+    State(state): State<SlackInstallState>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    require_org_admin(&org)?;
+    let manager = state.connection_manager.ok_or_else(unsupported_response)?;
+    manager
+        .clear_connection(org.org_id)
+        .await
+        .map_err(connection_error_response)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn require_org_admin(org: &ResolvedOrg) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if org.role.has_permission(everruns_core::OrgRole::Admin) {
+        Ok(())
+    } else {
+        Err(
+            ErrorResponse::new("Organization administrator access required")
+                .into_response(StatusCode::FORBIDDEN),
+        )
+    }
+}
+
+fn unsupported_response() -> (StatusCode, Json<ErrorResponse>) {
+    ErrorResponse::new("Slack app provisioning is not supported on this deployment")
+        .into_response(StatusCode::NOT_IMPLEMENTED)
+}
+
+fn connection_error_response(error: SlackProvisioningError) -> (StatusCode, Json<ErrorResponse>) {
+    match error {
+        SlackProvisioningError::Rejected(code) if code == "invalid_refresh_token" => {
+            ErrorResponse::new("Slack rejected the configuration refresh token")
+                .into_response(StatusCode::BAD_REQUEST)
+        }
+        other => provisioning_error_response(other),
+    }
 }
 
 impl axum::extract::FromRef<SlackInstallState> for AuthState {
@@ -74,15 +146,16 @@ impl SlackInstallState {
         slack: SlackState,
         auth: AuthState,
         ui_base_url: String,
-        provisioner: Option<Arc<dyn SlackAppProvisioner>>,
+        setup: SlackProvisioningSetup,
     ) -> Self {
-        let provisioner = provisioner.unwrap_or_else(|| Arc::new(UnavailableSlackAppProvisioner));
-        let provisioner_available = provisioner.is_available();
+        let provisioner = setup
+            .provisioner
+            .unwrap_or_else(|| Arc::new(UnavailableSlackAppProvisioner));
         Self {
             slack,
             auth,
             provisioner,
-            provisioner_available,
+            connection_manager: setup.connection_manager,
             slack_api_base: super::slack_events::SLACK_API_BASE.to_string(),
             ui_base_url,
         }
@@ -92,6 +165,11 @@ impl SlackInstallState {
 pub fn routes(state: SlackInstallState) -> Router {
     Router::new()
         .route("/v1/slack/install", get(install_capability))
+        .route(
+            "/v1/slack/connection",
+            put(set_connection).delete(clear_connection),
+        )
+        .route("/v1/slack/connection/test", post(test_connection))
         .route("/v1/e/{channel_id}/slack/install", post(begin_install))
         .route(
             "/v1/e/{channel_id}/slack/oauth/callback",
@@ -102,16 +180,33 @@ pub fn routes(state: SlackInstallState) -> Router {
 
 #[derive(Serialize)]
 pub struct SlackInstallCapability {
-    pub available: bool,
+    pub supported: bool,
+    pub connected: bool,
+    pub reconnect_required: bool,
+    pub can_manage: bool,
 }
 
 async fn install_capability(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(state): State<SlackInstallState>,
-) -> Json<SlackInstallCapability> {
-    Json(SlackInstallCapability {
-        available: state.provisioner_available,
-    })
+) -> Result<Json<SlackInstallCapability>, (StatusCode, Json<ErrorResponse>)> {
+    let supported = state.provisioner.deployment_supported();
+    let status = if supported {
+        state
+            .provisioner
+            .connection_status(org.org_id)
+            .await
+            .map_err(provisioning_error_response)?
+    } else {
+        SlackProvisioningConnectionStatus::default()
+    };
+    Ok(Json(SlackInstallCapability {
+        supported,
+        connected: status.connected,
+        reconnect_required: status.reconnect_required,
+        can_manage: state.connection_manager.is_some()
+            && org.role.has_permission(everruns_core::OrgRole::Admin),
+    }))
 }
 #[derive(Serialize)]
 pub struct BeginInstallResponse {
@@ -157,7 +252,7 @@ async fn begin_install(
                     .await?;
             let created = state
                 .provisioner
-                .create_app(&manifest)
+                .create_app(org.org_id, &manifest)
                 .await
                 .map_err(provisioning_error_response)?;
             config.signing_secret = created.signing_secret;
@@ -406,6 +501,14 @@ fn provisioning_error_response(error: SlackProvisioningError) -> (StatusCode, Js
             "One-click Slack install is not configured on this deployment; configure the endpoint manually",
         )
         .into_response(StatusCode::NOT_IMPLEMENTED),
+        SlackProvisioningError::OrgNotConnected => ErrorResponse::new(
+            "Connect Slack for this organization before using one-click install",
+        )
+        .into_response(StatusCode::CONFLICT),
+        SlackProvisioningError::ReconnectRequired => ErrorResponse::new(
+            "Reconnect Slack for this organization before using one-click install",
+        )
+        .into_response(StatusCode::CONFLICT),
         SlackProvisioningError::Rejected(code) => {
             ErrorResponse::new(format!("Slack rejected the app creation: {code}"))
                 .into_response(StatusCode::BAD_GATEWAY)
@@ -451,6 +554,26 @@ fn urlencoding_encode(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn resolved_org(role: everruns_core::OrgRole) -> ResolvedOrg {
+        ResolvedOrg {
+            org_id: 41,
+            public_id: "org_00000000000000000000000000000029".to_string(),
+            name: "Test".to_string(),
+            user_id: Some(uuid::Uuid::nil()),
+            role,
+            is_platform_user: false,
+            feature_flags: everruns_platform::FeatureFlags::default(),
+        }
+    }
+
+    #[test]
+    fn slack_connection_mutations_require_org_admin() {
+        assert!(require_org_admin(&resolved_org(everruns_core::OrgRole::Admin)).is_ok());
+        assert!(require_org_admin(&resolved_org(everruns_core::OrgRole::Owner)).is_ok());
+        let (status, _) =
+            require_org_admin(&resolved_org(everruns_core::OrgRole::Member)).unwrap_err();
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
 
     fn config_with_state(state: Option<&str>, issued_minutes_ago: i64) -> SlackChannelConfig {
         let mut config = parse_config(&serde_json::json!({}));

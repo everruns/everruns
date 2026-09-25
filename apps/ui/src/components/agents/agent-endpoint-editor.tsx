@@ -38,6 +38,7 @@ import {
   RailSection,
 } from "@/components/layout";
 import type { Agent, AppChannel, ScheduleChannelConfig } from "@/lib/api/types";
+import type { SlackInstallCapability } from "@/lib/api/agent-endpoints";
 import { getChannelTypeDisplayName, getEndpointLifecyclePresentation } from "@/lib/app-channels";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
@@ -88,7 +89,8 @@ export function AgentEndpointEditor({
       canManage={canManage}
       canDangerous={canDangerous}
       returnHref={returnHref}
-      slackInstallAvailable={slackInstallCapability.data?.available === true}
+      slackInstallCapability={slackInstallCapability.data}
+      onSlackCapabilityChanged={slackInstallCapability.refetch}
       slackInstallFailure={slackInstallFailure}
     />
   );
@@ -100,7 +102,8 @@ function AgentEndpointForm({
   canManage,
   canDangerous,
   returnHref,
-  slackInstallAvailable,
+  slackInstallCapability,
+  onSlackCapabilityChanged,
   slackInstallFailure,
 }: {
   agent: Agent;
@@ -108,7 +111,8 @@ function AgentEndpointForm({
   canManage: boolean;
   canDangerous: boolean;
   returnHref: string;
-  slackInstallAvailable: boolean;
+  slackInstallCapability?: SlackInstallCapability;
+  onSlackCapabilityChanged?: () => void | Promise<unknown>;
   slackInstallFailure?: string;
 }) {
   const router = useRouter();
@@ -123,6 +127,7 @@ function AgentEndpointForm({
   );
   const agentName = getDisplayName(agent);
   const lifecycle = getEndpointLifecyclePresentation(endpoint);
+  const slackInstallAvailable = slackInstallCapability?.connected === true;
   const slackInstallFailureMessage = slackInstallFailure
     ? /[.!?]$/.test(slackInstallFailure)
       ? slackInstallFailure
@@ -242,7 +247,8 @@ function AgentEndpointForm({
                   onChange={setFormState}
                   mode="edit"
                   endpointId={endpoint.id}
-                  slackInstallAvailable={slackInstallAvailable}
+                  slackInstallCapability={slackInstallCapability}
+                  onSlackCapabilityChanged={onSlackCapabilityChanged}
                 />
               </CardContent>
             </Card>
