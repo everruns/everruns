@@ -10,7 +10,7 @@
 //   task handle / `taskId`          ↔ `session_id`
 //   `tools/call` → CreateTaskResult ↔ `agent_run` / `session_send_message`
 //   `tasks/get`                     ↔ `session_get_status`
-//   `tasks/update` (provide input)  ↔ `session_send_message`
+//   `tasks/update` (provide input)  ↔ question resolution / `session_send_message`
 //   `tasks/cancel`                  ↔ `cancel_session`
 //   lifecycle status                ↔ derived from session status
 //
@@ -81,7 +81,9 @@ impl TaskStatus {
 pub(super) fn task_status_from_session_status(session_status: &str) -> TaskStatus {
     match session_status {
         "started" | "active" | "running" => TaskStatus::Working,
-        "waiting_for_tool_results" | "paused" => TaskStatus::InputRequired,
+        "waiting_for_tool_results" | "waitingfortoolresults" | "paused" => {
+            TaskStatus::InputRequired
+        }
         "idle" | "completed" => TaskStatus::Completed,
         "failed" => TaskStatus::Failed,
         "cancelled" | "canceled" => TaskStatus::Cancelled,
@@ -163,6 +165,10 @@ mod tests {
         );
         assert_eq!(
             task_status_from_session_status("waiting_for_tool_results"),
+            TaskStatus::InputRequired
+        );
+        assert_eq!(
+            task_status_from_session_status("waitingfortoolresults"),
             TaskStatus::InputRequired
         );
         assert_eq!(

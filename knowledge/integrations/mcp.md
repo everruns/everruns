@@ -144,8 +144,8 @@ unchanged.
 |-----------------|---------------------|
 | task handle / `taskId` | `session_id` (Postgres-backed, instance-agnostic) |
 | `tools/call` returns `CreateTaskResult` | `agent_run` / `session_send_message` return the task handle alongside their existing fields |
-| `tasks/get` | `session_get_status` (status + events, surfaced under `result`) |
-| `tasks/update` (provide input on `input_required`) | `session_send_message` |
+| `tasks/get` | `session_get_status` (status + events under `result`; pending questions under `inputRequests`) |
+| `tasks/update` (provide input on `input_required`) | typed question resolution, or `session_send_message` for free text |
 | `tasks/cancel` | `cancel_session` (cooperative) |
 | lifecycle state | derived from session status |
 | `tasks/list` | not implemented (removed by SEP-2663) |
@@ -173,6 +173,26 @@ fields (`resultType: "task"`, `taskId`, `status`, `ttlMs`, `pollIntervalMs`)
 into the tools/call `result`; the existing `content` / `structuredContent` are
 untouched. `tasks/get` returns a `Task` object (`taskId`, `status`, `ttlMs`,
 `pollIntervalMs`) with the full `session_get_status` payload under `result`.
+When the session is parked on `ask_user`, `tasks/get` also returns
+`inputRequests.ask_user`. The request is the same `elicitation/create` form
+projection used by `session_get_status`: its `requestedSchema` carries choice,
+multi-select, and text questions without requiring the client to inspect
+events. The client echoes the `ask_user` key in `tasks/update.inputResponses`
+and sends the standard elicitation response (`action` plus form `content`).
+Accepted selections are checked against the emitted question set by the shared
+question-resolution operation before the turn resumes. Decline and cancel
+remain distinct outcomes.
+
+Free-text `tasks/update` remains supported through `message` or a string-valued
+`inputResponses` entry. If an `ask_user` question is pending, message delivery
+first resolves it as `cancelled`, then records the user message and resumes the
+turn as one durable operation.
+
+Tasks opt-in alone does not claim that a client can render an
+`elicitation/create` question. A session gets the `ask_user` pause hint only
+when the initiating client also declares elicitation support. A Tasks client
+without that rendering capability therefore keeps the unattended fallback:
+the question resolves from declared defaults instead of parking the session.
 
 **Structured result.** When the task's session reported a deterministic,
 schema-bound result (`result.json`, produced by a task declared with a

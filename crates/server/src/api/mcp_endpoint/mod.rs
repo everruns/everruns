@@ -1270,6 +1270,20 @@ async fn handle_tasks_get(
             }
 
             let mut task = tasks::task_handle(task_id, task_status);
+            if task_status == tasks::TaskStatus::InputRequired
+                && let Ok(session_id) = task_id.parse::<everruns_provider::typed_id::SessionId>()
+                && let Ok(Some(pending)) = form_elicitation::pending_questions_for_session(
+                    &Caller::from(org),
+                    session_id,
+                    state,
+                )
+                .await
+                && let Some(request) = form_elicitation::form_input_request(&pending.questions)
+            {
+                task["inputRequests"] = json!({
+                    form_elicitation::ASK_USER_REQUEST_KEY: request
+                });
+            }
             // The full session_get_status payload is the task's result view. For
             // terminal `completed`, this is what the original tools/call would
             // have returned; for `working`/`input_required` it's a progress
@@ -1322,10 +1336,7 @@ async fn handle_tasks_cancel(
     }
 }
 
-/// `tasks/update` → provide input to a task in `input_required`. Maps to sending
-/// a user message (`session_send_message`). SEP-2663 keys input under
-/// `inputResponses`; we accept either a single `message` string or the first
-/// string value found in the `inputResponses` map.
+/// `tasks/update` → provide input to a task in `input_required`.
 async fn handle_tasks_update(
     id: Option<Value>,
     task_id: &str,
@@ -1333,17 +1344,22 @@ async fn handle_tasks_update(
     org: &ResolvedOrg,
     state: &AppState,
 ) -> JsonRpcResponse {
-    let message = params.get("message").and_then(Value::as_str).or_else(|| {
-        params
-            .get("inputResponses")
-            .and_then(Value::as_object)
-            .and_then(|m| m.values().find_map(Value::as_str))
-    });
+    let input_responses = params.get("inputResponses").and_then(Value::as_object);
+    if params.get("message").and_then(Value::as_str).is_none()
+        && let Some(response) = input_responses
+            .and_then(|responses| responses.get(form_elicitation::ASK_USER_REQUEST_KEY))
+            .filter(|response| response.is_object())
+    {
+        return handle_tasks_question_update(id, task_id, response, org, state).await;
+    }
 
+    let message = params.get("message").and_then(Value::as_str).or_else(|| {
+        input_responses.and_then(|responses| responses.values().find_map(Value::as_str))
+    });
     let Some(message) = message else {
         return JsonRpcResponse::invalid_params(
             id,
-            "tasks/update requires a 'message' string or an 'inputResponses' map with a string value",
+            "tasks/update requires a 'message' string or an 'inputResponses' entry containing an ask_user response or string value",
         );
     };
 
@@ -1363,6 +1379,82 @@ async fn handle_tasks_update(
         Err(msg) => {
             let envelope = classify_mcp_execute_error(&msg);
             JsonRpcResponse::success(id, error_result_payload(&msg, Some(&envelope)))
+        }
+    }
+}
+
+async fn handle_tasks_question_update(
+    id: Option<Value>,
+    task_id: &str,
+    response: &Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> JsonRpcResponse {
+    use crate::api::question_answers::{QuestionResolver, ResolveError, resolve_question_answers};
+    use everruns_builtins::ask_user::AskUserStatus;
+
+    let session_id = match task_id.parse::<everruns_provider::typed_id::SessionId>() {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            return JsonRpcResponse::invalid_params(id, format!("Invalid taskId: {error}"));
+        }
+    };
+    let caller = Caller::from(org);
+    let pending =
+        match form_elicitation::pending_questions_for_session(&caller, session_id, state).await {
+            Ok(Some(pending)) => pending,
+            Ok(None) => {
+                return JsonRpcResponse::invalid_params(
+                    id,
+                    "Task has no pending ask_user input request",
+                );
+            }
+            Err(error) => {
+                tracing::error!(error = %error, "Failed to read a task's pending question set");
+                return JsonRpcResponse::error(id, -32603, "Failed to read task input");
+            }
+        };
+    let outcome = match form_elicitation::outcome_from_response(&pending.questions, response) {
+        Ok(outcome) => outcome,
+        Err(message) => return JsonRpcResponse::invalid_params(id, message),
+    };
+    let (status, answers) = match outcome {
+        form_elicitation::FormOutcome::Answered(answers) => (AskUserStatus::Answered, answers),
+        form_elicitation::FormOutcome::Declined => (AskUserStatus::Declined, Vec::new()),
+        form_elicitation::FormOutcome::Cancelled => (AskUserStatus::Cancelled, Vec::new()),
+    };
+    let resolver = QuestionResolver {
+        db: &state.db,
+        session_service: &state.session_service,
+        event_service: &state.event_service,
+        runner: state.runner.clone(),
+    };
+
+    match resolve_question_answers(
+        &resolver,
+        &caller,
+        session_id,
+        Some(&pending.tool_call_id),
+        status,
+        &answers,
+    )
+    .await
+    {
+        Ok(_) => handle_tasks_get(id, task_id, &json!({}), org, state).await,
+        Err(ResolveError::Invalid(detail)) => JsonRpcResponse::invalid_params(id, detail),
+        Err(ResolveError::AlreadyResolved) => {
+            JsonRpcResponse::invalid_params(id, "This question set has already been answered")
+        }
+        Err(ResolveError::NotWaiting(detail)) => JsonRpcResponse::invalid_params(
+            id,
+            format!("Task is not waiting for input (current status: {detail})"),
+        ),
+        Err(ResolveError::NoPendingQuestions | ResolveError::WrongPendingCall) => {
+            JsonRpcResponse::invalid_params(id, "Task has no matching pending question set")
+        }
+        Err(ResolveError::Internal(detail)) => {
+            tracing::error!(error = %detail, "Failed to resolve task question answers");
+            JsonRpcResponse::error(id, -32603, "Failed to record task input")
         }
     }
 }
