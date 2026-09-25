@@ -140,11 +140,11 @@ pub trait SandboxProvider: Send + Sync {
     /// The containment this provider applies.
     fn mode(&self) -> ContainmentMode;
 
-    /// A command that runs `script` in `cwd` under this containment.
+    /// A command that runs `script` in `cwd`, with writes bounded to `workspace`.
     ///
     /// Fails rather than returning an uncontained command when the OS primitive
     /// the mode needs is unavailable.
-    fn command(&self, cwd: &Path, script: &str) -> Result<Command>;
+    fn command(&self, workspace: &Path, cwd: &Path, script: &str) -> Result<Command>;
 }
 
 /// The provider for `options`.
@@ -249,7 +249,7 @@ impl SandboxProvider for UnsafeHost {
         ContainmentMode::FullAccess
     }
 
-    fn command(&self, cwd: &Path, script: &str) -> Result<Command> {
+    fn command(&self, _workspace: &Path, cwd: &Path, script: &str) -> Result<Command> {
         Ok(shell_command(cwd, script))
     }
 }
@@ -263,13 +263,18 @@ impl SandboxProvider for NativeSandbox {
         self.options.mode
     }
 
-    fn command(&self, cwd: &Path, script: &str) -> Result<Command> {
-        native_command(cwd, script, &self.options)
+    fn command(&self, workspace: &Path, cwd: &Path, script: &str) -> Result<Command> {
+        native_command(workspace, cwd, script, &self.options)
     }
 }
 
 #[cfg(target_os = "macos")]
-fn native_command(cwd: &Path, script: &str, options: &SandboxOptions) -> Result<Command> {
+fn native_command(
+    workspace: &Path,
+    cwd: &Path,
+    script: &str,
+    options: &SandboxOptions,
+) -> Result<Command> {
     let executable = Path::new("/usr/bin/sandbox-exec");
     // THREAT[TM-BASH-019]: a missing OS primitive is an error, never a silent
     // fall back to an uncontained host process.
@@ -280,6 +285,14 @@ fn native_command(cwd: &Path, script: &str, options: &SandboxOptions) -> Result<
         )
     }
 
+    let canonical_workspace = std::fs::canonicalize(workspace)
+        .with_context(|| format!("canonicalize workspace: {}", workspace.display()))?;
+    let canonical_cwd = std::fs::canonicalize(cwd)
+        .with_context(|| format!("canonicalize working directory: {}", cwd.display()))?;
+    if canonical_cwd != cwd || !canonical_cwd.starts_with(&canonical_workspace) {
+        anyhow::bail!("working directory must be a non-symlink path inside the workspace");
+    }
+
     // Seatbelt denies network and all writes by default. Reads stay available
     // so compilers, SDKs and package caches keep working; the workspace, the
     // private temp, and the conventional shared /tmp are writable for tool
@@ -288,7 +301,7 @@ fn native_command(cwd: &Path, script: &str, options: &SandboxOptions) -> Result<
     // symlink.
     let temp = sandbox_temp_dir(&options.temp_tag)?;
     let home = sandbox_home_dir(&temp)?;
-    let profile = macos_profile(cwd, &temp, options)?;
+    let profile = macos_profile(workspace, &temp, options)?;
     let mut command = Command::new(executable);
     command
         .arg("-p")
@@ -302,13 +315,20 @@ fn native_command(cwd: &Path, script: &str, options: &SandboxOptions) -> Result<
 }
 
 #[cfg(target_os = "linux")]
-fn native_command(cwd: &Path, script: &str, options: &SandboxOptions) -> Result<Command> {
+fn native_command(
+    workspace: &Path,
+    cwd: &Path,
+    script: &str,
+    options: &SandboxOptions,
+) -> Result<Command> {
     let temp = sandbox_temp_dir(&options.temp_tag)?;
     let home = sandbox_home_dir(&temp)?;
     let (program, leading) = resolve_launcher(&options.launcher)?;
     let mut command = Command::new(program);
     command.args(leading);
     command
+        .arg("--workspace")
+        .arg(workspace)
         .arg("--cwd")
         .arg(cwd)
         .arg("--temp")
@@ -377,7 +397,12 @@ fn prepared_writable_roots(options: &SandboxOptions) -> Result<Vec<PathBuf>> {
 }
 
 #[cfg(target_os = "windows")]
-fn native_command(cwd: &Path, script: &str, _options: &SandboxOptions) -> Result<Command> {
+fn native_command(
+    _workspace: &Path,
+    cwd: &Path,
+    script: &str,
+    _options: &SandboxOptions,
+) -> Result<Command> {
     // THREAT[TM-BASH-025]: Windows has no containment implementation yet. Rather than refuse to run,
     // execute uncontained: the caller is warned at every mode via
     // `danger_warning`, which is the honest form of fail-closed here.
@@ -385,7 +410,12 @@ fn native_command(cwd: &Path, script: &str, _options: &SandboxOptions) -> Result
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-fn native_command(_cwd: &Path, _script: &str, _options: &SandboxOptions) -> Result<Command> {
+fn native_command(
+    _workspace: &Path,
+    _cwd: &Path,
+    _script: &str,
+    _options: &SandboxOptions,
+) -> Result<Command> {
     // THREAT[TM-BASH-019]: fail closed rather than run an unbounded command.
     anyhow::bail!(
         "native containment is supported only on macOS and Linux; refusing to run uncontained. \
@@ -626,7 +656,7 @@ mod tests {
     fn full_access_is_the_only_mode_that_hands_back_a_bare_shell() {
         let temp = tempfile::tempdir().expect("workspace");
         let open = provider(SandboxOptions::new(ContainmentMode::FullAccess));
-        assert!(open.command(temp.path(), "true").is_ok());
+        assert!(open.command(temp.path(), temp.path(), "true").is_ok());
         assert_eq!(open.mode(), ContainmentMode::FullAccess);
     }
 

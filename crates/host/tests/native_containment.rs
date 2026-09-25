@@ -52,7 +52,7 @@ async fn run(mut command: Command) -> (i32, String) {
 /// provider fails closed, which is itself the contract worth asserting.
 async fn kernel_enforces_landlock(workspace: &std::path::Path) -> bool {
     let command = contained(ContainmentMode::WorkspaceWrite)
-        .command(workspace, "true")
+        .command(workspace, workspace, "true")
         .expect("command builds");
     let (code, output) = run(command).await;
     if code == 0 {
@@ -75,7 +75,11 @@ async fn a_contained_command_writes_inside_the_workspace_and_nowhere_else() {
     }
 
     let inside = contained(ContainmentMode::WorkspaceWrite)
-        .command(workspace.path(), "echo contained > witness.txt")
+        .command(
+            workspace.path(),
+            workspace.path(),
+            "echo contained > witness.txt",
+        )
         .expect("command builds");
     let (code, output) = run(inside).await;
     assert_eq!(code, 0, "writing into the workspace: {output}");
@@ -84,11 +88,38 @@ async fn a_contained_command_writes_inside_the_workspace_and_nowhere_else() {
     let escape = contained(ContainmentMode::WorkspaceWrite)
         .command(
             workspace.path(),
+            workspace.path(),
             &format!("echo escaped > {}/witness.txt", outside.path().display()),
         )
         .expect("command builds");
     let (code, _) = run(escape).await;
     assert_ne!(code, 0, "a write outside the workspace must fail");
+    assert!(!outside.path().join("witness.txt").exists());
+}
+
+#[tokio::test]
+async fn a_symlinked_working_directory_cannot_escape_the_workspace() {
+    use std::os::unix::fs::symlink;
+
+    let workspace = scratch();
+    let outside = scratch();
+    if !kernel_enforces_landlock(workspace.path()).await {
+        return;
+    }
+
+    // This models two tool calls: first create an allowed workspace symlink,
+    // then request it as the next command's working directory.
+    symlink(outside.path(), workspace.path().join("escape")).expect("create escape symlink");
+    let command = contained(ContainmentMode::WorkspaceWrite)
+        .command(
+            workspace.path(),
+            &workspace.path().join("escape"),
+            "echo escaped > witness.txt",
+        )
+        .expect("command builds");
+    let (code, output) = run(command).await;
+
+    assert_ne!(code, 0, "symlinked cwd must be rejected: {output}");
     assert!(!outside.path().join("witness.txt").exists());
 }
 
@@ -100,14 +131,18 @@ async fn read_only_containment_denies_the_workspace_too() {
     }
 
     let command = contained(ContainmentMode::ReadOnly)
-        .command(workspace.path(), "echo denied > witness.txt")
+        .command(
+            workspace.path(),
+            workspace.path(),
+            "echo denied > witness.txt",
+        )
         .expect("command builds");
     let (code, _) = run(command).await;
     assert_ne!(code, 0, "read-only means the workspace is read-only");
     assert!(!workspace.path().join("witness.txt").exists());
 
     let read = contained(ContainmentMode::ReadOnly)
-        .command(workspace.path(), "ls /")
+        .command(workspace.path(), workspace.path(), "ls /")
         .expect("command builds");
     assert_eq!(run(read).await.0, 0, "host reads stay available");
 }
@@ -130,6 +165,7 @@ async fn a_configured_writable_root_is_writable_and_its_parent_is_not() {
     let command = sandbox
         .command(
             workspace.path(),
+            workspace.path(),
             &format!("echo cached > {}/witness.txt", cache.display()),
         )
         .expect("command builds");
@@ -137,6 +173,7 @@ async fn a_configured_writable_root_is_writable_and_its_parent_is_not() {
 
     let parent = sandbox
         .command(
+            workspace.path(),
             workspace.path(),
             &format!("echo nope > {}/witness.txt", shared.path().display()),
         )
@@ -158,7 +195,11 @@ async fn outbound_network_sockets_are_denied() {
     // `/dev/tcp` is bash's own socket path, so this tests the seccomp filter
     // without depending on curl or nc being installed.
     let command = contained(ContainmentMode::WorkspaceWrite)
-        .command(workspace.path(), "exec 3<>/dev/tcp/1.1.1.1/80")
+        .command(
+            workspace.path(),
+            workspace.path(),
+            "exec 3<>/dev/tcp/1.1.1.1/80",
+        )
         .expect("command builds");
     let (code, _) = run(command).await;
     assert_ne!(code, 0, "an internet socket must not be creatable");
@@ -176,6 +217,7 @@ async fn credentials_in_the_parent_environment_do_not_reach_the_command() {
     unsafe { std::env::set_var("EVERRUNS_TEST_SECRET", "leaked") };
     let command = contained(ContainmentMode::WorkspaceWrite)
         .command(
+            workspace.path(),
             workspace.path(),
             "echo \"[${EVERRUNS_TEST_SECRET:-absent}]\"",
         )
@@ -197,7 +239,11 @@ async fn shared_tmp_stays_writable_by_design() {
     // tools expect to write to /tmp, and the cost is that a contained command
     // can leave files where other host processes see them.
     let command = contained(ContainmentMode::WorkspaceWrite)
-        .command(workspace.path(), "touch /tmp/everruns-containment-witness")
+        .command(
+            workspace.path(),
+            workspace.path(),
+            "touch /tmp/everruns-containment-witness",
+        )
         .expect("command builds");
     assert_eq!(run(command).await.0, 0);
     let _ = std::fs::remove_file("/tmp/everruns-containment-witness");
@@ -214,7 +260,7 @@ async fn dev_null_stays_writable() {
     // policy without this rule buries every command in permission errors before
     // it starts.
     let command = contained(ContainmentMode::ReadOnly)
-        .command(workspace.path(), "echo quiet > /dev/null")
+        .command(workspace.path(), workspace.path(), "echo quiet > /dev/null")
         .expect("command builds");
     let (code, output) = run(command).await;
     assert_eq!(code, 0, "unexpected output: {output}");

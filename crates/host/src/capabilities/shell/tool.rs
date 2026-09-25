@@ -79,11 +79,17 @@ fn command_failure_hint(exit_code: i32, stderr: &str) -> Option<&'static str> {
 /// repoints (a worktree switch) moves both at once. A store that is not backed
 /// by real disk has no host path to offer, which is a configuration error worth
 /// naming rather than a directory worth inventing.
-fn resolve_workspace(context: &ToolContext, working_dir: Option<&str>) -> Result<PathBuf, String> {
+fn resolve_workspace(
+    context: &ToolContext,
+    working_dir: Option<&str>,
+) -> Result<(PathBuf, PathBuf), String> {
     let Some(store) = context.file_store.as_ref() else {
         return Err("host_shell needs a session filesystem; none is available here".to_string());
     };
     let requested = working_dir.unwrap_or("/");
+    let Some(root) = store.host_path("/") else {
+        return Err("host_shell needs a real-disk workspace".to_string());
+    };
     let Some(path) = store.host_path(requested) else {
         return Err(format!(
             "host_shell runs commands on this machine, but this session's workspace is not \
@@ -98,7 +104,7 @@ fn resolve_workspace(context: &ToolContext, working_dir: Option<&str>) -> Result
             store.display_path(&store.resolve_path(requested))
         ));
     }
-    Ok(path)
+    Ok((root, path))
 }
 
 impl BashTool {
@@ -138,6 +144,7 @@ impl BashTool {
     async fn run(
         &self,
         command: &str,
+        workspace: &Path,
         cwd: &Path,
         sandbox: &Arc<dyn SandboxProvider>,
         sink: Option<&Arc<dyn BackgroundEventSink>>,
@@ -150,7 +157,7 @@ impl BashTool {
             let _ = sink.status("Running bash command").await;
         }
 
-        let mut process = sandbox.command(cwd, command).map_err(|error| {
+        let mut process = sandbox.command(workspace, cwd, command).map_err(|error| {
             ToolExecutionResult::tool_error(format!("containment setup failed: {error:#}"))
         })?;
         crate::containment::configure_stdio(&mut process);
@@ -239,6 +246,7 @@ impl BashTool {
     async fn execute_with_policy(
         &self,
         command: &str,
+        workspace: &Path,
         cwd: &Path,
         context: &ToolContext,
         sink: Option<&Arc<dyn BackgroundEventSink>>,
@@ -271,7 +279,7 @@ impl BashTool {
         if self.config.containment.is_full_access() {
             // Nothing contains this already; there is no boundary left to
             // escalate past, so a request for one is satisfied by running.
-            return self.run(command, cwd, &sandbox, sink).await;
+            return self.run(command, workspace, cwd, &sandbox, sink).await;
         }
 
         match self.config.approval {
@@ -285,10 +293,11 @@ impl BashTool {
                         )
                     })?;
                 Self::request_approval(&gate, command, reason, true).await?;
-                self.run(command, cwd, &full_access(), sink).await
+                self.run(command, workspace, cwd, &full_access(), sink)
+                    .await
             }
             ApprovalPolicy::OnFailure => {
-                let first = self.run(command, cwd, &sandbox, sink).await?;
+                let first = self.run(command, workspace, cwd, &sandbox, sink).await?;
                 if !likely_containment_denial(first.containment, first.exit_code, &first.stderr) {
                     return Ok(first);
                 }
@@ -299,14 +308,15 @@ impl BashTool {
                     true,
                 )
                 .await?;
-                self.run(command, cwd, &full_access(), sink).await
+                self.run(command, workspace, cwd, &full_access(), sink)
+                    .await
             }
             _ if request_full_access => Err(ToolExecutionResult::tool_error(format!(
                 "approval `{}` does not allow escalating past the `{}` containment",
                 self.config.approval.as_str(),
                 self.config.containment.as_str()
             ))),
-            _ => self.run(command, cwd, &sandbox, sink).await,
+            _ => self.run(command, workspace, cwd, &sandbox, sink).await,
         }
     }
 }
@@ -489,7 +499,7 @@ impl Tool for BashTool {
         let Some(command) = script_argument(&arguments) else {
             return ToolExecutionResult::tool_error("'command' is required");
         };
-        let cwd = match resolve_workspace(
+        let (workspace, cwd) = match resolve_workspace(
             context,
             arguments.get("working_dir").and_then(Value::as_str),
         ) {
@@ -510,6 +520,7 @@ impl Tool for BashTool {
         let output = match self
             .execute_with_policy(
                 command,
+                &workspace,
                 &cwd,
                 context,
                 None,
@@ -548,7 +559,7 @@ impl BackgroundExecutableTool for BashTool {
         let Some(command) = script_argument(&arguments) else {
             return Err(ToolExecutionResult::tool_error("'command' is required"));
         };
-        let cwd = resolve_workspace(
+        let (workspace, cwd) = resolve_workspace(
             &context,
             arguments.get("working_dir").and_then(Value::as_str),
         )
@@ -563,6 +574,7 @@ impl BackgroundExecutableTool for BashTool {
         let output = self
             .execute_with_policy(
                 command,
+                &workspace,
                 &cwd,
                 &context,
                 Some(&sink),
