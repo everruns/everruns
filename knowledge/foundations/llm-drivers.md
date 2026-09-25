@@ -245,11 +245,9 @@ When `config.max_tokens` is `None`, drivers resolve the default from model profi
 
 Anthropic requires `max_tokens` in every request (cannot be omitted), so the driver always resolves a value.
 
-**Thinking room on caller caps (Anthropic)**: thinking tokens count toward `max_tokens`, so a caller cap
-sized for the visible answer would be spent on thinking and return empty. The driver treats a caller's
-`max_tokens` as the answer budget and adds thinking room on top: the budget for budget-based thinking,
-an effort-sized allowance for adaptive thinking, capped at the model's output limit. Source:
-`crates/drivers/anthropic/src/effort.rs`.
+**Caller caps and thinking (Anthropic)**: thinking tokens count toward `max_tokens`. An explicit caller
+value remains a hard limit on all generated tokens and is serialized unchanged; callers should size it
+for both thinking and the visible answer. Source: `crates/drivers/anthropic/src/effort.rs`.
 
 **Append-only history (Anthropic)**: Claude Opus 5.5 and Fable 5.1 bind each thinking block to the conversation prefix that produced it (`system`, tools, every earlier message), and every model's prompt cache needs the same prefix. Only the leading run of system messages goes into top-level `system`; later system messages stay in place on models whose profile advertises `mid_conversation_system`. Turn-scoped facts and reminders additionally carry `clear_at: "next_user_message"` under beta `mid-conversation-system-clear-at-2026-08-21`, so the transcript retains each copy while the API stops rendering it after the turn. Models without that profile capability retain the user facts and system-fold fallbacks. Requests to Opus 5.5 and Fable 5.1 set `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`): context management edits earlier history by design, and a dropped block degrades that turn instead of failing it. Drops are logged from `input_transformations`. Source: `crates/drivers/anthropic/src/driver_layout.rs`.
 
@@ -261,7 +259,8 @@ because the API answers them with a 400.
 
 **Stale profile fallback**: If the Anthropic API returns 400 because `max_tokens` exceeds the model's actual limit (e.g., stale profile data), the driver retries once with 16,384 and logs a warning to update the model profile. If the retry also fails, the error propagates normally.
 
-Agents can override `max_tokens` via agent config. Cost guardrails should be configurable per-agent or per-org, not baked into driver code.
+Agents can override `max_tokens` via agent config; the driver preserves explicit limits as resource
+guardrails.
 
 3. **Message Extended Fields**:
    - `reasoning`: Ordered provider reasoning artifacts for this assistant turn

@@ -67,7 +67,14 @@ async fn assert_contract_request(config: LlmCallConfig, registered: bool, expect
         Ok(_) => panic!("expected capture response"),
         Err(error) => error,
     };
-    assert_eq!(error.llm_error_kind(), Some(LlmErrorKind::InvalidRequest));
+    assert_eq!(
+        error.llm_error_kind(),
+        Some(LlmErrorKind::InvalidRequest),
+        "model={}, max_tokens={:?}, effort={:?}: {error}",
+        config.model,
+        config.max_tokens,
+        config.reasoning_effort
+    );
     assert!(error.to_string().contains("request captured"), "{error}");
     server.verify().await;
     let requests = server.received_requests().await.unwrap();
@@ -379,27 +386,35 @@ async fn requests_resolve_model_limits_and_complete_reasoning_policies() {
         (ReasoningEffort::Max, Some(32768), Some("max")),
     ] {
         for model in ["claude-sonnet-4-5", "claude-opus-4-8"] {
-            let mut config = contract_config(model, Some(1));
-            config.reasoning_effort = Some(effort);
-            let mut expected = json!({"model":model,"max_tokens":1,"stream":true,
+            // A one-token cap cannot accommodate thinking in either form, so the
+            // driver keeps the cap and omits it. Covering only the budget-based
+            // form would leave an adaptive model thinking with a one-token
+            // ceiling and returning nothing.
+            let mut capped = contract_config(model, Some(1));
+            capped.reasoning_effort = Some(effort);
+            assert_contract_request(
+                capped,
+                false,
+                json!({"model":model,"max_tokens":1,"stream":true,
+                "messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}),
+            )
+            .await;
+
+            // Given a cap with room for it, thinking is configured as usual and
+            // the cap is still honoured exactly rather than grown to fit.
+            let mut roomy = contract_config(model, Some(64_000));
+            roomy.reasoning_effort = Some(effort);
+            let mut expected = json!({"model":model,"max_tokens":64_000,"stream":true,
                 "messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]});
-            if model == "claude-sonnet-4-5" {
-                if let Some(budget) = budget {
-                    expected["max_tokens"] = json!(budget + 1024);
-                    expected["thinking"] = json!({"type":"enabled","budget_tokens":budget});
+            if model == "claude-opus-4-8" {
+                if let Some(level) = adaptive {
+                    expected["thinking"] = json!({"type":"adaptive","display":"summarized"});
+                    expected["output_config"] = json!({"effort":level});
                 }
-            } else if let Some(level) = adaptive {
-                let room = match level {
-                    "low" => 4_096,
-                    "medium" => 8_192,
-                    "high" => 16_384,
-                    _ => 32_768,
-                };
-                expected["max_tokens"] = json!(1 + room);
-                expected["thinking"] = json!({"type":"adaptive","display":"summarized"});
-                expected["output_config"] = json!({"effort":level});
+            } else if let Some(budget) = budget {
+                expected["thinking"] = json!({"type":"enabled","budget_tokens":budget});
             }
-            assert_contract_request(config, false, expected).await;
+            assert_contract_request(roomy, false, expected).await;
         }
     }
 }
