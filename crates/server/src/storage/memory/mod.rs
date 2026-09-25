@@ -121,6 +121,8 @@ struct WaitingTurnResolutionState {
 pub struct InMemoryDatabase {
     /// Serializes event allocation and insertion to mirror a database transaction.
     event_write_lock: tokio::sync::Mutex<()>,
+    /// Mirrors PostgreSQL's per-endpoint Slack provisioning lock in dev mode.
+    pub(crate) slack_install_lock: tokio::sync::Mutex<()>,
     // TODO: Used in Phase 3 when org APIs are implemented
     #[allow(dead_code)]
     organizations: RwLock<HashMap<i64, OrganizationRow>>,
@@ -303,6 +305,7 @@ impl Default for InMemoryDatabase {
 
         Self {
             event_write_lock: tokio::sync::Mutex::new(()),
+            slack_install_lock: tokio::sync::Mutex::new(()),
             organizations: RwLock::new(organizations),
             organization_members: RwLock::new(HashMap::new()),
             users: RwLock::new(HashMap::new()),
