@@ -1213,13 +1213,9 @@ impl AnthropicThinking {
     }
 
     /// Adaptive thinking, exposing its summary only when the caller opted in.
-    fn adaptive(model: &str, display_summary: bool) -> Self {
+    fn adaptive(model: &str, summary: bool) -> Self {
         Self::Adaptive {
-            display: if display_summary {
-                "summarized"
-            } else {
-                "omitted"
-            },
+            display: if summary { "summarized" } else { "omitted" },
             block_binding: layout::binds_thinking_to_conversation(model).then_some(
                 AnthropicBlockBinding {
                     prefix_mismatch_behavior: "drop_block",
