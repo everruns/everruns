@@ -26,6 +26,13 @@ These are two answers to the same problem and they are **not** freely composable
 - **Infinity Context is a backstop**, valuable mainly for its lossless `query_history` search over full storage.
 - When both are enabled, infinity context detects compaction (via the derived `compaction_active` flag set during capability collection) and **defers token-budget eviction to compaction**: it anchors the task, provides `query_history`, and stops trimming, so compaction owns reduction.
 
+For supported direct Anthropic models, the provider-specific
+[Anthropic Infinity Context Compaction](anthropic-infinity-context-compaction.md)
+contract also overrides client-side candidate limiting, trimming, and the hidden
+notice. It keeps the Anthropic `messages` prefix append-only and lets Anthropic
+threshold compaction reduce the model-visible context on the server. Unsupported
+Anthropic configurations retain the provider-neutral behavior in this document.
+
 This deferral does not turn observation masking into a durable checkpoint.
 Masking remains a prompt-view cost optimization, while replacement checkpoints
 own semantic prefix replacement and re-arm only after a meaningful raw suffix

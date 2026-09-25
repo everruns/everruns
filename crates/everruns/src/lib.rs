@@ -69,6 +69,11 @@ pub mod llm;
 mod mcp;
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod models;
+/// Built-in Engine observability integrations.
+///
+/// Stability: alpha — may change without a major bump; see [`stability`].
+#[cfg(any(feature = "otel", feature = "braintrust"))]
+pub mod observability;
 mod observers;
 mod plugin;
 mod session;

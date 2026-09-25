@@ -27,7 +27,6 @@
 1741 crates/host/src/events.rs
 1725 crates/host/src/host.rs
 3996 crates/host/src/observability/braintrust.rs
-1531 crates/host/src/observability/otel.rs
 2213 crates/host/src/runtime.rs
 2807 crates/host/tests/integration/runtime_host_test.rs
 2593 crates/internal-protocol/src/lib.rs

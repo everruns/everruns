@@ -2223,6 +2223,7 @@ dependencies = [
  "tracing",
  "trybuild",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]

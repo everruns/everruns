@@ -16,8 +16,21 @@
   binary emits a manifest that is the whole contract with a host. One `/v1`
   wire API resumes by event-log cursor instead of a continuation token. Because
   the binary is the behavior, a restart no longer needs the application to
-  reattach agents by hand. It is a proof of concept, unpublished and outside the
-  stability policy. Recorded as [serve](framework/serve.md).
+  reattach agents by hand. It is a proof of concept, published as
+  `everruns-serve` (plus `-macros` and `-build`, since crates.io `serve` is
+  taken) but outside the stability policy. Recorded as
+  [serve](framework/serve.md).
+* **Anthropic Infinity Context now has an append-only design target instead of
+  a notice-only cache fix.** Stabilizing `[N earlier messages ...]` would still
+  move the recent window, so it cannot preserve the full prompt prefix. The
+  selected design keeps the prior wire-level `messages` array unchanged on
+  explicitly supported direct Anthropic models, uses threshold server-side
+  compaction to reduce the model-visible context, and uses automatic top-level
+  prompt caching so cache markers do not edit prior message blocks. Raw history
+  remains lossless and checkpoints store only an encrypted replay optimization;
+  unsupported or rewrite-unsafe configurations retain the legacy window.
+  Recorded in [Anthropic Infinity Context
+  Compaction](runtime-resources/anthropic-infinity-context-compaction.md).
 * **Framework observability has a design: listeners on the Engine, OTel and
   Braintrust as opt-in values.** The `everruns` crate could only be observed by
   pulling `Session::events()` per session, and the existing OTel and Braintrust
