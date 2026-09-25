@@ -494,7 +494,7 @@ mod tests {
             ("claude-opus-5", false),
             ("claude-opus-4-8", false),
         ] {
-            let thinking = serde_json::to_value(AnthropicThinking::adaptive(model)).unwrap();
+            let thinking = serde_json::to_value(AnthropicThinking::adaptive(model, true)).unwrap();
             let mut expected = json!({"type": "adaptive", "display": "summarized"});
             if binds {
                 expected["block_binding"] = json!({"prefix_mismatch_behavior": "drop_block"});

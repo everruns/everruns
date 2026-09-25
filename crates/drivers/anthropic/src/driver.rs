@@ -1212,10 +1212,10 @@ impl AnthropicThinking {
             .map(|budget_tokens| Self::Enabled { budget_tokens })
     }
 
-    /// Adaptive thinking with summarized (visible) thinking content
-    fn adaptive(model: &str) -> Self {
+    /// Adaptive thinking, exposing its summary only when the caller opted in.
+    fn adaptive(model: &str, summary: bool) -> Self {
         Self::Adaptive {
-            display: "summarized",
+            display: if summary { "summarized" } else { "omitted" },
             block_binding: layout::binds_thinking_to_conversation(model).then_some(
                 AnthropicBlockBinding {
                     prefix_mismatch_behavior: "drop_block",
