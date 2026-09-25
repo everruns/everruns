@@ -322,7 +322,7 @@ mod openrouter_tests {
                 "limits":{"context":262144,"output":262144},
                 "modalities":{"input":["text"],"output":["text"]},
                 "reasoning_effort":{"values":[{"value":"low","name":"Low"},{"value":"medium","name":"Medium"},{"value":"high","name":"High"},{"value":"xhigh","name":"Extra High"}],"default":"medium"},
-                "tool_search":false,"supports_phases":false,
+                "tool_search":false,"supports_phases":false,"supports_server_compaction":false,
                 "supported_parameters":["include_reasoning","max_tokens","reasoning","response_format","structured_outputs","temperature","tool_choice","tools","top_p"]
             })
         );
