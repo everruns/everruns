@@ -32,18 +32,6 @@ fn test_subagent_capability_registration() {
     assert!(prompt.contains("blueprint"));
 }
 
-// =============================================================================
-// Additional: capability metadata
-// =============================================================================
-
-#[test]
-fn test_subagent_capability_metadata() {
-    let cap = SubagentCapability;
-
-    assert_eq!(cap.icon(), Some("git-branch"));
-    assert_eq!(cap.category(), Some("Core"));
-    assert_eq!(
-        cap.description(),
-        "Spawn and manage subagents for parallel task execution in isolated context windows."
-    );
-}
+// test_subagent_capability_metadata was removed: it only asserted the
+// capability's hardcoded icon/category/description getters against the exact
+// literals those getters return, with no behavior behind the echo.
