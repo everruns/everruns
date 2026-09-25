@@ -61,6 +61,7 @@ pub use http::{
     HttpToolsList, HttpTransport, McpHttpStatusError, http_call_tool, http_list_tools,
     http_list_tools_with_cache_hints, http_send_rpc,
 };
+pub use oauth::validate_oauth_resource;
 pub use protocol::{CacheHints, CacheScope, ClientCapabilities, Negotiated};
 pub use result::{extract_json_from_response, map_tool_call_result};
 pub use transport::{McpConnection, McpEndpoint, McpSecretBinding, McpTransport};

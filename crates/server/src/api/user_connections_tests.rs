@@ -319,6 +319,70 @@ async fn identity_oauth_discovery_failure_creates_no_identity() {
 }
 
 #[tokio::test]
+async fn identity_oauth_rejects_cross_origin_preconfigured_resource() {
+    let (state, org, server_id, agent_id, _) = identity_oauth_fixture(true).await;
+    state
+        .db
+        .update_mcp_server(
+            org.org_id,
+            server_id,
+            UpdateMcpServer {
+                settings: Some(serde_json::json!({
+                    "auth_mode": "oauth",
+                    "oauth": {
+                        "authorization_endpoint": "https://8.8.8.8/authorize",
+                        "token_endpoint": "https://8.8.8.8/token",
+                        "client_id": "test-client",
+                        "resource": "https://1.1.1.1/legitimate-api"
+                    }
+                })),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = begin_identity_oauth(state, org, server_id, agent_id)
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    assert!(error.1.contains("resource origin"));
+}
+
+#[tokio::test]
+async fn identity_oauth_rejects_insecure_preconfigured_resource() {
+    let (state, org, server_id, agent_id, _) = identity_oauth_fixture(true).await;
+    state
+        .db
+        .update_mcp_server(
+            org.org_id,
+            server_id,
+            UpdateMcpServer {
+                settings: Some(serde_json::json!({
+                    "auth_mode": "oauth",
+                    "oauth": {
+                        "authorization_endpoint": "https://8.8.8.8/authorize",
+                        "token_endpoint": "https://8.8.8.8/token",
+                        "client_id": "test-client",
+                        "resource": "http://8.8.8.8/mcp"
+                    }
+                })),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = begin_identity_oauth(state, org, server_id, agent_id)
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    assert!(error.1.contains("must use HTTPS"));
+}
+
+#[tokio::test]
 async fn identity_oauth_missing_registration_creates_no_identity() {
     let (state, org, server_id, agent_id, _) = identity_oauth_fixture(true).await;
     state
