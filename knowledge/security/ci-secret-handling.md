@@ -70,10 +70,11 @@ Two decisions in the scanner are load-bearing and non-obvious:
   through `env:`, and the runner prints an `env:` entry verbatim, so every merged PR description was
   republished into a public log on every push to `main`. That is what turned the sweep red on
   commit `d6f65f8`, whose body quotes the very placeholder the commit removed. The job only needed a
-  boolean, so it now gets one from a `startsWith` expression and the message never reaches a log.
-  The general rule still points the other way — binding event text to `env:` is what keeps it out of
-  `run:` where it would be an injection vector — so this is not a blanket prohibition: prefer a
-  derived value when the step does not need the text itself.
+  boolean, so the job now checks the subject read from the checked-out commit and the message never
+  reaches a log-visible environment entry. The subject remains quoted data in a case-sensitive Bash
+  comparison, not shell code. The general rule still points the other way — binding event text to
+  `env:` is what keeps it out of `run:` where it would be an injection vector — so this is not a
+  blanket prohibition: prefer a derived value when the step does not need the text itself.
 
 - **A prefix rule needs a left boundary.** `sk-` with no boundary matched inside
   the ordinary word "ask-", so a PR body linking
