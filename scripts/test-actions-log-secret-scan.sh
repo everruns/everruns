@@ -74,6 +74,22 @@ cat > "$WORK/echoed-by-a-test.log" <<'LOG'
 LOG
 expect "prefix: a credential a failing test echoed" flag "$WORK/echoed-by-a-test.log"
 
+# Labels and terminal formatting are boundaries too. Vendor errors commonly
+# render `name-<value>` or `name_<value>`, and colored output puts an ANSI SGR
+# sequence directly before the value. All must remain visible to the prefix
+# backstop even though ordinary words such as `ask-...` must not match.
+echo "$stamp openai-key-sk""-proj-EXAMPLEEXAMPLEEXAMPLEEXAMPLE0000" \
+  > "$WORK/hyphen-boundary.log"
+expect "prefix rules: hyphen boundary" flag "$WORK/hyphen-boundary.log"
+
+echo "$stamp token_sk""-proj-EXAMPLEEXAMPLEEXAMPLEEXAMPLE0000" \
+  > "$WORK/underscore-boundary.log"
+expect "prefix rules: underscore boundary" flag "$WORK/underscore-boundary.log"
+
+printf '%s colored \033[31msk-proj-EXAMPLEEXAMPLEEXAMPLEEXAMPLE0000\033[0m\n' "$stamp" \
+  > "$WORK/ansi-boundary.log"
+expect "prefix rules: ANSI color boundary" flag "$WORK/ansi-boundary.log"
+
 # The allowlist is keyed on the value, so the same variable carrying anything
 # else still reports. Without this the scanner would go blind on rotation.
 cat > "$WORK/rotated-value.log" <<'LOG'
