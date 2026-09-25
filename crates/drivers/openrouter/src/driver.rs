@@ -53,6 +53,15 @@ impl OpenRouterChatDriver {
                 .with_request_extension(Arc::new(OpenRouterRequestExtension)),
         }
     }
+
+    /// Configure retries for `429` and transient `5xx` responses.
+    ///
+    /// Retry time counts against any timeout the caller wraps around the call;
+    /// pass [`everruns_provider::LlmRetryConfig::no_retry`] to own retries in the host.
+    pub fn with_retry_config(mut self, config: everruns_provider::LlmRetryConfig) -> Self {
+        self.inner = self.inner.with_retry_config(config);
+        self
+    }
 }
 
 #[async_trait]

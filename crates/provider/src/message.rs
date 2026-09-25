@@ -258,3 +258,13 @@ pub enum MessageRole {
     Assistant,
     Tool,
 }
+
+// The names these types had before 0.31. Aliases rather than removals so an
+// embedder whose own code defines a `Message` upgrades with a warning instead
+// of a compile error.
+#[deprecated(since = "0.32.0", note = "renamed to `Message`")]
+pub type LlmMessage = Message;
+#[deprecated(since = "0.32.0", note = "renamed to `MessageContent`")]
+pub type LlmMessageContent = MessageContent;
+#[deprecated(since = "0.32.0", note = "renamed to `MessageRole`")]
+pub type LlmMessageRole = MessageRole;

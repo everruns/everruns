@@ -192,10 +192,184 @@ struct OpenAiCompatibleModel {
     created: Option<i64>,
     #[serde(default)]
     owned_by: Option<String>,
+    // Everything below is metadata a gateway or self-hosted server *may*
+    // advertise, in shapes that differ per vendor (OpenRouter, LM Studio,
+    // vLLM, llama.cpp, ...). Kept as loose `serde_json::Value` so one field
+    // of an unexpected type (a stringly-typed `context_length`, say) cannot
+    // fail parsing of the whole catalog entry; `value_*` helpers below
+    // coerce each into the type we want, defaulting to "unknown" instead of
+    // erroring.
+    #[serde(default)]
+    name: Option<serde_json::Value>,
+    #[serde(default)]
+    display_name: Option<serde_json::Value>,
+    #[serde(default)]
+    description: Option<serde_json::Value>,
+    #[serde(default)]
+    context_length: Option<serde_json::Value>,
+    #[serde(default)]
+    context_window: Option<serde_json::Value>,
+    #[serde(default)]
+    max_context_length: Option<serde_json::Value>,
+    #[serde(default)]
+    max_model_len: Option<serde_json::Value>,
+    #[serde(default)]
+    top_provider: Option<serde_json::Value>,
+    #[serde(default)]
+    meta: Option<serde_json::Value>,
+    #[serde(default)]
+    max_completion_tokens: Option<serde_json::Value>,
+    #[serde(default)]
+    max_output_tokens: Option<serde_json::Value>,
+    #[serde(default)]
+    supported_parameters: Option<serde_json::Value>,
+    #[serde(default)]
+    reasoning: Option<serde_json::Value>,
+    #[serde(default)]
+    thinking: Option<serde_json::Value>,
+    #[serde(default)]
+    supports_reasoning: Option<serde_json::Value>,
+    #[serde(default)]
+    capabilities: Option<serde_json::Value>,
+}
+
+/// Read a JSON string out of a loosely-typed optional field.
+#[cfg(feature = "http")]
+fn value_str(value: &Option<serde_json::Value>) -> Option<String> {
+    value.as_ref()?.as_str().map(str::to_string)
+}
+
+/// Read a JSON number out of a loosely-typed optional field, clamped into a
+/// non-negative `i32` (context windows and token caps are always positive).
+#[cfg(feature = "http")]
+fn value_i32(value: &Option<serde_json::Value>) -> Option<i32> {
+    let raw = value.as_ref()?;
+    let number = raw.as_i64().or_else(|| raw.as_f64().map(|f| f as i64))?;
+    Some(number.clamp(0, i32::MAX as i64) as i32)
+}
+
+/// Same as [`value_i32`], for one field of a nested object (e.g.
+/// `top_provider.context_length`).
+#[cfg(feature = "http")]
+fn value_nested_i32(value: &Option<serde_json::Value>, key: &str) -> Option<i32> {
+    value_i32(&value.as_ref().and_then(|v| v.get(key)).cloned())
+}
+
+/// Read a JSON boolean out of a loosely-typed optional field; anything else
+/// (missing, wrong type) is simply "not advertised".
+#[cfg(feature = "http")]
+fn value_bool(value: &Option<serde_json::Value>) -> bool {
+    value
+        .as_ref()
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+}
+
+/// Read a JSON array of strings out of a loosely-typed optional field,
+/// dropping any element that is not itself a string.
+#[cfg(feature = "http")]
+fn value_string_list(value: &Option<serde_json::Value>) -> Vec<String> {
+    value
+        .as_ref()
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Build the discovered profile for one OpenAI-compatible catalog entry, or
+/// `None` when the entry advertised nothing beyond the bare `{id, created,
+/// owned_by}` shape.
+#[cfg(feature = "http")]
+fn openai_compatible_profile(
+    model: &OpenAiCompatibleModel,
+) -> (Option<String>, Option<crate::model::ModelProfile>) {
+    let display_name = value_str(&model.name).or_else(|| value_str(&model.display_name));
+    let description = value_str(&model.description);
+    let context = value_i32(&model.context_length)
+        .or_else(|| value_i32(&model.context_window))
+        .or_else(|| value_i32(&model.max_context_length))
+        .or_else(|| value_i32(&model.max_model_len))
+        .or_else(|| value_nested_i32(&model.top_provider, "context_length"))
+        .or_else(|| value_nested_i32(&model.meta, "n_ctx_train"));
+    let max_output = value_i32(&model.max_completion_tokens)
+        .or_else(|| value_i32(&model.max_output_tokens))
+        .or_else(|| value_nested_i32(&model.top_provider, "max_completion_tokens"));
+    let supported_parameters = value_string_list(&model.supported_parameters);
+    let capabilities = value_string_list(&model.capabilities);
+    let has = |list: &[String], needle: &str| list.iter().any(|p| p.eq_ignore_ascii_case(needle));
+
+    let reasoning = has(&supported_parameters, "reasoning")
+        || has(&supported_parameters, "reasoning_effort")
+        || has(&supported_parameters, "thinking")
+        || value_bool(&model.reasoning)
+        || value_bool(&model.thinking)
+        || value_bool(&model.supports_reasoning)
+        || has(&capabilities, "thinking")
+        || has(&capabilities, "reasoning");
+    let tool_call = has(&supported_parameters, "tools")
+        || has(&supported_parameters, "tool_choice")
+        || has(&capabilities, "tools")
+        || has(&capabilities, "tool_use")
+        || has(&capabilities, "function_calling");
+
+    let temperature = has(&supported_parameters, "temperature");
+    let has_metadata = description.is_some()
+        || context.is_some()
+        || reasoning
+        || tool_call
+        || !supported_parameters.is_empty();
+
+    let profile = has_metadata.then(|| crate::model::ModelProfile {
+        name: display_name.clone().unwrap_or_else(|| model.id.clone()),
+        family: model.id.clone(),
+        description: description.clone(),
+        release_date: None,
+        last_updated: None,
+        attachment: false,
+        reasoning,
+        temperature,
+        knowledge: None,
+        tool_call,
+        structured_output: false,
+        open_weights: false,
+        cost: None,
+        limits: context.map(|context| crate::model::ModelLimits {
+            context,
+            input: None,
+            output: max_output.unwrap_or(context),
+            max_media: None,
+        }),
+        modalities: None,
+        reasoning_effort: None,
+        speed: None,
+        verbosity: None,
+        tool_search: false,
+        supported_parameters,
+        supports_phases: false,
+        supports_server_compaction: false,
+    });
+
+    (display_name, profile)
 }
 
 /// Discovery fallback for OpenAI-compatible endpoints no driver recognizes:
 /// `GET <base>/models` with bearer auth.
+///
+/// Beyond the universal `{id, created, owned_by}` shape, this also picks up
+/// whatever richer metadata the gateway or self-hosted server advertises —
+/// display name (`name`/`display_name`), `description`, context window
+/// (`context_length`, `context_window`, `max_context_length`,
+/// `max_model_len`, `top_provider.context_length`, `meta.n_ctx_train`), max
+/// output tokens, reasoning/thinking support, and tool-calling support — so a
+/// vLLM, LM Studio, llama.cpp, Ollama, or OpenRouter-style catalog fills in
+/// `discovered_profile` the same way a native driver would. A bare
+/// OpenAI-shaped entry that advertises none of this still gets
+/// `discovered_profile: None`, unchanged from before.
 #[cfg(feature = "http")]
 pub async fn list_openai_compatible_models(
     endpoint: &crate::runtime_provider::ProviderEndpoint,
@@ -262,15 +436,18 @@ async fn list_openai_compatible_models_with_client(
     let models = parsed
         .data
         .into_iter()
-        .map(|model| DiscoveredModel {
-            capabilities: vec!["chat".to_string()],
-            created_at: model
-                .created
-                .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
-            display_name: None,
-            owned_by: model.owned_by,
-            model_id: model.id,
-            discovered_profile: None,
+        .map(|model| {
+            let (display_name, discovered_profile) = openai_compatible_profile(&model);
+            DiscoveredModel {
+                capabilities: vec!["chat".to_string()],
+                created_at: model
+                    .created
+                    .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
+                display_name,
+                owned_by: model.owned_by,
+                model_id: model.id,
+                discovered_profile,
+            }
         })
         .collect();
     Ok(Some(models))
@@ -784,6 +961,106 @@ mod tests {
                 {"model_id":"models/qwen3","display_name":null,"created_at":null,"owned_by":null,"capabilities":["chat"],"discovered_profile":null},
                 {"model_id":"bad-date","display_name":null,"created_at":null,"owned_by":null,"capabilities":["chat"],"discovered_profile":null}
             ])
+        );
+    }
+
+    #[tokio::test]
+    async fn compatible_http_catalog_preserves_advertised_metadata_and_tolerates_bad_types() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": [
+                    // Bare OpenAI-shaped entry: no metadata advertised at all.
+                    {"id": "bare-model", "created": 1700000000, "owned_by": "acme"},
+                    // OpenRouter-style: name, description, context_length, and a
+                    // supported_parameters list implying reasoning + tools.
+                    {
+                        "id": "openrouter/model",
+                        "name": "OpenRouter Model",
+                        "description": "A capable chat model.",
+                        "context_length": 128000,
+                        "supported_parameters": ["reasoning", "tools", "temperature"]
+                    },
+                    // vLLM-style: max_model_len for context.
+                    {"id": "vllm-model", "max_model_len": 32768},
+                    // LM Studio-style: max_context_length for context.
+                    {"id": "lmstudio-model", "max_context_length": 8192},
+                    // A field of the wrong JSON type must not fail the whole
+                    // catalog parse; this entry still parses, just without a
+                    // usable context window.
+                    {
+                        "id": "wrong-type-model",
+                        "context_length": "big",
+                        "description": "Still has a description though."
+                    },
+                ]})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let result = list_openai_compatible_models_with_client(
+            &reqwest::Client::builder().no_proxy().build().unwrap(),
+            &crate::ResolvedProviderRequest {
+                url: server.uri(),
+                headers: vec![],
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        let bare = result.iter().find(|m| m.model_id == "bare-model").unwrap();
+        assert_eq!(bare.display_name, None);
+        assert!(bare.discovered_profile.is_none());
+
+        let openrouter = result
+            .iter()
+            .find(|m| m.model_id == "openrouter/model")
+            .unwrap();
+        assert_eq!(openrouter.display_name.as_deref(), Some("OpenRouter Model"));
+        let profile = openrouter.discovered_profile.as_ref().unwrap();
+        assert_eq!(profile.name, "OpenRouter Model");
+        assert_eq!(profile.family, "openrouter/model");
+        assert_eq!(
+            profile.description.as_deref(),
+            Some("A capable chat model.")
+        );
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+        assert_eq!(
+            profile.supported_parameters,
+            vec![
+                "reasoning".to_string(),
+                "tools".to_string(),
+                "temperature".to_string()
+            ]
+        );
+        let limits = profile.limits.as_ref().unwrap();
+        assert_eq!(limits.context, 128000);
+        assert_eq!(limits.output, 128000);
+
+        let vllm = result.iter().find(|m| m.model_id == "vllm-model").unwrap();
+        let vllm_profile = vllm.discovered_profile.as_ref().unwrap();
+        assert_eq!(vllm_profile.limits.as_ref().unwrap().context, 32768);
+
+        let lmstudio = result
+            .iter()
+            .find(|m| m.model_id == "lmstudio-model")
+            .unwrap();
+        let lmstudio_profile = lmstudio.discovered_profile.as_ref().unwrap();
+        assert_eq!(lmstudio_profile.limits.as_ref().unwrap().context, 8192);
+
+        let wrong_type = result
+            .iter()
+            .find(|m| m.model_id == "wrong-type-model")
+            .unwrap();
+        let wrong_type_profile = wrong_type.discovered_profile.as_ref().unwrap();
+        // The wrongly-typed context_length is simply ignored, not fatal.
+        assert!(wrong_type_profile.limits.is_none());
+        assert_eq!(
+            wrong_type_profile.description.as_deref(),
+            Some("Still has a description though.")
         );
     }
 

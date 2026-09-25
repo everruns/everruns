@@ -268,8 +268,9 @@ async fn function_call_stream_golden_events() {
 }
 
 /// When the provider closes the stream without any finish chunk, the driver
-/// still emits a terminal `Done` (end-of-stream fallback), defaulting the
-/// finish reason to "stop".
+/// still emits a terminal `Done` (end-of-stream fallback). The finish reason
+/// stays `None`: the provider never gave one, and a host must be able to tell
+/// that apart from an explicit stop.
 #[tokio::test]
 async fn eos_without_finish_reason_emits_done() {
     let server = MockServer::start().await;
@@ -300,7 +301,7 @@ async fn eos_without_finish_reason_emits_done() {
                 prompt: Some(5),
                 completion: Some(1),
                 cache_read: None,
-                finish: Some("stop".into()),
+                finish: None,
             },
         ]
     );

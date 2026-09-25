@@ -116,6 +116,9 @@ pub(crate) struct OpenAiChatCompletionResponse {
     pub(crate) choices: Vec<OpenAiChatChoice>,
     #[serde(default)]
     pub(crate) usage: Option<OpenAiUsage>,
+    /// Error envelope some gateways return with a `200` status.
+    #[serde(default)]
+    pub(crate) error: Option<OpenAiErrorEnvelope>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -161,6 +164,7 @@ pub(crate) struct OpenAiToolCall {
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct OpenAiFunctionCall {
     pub(crate) name: String,
+    #[serde(deserialize_with = "arguments_as_json_text")]
     pub(crate) arguments: String,
 }
 
@@ -173,9 +177,55 @@ pub(crate) struct OpenAiStreamChunk {
     /// Model used for completion (may differ from requested)
     #[serde(default)]
     pub(crate) model: Option<String>,
+    // Defaulted so an error chunk that carries no `choices` still parses and
+    // its message reaches the caller instead of "missing field `choices`".
+    #[serde(default)]
     pub(crate) choices: Vec<OpenAiStreamChoice>,
     #[serde(default)]
     pub(crate) usage: Option<OpenAiUsage>,
+    /// In-stream error envelope. OpenAI-compatible gateways (OpenRouter,
+    /// LiteLLM, vLLM) report an upstream failure after the `200` as a chunk
+    /// carrying `error`, sometimes beside a `finish_reason: "error"` choice.
+    #[serde(default)]
+    pub(crate) error: Option<OpenAiErrorEnvelope>,
+}
+
+/// The `error` object of an OpenAI-shaped error envelope.
+///
+/// Every field is optional and loosely typed: gateways disagree on whether
+/// `code` is a string (`"server_error"`) or an HTTP status (`502`), and the
+/// envelope is only useful if it parses whatever shape arrives.
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct OpenAiErrorEnvelope {
+    #[serde(default)]
+    pub(crate) message: Option<String>,
+    #[serde(default)]
+    pub(crate) code: Option<Value>,
+    #[serde(default, rename = "type")]
+    pub(crate) kind: Option<String>,
+    #[serde(default)]
+    pub(crate) status: Option<u16>,
+}
+
+impl OpenAiErrorEnvelope {
+    /// Convert to a stream error, keeping the vendor's message, code and any
+    /// HTTP status the envelope carries so hosts match on structure.
+    pub(crate) fn into_stream_error(self) -> crate::stream_error::LlmStreamError {
+        let (code, status) = match self.code {
+            Some(Value::String(code)) => (Some(code), self.status),
+            Some(Value::Number(number)) => {
+                let status = number.as_u64().and_then(|n| u16::try_from(n).ok());
+                (None, self.status.or(status))
+            }
+            _ => (None, self.status),
+        };
+        let code = code.or(self.kind);
+        let message = self
+            .message
+            .filter(|message| !message.trim().is_empty())
+            .unwrap_or_else(|| "provider reported an error in the response stream".to_string());
+        crate::stream_error::LlmStreamError::provider(code, status, message)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -249,5 +299,33 @@ pub(crate) struct OpenAiStreamToolCall {
 #[derive(Debug, Deserialize)]
 pub(crate) struct OpenAiStreamFunction {
     pub(crate) name: Option<String>,
+    #[serde(default, deserialize_with = "optional_arguments_as_json_text")]
     pub(crate) arguments: Option<String>,
+}
+
+/// Tool-call `arguments` as JSON text.
+///
+/// The OpenAI wire sends arguments as a JSON-encoded string, but some
+/// compatible servers send the object itself. Serializing a non-string value
+/// back to text keeps those calls intact instead of failing the chunk.
+fn arguments_as_json_text<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match Value::deserialize(deserializer)? {
+        Value::String(text) => text,
+        Value::Null => String::new(),
+        other => other.to_string(),
+    })
+}
+
+fn optional_arguments_as_json_text<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match Value::deserialize(deserializer)? {
+        Value::Null => None,
+        Value::String(text) => Some(text),
+        other => Some(other.to_string()),
+    })
 }

@@ -119,6 +119,25 @@ while let Some(event) = stream.next().await {
 # }
 ```
 
+What the stream guarantees:
+
+- Every `TextDelta` carries text. Assistant text is their concatenation.
+- `ReasoningDelta` streams reasoning live; the `ReasoningItem` that follows
+  repeats the whole block, plus any replay state. Show the deltas and store
+  the item, or use the item alone; adding both duplicates the reasoning.
+- The stream ends with exactly one `Done` or `Error`. `Error` keeps the
+  provider's message, error code, and HTTP status, including errors a gateway
+  reports inside a `200` stream.
+- `Done` carries `finish_reason` as the provider sent it, or `None` when it
+  sent none. It is never filled in as `stop`, so a caller can treat a missing
+  reason as a failure.
+- Drivers retry `429` and transient `5xx` responses before the first event:
+  up to 2 retries and 30 seconds by default. That time counts against any
+  timeout you put around the call. To own retries yourself, build the driver
+  with `.with_retry_config(everruns::llm::LlmRetryConfig::no_retry())`.
+
+The full contract is on `LlmStreamEvent` in the API reference.
+
 ## Errors
 
 `CompletionError` separates configuration mistakes from provider failures:
@@ -156,6 +175,11 @@ let response = provider
 
 That surface is the driver boundary itself: every field of `LlmCallConfig`,
 including tool definitions, is available, and nothing is defaulted for you.
+
+When all you have is a base URL, `DriverId::for_base_url` names the driver
+whose vendor serves it (OpenAI, Azure OpenAI, OpenRouter, Anthropic, Gemini,
+Fireworks). It returns `None` for a gateway or self-hosted server; those speak
+the OpenAI-compatible wire, so use `DriverId::OpenAICompletions`.
 
 The runnable version of this page is
 [`direct_llm.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_llm.rs),

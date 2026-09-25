@@ -74,6 +74,15 @@ impl GeminiChatDriver {
         }
     }
 
+    /// Configure retries for `429` and transient `5xx` responses.
+    ///
+    /// Retry time counts against any timeout the caller wraps around the call;
+    /// pass [`LlmRetryConfig::no_retry`] to own retries in the host.
+    pub fn with_retry_config(mut self, config: LlmRetryConfig) -> Self {
+        self.retry_config = config;
+        self
+    }
+
     /// The process-wide streaming HTTP client, resolved per request rather than
     /// held as a field. Building it loads the platform trust store (~1.3 ms),
     /// which would otherwise land on the agent startup path; after the first
@@ -857,8 +866,9 @@ impl GeminiStreamState {
             metadata.cache_read_tokens = self.cached_tokens;
             metadata.model = Some(self.model.clone());
             metadata.response_model = self.response_model.clone();
-            metadata.finish_reason =
-                Some(self.finish_reason.take().unwrap_or_else(|| "stop".into()));
+            // `None` when no candidate reported a finish reason: kept distinct
+            // from an explicit stop.
+            metadata.finish_reason = self.finish_reason.take();
             metadata.retry_metadata = self.retry_metadata.take();
             metadata
         })));

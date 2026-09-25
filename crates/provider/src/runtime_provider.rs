@@ -375,10 +375,13 @@ impl RuntimeProvider {
         // The call's limits bind whoever consumes the stream, not just the
         // collected path: a caller rendering events itself is exactly the one
         // with no other way to bound a provider that stops sending.
-        Ok(crate::turn_collector::limit_stream(
-            stream,
-            limits.after(spent),
-        ))
+        let stream = crate::turn_collector::limit_stream(stream, limits.after(spent));
+        // Drivers use an empty `TextDelta` as filler for wire frames that carry
+        // nothing (usage, role, keep-alive). The limits above still see those
+        // frames; the caller never does, so every delta it gets has content.
+        Ok(Box::pin(stream.filter(|event| {
+            std::future::ready(!matches!(event, Ok(crate::driver_registry::LlmStreamEvent::TextDelta(delta)) if delta.is_empty()))
+        })))
     }
 
     pub async fn chat_completion(

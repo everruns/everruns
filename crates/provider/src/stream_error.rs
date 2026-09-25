@@ -51,6 +51,21 @@ impl LlmStreamError {
     }
 }
 
+impl LlmStreamError {
+    /// The classified call error this stream error ends a turn with, keeping
+    /// the provider's status and code.
+    pub fn into_agent_error(self) -> crate::error::AgentLoopError {
+        let mut error = crate::error::LlmError::new(self.kind(), self.to_string());
+        if let Some(status) = self.status {
+            error = error.with_status(status);
+        }
+        if let Some(code) = self.code {
+            error = error.with_code(code);
+        }
+        crate::error::AgentLoopError::Llm(error)
+    }
+}
+
 impl std::error::Error for LlmStreamError {}
 
 impl std::fmt::Display for LlmStreamError {

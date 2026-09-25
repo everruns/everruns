@@ -40,6 +40,7 @@ pub use crate::stream_error::LlmStreamError;
 /// `#[non_exhaustive]`: new event kinds arrive with each provider capability
 /// (PDF input, native async tool calls), and a new variant must not break
 /// every consumer's `match`. Consumers ignore what they do not recognize.
+#[doc = include_str!("stream_contract.md")]
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum LlmStreamEvent {
@@ -126,7 +127,7 @@ pub struct LlmCompletionMetadata {
     pub model: Option<String>,
     /// Model the provider reported serving, when its response includes one.
     pub response_model: Option<String>,
-    /// Finish reason
+    /// Finish reason as reported, normalized; `None` if the provider sent none.
     pub finish_reason: Option<String>,
     /// Retry metadata (present if rate limit retries occurred)
     pub retry_metadata: Option<crate::llm_retry::RetryMetadata>,
@@ -482,9 +483,8 @@ impl ChatDriver for Box<dyn ChatDriver> {
     }
 }
 
-// The message types moved to `message` when this file outgrew what anyone
-// can hold in their head; they are re-exported here so every existing path
-// keeps working.
+// The message types moved to `message` when this file outgrew what anyone can
+// hold in their head; re-exported here so every existing path keeps working.
 pub use crate::message::{
     LlmContentPart, Message, MessageContent, MessageRole, fold_system_messages,
 };
