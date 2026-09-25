@@ -261,7 +261,7 @@ async fn run_tests_with_runtime(
         "type=bind,src={},dst=/source,readonly",
         repository.display()
     );
-    // THREAT[TM-BASH-026]: repository-controlled test code receives no host
+    // THREAT[TM-BASH-027]: repository-controlled test code receives no host
     // environment, network, writable host mount, or privileged container APIs.
     let spawned = tokio::process::Command::new(runtime)
         .args([

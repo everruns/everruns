@@ -33,8 +33,9 @@ use super::ContainmentMode;
 /// The request a launcher encodes on the helper's command line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkerRequest {
-    /// Working directory for the shell, and the writable root at
-    /// [`ContainmentMode::WorkspaceWrite`].
+    /// Trusted writable root established by the embedder.
+    pub workspace: PathBuf,
+    /// Working directory for the shell. Must be a non-symlink descendant of the workspace.
     pub cwd: PathBuf,
     /// The private temp directory, writable at every mode.
     pub temp: PathBuf,
@@ -58,6 +59,7 @@ impl WorkerRequest {
         I: IntoIterator<Item = S>,
         S: Into<std::ffi::OsString>,
     {
+        let mut workspace = None;
         let mut cwd = None;
         let mut temp = None;
         let mut mode = None;
@@ -73,6 +75,7 @@ impl WorkerRequest {
                     .with_context(|| format!("{flag} expects a value"))
             };
             match flag.as_str() {
+                "--workspace" => workspace = Some(PathBuf::from(value()?)),
                 "--cwd" => cwd = Some(PathBuf::from(value()?)),
                 "--temp" => temp = Some(PathBuf::from(value()?)),
                 "--writable" => writable_roots.push(PathBuf::from(value()?)),
@@ -89,6 +92,7 @@ impl WorkerRequest {
         }
 
         let request = Self {
+            workspace: workspace.context("--workspace is required")?,
             cwd: cwd.context("--cwd is required")?,
             temp: temp.context("--temp is required")?,
             mode: mode.context("--mode is required")?,
@@ -128,8 +132,24 @@ pub fn run(request: &WorkerRequest) -> Result<std::convert::Infallible> {
     use std::convert::TryInto;
     use std::os::unix::process::CommandExt;
 
-    std::env::set_current_dir(&request.cwd)
-        .with_context(|| format!("enter sandbox workspace: {}", request.cwd.display()))?;
+    let workspace = open_directory_no_symlinks(&request.workspace, None)?;
+    let relative_cwd = request
+        .cwd
+        .strip_prefix(&request.workspace)
+        .with_context(|| {
+            format!(
+                "working directory is outside workspace: {}",
+                request.cwd.display()
+            )
+        })?;
+    let cwd = open_directory_no_symlinks(relative_cwd, Some(&workspace))?;
+    // Keep both descriptors alive until after Landlock is installed. This makes
+    // validation and use the same filesystem objects, closing symlink-swap races.
+    unsafe {
+        if libc::fchdir(std::os::fd::AsRawFd::as_raw_fd(&cwd)) != 0 {
+            return Err(std::io::Error::last_os_error()).context("enter sandbox working directory");
+        }
+    }
 
     // ABI V3 is the oldest policy that also mediates truncate(2); requiring full
     // enforcement avoids silently weakening the write boundary.
@@ -160,7 +180,10 @@ pub fn run(request: &WorkerRequest) -> Result<std::convert::Infallible> {
         // worktree metadata outside it stays read-only.
         ruleset = ruleset
             .add_rule(PathBeneath::new(
-                PathFd::new(&request.cwd)?,
+                PathFd::new(format!(
+                    "/proc/self/fd/{}",
+                    std::os::fd::AsRawFd::as_raw_fd(&workspace)
+                ))?,
                 AccessFs::from_all(abi),
             ))?
             .add_rule(PathBeneath::new(
@@ -213,6 +236,59 @@ pub fn run(request: &WorkerRequest) -> Result<std::convert::Infallible> {
         .into())
 }
 
+#[cfg(target_os = "linux")]
+fn open_directory_no_symlinks(
+    path: &std::path::Path,
+    relative_to: Option<&std::fs::File>,
+) -> Result<std::fs::File> {
+    use std::ffi::CString;
+    use std::os::fd::{AsRawFd, FromRawFd};
+    use std::os::unix::ffi::OsStrExt;
+
+    let mut current = relative_to.map(std::fs::File::try_clone).transpose()?;
+    for component in path.components() {
+        use std::path::Component;
+        let segment = match component {
+            Component::RootDir if current.is_none() => {
+                let root = CString::new("/").expect("static path");
+                let fd = unsafe {
+                    libc::open(
+                        root.as_ptr(),
+                        libc::O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
+                    )
+                };
+                if fd < 0 {
+                    return Err(std::io::Error::last_os_error()).context("open filesystem root");
+                }
+                current = Some(unsafe { std::fs::File::from_raw_fd(fd) });
+                continue;
+            }
+            Component::CurDir => continue,
+            Component::Normal(segment) => segment,
+            _ => anyhow::bail!("working directory contains an invalid path component"),
+        };
+        let segment = CString::new(segment.as_bytes()).context("path contains NUL")?;
+        let parent = current.as_ref().map_or(libc::AT_FDCWD, AsRawFd::as_raw_fd);
+        let fd = unsafe {
+            libc::openat(
+                parent,
+                segment.as_ptr(),
+                libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error()).with_context(|| {
+                format!(
+                    "open directory without following symlinks: {}",
+                    path.display()
+                )
+            });
+        }
+        current = Some(unsafe { std::fs::File::from_raw_fd(fd) });
+    }
+    current.context("directory path is empty")
+}
+
 /// Landlock and seccomp are Linux primitives; every other platform contains
 /// commands another way or not at all.
 #[cfg(not(target_os = "linux"))]
@@ -226,6 +302,8 @@ mod tests {
 
     fn arguments() -> Vec<String> {
         [
+            "--workspace",
+            "/work",
             "--cwd",
             "/work",
             "--temp",
@@ -246,6 +324,7 @@ mod tests {
     fn a_launcher_argument_list_round_trips_into_a_request() {
         let request = WorkerRequest::parse(arguments()).expect("parses");
         assert_eq!(request.cwd, PathBuf::from("/work"));
+        assert_eq!(request.workspace, PathBuf::from("/work"));
         assert_eq!(request.mode, ContainmentMode::WorkspaceWrite);
         assert_eq!(request.writable_roots, vec![PathBuf::from("/cache")]);
         assert_eq!(request.script, "cargo test");
@@ -264,7 +343,7 @@ mod tests {
 
     #[test]
     fn a_missing_field_is_an_error_rather_than_a_default() {
-        for dropped in ["--cwd", "--temp", "--mode", "--script"] {
+        for dropped in ["--workspace", "--cwd", "--temp", "--mode", "--script"] {
             let mut kept = Vec::new();
             let mut arguments = arguments().into_iter();
             while let Some(flag) = arguments.next() {
@@ -284,7 +363,12 @@ mod tests {
     #[test]
     fn the_worker_refuses_to_run_an_uncontained_command() {
         let mut arguments = arguments();
-        arguments[5] = "danger-full-access".to_string();
+        let mode = arguments
+            .iter()
+            .position(|value| value == "--mode")
+            .unwrap()
+            + 1;
+        arguments[mode] = "danger-full-access".to_string();
         let error = WorkerRequest::parse(arguments).expect_err("refused");
         assert!(error.to_string().contains("danger-full-access"));
     }
@@ -294,5 +378,20 @@ mod tests {
         let mut arguments = arguments();
         arguments.push("--allow-everything".to_string());
         assert!(WorkerRequest::parse(arguments).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn working_directory_resolution_rejects_a_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let workspace = tempfile::tempdir().expect("workspace");
+        let outside = tempfile::tempdir().expect("outside");
+        symlink(outside.path(), workspace.path().join("escape")).expect("create escape symlink");
+        let root = open_directory_no_symlinks(workspace.path(), None).expect("open workspace");
+
+        let error = open_directory_no_symlinks(std::path::Path::new("escape"), Some(&root))
+            .expect_err("symlink is not followed");
+        assert!(error.to_string().contains("without following symlinks"));
     }
 }
