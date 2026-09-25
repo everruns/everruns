@@ -43,6 +43,9 @@ The Framework owns value-first configuration for:
 - alpha Engine-level push listeners over the same curated session events, with
   bounded non-blocking delivery, explicit drop statistics, and deadline-bounded
   shutdown flushing;
+- opt-in OpenTelemetry and Braintrust Engine observers behind independent
+  offline-by-default features, with opaque facade values and no implicit global
+  telemetry installation;
 - high-level context-compaction and model-adaptive tool-search behavior without
   checkpoint-store or provider-specific plumbing;
 - high-level task, background-message, wake, and workspace-policy behavior
