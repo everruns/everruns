@@ -1,0 +1,5 @@
+error: `ToolCallContext` must be the first parameter of an `#[everruns::tool]` function
+ --> tests/ui/fail_context_not_first.rs:3:28
+  |
+3 | async fn late(x: i64, ctx: everruns::ToolCallContext) -> i64 {
+  |                            ^^^^^^^^^^^^^^^^^^^^^^^^^

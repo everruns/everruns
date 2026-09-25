@@ -36,6 +36,10 @@ members = [
     "crates/durable",
     "crates/ard",
     "crates/integrations-catalog",
+    # serve: experimental agent framework (Alpha, published as everruns-serve*). See crates/serve/README.md.
+    "crates/serve",
+    "crates/serve-macros",
+    "crates/serve-build",
     "integrations/docker",
     "integrations/filesystem",
     "integrations/bashkit",
@@ -65,6 +69,8 @@ members = [
     "examples/host-shell-agent",
     "examples/foreman-agent",
     "examples/demo-support",
+    "examples/serve/hello",
+    "examples/serve/revenue-analyst",
 ]
 
 exclude = [
@@ -253,6 +259,9 @@ everruns-openai = { path = "crates/drivers/openai", version = "0.31.0" }
 everruns-openrouter = { path = "crates/drivers/openrouter", version = "0.31.0" }
 everruns = { path = "crates/everruns", version = "0.31.0" }
 everruns-macros = { path = "crates/macros", version = "0.31.0" }
+everruns-serve = { path = "crates/serve", version = "0.31.0" }
+everruns-serve-build = { path = "crates/serve-build", version = "0.31.0" }
+everruns-serve-macros = { path = "crates/serve-macros", version = "0.31.0" }
 everruns-integrations-catalog = { path = "crates/integrations-catalog", version = "0.31.0" }
 everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.31.0" }
 everruns-cli-contract = { path = "crates/cli-contract", version = "0.31.0" }

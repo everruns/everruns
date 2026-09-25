@@ -120,8 +120,101 @@ impl IntoToolResult for ToolResponse {
 }
 
 /// The boxed, type-erased async handler behind a [`FunctionTool`].
-type HandlerFn =
-    Arc<dyn Fn(Value) -> Pin<Box<dyn Future<Output = ToolExecutionResult> + Send>> + Send + Sync>;
+type HandlerFn = Arc<
+    dyn Fn(ToolCallContext, Value) -> Pin<Box<dyn Future<Output = ToolExecutionResult> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Decides from a call's arguments whether it needs approval.
+pub(crate) type ApprovalPredicate = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
+
+/// What a [`FunctionTool`] handler knows about the call it is serving.
+///
+/// Handlers built with [`FunctionTool::with_context`] (or a
+/// `#[everruns::tool]` function whose first parameter is a `ToolCallContext`)
+/// receive one per call. It identifies the session, turn, and tool call so a
+/// host serving many sessions can correlate work, and it reports progress
+/// that observers see as [`SessionEventKind::ToolProgress`](crate::SessionEventKind::ToolProgress)
+/// events on [`Session::events`](crate::Session::events).
+///
+/// Cheap to clone; clones describe the same call.
+///
+/// Stability: alpha — may change without a major bump; see
+/// [`stability`](crate::stability).
+#[derive(Clone)]
+pub struct ToolCallContext {
+    inner: Arc<ToolCallContextInner>,
+}
+
+struct ToolCallContextInner {
+    tool_name: String,
+    tool_call_id: String,
+    turn_id: Option<String>,
+    context: everruns_core::tool_context::ToolContext,
+}
+
+impl ToolCallContext {
+    fn from_core(tool_name: &str, context: &everruns_core::tool_context::ToolContext) -> Self {
+        Self {
+            inner: Arc::new(ToolCallContextInner {
+                tool_name: tool_name.to_string(),
+                tool_call_id: context.tool_call_id.clone().unwrap_or_default(),
+                turn_id: context
+                    .event_context
+                    .as_ref()
+                    .and_then(|event| event.turn_id)
+                    .map(|turn_id| turn_id.to_string()),
+                context: context.clone(),
+            }),
+        }
+    }
+
+    /// The session this call belongs to.
+    pub fn session_id(&self) -> crate::SessionId {
+        self.inner.context.session_id
+    }
+
+    /// The turn that issued this call, when the runtime reported one.
+    pub fn turn_id(&self) -> Option<String> {
+        self.inner.turn_id.clone()
+    }
+
+    /// The model-assigned id of this tool call.
+    ///
+    /// Empty only when the tool is invoked outside an engine turn.
+    pub fn tool_call_id(&self) -> &str {
+        &self.inner.tool_call_id
+    }
+
+    /// The name of the tool being called.
+    pub fn tool_name(&self) -> &str {
+        &self.inner.tool_name
+    }
+
+    /// Report human-readable progress for this call.
+    ///
+    /// Best effort: the event is emitted to the session's event stream and
+    /// never fails the call. Outside an engine turn it is a no-op.
+    pub async fn progress(&self, message: impl Into<String>) {
+        let message = message.into();
+        self.inner
+            .context
+            .emit_progress(&self.inner.tool_name, &message)
+            .await;
+    }
+}
+
+impl fmt::Debug for ToolCallContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ToolCallContext")
+            .field("session_id", &self.session_id())
+            .field("turn_id", &self.inner.turn_id)
+            .field("tool_call_id", &self.inner.tool_call_id)
+            .field("tool_name", &self.inner.tool_name)
+            .finish()
+    }
+}
 
 /// A custom agent tool backed by an async function or closure.
 ///
@@ -149,6 +242,7 @@ pub struct FunctionTool {
     description: String,
     schema: Value,
     handler: HandlerFn,
+    approval: Option<ApprovalPredicate>,
 }
 
 impl FunctionTool {
@@ -175,21 +269,105 @@ impl FunctionTool {
         T: IntoToolResult + 'static,
         E: fmt::Display + 'static,
     {
-        let handler: HandlerFn = Arc::new(move |args| {
+        let handler: HandlerFn = Arc::new(move |_context, args| {
             let fut = handler(args);
-            Box::pin(async move {
-                match fut.await {
-                    Ok(value) => value.into_tool_result(),
-                    Err(err) => ToolExecutionResult::internal_error_msg(err.to_string()),
-                }
-            })
+            Box::pin(async move { into_execution_result(fut.await) })
         });
         Self {
             name: name.into(),
             description: description.into(),
             schema: json_schema,
             handler,
+            approval: None,
         }
+    }
+
+    /// Wrap an async handler that also receives the call's [`ToolCallContext`].
+    ///
+    /// Identical to [`new`](Self::new) except the handler takes the context
+    /// first: use it to report [`progress`](ToolCallContext::progress) or to
+    /// correlate work with the session, turn, and tool call.
+    ///
+    /// Stability: alpha — may change without a major bump; see
+    /// [`stability`](crate::stability).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use everruns::{FunctionTool, ToolCallContext};
+    /// use serde_json::{Value, json};
+    ///
+    /// let export = FunctionTool::with_context(
+    ///     "export",
+    ///     "Export the report.",
+    ///     json!({ "type": "object", "properties": {} }),
+    ///     |ctx: ToolCallContext, _args: Value| async move {
+    ///         ctx.progress("rendering").await;
+    ///         Ok::<_, String>(json!({ "session": ctx.session_id().to_string() }))
+    ///     },
+    /// );
+    /// assert_eq!(export.name(), "export");
+    /// ```
+    pub fn with_context<F, Fut, T, E>(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        json_schema: Value,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(ToolCallContext, Value) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<T, E>> + Send + 'static,
+        T: IntoToolResult + 'static,
+        E: fmt::Display + 'static,
+    {
+        let handler: HandlerFn = Arc::new(move |context, args| {
+            let fut = handler(context, args);
+            Box::pin(async move { into_execution_result(fut.await) })
+        });
+        Self {
+            name: name.into(),
+            description: description.into(),
+            schema: json_schema,
+            handler,
+            approval: None,
+        }
+    }
+
+    /// Require approval for calls whose arguments satisfy `predicate`.
+    ///
+    /// Before such a call runs, the approver set with
+    /// [`AgentBuilder::approver`](crate::AgentBuilder::approver) is asked; a
+    /// rejection reaches the model as a tool error and the handler never runs.
+    /// `predicate` returning `false` runs the call without asking. An agent
+    /// with an approval-gated tool and no approver fails to
+    /// [`build`](crate::AgentBuilder::build) — the gate never fails open.
+    ///
+    /// Calling this again replaces the earlier rule.
+    ///
+    /// Stability: alpha — may change without a major bump; see
+    /// [`stability`](crate::stability).
+    pub fn needs_approval(
+        mut self,
+        predicate: impl Fn(&Value) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.approval = Some(Arc::new(predicate));
+        self
+    }
+
+    /// Require approval before every call of this tool.
+    ///
+    /// Shorthand for [`needs_approval`](Self::needs_approval) with a predicate
+    /// that always returns `true`.
+    ///
+    /// Stability: alpha — may change without a major bump; see
+    /// [`stability`](crate::stability).
+    pub fn always_needs_approval(self) -> Self {
+        self.needs_approval(|_| true)
+    }
+
+    /// Whether any call of this tool may need approval.
+    pub(crate) fn approval(&self) -> Option<&ApprovalPredicate> {
+        self.approval.as_ref()
     }
 
     /// The tool's name (the identifier the model calls).
@@ -214,6 +392,7 @@ impl fmt::Debug for FunctionTool {
             .field("name", &self.name)
             .field("description", &self.description)
             .field("schema", &self.schema)
+            .field("needs_approval", &self.approval.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -233,7 +412,27 @@ impl CoreTool for FunctionTool {
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        (self.handler)(arguments).await
+        // Outside an engine turn there is no session: give context-aware
+        // handlers a detached context whose progress reports go nowhere.
+        let context = everruns_core::tool_context::ToolContext::new(crate::SessionId::new());
+        self.execute_with_context(arguments, &context).await
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &everruns_core::tool_context::ToolContext,
+    ) -> ToolExecutionResult {
+        (self.handler)(ToolCallContext::from_core(&self.name, context), arguments).await
+    }
+}
+
+fn into_execution_result<T: IntoToolResult, E: fmt::Display>(
+    result: Result<T, E>,
+) -> ToolExecutionResult {
+    match result {
+        Ok(value) => value.into_tool_result(),
+        Err(err) => ToolExecutionResult::internal_error_msg(err.to_string()),
     }
 }
 
@@ -476,6 +675,67 @@ mod tests {
         for (n, handle) in handles.into_iter().enumerate() {
             assert_eq!(handle.await.unwrap(), n as i64 * 2);
         }
+    }
+
+    #[tokio::test]
+    async fn with_context_handler_sees_the_core_call_context() {
+        let tool = FunctionTool::with_context(
+            "whoami",
+            "Report the call.",
+            obj_schema(),
+            |ctx: ToolCallContext, _args: Value| async move {
+                Ok::<_, String>(json!({
+                    "session": ctx.session_id().to_string(),
+                    "call": ctx.tool_call_id(),
+                    "tool": ctx.tool_name(),
+                    "turn": ctx.turn_id(),
+                }))
+            },
+        );
+        let session_id = crate::SessionId::new();
+        let mut context = everruns_core::tool_context::ToolContext::new(session_id);
+        context.tool_call_id = Some("call_7".to_string());
+        match tool.execute_with_context(json!({}), &context).await {
+            ToolExecutionResult::Success(value) => {
+                assert_eq!(value["session"], json!(session_id.to_string()));
+                assert_eq!(value["call"], json!("call_7"));
+                assert_eq!(value["tool"], json!("whoami"));
+                assert_eq!(value["turn"], Value::Null);
+            }
+            other => panic!("expected success, got {other:?}"),
+        }
+        // Progress outside a turn (no emitter) is a silent no-op.
+        let detached = ToolCallContext::from_core("whoami", &context);
+        detached.progress("ignored").await;
+    }
+
+    #[tokio::test]
+    async fn plain_handlers_still_run_through_execute_with_context() {
+        let tool = FunctionTool::new("plain", "Plain.", obj_schema(), |args: Value| async move {
+            Ok::<_, String>(args)
+        });
+        let context = everruns_core::tool_context::ToolContext::new(crate::SessionId::new());
+        match tool.execute_with_context(json!({ "a": 1 }), &context).await {
+            ToolExecutionResult::Success(value) => assert_eq!(value, json!({ "a": 1 })),
+            other => panic!("expected success, got {other:?}"),
+        }
+        assert!(tool.approval().is_none());
+    }
+
+    #[test]
+    fn approval_builders_set_and_replace_the_rule() {
+        let tool = FunctionTool::new("gate", "Gate.", obj_schema(), |_: Value| async move {
+            Ok::<_, String>(json!({}))
+        });
+        let ruled = tool
+            .clone()
+            .needs_approval(|args| args["risky"] == json!(true));
+        let predicate = ruled.approval().expect("rule set");
+        assert!(predicate(&json!({ "risky": true })));
+        assert!(!predicate(&json!({ "risky": false })));
+        let always = ruled.always_needs_approval();
+        assert!(always.approval().expect("replaced")(&json!({})));
+        assert!(format!("{always:?}").contains("needs_approval: true"));
     }
 
     #[test]

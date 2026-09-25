@@ -51,6 +51,32 @@ let agent = Agent::builder()
 
 `AgentBuilder::ask_user` registers the responder and enables the capability in one call. The responder runs **inside** the tool call, so the turn never parks waiting for an external result — the agent asks, your code answers, and the turn continues.
 
+## Route by session
+
+A host that serves several sessions overrides `ask_in` instead of relying on
+the default, which ignores the context and calls `ask`. `AskContext` carries
+the session id, the `ask_user` tool call id, and the turn id when known.
+
+```rust
+use everruns::ask_user::{AskContext, AskUser, DefaultsResponder, Outcome, Question, async_trait};
+
+struct Router;
+
+#[async_trait]
+impl AskUser for Router {
+    // Only reached when a caller has no context to give.
+    async fn ask(&self, questions: &[Question]) -> Outcome {
+        DefaultsResponder.ask(questions).await
+    }
+
+    async fn ask_in(&self, context: &AskContext, questions: &[Question]) -> Outcome {
+        # let _ = (context, questions);
+        // Send `questions` to the client that owns `context.session_id()`.
+        # unimplemented!()
+    }
+}
+```
+
 ## Without a responder
 
 `.capability("ask_user")` on its own uses `DefaultsResponder`: it applies the options the model marked as recommended, falls back to the first option, and reports `AnsweredBy::Unattended`. Headless runs resolve immediately rather than waiting out the timeout for somebody who is not there.
