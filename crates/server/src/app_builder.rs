@@ -534,6 +534,33 @@ impl ServerAppBuilder {
                 None
             }
         };
+        let (slack_app_provisioner, slack_connection_manager) = if let Some(provisioner) =
+            self.slack_app_provisioner.clone()
+        {
+            (Some(provisioner), None)
+        } else if let Some(encryption) = encryption.clone() {
+            let manager = Arc::new(crate::slack_provisioning::SlackApiProvisioner::new(
+                db.clone(),
+                encryption,
+            )?);
+            let provisioner: Arc<dyn everruns_platform::slack_provisioning::SlackAppProvisioner> =
+                manager.clone();
+            let rotation_manager = manager.clone();
+            supervisor.track(
+                "slack_token_rotation",
+                tokio::spawn(async move {
+                    loop {
+                        if let Err(error) = rotation_manager.rotate_due_connections().await {
+                            tracing::warn!(%error, "Slack token rotation sweep failed");
+                        }
+                        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                    }
+                }),
+            );
+            (Some(provisioner), Some(manager))
+        } else {
+            (None, None)
+        };
 
         // Seed must run after encryption is resolved: single-tenant/dev seeding
         // materializes DEFAULT_*_API_KEY env vars into the default org's
@@ -1585,7 +1612,8 @@ impl ServerAppBuilder {
                     slack_state,
                     auth_state.clone(),
                     auth_config.frontend_url.clone(),
-                    self.slack_app_provisioner.clone(),
+                    slack_app_provisioner,
+                    slack_connection_manager,
                 ),
             ))
             .merge(api::app_webhooks::routes(app_webhooks_state))
