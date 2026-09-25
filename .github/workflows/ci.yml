@@ -1913,9 +1913,10 @@ jobs:
       #
       # Only the server needs this: the worker receives resolved credentials
       # over the gRPC control-plane and reads no DEFAULT_* var itself.
-      # Fetched as two named secrets rather than `doppler run`, so only these
-      # variables are added to the server's environment and `$!` stays the
-      # server's own PID for the stop step.
+      # Fetched as two named secrets rather than `doppler run`, then remove the
+      # vault token before launching the server so only these variables cross
+      # the process boundary and `$!` stays the server's own PID for the stop
+      # step.
       - name: Start API server
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
@@ -1927,6 +1928,7 @@ jobs:
             echo "Doppler returned an empty provider key; the org-default tests cannot run." >&2
             exit 1
           fi
+          env -u DOPPLER_TOKEN \
           DEFAULT_OPENAI_API_KEY="$openai_key" \
           DEFAULT_ANTHROPIC_API_KEY="$anthropic_key" \
             ./bin/everruns-server > server.log 2>&1 &
