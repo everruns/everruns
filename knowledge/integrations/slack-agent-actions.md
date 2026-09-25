@@ -153,6 +153,10 @@ endpoint must be `ChannelType::Slack` and `status == live`, so a session that
 came through another channel never falls through to a sibling Slack endpoint —
 the wrong-bot bug that resolving by endpoint exists to prevent.
 
+Mutating actions are also bound to the conversation recorded by trusted Slack
+ingress metadata. Model-selected alternate channels, channel-level uploads, and
+configured endpoint/channel mismatches fail before any Slack API request.
+
 Errors cross as a closed enum, not a message string. The capability renders "this
 session did not come from Slack" as a tool error the model should act on and a
 transient fault as an internal error, and telling those apart must not depend on
