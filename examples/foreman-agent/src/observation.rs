@@ -687,6 +687,38 @@ mod tests {
         assert_eq!(observation.worker_history.len(), 2);
     }
 
+    /// Run the fake runtime, absorbing the one failure the harness can cause.
+    ///
+    /// These tests write an executable and then run it. Between the write's
+    /// `open` and its `close`, any sibling test that spawns a process — `git` in
+    /// the fixture and the evidence helpers, a stand-in worker — forks and its
+    /// child inherits the writable descriptor until it execs. `execve` answers
+    /// `ETXTBSY` while such a descriptor exists, so an unlucky interleaving
+    /// fails the spawn with "Text file busy".
+    ///
+    /// That is a property of writing and exec'ing a file inside one
+    /// multi-threaded process, not of the code under test, and it cannot be
+    /// asserted away: the production spawn is `docker`, a binary nobody wrote a
+    /// moment ago. So retry that one error here, and let every other outcome —
+    /// including a spawn failure for any other reason — through to the
+    /// assertions unchanged.
+    #[cfg(unix)]
+    async fn run_tests_absorbing_exec_race(
+        repository: &Path,
+        command: &str,
+        config: &Config,
+        runtime: &str,
+    ) -> TestRun {
+        for _ in 0..20 {
+            let run = run_tests_with_runtime(repository, command, config, runtime).await;
+            if !run.output_tail.contains("Text file busy") {
+                return run;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!("the fake runtime stayed unexecutable: ETXTBSY did not clear");
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn a_test_run_reports_what_the_command_did() {
@@ -694,7 +726,7 @@ mod tests {
         let config = Config::default();
         let runtime = fake_container_runtime(root.path());
 
-        let green = run_tests_with_runtime(
+        let green = run_tests_absorbing_exec_race(
             root.path(),
             "echo '2 passed, 0 failed'",
             &config,
@@ -705,7 +737,7 @@ mod tests {
         assert_eq!(green.exit_code, Some(0));
         assert!(green.output_tail.contains("2 passed"));
 
-        let red = run_tests_with_runtime(
+        let red = run_tests_absorbing_exec_race(
             root.path(),
             "echo boom >&2; exit 3",
             &config,
@@ -733,12 +765,56 @@ mod tests {
             ..Config::default()
         };
         let runtime = fake_container_runtime(root.path());
-        let run =
-            run_tests_with_runtime(root.path(), "sleep 30", &config, runtime.to_str().unwrap())
-                .await;
+        let run = run_tests_absorbing_exec_race(
+            root.path(),
+            "sleep 30",
+            &config,
+            runtime.to_str().unwrap(),
+        )
+        .await;
         assert!(!run.passed);
         assert_eq!(run.exit_code, None);
         assert!(run.output_tail.contains("exceeded"), "{}", run.output_tail);
+    }
+
+    /// ETXTBSY is reachable on purpose, so prove both halves of the harness's
+    /// contract rather than asserting the race away: the spawn really does fail
+    /// that way while a write handle is open, and the wrapper really does
+    /// recover once it closes.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_held_write_handle_makes_the_runtime_unexecutable_until_it_closes() {
+        let root = tempfile::tempdir().unwrap();
+        let config = Config::default();
+        let runtime = fake_container_runtime(root.path());
+
+        // Exactly what a sibling test's fork leaves behind for a moment.
+        let held = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&runtime)
+            .expect("open the runtime for writing");
+        let direct =
+            run_tests_with_runtime(root.path(), "echo hi", &config, runtime.to_str().unwrap())
+                .await;
+        assert!(
+            direct.output_tail.contains("Text file busy"),
+            "expected ETXTBSY while a write handle is open, got {}",
+            direct.output_tail
+        );
+
+        let closing = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            drop(held);
+        });
+        let absorbed = run_tests_absorbing_exec_race(
+            root.path(),
+            "echo '2 passed, 0 failed'",
+            &config,
+            runtime.to_str().unwrap(),
+        )
+        .await;
+        closing.await.expect("closer task");
+        assert!(absorbed.passed, "{}", absorbed.output_tail);
     }
 
     #[cfg(unix)]
