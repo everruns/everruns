@@ -7,6 +7,7 @@
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -231,13 +232,69 @@ pub struct TestRun {
 /// a suite that hangs must not outlive the reading that asked for it, or take
 /// the runtime down with it at shutdown.
 pub async fn run_tests(repository: &Path, command: &str, config: &Config) -> TestRun {
-    let spawned = tokio::process::Command::new("bash")
-        .arg("-c")
-        .arg(command)
-        .current_dir(repository)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+    run_tests_with_runtime(repository, command, config, "docker").await
+}
+
+/// Run tests inside a disposable container rather than crossing the worker's
+/// sandbox boundary back onto the host.
+async fn run_tests_with_runtime(
+    repository: &Path,
+    command: &str,
+    config: &Config,
+    runtime: &str,
+) -> TestRun {
+    let cid_file = match tempfile::NamedTempFile::new() {
+        Ok(file) => file,
+        Err(error) => {
+            return failed_test_run(command, format!("could not prepare test sandbox: {error}"));
+        }
+    };
+    let script = format!(
+        "set -o pipefail; ( {command} ) 2>&1 | tail -c {}; exit ${{PIPESTATUS[0]}}",
+        config.output_limit
+    );
+    let container_script = format!("cp -a /source/. /workspace/ && cd /workspace && {script}");
+    let mount = format!(
+        "type=bind,src={},dst=/source,readonly",
+        repository.display()
+    );
+    // THREAT[TM-BASH-026]: repository-controlled test code receives no host
+    // environment, network, writable host mount, or privileged container APIs.
+    let spawned = tokio::process::Command::new(runtime)
+        .args([
+            "run",
+            "--rm",
+            "--cidfile",
+            &cid_file.path().to_string_lossy(),
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--pids-limit",
+            "256",
+            "--memory",
+            "2g",
+            "--cpus",
+            "2",
+            "--mount",
+            &mount,
+            "--tmpfs",
+            "/workspace:rw,exec,nosuid,nodev,size=2g",
+            "--tmpfs",
+            "/tmp:rw,nosuid,nodev,size=256m",
+            "rust:1.96-bookworm",
+            "bash",
+            "-c",
+            &container_script,
+        ])
+        .env_clear()
+        .env("PATH", "/usr/local/bin:/usr/bin:/bin")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn();
 
@@ -253,12 +310,25 @@ pub async fn run_tests(repository: &Path, command: &str, config: &Config) -> Tes
                 (output.status.code(), output.status.success(), text)
             }
             Ok(Err(error)) => (None, false, format!("could not run the tests: {error}")),
-            // Dropping the future drops the child, and `kill_on_drop` ends it.
-            Err(_) => (
-                None,
-                false,
-                format!("tests exceeded {:.0}s", budget.as_secs_f64()),
-            ),
+            Err(_) => {
+                // Killing the client does not necessarily kill its container.
+                // Use Docker's recorded ID to remove every process in it.
+                if let Ok(cid) = std::fs::read_to_string(cid_file.path()) {
+                    let _ = tokio::process::Command::new(runtime)
+                        .args(["rm", "-f", cid.trim()])
+                        .env_clear()
+                        .env("PATH", "/usr/local/bin:/usr/bin:/bin")
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .status()
+                        .await;
+                }
+                (
+                    None,
+                    false,
+                    format!("tests exceeded {:.0}s", budget.as_secs_f64()),
+                )
+            }
         },
         Err(error) => (None, false, format!("could not run the tests: {error}")),
     };
@@ -268,6 +338,16 @@ pub async fn run_tests(repository: &Path, command: &str, config: &Config) -> Tes
         exit_code,
         passed,
         output_tail: tail(&text, config.output_limit),
+        ran_seconds_ago: 0.0,
+    }
+}
+
+fn failed_test_run(command: &str, text: String) -> TestRun {
+    TestRun {
+        command: command.to_owned(),
+        exit_code: None,
+        passed: false,
+        output_tail: text,
         ran_seconds_ago: 0.0,
     }
 }
@@ -604,23 +684,44 @@ mod tests {
         assert_eq!(observation.worker_history.len(), 2);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_test_run_reports_what_the_command_did() {
         let root = tempfile::tempdir().unwrap();
         let config = Config::default();
+        let runtime = fake_container_runtime(root.path());
 
-        let green = run_tests(root.path(), "echo '2 passed, 0 failed'", &config).await;
+        let green = run_tests_with_runtime(
+            root.path(),
+            "echo '2 passed, 0 failed'",
+            &config,
+            runtime.to_str().unwrap(),
+        )
+        .await;
         assert!(green.passed);
         assert_eq!(green.exit_code, Some(0));
         assert!(green.output_tail.contains("2 passed"));
 
-        let red = run_tests(root.path(), "echo boom >&2; exit 3", &config).await;
+        let red = run_tests_with_runtime(
+            root.path(),
+            "echo boom >&2; exit 3",
+            &config,
+            runtime.to_str().unwrap(),
+        )
+        .await;
         assert!(!red.passed);
         assert_eq!(red.exit_code, Some(3));
         // Both streams are evidence; a failure usually explains itself on stderr.
         assert!(red.output_tail.contains("boom"));
+
+        let args = std::fs::read_to_string(root.path().join("runtime-args")).unwrap();
+        assert!(args.contains("--network none"));
+        assert!(args.contains("readonly"));
+        assert!(args.contains("--cap-drop ALL"));
+        assert!(args.contains("--security-opt no-new-privileges"));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_test_command_that_never_returns_is_bounded() {
         let root = tempfile::tempdir().unwrap();
@@ -628,10 +729,29 @@ mod tests {
             test_timeout: Duration::from_millis(200),
             ..Config::default()
         };
-        let run = run_tests(root.path(), "sleep 30", &config).await;
+        let runtime = fake_container_runtime(root.path());
+        let run =
+            run_tests_with_runtime(root.path(), "sleep 30", &config, runtime.to_str().unwrap())
+                .await;
         assert!(!run.passed);
         assert_eq!(run.exit_code, None);
         assert!(run.output_tail.contains("exceeded"), "{}", run.output_tail);
+    }
+
+    #[cfg(unix)]
+    fn fake_container_runtime(root: &Path) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let runtime = root.join("fake-docker");
+        std::fs::write(
+            &runtime,
+            "#!/bin/bash\nprintf '%s' \"$*\" > \"$(dirname \"$0\")/runtime-args\"\nargs=\"$*\"\ncase \"$args\" in\n  *'sleep 30'*) sleep 30 ;;\n  *'exit 3'*) echo boom >&2; exit 3 ;;\n  *) echo '2 passed, 0 failed' ;;\nesac\n",
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&runtime).unwrap().permissions();
+        permissions.set_mode(0o700);
+        std::fs::set_permissions(&runtime, permissions).unwrap();
+        runtime
     }
 
     #[test]
