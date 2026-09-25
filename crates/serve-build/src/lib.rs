@@ -1,4 +1,5 @@
-//! `build.rs` helper for [`serve`](../serve/index.html) (experimental).
+//! `build.rs` helper for [`serve`](https://docs.rs/everruns-serve) (experimental),
+//! part of the [Everruns](https://everruns.com) ecosystem.
 //!
 //! Rust cannot scan the filesystem at runtime the way eve does, so the file
 //! layout is captured at build time instead: every file under `agent/` (the
@@ -7,11 +8,9 @@
 //! behavior; `cargo run -- dev` still re-reads the same files from disk so
 //! Markdown edits hot-reload without a rebuild.
 //!
-//! ```text
-//! // build.rs
-//! fn main() {
-//!     serve_build::embed();
-//! }
+//! ```no_run
+//! // Inside `fn main` of the app's build.rs:
+//! serve_build::embed();
 //! ```
 //!
 //! and once in `main.rs`: `serve::assets!();`

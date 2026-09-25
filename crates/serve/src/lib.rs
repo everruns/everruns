@@ -1,38 +1,41 @@
 //! # serve (experimental)
 //!
 //! An agent framework in the style of [Topcoat], with hosting modelled on
-//! [eve], built on the `everruns` runtime.
+//! [eve], built on the `everruns` runtime. It is part of the
+//! [Everruns](https://everruns.com) ecosystem.
 //!
 //! > **Experimental.** serve is a proof of concept. Every API here may change
 //! > or disappear; it is published as `everruns-serve` but not covered by
 //! > the everruns stability policy.
 //!
-//! ```ignore
+//! ```no_run
 //! use serve::prelude::*;
 //!
+//! /// Rolls dice for board-game nights.
 //! #[agent]
-//! fn analyst() -> Agent {
+//! fn assistant() -> Agent {
 //!     Agent::builder()
 //!         .model("anthropic/claude-sonnet-5")
-//!         .instructions(md!("instructions.md"))
+//!         .instructions("Roll dice when asked.")
 //!         .build()
 //! }
 //!
-//! /// Run a read-only SQL query against the warehouse.
-//! #[tool(needs_approval = |a: &RunSql| a.sql.len() > 500)]
-//! async fn run_sql(cx: &Cx, sql: String) -> Result<Rows> {
-//!     let wh = cx.connection::<Warehouse>()?;
-//!     cx.progress("querying…").await;
-//!     wh.query(&sql)
+//! /// Roll one die with the given number of sides.
+//! #[tool]
+//! async fn roll_dice(cx: &Cx, sides: u32) -> Result<u32> {
+//!     cx.progress(format!("rolling a d{sides}")).await;
+//!     Ok(sides)
 //! }
-//!
-//! serve::assets!();
 //!
 //! #[tokio::main]
 //! async fn main() -> serve::Result {
-//!     serve::start(App::builder().discover().build()?).await
+//!     serve::start(App::builder().discover().build()).await
 //! }
 //! ```
+//!
+//! A real app also calls `serve::assets!()` once and embeds `agent/**` with
+//! `serve_build::embed()` in `build.rs`, so prompts and skills can live in
+//! Markdown files (see `md!`).
 //!
 //! The pieces:
 //!

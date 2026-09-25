@@ -1,5 +1,6 @@
-//! Attribute macros for [`serve`](../serve/index.html), the experimental
-//! everruns agent framework.
+//! Attribute macros for [`serve`](https://docs.rs/everruns-serve), the
+//! experimental agent framework in the [Everruns](https://everruns.com)
+//! ecosystem.
 //!
 //! Each attribute keeps the annotated item callable exactly as written and adds
 //! a link-time registration (via `inventory`) that `App::builder().discover()`
@@ -8,6 +9,13 @@
 //! into the manifest so the host and the dev UI can point back at it.
 //!
 //! Applications use the re-exports from `serve`, never this crate directly.
+//!
+//! ```
+//! use serve_macros::{agent, tool};
+//!
+//! assert_eq!(stringify!(agent), "agent");
+//! assert_eq!(stringify!(tool), "tool");
+//! ```
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;

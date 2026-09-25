@@ -1,9 +1,14 @@
-# serve
+# everruns-serve
 
-> **Experimental.** serve is a proof of concept for an application framework
-> on top of everruns. It is published to crates.io as `everruns-serve`, but its
-> APIs will change and it is outside the everruns
-> [stability policy](https://github.com/everruns/everruns/blob/main/knowledge/framework/api-stability.md).
+> Experimental agent app framework on the Everruns runtime, imported as `serve`.
+
+[![Crates.io](https://img.shields.io/crates/v/everruns-serve.svg)](https://crates.io/crates/everruns-serve)
+[![Documentation](https://docs.rs/everruns-serve/badge.svg)](https://docs.rs/everruns-serve)
+[![License](https://img.shields.io/crates/l/everruns-serve.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
+**Experimental.** serve is a proof of concept in the
+[Everruns](https://everruns.com) ecosystem. Its APIs will change, and it has no
+compatibility promise.
 
 serve takes its API shape from [Topcoat](https://github.com/tokio-rs/topcoat)
 and its hosting model from [eve](https://vercel.com/blog/introducing-eve):
@@ -128,7 +133,7 @@ The layout is a convention. `discover()` warns when an item lives somewhere
 else, and it reports every error in the app at once: duplicate names, a bad
 cron, a filter naming an unknown tool.
 
-## The pieces
+## What It Provides
 
 | Macro | On | Becomes |
 |---|---|---|
@@ -158,14 +163,14 @@ what it registered.
 | `eval [--against URL] [filter]` | Runs the evals. With `--against`, it runs them against a running deploy (a CI gate before promotion). |
 | `deploy` | Prints what a host would provision from the manifest. This PoC has no cloud target. |
 
-## Docs
+## Documentation
 
+- [Serve overview](https://docs.everruns.com/framework/serve/)
+- [API reference](https://docs.rs/everruns-serve)
 - [Guide](https://github.com/everruns/everruns/blob/main/crates/serve/docs/guide.md): writing an app, piece by piece.
 - [Wire API](https://github.com/everruns/everruns/blob/main/crates/serve/docs/wire-api.md): the `/v1` routes, the event stream, and resuming.
 - [Manifest and hosting](https://github.com/everruns/everruns/blob/main/crates/serve/docs/hosting.md): what the build declares, what a host
   provides, and how build pinning works.
-- [Design note](https://github.com/everruns/everruns/blob/main/knowledge/framework/serve.md): why it is shaped like this,
-  and the open questions.
 
 ## Status
 
@@ -186,3 +191,7 @@ It does not have:
   the model;
 - auth, organizations, or the server's agent, harness and workspace routes;
 - Slack signature checks without `SLACK_SIGNING_SECRET` (they are skipped in dev).
+
+## License
+
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
