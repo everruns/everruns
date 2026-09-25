@@ -109,6 +109,7 @@ impl TestServer {
             None,
             false,
             None,
+            None,
         )
         .await
     }
@@ -124,6 +125,22 @@ impl TestServer {
             None,
             true,
             Some(runner),
+            None,
+        )
+        .await
+    }
+
+    pub async fn in_memory_with_runner_and_permission_resolver(
+        runner: Arc<dyn AgentRunner>,
+        permission_resolver: Arc<dyn everruns_core::PermissionResolver>,
+    ) -> Self {
+        Self::build(
+            TestMode::InMemory,
+            "http://127.0.0.1:0/api".to_string(),
+            None,
+            true,
+            Some(runner),
+            Some(permission_resolver),
         )
         .await
     }
@@ -136,6 +153,7 @@ impl TestServer {
             "http://127.0.0.1:0/api".to_string(),
             Some(max_bytes),
             true,
+            None,
             None,
         )
         .await
@@ -477,7 +495,7 @@ impl TestServer {
     }
 
     async fn with_mode_and_url(mode: TestMode, api_base_url: String) -> Self {
-        Self::build(mode, api_base_url, None, true, None).await
+        Self::build(mode, api_base_url, None, true, None, None).await
     }
 
     async fn build(
@@ -486,6 +504,7 @@ impl TestServer {
         atif_export_max_bytes: Option<usize>,
         encryption_enabled: bool,
         runner_override: Option<Arc<dyn AgentRunner>>,
+        permission_resolver: Option<Arc<dyn everruns_core::PermissionResolver>>,
     ) -> Self {
         // Create storage backend based on mode
         let (db, pool, durable_store) = match mode {
@@ -544,8 +563,12 @@ impl TestServer {
             db.clone(),
             host_composition.clone(),
         );
-        let auth_state = auth::AuthState::new(auth_config.clone(), Arc::new(auth_backend.clone()))
-            .with_db(db.clone());
+        let mut auth_state =
+            auth::AuthState::new(auth_config.clone(), Arc::new(auth_backend.clone()))
+                .with_db(db.clone());
+        if let Some(permission_resolver) = permission_resolver {
+            auth_state.permission_resolver = permission_resolver;
+        }
 
         // Use the requested test runner or a mode-appropriate default.
         let runner = match runner_override {
