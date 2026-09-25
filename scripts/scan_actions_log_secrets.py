@@ -54,6 +54,7 @@ CREDENTIAL_WORDS = {
 MASKED = {"***", "", "null", "none"}
 
 TIMESTAMP = re.compile(r"^\S+Z ")
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 ENV_ENTRY = re.compile(r"^\s{2}([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$")
 UNBROKEN_RUN = re.compile(r"[A-Za-z0-9]{16,}")
 VALUE_SHAPE = re.compile(r"[A-Za-z0-9+/=_\-.:]+")
@@ -62,9 +63,9 @@ VALUE_SHAPE = re.compile(r"[A-Za-z0-9+/=_\-.:]+")
 # the ordinary word "ask-", so a PR body linking
 # linear.app/.../EVE-1053/ask-user-capability-contract-schema-and-knowledge-spec
 # reported as an OpenAI key and turned the hourly sweep red on every branch of a
-# nine-issue project. A real credential is never preceded by a word character,
-# so this costs no detection.
-TOKEN_START = r"(?<![A-Za-z0-9_\-])"
+# nine-issue project. Hyphens and underscores are separators in ordinary log
+# labels such as `openai-key-<value>` and `token_<value>`, not word characters.
+TOKEN_START = r"(?<![A-Za-z0-9])"
 
 # Formats that are a credential wherever they appear. `sk-` excludes `sk-ant-`
 # so an Anthropic key reports once, under its own name.
@@ -128,7 +129,9 @@ def scan(text: str, allowlist: set[str]) -> list[tuple[int, str, str]]:
     findings = []
     inside_env_block = False
     for number, raw in enumerate(text.splitlines(), 1):
-        line = TIMESTAMP.sub("", raw)
+        # Terminal styling is not part of the rendered log text and must not
+        # hide a credential merely because an SGR sequence ends in a letter.
+        line = ANSI_ESCAPE.sub("", TIMESTAMP.sub("", raw))
         if line.strip() == "env:":
             inside_env_block = True
             continue
