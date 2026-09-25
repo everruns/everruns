@@ -194,6 +194,13 @@ describe("Slack endpoint first run", () => {
     );
     expect(screen.getByRole("button", { name: "Connect Slack" })).toBeDisabled();
     expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
+    const tokenWarning = screen.getByText(/A Slack workspace administrator must generate/);
+    expect(tokenWarning).toHaveTextContent(
+      "It can create and modify any Slack app in that workspace.",
+    );
+    expect(tokenWarning).toHaveTextContent(
+      "Everruns rotates it immediately and stores only the encrypted replacement.",
+    );
     unmount();
 
     render(

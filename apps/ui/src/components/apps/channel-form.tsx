@@ -665,11 +665,12 @@ function SlackOrganizationConnection({
       </div>
       {capability.can_manage ? (
         <>
-          <div className="flex gap-2 border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
-            <CircleAlert className="mt-0.5 size-4 shrink-0" />
+          <div className="flex gap-2 border border-warning/40 bg-warning/10 p-3 text-xs">
+            <CircleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
             <p>
-              Treat this token as an organization administrator credential. Everruns rotates it
-              immediately and stores only the encrypted replacement.
+              A Slack workspace administrator must generate this token. It can create and modify any
+              Slack app in that workspace. Everruns rotates it immediately and stores only the
+              encrypted replacement.
             </p>
           </div>
           <div className="space-y-2">
