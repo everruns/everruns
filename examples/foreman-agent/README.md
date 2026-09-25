@@ -214,6 +214,10 @@ claim, and `--tests` turns it into a fact.
 foreman run --repo . --job "…" --tests "cargo test"
 ```
 
+The container has no network, so the command has to be able to run offline —
+`bash tests/run.sh` needs nothing, while `cargo test` needs its dependencies
+already vendored into the repository or present in the runner image.
+
 The result lands in the observation as `test_results` — the field Foreman
 declares and never fills — and `tests_sufficient` moves on it. In a demo run
 the dimension sits at 0.28 while the tests are the old ones and jumps to 0.91

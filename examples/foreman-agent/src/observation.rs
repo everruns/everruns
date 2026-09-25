@@ -243,12 +243,15 @@ async fn run_tests_with_runtime(
     config: &Config,
     runtime: &str,
 ) -> TestRun {
-    let cid_file = match tempfile::NamedTempFile::new() {
-        Ok(file) => file,
+    // `docker run --cidfile` refuses to start when the path already exists, so
+    // hand it a name inside a private directory rather than a created file.
+    let cid_home = match tempfile::tempdir() {
+        Ok(dir) => dir,
         Err(error) => {
             return failed_test_run(command, format!("could not prepare test sandbox: {error}"));
         }
     };
+    let cid_path = cid_home.path().join("container-id");
     let script = format!(
         "set -o pipefail; ( {command} ) 2>&1 | tail -c {}; exit ${{PIPESTATUS[0]}}",
         config.output_limit
@@ -265,7 +268,7 @@ async fn run_tests_with_runtime(
             "run",
             "--rm",
             "--cidfile",
-            &cid_file.path().to_string_lossy(),
+            &cid_path.to_string_lossy(),
             "--network",
             "none",
             "--read-only",
@@ -313,7 +316,7 @@ async fn run_tests_with_runtime(
             Err(_) => {
                 // Killing the client does not necessarily kill its container.
                 // Use Docker's recorded ID to remove every process in it.
-                if let Ok(cid) = std::fs::read_to_string(cid_file.path()) {
+                if let Ok(cid) = std::fs::read_to_string(&cid_path) {
                     let _ = tokio::process::Command::new(runtime)
                         .args(["rm", "-f", cid.trim()])
                         .env_clear()
@@ -743,9 +746,30 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let runtime = root.join("fake-docker");
+        // Emulates the slice of `docker run` this code depends on, including
+        // its refusal to start when `--cidfile` names a path that exists.
         std::fs::write(
             &runtime,
-            "#!/bin/bash\nprintf '%s' \"$*\" > \"$(dirname \"$0\")/runtime-args\"\nargs=\"$*\"\ncase \"$args\" in\n  *'sleep 30'*) sleep 30 ;;\n  *'exit 3'*) echo boom >&2; exit 3 ;;\n  *) echo '2 passed, 0 failed' ;;\nesac\n",
+            r#"#!/bin/bash
+args="$*"
+printf '%s' "$args" > "$(dirname "$0")/runtime-args"
+previous=""
+for argument in "$@"; do
+  if [ "$previous" = "--cidfile" ]; then
+    if [ -e "$argument" ]; then
+      echo "Container ID file found, make sure the other container isn't running or delete $argument" >&2
+      exit 125
+    fi
+    printf 'fake-container-id' > "$argument"
+  fi
+  previous="$argument"
+done
+case "$args" in
+  *'sleep 30'*) sleep 30 ;;
+  *'exit 3'*) echo boom >&2; exit 3 ;;
+  *) echo '2 passed, 0 failed' ;;
+esac
+"#,
         )
         .unwrap();
         let mut permissions = std::fs::metadata(&runtime).unwrap().permissions();
