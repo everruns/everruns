@@ -87,6 +87,12 @@ impl DriverId {
     ///     Some(DriverId::OpenRouter)
     /// );
     /// assert_eq!(DriverId::for_base_url("http://127.0.0.1:8081/v1"), None);
+    ///
+    /// // A host that accepts any base URL picks the vendor driver when there
+    /// // is one, and the OpenAI-compatible wire otherwise.
+    /// let pick = |url: &str| DriverId::for_base_url(url).unwrap_or(DriverId::OpenAICompletions);
+    /// assert_eq!(pick("https://api.anthropic.com"), DriverId::Anthropic);
+    /// assert_eq!(pick("http://localhost:11434/v1"), DriverId::OpenAICompletions);
     /// ```
     pub fn for_base_url(base_url: &str) -> Option<DriverId> {
         let host = url::Url::parse(base_url.trim())

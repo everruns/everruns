@@ -49,3 +49,118 @@ that wants to own retries sets
 [`LlmRetryConfig::no_retry`](crate::llm_retry::LlmRetryConfig::no_retry)
 on the driver. `Done` reports what happened in
 [`retry_metadata`](LlmCompletionMetadata::retry_metadata).
+
+# Example: consuming a stream
+
+A consumer that renders text and reasoning live, keeps the reasoning and
+tool-call items as the record, and treats a missing finish reason as a
+failure. The stream here is scripted; a real one comes from
+[`Provider::chat_completion_stream`](crate::runtime_provider::Provider::chat_completion_stream).
+
+```
+use everruns_provider::driver_registry::{
+    LlmCompletionMetadata, LlmResponseStream, LlmStreamError, LlmStreamEvent,
+};
+use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
+use everruns_provider::tool_types::ToolCall;
+use futures::StreamExt;
+
+#[derive(Default)]
+struct Turn {
+    text: String,
+    reasoning: Vec<ReasoningContentPart>,
+    tool_calls: Vec<ToolCall>,
+}
+
+async fn consume(mut stream: LlmResponseStream) -> Result<Turn, String> {
+    let mut turn = Turn::default();
+    while let Some(event) = stream.next().await {
+        match event.map_err(|error| error.to_string())? {
+            // Live: show it, and build the text from it.
+            LlmStreamEvent::TextDelta(delta) => turn.text.push_str(&delta),
+            // Live: show it, but do not store it. The item below repeats it.
+            LlmStreamEvent::ReasoningDelta { delta, .. } => print!("{delta}"),
+            // The record: store these.
+            LlmStreamEvent::ReasoningItem(item) => turn.reasoning.push(item),
+            LlmStreamEvent::ToolCalls(calls) => turn.tool_calls.extend(calls),
+            LlmStreamEvent::Done(metadata) => {
+                // `None` means the provider never said how the turn ended.
+                return match metadata.finish_reason.as_deref() {
+                    Some("stop" | "tool_calls") => Ok(turn),
+                    Some(other) => Err(format!("turn ended with {other}")),
+                    None => Err("no finish reason: stream may be truncated".into()),
+                };
+            }
+            // Status and code are the provider's own, not parsed from text.
+            LlmStreamEvent::Error(error) => {
+                return Err(format!("{:?} {:?}: {}", error.status, error.code, error.message));
+            }
+            // `#[non_exhaustive]`: skip event kinds this code does not know.
+            _ => {}
+        }
+    }
+    Err("stream ended without Done or Error".into())
+}
+
+fn scripted(events: Vec<LlmStreamEvent>) -> LlmResponseStream {
+    Box::pin(futures::stream::iter(events.into_iter().map(Ok)))
+}
+
+fn done(finish_reason: Option<&str>) -> LlmStreamEvent {
+    let mut metadata = LlmCompletionMetadata::default();
+    metadata.finish_reason = finish_reason.map(str::to_owned);
+    LlmStreamEvent::Done(Box::new(metadata))
+}
+
+# #[tokio::main(flavor = "current_thread")]
+# async fn main() {
+let thought = "Plan: greet.";
+let turn = consume(scripted(vec![
+    LlmStreamEvent::ReasoningDelta { delta: thought.into(), summary: false },
+    LlmStreamEvent::TextDelta("Hello".into()),
+    LlmStreamEvent::ReasoningItem(
+        ReasoningContentPart::opaque("example")
+            .with_text(ReasoningText::Plain { text: thought.into() }),
+    ),
+    done(Some("stop")),
+]))
+.await
+.unwrap();
+assert_eq!(turn.text, "Hello");
+// Stored once, from the item, not once per delta plus once more.
+assert_eq!(turn.reasoning.len(), 1);
+
+// A stream whose provider never sent a finish reason.
+let missing = consume(scripted(vec![LlmStreamEvent::TextDelta("Hel".into()), done(None)])).await;
+assert!(missing.is_err());
+
+// A gateway error inside a `200` stream keeps its status and message.
+let failed = consume(scripted(vec![LlmStreamEvent::Error(LlmStreamError::provider(
+    None::<String>,
+    Some(502),
+    "upstream died",
+))]))
+.await;
+assert_eq!(failed.err().unwrap(), "Some(502) None: upstream died");
+# }
+```
+
+# Example: owning retries in the host
+
+A host that already runs its own retry loop, or wraps calls in a tight
+timeout, turns driver retries off so a `429` reaches it at once:
+
+```
+use everruns_provider::{BearerAuth, LlmRetryConfig, OpenAIProtocolChatDriver, Provider};
+
+let provider = Provider::new(
+    "gateway",
+    OpenAIProtocolChatDriver::new().with_retry_config(LlmRetryConfig::no_retry()),
+)
+.base_url("http://127.0.0.1:8081/v1")
+.auth(BearerAuth::new("local-key"));
+# let _ = provider;
+```
+
+The vendor drivers (`everruns-openai`, `everruns-openrouter`,
+`everruns-gemini`, `everruns-anthropic`) take the same `with_retry_config`.

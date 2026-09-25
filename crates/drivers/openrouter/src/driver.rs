@@ -58,6 +58,14 @@ impl OpenRouterChatDriver {
     ///
     /// Retry time counts against any timeout the caller wraps around the call;
     /// pass [`everruns_provider::LlmRetryConfig::no_retry`] to own retries in the host.
+    ///
+    /// ```
+    /// use everruns_provider::LlmRetryConfig;
+    /// use everruns_openrouter::OpenRouterChatDriver;
+    ///
+    /// let driver = OpenRouterChatDriver::new().with_retry_config(LlmRetryConfig::no_retry());
+    /// # let _ = driver;
+    /// ```
     pub fn with_retry_config(mut self, config: everruns_provider::LlmRetryConfig) -> Self {
         self.inner = self.inner.with_retry_config(config);
         self

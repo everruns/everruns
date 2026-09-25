@@ -370,6 +370,38 @@ fn openai_compatible_profile(
 /// `discovered_profile` the same way a native driver would. A bare
 /// OpenAI-shaped entry that advertises none of this still gets
 /// `discovered_profile: None`, unchanged from before.
+///
+/// Returns `Err` when the request fails; use
+/// [`list_openai_compatible_models_best_effort`] when "no catalog" is an
+/// acceptable answer. The endpoint URL is validated as safe before any
+/// credential is resolved.
+///
+/// ```no_run
+/// use everruns_provider::{
+///     BearerAuth, OpenAIProtocolChatDriver, Provider, list_openai_compatible_models,
+/// };
+///
+/// # async fn run() -> everruns_provider::Result<()> {
+/// // A local vLLM or LM Studio server: no vendor driver lists it, this does.
+/// let provider = Provider::new("local", OpenAIProtocolChatDriver::new())
+///     .base_url("http://gpu-box.internal:8000/v1")
+///     .auth(BearerAuth::new("local-key"));
+///
+/// for model in list_openai_compatible_models(provider.endpoint()).await?.unwrap_or_default() {
+///     let context = model
+///         .discovered_profile
+///         .as_ref()
+///         .and_then(|profile| profile.limits.as_ref())
+///         .map(|limits| limits.context);
+///     let reasoning = model
+///         .discovered_profile
+///         .as_ref()
+///         .is_some_and(|profile| profile.reasoning);
+///     println!("{} context={context:?} reasoning={reasoning}", model.model_id);
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[cfg(feature = "http")]
 pub async fn list_openai_compatible_models(
     endpoint: &crate::runtime_provider::ProviderEndpoint,

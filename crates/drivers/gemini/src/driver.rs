@@ -78,6 +78,14 @@ impl GeminiChatDriver {
     ///
     /// Retry time counts against any timeout the caller wraps around the call;
     /// pass [`LlmRetryConfig::no_retry`] to own retries in the host.
+    ///
+    /// ```
+    /// use everruns_provider::LlmRetryConfig;
+    /// use everruns_gemini::GeminiChatDriver;
+    ///
+    /// let driver = GeminiChatDriver::new().with_retry_config(LlmRetryConfig::no_retry());
+    /// # let _ = driver;
+    /// ```
     pub fn with_retry_config(mut self, config: LlmRetryConfig) -> Self {
         self.retry_config = config;
         self

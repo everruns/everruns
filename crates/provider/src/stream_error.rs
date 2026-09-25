@@ -5,6 +5,23 @@ use crate::llm_error::LlmErrorKind;
 /// Providers should preserve the wire error code and HTTP status when they are
 /// available. Runtime retry classification uses those fields before falling
 /// back to the human-readable message for legacy drivers.
+///
+/// Hosts match on the fields, never on the display text. An error envelope a
+/// gateway sends inside a `200` stream arrives the same way:
+///
+/// ```
+/// use everruns_provider::driver_registry::LlmStreamError;
+/// use everruns_provider::LlmErrorKind;
+///
+/// // What `{"error":{"message":"upstream died","code":502}}` becomes.
+/// let error = LlmStreamError::provider(None::<String>, Some(502), "upstream died");
+/// assert_eq!(error.status, Some(502));
+/// assert_eq!(error.message, "upstream died");
+/// assert!(matches!(error.kind(), LlmErrorKind::Unavailable));
+///
+/// // Ending a turn on it keeps the status for `AgentLoopError::http_status`.
+/// assert_eq!(error.into_agent_error().http_status(), Some(502));
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LlmStreamError {
     /// Stable machine-readable provider error code, when supplied.
