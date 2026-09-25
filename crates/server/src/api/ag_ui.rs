@@ -895,11 +895,27 @@ async fn find_or_create_session(
         .ok_or_else(|| anyhow::anyhow!("Organization not found for app"))?;
     let org_public_id = org_row.public_id;
 
-    match state
-        .db
-        .find_app_session_by_tags(app.org_id, app.internal_id, routing_tags)
-        .await?
-    {
+    let existing = match app.historical_app_id {
+        Some(app_id) => {
+            state
+                .db
+                .find_app_session_by_tags(app.org_id, app_id, routing_tags)
+                .await?
+        }
+        None => {
+            state
+                .db
+                .find_endpoint_session_by_tags_and_owner(
+                    app.org_id,
+                    endpoint_internal_id,
+                    app.owner_principal_id,
+                    routing_tags,
+                )
+                .await?
+        }
+    };
+
+    match existing {
         Some(row) => {
             // THREAT[TM-AUTHZ-005]: Public AG-UI threads must not be resumable
             // forever. After the configured expiration the thread_id can no

@@ -186,6 +186,30 @@ async fn create_published_ag_ui_app(server: &TestServer) -> App {
     )
     .expect("published fixture App")
 }
+
+async fn create_published_native_ag_ui_endpoint(server: &TestServer) -> String {
+    let agent_id = create_llmsim_agent(server).await;
+    let endpoint: Value = server
+        .post(
+            &format!("/v1/agents/{agent_id}/endpoints"),
+            json!({
+                "channel_type": "ag_ui",
+                "channel_config": { "anonymous": true }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let endpoint_id = endpoint["id"].as_str().unwrap();
+    server
+        .post(
+            &format!("/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish"),
+            json!({}),
+        )
+        .await
+        .assert_success();
+    endpoint_id.to_string()
+}
 fn ag_ui_payload_without_messages() -> Value {
     json!({
         "threadId": raw_uuid(),
@@ -349,15 +373,15 @@ async fn send_ag_ui_run_to_path(
         .await
 }
 
-async fn start_ag_ui_run(
+async fn start_ag_ui_run_at_endpoint(
     server: &TestServer,
-    app_id: impl std::fmt::Display,
+    endpoint_id: &str,
     payload: &Value,
 ) -> test_harness::TestResponse {
     server
         .request_raw_without_collecting_body(
             Method::POST,
-            &format!("/v1/apps/{}/ag-ui", app_id),
+            &format!("/v1/e/{endpoint_id}/ag-ui"),
             vec![
                 ("content-type", "application/json"),
                 ("accept", "text/event-stream"),
@@ -519,7 +543,7 @@ async fn test_ag_ui_run_rejects_image_uploaded_for_other_app() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_ag_ui_same_thread_id_reuses_session() {
     let server = TestServer::in_memory().await;
-    let app = create_published_ag_ui_app(&server).await;
+    let endpoint_id = create_published_native_ag_ui_endpoint(&server).await;
     let thread_id = raw_uuid();
     let expected_tag = format!("ag_ui:thread:{thread_id}");
 
@@ -535,7 +559,7 @@ async fn test_ag_ui_same_thread_id_reuses_session() {
         "forwardedProps": {}
     });
 
-    start_ag_ui_run(&server, &app.public_id, &first_payload)
+    start_ag_ui_run_at_endpoint(&server, &endpoint_id, &first_payload)
         .await
         .assert_status(StatusCode::OK);
 
@@ -559,7 +583,7 @@ async fn test_ag_ui_same_thread_id_reuses_session() {
         "forwardedProps": {}
     });
 
-    start_ag_ui_run(&server, &app.public_id, &second_payload)
+    start_ag_ui_run_at_endpoint(&server, &endpoint_id, &second_payload)
         .await
         .assert_status(StatusCode::OK);
 
@@ -573,6 +597,16 @@ async fn test_ag_ui_same_thread_id_reuses_session() {
         resumed_sessions[0]["id"].as_str().unwrap(),
         first_session_id,
         "AG-UI thread resume should reuse the original session id"
+    );
+
+    let other_endpoint_id = create_published_native_ag_ui_endpoint(&server).await;
+    start_ag_ui_run_at_endpoint(&server, &other_endpoint_id, &second_payload)
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        sessions_with_tag(&server, &expected_tag).await.len(),
+        2,
+        "the same thread id on another endpoint must not adopt the first endpoint's session"
     );
 }
 
