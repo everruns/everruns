@@ -19,7 +19,7 @@ use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
 use std::sync::{
     Arc,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use test_harness::TestServer;
 use uuid::Uuid;
@@ -34,11 +34,27 @@ struct RecordingRunner {
     resume_calls: Arc<AtomicUsize>,
 }
 
-struct DenySessionManagement;
+/// Withholds `org:sessions:manage`, but only once armed.
+///
+/// `session.view` and `session.manage` both rest on that one permission, which
+/// is the point of the test — a caller who cannot manage a session must not be
+/// able to read its pending questions either. It also means the fixture cannot
+/// build the parked session while the denial is live, since creating one needs
+/// the same permission. So arm it after setup, not before.
+#[derive(Default)]
+struct DenySessionManagement {
+    armed: AtomicBool,
+}
+
+impl DenySessionManagement {
+    fn arm(&self) {
+        self.armed.store(true, Ordering::SeqCst);
+    }
+}
 
 impl PermissionResolver for DenySessionManagement {
     fn has_permission(&self, _caller: &Caller, permission: &Permission) -> bool {
-        permission != &Permission::OrgSessionsManage
+        !(self.armed.load(Ordering::SeqCst) && permission == &Permission::OrgSessionsManage)
     }
 
     fn caller_permissions(&self, caller: &Caller) -> Vec<Permission> {
@@ -388,15 +404,17 @@ async fn a_parked_question_set_reaches_a_capable_client_as_a_form() {
 #[tokio::test]
 async fn session_policy_denial_does_not_disclose_or_resolve_a_question_set() {
     let resumes = Arc::new(AtomicUsize::new(0));
+    let policy = Arc::new(DenySessionManagement::default());
     let server = TestServer::in_memory_with_runner_and_permission_resolver(
         Arc::new(RecordingRunner {
             resume_calls: resumes.clone(),
         }),
-        Arc::new(DenySessionManagement),
+        policy.clone(),
     )
     .await;
     let session_id = parked_session(&server).await;
     emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
+    policy.arm();
 
     let response = poll_status(&server, session_id, json!({ "_meta": elicitation_meta() })).await;
 
