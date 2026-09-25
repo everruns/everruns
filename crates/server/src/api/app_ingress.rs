@@ -11,7 +11,39 @@ use everruns_provider::typed_id::{
 };
 use uuid::Uuid;
 
-use crate::storage::{EncryptionService, IngressEndpointRow, StorageBackend};
+use crate::storage::{EncryptionService, IngressEndpointRow, SessionRow, StorageBackend};
+
+impl IngressContext {
+    /// Find an existing session carrying these routing tags.
+    ///
+    /// Which key identifies "the same conversation" depends on what is serving
+    /// the request. A historical app owned its sessions outright, so the app is
+    /// the key. A native endpoint is shared between callers, so the endpoint
+    /// alone would hand one caller another's thread — the owner principal is
+    /// what separates them.
+    pub async fn find_session_by_tags(
+        &self,
+        db: &StorageBackend,
+        endpoint_internal_id: Uuid,
+        routing_tags: &[String],
+    ) -> anyhow::Result<Option<SessionRow>> {
+        match self.historical_app_id {
+            Some(app_id) => {
+                db.find_app_session_by_tags(self.org_id, app_id, routing_tags)
+                    .await
+            }
+            None => {
+                db.find_endpoint_session_by_tags_and_owner(
+                    self.org_id,
+                    endpoint_internal_id,
+                    self.owner_principal_id,
+                    routing_tags,
+                )
+                .await
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct IngressContext {
