@@ -5969,6 +5969,11 @@ export interface components {
        */
       cache_read_tokens?: number | null;
       /**
+       * Format: int64
+       * @description Serialized provider checkpoint size in bytes, when measured.
+       */
+      checkpoint_bytes?: number | null;
+      /**
        * @description Durable checkpoint installed by this compaction, when applicable.
        * @example 01934c2f-9f2e-7c1b-8d3e-4f5a6b7c8d9e
        */
@@ -6000,6 +6005,8 @@ export interface components {
        * @example openai
        */
       provider?: string | null;
+      /** @description Source used to reconstruct the provider prefix (`checkpoint` or `raw`). */
+      replay_source?: string | null;
       /**
        * Format: int64
        * @description Source message sequence the compaction ran at, when known.
@@ -12796,6 +12803,13 @@ export interface components {
        *     Currently supported by GPT-5.4 and newer via OpenAI Responses API.
        */
       supports_phases?: boolean;
+      /**
+       * @description Whether the direct provider API supports threshold server-side compaction.
+       *
+       *     This is an explicit rollout control. Unknown models and provider
+       *     surfaces that do not opt in remain disabled.
+       */
+      supports_server_compaction?: boolean;
       /** @description Whether temperature control is supported */
       temperature: boolean;
       /** @description Whether the model supports tool/function calling */
