@@ -23,6 +23,9 @@ concurrency:
 permissions:
   contents: read
   pull-requests: read
+  # `Build Check` reads the checks already posted on the PR head so a
+  # label-event run can defer to a verdict a real run gave (EVE-1077).
+  checks: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -2726,21 +2729,54 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Verify all jobs passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_CI: ${{ needs.changes.outputs.run_ci }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RESULTS: ${{ toJson(needs.*.result) }}
         run: |
+          set -euo pipefail
+
           # A run gated off by the label event (run_ci=false) skips every job,
-          # and an all-"skipped" result set would otherwise read as a pass. That
-          # turns "nothing ran" into a green required check, which is how four
-          # Dependabot PRs became mergeable with no CI behind them (EVE-939).
-          # Refuse to speak for a run that executed nothing; the real run's own
-          # Build Check is the one that carries the verdict.
-          if [ "${{ needs.changes.outputs.run_ci }}" != "true" ]; then
-            echo "run_ci=false: this run executed no jobs, so it has nothing to attest"
+          # so it has no verdict of its own. Both unconditional answers are
+          # wrong, and each has an incident behind it:
+          #
+          #   success — an all-"skipped" result set reads as a pass, turning
+          #     "nothing ran" into a green required check. Four Dependabot PRs
+          #     became mergeable with no CI behind them that way (EVE-939).
+          #   failure — GitHub resolves a required check by the newest run of
+          #     that name, so a label landing after CI finished supersedes the
+          #     real green and blocks a PR nobody touched (EVE-1077).
+          #
+          # The question is not "did this run execute jobs" but "has a real run
+          # already reported on this commit". Defer to a `Build Check` that
+          # passed on the same head SHA, and fail closed when there is none —
+          # which is precisely the EVE-939 case, where the gated-off run is the
+          # only run on the SHA. Only a pass is inherited, so a real failure
+          # stays red until a real run supersedes it.
+          if [ "$RUN_CI" != "true" ]; then
+            if [ -z "${HEAD_SHA:-}" ]; then
+              echo "run_ci=false and no pull request head to consult, so there is nothing to attest"
+              exit 1
+            fi
+
+            passed="$(
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?check_name=Build+Check&status=completed&per_page=100" \
+                --jq '[.check_runs[] | select(.conclusion == "success")] | length'
+            )"
+
+            if [ "${passed:-0}" -gt 0 ]; then
+              echo "run_ci=false: deferring to the Build Check that already passed on $HEAD_SHA"
+              exit 0
+            fi
+
+            echo "run_ci=false: this run executed no jobs and none has passed on $HEAD_SHA, so it has nothing to attest"
             exit 1
           fi
 
-          results='${{ toJson(needs.*.result) }}'
-          echo "Job results: $results"
-          if echo "$results" | grep -qE '"failure"|"cancelled"'; then
+          echo "Job results: $RESULTS"
+          if echo "$RESULTS" | grep -qE '"failure"|"cancelled"'; then
             echo "One or more CI jobs failed or were cancelled"
             exit 1
           fi
