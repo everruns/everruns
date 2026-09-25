@@ -744,7 +744,7 @@ impl WorkerServiceImpl {
         caller: everruns_core::Caller,
     ) -> Result<crate::domains::common::Ctx, Status> {
         let org_id = caller.org_id;
-        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags_cached(
+        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             org_id,
             &everruns_platform::FeatureFlags::current(),

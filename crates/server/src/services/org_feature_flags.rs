@@ -1,41 +1,16 @@
 //! Resolve effective feature flags for an organization.
 
 use std::collections::HashMap;
-use std::sync::{Arc, LazyLock};
-use std::time::Duration;
 
 use everruns_platform::FeatureFlags;
-use moka::future::Cache;
 
 use crate::storage::StorageBackend;
 
-/// How long a cached org row survives without an explicit invalidation.
-///
-/// Matches the skill-list cache in `services/capability.rs`. It only has to
-/// cover the window where another replica wrote flags we did not see, because
-/// in-process writes invalidate eagerly (see [`invalidate_org_feature_flags`]).
-const ORG_FLAG_CACHE_TTL: Duration = Duration::from_secs(300);
-
-/// Cached `org_id -> {flag_name: enabled}` rows, process-wide.
-///
-/// Deliberately a process global rather than a field on a service. Every writer
-/// must be able to invalidate every reader, and the readers are spread across
-/// structs that are built independently — `AuthState` for HTTP, `WorkerServiceImpl`
-/// for gRPC, the MCP endpoint's state, `DirectWorkerAdapters`. One cache per
-/// struct would mean a flag flip landing in one of them and not the others, which
-/// is worse than no cache at all. One cache per process makes the invalidation in
-/// `StorageBackend::replace_org_feature_flags` sufficient for all of them.
-static ORG_FLAG_CACHE: LazyLock<Cache<i64, Arc<HashMap<String, bool>>>> = LazyLock::new(|| {
-    Cache::builder()
-        .time_to_live(ORG_FLAG_CACHE_TTL)
-        .max_capacity(10_000)
-        .build()
-});
-
 /// Read an org's flags straight from the database.
 ///
-/// The settings API uses this: a user who just toggled a flag and reloaded the
-/// page must see what they wrote, not a cached row.
+/// Feature flags are authorization inputs, so every enforcement path reads the
+/// durable value. A process-local cache cannot reliably observe revocations
+/// performed by another replica.
 pub async fn resolve_org_feature_flags(
     db: &StorageBackend,
     org_id: i64,
@@ -43,36 +18,6 @@ pub async fn resolve_org_feature_flags(
 ) -> anyhow::Result<FeatureFlags> {
     let org_enabled = db.list_org_feature_flags(org_id).await?;
     Ok(FeatureFlags::for_org(system, &org_enabled))
-}
-
-/// The same answer, served from the process-wide cache where possible.
-///
-/// This is the one for request paths: it sits on every authenticated HTTP
-/// request, every MCP call and every worker command, where the uncached version
-/// costs a database round trip apiece. `system` is not part of the key — it is
-/// env-derived and fixed for the life of the process, and `for_org` is pure — so
-/// only the org's row is cached.
-pub async fn resolve_org_feature_flags_cached(
-    db: &StorageBackend,
-    org_id: i64,
-    system: &FeatureFlags,
-) -> anyhow::Result<FeatureFlags> {
-    if let Some(cached) = ORG_FLAG_CACHE.get(&org_id).await {
-        return Ok(FeatureFlags::for_org(system, &cached));
-    }
-
-    let org_enabled = Arc::new(db.list_org_feature_flags(org_id).await?);
-    ORG_FLAG_CACHE.insert(org_id, org_enabled.clone()).await;
-    Ok(FeatureFlags::for_org(system, &org_enabled))
-}
-
-/// Drop an org's cached row.
-///
-/// Called from `StorageBackend::replace_org_feature_flags`, which is the only
-/// way flags are written — so seeding, the settings API and tests all invalidate
-/// without having to remember to.
-pub async fn invalidate_org_feature_flags(org_id: i64) {
-    ORG_FLAG_CACHE.invalidate(&org_id).await;
 }
 
 /// Settings rows a tenant admin may see and act on.
@@ -282,37 +227,37 @@ mod tests {
         assert!(!row.effective, "enrolment is still off until someone acts");
     }
 
-    /// The cache must not outlive a write. `replace_org_feature_flags` is the
-    /// only write path, and it invalidates — so a reader that just cached the
-    /// old row sees the new one on its next call, with no call-site cooperation.
+    /// Enforcement reads must observe a revocation committed by any replica.
     #[tokio::test]
-    async fn a_write_invalidates_what_a_reader_cached() {
+    async fn an_enforcement_read_observes_a_revocation() {
         let db = StorageBackend::in_memory();
         let system = system_with_everything();
         let org_id = 987_001;
 
-        let before = resolve_org_feature_flags_cached(&db, org_id, &system)
-            .await
-            .expect("first read populates the cache");
-        assert!(!before.is_enabled("skills"), "nothing opted in yet");
-
         db.replace_org_feature_flags(org_id, &HashMap::from([("skills".to_string(), true)]))
             .await
             .expect("write flags");
+        let before = resolve_org_feature_flags(&db, org_id, &system)
+            .await
+            .expect("read enabled flags");
+        assert!(before.is_enabled("skills"), "the capability starts enabled");
 
-        let after = resolve_org_feature_flags_cached(&db, org_id, &system)
+        db.replace_org_feature_flags(org_id, &HashMap::from([("skills".to_string(), false)]))
+            .await
+            .expect("revoke flags");
+
+        let after = resolve_org_feature_flags(&db, org_id, &system)
             .await
             .expect("second read");
         assert!(
-            after.is_enabled("skills"),
-            "cached row survived a write — every reader would be serving a stale flag"
+            !after.is_enabled("skills"),
+            "the enforcement read did not observe the revocation"
         );
     }
 
-    /// Two orgs share one cache; invalidating one must not disturb the other,
-    /// and one org's row must never answer for another's.
+    /// One org's row must never answer for another's.
     #[tokio::test]
-    async fn orgs_do_not_share_a_cached_row() {
+    async fn orgs_do_not_share_feature_flags() {
         let db = StorageBackend::in_memory();
         let system = system_with_everything();
         let (a, b) = (987_002, 987_003);
@@ -321,72 +266,14 @@ mod tests {
             .await
             .expect("write a");
 
-        let flags_a = resolve_org_feature_flags_cached(&db, a, &system)
+        let flags_a = resolve_org_feature_flags(&db, a, &system)
             .await
             .expect("read a");
-        let flags_b = resolve_org_feature_flags_cached(&db, b, &system)
+        let flags_b = resolve_org_feature_flags(&db, b, &system)
             .await
             .expect("read b");
 
         assert!(flags_a.is_enabled("skills"));
         assert!(!flags_b.is_enabled("skills"), "org b picked up org a's row");
-    }
-
-    /// The settings API reads uncached on purpose: someone who just toggled a
-    /// flag and reloaded must see what they wrote even if a replica cached the
-    /// old row. This pins the two functions as genuinely different.
-    #[tokio::test]
-    async fn the_uncached_read_ignores_the_cache() {
-        let db = StorageBackend::in_memory();
-        let system = system_with_everything();
-        let org_id = 987_004;
-
-        resolve_org_feature_flags_cached(&db, org_id, &system)
-            .await
-            .expect("populate the cache with the empty row");
-
-        // Write behind the cache's back, the way another replica would.
-        db.list_org_feature_flags(org_id).await.expect("row reads");
-        let mut flags = HashMap::new();
-        flags.insert("skills".to_string(), true);
-        db.replace_org_feature_flags(org_id, &flags)
-            .await
-            .expect("write");
-        ORG_FLAG_CACHE
-            .insert(org_id, Arc::new(HashMap::new()))
-            .await;
-
-        let fresh = resolve_org_feature_flags(&db, org_id, &system)
-            .await
-            .expect("uncached read");
-        assert!(
-            fresh.is_enabled("skills"),
-            "the uncached read served a cached row"
-        );
-    }
-
-    /// The cached read must actually skip the database, not just return the
-    /// right answer. Seed the cache with a row the database does not have: if
-    /// the read still queries, it returns the database's answer and this fails.
-    #[tokio::test]
-    async fn the_cached_read_serves_from_the_cache() {
-        let db = StorageBackend::in_memory();
-        let system = system_with_everything();
-        let org_id = 987_005;
-
-        ORG_FLAG_CACHE
-            .insert(
-                org_id,
-                Arc::new(HashMap::from([("skills".to_string(), true)])),
-            )
-            .await;
-
-        let flags = resolve_org_feature_flags_cached(&db, org_id, &system)
-            .await
-            .expect("cached read");
-        assert!(
-            flags.is_enabled("skills"),
-            "the read went to the database instead of the cache"
-        );
     }
 }
