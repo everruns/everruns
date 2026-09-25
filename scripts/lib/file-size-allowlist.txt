@@ -23,7 +23,6 @@
 2444 crates/durable/tests/postgres_integration_test.rs
 3329 crates/engine/src/execution/act.rs
 2870 crates/engine/src/execution/reason.rs
-1767 crates/everruns/src/agent.rs
 1741 crates/host/src/events.rs
 1725 crates/host/src/host.rs
 2351 crates/host/src/observability/braintrust.rs
