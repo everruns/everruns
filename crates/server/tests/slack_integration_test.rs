@@ -650,6 +650,31 @@ async fn test_slack_context_change_updates_thread_context() {
     // not clobber the accumulated thread.
     assert_eq!(thread.participant_count(), 1, "participants must survive");
 
+    // A repeated callback for the same location must not rewrite the session KV
+    // row merely because the handler observed it at a later time.
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    send_slack_event(
+        &server,
+        &app.public_id,
+        TEST_SIGNING_SECRET,
+        &context_change,
+    )
+    .await
+    .assert_status(StatusCode::OK);
+    let repeated = server
+        .db
+        .get_session_key_value(
+            session_id.uuid(),
+            everruns_core::channel::THREAD_CONTEXT_KV_KEY,
+        )
+        .await
+        .expect("read thread context after repeated callback")
+        .expect("thread context must remain stored");
+    assert_eq!(
+        repeated.updated_at, stored.updated_at,
+        "the same reported location must not update the session KV row"
+    );
+
     // And the change cost no event: that is the point of persisting it rather
     // than injecting an input.message per navigation.
     assert_eq!(
