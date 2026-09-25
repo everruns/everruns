@@ -776,13 +776,8 @@ impl Command for UpdateAgentCmd {
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
-        // PATCH archival is the same lifecycle transition as DELETE. Revoke
-        // service-owned grants regardless of which API route initiated it.
-        if is_archiving && let Some(identity_id) = row.agent_identity_id {
-            ctx.db
-                .delete_all_agent_identity_connections(identity_id)
-                .await
-                .map_err(classify_anyhow)?;
+        if is_archiving {
+            super::credentials::revoke_agent_grants(ctx, &row).await?;
         }
 
         let caps = if let Some(caps) = capabilities_override {
@@ -880,12 +875,7 @@ impl Command for DeleteAgent {
             .delete_agent(ctx.org_id(), row.id)
             .await
             .map_err(classify_anyhow)?;
-        if let Some(identity_id) = row.agent_identity_id {
-            ctx.db
-                .delete_all_agent_identity_connections(identity_id)
-                .await
-                .map_err(classify_anyhow)?;
-        }
+        super::credentials::revoke_agent_grants(ctx, &row).await?;
 
         Ok(serde_json::json!({"deleted": true}))
     }
