@@ -7,11 +7,12 @@
 
 use super::queries as q;
 use super::types::{AgentTriggerRun, CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
+use super::webhook;
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
 use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
-use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
+use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::apps::invocation::{
     calculate_schedule_next_trigger, cron_min_interval_seconds, normalize_cron_expression,
     render_message_template,
@@ -155,22 +156,6 @@ fn prepare_trigger_config(
     let config = serde_json::to_value(config).map_err(|e| CommandError::internal(e.into()))?;
     crate::domains::apps::queries::prepare_channel_config(ctx.encryption.as_ref(), &config)
         .map_err(classify_anyhow)
-}
-
-fn require_webhook_publication_permission(ctx: &Ctx) -> Result<(), CommandError> {
-    AGENT_DANGEROUS
-        .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
-        .map_err(|e| CommandError::forbidden(e.message))
-}
-
-fn redact_trigger_for_response(mut trigger: AgentTrigger) -> AgentTrigger {
-    if trigger.trigger_type == AgentTriggerType::Webhook
-        && let Some(config) = trigger.config.as_object_mut()
-        && config.remove("token").is_some()
-    {
-        config.insert("token_configured".to_string(), Value::Bool(true));
-    }
-    trigger
 }
 
 /// Count currently-enabled triggers in an org (for the per-org cap). Uses the
@@ -453,9 +438,7 @@ impl Command for CreateAgentTrigger {
         let req = self.req;
 
         validate_trigger_binding(req.session_mode)?;
-        if req.trigger_type == AgentTriggerType::Webhook && req.enabled {
-            require_webhook_publication_permission(ctx)?;
-        }
+        webhook::require_publication_permission(ctx, req.trigger_type, req.enabled)?;
         let trigger_id = TriggerId::new();
         let (ingress_id, config, config_encrypted) = match req.trigger_type {
             AgentTriggerType::Schedule => {
@@ -529,7 +512,7 @@ impl Command for CreateAgentTrigger {
         let row = q::get_by_id(&ctx.db, ctx.org_id(), row.id)
             .await?
             .unwrap_or(row);
-        Ok(redact_trigger_for_response(q::row_to_trigger(
+        Ok(webhook::redact_for_response(q::row_to_trigger(
             row,
             agent_public,
             ctx.encryption.as_ref(),
@@ -583,7 +566,7 @@ impl Command for ListAgentTriggers {
         Ok(rows
             .into_iter()
             .map(|row| {
-                redact_trigger_for_response(q::row_to_trigger(
+                webhook::redact_for_response(q::row_to_trigger(
                     row,
                     agent_public,
                     ctx.encryption.as_ref(),
@@ -627,7 +610,7 @@ impl Command for GetAgentTrigger {
         let (agent, trigger) =
             resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
         let agent_public = parse_agent_id(&agent.public_id)?;
-        Ok(redact_trigger_for_response(q::row_to_trigger(
+        Ok(webhook::redact_for_response(q::row_to_trigger(
             trigger,
             agent_public,
             ctx.encryption.as_ref(),
@@ -742,9 +725,11 @@ impl Command for UpdateAgentTriggerCmd {
         }
 
         let new_enabled = req.enabled.unwrap_or(existing.enabled);
-        if trigger.trigger_type == AgentTriggerType::Webhook && new_enabled && !existing.enabled {
-            require_webhook_publication_permission(ctx)?;
-        }
+        webhook::require_publication_permission(
+            ctx,
+            trigger.trigger_type,
+            new_enabled && !existing.enabled,
+        )?;
         if trigger.trigger_type == AgentTriggerType::Schedule && new_enabled && !existing.enabled {
             let count = count_enabled_triggers(ctx).await?;
             let max = agent_trigger_max_per_org();
@@ -822,7 +807,7 @@ impl Command for UpdateAgentTriggerCmd {
         let row = q::get_by_id(&ctx.db, ctx.org_id(), row.id)
             .await?
             .unwrap_or(row);
-        Ok(redact_trigger_for_response(q::row_to_trigger(
+        Ok(webhook::redact_for_response(q::row_to_trigger(
             row,
             parse_agent_id(&self.agent_id)?,
             ctx.encryption.as_ref(),
