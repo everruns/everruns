@@ -138,7 +138,10 @@ of the run, and they read the files rather than the supervisor's opinion of
 them.
 
 Pass `--tests "<command>"` on a `run` so the supervisor can check the work by
-running it; `demo` already knows its own.
+running it; `demo` already knows its own. Test commands run in a locked-down,
+networkless Docker container over a read-only mount and an isolated workspace
+copy, so Docker must be available locally. The fixed runner image includes
+Rust and Bash.
 
 `demo` writes its fixture into a temporary directory unless `--repo` says
 otherwise, and `run` never writes a fixture at all — `--repo` is your project,
@@ -179,7 +182,7 @@ tests drive the same path with a stand-in child process.
 at one flat rate. The job is to replace that with weight tiers and cover the
 boundaries. Shell, deliberately: `bash tests/run.sh` needs no framework, no
 interpreter and no network, so the same suite runs inside the Bashkit sandbox,
-on the host, and inside an external agent — which is what makes
+the supervisor's test container, and an external agent — which is what makes
 `tests_sufficient` answerable at all.
 
 On the session crew the coding worker mounts it read-write through
@@ -211,10 +214,14 @@ claim, and `--tests` turns it into a fact.
 foreman run --repo . --job "…" --tests "cargo test"
 ```
 
+The container has no network, so the command has to be able to run offline —
+`bash tests/run.sh` needs nothing, while `cargo test` needs its dependencies
+already vendored into the repository or present in the runner image.
+
 The result lands in the observation as `test_results` — the field Foreman
 declares and never fills — and `tests_sufficient` moves on it. In a demo run
 the dimension sits at 0.28 while the tests are the old ones and jumps to 0.91
-the moment the host's own run comes back `9 passed, 0 failed`.
+the moment the supervisor's isolated run comes back `9 passed, 0 failed`.
 
 A suite is slower than a diff, so it runs once before any worker starts (a
 baseline, so an already-red suite is not read as the worker having broken it)
