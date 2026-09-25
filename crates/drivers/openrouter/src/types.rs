@@ -198,6 +198,7 @@ impl OpenRouterModelInfo {
             tool_search: false,
             supported_parameters: self.supported_parameters.clone(),
             supports_phases: false,
+            supports_server_compaction: false,
         }
     }
 }

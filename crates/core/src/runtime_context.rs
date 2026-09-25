@@ -62,6 +62,8 @@ pub struct ResolvedModelExecution {
     /// Ready provider driver. Credential-bearing construction state stays
     /// opaque and is redacted from Debug output.
     pub driver: Arc<dyn ChatDriver>,
+    /// Driver-owned option selected after endpoint/model eligibility checks.
+    pub provider_managed_reduction_option: Option<(String, serde_json::Value)>,
 }
 
 impl std::fmt::Debug for ResolvedModelExecution {
@@ -70,6 +72,10 @@ impl std::fmt::Debug for ResolvedModelExecution {
             .field("model", &self.model)
             .field("provider", &self.provider)
             .field("provider_type", &self.provider_type)
+            .field(
+                "provider_managed_reduction",
+                &self.provider_managed_reduction_option.is_some(),
+            )
             .field("driver", &"<opaque>")
             .finish()
     }
@@ -174,7 +180,7 @@ pub async fn assemble_resolved_turn_context(
             .get(config.capability_id())?
             .compaction_policy(config.config_value())
     });
-    let runtime_agent = build_runtime_agent(
+    let mut runtime_agent = build_runtime_agent(
         &snapshot,
         effective_overlay,
         capability_registry,
@@ -183,6 +189,19 @@ pub async fn assemble_resolved_turn_context(
         &model.model,
     )
     .await?;
+    if let Some((key, value)) = &model.provider_managed_reduction_option {
+        runtime_agent
+            .driver_options
+            .insert(key.clone(), value.clone());
+    } else if resolved_capability_configs
+        .iter()
+        .any(|config| config.capability_id() == "infinity_context")
+    {
+        runtime_agent.driver_options.insert(
+            "everruns/provider_managed_reduction_fallback".to_string(),
+            serde_json::json!({"reason":"provider_or_model_ineligible"}),
+        );
+    }
     let embedder_metadata = snapshot.embedder_metadata.clone();
 
     Ok(AssembledTurnContext {
@@ -352,6 +371,7 @@ mod tests {
             driver: Arc::new(CredentialCapturingDriver {
                 _secret: secret.into(),
             }),
+            provider_managed_reduction_option: None,
         };
 
         let debug = format!("{resolved:?}");

@@ -3,7 +3,10 @@
 use std::sync::Arc;
 
 use everruns_core::ResolvedExecutionSnapshot;
-use everruns_core::capabilities::{CapabilityRegistry, collect_message_filters_only};
+use everruns_core::capabilities::{
+    CapabilityRegistry, collect_message_filters_only, collect_message_filters_only_with_context,
+    provider_managed_reduction_budget,
+};
 use everruns_core::execution_loading::{AgentStore, HarnessStore, SessionStore};
 use everruns_core::message::{RuntimeMessage, RuntimeMessageRole};
 use everruns_core::message_filter::MessageQuery;
@@ -255,8 +258,8 @@ async fn assemble_from_snapshot(
     );
     let mut query = MessageQuery::new(snapshot.session_id);
     filters.apply_message_filters(&mut query);
-    let history = message_retriever.load_filtered_history(query).await?;
-    let mut messages = history.messages;
+    let initial_history = message_retriever.load_filtered_history(query).await?;
+    let mut messages = initial_history.messages.clone();
     filters.apply_post_load_filters(&mut messages);
     if messages.is_empty() && mode == AssemblyMode::RequireMessages {
         return Err(AgentLoopError::NoMessages);
@@ -265,7 +268,39 @@ async fn assemble_from_snapshot(
     let controls_model_id = latest_model_override(&messages);
     let (model, resolved_model_id) =
         resolve_model(provider_store, controls_model_id, snapshot.default_model_id).await?;
-    let model = resolve_model_execution(provider_store, driver_registry, model).await?;
+    let mut model = resolve_model_execution(provider_store, driver_registry, model).await?;
+    let provider_managed_reduction_option = provider_managed_reduction_budget(
+        &resolved.resolved_capability_configs,
+        capability_registry,
+    )
+    .and_then(|budget| {
+        model.driver.provider_managed_reduction_option(
+            &everruns_provider::ProviderEndpoint::default(),
+            &model.model,
+            budget,
+        )
+    });
+    model.provider_managed_reduction_option = provider_managed_reduction_option;
+
+    let history = if model.provider_managed_reduction_option.is_some() {
+        let filters = collect_message_filters_only_with_context(
+            &resolved.resolved_capability_configs,
+            capability_registry,
+            true,
+        );
+        let mut query = MessageQuery::new(snapshot.session_id);
+        filters.apply_message_filters(&mut query);
+        let mut history = message_retriever.load_filtered_history(query).await?;
+        filters.apply_post_load_filters(&mut history.messages);
+        history
+    } else {
+        initial_history
+    };
+    let messages = if model.provider_managed_reduction_option.is_some() {
+        history.messages.clone()
+    } else {
+        messages
+    };
 
     assemble_resolved_turn_context(
         ResolvedTurnContextInput {
@@ -345,6 +380,7 @@ pub(crate) async fn resolve_model_execution(
         provider: spec.provider,
         provider_type,
         driver,
+        provider_managed_reduction_option: None,
     })
 }
 

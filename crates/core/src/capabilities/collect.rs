@@ -39,6 +39,8 @@ use super::*;
 pub struct ModelViewContext<'a> {
     pub session_id: SessionId,
     pub prior_usage: Option<&'a TokenUsage>,
+    /// Whether the provider preserves and reduces the prior wire-level history.
+    pub provider_managed_reduction: bool,
 }
 
 /// Provider-side hook for building prompt-facing model views.
@@ -261,6 +263,15 @@ pub fn collect_message_filters_only(
     capability_configs: &[AgentCapabilityConfig],
     registry: &CapabilityRegistry,
 ) -> CollectedMessageFilters {
+    collect_message_filters_only_with_context(capability_configs, registry, false)
+}
+
+/// Collect message filters with the resolved provider reduction mode.
+pub fn collect_message_filters_only_with_context(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+    provider_managed_reduction: bool,
+) -> CollectedMessageFilters {
     let mut message_filter_providers: Vec<(Arc<dyn MessageFilterProvider>, serde_json::Value)> =
         Vec::new();
     let compaction_on = compaction_is_enabled(capability_configs, registry);
@@ -277,8 +288,11 @@ pub fn collect_message_filters_only(
                 .resolve_for_model(None)
                 .unwrap_or_else(|| capability.as_ref());
             if let Some(provider) = effective.message_filter_provider() {
-                let config =
-                    effective.message_filter_config(cap_config.config_value(), compaction_on);
+                let config = effective.message_filter_config(
+                    cap_config.config_value(),
+                    compaction_on,
+                    provider_managed_reduction,
+                );
                 message_filter_providers.push((provider, config));
             }
         }
@@ -289,6 +303,31 @@ pub fn collect_message_filters_only(
     CollectedMessageFilters {
         message_filter_providers,
     }
+}
+
+/// Resolve the reduction budget and fail closed when an active capability
+/// requires provider-visible history rewriting.
+pub fn provider_managed_reduction_budget(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+) -> Option<usize> {
+    let mut budget = None;
+    for cap_config in capability_configs {
+        let Some(capability) = registry.get(cap_config.capability_id()) else {
+            continue;
+        };
+        if !capability.status().is_active() {
+            continue;
+        }
+        let config = cap_config.config_value();
+        if capability.requires_provider_history_rewrite(config) {
+            return None;
+        }
+        if let Some(candidate) = capability.provider_managed_reduction_budget(config) {
+            budget = Some(budget.map_or(candidate, |current: usize| current.min(candidate)));
+        }
+    }
+    budget
 }
 
 /// Collect only model-view providers from capabilities.
@@ -658,8 +697,11 @@ pub async fn collect_capabilities_with_configs(
 
             // Collect message filter provider
             if let Some(provider) = effective.message_filter_provider() {
-                let config =
-                    effective.message_filter_config(cap_config.config_value(), compaction_on);
+                let config = effective.message_filter_config(
+                    cap_config.config_value(),
+                    compaction_on,
+                    false,
+                );
                 message_filter_providers.push((provider, config));
             }
 

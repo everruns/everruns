@@ -116,8 +116,10 @@ everruns_core::capabilities::collect::collect_capabilities_with_configs	function
 everruns_core::capabilities::collect::collect_capability_mcp_servers	function
 everruns_core::capabilities::collect::collect_dynamic_facts	function
 everruns_core::capabilities::collect::collect_message_filters_only	function
+everruns_core::capabilities::collect::collect_message_filters_only_with_context	function
 everruns_core::capabilities::collect::collect_model_view_providers	function
 everruns_core::capabilities::collect::compose_system_prompt	function
+everruns_core::capabilities::collect::provider_managed_reduction_budget	function
 everruns_core::capabilities::declarative::DECLARATIVE_CAPABILITY_PREFIX	constant
 everruns_core::capabilities::declarative::DeclarativeCapabilityDefinition	struct
 everruns_core::capabilities::declarative::DeclarativeCapabilityFile	struct
@@ -265,6 +267,7 @@ everruns_core::command_host::SessionCompletionError::StreamingUnsupported	varian
 everruns_core::command_host::SessionCompletionRequest	struct
 everruns_core::command_host::SessionCompletionStream	struct
 everruns_core::compaction_checkpoint	module
+everruns_core::compaction_checkpoint::ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION	constant
 everruns_core::compaction_checkpoint::COMPACTION_CHECKPOINT_FORMAT_VERSION	constant
 everruns_core::compaction_checkpoint::CompactionCheckpoint	struct
 everruns_core::compaction_checkpoint::CompactionCheckpointPayload	enum

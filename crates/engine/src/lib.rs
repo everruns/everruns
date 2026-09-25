@@ -41,14 +41,15 @@ mod turn;
 // while preserving the one-way engine -> core/provider/capability boundary.
 pub(crate) use everruns_capability::CapabilityRef;
 pub(crate) use everruns_core::{
-    COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint, CompactionCheckpointPayload,
-    CompactionCheckpointStore, DecisionsService, EgressService, McpToolInvoker, MessageQuery,
-    ProactiveCompactionAttempt, RuntimeAgent, UtilityLlmService, annotation_hook, capabilities,
-    compaction_policy, connection_services, delegation_services, durability, event_emitter, events,
-    execution_loading, file_services, finalized_tool_calls, image_services, llm_conversions,
-    llm_error_hook, localization, message, message_retriever, mount_fs, network_access,
-    output_guardrail, runtime_context, session_files, session_services, session_task,
-    subagent_delegation, tool_context, tool_execution, tool_fingerprint, tool_narration, tools,
+    ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION, COMPACTION_CHECKPOINT_FORMAT_VERSION,
+    CompactionCheckpoint, CompactionCheckpointPayload, CompactionCheckpointStore, DecisionsService,
+    EgressService, McpToolInvoker, MessageQuery, ProactiveCompactionAttempt, RuntimeAgent,
+    UtilityLlmService, annotation_hook, capabilities, compaction_policy, connection_services,
+    delegation_services, durability, event_emitter, events, execution_loading, file_services,
+    finalized_tool_calls, image_services, llm_conversions, llm_error_hook, localization, message,
+    message_retriever, mount_fs, network_access, output_guardrail, runtime_context, session_files,
+    session_services, session_task, subagent_delegation, tool_context, tool_execution,
+    tool_fingerprint, tool_narration, tools,
 };
 pub(crate) use everruns_provider::user_facing_error::{
     ErrorDisclosure, UserFacingError, UserFacingErrorContext, codes as user_facing_error_codes,

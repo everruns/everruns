@@ -636,7 +636,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 phase: None,
                 request_body: captured_request,
                 cache_diagnostics: None,
-                provider_opaque_content: None,
+                ..Default::default()
             },
         })
     }
@@ -847,7 +847,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     phase: None,
                                     request_body: (*captured_request).clone(),
                                     cache_diagnostics: None,
-                                    provider_opaque_content: None,
+                                    ..Default::default()
                                 },
                             ))));
 

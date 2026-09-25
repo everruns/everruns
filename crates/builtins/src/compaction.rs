@@ -533,6 +533,9 @@ impl ModelViewProvider for CompactionModelViewProvider {
         config: &serde_json::Value,
         context: &ModelViewContext<'_>,
     ) -> Vec<RuntimeMessage> {
+        if context.provider_managed_reduction {
+            return messages;
+        }
         let config = RuntimeCompactionConfig::from_json(config);
         let masking = build_model_view_messages_owned(messages, &config, context.prior_usage);
         if masking.masked_count > 0 {
@@ -1829,6 +1832,10 @@ pub struct CompactionStep {
 // ============================================================================
 
 #[cfg(test)]
+#[path = "compaction/provider_managed_tests.rs"]
+mod provider_managed_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::tool_types::ToolCall;
@@ -2213,42 +2220,6 @@ mod tests {
     }
 
     #[test]
-    fn test_model_view_masks_with_compaction_config() {
-        let mut messages = vec![RuntimeMessage::user("inspect files repeatedly")];
-        for index in 0..9 {
-            messages.extend(make_message_tool_turn(
-                &format!("call_{index}"),
-                "read_file",
-                json!({
-                    "path": "/workspace/session_019e4c9dd1b17021af70ad3227361b16.jsonl",
-                    "content": format!("{}{}", "large transcript line\n".repeat(1000), index),
-                    "total_lines": 1000,
-                    "lines_shown": {"start": 1, "end": 1000},
-                    "truncated": false,
-                    "content_hash": format!("sha256:{index}")
-                }),
-            ));
-        }
-
-        let config = RuntimeCompactionConfig::default();
-        let result = build_model_view_messages(&messages, &config, None);
-
-        assert_eq!(result.masked_count, 7);
-        assert!(result.tool_result_bytes_after < result.tool_result_bytes_before / 4);
-        let first_tool = result.messages[2].tool_result_content().unwrap();
-        let masked = first_tool.result.as_ref().unwrap();
-        assert_eq!(masked["masked"], true);
-        assert!(masked["summary"].as_str().unwrap().contains("read_file"));
-        let last_tool = result
-            .messages
-            .last()
-            .unwrap()
-            .tool_result_content()
-            .unwrap();
-        assert!(last_tool.result.as_ref().unwrap().get("content").is_some());
-    }
-
-    #[test]
     fn test_compaction_capability_contributes_model_view_provider() {
         let mut messages = vec![RuntimeMessage::user("inspect files repeatedly")];
         for index in 0..9 {
@@ -2270,6 +2241,7 @@ mod tests {
         let context = ModelViewContext {
             session_id: crate::typed_id::SessionId::new(),
             prior_usage: None,
+            provider_managed_reduction: false,
         };
         let result = provider.apply_model_view(messages, &json!({}), &context);
 

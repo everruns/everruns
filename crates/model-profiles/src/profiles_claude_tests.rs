@@ -85,6 +85,42 @@ fn test_claude_fable_5_1m_variant() {
 }
 
 #[test]
+fn threshold_server_compaction_is_explicitly_profile_gated() {
+    for id in [
+        "claude-fable-5-1",
+        "claude-fable-5-20260901",
+        "claude-opus-5",
+        "claude-opus-4-8-20260101[1m]",
+        "claude-opus-4-7",
+        "claude-opus-4-6[1m]",
+        "claude-sonnet-5-latest",
+        "claude-sonnet-4-6-20260217",
+    ] {
+        assert!(
+            get_model_profile("anthropic", id)
+                .unwrap()
+                .supports_server_compaction,
+            "{id}"
+        );
+    }
+
+    for id in [
+        "claude-opus-5-5",
+        "claude-opus-5-5[1m]",
+        "claude-haiku-4-5",
+        "claude-sonnet-4-5",
+    ] {
+        assert!(
+            !get_model_profile("anthropic", id)
+                .unwrap()
+                .supports_server_compaction,
+            "{id}"
+        );
+    }
+    assert!(get_model_profile("anthropic", "claude-unknown-future").is_none());
+}
+
+#[test]
 fn test_clear_at_capability_is_profile_gated() {
     for id in [
         "claude-fable-5-1",

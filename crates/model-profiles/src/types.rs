@@ -418,6 +418,12 @@ pub struct ModelProfile {
     /// Currently supported by GPT-5.4 and newer via OpenAI Responses API.
     #[serde(default)]
     pub supports_phases: bool,
+    /// Whether the direct provider API supports threshold server-side compaction.
+    ///
+    /// This is an explicit rollout control. Unknown models and provider
+    /// surfaces that do not opt in remain disabled.
+    #[serde(default)]
+    pub supports_server_compaction: bool,
 }
 
 impl ModelProfile {

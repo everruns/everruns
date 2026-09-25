@@ -284,6 +284,7 @@ impl FireworksModelInfo {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }
     }
 }

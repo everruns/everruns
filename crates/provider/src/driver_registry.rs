@@ -14,13 +14,12 @@
 // depend on core and register their drivers at startup. Core has no knowledge of
 // specific provider implementations.
 
-use crate::compact::{CompactOutputItem, CompactRequest, CompactResponse};
+use crate::compact::{CompactRequest, CompactResponse};
 use crate::credential_schema::CredentialFormSchema;
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
 use futures::Stream;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -32,108 +31,9 @@ use std::sync::Arc;
 /// Type alias for the LLM response stream
 pub type LlmResponseStream = Pin<Box<dyn Stream<Item = Result<LlmStreamEvent>> + Send>>;
 
-/// Ordered provider-owned context returned by a native compaction operation.
-///
-/// The runtime carries this value without interpreting or exposing its opaque
-/// payload. The matching provider driver is responsible for putting the items
-/// back on the wire exactly as returned.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ProviderOpaqueContext {
-    /// Standalone `output` returned by OpenAI `/responses/compact`.
-    OpenResponsesCompact {
-        output: Vec<CompactOutputItem>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        reasoning_state: Option<crate::reasoning_updates::ReasoningState>,
-    },
-}
+pub use crate::provider_managed::{ProviderCheckpointCandidate, ProviderOpaqueContext};
 
-impl std::fmt::Debug for ProviderOpaqueContext {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::OpenResponsesCompact { output, .. } => f
-                .debug_struct("OpenResponsesCompact")
-                .field("item_count", &output.len())
-                .finish_non_exhaustive(),
-        }
-    }
-}
-
-/// Structured provider error emitted inside an accepted response stream.
-///
-/// Providers should preserve the wire error code and HTTP status when they are
-/// available. Runtime retry classification uses those fields before falling
-/// back to the human-readable message for legacy drivers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LlmStreamError {
-    /// Stable machine-readable provider error code, when supplied.
-    pub code: Option<String>,
-    /// HTTP status associated with the stream error, when supplied.
-    pub status: Option<u16>,
-    /// Human-readable diagnostic text.
-    pub message: String,
-}
-
-impl LlmStreamError {
-    pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            code: None,
-            status: None,
-            message: message.into(),
-        }
-    }
-
-    /// Build a stream error while preserving provider-supplied structure.
-    pub fn provider(
-        code: Option<impl Into<String>>,
-        status: Option<u16>,
-        message: impl Into<String>,
-    ) -> Self {
-        Self {
-            code: code.map(Into::into),
-            status,
-            message: message.into(),
-        }
-    }
-
-    /// Map the preserved structure to Everruns' semantic provider error kind.
-    pub fn kind(&self) -> LlmErrorKind {
-        if let Some(code) = self.code.as_deref()
-            && let Some(kind) = LlmErrorKind::from_provider_code(code)
-        {
-            return kind;
-        }
-        if let Some(status) = self.status {
-            return LlmErrorKind::from_provider_status(status, &self.message);
-        }
-        LlmErrorKind::from_error_text(&self.message)
-    }
-}
-
-impl std::error::Error for LlmStreamError {}
-
-impl std::fmt::Display for LlmStreamError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match (&self.code, self.status) {
-            (Some(code), Some(status)) => write!(f, "{code} ({status}): {}", self.message),
-            (Some(code), None) => write!(f, "{code}: {}", self.message),
-            (None, Some(status)) => write!(f, "({status}): {}", self.message),
-            (None, None) => f.write_str(&self.message),
-        }
-    }
-}
-
-impl From<String> for LlmStreamError {
-    fn from(message: String) -> Self {
-        Self::new(message)
-    }
-}
-
-impl From<&str> for LlmStreamError {
-    fn from(message: &str) -> Self {
-        Self::new(message)
-    }
-}
+pub use crate::stream_error::LlmStreamError;
 
 /// Events emitted during LLM streaming
 ///
@@ -172,6 +72,9 @@ pub enum LlmStreamEvent {
     /// authoritative value is still the completed `Message.phase`. Other
     /// providers never emit this and stay unclassified until completion.
     MessagePhase(crate::execution_phase::ExecutionPhase),
+    /// A provider-managed compaction block started. The event deliberately
+    /// carries no provider content.
+    ProviderCompactionStarted,
     /// Streaming completed
     Done(Box<LlmCompletionMetadata>),
     /// Error during streaming
@@ -252,6 +155,9 @@ pub struct LlmCompletionMetadata {
     ///
     /// This is internal transcript state. Public message projections remove it.
     pub provider_opaque_content: Option<crate::message::ProviderOpaqueContent>,
+    /// Provider-owned replay checkpoint. The engine installs it only after the
+    /// completed assistant output is durable.
+    pub provider_checkpoint_candidate: Option<ProviderCheckpointCandidate>,
 }
 
 /// Normalize an inclusive provider's reported prompt-token count to the disjoint
@@ -420,6 +326,23 @@ pub trait ChatDriver: Send + Sync {
         false
     }
 
+    /// Resolve a provider-managed history reduction request for this endpoint
+    /// and model. A bound provider substitutes its captured real endpoint.
+    fn provider_managed_reduction_option(
+        &self,
+        _endpoint: &crate::runtime_provider::ProviderEndpoint,
+        _model: &str,
+        _budget_tokens: usize,
+    ) -> Option<(String, serde_json::Value)> {
+        None
+    }
+
+    /// Validate provider-owned checkpoint context before the runtime replaces
+    /// full raw history with a suffix-only load.
+    fn validate_provider_opaque_context(&self, _context: &ProviderOpaqueContext) -> bool {
+        true
+    }
+
     /// Compact a conversation to reduce context size
     ///
     /// This method compresses conversation history by calling the provider's
@@ -516,6 +439,19 @@ impl ChatDriver for Box<dyn ChatDriver> {
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
         (**self).supports_parallel_tool_calls(model)
+    }
+
+    fn provider_managed_reduction_option(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        model: &str,
+        budget_tokens: usize,
+    ) -> Option<(String, serde_json::Value)> {
+        (**self).provider_managed_reduction_option(endpoint, model, budget_tokens)
+    }
+
+    fn validate_provider_opaque_context(&self, context: &ProviderOpaqueContext) -> bool {
+        (**self).validate_provider_opaque_context(context)
     }
 
     async fn compact(

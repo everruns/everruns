@@ -564,6 +564,24 @@ impl ChatDriver for ProviderBoundDriver {
         self.0.driver.supports_parallel_tool_calls(model)
     }
 
+    fn provider_managed_reduction_option(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        model: &str,
+        budget_tokens: usize,
+    ) -> Option<(String, serde_json::Value)> {
+        self.0
+            .driver
+            .provider_managed_reduction_option(self.0.endpoint(), model, budget_tokens)
+    }
+
+    fn validate_provider_opaque_context(
+        &self,
+        context: &crate::driver_registry::ProviderOpaqueContext,
+    ) -> bool {
+        self.0.driver.validate_provider_opaque_context(context)
+    }
+
     async fn compact(
         &self,
         _endpoint: &ProviderEndpoint,
