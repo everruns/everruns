@@ -16,6 +16,25 @@ use super::{ReasonAtom, ReasonResult};
 
 const STRATEGY: &str = "anthropic_server_compaction";
 
+pub(super) fn replay_artifacts(
+    metadata: Option<&crate::driver_registry::LlmCompletionMetadata>,
+    guardrail_allowed: bool,
+    rejected_tool_calls: bool,
+) -> (
+    Option<everruns_provider::ProviderOpaqueContent>,
+    Option<crate::driver_registry::ProviderCheckpointCandidate>,
+) {
+    if !guardrail_allowed || rejected_tool_calls {
+        return (None, None);
+    }
+    metadata.map_or((None, None), |metadata| {
+        (
+            metadata.provider_opaque_content.clone(),
+            metadata.provider_checkpoint_candidate.clone(),
+        )
+    })
+}
+
 pub(super) fn decorate_request(
     config: &mut crate::driver_registry::LlmCallConfig,
     provider_managed: bool,
@@ -286,6 +305,36 @@ pub(super) type ErrorHooks = Vec<(
     serde_json::Value,
 )>;
 
+fn preflight_fallback_reason(
+    atom: &ReasonAtom,
+    assembled: &crate::runtime_context::AssembledTurnContext,
+) -> Option<&'static str> {
+    assembled.model.provider_managed_reduction_option.as_ref()?;
+    if assembled
+        .runtime_agent
+        .conversation_context
+        .as_deref()
+        .is_some_and(|context| !context.is_empty())
+    {
+        return Some("dynamic_conversation_context");
+    }
+    let controls = super::request_controls::resolve_request_controls(
+        &assembled.messages,
+        atom.reasoning_effort_handle.as_ref(),
+        &assembled.model.provider_type,
+        &assembled.model.model,
+    );
+    let mut config = crate::llm_conversions::llm_call_config_from_agent(&assembled.runtime_agent);
+    config.reasoning_effort = controls.reasoning_effort;
+    assembled
+        .model
+        .driver
+        .provider_managed_reduction_fallback_reason(
+            &everruns_provider::ProviderEndpoint::default(),
+            &config,
+        )
+}
+
 pub(super) struct CallOutcome {
     pub(super) disclosure: crate::ErrorDisclosure,
     pub(super) error_context: crate::UserFacingErrorContext,
@@ -306,7 +355,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
         previous_response_id,
         iteration,
         mcp_tool_definitions,
-        assembled,
+        mut assembled,
     } = call;
     let mut disclosure = resolve_error_disclosure(
         &atom.capability_registry,
@@ -317,6 +366,49 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
     let mut error_context = crate::UserFacingErrorContext::default()
         .with_provider(assembled.model.provider_type.to_string())
         .with_model_id(assembled.model.model.clone());
+    if let Some(reason) = preflight_fallback_reason(atom, &assembled) {
+        match atom
+            .context_resolver
+            .resolve_turn_context(crate::runtime_context::TurnContextRequest {
+                session_id,
+                harness_id,
+                agent_id,
+                mcp_tool_definitions: mcp_tool_definitions.to_vec(),
+                allow_provider_managed_reduction: false,
+            })
+            .await
+        {
+            Ok(mut fallback)
+                if fallback.model.provider_type == assembled.model.provider_type
+                    && fallback.model.model == assembled.model.model
+                    && fallback.model.provider_managed_reduction_option.is_none() =>
+            {
+                fallback.runtime_agent.driver_options.insert(
+                    "everruns/provider_managed_reduction_fallback".to_string(),
+                    serde_json::json!({"reason":reason}),
+                );
+                assembled = fallback;
+            }
+            Ok(_) => {
+                return CallOutcome {
+                    disclosure,
+                    error_context,
+                    error_hooks,
+                    result: Err(crate::error::AgentLoopError::config(
+                        "legacy history reassembly remained provider managed",
+                    )),
+                };
+            }
+            Err(error) => {
+                return CallOutcome {
+                    disclosure,
+                    error_context,
+                    error_hooks,
+                    result: Err(error),
+                };
+            }
+        }
+    }
     let native_provider = assembled.model.provider_managed_reduction_option.is_some();
     let provider_type = assembled.model.provider_type.clone();
     let model = assembled.model.model.clone();
@@ -356,6 +448,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
             harness_id,
             agent_id,
             mcp_tool_definitions: mcp_tool_definitions.to_vec(),
+            allow_provider_managed_reduction: false,
         })
         .await;
     match fallback {

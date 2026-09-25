@@ -575,6 +575,16 @@ impl ChatDriver for ProviderBoundDriver {
             .provider_managed_reduction_option(self.0.endpoint(), model, budget_tokens)
     }
 
+    fn provider_managed_reduction_fallback_reason(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        config: &crate::driver_registry::LlmCallConfig,
+    ) -> Option<&'static str> {
+        self.0
+            .driver
+            .provider_managed_reduction_fallback_reason(self.0.endpoint(), config)
+    }
+
     fn validate_provider_opaque_context(
         &self,
         context: &crate::driver_registry::ProviderOpaqueContext,

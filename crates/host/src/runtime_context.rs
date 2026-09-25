@@ -89,20 +89,25 @@ impl TurnContextResolver for StoreTurnContextResolver {
         &self,
         request: TurnContextRequest,
     ) -> Result<AssembledTurnContext> {
-        assemble_turn_context(
+        let snapshot = load_execution_snapshot(
             self.harness_store.as_ref(),
             self.agent_store.as_ref(),
             self.session_store.as_ref(),
+            request.session_id,
+        )
+        .await?;
+        validate_requested_topology(&snapshot, request.harness_id, request.agent_id)?;
+        assemble_from_snapshot(
+            snapshot,
             self.message_retriever.as_ref(),
             self.provider_store.as_ref(),
             &self.capability_registry,
             &self.driver_registry,
-            request.session_id,
-            request.harness_id,
-            request.agent_id,
             &request.mcp_tool_definitions,
             self.file_store.clone(),
             self.session_storage.clone(),
+            request.allow_provider_managed_reduction,
+            AssemblyMode::RequireMessages,
         )
         .await
     }
@@ -144,6 +149,7 @@ pub async fn assemble_turn_context(
         mcp_tool_definitions,
         file_store,
         session_storage,
+        true,
         AssemblyMode::RequireMessages,
     )
     .await
@@ -178,6 +184,7 @@ pub async fn inspect_turn_context(
         mcp_tool_definitions,
         file_store,
         session_storage,
+        true,
         AssemblyMode::AllowEmptyMessages,
     )
     .await
@@ -208,6 +215,7 @@ pub(crate) async fn inspect_turn_context_for_session(
         mcp_tool_definitions,
         file_store,
         session_storage,
+        true,
         AssemblyMode::AllowEmptyMessages,
     )
     .await
@@ -234,6 +242,7 @@ pub async fn assemble_turn_context_from_snapshot(
         mcp_tool_definitions,
         file_store,
         session_storage,
+        true,
         AssemblyMode::RequireMessages,
     )
     .await
@@ -249,6 +258,7 @@ async fn assemble_from_snapshot(
     mcp_tool_definitions: &[ToolDefinition],
     file_store: Option<Arc<dyn SessionFileSystem>>,
     session_storage: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
+    allow_provider_managed_reduction: bool,
     mode: AssemblyMode,
 ) -> Result<AssembledTurnContext> {
     let resolved = resolve_snapshot_capabilities(&snapshot, capability_registry);
@@ -269,17 +279,21 @@ async fn assemble_from_snapshot(
     let (model, resolved_model_id) =
         resolve_model(provider_store, controls_model_id, snapshot.default_model_id).await?;
     let mut model = resolve_model_execution(provider_store, driver_registry, model).await?;
-    let provider_managed_reduction_option = provider_managed_reduction_budget(
-        &resolved.resolved_capability_configs,
-        capability_registry,
-    )
-    .and_then(|budget| {
-        model.driver.provider_managed_reduction_option(
-            &everruns_provider::ProviderEndpoint::default(),
-            &model.model,
-            budget,
-        )
-    });
+    let provider_managed_reduction_option = allow_provider_managed_reduction
+        .then(|| {
+            provider_managed_reduction_budget(
+                &resolved.resolved_capability_configs,
+                capability_registry,
+            )
+        })
+        .flatten()
+        .and_then(|budget| {
+            model.driver.provider_managed_reduction_option(
+                &everruns_provider::ProviderEndpoint::default(),
+                &model.model,
+                budget,
+            )
+        });
     model.provider_managed_reduction_option = provider_managed_reduction_option;
 
     let history = if model.provider_managed_reduction_option.is_some() {

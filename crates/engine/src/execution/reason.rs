@@ -537,6 +537,7 @@ impl ReasonAtom {
                         harness_id,
                         agent_id,
                         mcp_tool_definitions: mcp_tool_definitions.clone(),
+                        allow_provider_managed_reduction: true,
                     })
                     .await
             }
@@ -2070,8 +2071,6 @@ impl ReasonAtom {
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
         compaction_lifecycle.record_observed(&mut llm_config, compaction_started_at);
-        let provider_text = text.clone();
-        let provider_tool_calls = tool_calls.clone();
 
         // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
         // once on the finalized final-answer text to attach claim-level citations
@@ -2471,18 +2470,12 @@ impl ReasonAtom {
             &resolved_capability_configs,
             text,
         );
-        let checkpoint_output_eligible = tripped.is_none()
-            && text == provider_text
-            && finalized_tool_calls == provider_tool_calls
-            && rejected_tool_calls.is_empty();
-        let provider_opaque_content = completion_metadata
-            .as_ref()
-            .and_then(|metadata| metadata.provider_opaque_content.clone())
-            .filter(|_| checkpoint_output_eligible);
-        let provider_checkpoint_candidate = completion_metadata
-            .as_ref()
-            .and_then(|metadata| metadata.provider_checkpoint_candidate.clone())
-            .filter(|_| checkpoint_output_eligible);
+        let (provider_opaque_content, provider_checkpoint_candidate) =
+            provider_managed_compaction::replay_artifacts(
+                completion_metadata.as_ref(),
+                tripped.is_none(),
+                !rejected_tool_calls.is_empty(),
+            );
         let has_tool_calls = !finalized_tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             RuntimeMessage::assistant_with_tools(&text, finalized_tool_calls.clone())

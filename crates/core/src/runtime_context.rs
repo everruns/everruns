@@ -45,6 +45,11 @@ pub struct TurnContextRequest {
     pub agent_id: Option<crate::AgentId>,
     /// Host-discovered MCP tools available for this turn.
     pub mcp_tool_definitions: Vec<ToolDefinition>,
+    /// Whether the host may select provider-managed history reduction.
+    ///
+    /// The engine sets this to `false` when request-level preflight or a
+    /// provider capability rejection requires a legacy-history retry.
+    pub allow_provider_managed_reduction: bool,
 }
 
 /// Credential-safe provider input prepared by a runtime host.

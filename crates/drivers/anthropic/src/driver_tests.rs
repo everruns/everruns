@@ -149,6 +149,28 @@ fn server_compaction_requires_direct_eligible_anthropic_models() {
 }
 
 #[test]
+fn server_compaction_rejects_a_configured_output_budget_below_the_minimum_trigger() {
+    use everruns_provider::Provider;
+
+    let driver = Provider::new("anthropic", AnthropicChatDriver::new())
+        .base_url(DEFAULT_BASE_URL)
+        .into_boxed_driver();
+    let endpoint = everruns_provider::ProviderEndpoint::default();
+    let mut config = LlmCallConfig::new("claude-opus-4-8");
+    config.max_tokens = Some(160_000);
+
+    assert_eq!(
+        driver.provider_managed_reduction_fallback_reason(&endpoint, &config),
+        Some("configured_output_budget")
+    );
+
+    config.max_tokens = Some(150_000);
+    assert_eq!(
+        driver.provider_managed_reduction_fallback_reason(&endpoint, &config),
+        None
+    );
+}
+#[test]
 fn server_compaction_request_contract_uses_top_level_cache_control() {
     let request = AnthropicRequest {
         model: "claude-opus-4-8".to_string(),

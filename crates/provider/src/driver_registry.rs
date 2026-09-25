@@ -337,6 +337,17 @@ pub trait ChatDriver: Send + Sync {
         None
     }
 
+    /// Return a stable fallback reason when the completed request configuration
+    /// cannot safely use the provider-managed reduction option selected during
+    /// turn assembly.
+    fn provider_managed_reduction_fallback_reason(
+        &self,
+        _endpoint: &crate::runtime_provider::ProviderEndpoint,
+        _config: &LlmCallConfig,
+    ) -> Option<&'static str> {
+        None
+    }
+
     /// Validate provider-owned checkpoint context before the runtime replaces
     /// full raw history with a suffix-only load.
     fn validate_provider_opaque_context(&self, _context: &ProviderOpaqueContext) -> bool {
@@ -448,6 +459,14 @@ impl ChatDriver for Box<dyn ChatDriver> {
         budget_tokens: usize,
     ) -> Option<(String, serde_json::Value)> {
         (**self).provider_managed_reduction_option(endpoint, model, budget_tokens)
+    }
+
+    fn provider_managed_reduction_fallback_reason(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        config: &LlmCallConfig,
+    ) -> Option<&'static str> {
+        (**self).provider_managed_reduction_fallback_reason(endpoint, config)
     }
 
     fn validate_provider_opaque_context(&self, context: &ProviderOpaqueContext) -> bool {

@@ -52,6 +52,217 @@ impl everruns_core::CompactionCheckpointStore for FailingProviderInstallStore {
     }
 }
 
+struct ReplayProjectionCapability;
+
+impl everruns_core::Capability for ReplayProjectionCapability {
+    fn id(&self) -> &str {
+        "replay_projection_test"
+    }
+
+    fn name(&self) -> &str {
+        "Replay projection test"
+    }
+
+    fn description(&self) -> &str {
+        "Transforms public output while provider replay state remains internal."
+    }
+
+    fn filter_response_text(&self, text: String, _config: &serde_json::Value) -> String {
+        format!("filtered: {text}")
+    }
+
+    fn finalized_tool_calls_hook(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<Arc<dyn everruns_core::finalized_tool_calls::FinalizedToolCallsHook>> {
+        Some(Arc::new(NormalizeReplayToolCall))
+    }
+}
+
+struct NormalizeReplayToolCall;
+
+#[async_trait]
+impl everruns_core::finalized_tool_calls::FinalizedToolCallsHook for NormalizeReplayToolCall {
+    async fn apply(
+        &self,
+        _context: &everruns_core::finalized_tool_calls::FinalizedToolCallsContext<'_>,
+        calls: &mut [ToolCall],
+    ) {
+        for call in calls {
+            call.arguments = json!({"normalized":true});
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ReplayProjectionDriver;
+
+#[async_trait]
+impl everruns_provider::ChatDriver for ReplayProjectionDriver {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &everruns_provider::ProviderEndpoint,
+        _messages: Vec<everruns_provider::Message>,
+        config: &everruns_provider::LlmCallConfig,
+    ) -> everruns_provider::Result<everruns_provider::LlmResponseStream> {
+        let candidate = everruns_provider::driver_registry::ProviderCheckpointCandidate {
+            format_version: everruns_core::ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION,
+            context: everruns_provider::ProviderOpaqueContext::AnthropicMessagesPrefix {
+                messages_json: serde_json::to_string(&json!([
+                    {"role":"user","content":[{"type":"text","text":"request"}]},
+                    {"role":"assistant","content":[
+                        {"type":"compaction","content":"summary","encrypted_content":"cipher"},
+                        {"type":"text","text":"provider text"},
+                        {"type":"tool_use","id":"call_1","name":"lookup","input":{"raw":true}}
+                    ]}
+                ]))
+                .unwrap(),
+            },
+        };
+        let mut metadata = LlmCompletionMetadata::default();
+        metadata.provider_opaque_content = Some(everruns_provider::ProviderOpaqueContent::new(
+            "anthropic",
+            json!([
+                {"type":"text","text":"provider text"},
+                {"type":"tool_use","id":"call_1","name":"lookup","input":{"raw":true}}
+            ]),
+        ));
+        metadata.provider_checkpoint_candidate = Some(candidate);
+        metadata.model = Some(config.model.clone());
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_provider::LlmStreamEvent::ProviderCompactionStarted),
+            Ok(everruns_provider::LlmStreamEvent::TextDelta(
+                "provider text".to_string(),
+            )),
+            Ok(everruns_provider::LlmStreamEvent::ToolCalls(vec![
+                ToolCall {
+                    id: "call_1".to_string(),
+                    name: "lookup".to_string(),
+                    arguments: json!({"raw":true}),
+                },
+            ])),
+            Ok(everruns_provider::LlmStreamEvent::Done(Box::new(metadata))),
+        ])))
+    }
+
+    fn provider_managed_reduction_option(
+        &self,
+        _endpoint: &everruns_provider::ProviderEndpoint,
+        _model: &str,
+        budget_tokens: usize,
+    ) -> Option<(String, serde_json::Value)> {
+        Some((
+            "anthropic/server_compaction".to_string(),
+            json!({"trigger_tokens":budget_tokens}),
+        ))
+    }
+}
+
+#[tokio::test]
+async fn response_and_tool_projections_preserve_native_replay_state() {
+    use everruns_builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
+    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::execution_loading::SessionStore;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+    let provider_type = DriverId::external("replay-projection-test");
+    let model = "eligible-model";
+    set_default_test_model(&provider_store, provider_type.clone(), model, None).await;
+    let mut session = session_store
+        .get_session(session_id.into())
+        .await
+        .unwrap()
+        .unwrap();
+    session.capabilities = vec![
+        AgentCapabilityConfig::with_config(
+            INFINITY_CONTEXT_CAPABILITY_ID,
+            json!({"context_budget_tokens":120_000}),
+        ),
+        AgentCapabilityConfig::new("replay_projection_test"),
+    ];
+    session_store.add_session(session).await;
+    message_retriever
+        .seed(session_id.into(), vec![RuntimeMessage::user("request")])
+        .await;
+
+    let mut drivers = DriverRegistry::new();
+    drivers.register_external(provider_type.as_str(), |_| Box::new(ReplayProjectionDriver));
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(InfinityContextCapability);
+    capabilities.register(ReplayProjectionCapability);
+    let events = InMemoryEventEmitter::new();
+    let checkpoint_store = Arc::new(everruns_host::InMemoryCompactionCheckpointStore::default());
+    let result = reason_atom_with_stores(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        capabilities,
+        drivers,
+        events.clone(),
+    )
+    .with_compaction_checkpoint_store(checkpoint_store.clone())
+    .execute(ReasonInput {
+        context: create_context(session_id),
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(result.text, "filtered: provider text");
+    assert_eq!(result.tool_calls[0].arguments, json!({"normalized":true}));
+    let completed = events
+        .events()
+        .await
+        .into_iter()
+        .find_map(|event| match event.data {
+            everruns_core::EventData::OutputMessageCompleted(data) => Some(data),
+            _ => None,
+        })
+        .expect("completed output should be durable");
+    assert!(completed.message.content.iter().any(|part| {
+        matches!(
+            part,
+            everruns_core::ContentPart::ProviderOpaque(content)
+                if content.content[0]["text"] == "provider text"
+                    && content.content[1]["input"] == json!({"raw":true})
+        )
+    }));
+    let checkpoint = checkpoint_store
+        .get_latest_format(
+            session_id.into(),
+            provider_type.as_str(),
+            model,
+            everruns_core::ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION,
+        )
+        .await
+        .unwrap()
+        .expect("projection changes must not discard the native checkpoint");
+    let everruns_core::CompactionCheckpointPayload::ProviderOpaque {
+        context: everruns_provider::ProviderOpaqueContext::AnthropicMessagesPrefix { messages_json },
+    } = checkpoint.payload
+    else {
+        panic!("expected Anthropic checkpoint");
+    };
+    assert!(messages_json.contains("\"raw\":true"));
+    assert!(!messages_json.contains("\"normalized\":true"));
+}
+
 #[async_trait]
 impl everruns_provider::driver_registry::ChatDriver for ProviderManagedCheckpointDriver {
     async fn chat_completion_stream(
@@ -626,4 +837,245 @@ async fn corrupt_provider_checkpoint_rebuilds_from_full_raw_history() {
             everruns_provider::MessageContent::Text(text) if text == "first raw message"
         )
     }));
+}
+
+#[derive(Clone, Debug)]
+struct DynamicContextFallbackDriver {
+    calls: Arc<Mutex<Vec<CapturedLlmCall>>>,
+}
+
+#[async_trait]
+impl everruns_provider::ChatDriver for DynamicContextFallbackDriver {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &everruns_provider::ProviderEndpoint,
+        messages: Vec<everruns_provider::Message>,
+        config: &everruns_provider::LlmCallConfig,
+    ) -> everruns_provider::Result<everruns_provider::LlmResponseStream> {
+        self.calls.lock().await.push((messages, config.clone()));
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_provider::LlmStreamEvent::TextDelta(
+                "legacy context response".to_string(),
+            )),
+            Ok(everruns_provider::LlmStreamEvent::Done(Box::default())),
+        ])))
+    }
+
+    fn provider_managed_reduction_option(
+        &self,
+        _endpoint: &everruns_provider::ProviderEndpoint,
+        _model: &str,
+        budget_tokens: usize,
+    ) -> Option<(String, serde_json::Value)> {
+        Some((
+            "anthropic/server_compaction".to_string(),
+            json!({"trigger_tokens":budget_tokens}),
+        ))
+    }
+}
+
+#[tokio::test]
+async fn changing_agents_and_channel_context_bypass_a_native_checkpoint() {
+    use everruns_builtins::{
+        AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability,
+        CHANNEL_CONTEXT_CAPABILITY_ID, ChannelContextCapability, INFINITY_CONTEXT_CAPABILITY_ID,
+        InfinityContextCapability,
+    };
+    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::channel::{ChannelViewContext, ThreadContext, save_thread_context};
+    use everruns_core::execution_loading::SessionStore;
+    use everruns_core::message::ExternalActor;
+    use everruns_core::session_file::InitialFile;
+    use everruns_engine::ReasonAtom;
+    use everruns_host::{
+        InMemorySessionFileStore, InMemorySessionStorageStore, StoreTurnContextResolver,
+    };
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+    let provider_type = DriverId::external("dynamic-context-checkpoint-test");
+    let model = "eligible-model";
+    set_default_test_model(&provider_store, provider_type.clone(), model, None).await;
+    let mut session = session_store
+        .get_session(session_id.into())
+        .await
+        .unwrap()
+        .unwrap();
+    session.capabilities = vec![
+        AgentCapabilityConfig::with_config(
+            INFINITY_CONTEXT_CAPABILITY_ID,
+            json!({"context_budget_tokens":120_000}),
+        ),
+        AgentCapabilityConfig::new(AGENT_INSTRUCTIONS_CAPABILITY_ID),
+        AgentCapabilityConfig::new(CHANNEL_CONTEXT_CAPABILITY_ID),
+    ];
+    session_store.add_session(session).await;
+    message_retriever
+        .seed(
+            session_id.into(),
+            vec![
+                RuntimeMessage::user("first raw message"),
+                RuntimeMessage::assistant("first raw response"),
+                RuntimeMessage::user("latest raw message"),
+            ],
+        )
+        .await;
+
+    let file_store = InMemorySessionFileStore::new();
+    let agents_file = |content: &str| InitialFile {
+        path: "/AGENTS.md".to_string(),
+        content: content.to_string(),
+        encoding: "text".to_string(),
+        is_readonly: false,
+    };
+    file_store
+        .seed_initial_file(session_id.into(), &agents_file("INSTRUCTION-V1"))
+        .await
+        .unwrap();
+    let storage = InMemorySessionStorageStore::new();
+    let mut thread = ThreadContext::new("thread-1", "slack");
+    thread.track_participant(&ExternalActor {
+        actor_id: "U1".to_string(),
+        actor_name: Some("Alice".to_string()),
+        source: "slack".to_string(),
+        metadata: None,
+    });
+    thread.set_current_view(ChannelViewContext {
+        channel_id: Some("C1".to_string()),
+        ..Default::default()
+    });
+    save_thread_context(&storage, session_id.into(), &thread)
+        .await
+        .unwrap();
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let driver = DynamicContextFallbackDriver {
+        calls: calls.clone(),
+    };
+    let mut drivers = DriverRegistry::new();
+    drivers.register_external(provider_type.as_str(), move |_| Box::new(driver.clone()));
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(InfinityContextCapability);
+    capabilities.register(AgentInstructionsCapability);
+    capabilities.register(ChannelContextCapability);
+    let checkpoint_store = Arc::new(everruns_host::InMemoryCompactionCheckpointStore::default());
+    checkpoint_store
+        .install(everruns_core::CompactionCheckpoint {
+            id: Uuid::now_v7(),
+            session_id: session_id.into(),
+            source_sequence: 2,
+            provider_type: provider_type.to_string(),
+            model: model.to_string(),
+            format_version: everruns_core::ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION,
+            payload: everruns_core::CompactionCheckpointPayload::ProviderOpaque {
+                context: everruns_provider::ProviderOpaqueContext::AnthropicMessagesPrefix {
+                    messages_json: serde_json::to_string(&json!([
+                        {"role":"user","content":[{"type":"text","text":"checkpoint prefix"}]}
+                    ]))
+                    .unwrap(),
+                },
+            },
+        })
+        .await
+        .unwrap();
+    let resolver = StoreTurnContextResolver::new(
+        Arc::new(harness_store),
+        Arc::new(agent_store),
+        Arc::new(session_store),
+        Arc::new(message_retriever.clone()),
+        Arc::new(provider_store),
+        capabilities.clone(),
+        drivers,
+    )
+    .with_file_store(Arc::new(file_store.clone()))
+    .with_session_storage(Arc::new(storage.clone()));
+    let atom = ReasonAtom::new(
+        resolver,
+        message_retriever,
+        capabilities,
+        InMemoryEventEmitter::new(),
+    )
+    .with_compaction_checkpoint_store(checkpoint_store);
+    let input = || ReasonInput {
+        context: create_context(session_id),
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    assert!(atom.execute(input()).await.unwrap().success);
+    file_store
+        .seed_initial_file(session_id.into(), &agents_file("INSTRUCTION-V2"))
+        .await
+        .unwrap();
+    let mut changed_thread = ThreadContext::new("thread-1", "slack");
+    changed_thread.track_participant(&ExternalActor {
+        actor_id: "U2".to_string(),
+        actor_name: Some("Bob".to_string()),
+        source: "slack".to_string(),
+        metadata: None,
+    });
+    changed_thread.set_current_view(ChannelViewContext {
+        channel_id: Some("C2".to_string()),
+        ..Default::default()
+    });
+    save_thread_context(&storage, session_id.into(), &changed_thread)
+        .await
+        .unwrap();
+    assert!(atom.execute(input()).await.unwrap().success);
+
+    let calls = calls.lock().await;
+    assert_eq!(calls.len(), 2);
+    for (_, config) in calls.iter() {
+        assert!(config.provider_opaque_context.is_none());
+        assert!(
+            !config
+                .driver_options
+                .contains_key("anthropic/server_compaction")
+        );
+        assert_eq!(
+            config.driver_options["everruns/provider_managed_reduction_fallback"]["reason"],
+            "dynamic_conversation_context"
+        );
+    }
+    let request_text = |index: usize| {
+        calls[index]
+            .0
+            .iter()
+            .map(|message| message.content.to_text())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let context_messages = |index: usize, marker: &str| {
+        calls[index]
+            .0
+            .iter()
+            .filter(|message| message.content.to_text().contains(marker))
+            .count()
+    };
+    let first = request_text(0);
+    assert_eq!(context_messages(0, "INSTRUCTION-V1"), 1);
+    assert!(first.contains("Alice"));
+    assert!(first.contains("C1"));
+    let second = request_text(1);
+    assert_eq!(context_messages(1, "INSTRUCTION-V2"), 1);
+    assert!(second.contains("Bob"));
+    assert!(second.contains("C2"));
+    for stale in ["INSTRUCTION-V1", "Alice", "C1", "checkpoint prefix"] {
+        assert!(
+            !second.contains(stale),
+            "{stale} leaked into changed context"
+        );
+    }
 }

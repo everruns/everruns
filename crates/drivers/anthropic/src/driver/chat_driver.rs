@@ -728,6 +728,49 @@ impl ChatDriver for AnthropicChatDriver {
         ))
     }
 
+    fn provider_managed_reduction_fallback_reason(
+        &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
+        config: &LlmCallConfig,
+    ) -> Option<&'static str> {
+        if endpoint.base_url() != Some(DEFAULT_BASE_URL)
+            || server_compaction::is_rejected(endpoint, &config.model)
+        {
+            return None;
+        }
+        let (wire_model, _) = split_million_context(&config.model);
+        let profile = everruns_provider::get_model_profile(
+            &everruns_provider::DriverId::Anthropic,
+            wire_model,
+        )?;
+        if !profile.supports_server_compaction {
+            return None;
+        }
+        let context_window = profile.limits.as_ref()?.context.max(0) as usize;
+        let effort = crate::effort::resolve(config, wire_model, &Some(profile.clone()));
+        let (thinking_budget, adaptive_effort) = match effort {
+            Some(effort) if uses_adaptive_thinking(wire_model) => {
+                (None, adaptive_effort_level(effort))
+            }
+            Some(effort) => {
+                let budget = match AnthropicThinking::enabled_from_effort(effort) {
+                    Some(AnthropicThinking::Enabled { budget_tokens }) => Some(budget_tokens),
+                    _ => None,
+                };
+                (budget, None)
+            }
+            None => (None, None),
+        };
+        let max_tokens = crate::effort::max_tokens(
+            config.max_tokens,
+            Some(&profile),
+            thinking_budget,
+            adaptive_effort,
+        );
+        (context_window.saturating_sub(max_tokens as usize) < SERVER_COMPACTION_MIN_TOKENS)
+            .then_some("configured_output_budget")
+    }
+
     fn validate_provider_opaque_context(&self, context: &ProviderOpaqueContext) -> bool {
         match context {
             ProviderOpaqueContext::AnthropicMessagesPrefix { messages_json } => {
