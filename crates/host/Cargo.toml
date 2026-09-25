@@ -56,7 +56,7 @@ everruns-integrations-web-fetch = { workspace = true, optional = true }
 everruns-integrations-duckduckgo = { workspace = true, optional = true }
 everruns-integrations-lua = { workspace = true, optional = true }
 opentelemetry = { workspace = true, optional = true }
-opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true, features = ["testing"] }
 opentelemetry-otlp = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
@@ -97,17 +97,18 @@ native-containment = [
 utility-llm = ["everruns-provider/http", "dep:everruns-openrouter"]
 # Kept as the pre-OpenRouter name of the same wiring.
 utility-openai = ["utility-llm"]
-observability = [
-    "direct-egress",
+otel = [
     "tokio/time",
     "everruns-provider/tls-aws-lc-rs",
-    "dep:rand",
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
     "dep:tracing-opentelemetry",
     "dep:tracing-subscriber",
 ]
+braintrust = ["direct-egress", "tokio/time", "dep:rand"]
+# Compatibility bundle for hosts that enable both exporters.
+observability = ["otel", "braintrust"]
 
 [[example]]
 name = "real_disk_file_system_tools"

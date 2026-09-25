@@ -11,7 +11,7 @@ tags:
 
 # Framework Event Listeners and Observability
 
-Status: EVE-1100 listener delivery is implemented. EVE-1101 integrations are planned.
+Status: Implemented by EVE-1100 and EVE-1101.
 Scope: the `everruns` crate (`Engine`, `Session`).
 
 ## Problem
@@ -52,8 +52,8 @@ twice); changing the server's `EventService` fan-out.
 let engine = Engine::builder()
     .listener(MyAudit)                                   // app-defined
     .on_event(|e: SessionEvent| async move { … })        // closure sugar
-    .observe(everruns::observability::OpenTelemetry::from_env())   // planned EVE-1101
-    .observe(everruns::observability::Braintrust::from_env()?)     // planned EVE-1101
+    .observe(everruns::observability::OpenTelemetry::from_env())
+    .observe(everruns::observability::Braintrust::from_env()?)
     .build();
 // Engine::new() stays and equals Engine::builder().build().
 ```
@@ -80,11 +80,11 @@ Why the Engine:
   ```
   `SessionEvent` already carries the typed kind plus the complete
   `canonical_json()`, so nothing is lost and no core types leak.
-- **Planned built-in integrations** (`OpenTelemetry`, `Braintrust`) are opaque facade
+- **Built-in integrations** (`OpenTelemetry`, `Braintrust`) are opaque facade
   values. Internally they wrap the host listeners, which need the lossless core
   `Event`. The bus already holds that `Event` before it projects it
   (`crates/everruns/src/events.rs`), so the built-ins get it directly with no JSON round trip.
-  EVE-1101 can extend the registry with
+  The registry represents these private slots as
   `enum Slot { App(Arc<dyn everruns::EventListener>), Host(Arc<dyn everruns_core::EventListener>) }`.
   `Host` is never constructible by applications.
 
@@ -146,10 +146,8 @@ The framework never installs a global tracer or `tracing` subscriber on its own.
 
 ### 7. Features and stability
 
-- Planned `everruns` features: `otel` forwards to `everruns-host/observability`
-  (OTel parts). `braintrust` needs the same host feature plus `direct-egress`.
-  A later split of the host feature into `otel` and `braintrust` would keep each
-  dependency tree small. Default features stay offline.
+- Independent `everruns` features `otel` and `braintrust` forward to their
+  matching `everruns-host` exporter features. Default features stay offline.
 - The new surface is marked `Stability: Alpha` (see `crates/everruns/src/stability.rs`).
 - Update `knowledge/framework/application-api.md`, which lists promoted concerns,
   and `docs/observability/*` with a framework section.
@@ -180,9 +178,9 @@ The framework never installs a global tracer or `tracing` subscriber on its own.
 
 ## Delivery plan
 
-1. EVE-1100 (implemented): `Engine::builder`, the facade `EventListener`, the per-listener
+1. EVE-1100: `Engine::builder`, the facade `EventListener`, the per-listener
    dispatcher, `shutdown`, and the core `flush` default.
-2. EVE-1101 (planned): the `otel` and `braintrust` features, `OpenTelemetry` and
+2. EVE-1101: the `otel` and `braintrust` features, `OpenTelemetry` and
    `Braintrust` values, the Braintrust flush, an `examples/` program, and docs.
 
 ## Open questions

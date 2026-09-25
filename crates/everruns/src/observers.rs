@@ -8,6 +8,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
+#[cfg(any(feature = "otel", feature = "braintrust"))]
+use everruns_core::EventListener as CoreEventListener;
+use everruns_core::events::Event as CoreEvent;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
@@ -77,6 +80,61 @@ pub trait EventListener: Send + Sync + 'static {
     /// Human-readable identity used in observer statistics.
     fn name(&self) -> &'static str {
         "EventListener"
+    }
+}
+
+pub(crate) enum ListenerRegistration {
+    App(Arc<dyn EventListener>),
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    Host(Arc<dyn CoreEventListener>),
+}
+
+#[derive(Clone)]
+struct DispatchEvent {
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    core: CoreEvent,
+    facade: SessionEvent,
+}
+
+enum ListenerTarget {
+    App(Arc<dyn EventListener>),
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    Host(Arc<dyn CoreEventListener>),
+}
+
+impl ListenerTarget {
+    async fn on_event(&self, event: &DispatchEvent) {
+        match self {
+            Self::App(listener) => listener.on_event(&event.facade).await,
+            #[cfg(any(feature = "otel", feature = "braintrust"))]
+            Self::Host(listener) => listener.on_event(&event.core).await,
+        }
+    }
+
+    async fn flush(&self) {
+        match self {
+            Self::App(listener) => listener.flush().await,
+            #[cfg(any(feature = "otel", feature = "braintrust"))]
+            Self::Host(listener) => listener.flush().await,
+        }
+    }
+}
+
+enum ListenerFilter {
+    App(EventFilter),
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    Host(Option<Vec<&'static str>>),
+}
+
+impl ListenerFilter {
+    fn matches(&self, event: &DispatchEvent) -> bool {
+        match self {
+            Self::App(filter) => filter.matches(&event.facade),
+            #[cfg(any(feature = "otel", feature = "braintrust"))]
+            Self::Host(None) => true,
+            #[cfg(any(feature = "otel", feature = "braintrust"))]
+            Self::Host(Some(types)) => types.contains(&event.core.event_type.as_str()),
+        }
     }
 }
 
@@ -213,7 +271,7 @@ async fn finish_shutdown(
 }
 
 struct WorkerState {
-    receiver: Option<mpsc::Receiver<SessionEvent>>,
+    receiver: Option<mpsc::Receiver<DispatchEvent>>,
     handle: Option<JoinHandle<()>>,
 }
 struct AbortOnDrop<T>(JoinHandle<T>);
@@ -227,21 +285,34 @@ impl<T> Drop for AbortOnDrop<T> {
 struct ListenerSlot {
     index: usize,
     name: String,
-    listener: Arc<dyn EventListener>,
-    filter: EventFilter,
-    sender: Mutex<Option<mpsc::Sender<SessionEvent>>>,
+    listener: Arc<ListenerTarget>,
+    filter: ListenerFilter,
+    sender: Mutex<Option<mpsc::Sender<DispatchEvent>>>,
     worker: Mutex<WorkerState>,
     counters: Arc<ListenerCounters>,
 }
 
 impl ListenerSlot {
-    fn new(index: usize, listener: Arc<dyn EventListener>, capacity: usize) -> Arc<Self> {
+    fn new(index: usize, registration: ListenerRegistration, capacity: usize) -> Arc<Self> {
         let (sender, receiver) = mpsc::channel(capacity);
+        let (name, filter, listener) = match registration {
+            ListenerRegistration::App(listener) => (
+                listener.name().to_string(),
+                ListenerFilter::App(listener.filter()),
+                ListenerTarget::App(listener),
+            ),
+            #[cfg(any(feature = "otel", feature = "braintrust"))]
+            ListenerRegistration::Host(listener) => (
+                listener.name().to_string(),
+                ListenerFilter::Host(listener.event_types()),
+                ListenerTarget::Host(listener),
+            ),
+        };
         Arc::new(Self {
             index,
-            name: listener.name().to_string(),
-            filter: listener.filter(),
-            listener,
+            name,
+            filter,
+            listener: Arc::new(listener),
             sender: Mutex::new(Some(sender)),
             worker: Mutex::new(WorkerState {
                 receiver: Some(receiver),
@@ -269,7 +340,7 @@ impl ListenerSlot {
         )));
     }
 
-    fn try_send(&self, event: SessionEvent) {
+    fn try_send(&self, event: DispatchEvent) {
         self.ensure_worker();
         let sender = self
             .sender
@@ -344,8 +415,8 @@ impl ListenerSlot {
 }
 
 async fn drain_listener(
-    listener: Arc<dyn EventListener>,
-    mut receiver: mpsc::Receiver<SessionEvent>,
+    listener: Arc<ListenerTarget>,
+    mut receiver: mpsc::Receiver<DispatchEvent>,
     counters: Arc<ListenerCounters>,
 ) {
     while let Some(event) = receiver.recv().await {
@@ -381,7 +452,7 @@ pub(crate) struct ObserverDispatcher {
 }
 
 impl ObserverDispatcher {
-    pub(crate) fn new(listeners: Vec<Arc<dyn EventListener>>, queue_capacity: usize) -> Arc<Self> {
+    pub(crate) fn new(listeners: Vec<ListenerRegistration>, queue_capacity: usize) -> Arc<Self> {
         assert!(
             queue_capacity > 0,
             "observer queue capacity must be non-zero"
@@ -397,10 +468,16 @@ impl ObserverDispatcher {
         })
     }
 
-    pub(crate) fn dispatch(&self, event: SessionEvent) {
+    pub(crate) fn dispatch(&self, core: &CoreEvent, facade: &SessionEvent) {
         if !self.accepting.load(Ordering::Acquire) {
             return;
         }
+        let _ = core;
+        let event = DispatchEvent {
+            #[cfg(any(feature = "otel", feature = "braintrust"))]
+            core: core.clone(),
+            facade: facade.clone(),
+        };
         for slot in &self.slots {
             if slot.filter.matches(&event) {
                 slot.try_send(event.clone());
@@ -478,7 +555,10 @@ mod tests {
     use serde_json::json;
     use tokio::sync::Notify;
 
-    use super::{EventFilter, EventListener, OBSERVER_QUEUE_CAPACITY, ObserverDispatcher};
+    use super::{
+        EventFilter, EventListener, ListenerRegistration, OBSERVER_QUEUE_CAPACITY,
+        ObserverDispatcher,
+    };
     use crate::events::FacadeEventBus;
     use crate::{Agent, Engine, FunctionTool, Model, SessionEvent};
 
@@ -858,10 +938,10 @@ mod tests {
         let entered = Arc::new(Notify::new());
         let cancelled = Arc::new(Notify::new());
         let dispatcher = ObserverDispatcher::new(
-            vec![Arc::new(PendingListener {
+            vec![ListenerRegistration::App(Arc::new(PendingListener {
                 entered: entered.clone(),
                 cancelled: cancelled.clone(),
-            })],
+            }))],
             OBSERVER_QUEUE_CAPACITY,
         );
         let session_id = SessionId::new();

@@ -118,6 +118,10 @@ openrouter = ["dep:everruns-openrouter"]
 # Typed decision: the TypeSafe-backed `DecisionsService` behind
 # `Decisions`, re-exported so one import reaches both halves.
 typesafe = ["dep:everruns-integrations-typesafe"]
+# Framework observability is opt-in. Each feature enables only its host
+# exporter and leaves default and no-default builds offline.
+otel = ["everruns-host/otel"]
+braintrust = ["everruns-host/braintrust"]
 
 [dependencies]
 # Neutral capability contract (EVE-873): `CapabilityId`/`CapabilityRef`,
@@ -186,6 +190,7 @@ futures = { workspace = true }
 trybuild = { workspace = true }
 # Temporary workspaces and plugin fixtures used by facade acceptance tests.
 tempfile = { workspace = true }
+wiremock = "0.6"
 
 [[example]]
 name = "ask_user"
@@ -238,3 +243,7 @@ required-features = ["capabilities"]
 [[example]]
 name = "agent_decisions"
 required-features = ["typesafe"]
+
+[[example]]
+name = "framework_observability"
+required-features = ["otel", "braintrust"]

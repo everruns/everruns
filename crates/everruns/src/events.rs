@@ -895,7 +895,7 @@ impl FacadeEventBus {
 
     fn observe(&self, event: &Event) -> Result<(), EventSinkError> {
         let projected = SessionEvent::from_core_event(event);
-        self.observers.dispatch(projected.clone());
+        self.observers.dispatch(event, &projected);
         if event.session_id == self.session_id {
             match event.event_type.as_str() {
                 events::TURN_STARTED => {
