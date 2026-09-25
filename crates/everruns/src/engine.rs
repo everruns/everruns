@@ -17,7 +17,8 @@ use tokio::sync::OnceCell;
 
 use crate::agent::BackendInitError;
 use crate::observers::{
-    ClosureEventListener, EventListener, OBSERVER_QUEUE_CAPACITY, ObserverDispatcher,
+    ClosureEventListener, EventListener, ListenerRegistration, OBSERVER_QUEUE_CAPACITY,
+    ObserverDispatcher,
 };
 use crate::{
     Agent, Harness, ObserverReport, ObserverStats, ResumeError, Session, SessionEnvironmentError,
@@ -100,7 +101,7 @@ struct EngineInner {
 ///
 /// Stability: alpha.
 pub struct EngineBuilder {
-    listeners: Vec<Arc<dyn EventListener>>,
+    listeners: Vec<ListenerRegistration>,
     observer_queue_capacity: usize,
 }
 
@@ -116,7 +117,17 @@ impl Default for EngineBuilder {
 impl EngineBuilder {
     /// Register an event listener for every session this Engine runs.
     pub fn listener(mut self, listener: impl EventListener) -> Self {
-        self.listeners.push(Arc::new(listener));
+        self.listeners
+            .push(ListenerRegistration::App(Arc::new(listener)));
+        self
+    }
+
+    /// Register a built-in observability integration for every Engine session.
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    pub fn observe(mut self, observer: impl crate::observability::Observation) -> Self {
+        self.listeners.push(ListenerRegistration::Host(
+            crate::observability::into_listener(observer),
+        ));
         self
     }
 
