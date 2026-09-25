@@ -755,11 +755,13 @@ fn test_thinking_config_serialization() {
     // Adaptive must not carry budget_tokens (400 on Fable 5.x / Opus 4.8 /
     // 4.7); display:"summarized" opts back into visible thinking text,
     // which those models omit by default.
-    let adaptive = serde_json::to_value(AnthropicThinking::adaptive("claude-test")).unwrap();
+    let adaptive = serde_json::to_value(AnthropicThinking::adaptive("claude-test", true)).unwrap();
     assert_eq!(
         adaptive,
         json!({"type": "adaptive", "display": "summarized"})
     );
+    let hidden = serde_json::to_value(AnthropicThinking::adaptive("claude-test", false)).unwrap();
+    assert_eq!(hidden, json!({"type": "adaptive", "display": "omitted"}));
 
     let enabled = serde_json::to_value(AnthropicThinking::Enabled {
         budget_tokens: 4096,

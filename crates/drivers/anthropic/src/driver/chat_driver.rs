@@ -119,7 +119,13 @@ impl ChatDriver for AnthropicChatDriver {
             Some(effort) if uses_adaptive_thinking(wire_model) => {
                 match adaptive_effort_level(effort) {
                     Some(level) => (
-                        Some(AnthropicThinking::adaptive(wire_model)),
+                        Some(AnthropicThinking::adaptive(
+                            wire_model,
+                            matches!(
+                                config.reasoning_effort,
+                                Some(effort) if effort != ReasoningEffort::None
+                            ),
+                        )),
                         Some(AnthropicOutputConfig {
                             effort: level.to_string(),
                         }),

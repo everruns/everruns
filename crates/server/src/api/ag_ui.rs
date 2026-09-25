@@ -1414,7 +1414,8 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             }
         }
         "reason.thinking.started"
-            if parse_event_data::<ReasonThinkingStartedData>(event).is_ok() =>
+            if state.reasoning_summary_visible
+                && parse_event_data::<ReasonThinkingStartedData>(event).is_ok() =>
         {
             if !state.public_tool_activity_opened_thinking {
                 state
@@ -1428,7 +1429,9 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             state.thinking_text_started = false;
         }
         "reason.thinking.delta" => {
-            if let Ok(data) = parse_event_data::<ReasonThinkingDeltaData>(event) {
+            if state.reasoning_summary_visible
+                && let Ok(data) = parse_event_data::<ReasonThinkingDeltaData>(event)
+            {
                 if !state.thinking_text_started {
                     state.queue.push_back(AgUiEvent::ThinkingTextMessageStart(
                         AgUiThinkingTextMessageStartEvent {
@@ -1446,7 +1449,8 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             }
         }
         "reason.thinking.completed"
-            if parse_event_data::<ReasonThinkingCompletedData>(event).is_ok() =>
+            if state.reasoning_summary_visible
+                && parse_event_data::<ReasonThinkingCompletedData>(event).is_ok() =>
         {
             if state.thinking_text_started {
                 state.queue.push_back(AgUiEvent::ThinkingTextMessageEnd(
@@ -2034,6 +2038,54 @@ mod tests {
         assert!(!state.finished);
     }
 
+    #[tokio::test]
+    async fn test_thinking_stream_hidden_by_default() {
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let context = EventContext::turn(turn_id, input_message_id);
+        let session_id = SessionId::from_uuid(state.session_id);
+
+        translate_event(
+            &mut state,
+            &Event::new(
+                session_id,
+                context.clone(),
+                ReasonThinkingStartedData {
+                    turn_id,
+                    model: Some("private-model".to_string()),
+                },
+            ),
+        );
+        translate_event(
+            &mut state,
+            &Event::new(
+                session_id,
+                context.clone(),
+                ReasonThinkingDeltaData {
+                    turn_id,
+                    delta: "Private reasoning".to_string(),
+                    accumulated: "Private reasoning".to_string(),
+                },
+            ),
+        );
+        translate_event(
+            &mut state,
+            &Event::new(
+                session_id,
+                context,
+                ReasonThinkingCompletedData {
+                    turn_id,
+                    thinking: "Private reasoning".to_string(),
+                },
+            ),
+        );
+
+        assert!(state.queue.is_empty());
+        assert!(!state.thinking_started);
+        assert!(!state.thinking_text_started);
+    }
+
     // EVE-775: a provider `reason.item` summary is a reasoning artifact and must
     // project onto the AG-UI reasoning channel (THINKING_*), never the
     // assistant-text channel, and never leak opaque reasoning content.
@@ -2448,6 +2500,7 @@ mod tests {
     #[tokio::test]
     async fn test_tool_activity_reuses_active_reason_thinking_block() {
         let mut state = test_stream_state().await;
+        state.reasoning_summary_visible = true;
         let turn_id = TurnId::new();
         let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
         let context = EventContext::turn(turn_id, input_message_id);
