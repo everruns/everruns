@@ -11,7 +11,7 @@ use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage,
 use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
 use crate::domains::agent_identities::lifecycle::ensure_identity_for_agent;
-use crate::domains::agents::{AGENT_MANAGE, AGENT_VIEW};
+use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::apps::invocation::{
     calculate_schedule_next_trigger, cron_min_interval_seconds, normalize_cron_expression,
     render_message_template,
@@ -155,6 +155,12 @@ fn prepare_trigger_config(
     let config = serde_json::to_value(config).map_err(|e| CommandError::internal(e.into()))?;
     crate::domains::apps::queries::prepare_channel_config(ctx.encryption.as_ref(), &config)
         .map_err(classify_anyhow)
+}
+
+fn require_webhook_publication_permission(ctx: &Ctx) -> Result<(), CommandError> {
+    AGENT_DANGEROUS
+        .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+        .map_err(|e| CommandError::forbidden(e.message))
 }
 
 fn redact_trigger_for_response(mut trigger: AgentTrigger) -> AgentTrigger {
@@ -447,6 +453,9 @@ impl Command for CreateAgentTrigger {
         let req = self.req;
 
         validate_trigger_binding(req.session_mode)?;
+        if req.trigger_type == AgentTriggerType::Webhook && req.enabled {
+            require_webhook_publication_permission(ctx)?;
+        }
         let trigger_id = TriggerId::new();
         let (ingress_id, config, config_encrypted) = match req.trigger_type {
             AgentTriggerType::Schedule => {
@@ -733,6 +742,9 @@ impl Command for UpdateAgentTriggerCmd {
         }
 
         let new_enabled = req.enabled.unwrap_or(existing.enabled);
+        if trigger.trigger_type == AgentTriggerType::Webhook && new_enabled && !existing.enabled {
+            require_webhook_publication_permission(ctx)?;
+        }
         if trigger.trigger_type == AgentTriggerType::Schedule && new_enabled && !existing.enabled {
             let count = count_enabled_triggers(ctx).await?;
             let max = agent_trigger_max_per_org();
