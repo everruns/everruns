@@ -155,6 +155,7 @@ struct BraintrustState {
     config: BraintrustConfig,
     client: Client,
     sender: mpsc::Sender<DeliveryMessage>,
+    receiver: Mutex<Option<mpsc::Receiver<DeliveryMessage>>>,
     sessions: Mutex<HashMap<String, BraintrustSessionState>>,
     turns: Mutex<HashMap<String, BraintrustTurnState>>,
     dropped_events: AtomicU64,
@@ -472,6 +473,7 @@ impl BraintrustListener {
             config,
             client,
             sender,
+            receiver: Mutex::new(Some(receiver)),
             sessions: Mutex::new(HashMap::new()),
             turns: Mutex::new(HashMap::new()),
             dropped_events: AtomicU64::new(0),
@@ -479,14 +481,6 @@ impl BraintrustListener {
             failed_batches: AtomicU64::new(0),
             permanent_failure_logged: AtomicBool::new(false),
         });
-
-        if tokio::runtime::Handle::try_current().is_ok() {
-            Self::spawn_delivery_worker(Arc::clone(&state), receiver);
-        } else {
-            warn!(
-                "Braintrust listener created without an active Tokio runtime; delivery worker not started yet"
-            );
-        }
 
         Ok(Self { state })
     }
@@ -510,11 +504,28 @@ impl BraintrustListener {
         }
     }
 
+    fn ensure_delivery_worker(&self) {
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            warn!("Braintrust delivery requires an active Tokio runtime");
+            return;
+        };
+        let receiver = self
+            .state
+            .receiver
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        if let Some(receiver) = receiver {
+            Self::spawn_delivery_worker(&runtime, Arc::clone(&self.state), receiver);
+        }
+    }
+
     fn spawn_delivery_worker(
+        runtime: &tokio::runtime::Handle,
         state: Arc<BraintrustState>,
         mut receiver: mpsc::Receiver<DeliveryMessage>,
     ) {
-        tokio::spawn(async move {
+        runtime.spawn(async move {
             let mut batch = Vec::with_capacity(state.config.delivery.max_batch_size);
             let mut ticker = time::interval_at(
                 time::Instant::now() + state.config.delivery.flush_interval,
@@ -2131,6 +2142,7 @@ impl BraintrustListener {
 #[async_trait]
 impl EventListener for BraintrustListener {
     async fn on_event(&self, event: &Event) {
+        self.ensure_delivery_worker();
         let bt_event = match &event.data {
             // Turn lifecycle events (root task spans)
             EventData::TurnStarted(data) => {
@@ -2285,6 +2297,7 @@ impl EventListener for BraintrustListener {
     }
 
     async fn flush(&self) {
+        self.ensure_delivery_worker();
         let (completion, completed) = oneshot::channel();
         if self
             .state

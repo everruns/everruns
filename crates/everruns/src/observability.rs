@@ -234,22 +234,24 @@ mod tests {
     }
 
     #[cfg(feature = "braintrust")]
-    #[tokio::test]
-    async fn framework_shutdown_waits_for_final_braintrust_batch() {
+    #[test]
+    fn framework_observer_constructed_before_runtime_flushes_final_braintrust_batch() {
         use everruns_core::DeploymentGrade;
         use everruns_host::observability::braintrust::{
             BraintrustConfig, BraintrustContentConfig, BraintrustDeliveryConfig, BraintrustListener,
         };
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/v1/project_logs/test-project/insert"))
-            .respond_with(ResponseTemplate::new(200))
-            .expect(1)
-            .mount(&server)
-            .await;
+        let runtime = tokio::runtime::Runtime::new().expect("Tokio runtime builds");
+        let server = runtime.block_on(MockServer::start());
+        runtime.block_on(
+            Mock::given(method("POST"))
+                .and(path("/v1/project_logs/test-project/insert"))
+                .respond_with(ResponseTemplate::new(200))
+                .expect(1)
+                .mount(&server),
+        );
+        assert!(tokio::runtime::Handle::try_current().is_err());
         let listener = BraintrustListener::new(BraintrustConfig {
             api_key: "test-key".to_string(),
             project_id: "test-project".to_string(),
@@ -264,26 +266,27 @@ mod tests {
         })
         .expect("mock Braintrust client builds");
         let engine = Engine::builder().observe(Braintrust { listener }).build();
+        runtime.block_on(async {
+            engine
+                .create(tool_agent())
+                .run("look it up")
+                .await
+                .expect("tool turn runs");
+            let report = engine.shutdown(Duration::from_secs(5)).await;
 
-        engine
-            .create(tool_agent())
-            .run("look it up")
-            .await
-            .expect("tool turn runs");
-        let report = engine.shutdown(Duration::from_secs(5)).await;
-
-        assert!(!report.timed_out);
-        let requests = server
-            .received_requests()
-            .await
-            .expect("mock server records requests");
-        assert_eq!(requests.len(), 1);
-        let body: serde_json::Value =
-            serde_json::from_slice(&requests[0].body).expect("valid Braintrust request");
-        assert!(
-            body["events"]
-                .as_array()
-                .is_some_and(|events| !events.is_empty())
-        );
+            assert!(!report.timed_out);
+            let requests = server
+                .received_requests()
+                .await
+                .expect("mock server records requests");
+            assert_eq!(requests.len(), 1);
+            let body: serde_json::Value =
+                serde_json::from_slice(&requests[0].body).expect("valid Braintrust request");
+            assert!(
+                body["events"]
+                    .as_array()
+                    .is_some_and(|events| !events.is_empty())
+            );
+        });
     }
 }
