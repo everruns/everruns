@@ -471,7 +471,7 @@ impl Tool for SlackUploadFileTool {
                 },
                 "thread_ts": {
                     "type": "string",
-                    "description": "Thread `ts` to share into. Omit to post at channel level."
+                    "description": "Thread `ts` of the current Slack conversation."
                 },
                 "filename": {
                     "type": "string",
@@ -487,7 +487,7 @@ impl Tool for SlackUploadFileTool {
                     "description": "Optional message posted alongside the file."
                 }
             },
-            "required": ["channel", "filename", "content"],
+            "required": ["channel", "thread_ts", "filename", "content"],
             "additionalProperties": false
         })
     }
@@ -525,12 +525,16 @@ impl Tool for SlackUploadFileTool {
                 MAX_UPLOAD_BYTES
             ));
         }
+        let thread_ts = match required_str(&arguments, "thread_ts") {
+            Ok(value) => value.to_string(),
+            Err(result) => return result,
+        };
 
         run(
             context,
             SlackAction::UploadFile {
                 channel,
-                thread_ts: optional_str(&arguments, "thread_ts"),
+                thread_ts: Some(thread_ts),
                 filename,
                 content,
                 initial_comment: optional_str(&arguments, "initial_comment"),
@@ -723,7 +727,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upload_file_omits_absent_optional_arguments() {
+    async fn upload_file_omits_absent_initial_comment() {
         let invoker = Arc::new(RecordingInvoker::new(SlackActionOutcome::FileUploaded {
             file_id: "F1".to_string(),
             permalink: None,
@@ -736,7 +740,7 @@ mod tests {
                     "channel": "C1",
                     "filename": "report.md",
                     "content": "hello",
-                    "thread_ts": "   "
+                    "thread_ts": "1.2"
                 }),
                 &context,
             )
@@ -747,11 +751,30 @@ mod tests {
         assert!(matches!(
             &seen[0],
             SlackAction::UploadFile {
-                thread_ts: None,
+                thread_ts: Some(thread_ts),
                 initial_comment: None,
                 ..
-            }
+            } if thread_ts == "1.2"
         ));
+    }
+
+    #[tokio::test]
+    async fn upload_file_requires_a_thread() {
+        let invoker = Arc::new(RecordingInvoker::new(SlackActionOutcome::FileUploaded {
+            file_id: "F1".to_string(),
+            permalink: None,
+        }));
+        let context = context_with(invoker.clone());
+
+        let result = SlackUploadFileTool
+            .execute_with_context(
+                json!({ "channel": "C1", "filename": "report.md", "content": "hello" }),
+                &context,
+            )
+            .await;
+
+        assert!(!result.is_success());
+        assert!(invoker.seen.lock().expect("poisoned").is_empty());
     }
 
     #[tokio::test]
