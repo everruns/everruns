@@ -25,6 +25,48 @@ const AUTH_ERROR_CODES: &[&str] = &[
     "token_revoked",
 ];
 
+pub struct SlackProvisioningSetup {
+    pub provisioner: Option<Arc<dyn SlackAppProvisioner>>,
+    pub connection_manager: Option<Arc<SlackApiProvisioner>>,
+}
+
+pub fn configure(
+    supervisor: &mut crate::supervised_task::TaskSupervisor,
+    db: Arc<StorageBackend>,
+    encryption: Option<Arc<EncryptionService>>,
+    custom: Option<Arc<dyn SlackAppProvisioner>>,
+) -> anyhow::Result<SlackProvisioningSetup> {
+    if let Some(provisioner) = custom {
+        return Ok(SlackProvisioningSetup {
+            provisioner: Some(provisioner),
+            connection_manager: None,
+        });
+    }
+    let Some(encryption) = encryption else {
+        return Ok(SlackProvisioningSetup {
+            provisioner: None,
+            connection_manager: None,
+        });
+    };
+    let manager = Arc::new(SlackApiProvisioner::new(db, encryption)?);
+    let provisioner: Arc<dyn SlackAppProvisioner> = manager.clone();
+    let rotation_manager = manager.clone();
+    supervisor.track(
+        "slack_token_rotation",
+        tokio::spawn(async move {
+            loop {
+                if let Err(error) = rotation_manager.rotate_due_connections().await {
+                    tracing::warn!(%error, "Slack token rotation sweep failed");
+                }
+                tokio::time::sleep(Duration::from_secs(60)).await;
+            }
+        }),
+    );
+    Ok(SlackProvisioningSetup {
+        provisioner: Some(provisioner),
+        connection_manager: Some(manager),
+    })
+}
 #[derive(Clone)]
 pub struct SlackApiProvisioner {
     db: Arc<StorageBackend>,

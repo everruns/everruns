@@ -36,7 +36,7 @@ use std::sync::Arc;
 use super::common::ErrorResponse;
 use super::slack_events::{SlackState, SlackTarget};
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::slack_provisioning::SlackApiProvisioner;
+use crate::slack_provisioning::{SlackApiProvisioner, SlackProvisioningSetup};
 
 /// How long a minted `install_state` stays valid.
 ///
@@ -146,15 +146,16 @@ impl SlackInstallState {
         slack: SlackState,
         auth: AuthState,
         ui_base_url: String,
-        provisioner: Option<Arc<dyn SlackAppProvisioner>>,
-        connection_manager: Option<Arc<SlackApiProvisioner>>,
+        setup: SlackProvisioningSetup,
     ) -> Self {
-        let provisioner = provisioner.unwrap_or_else(|| Arc::new(UnavailableSlackAppProvisioner));
+        let provisioner = setup
+            .provisioner
+            .unwrap_or_else(|| Arc::new(UnavailableSlackAppProvisioner));
         Self {
             slack,
             auth,
             provisioner,
-            connection_manager,
+            connection_manager: setup.connection_manager,
             slack_api_base: super::slack_events::SLACK_API_BASE.to_string(),
             ui_base_url,
         }
