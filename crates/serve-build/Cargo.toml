@@ -2,16 +2,27 @@
 #
 # Decision: kept separate from `serve` so an application's build.rs compiles
 # this dependency-free crate instead of a second copy of the whole runtime.
-# Experimental (Alpha): not published, no compatibility promise.
+# Experimental (Alpha): published as `everruns-serve-build` at the platform
+# version, with no compatibility promise.
 
 [package]
-name = "serve-build"
-version = "0.0.0"
+name = "everruns-serve-build"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-serve-build"
 description = "build.rs helper for serve (experimental): embeds agent/**/*.md and serve.toml"
+readme = "README.md"
+
+keywords = ["agent", "agentic", "llm", "ai", "build"]
+categories = ["development-tools::build-utils"]
+
+[lib]
+name = "serve_build"
 
 [dependencies]
 

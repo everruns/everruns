@@ -12,8 +12,12 @@ tags:
 # serve: Experimental App Framework and Hosting Contract
 
 **Status: experimental proof of concept.** The code is in `crates/serve`,
-`crates/serve-macros`, `crates/serve-build`, and `examples/serve/`. It is
-unpublished (`publish = false`) and outside [API Stability](api-stability.md).
+`crates/serve-macros`, `crates/serve-build`, and `examples/serve/`. The
+crates publish at the platform version as `everruns-serve`,
+`everruns-serve-macros` and `everruns-serve-build`, because crates.io `serve`
+is taken. The library keeps the import name `serve`, since the macros expand
+to `::serve::…` paths. They carry no compatibility promise and stay outside
+[API Stability](api-stability.md).
 
 ## Problem
 

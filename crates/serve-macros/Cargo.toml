@@ -3,21 +3,30 @@
 # Decision: a proc-macro crate cannot export ordinary items, so the attributes
 # live here and `serve` re-exports them. Every expansion references runtime
 # items through `::serve::__private::…`, so an application depends on `serve`
-# alone. Experimental (Alpha): not published, no compatibility promise.
+# alone. Experimental (Alpha): published as `everruns-serve-macros` at the
+# platform version, with no compatibility promise.
 # Kept apart from `everruns-macros` on purpose: that crate carries only
 # attributes usable with the `everruns` facade, and these expand into
 # `serve` types.
 
 [package]
-name = "serve-macros"
-version = "0.0.0"
+name = "everruns-serve-macros"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-serve-macros"
 description = "Attribute macros for serve (experimental): #[agent], #[tool], #[channel], #[schedule], #[connection], #[eval]"
+readme = "README.md"
+
+keywords = ["agent", "agentic", "llm", "ai", "macros"]
+categories = ["development-tools", "rust-patterns"]
 
 [lib]
+name = "serve_macros"
 proc-macro = true
 
 [dependencies]

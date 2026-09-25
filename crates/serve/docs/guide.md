@@ -10,13 +10,13 @@ This guide builds an app one piece at a time. The complete result is
 ```toml
 # Cargo.toml
 [dependencies]
-serve = { path = "…/crates/serve" }
+everruns-serve = "0.32"   # the library is imported as `serve`
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [build-dependencies]
-serve-build = { path = "…/crates/serve-build" }
+everruns-serve-build = "0.32"
 ```
 
 ```rust

@@ -5,9 +5,8 @@ sidebar:
   order: 1
 ---
 
-> **Experimental.** serve is a proof of concept. Its APIs will change, it is
-> not published to crates.io, and it has no compatibility promise. Use it from a checkout of the
-> [everruns repository](https://github.com/everruns/everruns/tree/main/crates/serve).
+> **Experimental.** serve is a proof of concept. Its APIs will change and it
+> has no compatibility promise.
 
 **serve** is an application framework on top of the Everruns Framework. You
 write an app as a set of annotated functions, the build declares what the app
@@ -45,6 +44,17 @@ async fn main() -> serve::Result {
     serve::start(App::builder().discover().build()).await
 }
 ```
+
+## Install
+
+```sh
+cargo add everruns-serve tokio --features tokio/full
+cargo add --build everruns-serve-build
+```
+
+The package is `everruns-serve` and the library is imported as `serve`. Add a
+`build.rs` that calls `serve_build::embed()` so `agent/**` and `serve.toml` are
+compiled into the binary.
 
 ## Try it
 

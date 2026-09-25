@@ -4,8 +4,8 @@
 //! [eve], built on the `everruns` runtime.
 //!
 //! > **Experimental.** serve is a proof of concept. Every API here may change
-//! > or disappear; it is not published and not covered by the everruns
-//! > stability policy.
+//! > or disappear; it is published as `everruns-serve` but not covered by
+//! > the everruns stability policy.
 //!
 //! ```ignore
 //! use serve::prelude::*;

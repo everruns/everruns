@@ -1,8 +1,9 @@
 # serve
 
 > **Experimental.** serve is a proof of concept for an application framework
-> on top of everruns. Its APIs will change, it is not published to crates.io,
-> and it is outside the everruns [stability policy](../../knowledge/framework/api-stability.md).
+> on top of everruns. It is published to crates.io as `everruns-serve`, but its
+> APIs will change and it is outside the everruns
+> [stability policy](https://github.com/everruns/everruns/blob/main/knowledge/framework/api-stability.md).
 
 serve takes its API shape from [Topcoat](https://github.com/tokio-rs/topcoat)
 and its hosting model from [eve](https://vercel.com/blog/introducing-eve):
@@ -55,6 +56,17 @@ async fn main() -> serve::Result {
 }
 ```
 
+## Install
+
+```sh
+cargo add everruns-serve tokio --features tokio/full
+cargo add --build everruns-serve-build
+```
+
+The package is `everruns-serve` and the library is imported as `serve`. Add a
+`build.rs` that calls `serve_build::embed()` so `agent/**` and `serve.toml` are
+compiled into the binary.
+
 ## Try it
 
 Both examples run offline. Without a model gateway they use a scripted
@@ -81,8 +93,8 @@ ids as they are). You can instead point `SERVE_GATEWAY_URL` and
 
 | Example | Shows |
 |---|---|
-| [`examples/serve/hello`](../../examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
-| [`examples/serve/revenue-analyst`](../../examples/serve/revenue-analyst) | The full layout: a tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals, and the bashkit sandbox. |
+| [`examples/serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
+| [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | The full layout: a tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals, and the bashkit sandbox. |
 
 ## Project layout
 
@@ -148,11 +160,11 @@ what it registered.
 
 ## Docs
 
-- [Guide](docs/guide.md): writing an app, piece by piece.
-- [Wire API](docs/wire-api.md): the `/v1` routes, the event stream, and resuming.
-- [Manifest and hosting](docs/hosting.md): what the build declares, what a host
+- [Guide](https://github.com/everruns/everruns/blob/main/crates/serve/docs/guide.md): writing an app, piece by piece.
+- [Wire API](https://github.com/everruns/everruns/blob/main/crates/serve/docs/wire-api.md): the `/v1` routes, the event stream, and resuming.
+- [Manifest and hosting](https://github.com/everruns/everruns/blob/main/crates/serve/docs/hosting.md): what the build declares, what a host
   provides, and how build pinning works.
-- [Design note](../../knowledge/framework/serve.md): why it is shaped like this,
+- [Design note](https://github.com/everruns/everruns/blob/main/knowledge/framework/serve.md): why it is shaped like this,
   and the open questions.
 
 ## Status

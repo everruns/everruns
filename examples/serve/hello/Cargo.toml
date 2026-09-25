@@ -12,13 +12,13 @@ name = "hello"
 path = "src/main.rs"
 
 [dependencies]
-serve = { path = "../../../crates/serve" }
+everruns-serve.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [build-dependencies]
-serve-build = { path = "../../../crates/serve-build" }
+everruns-serve-build.workspace = true
 
 [lints]
 workspace = true

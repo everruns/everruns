@@ -11,22 +11,33 @@
 # - A thin layer over `everruns::Engine`: the durable event log, approvals
 #   and ask_user are the runtime's. serve's SQLite holds only its session
 #   catalog and channel threads. No new runtime.
-# - Experimental (Alpha): `publish = false`, no compatibility promise, not
-#   covered by the everruns stability policy.
+# - Experimental (Alpha): published at the platform version, but with no
+#   compatibility promise and outside the everruns stability policy.
+# - Published as `everruns-serve` (crates.io `serve` is taken). The library
+#   keeps the name `serve`, because the macros expand to `::serve::…` paths
+#   and apps write `serve::start(...)`.
 
 [package]
-name = "serve"
-version = "0.0.0"
+name = "everruns-serve"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-serve"
 description = "Experimental agent framework over everruns: attribute macros, a build-time manifest, and a /v1 wire API"
 readme = "README.md"
+keywords = ["agent", "agentic", "llm", "ai", "framework"]
+categories = ["development-tools", "web-programming::http-server"]
+
+[lib]
+name = "serve"
 
 [dependencies]
 everruns = { workspace = true, features = ["local", "openai", "openrouter", "mcp", "bashkit"] }
-serve-macros = { path = "../serve-macros" }
+everruns-serve-macros.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 axum.workspace = true
