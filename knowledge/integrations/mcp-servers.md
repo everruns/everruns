@@ -283,6 +283,28 @@ Runtime behavior:
 - Scoped tool discovery is live at preview/runtime; there is no persisted org-level cache row.
 - Scoped tool names use the same `mcp_{server_name}__{tool_name}` prefixing as org MCP servers.
 
+#### Capability-contributed servers
+
+Each MCP server contributed by a built-in, declarative, or plugin capability
+must declare `actsAs`, including the unauthenticated `none` value. The declaration
+selects exactly one credential path:
+
+- `none` uses no connection grant and must not use OAuth.
+- `service` uses only the current agent identity's grant.
+- `user` uses only the invoking user's grant.
+
+`service` and `user` contributions must use OAuth. A missing grant returns the
+normal `connection_required` result; resolution never creates an identity or
+falls back to a different identity's grant.
+
+Capability contributions are trusted registration output, so they may declare
+an inline OAuth server and provider id. This is the only exception to the rule
+that explicit harness, agent, and session attachments must use an organization
+catalog preset for `service` or `user`. Capability contributions still cannot
+reference catalog presets. Explicit scoped entries replace contributed entries
+by complete logical server entry, including `actsAs`; one logical name produces
+one effective tool prefix.
+
 ### Status Values
 
 | Status | Description |

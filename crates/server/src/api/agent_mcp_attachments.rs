@@ -580,7 +580,7 @@ pub async fn revoke_agent_mcp_connection(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::Capability;
+    use everruns_core::{Capability, CapabilityMcpServer, CapabilityMcpServers};
 
     struct DependencyMcpCapability;
 
@@ -597,11 +597,17 @@ mod tests {
             "Contributes an MCP server for projection tests."
         }
 
-        fn mcp_servers(&self) -> ScopedMcpServers {
-            serde_json::from_value(serde_json::json!({
-                "dependency-server": { "url": "https://dependency.example/mcp" }
-            }))
-            .unwrap()
+        fn mcp_servers(&self) -> CapabilityMcpServers {
+            CapabilityMcpServers::from([(
+                "dependency-server".to_string(),
+                CapabilityMcpServer::new(
+                    ScopedMcpServer {
+                        url: "https://dependency.example/mcp".to_string(),
+                        ..Default::default()
+                    },
+                    McpServerActsAs::None,
+                ),
+            )])
         }
     }
 

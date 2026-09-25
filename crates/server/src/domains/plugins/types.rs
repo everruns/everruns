@@ -5,6 +5,7 @@ use crate::kernel_imports::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -110,6 +111,9 @@ pub struct InstalledPlugin {
     pub status: String,
     /// Non-fatal install warnings (e.g. unsupported hooks/lspServers).
     pub warnings: Vec<String>,
+    /// MCP servers that cannot activate until an administrator chooses a user
+    /// or service acting identity.
+    pub identity_required: Vec<String>,
     /// True when the marketplace catalog has a newer version or SHA.
     pub update_available: bool,
     pub created_at: DateTime<Utc>,
@@ -127,9 +131,12 @@ pub struct InstallPluginRequest {
     pub plugin_name: String,
 }
 
-/// Request body for updating an installed plugin (status only; use POST .../update for recompile).
+/// Request body for updating an installed plugin.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateInstalledPluginRequest {
     /// New lifecycle status: `active` or `disabled`.
     pub status: Option<String>,
+    /// Explicit acting-identity choices for legacy authenticated MCP servers.
+    /// Only `user` and `service` are accepted.
+    pub mcp_server_identities: Option<BTreeMap<String, everruns_core::McpServerActsAs>>,
 }

@@ -191,7 +191,7 @@ plugin-marketplaces update	--id! --name --status
 plugins get	<id>!
 plugins install	<marketplace_id>! <plugin_name>!
 plugins list	
-plugins patch	--id! --status
+plugins patch	--id! --mcp-server-identities --status
 plugins uninstall	<id>!
 plugins update	--id!
 providers check-credentials check	--api-key! --base-url --provider-type!

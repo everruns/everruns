@@ -56,6 +56,7 @@ const plugin: InstalledPlugin = {
   capability_ref: "plugin:plugin_019fda100f037c008024046d6b3d74c0",
   status: "active",
   warnings: [],
+  identity_required: [],
   update_available: false,
   created_at: "2026-08-07T00:00:00Z",
   updated_at: "2026-08-07T00:00:00Z",

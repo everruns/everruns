@@ -186,11 +186,15 @@ everruns_core::capability_dto::AgentCapability	struct
 everruns_core::capability_dto::CapabilityInfo	struct
 everruns_core::capability_dto::CapabilityLocalizationInfo	struct
 everruns_core::capability_dto::builtin_capability_docs_slug	function
+everruns_core::capability_mcp_server::CapabilityMcpServer	struct
+everruns_core::capability_mcp_server::CapabilityMcpServers	type_alias
+everruns_core::capability_mcp_server::capability_mcp_servers_to_scoped	function
 everruns_core::capability_types	module
 everruns_core::capability_types::CapabilityStatus	enum
 everruns_core::capability_types::CapabilityStatus::Available	variant
 everruns_core::capability_types::CapabilityStatus::ComingSoon	variant
 everruns_core::capability_types::CapabilityStatus::Deprecated	variant
+everruns_core::capability_types::CapabilityStatus::NeedsIdentity	variant
 everruns_core::capability_types::CapabilityStatus::Retired	variant
 everruns_core::capability_types::MountAccess	enum
 everruns_core::capability_types::MountAccess::ReadOnly	variant

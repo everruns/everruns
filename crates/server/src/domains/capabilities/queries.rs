@@ -43,7 +43,9 @@ pub(crate) fn deserialize_persisted_definition(
     name: &str,
     definition: &serde_json::Value,
 ) -> Result<DeclarativeCapabilityDefinition, serde_json::Error> {
-    match serde_json::from_value(definition.clone()) {
+    let mut normalized = definition.clone();
+    normalize_legacy_mcp_identity(&mut normalized);
+    match serde_json::from_value(normalized) {
         Ok(parsed) => Ok(parsed),
         Err(error) => {
             let first_sighting = REPORTED_UNPARSEABLE_ROWS
@@ -59,6 +61,54 @@ pub(crate) fn deserialize_persisted_definition(
                 );
             }
             Err(error)
+        }
+    }
+}
+
+fn has_explicit_mcp_identity(server: &serde_json::Map<String, serde_json::Value>) -> bool {
+    server.contains_key("actsAs") || server.contains_key("acts_as")
+}
+
+fn has_mcp_credential_source(server: &serde_json::Map<String, serde_json::Value>) -> bool {
+    server
+        .get("auth_mode")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|mode| mode != "none")
+        || server.contains_key("oauth_provider_id")
+        || server.contains_key("use")
+}
+
+pub(crate) fn legacy_mcp_servers_requiring_identity(value: &serde_json::Value) -> Vec<String> {
+    value
+        .get("mcp_servers")
+        .and_then(serde_json::Value::as_object)
+        .into_iter()
+        .flat_map(|servers| servers.iter())
+        .filter_map(|(name, server)| {
+            let server = server.as_object()?;
+            (!has_explicit_mcp_identity(server) && has_mcp_credential_source(server))
+                .then(|| name.clone())
+        })
+        .collect()
+}
+
+fn normalize_legacy_mcp_identity(value: &mut serde_json::Value) {
+    if let Some(servers) = value
+        .get_mut("mcp_servers")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for server in servers.values_mut() {
+            let Some(server) = server.as_object_mut() else {
+                continue;
+            };
+            // Only a legacy inline transport with no credential source has an
+            // unambiguous identity. OAuth and presets need an explicit choice.
+            if !has_explicit_mcp_identity(server) && !has_mcp_credential_source(server) {
+                server.insert(
+                    "actsAs".to_string(),
+                    serde_json::Value::String("none".to_string()),
+                );
+            }
         }
     }
 }
@@ -158,6 +208,13 @@ pub async fn hydrate_declarative_capability_configs(
                 .await?
             && row.status == "active"
         {
+            let unresolved = legacy_mcp_servers_requiring_identity(&row.definition);
+            if !unresolved.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "plugin capability `{cap_id}` needs an acting identity for MCP server(s): {}",
+                    unresolved.join(", ")
+                ));
+            }
             // Same contract as the declarative branch above: an installed
             // plugin whose definition no longer parses stops the build instead
             // of contributing an empty shell.
@@ -301,6 +358,53 @@ mod tests {
     }
 
     #[test]
+    fn legacy_inline_server_without_credentials_normalizes_to_none() {
+        let stored = json!({
+            "name": "research_pack",
+            "description": "Adds research instructions.",
+            "mcp_servers": {
+                "docs": {
+                    "url": "https://learn.microsoft.com/api/mcp"
+                }
+            }
+        });
+        let row = row_with(stored.clone());
+
+        let definition =
+            deserialize_persisted_definition(row.id, &row.name, &row.definition).unwrap();
+        let server = definition
+            .mcp_servers
+            .expect("legacy MCP servers should load")
+            .remove("docs")
+            .expect("legacy MCP server should remain present");
+
+        assert_eq!(server.acts_as, everruns_core::McpServerActsAs::None);
+        assert_eq!(row.definition, stored);
+    }
+
+    #[test]
+    fn legacy_authenticated_server_remains_unresolved_and_preserved() {
+        let stored = json!({
+            "name": "research_pack",
+            "description": "Adds research instructions.",
+            "mcp_servers": {
+                "remote": {
+                    "url": "https://example.com/mcp",
+                    "auth_mode": "oauth"
+                }
+            }
+        });
+        let row = row_with(stored.clone());
+
+        assert_eq!(
+            legacy_mcp_servers_requiring_identity(&row.definition),
+            ["remote"]
+        );
+        assert!(deserialize_persisted_definition(row.id, &row.name, &row.definition).is_err());
+        assert_eq!(row.definition, stored);
+    }
+
+    #[test]
     fn a_disabled_row_is_still_retired_without_a_parse_error() {
         let mut row = row_with(valid_definition());
         row.status = "disabled".to_string();
@@ -419,5 +523,58 @@ mod tests {
 
         assert_eq!(hydrated.len(), 1);
         assert_eq!(hydrated[0].capability_id().to_string(), "web_search");
+    }
+
+    #[tokio::test]
+    async fn plugin_hydration_blocks_unresolved_authenticated_identity() {
+        let db = StorageBackend::in_memory();
+        let public_id = everruns_provider::typed_id::PluginInstallId::new().to_string();
+        let stored = json!({
+            "name": "legacy_oauth",
+            "description": "Legacy OAuth plugin",
+            "mcp_servers": {
+                "remote": {
+                    "url": "https://example.com/mcp",
+                    "auth_mode": "oauth"
+                }
+            }
+        });
+        let row = db
+            .create_plugin_install(
+                ORG,
+                crate::storage::models::CreatePluginInstallRow {
+                    public_id: public_id.clone(),
+                    name: "legacy_oauth".to_string(),
+                    marketplace_id: None,
+                    source: json!({}),
+                    version: None,
+                    pinned_sha: None,
+                    manifest: json!({"name": "legacy_oauth"}),
+                    definition: stored.clone(),
+                    warnings: json!([]),
+                },
+            )
+            .await
+            .unwrap();
+        let cap_id = everruns_capability::plugin_capability_id(&public_id);
+
+        let error = hydrate_declarative_capability_configs(
+            &db,
+            ORG,
+            vec![AgentCapabilityConfig::new(cap_id.as_str())],
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("needs an acting identity"));
+        assert!(error.to_string().contains("remote"));
+        assert_eq!(
+            db.get_plugin_install(ORG, row.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .definition,
+            stored
+        );
     }
 }

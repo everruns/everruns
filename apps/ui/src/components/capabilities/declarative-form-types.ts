@@ -25,6 +25,7 @@ export interface McpServerEntry {
   args: string; // one argument per line
   env: KeyValuePair[];
   authMode: "none" | "api_key" | "oauth";
+  actsAs: "none" | "user" | "service";
   oauthProviderId: string;
   toolDiscovery: boolean;
 }
@@ -57,6 +58,7 @@ export function newMcpServerEntry(): McpServerEntry {
     args: "",
     env: [],
     authMode: "none",
+    actsAs: "none",
     oauthProviderId: "",
     toolDiscovery: true,
   };
@@ -112,6 +114,7 @@ export function mcpServersToEntries(
       args: Array.isArray(s.args) ? (s.args as string[]).join("\n") : "",
       env: recordToPairs(s.env as Record<string, string> | undefined),
       authMode: (s.auth_mode as McpServerEntry["authMode"]) ?? "none",
+      actsAs: ((s.actsAs ?? s.acts_as) as McpServerEntry["actsAs"]) ?? "none",
       oauthProviderId: typeof s.oauth_provider_id === "string" ? s.oauth_provider_id : "",
       toolDiscovery: s.tool_discovery !== false,
     };
@@ -119,7 +122,10 @@ export function mcpServersToEntries(
 }
 
 function mcpEntryToValue(entry: McpServerEntry): Record<string, unknown> {
-  const value: Record<string, unknown> = { type: entry.transportType };
+  const value: Record<string, unknown> = {
+    type: entry.transportType,
+    actsAs: entry.authMode === "oauth" ? entry.actsAs : "none",
+  };
   if (entry.transportType === "http") {
     if (entry.url.trim()) value.url = entry.url.trim();
     const headers = pairsToRecord(entry.headers);

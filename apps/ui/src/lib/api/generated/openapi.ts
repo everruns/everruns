@@ -17740,8 +17740,15 @@ export interface components {
        */
       tags?: string[] | null;
     };
-    /** @description Request body for updating an installed plugin (status only; use POST .../update for recompile). */
+    /** @description Request body for updating an installed plugin. */
     UpdateInstalledPluginRequest: {
+      /**
+       * @description Explicit acting-identity choices for legacy authenticated MCP servers.
+       *     Only `user` and `service` are accepted.
+       */
+      mcp_server_identities?: {
+        [key: string]: components["schemas"]["McpServerActsAs"];
+      } | null;
       /** @description New lifecycle status: `active` or `disabled`. */
       status?: string | null;
     };

@@ -20,6 +20,7 @@
 //!
 //! Each capability is in its own file with collocated tools.
 
+use crate::capability_mcp_server::capability_mcp_servers_to_scoped;
 use crate::events::TokenUsage;
 use crate::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::message::RuntimeMessage;
@@ -374,7 +375,10 @@ pub fn collect_capability_mcp_servers(
                     continue;
                 }
                 if let Some(contributed) = definition.mcp_servers {
-                    servers = merge_scoped_mcp_servers(&servers, &contributed);
+                    servers = merge_scoped_mcp_servers(
+                        &servers,
+                        &capability_mcp_servers_to_scoped(&contributed),
+                    );
                 }
             }
             continue;
@@ -383,10 +387,9 @@ pub fn collect_capability_mcp_servers(
             if !capability.status().is_active() {
                 continue;
             }
-            servers = merge_scoped_mcp_servers(
-                &servers,
-                &capability.mcp_servers_with_config(cap_config.config_value()),
-            );
+            let contributed = capability.mcp_servers_with_config(cap_config.config_value());
+            servers =
+                merge_scoped_mcp_servers(&servers, &capability_mcp_servers_to_scoped(&contributed));
         }
     }
 
@@ -512,7 +515,10 @@ pub async fn collect_capabilities_with_configs(
 
                     mounts.extend(definition.mounts(cap_id));
                     if let Some(ref servers) = definition.mcp_servers {
-                        mcp_servers = merge_scoped_mcp_servers(&mcp_servers, servers);
+                        mcp_servers = merge_scoped_mcp_servers(
+                            &mcp_servers,
+                            &capability_mcp_servers_to_scoped(servers),
+                        );
                     }
                     for skill in definition.skill_contributions() {
                         mounts.push(skill.to_mount(cap_id));
@@ -637,9 +643,10 @@ pub async fn collect_capabilities_with_configs(
             // Collect mount points
             mounts.extend(effective.mounts());
 
+            let contributed = effective.mcp_servers_with_config(cap_config.config_value());
             mcp_servers = merge_scoped_mcp_servers(
                 &mcp_servers,
-                &effective.mcp_servers_with_config(cap_config.config_value()),
+                &capability_mcp_servers_to_scoped(&contributed),
             );
 
             // Normalize capability-contributed skills into mount points under

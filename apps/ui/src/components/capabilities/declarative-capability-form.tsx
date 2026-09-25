@@ -76,7 +76,13 @@ export function DeclarativeCapabilityForm({
     setState((prev) => ({ ...prev, [key]: value }));
 
   const isPending = createCapability.isPending || updateCapability.isPending;
-  const canSubmit = state.name.trim().length > 0 && state.description.trim().length > 0;
+  const hasUnresolvedMcpIdentity = state.mcpServers.some(
+    (server) => server.authMode === "oauth" && server.actsAs === "none",
+  );
+  const canSubmit =
+    state.name.trim().length > 0 &&
+    state.description.trim().length > 0 &&
+    !hasUnresolvedMcpIdentity;
 
   const definition = useMemo(() => formStateToDefinition(state), [state]);
 
@@ -185,6 +191,11 @@ export function DeclarativeCapabilityForm({
       </PageControlStrip>
 
       <form id={FORM_ID} onSubmit={handleSubmit}>
+        {hasUnresolvedMcpIdentity && (
+          <p role="alert" className="mb-4 text-sm text-destructive">
+            Choose an acting identity for each OAuth MCP server.
+          </p>
+        )}
         <PageColumns>
           <PageMain>
             {tab === "general" && (

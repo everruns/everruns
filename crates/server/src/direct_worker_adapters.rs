@@ -46,7 +46,7 @@ use crate::domains::budgets::BudgetService;
 use crate::domains::mcp_servers::scoped_mcp::{
     build_materialized_scoped_mcp_tool_definitions,
     merge_effective_scoped_mcp_servers_with_capabilities,
-    resolve_scoped_mcp_server_with_capabilities, validate_scoped_mcp_servers,
+    resolve_scoped_mcp_server_with_capabilities, validate_effective_mcp_servers,
 };
 use crate::domains::mcp_servers::{McpServerResolved, McpServerService};
 use crate::domains::messages::MessageService;
@@ -1194,7 +1194,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 &self.capability_registry,
             );
 
-            if let Err(error) = validate_scoped_mcp_servers(&effective) {
+            if let Err(error) = validate_effective_mcp_servers(&effective) {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
             } else {

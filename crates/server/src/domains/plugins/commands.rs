@@ -7,6 +7,7 @@
 use super::fetcher::{
     FetchedPluginFileSet, PluginSource, download_bytes, fetch_plugin, validate_github_repo_slug,
 };
+use super::lookup::get_install_by_public_id;
 use super::queries as q;
 use super::types::*;
 use super::{PLUGIN_MANAGE, PLUGIN_VIEW};
@@ -88,11 +89,6 @@ fn parse_marketplace_public_id(id: &str) -> Result<PluginMarketplaceId, CommandE
         .map_err(|e| CommandError::bad_request(format!("Invalid marketplace ID: {e}")))
 }
 
-fn parse_plugin_public_id(id: &str) -> Result<PluginInstallId, CommandError> {
-    id.parse::<PluginInstallId>()
-        .map_err(|e| CommandError::bad_request(format!("Invalid plugin ID: {e}")))
-}
-
 async fn get_marketplace_by_public_id(
     ctx: &Ctx,
     id: &str,
@@ -103,15 +99,6 @@ async fn get_marketplace_by_public_id(
         .await
         .map_err(classify_anyhow)?
         .ok_or_else(|| CommandError::not_found("Plugin marketplace"))
-}
-
-async fn get_install_by_public_id(ctx: &Ctx, id: &str) -> Result<PluginInstallRow, CommandError> {
-    let public_id = parse_plugin_public_id(id)?;
-    ctx.db
-        .get_plugin_install_by_public_id(ctx.org_id(), &public_id.to_string())
-        .await
-        .map_err(classify_anyhow)?
-        .ok_or_else(|| CommandError::not_found("Installed plugin"))
 }
 
 /// Parse the marketplace.json catalog (bytes or string) and validate it.
@@ -1097,81 +1084,6 @@ impl Command for InstallPluginCmd {
 inventory::submit! { CommandDescriptor::of::<InstallPluginCmd>() }
 
 // ============================================================================
-// PatchInstalledPlugin (enable / disable)
-// ============================================================================
-
-/// Update an installed plugin's status (enable/disable).
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct PatchInstalledPlugin {
-    /// Public plugin ID.
-    pub id: String,
-    #[serde(flatten)]
-    pub req: UpdateInstalledPluginRequest,
-}
-
-impl Command for PatchInstalledPlugin {
-    type Output = InstalledPlugin;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "patch_installed_plugin",
-            category: "plugins",
-            description: "Update an installed plugin's status (active/disabled).",
-            method: "PATCH",
-            path: "/v1/plugins/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
-
-    async fn execute(self, ctx: &Ctx) -> Result<InstalledPlugin, CommandError> {
-        let existing = get_install_by_public_id(ctx, &self.id).await?;
-        if self
-            .req
-            .status
-            .as_deref()
-            .is_some_and(|s| !matches!(s, "active" | "disabled"))
-        {
-            return Err(CommandError::bad_request(
-                "status must be 'active' or 'disabled'",
-            ));
-        }
-        let updated = ctx
-            .db
-            .update_plugin_install(
-                ctx.org_id(),
-                existing.id,
-                UpdatePluginInstall {
-                    status: self.req.status,
-                    ..Default::default()
-                },
-            )
-            .await
-            .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("Installed plugin"))?;
-
-        let mkt = if let Some(mid) = updated.marketplace_id {
-            ctx.db
-                .get_plugin_marketplace(ctx.org_id(), mid)
-                .await
-                .map_err(classify_anyhow)?
-        } else {
-            None
-        };
-
-        Ok(q::row_to_installed_plugin(&updated, mkt.as_ref()))
-    }
-}
-
-inventory::submit! { CommandDescriptor::of::<PatchInstalledPlugin>() }
-
-// ============================================================================
 // UninstallPlugin (delete)
 // ============================================================================
 
@@ -1418,13 +1330,16 @@ mod tests {
     }
 
     #[test]
-    fn compiled_plugin_install_and_update_reject_scoped_identity_features() {
-        let catalog = everruns_core::ScopedMcpServers::from([(
+    fn compiled_plugin_validation_rejects_presets_and_accepts_declared_identity() {
+        let catalog = everruns_core::CapabilityMcpServers::from([(
             "docs".to_string(),
-            everruns_core::ScopedMcpServer {
-                preset: Some("catalog:docs".parse().unwrap()),
-                ..Default::default()
-            },
+            everruns_core::CapabilityMcpServer::new(
+                everruns_core::ScopedMcpServer {
+                    preset: Some("catalog:docs".parse().unwrap()),
+                    ..Default::default()
+                },
+                everruns_core::McpServerActsAs::None,
+            ),
         )]);
         let error = validate_compiled_mcp_servers(&DeclarativeCapabilityDefinition {
             name: "catalog-plugin".to_string(),
@@ -1435,21 +1350,23 @@ mod tests {
         .unwrap_err();
         assert!(error.message().contains("cannot use a catalog preset"));
 
-        let identity = everruns_core::ScopedMcpServers::from([(
+        let identity = everruns_core::CapabilityMcpServers::from([(
             "docs".to_string(),
-            everruns_core::ScopedMcpServer {
-                url: "https://docs.example.com/mcp".to_string(),
-                acts_as: everruns_core::McpServerActsAs::Service,
-                ..Default::default()
-            },
+            everruns_core::CapabilityMcpServer::new(
+                everruns_core::ScopedMcpServer {
+                    url: "https://docs.example.com/mcp".to_string(),
+                    auth_mode: everruns_core::McpServerAuthMode::OAuth,
+                    ..Default::default()
+                },
+                everruns_core::McpServerActsAs::Service,
+            ),
         )]);
-        let error = validate_compiled_mcp_servers(&DeclarativeCapabilityDefinition {
+        validate_compiled_mcp_servers(&DeclarativeCapabilityDefinition {
             name: "identity-plugin".to_string(),
             description: "test plugin".to_string(),
             mcp_servers: Some(identity),
             ..Default::default()
         })
-        .unwrap_err();
-        assert!(error.message().contains("cannot set actsAs"));
+        .unwrap();
     }
 }

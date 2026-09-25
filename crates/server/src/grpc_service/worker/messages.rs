@@ -205,7 +205,7 @@ impl WorkerServiceImpl {
             );
 
             if let Err(error) =
-                crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&effective)
+                crate::domains::mcp_servers::scoped_mcp::validate_effective_mcp_servers(&effective)
             {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]

@@ -14,7 +14,7 @@
   "extensions": {
     "com.everruns": {
       "mcpServers": {
-        "resend": { "auth": "oauth" }
+        "resend": { "auth": "oauth", "actsAs": "user" }
       }
     }
   }

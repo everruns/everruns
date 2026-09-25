@@ -568,9 +568,13 @@ export function InstalledPluginCard({
   const updateMutation = useUpdateInstalledPlugin();
   const [warningsExpanded, setWarningsExpanded] = useState(false);
   const isEnabled = plugin.status === "active";
+  const needsIdentity = plugin.identity_required.length > 0;
 
   const handleToggle = () => {
     patchMutation.mutate({ status: isEnabled ? "disabled" : "active" });
+  };
+  const handleIdentityChoice = (serverName: string, actsAs: "user" | "service") => {
+    patchMutation.mutate({ mcp_server_identities: { [serverName]: actsAs } });
   };
 
   const handleUpdate = () => {
@@ -601,6 +605,12 @@ export function InstalledPluginCard({
             <Badge variant="outline" className="text-warning border-warning text-xs gap-1">
               <AlertTriangle className="h-3 w-3" />
               {plugin.warnings.length} warning{plugin.warnings.length !== 1 ? "s" : ""}
+            </Badge>
+          )}
+          {needsIdentity && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              Needs identity
             </Badge>
           )}
           <Badge variant={isEnabled ? "default" : "outline"}>{plugin.status}</Badge>
@@ -645,6 +655,41 @@ export function InstalledPluginCard({
             )}
           </div>
         )}
+        {needsIdentity && (
+          <div className="mb-4 space-y-3 border border-warning/50 bg-warning/10 p-3">
+            <div>
+              <p className="text-sm font-medium">Choose an acting identity</p>
+              <p className="text-xs text-muted-foreground">
+                This plugin cannot be enabled until each authenticated MCP server has an identity.
+              </p>
+            </div>
+            {plugin.identity_required.map((serverName) => (
+              <div key={serverName} className="flex flex-wrap items-center justify-between gap-2">
+                <code className="text-xs">{serverName}</code>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleIdentityChoice(serverName, "user")}
+                    disabled={patchMutation.isPending}
+                  >
+                    Use invoking user
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleIdentityChoice(serverName, "service")}
+                    disabled={patchMutation.isPending}
+                  >
+                    Use agent service
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-2">
           {plugin.update_available && (
@@ -664,7 +709,8 @@ export function InstalledPluginCard({
             variant="outline"
             size="sm"
             onClick={handleToggle}
-            disabled={patchMutation.isPending}
+            disabled={patchMutation.isPending || (!isEnabled && needsIdentity)}
+            title={!isEnabled && needsIdentity ? "Choose an acting identity first" : undefined}
           >
             {isEnabled ? "Disable" : "Enable"}
           </Button>

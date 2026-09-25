@@ -40687,8 +40687,21 @@
       },
       "UpdateInstalledPluginRequest": {
         "type": "object",
-        "description": "Request body for updating an installed plugin (status only; use POST .../update for recompile).",
+        "description": "Request body for updating an installed plugin.",
         "properties": {
+          "mcp_server_identities": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Explicit acting-identity choices for legacy authenticated MCP servers.\nOnly `user` and `service` are accepted.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/McpServerActsAs"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "status": {
             "type": [
               "string",

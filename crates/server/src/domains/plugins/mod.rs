@@ -5,11 +5,14 @@ use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
 pub mod fetcher;
+mod lookup;
 pub mod oauth_anchor;
+mod patch;
 pub mod queries;
 pub mod types;
 
 pub use commands::*;
+pub use patch::*;
 
 /// View marketplaces and installed plugins.
 pub const PLUGIN_VIEW: Policy = Policy {

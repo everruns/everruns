@@ -1103,7 +1103,12 @@ export interface VerifyConnectionResponse {
 
 // From legacy capability-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // NOTE: CapabilityId is defined in common-types for proper ordering
-export type CapabilityStatus = "available" | "coming_soon" | "deprecated" | "retired";
+export type CapabilityStatus =
+  | "available"
+  | "coming_soon"
+  | "deprecated"
+  | "needs_identity"
+  | "retired";
 
 export interface Capability {
   id: CapabilityId;
@@ -3422,6 +3427,8 @@ export interface InstalledPlugin {
   status: InstalledPluginStatus;
   /** Install-time warnings for unsupported plugin components */
   warnings: InstalledPluginWarning[];
+  /** Authenticated MCP servers that need an explicit acting identity before activation */
+  identity_required: string[];
   /** True when the marketplace catalog has a newer version or SHA */
   update_available: boolean;
   created_at: string;
@@ -3437,6 +3444,7 @@ export interface InstallPluginRequest {
 /** Request to update an installed plugin's metadata */
 export interface UpdateInstalledPluginRequest {
   status?: InstalledPluginStatus;
+  mcp_server_identities?: Record<string, "user" | "service">;
 }
 
 // From legacy provider-types.ts; retained as UI compatibility over generated OpenAPI schemas.

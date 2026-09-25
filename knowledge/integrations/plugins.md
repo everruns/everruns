@@ -110,9 +110,11 @@ Notes:
 ## OAuth-authenticated MCP servers
 
 A legacy plugin's `.mcp.json` server may declare `"auth": "oauth"` (alias
-`"auth_mode": "oauth"`) to require a user-scoped OAuth connection, the pattern
-used by remote MCP servers like Resend (`https://mcp.resend.com/mcp`). The
-compiler maps this to `auth_mode = oauth` on the compiled scoped server. Two
+`"auth_mode": "oauth"`) to require an OAuth connection, the pattern used by
+remote MCP servers like Resend (`https://mcp.resend.com/mcp`). Every server must
+also declare `actsAs` as `none`, `service`, or `user`. OAuth requires `service`
+or `user`; `none` cannot use OAuth. The compiler preserves both values on the
+compiled capability contribution. Two
 fields plugin content can **not** set are enforced at compile time (dropped
 with a warning): `oauth_provider_id` (the host assigns it) and any `api_key`
 (a package cannot carry key material). Only `"none"` and `"oauth"` are accepted
@@ -165,8 +167,19 @@ OAuth MCP servers.
 
 Agent Plugins deliberately leaves authentication to the client. Portable
 packages request the same behavior through
-`extensions.com.everruns.mcpServers.<server>.auth`; `oauth` and `none` are the
-supported values. Authentication data never enters portable `mcp.json`.
+`extensions.com.everruns.mcpServers.<server>`, with `auth` and required `actsAs`
+fields. `oauth` and `none` are the supported authentication values.
+Authentication data never enters portable `mcp.json`.
+
+**Legacy installed definitions.** Definitions compiled before `actsAs` became
+required stay repairable. An inline server with no OAuth or preset credential
+source is read as explicit `none` without rewriting the stored definition. An
+authenticated server with no identity remains installed but inactive: the
+capability is listed as `needs_identity`, cannot be assigned or enabled, and
+cannot hydrate into a runtime. An owner or admin must choose `user` or
+`service` for each named server through the installed-plugin management API or
+UI. The update changes only those selected server entries; it does not infer
+from organization presets or rewrite other installed definitions.
 
 ## Marketplaces
 

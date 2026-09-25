@@ -594,7 +594,6 @@ impl Default for ScopedMcpServer {
 }
 
 pub type ScopedMcpServers = BTreeMap<String, ScopedMcpServer>;
-
 #[derive(Debug, Clone)]
 pub struct McpSecretBindingMetadata {
     pub server_name: String,
