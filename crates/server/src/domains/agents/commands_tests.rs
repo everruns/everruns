@@ -912,6 +912,61 @@ async fn archiving_agent_revokes_all_identity_connections() {
     );
 }
 
+#[tokio::test]
+async fn patch_archiving_agent_revokes_all_identity_connections() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let agent = CreateAgent(basic_agent_request("patch-grant-owner"))
+        .execute(&ctx)
+        .await
+        .unwrap();
+    let row = db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent.public_id.to_string())
+        .await
+        .unwrap()
+        .unwrap();
+    let (identity_id, _) = crate::domains::agent_identities::lifecycle::ensure_identity_for_agent(
+        &db,
+        DEFAULT_ORG_ID,
+        &row,
+    )
+    .await
+    .unwrap();
+    db.upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
+        agent_identity_id: identity_id,
+        provider: "mcp_oauth_patch".to_string(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: None,
+        provider_username: None,
+        access_token_encrypted: Some(vec![1, 2, 3]),
+        refresh_token_encrypted: Some(vec![4, 5, 6]),
+        scopes: None,
+        expires_at: None,
+        installation_id: None,
+        provider_metadata: None,
+    })
+    .await
+    .unwrap();
+
+    UpdateAgentCmd {
+        id: agent.public_id.to_string(),
+        req: UpdateAgentRequest {
+            status: Some(AgentStatus::Archived),
+            ..Default::default()
+        },
+    }
+    .execute(&ctx)
+    .await
+    .unwrap();
+
+    assert!(
+        db.list_agent_identity_connections(identity_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
 // ========================================================================
 // Built-in agent protection (EVE-865)
 // ========================================================================

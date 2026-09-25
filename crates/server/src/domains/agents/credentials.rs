@@ -9,6 +9,24 @@ use uuid::Uuid;
 
 use super::AGENT_MANAGE;
 
+/// Revoke every service-owned grant held by an agent's identity.
+///
+/// Archival and deletion are the same lifecycle transition as far as grants are
+/// concerned, and each has its own API route, so both call this rather than
+/// repeating the revocation and risking one of them drifting.
+pub(crate) async fn revoke_agent_grants(
+    ctx: &Ctx,
+    row: &crate::storage::models::AgentRow,
+) -> Result<(), CommandError> {
+    if let Some(identity_id) = row.agent_identity_id {
+        ctx.db
+            .delete_all_agent_identity_connections(identity_id)
+            .await
+            .map_err(classify_anyhow)?;
+    }
+    Ok(())
+}
+
 const MAX_NAME_LEN: usize = 255;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]

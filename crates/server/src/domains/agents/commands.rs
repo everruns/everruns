@@ -651,6 +651,7 @@ impl Command for UpdateAgentCmd {
                 "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
+        let is_archiving = matches!(req.status, Some(AgentStatus::Archived));
         if let Some(ref caps) = req.capabilities {
             check_high_risk_caps(ctx, caps).await?;
         }
@@ -775,6 +776,10 @@ impl Command for UpdateAgentCmd {
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
+        if is_archiving {
+            super::credentials::revoke_agent_grants(ctx, &row).await?;
+        }
+
         let caps = if let Some(caps) = capabilities_override {
             persist_capabilities(&ctx.db, internal_id.uuid(), &caps).await?;
             caps
@@ -870,12 +875,7 @@ impl Command for DeleteAgent {
             .delete_agent(ctx.org_id(), row.id)
             .await
             .map_err(classify_anyhow)?;
-        if let Some(identity_id) = row.agent_identity_id {
-            ctx.db
-                .delete_all_agent_identity_connections(identity_id)
-                .await
-                .map_err(classify_anyhow)?;
-        }
+        super::credentials::revoke_agent_grants(ctx, &row).await?;
 
         Ok(serde_json::json!({"deleted": true}))
     }
