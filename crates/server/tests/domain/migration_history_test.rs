@@ -34,3 +34,21 @@ fn eval_artifact_migrations_preserve_existing_database_history() {
         "-- Add artifact specs to eval cases and collected artifact payloads to eval case results.\n\nALTER TABLE eval_cases\n    ADD COLUMN artifacts JSONB;\n\nALTER TABLE eval_case_results\n    ADD COLUMN artifacts JSONB;\n"
     );
 }
+
+#[test]
+fn platform_chat_starter_migration_sanitizes_legacy_tags_before_backfill() {
+    let migration =
+        fs::read_to_string(migrations_dir().join("144_platform_chat_starter_unique.sql")).unwrap();
+    let cleanup = migration
+        .find("SET tags = array_remove(tags, 'platform-chat-starter')")
+        .expect("migration must remove user-controlled legacy starter tags");
+    let backfill = migration
+        .find("WITH ranked AS")
+        .expect("migration must elect a canonical starter");
+    let unique_index = migration
+        .find("CREATE UNIQUE INDEX idx_sessions_platform_chat_starter_owner")
+        .expect("migration must enforce starter uniqueness");
+
+    assert!(cleanup < backfill);
+    assert!(backfill < unique_index);
+}

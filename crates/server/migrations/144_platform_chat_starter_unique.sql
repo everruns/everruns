@@ -6,6 +6,13 @@
 -- an unmarked starter in the gap between the two statements.
 LOCK TABLE sessions IN SHARE ROW EXCLUSIVE MODE;
 
+-- This tag was not reserved before this migration, so every existing use is
+-- untrusted. Clear legacy values before electing starters; otherwise arbitrary
+-- tagged sessions can collide on the unique index and block server startup.
+UPDATE sessions
+SET tags = array_remove(tags, 'platform-chat-starter')
+WHERE 'platform-chat-starter' = ANY(tags);
+
 WITH ranked AS (
     SELECT s.id,
            ROW_NUMBER() OVER (
