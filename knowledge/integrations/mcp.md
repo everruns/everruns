@@ -13,8 +13,8 @@ tags:
 Everruns exposes an MCP server endpoint (`/mcp`) so external MCP clients, Claude Desktop, Cursor, VS Code, etc., can interact with Everruns agents and tools over the [Model Context Protocol](https://spec.modelcontextprotocol.io). Authentication uses MCP-specific authentication and organization resolution: local anonymous identity is accepted only in `AUTH_MODE=none`, while deployed clients use personal access tokens or OAuth 2.1-issued MCP access tokens with mandatory PKCE and an exact resource audience. Regular browser session tokens are not accepted.
 
 The endpoint is always mounted and is not part of the deployment or organization feature-flag
-catalog. `FEATURE_MCP_ENDPOINT` is not a supported configuration variable, and stale
-`mcp_endpoint` organization rows have no effect. Access is gated per request by MCP-specific
+catalog. `FEATURE_MCP_ENDPOINT` controls deployment availability, and the effective
+`mcp_endpoint` organization flag must also be enabled. Access is additionally gated per request by MCP-specific
 authentication, exact OAuth resource/audience binding, organization resolution, command policy,
 and rate limiting rather than by availability opt-in.
 

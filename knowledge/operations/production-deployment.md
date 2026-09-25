@@ -131,7 +131,7 @@ See [`knowledge/operations/correlation-ids.md`](correlation-ids.md) for the `X-R
 
 - REST API base URL should stay under `/api`
 - MCP OAuth endpoints stay at root: `/oauth/*`
-- The authenticated MCP endpoint is always mounted at root: `/mcp`; do not configure `FEATURE_MCP_ENDPOINT` or an organization opt-in
+- The authenticated MCP endpoint is mounted at root (`/mcp`) only when `FEATURE_MCP_ENDPOINT` and the target organization's `mcp_endpoint` opt-in are enabled
 - OAuth discovery metadata stays at root: `/.well-known/oauth-authorization-server`
 - If the UI is deployed separately, it still must target the same public `/api` base and root-level `/oauth/*`, `/mcp`
 

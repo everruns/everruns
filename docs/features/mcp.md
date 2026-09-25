@@ -9,7 +9,7 @@ Everruns speaks the [Model Context Protocol](https://spec.modelcontextprotocol.i
 
 ## Everruns as an MCP server
 
-Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so external clients, Claude Desktop, Cursor, VS Code, or another agent, can discover and call your agents and tools over JSON-RPC. It is a standard product surface, with no deployment variable or organization feature toggle.
+Everruns can expose an authenticated MCP endpoint at `/mcp` so external clients, Claude Desktop, Cursor, VS Code, or another agent, can discover and call your agents and tools over JSON-RPC. Operators must enable `FEATURE_MCP_ENDPOINT`, and an organization administrator must opt the organization into the MCP endpoint feature.
 
 - **Transport**: JSON-RPC 2.0 over Streamable HTTP (`POST /mcp`). Protocol versions `2025-06-18` and `2025-03-26` are supported.
 - **Methods**: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`.

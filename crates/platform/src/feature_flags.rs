@@ -64,6 +64,9 @@ pub struct FeatureFlags {
     /// channel). Experimental. Gates the public endpoints, channel creation,
     /// the builder UI, and the public web route. See `knowledge/integrations/public-chat.md`.
     pub public_chat: bool,
+    /// Authenticated MCP endpoint and remote-control tool surface. Experimental.
+    /// Requires deployment enablement and per-org opt-in.
+    pub mcp_endpoint: bool,
     /// Browser-native WebMCP tools exposed by the authenticated Everruns UI.
     /// Experimental remote-control surface; requires deployment enablement and
     /// per-org opt-in. See `knowledge/ui/webmcp.md`.
@@ -202,6 +205,12 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         experimental: true,
     },
     FeatureFlagDefinition {
+        name: "mcp_endpoint",
+        label: "MCP endpoint",
+        description: "Allows authenticated MCP clients to connect to Everruns and use the MCP tool surface.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
         name: "webmcp",
         label: "WebMCP UI tools",
         description: "Exposes a small browser-native tool surface from the authenticated UI so a \
@@ -233,6 +242,7 @@ impl FeatureFlags {
             agent_delegation: opt_in("agent_delegation", system.agent_delegation),
             observers: opt_in("observers", system.observers),
             public_chat: opt_in("public_chat", system.public_chat),
+            mcp_endpoint: opt_in("mcp_endpoint", system.mcp_endpoint),
             webmcp: opt_in("webmcp", system.webmcp),
             machine_payments: system.machine_payments,
         }
@@ -253,6 +263,7 @@ impl FeatureFlags {
             agent_delegation: experimental_flag("FEATURE_AGENT_DELEGATION", grade),
             observers: experimental_flag("FEATURE_OBSERVERS", grade),
             public_chat: experimental_flag("FEATURE_PUBLIC_CHAT", grade),
+            mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
             webmcp: experimental_flag("FEATURE_WEBMCP", grade),
             machine_payments: standard_flag("FEATURE_MACHINE_PAYMENTS", false),
         }
@@ -284,6 +295,7 @@ impl FeatureFlags {
             ("agent_delegation".to_string(), self.agent_delegation),
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
+            ("mcp_endpoint".to_string(), self.mcp_endpoint),
             ("webmcp".to_string(), self.webmcp),
             ("machine_payments".to_string(), self.machine_payments),
         ]))
@@ -304,6 +316,7 @@ impl FeatureFlags {
             "agent_delegation" => self.agent_delegation,
             "observers" => self.observers,
             "public_chat" => self.public_chat,
+            "mcp_endpoint" => self.mcp_endpoint,
             "webmcp" => self.webmcp,
             "machine_payments" => self.machine_payments,
             _ => false,
@@ -344,6 +357,7 @@ impl FeatureFlags {
             agent_delegation: true,
             observers: true,
             public_chat: true,
+            mcp_endpoint: true,
             webmcp: true,
             machine_payments: true,
         }
@@ -427,6 +441,7 @@ mod tests {
             agent_delegation: true,
             observers: true,
             public_chat: true,
+            mcp_endpoint: true,
             webmcp: true,
             machine_payments: true,
         };
@@ -442,10 +457,7 @@ mod tests {
         assert!(flags.is_enabled("agent_delegation"));
         assert!(flags.is_enabled("observers"));
         assert!(flags.is_enabled("public_chat"));
-        assert!(
-            !flags.is_enabled("mcp_endpoint"),
-            "MCP is a product surface, not a feature flag"
-        );
+        assert!(flags.is_enabled("mcp_endpoint"));
         assert!(flags.is_enabled("webmcp"));
         assert!(flags.is_enabled("machine_payments"));
         assert!(!flags.is_enabled("nonexistent"));
@@ -497,6 +509,7 @@ mod tests {
             agent_delegation: true,
             observers: true,
             public_chat: true,
+            mcp_endpoint: true,
             webmcp: true,
             machine_payments: true,
         };
@@ -533,11 +546,11 @@ mod tests {
     }
 
     #[test]
-    fn test_mcp_endpoint_is_not_in_api_feature_flag_catalog() {
+    fn test_mcp_endpoint_is_in_api_feature_flag_catalog() {
         assert!(
             API_FEATURE_FLAG_DEFINITIONS
                 .iter()
-                .all(|definition| definition.name != "mcp_endpoint")
+                .any(|definition| definition.name == "mcp_endpoint")
         );
     }
 

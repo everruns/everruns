@@ -99,17 +99,17 @@ async fn mcp_request_raw(
 }
 
 #[tokio::test]
-async fn test_mcp_is_available_when_obsolete_org_flag_is_disabled() {
+async fn test_mcp_is_unavailable_when_org_flag_is_disabled() {
     let server = TestServer::in_memory().await;
     let disabled_flags = std::collections::HashMap::from([("mcp_endpoint".to_string(), false)]);
     server
         .db
         .replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &disabled_flags)
         .await
-        .expect("seed obsolete MCP endpoint flag row");
+        .expect("disable MCP endpoint for org");
 
     let resp = mcp_request_raw(&server, "initialize", json!({}), vec![]).await;
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -2201,7 +2201,7 @@ async fn test_mcp_execute_create_mcp_server() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_org_override_is_available_without_target_org_opt_in() {
+async fn test_mcp_org_override_requires_target_org_opt_in() {
     let server = TestServer::in_memory().await;
 
     let org2: Value = server
@@ -2227,7 +2227,7 @@ async fn test_mcp_org_override_is_available_without_target_org_opt_in() {
         vec![("cookie", org2_cookie.as_str())],
     )
     .await;
-    assert_eq!(direct_org2_resp.status(), StatusCode::OK);
+    assert_eq!(direct_org2_resp.status(), StatusCode::NOT_FOUND);
 
     let override_resp = mcp_tool_call(
         &server,
@@ -2238,11 +2238,8 @@ async fn test_mcp_org_override_is_available_without_target_org_opt_in() {
         }),
     )
     .await;
-    assert!(
-        !tool_is_error(&override_resp),
-        "target org override failed without feature opt-in: {}",
-        tool_text(&override_resp)
-    );
+    assert!(tool_is_error(&override_resp));
+    assert!(tool_text(&override_resp).contains("MCP endpoint is not enabled for organization"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

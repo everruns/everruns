@@ -117,6 +117,7 @@ const mockFeatureFlags = {
   agent_delegation: true,
   observers: true,
   public_chat: true,
+  mcp_endpoint: true,
   webmcp: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
@@ -161,6 +162,7 @@ describe("Sidebar", () => {
       agent_delegation: true,
       observers: true,
       public_chat: true,
+      mcp_endpoint: true,
       webmcp: true,
     });
     mockPush.mockClear();
@@ -258,7 +260,7 @@ describe("Sidebar", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps MCP Connect visible without endpoint feature flag data", () => {
+  it("hides MCP Connect when the endpoint is disabled", () => {
     mockUseAuth.mockReturnValue({
       user: { name: "Anonymous", email: "anonymous@local", avatar_url: null },
       requiresAuth: false,
@@ -270,10 +272,12 @@ describe("Sidebar", () => {
       createOrganization: undefined,
     });
 
+    mockFeatureFlags.mcp_endpoint = false;
     render(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: /anonymous/i }));
 
-    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Connect via MCP" })).not.toBeInTheDocument();
+    mockFeatureFlags.mcp_endpoint = true;
   });
 
   it("preserves authentication-only actions in authenticated mode", () => {

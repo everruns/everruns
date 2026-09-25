@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { ChevronUp, Key, LogOut, User } from "lucide-react";
 import { McpConnectDialog, McpConnectMenuItem } from "@/components/layout/mcp-connect-button";
 import { NotificationIndicator, NotificationMenuSub } from "@/components/layout/notification-bell";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -62,6 +63,7 @@ export function SidebarUserMenu({
 }) {
   const router = useRouter();
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
+  const mcpEnabled = useFeatureFlag("mcp_endpoint");
   const navigate = (href: string) => router.push(href);
 
   const handleLogout = async () => {
@@ -109,7 +111,7 @@ export function SidebarUserMenu({
                   Personal access tokens
                 </DropdownMenuItem>
               )}
-              <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />
+              {mcpEnabled && <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />}
               {requiresAuth && renderExtraItems?.({ user, navigate })}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

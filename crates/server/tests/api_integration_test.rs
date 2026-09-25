@@ -128,7 +128,7 @@ async fn test_feature_flags_endpoint() {
     // Should return a JSON object with boolean flags
     assert!(body.is_object());
     assert!(body.get("notifications").is_some());
-    assert!(body.get("mcp_endpoint").is_none());
+    assert!(body.get("mcp_endpoint").is_some());
     assert_eq!(body["machine_payments"], Value::Bool(false));
     // In test env (DEV_MODE=true), experimental flags are enabled
     assert_eq!(body["notifications"], Value::Bool(false));
@@ -146,7 +146,7 @@ async fn test_org_feature_flags_opt_in() {
         .json();
 
     let flags = settings["flags"].as_array().expect("flags array");
-    assert!(flags.iter().all(|flag| flag["name"] != "mcp_endpoint"));
+    assert!(flags.iter().any(|flag| flag["name"] == "mcp_endpoint"));
     assert!(flags.iter().all(|flag| flag["label"] != "Platform Chat"));
     let notifications = flags
         .iter()
@@ -174,7 +174,7 @@ async fn test_org_feature_flags_opt_in() {
         .assert_status(StatusCode::OK)
         .json();
     assert_eq!(effective["notifications"], serde_json::Value::Bool(false));
-    assert!(effective.get("mcp_endpoint").is_none());
+    assert!(effective.get("mcp_endpoint").is_some());
     assert_eq!(
         effective["machine_payments"],
         serde_json::Value::Bool(false)
@@ -186,7 +186,7 @@ async fn test_org_feature_flags_opt_in() {
             serde_json::json!({ "flags": { "mcp_endpoint": true } }),
         )
         .await
-        .assert_status(StatusCode::BAD_REQUEST);
+        .assert_status(StatusCode::OK);
 }
 
 #[tokio::test]
