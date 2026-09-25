@@ -459,6 +459,14 @@ impl StorageBackend {
         )
     }
 
+    pub async fn find_input_message_event(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<EventRow>> {
+        dispatch!(self, find_input_message_event, session_id, message_id)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn list_events(
         &self,

@@ -4,7 +4,8 @@ use super::super::models::*;
 use super::super::repository::MESSAGE_SAFETY_LIMIT;
 use super::InMemoryDatabase;
 use crate::kernel_imports::{
-    everruns_provider::typed_id::EventId, everruns_provider::typed_id::SessionId,
+    everruns_provider::typed_id::EventId, everruns_provider::typed_id::MessageId,
+    everruns_provider::typed_id::SessionId,
 };
 use anyhow::Result;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
@@ -179,6 +180,24 @@ impl InMemoryDatabase {
         };
         events.insert(row.id, row);
         Ok(true)
+    }
+
+    pub async fn find_input_message_event(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<EventRow>> {
+        let message_id = message_id.to_string();
+        Ok(self
+            .events
+            .read()
+            .values()
+            .find(|event| {
+                event.session_id == session_id
+                    && event.event_type == "input.message"
+                    && event.data["message"]["id"].as_str() == Some(message_id.as_str())
+            })
+            .cloned())
     }
 
     #[allow(clippy::too_many_arguments)]
