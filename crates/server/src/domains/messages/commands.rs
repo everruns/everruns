@@ -103,20 +103,10 @@ async fn require_platform_chat_owner(
     ctx: &Ctx,
     session: &everruns_platform::Session,
 ) -> Result<(), CommandError> {
-    let harness = ctx
-        .db
-        .get_harness(ctx.org_id(), session.harness_id)
+    if !crate::domains::sessions::platform_chat_owner_matches_session(&ctx.db, &ctx.caller, session)
         .await
-        .map_err(classify_anyhow)?;
-    let is_platform_chat = harness
-        .as_ref()
-        .is_some_and(|harness| harness.is_built_in && harness.name == "platform-chat");
-
-    if !crate::domains::sessions::platform_chat_owner_matches(
-        &ctx.caller,
-        session,
-        is_platform_chat,
-    ) {
+        .map_err(classify_anyhow)?
+    {
         return Err(CommandError::forbidden(
             "Only the Platform Chat session owner can create messages",
         ));

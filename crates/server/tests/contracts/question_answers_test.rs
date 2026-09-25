@@ -106,6 +106,30 @@ async fn waiting_session(server: &TestServer) -> SessionId {
     session.id
 }
 
+async fn platform_chat_waiting_session(server: &TestServer, owner: Uuid) -> SessionId {
+    let session_id = waiting_session(server).await;
+    server
+        .db
+        .update_session(
+            TEST_ORG_ID,
+            session_id,
+            everruns_server::storage::models::UpdateSession {
+                harness_id: Some(
+                    server
+                        .seed_chat_harness_id
+                        .parse()
+                        .expect("platform-chat harness id"),
+                ),
+                resolved_owner_user_id: everruns_durable::UpdateField::Set(owner),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update Platform Chat owner")
+        .expect("session exists");
+    session_id
+}
+
 /// Emit the card the engine emits when the model calls `ask_user`.
 ///
 /// Every question carries an id here because `normalize_ask_user_arguments`
@@ -265,6 +289,61 @@ async fn an_answer_resumes_the_turn_with_the_validated_result() {
         .expect("read session")
         .expect("session exists");
     assert_eq!(session.status, "active", "the turn is resumed");
+}
+
+#[tokio::test]
+async fn platform_chat_owner_can_answer_a_question() {
+    let server = test_server().await;
+    let session_id =
+        platform_chat_waiting_session(&server, everruns_platform::ANONYMOUS_USER_ID).await;
+    emit_question_card(&server, session_id, "toolu_owner").await;
+
+    post_answer(
+        &server,
+        session_id,
+        json!({
+            "tool_call_id": "toolu_owner",
+            "status": "answered",
+            "answers": [{"id": "target", "selected": ["Staging"]}]
+        }),
+    )
+    .await
+    .assert_status(StatusCode::OK);
+
+    assert_eq!(completed_results(&server, session_id).await.len(), 1);
+}
+
+/// THREAT[TM-AGENT-017]: organization membership is not enough to act on a
+/// Platform Chat session because its tools run with the persisted owner's authority.
+#[tokio::test]
+async fn platform_chat_non_owner_cannot_resume_through_answer_or_raw_tool_result() {
+    for path in ["question-answers", "tool-results"] {
+        let server = test_server().await;
+        let session_id = platform_chat_waiting_session(&server, Uuid::now_v7()).await;
+        emit_question_card(&server, session_id, "toolu_victim").await;
+        let body = if path == "question-answers" {
+            json!({"status": "declined"})
+        } else {
+            json!({"tool_results": [{"tool_call_id": "toolu_victim", "result": {}}]})
+        };
+
+        server
+            .post(&format!("/v1/sessions/{session_id}/{path}"), body)
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
+
+        assert!(completed_results(&server, session_id).await.is_empty());
+        assert_eq!(
+            server
+                .db
+                .get_session(TEST_ORG_ID, session_id)
+                .await
+                .expect("read session")
+                .expect("session exists")
+                .status,
+            "waiting_for_tool_results"
+        );
+    }
 }
 
 /// THREAT[TM-AGENT-015]: the caller does not get to say what it was asked.
