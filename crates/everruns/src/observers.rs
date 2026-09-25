@@ -17,7 +17,7 @@ use tokio::task::JoinHandle;
 use crate::SessionEvent;
 
 /// Default number of pending events retained for each Engine listener.
-// THREAT[TM-DOS-037]: fixed retention and prefix-free deltas bound observer memory growth.
+// THREAT[TM-DOS-040]: fixed retention and prefix-free deltas bound observer memory growth.
 pub const OBSERVER_QUEUE_CAPACITY: usize = 8192;
 
 /// Selects the event types delivered to an [`EventListener`].

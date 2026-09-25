@@ -20,7 +20,7 @@ use anyhow::{Context, Result, anyhow, bail};
 
 /// Ceiling on a packfile response, overridable with `GIT_FETCH_MAX_PACK_BYTES`.
 ///
-/// THREAT[TM-DOS-037]: the remote controls the response length, and a
+/// THREAT[TM-DOS-041]: the remote controls the response length, and a
 /// source URL can point anywhere (memory sources accept arbitrary git URLs).
 /// libgit2 used to stream the pack into its own object store; reading it here
 /// means an unbounded body would be an unbounded allocation in the worker. The

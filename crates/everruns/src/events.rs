@@ -350,7 +350,7 @@ impl SessionEvent {
         let mut data = serde_json::to_value(&event.data)
             .expect("canonical event payloads are JSON serializable");
         if event.event_type == events::OUTPUT_MESSAGE_DELTA {
-            // THREAT[TM-DOS-037]: accumulated repeats the entire output prefix
+            // THREAT[TM-DOS-040]: accumulated repeats the entire output prefix
             // in every delta. Retaining those prefixes in the broadcast ring
             // would turn an n-byte streamed response into O(n^2) memory.
             data.as_object_mut()
