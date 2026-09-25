@@ -61,7 +61,7 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
   }
 
   const agentName = getDisplayName(agent);
-  const slackInstallAvailable = slackInstallCapability.data?.available === true;
+  const slackInstallAvailable = slackInstallCapability.data?.connected === true;
 
   return (
     <PageContainer>
@@ -159,7 +159,8 @@ export default function NewAgentEndpointPage({ params }: { params: Promise<{ age
                   state={formState}
                   onChange={setFormState}
                   mode="new"
-                  slackInstallAvailable={slackInstallAvailable}
+                  slackInstallCapability={slackInstallCapability.data}
+                  onSlackCapabilityChanged={slackInstallCapability.refetch}
                 />
               </CardContent>
             </Card>

@@ -4,12 +4,18 @@ import EditAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/[endp
 import NewAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/new/page";
 import { ChannelForm, getDefaultChannelFormState } from "@/components/apps/channel-form";
 import { beginSlackInstall } from "@/lib/api/agent-endpoints";
+import type { SlackInstallCapability } from "@/lib/api/agent-endpoints";
 import type { Agent, AppChannel } from "@/lib/api/types";
 
 const push = jest.fn();
 const replace = jest.fn();
 const createEndpoint = jest.fn();
-let mockSlackInstallAvailable = true;
+let mockSlackCapability: SlackInstallCapability = {
+  supported: true,
+  connected: true,
+  reconnect_required: false,
+  can_manage: true,
+};
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent_123/endpoints/new",
@@ -38,6 +44,7 @@ jest.mock("@/hooks/use-agents", () => ({
       status: "active",
     } as Agent,
     isLoading: false,
+    refetch: jest.fn(),
   }),
 }));
 
@@ -58,8 +65,9 @@ jest.mock("@/hooks/use-agent-endpoints", () => ({
     isPending: false,
   }),
   useSlackInstallCapability: () => ({
-    data: { available: mockSlackInstallAvailable },
+    data: mockSlackCapability,
     isLoading: false,
+    refetch: jest.fn(),
   }),
   useUpdateAgentEndpoint: () => ({ mutate: jest.fn(), isPending: false }),
   useDeleteAgentEndpoint: () => ({ mutate: jest.fn(), isPending: false }),
@@ -111,7 +119,12 @@ describe("Slack endpoint first run", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     window.history.replaceState(null, "", "/agents/agent_123/endpoints/new");
-    mockSlackInstallAvailable = true;
+    mockSlackCapability = {
+      supported: true,
+      connected: true,
+      reconnect_required: false,
+      can_manage: true,
+    };
     (beginSlackInstall as jest.Mock).mockImplementation(() => new Promise(() => undefined));
     createEndpoint.mockImplementation(
       (_request: unknown, options: { onSuccess: (endpoint: AppChannel) => void }) =>
@@ -149,10 +162,73 @@ describe("Slack endpoint first run", () => {
         state={getDefaultChannelFormState("slack")}
         onChange={jest.fn()}
         mode="new"
-        slackInstallAvailable={false}
+        slackInstallCapability={{
+          supported: false,
+          connected: false,
+          reconnect_required: false,
+          can_manage: false,
+        }}
       />,
     );
     expect(screen.getByLabelText("Signing secret")).toBeInTheDocument();
+  });
+
+  it("shows secure organization connection setup only to administrators", () => {
+    const { unmount } = render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack")}
+        onChange={jest.fn()}
+        mode="new"
+        slackInstallCapability={{
+          supported: true,
+          connected: false,
+          reconnect_required: false,
+          can_manage: true,
+        }}
+      />,
+    );
+    expect(screen.getByText("Connect your organization to Slack")).toBeInTheDocument();
+    expect(screen.getByLabelText("Slack configuration refresh token")).toHaveAttribute(
+      "type",
+      "password",
+    );
+    expect(screen.getByRole("button", { name: "Connect Slack" })).toBeDisabled();
+    expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack")}
+        onChange={jest.fn()}
+        mode="new"
+        slackInstallCapability={{
+          supported: true,
+          connected: false,
+          reconnect_required: false,
+          can_manage: false,
+        }}
+      />,
+    );
+    expect(screen.getByText(/Ask an organization administrator/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Slack configuration refresh token")).not.toBeInTheDocument();
+  });
+
+  it("distinguishes reconnect-required from first-time setup", () => {
+    render(
+      <ChannelForm
+        state={getDefaultChannelFormState("slack")}
+        onChange={jest.fn()}
+        mode="new"
+        slackInstallCapability={{
+          supported: true,
+          connected: false,
+          reconnect_required: true,
+          can_manage: true,
+        }}
+      />,
+    );
+    expect(screen.getByText("Reconnect your organization to Slack")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reconnect Slack" })).toBeDisabled();
   });
 
   it("starts Slack install immediately after saving a credential-free endpoint", async () => {
@@ -184,7 +260,12 @@ describe("Slack endpoint first run", () => {
   });
 
   it("keeps the manual save flow when no provisioner is available", async () => {
-    mockSlackInstallAvailable = false;
+    mockSlackCapability = {
+      supported: false,
+      connected: false,
+      reconnect_required: false,
+      can_manage: false,
+    };
     await renderNewEndpointPage();
     fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
     expect(screen.getByLabelText("Signing secret")).toBeInTheDocument();
@@ -221,7 +302,12 @@ describe("Slack endpoint first run", () => {
   });
 
   it("does not suggest an unavailable reconnect action after install failure", async () => {
-    mockSlackInstallAvailable = false;
+    mockSlackCapability = {
+      supported: false,
+      connected: false,
+      reconnect_required: false,
+      can_manage: false,
+    };
     await renderEditEndpointPage("Could not reach Slack to create the app");
 
     expect(screen.getByRole("alert")).toHaveTextContent(
