@@ -675,7 +675,7 @@ pub struct ResolvedOrg {
 impl ResolvedOrg {
     pub async fn with_effective_feature_flags(self, auth_state: &AuthState) -> Self {
         let feature_flags = if let Some(db) = &auth_state.db {
-            crate::services::org_feature_flags::resolve_org_feature_flags_cached(
+            crate::services::org_feature_flags::resolve_org_feature_flags(
                 db,
                 self.org_id,
                 &auth_state.system_feature_flags,
