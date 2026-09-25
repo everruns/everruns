@@ -12,6 +12,22 @@ pub mod types;
 pub use commands::*;
 pub use service::*;
 
+pub(crate) async fn platform_chat_owner_matches_session(
+    db: &crate::storage::StorageBackend,
+    caller: &everruns_core::Caller,
+    session: &everruns_platform::Session,
+) -> anyhow::Result<bool> {
+    let harness = db
+        .get_harness(caller.org_id, session.harness_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("session harness not found"))?;
+    Ok(platform_chat_owner_matches(
+        caller,
+        session,
+        harness.is_built_in && harness.name == "platform-chat",
+    ))
+}
+
 pub(crate) fn platform_chat_owner_matches(
     caller: &everruns_core::Caller,
     session: &everruns_platform::Session,
