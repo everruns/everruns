@@ -253,6 +253,17 @@ impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
             .map(|r| r.value.clone()))
     }
 
+    async fn take_value(
+        &self,
+        session_id: SessionId,
+        key: &str,
+    ) -> everruns_provider::error::Result<Option<String>> {
+        let mut storage = self.session_key_values.write();
+        Ok(storage
+            .remove(&(session_id, key.to_string()))
+            .map(|row| row.value))
+    }
+
     async fn delete_value(
         &self,
         session_id: SessionId,

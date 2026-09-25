@@ -343,6 +343,13 @@ impl WorkerService for WorkerServiceImpl {
         self.handle_session_storage_delete_value(request).await
     }
 
+    async fn session_storage_take_value(
+        &self,
+        request: Request<SessionStorageTakeValueRequest>,
+    ) -> Result<Response<SessionStorageTakeValueResponse>, Status> {
+        self.handle_session_storage_take_value(request).await
+    }
+
     async fn session_storage_list_keys(
         &self,
         request: Request<SessionStorageListKeysRequest>,

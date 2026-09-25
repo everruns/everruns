@@ -210,6 +210,8 @@ use everruns_internal_protocol::proto::{
     SessionStorageSetSecretResponse,
     SessionStorageSetValueRequest,
     SessionStorageSetValueResponse,
+    SessionStorageTakeValueRequest,
+    SessionStorageTakeValueResponse,
     SessionTaskMessageResponse,
     SessionTaskResponse,
     SetSessionStatusRequest,

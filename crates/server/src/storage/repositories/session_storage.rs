@@ -94,6 +94,26 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Atomically remove a session key/value and return its value.
+    pub async fn take_session_key_value(
+        &self,
+        session_id: Uuid,
+        key: &str,
+    ) -> Result<Option<String>> {
+        sqlx::query_scalar(
+            r#"
+            DELETE FROM session_key_values
+            WHERE session_id = $1 AND key = $2
+            RETURNING value
+            "#,
+        )
+        .bind(session_id)
+        .bind(key)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(Into::into)
+    }
+
     // ============================================
     // Session Secret Storage (Encrypted)
     // ============================================

@@ -40,21 +40,11 @@ impl ElicitationConsentStore for SessionElicitationConsents {
         tool: &str,
     ) -> anyhow::Result<Option<GrantedConsent>> {
         let key = consent_storage_key(server, tool);
-        let Some(raw) = self.storage.get_value(self.session_id, &key).await? else {
+        // THREAT[TM-TOOL-034]: atomic destructive consumption ensures that
+        // concurrent retries cannot turn one decision into multiple accepts.
+        let Some(raw) = self.storage.take_value(self.session_id, &key).await? else {
             return Ok(None);
         };
-
-        // Delete before honouring it: one consent authorises exactly one
-        // `accept`, and deleting first means a crash between the two cannot
-        // leave a reusable grant behind.
-        if let Err(error) = self.storage.delete_value(self.session_id, &key).await {
-            tracing::warn!(
-                session_id = %self.session_id,
-                %error,
-                "Could not consume elicitation consent; refusing to use it twice"
-            );
-            return Ok(None);
-        }
 
         let record: StoredConsent = match serde_json::from_str(&raw) {
             Ok(record) => record,
@@ -98,6 +88,9 @@ mod tests {
         }
         async fn delete_value(&self, _s: SessionId, key: &str) -> CoreResult<bool> {
             Ok(self.values.lock().expect("lock").remove(key).is_some())
+        }
+        async fn take_value(&self, _s: SessionId, key: &str) -> CoreResult<Option<String>> {
+            Ok(self.values.lock().expect("lock").remove(key))
         }
         async fn list_keys(&self, _s: SessionId) -> CoreResult<Vec<KeyInfo>> {
             Ok(vec![])
@@ -149,6 +142,45 @@ mod tests {
             None,
             "the record is consumed, so a second call asks the user again"
         );
+    }
+
+    #[tokio::test]
+    async fn concurrent_consumers_receive_exactly_one_grant() {
+        let session_id = SessionId::new();
+        let storage = Arc::new(MemoryStorage::default());
+        let record = StoredConsent::new("billing", "charge", "pay.example.com", chrono::Utc::now());
+        storage
+            .set_value(
+                session_id,
+                &consent_storage_key("billing", "charge"),
+                &serde_json::to_string(&record).expect("serialize"),
+            )
+            .await
+            .expect("stored");
+
+        let consents = Arc::new(SessionElicitationConsents::new(storage, session_id));
+        let barrier = Arc::new(tokio::sync::Barrier::new(3));
+        let mut consumers = Vec::new();
+        for _ in 0..2 {
+            let consents = consents.clone();
+            let barrier = barrier.clone();
+            consumers.push(tokio::spawn(async move {
+                barrier.wait().await;
+                consents
+                    .take_consent("billing", "charge")
+                    .await
+                    .expect("take")
+            }));
+        }
+        barrier.wait().await;
+
+        let mut grants = 0;
+        for consumer in consumers {
+            if consumer.await.expect("consumer task").is_some() {
+                grants += 1;
+            }
+        }
+        assert_eq!(grants, 1, "one decision authorises exactly one accept");
     }
 
     #[tokio::test]
