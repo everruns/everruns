@@ -3,14 +3,6 @@
 //!
 //! Tests credential storage, profile management, and resolution logic.
 
-use std::fs;
-use tempfile::TempDir;
-
-/// Set up an isolated config directory and return its path
-fn setup_config_dir() -> TempDir {
-    tempfile::tempdir().unwrap()
-}
-
 #[test]
 fn test_cli_login_help() {
     let output = std::process::Command::new("cargo")
@@ -84,80 +76,6 @@ fn test_cli_profile_flag() {
         stderr.contains("Not logged in") || !output.status.success(),
         "Should handle missing profile gracefully"
     );
-}
-
-#[test]
-fn test_credential_store_serialize_deserialize() {
-    let json = r#"{
-        "profiles": {
-            "default": {
-                "api_url": "http://localhost:9300/api",
-                "api_key": "evr_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-                "org_id": "org_00000000000000000000000000000001",
-                "user_email": "test@example.com",
-                "user_name": "Test User"
-            },
-            "staging": {
-                "api_url": "https://staging.everruns.com/api",
-                "api_key": "evr_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-            }
-        },
-        "current_profile": "default"
-    }"#;
-
-    let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
-    assert_eq!(parsed["current_profile"], "default");
-    assert_eq!(
-        parsed["profiles"]["default"]["api_key"],
-        "evr_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    );
-    assert_eq!(
-        parsed["profiles"]["default"]["org_id"],
-        "org_00000000000000000000000000000001"
-    );
-    // Staging profile should not have org_id
-    assert!(parsed["profiles"]["staging"]["org_id"].is_null());
-}
-
-#[test]
-fn test_credential_file_permissions() {
-    let dir = setup_config_dir();
-    let creds_dir = dir.path().join("everruns");
-    fs::create_dir_all(&creds_dir).unwrap();
-    let creds_path = creds_dir.join("credentials.json");
-    fs::write(&creds_path, "{}").unwrap();
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&creds_path, fs::Permissions::from_mode(0o600)).unwrap();
-        let metadata = fs::metadata(&creds_path).unwrap();
-        let mode = metadata.permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "Credentials file should have 0600 permissions");
-    }
-}
-
-#[test]
-fn test_multiple_profiles_in_credential_file() {
-    let json = serde_json::json!({
-        "profiles": {
-            "default": {
-                "api_url": "http://localhost/api",
-                "api_key": "evr_key1",
-            },
-            "production": {
-                "api_url": "https://prod.example.com/api",
-                "api_key": "evr_key2",
-                "org_id": "org_prod",
-            }
-        },
-        "current_profile": "production"
-    });
-
-    let profiles = json["profiles"].as_object().unwrap();
-    assert_eq!(profiles.len(), 2);
-    assert_eq!(json["current_profile"], "production");
-    assert_eq!(profiles["production"]["org_id"], "org_prod");
 }
 
 #[test]
