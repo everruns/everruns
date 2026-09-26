@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-09-26
+
+### Highlights
+
+- **Per-organization Slack app provisioning** - Each organization can provision its own Slack app rather than sharing one deployment-wide install ([#3830](https://github.com/everruns/everruns/pull/3830)), with concurrent installs for one endpoint serialized so a race can no longer create orphan apps or exhaust the config token ([#3843](https://github.com/everruns/everruns/pull/3843)).
+- **Agent app framework over Engine** - An experimental framework for building agent apps directly on the Engine ([#3802](https://github.com/everruns/everruns/pull/3802)), with engine-level event listeners ([#3804](https://github.com/everruns/everruns/pull/3804)) and pluggable observability integrations ([#3806](https://github.com/everruns/everruns/pull/3806)).
+- **Server-side context compaction** - Anthropic conversations compact context server-side, keeping long agent runs within budget ([#3831](https://github.com/everruns/everruns/pull/3831)).
+- **Ask User through tasks** - The Ask User capability surfaces through the tasks channel, extending it beyond Platform Chat and MCP ([#3828](https://github.com/everruns/everruns/pull/3828)).
+
+### What's Changed
+
+- fix(slack): serialize one-click Slack app provisioning ([#3843](https://github.com/everruns/everruns/pull/3843)) by [@chaliy](https://github.com/chaliy)
+- fix(observers): bound retained event memory ([#3837](https://github.com/everruns/everruns/pull/3837)) by [@chaliy](https://github.com/chaliy)
+- fix(anthropic): preserve explicit token caps ([#3839](https://github.com/everruns/everruns/pull/3839)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): preserve secret detection at log boundaries ([#3841](https://github.com/everruns/everruns/pull/3841)) by [@chaliy](https://github.com/chaliy)
+- fix(security): hide unrequested reasoning summaries ([#3840](https://github.com/everruns/everruns/pull/3840)) by [@chaliy](https://github.com/chaliy)
+- fix(server): require Platform Chat session owner for question-answers and tool-results ([#3842](https://github.com/everruns/everruns/pull/3842)) by [@chaliy](https://github.com/chaliy)
+- fix(server): make feature flag revocations immediate ([#3820](https://github.com/everruns/everruns/pull/3820)) by [@chaliy](https://github.com/chaliy)
+- docs(sre): runbook for migration 144's duplicate starter collision ([#3846](https://github.com/everruns/everruns/pull/3846)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): give the three TM-DOS-037 threats distinct ids ([#3845](https://github.com/everruns/everruns/pull/3845)) by [@chaliy](https://github.com/chaliy)
+- feat(provider): honest streaming contract for host integrations ([#3844](https://github.com/everruns/everruns/pull/3844)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): let a gated-off Build Check defer to the real run ([#3826](https://github.com/everruns/everruns/pull/3826)) by [@chaliy](https://github.com/chaliy)
+- test(anthropic): tolerate a reconnect in the clear_at wire test ([#3835](https://github.com/everruns/everruns/pull/3835)) by [@chaliy](https://github.com/chaliy)
+- fix(foreman): stop the test runtime racing its own write ([#3834](https://github.com/everruns/everruns/pull/3834)) by [@chaliy](https://github.com/chaliy)
+- feat(anthropic): add server-side context compaction ([#3831](https://github.com/everruns/everruns/pull/3831)) by [@warp-factories](https://github.com/warp-factories)
+- fix(foreman): isolate supervisor test execution ([#3813](https://github.com/everruns/everruns/pull/3813)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): enforce session policies for form elicitation ([#3807](https://github.com/everruns/everruns/pull/3807)) by [@chaliy](https://github.com/chaliy)
+- fix(server): reuse native endpoint sessions ([#3814](https://github.com/everruns/everruns/pull/3814)) by [@chaliy](https://github.com/chaliy)
+- fix(environments): report effective network access ([#3817](https://github.com/everruns/everruns/pull/3817)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): bind actions to session conversation ([#3815](https://github.com/everruns/everruns/pull/3815)) by [@chaliy](https://github.com/chaliy)
+- fix(audit): resolve approvals from correlated messages ([#3816](https://github.com/everruns/everruns/pull/3816)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): scrub Doppler token from server environment ([#3822](https://github.com/everruns/everruns/pull/3822)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): measure log-error-field growth against the merge base ([#3833](https://github.com/everruns/everruns/pull/3833)) by [@chaliy](https://github.com/chaliy)
+- fix(host): bind shell writes to workspace root ([#3812](https://github.com/everruns/everruns/pull/3812)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): bind OAuth resource to server origin ([#3808](https://github.com/everruns/everruns/pull/3808)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): measure file-size growth against the merge base ([#3832](https://github.com/everruns/everruns/pull/3832)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): consume elicitation consent atomically ([#3818](https://github.com/everruns/everruns/pull/3818)) by [@chaliy](https://github.com/chaliy)
+- fix(channel): deduplicate repeated Slack view context ([#3821](https://github.com/everruns/everruns/pull/3821)) by [@chaliy](https://github.com/chaliy)
+- fix(agents): revoke grants on patch archive ([#3823](https://github.com/everruns/everruns/pull/3823)) by [@chaliy](https://github.com/chaliy)
+- fix(agent-triggers): require dangerous permission for webhook publication ([#3810](https://github.com/everruns/everruns/pull/3810)) by [@chaliy](https://github.com/chaliy)
+- docs(framework): fix session-history provider example ([#3824](https://github.com/everruns/everruns/pull/3824)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): enforce case-sensitive release gate ([#3809](https://github.com/everruns/everruns/pull/3809)) by [@chaliy](https://github.com/chaliy)
+- feat: add per-organization Slack app provisioning ([#3830](https://github.com/everruns/everruns/pull/3830)) by [@warp-factories](https://github.com/warp-factories)
+- feat(mcp): surface ask user through tasks ([#3828](https://github.com/everruns/everruns/pull/3828)) by [@warp-factories](https://github.com/warp-factories)
+- fix(everruns): split agent.rs tests to restore file-size guard ([#3829](https://github.com/everruns/everruns/pull/3829)) by [@chaliy](https://github.com/chaliy)
+- feat(serve): experimental agent app framework over Engine ([#3802](https://github.com/everruns/everruns/pull/3802)) by [@chaliy](https://github.com/chaliy)
+- test(platform): review every platform test and drop waste ([#3825](https://github.com/everruns/everruns/pull/3825)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): enforce capability acting identity ([#3695](https://github.com/everruns/everruns/pull/3695)) by [@warp-factories](https://github.com/warp-factories)
+- chore(knowledge): specify Anthropic Infinity Context compaction ([#3792](https://github.com/everruns/everruns/pull/3792)) by [@warp-factories](https://github.com/warp-factories)
+- feat: add Framework observability integrations ([#3806](https://github.com/everruns/everruns/pull/3806)) by [@warp-factories](https://github.com/warp-factories)
+- feat(framework): add engine-level event listeners (EVE-1100) ([#3804](https://github.com/everruns/everruns/pull/3804)) by [@warp-factories](https://github.com/warp-factories)
+- test: merge remaining integration test binaries per crate ([#3805](https://github.com/everruns/everruns/pull/3805)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): design framework event listeners and observability ([#3803](https://github.com/everruns/everruns/pull/3803)) by [@chaliy](https://github.com/chaliy)
+- test: merge repetitive unit tests into table-driven cases ([#3801](https://github.com/everruns/everruns/pull/3801)) by [@chaliy](https://github.com/chaliy)
+- test(server): one domain test binary, faster slow tests ([#3800](https://github.com/everruns/everruns/pull/3800)) by [@chaliy](https://github.com/chaliy)
+- refactor(worker): move session files onto the command transport ([#3797](https://github.com/everruns/everruns/pull/3797)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump opentelemetry to 0.33 with its tracing companion ([#3799](https://github.com/everruns/everruns/pull/3799)) by [@chaliy](https://github.com/chaliy)
+- feat(files): compare-and-swap writes and a context search on the command layer ([#3791](https://github.com/everruns/everruns/pull/3791)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.32.0.
+
 ## [0.31.0] - 2026-09-24
 
 ### Highlights
