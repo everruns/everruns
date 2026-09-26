@@ -14,6 +14,17 @@ use serde_json::{Value, json};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+/// A mock server that lives for the whole test process.
+///
+/// Drivers share one process-wide `reqwest` pool, but each `#[tokio::test]`
+/// runs its own runtime. If a finished test's server were dropped, a later
+/// server could get the same port and the pool would hand it a connection
+/// whose task died with that earlier runtime ("error sending request").
+/// Leaking the server keeps its port bound, so a port is never reused.
+async fn mock_server() -> &'static MockServer {
+    Box::leak(Box::new(MockServer::start().await))
+}
+
 async fn provider(server: &MockServer, content_type: &str, body: String) -> Provider {
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -38,8 +49,8 @@ fn sse(chunks: &[Value]) -> String {
 
 /// Every event a host sees through `Provider::chat_completion_stream`.
 async fn stream_events(chunks: &[Value]) -> Vec<Result<LlmStreamEvent>> {
-    let server = MockServer::start().await;
-    let provider = provider(&server, "text/event-stream", sse(chunks)).await;
+    let server = mock_server().await;
+    let provider = provider(server, "text/event-stream", sse(chunks)).await;
     provider
         .chat_completion_stream(vec![], &LlmCallConfig::new("model"))
         .await
@@ -122,9 +133,9 @@ async fn an_error_envelope_inside_a_200_stream_keeps_the_vendor_message() {
 
 #[tokio::test]
 async fn an_error_envelope_in_a_200_json_body_is_an_error_with_its_status() {
-    let server = MockServer::start().await;
+    let server = mock_server().await;
     let body = json!({"error": {"message": "upstream died", "code": 502}}).to_string();
-    let provider = provider(&server, "application/json", body).await;
+    let provider = provider(server, "application/json", body).await;
     let error = provider
         .chat_completion_non_streaming(vec![], &LlmCallConfig::new("model"))
         .await

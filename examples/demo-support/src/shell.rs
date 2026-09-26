@@ -178,7 +178,7 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
 
 #[cfg(test)]
 mod tests {
-    use super::{PLAIN, WIDTH, clip, paint};
+    use super::{WIDTH, clip};
 
     #[test]
     fn clip_keeps_short_lines_and_truncates_long_ones_on_char_boundaries() {
@@ -188,10 +188,5 @@ mod tests {
         let clipped = clip(&wide);
         assert_eq!(clipped.chars().count(), WIDTH);
         assert!(clipped.ends_with('…'));
-    }
-
-    #[test]
-    fn plain_style_adds_no_escapes() {
-        assert_eq!(paint(PLAIN, "text"), "text");
     }
 }
