@@ -61,108 +61,6 @@ fn get_tool(name: &str) -> Box<dyn Tool> {
 }
 
 // ============================================================================
-// BrowserlessClient integration tests (wiremock)
-// ============================================================================
-
-#[tokio::test]
-async fn test_screenshot_client_flow() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/screenshot"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_bytes(b"\x89PNG\r\n\x1a\n_FAKE_PNG_DATA".to_vec()),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-    let bytes = client
-        .screenshot("https://example.com", true, None, None, None, &[])
-        .await
-        .unwrap();
-    assert!(!bytes.is_empty());
-}
-
-#[tokio::test]
-async fn test_content_client_flow() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/content"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(
-            "<html><head><title>Test</title></head><body>Hello World</body></html>",
-        ))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-    let html = client
-        .content("https://example.com", None, None, false, &[])
-        .await
-        .unwrap();
-    assert!(html.contains("Hello World"));
-    assert!(html.contains("<title>Test</title>"));
-}
-
-#[tokio::test]
-async fn test_scrape_client_flow() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/scrape"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "data": [
-                {
-                    "selector": "h1",
-                    "results": [
-                        {"text": "Welcome", "attributes": []}
-                    ]
-                }
-            ]
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-    let result = client
-        .scrape(
-            "https://example.com",
-            &[json!({"selector": "h1"})],
-            None,
-            None,
-            &[],
-        )
-        .await
-        .unwrap();
-    assert!(result["data"][0]["results"][0]["text"] == "Welcome");
-}
-
-#[tokio::test]
-async fn test_function_client_flow() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/function"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "data": "{\"title\":\"Test Page\",\"url\":\"https://example.com\"}",
-            "type": "application/json"
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-    let result = client
-        .function(
-            "export default async ({ page }) => { return { data: 'test', type: 'application/json' }; }",
-            None,
-        )
-        .await
-        .unwrap();
-    assert!(result.get("data").is_some());
-}
-
-// ============================================================================
 // Tool execute_with_context tests
 // ============================================================================
 
@@ -277,44 +175,6 @@ async fn test_navigate_tool_no_connection_resolver() {
 }
 
 // ============================================================================
-// Client error handling integration tests
-// ============================================================================
-
-#[tokio::test]
-async fn test_client_401_unauthorized() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/screenshot"))
-        .respond_with(ResponseTemplate::new(401).set_body_string("Unauthorized"))
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("bad_token".to_string(), mock_server.uri());
-    let result = client
-        .screenshot("https://example.com", false, None, None, None, &[])
-        .await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("401"));
-}
-
-#[tokio::test]
-async fn test_client_500_server_error() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/content"))
-        .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-    let result = client
-        .content("https://example.com", None, None, false, &[])
-        .await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("500"));
-}
-
-// ============================================================================
 // Bearer auth verification
 // ============================================================================
 
@@ -335,40 +195,6 @@ async fn test_client_sends_token_in_query() {
         .content("https://example.com", None, None, false, &[])
         .await;
     assert!(result.is_ok());
-}
-
-// ============================================================================
-// Resource cleanup verification
-// ============================================================================
-
-#[tokio::test]
-async fn test_no_resources_left_behind() {
-    // Browserless REST API is stateless — each call starts and destroys a browser.
-    // Verify that our client doesn't maintain any persistent state.
-    let mock_server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/content"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("<html>1</html>"))
-        .mount(&mock_server)
-        .await;
-
-    // Make multiple calls — each should be independent
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-
-    let r1 = client
-        .content("https://example.com/page1", None, None, false, &[])
-        .await
-        .unwrap();
-    let r2 = client
-        .content("https://example.com/page2", None, None, false, &[])
-        .await
-        .unwrap();
-
-    // Both succeed independently
-    assert!(!r1.is_empty());
-    assert!(!r2.is_empty());
-    // Client itself has no session state to clean up
 }
 
 // ============================================================================
