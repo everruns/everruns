@@ -571,7 +571,6 @@ impl ObserverDispatcher {
             return None;
         }
 
-        let _ = core;
         Some(Arc::new(DispatchEvent {
             #[cfg(any(feature = "otel", feature = "braintrust"))]
             core: wants_core.then(|| core.clone()),
