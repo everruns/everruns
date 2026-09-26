@@ -1684,34 +1684,10 @@ mod tests {
         assert_eq!(first, again);
     }
 
-    #[test]
-    fn test_organization_response_fields() {
-        let response = OrganizationResponse {
-            id: "org_00000000000000000000000000000001".to_string(),
-            name: "Test Org".to_string(),
-            default_model_id: None,
-            default_harness_id: Some("harness_01933b5a000070008000000000000602".parse().unwrap()),
-            base_harness_id: Some("harness_01933b5a000070008000000000000601".parse().unwrap()),
-            default_provider_per_service: std::collections::HashMap::new(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            onboarding_completed_at: None,
-        };
-
-        assert_eq!(response.id, "org_00000000000000000000000000000001");
-        assert_eq!(response.name, "Test Org");
-        assert!(response.default_harness_id.is_some());
-        assert!(response.base_harness_id.is_some());
-    }
-
     // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
-
-    #[test]
-    fn test_create_request_empty_name() {
-        let json = r#"{"name": ""}"#;
-        let req: CreateOrganizationRequest = serde_json::from_str(json).unwrap();
-        assert!(req.name.is_empty());
-    }
+    // (OrganizationResponse field echo and empty-name deserialization were
+    // struct-literal/derive checks with no custom logic; the handler tests
+    // above cover the real validation and response paths.)
 
     #[test]
     fn test_update_request_partial() {

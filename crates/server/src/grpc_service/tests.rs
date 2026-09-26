@@ -1151,75 +1151,51 @@ fn test_grpc_server_tls_panics_on_missing_cert_file() {
 // ========================================================================
 
 #[test]
-fn test_sqldb_error_to_status_maps_not_found() {
+fn test_sqldb_error_to_status_maps_each_error_kind() {
     use everruns_platform::session_sqldb::SessionSqlDbError;
-    let err = SessionSqlDbError::DatabaseNotFound("test_db".into());
-    let status = sqldb_error_to_status(err);
-    assert_eq!(status.code(), tonic::Code::NotFound);
-}
-
-#[test]
-fn test_sqldb_error_to_status_maps_already_exists() {
-    use everruns_platform::session_sqldb::SessionSqlDbError;
-    let err = SessionSqlDbError::DatabaseAlreadyExists("test_db".into());
-    let status = sqldb_error_to_status(err);
-    assert_eq!(status.code(), tonic::Code::AlreadyExists);
-}
-
-#[test]
-fn test_sqldb_error_to_status_maps_invalid_name() {
-    use everruns_platform::session_sqldb::SessionSqlDbError;
-    let err = SessionSqlDbError::InvalidDatabaseName("bad!name".into());
-    let status = sqldb_error_to_status(err);
-    assert_eq!(status.code(), tonic::Code::InvalidArgument);
-}
-
-#[test]
-fn test_sqldb_error_to_status_maps_limit_exceeded() {
-    use everruns_platform::session_sqldb::SessionSqlDbError;
-    let err = SessionSqlDbError::LimitExceeded("max 10".into());
-    let status = sqldb_error_to_status(err);
-    assert_eq!(status.code(), tonic::Code::ResourceExhausted);
-}
-
-#[test]
-fn test_sqldb_error_to_status_maps_query_error() {
-    use everruns_platform::session_sqldb::SessionSqlDbError;
-    let err = SessionSqlDbError::QueryError("syntax error".into());
-    let status = sqldb_error_to_status(err);
-    assert_eq!(status.code(), tonic::Code::FailedPrecondition);
-}
-
-#[test]
-fn test_sqldb_error_to_status_maps_timeout() {
-    use everruns_platform::session_sqldb::SessionSqlDbError;
-    let err = SessionSqlDbError::QueryTimeout(30);
-    let status = sqldb_error_to_status(err);
-    assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
-}
-
-#[test]
-fn test_sqldb_error_to_status_maps_authorizer_blocked() {
-    use everruns_platform::session_sqldb::SessionSqlDbError;
-    let err = SessionSqlDbError::AuthorizerBlocked("DROP TABLE".into());
-    let status = sqldb_error_to_status(err);
-    assert_eq!(status.code(), tonic::Code::PermissionDenied);
-}
-
-#[test]
-fn test_sqldb_error_to_status_maps_result_too_large() {
-    use everruns_platform::session_sqldb::SessionSqlDbError;
-    let err = SessionSqlDbError::ResultTooLarge("1MB limit".into());
-    let status = sqldb_error_to_status(err);
-    assert_eq!(status.code(), tonic::Code::FailedPrecondition);
-}
-
-#[test]
-fn test_sqldb_error_to_status_maps_internal() {
-    use everruns_platform::session_sqldb::SessionSqlDbError;
-    let err = SessionSqlDbError::Internal("unexpected".into());
-    let status = sqldb_error_to_status(err);
-    assert_eq!(status.code(), tonic::Code::Internal);
+    let cases = [
+        (
+            SessionSqlDbError::DatabaseNotFound("test_db".into()),
+            tonic::Code::NotFound,
+        ),
+        (
+            SessionSqlDbError::DatabaseAlreadyExists("test_db".into()),
+            tonic::Code::AlreadyExists,
+        ),
+        (
+            SessionSqlDbError::InvalidDatabaseName("bad!name".into()),
+            tonic::Code::InvalidArgument,
+        ),
+        (
+            SessionSqlDbError::LimitExceeded("max 10".into()),
+            tonic::Code::ResourceExhausted,
+        ),
+        (
+            SessionSqlDbError::QueryError("syntax error".into()),
+            tonic::Code::FailedPrecondition,
+        ),
+        (
+            SessionSqlDbError::QueryTimeout(30),
+            tonic::Code::DeadlineExceeded,
+        ),
+        (
+            SessionSqlDbError::AuthorizerBlocked("DROP TABLE".into()),
+            tonic::Code::PermissionDenied,
+        ),
+        (
+            SessionSqlDbError::ResultTooLarge("1MB limit".into()),
+            tonic::Code::FailedPrecondition,
+        ),
+        (
+            SessionSqlDbError::Internal("unexpected".into()),
+            tonic::Code::Internal,
+        ),
+    ];
+    for (err, expected_code) in cases {
+        let err_debug = format!("{err:?}");
+        let status = sqldb_error_to_status(err);
+        assert_eq!(status.code(), expected_code, "for {err_debug}");
+    }
 }
 
 #[test]
