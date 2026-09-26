@@ -4,24 +4,9 @@
 //! Tests the full sync workflow with filesystem operations:
 //! scan, state persistence, and reconciliation logic.
 
-use std::fs;
-
-// Import via the crate's public modules
-// Since the CLI is a binary crate, we test via subprocess for CLI invocation
-// and via direct imports for library-like logic.
-
-/// Test helper: create a temp directory with files
-fn create_test_dir(files: &[(&str, &str)]) -> tempfile::TempDir {
-    let dir = tempfile::tempdir().unwrap();
-    for (path, content) in files {
-        let full_path = dir.path().join(path);
-        if let Some(parent) = full_path.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(full_path, content).unwrap();
-    }
-    dir
-}
+// Since the CLI is a binary crate, CLI-invocation behavior is tested via
+// subprocess here. Logic that lives in library-like modules (e.g. scan_local)
+// is unit-tested in place under crates/cli/src/commands/files/.
 
 #[test]
 fn test_cli_binary_exists() {
@@ -97,39 +82,6 @@ fn test_cli_files_ls_requires_session() {
     assert!(!output.status.success());
 }
 
-#[test]
-fn test_gitignore_respected() {
-    let dir = create_test_dir(&[
-        ("keep.txt", "keep me"),
-        ("build/output.js", "compiled"),
-        (".gitignore", "build/\n"),
-    ]);
-
-    // WalkBuilder needs a .git dir to recognize .gitignore
-    fs::create_dir_all(dir.path().join(".git")).unwrap();
-
-    // Simulate what scan_local does: walk with gitignore support
-    let mut builder = ignore::WalkBuilder::new(dir.path());
-    builder
-        .hidden(false)
-        .git_ignore(true)
-        .git_global(false)
-        .git_exclude(false);
-
-    let mut found_files: Vec<String> = Vec::new();
-    for entry in builder.build() {
-        let entry = entry.unwrap();
-        if entry.path().is_file() {
-            let rel = entry.path().strip_prefix(dir.path()).unwrap();
-            found_files.push(rel.to_string_lossy().replace('\\', "/"));
-        }
-    }
-
-    assert!(found_files.contains(&"keep.txt".to_string()));
-    assert!(found_files.contains(&".gitignore".to_string()));
-    assert!(
-        !found_files.contains(&"build/output.js".to_string()),
-        "build/ should be gitignored, found: {:?}",
-        found_files
-    );
-}
+// test_gitignore_respected moved to crates/cli/src/commands/files/sync_engine.rs
+// as test_scan_local_gitignore_respected, which calls the real scan_local
+// instead of reimplementing its WalkBuilder setup.

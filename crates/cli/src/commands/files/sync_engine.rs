@@ -587,6 +587,39 @@ mod tests {
     }
 
     #[test]
+    fn test_scan_local_gitignore_respected() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("keep.txt"), "keep me").unwrap();
+        fs::create_dir_all(dir.path().join("build")).unwrap();
+        fs::write(dir.path().join("build/output.js"), "compiled").unwrap();
+        fs::write(dir.path().join(".gitignore"), "build/\n").unwrap();
+        // WalkBuilder only honors .gitignore inside a git repo.
+        fs::create_dir_all(dir.path().join(".git")).unwrap();
+
+        let files = scan_local(dir.path(), false, &[]).unwrap();
+        assert!(files.contains_key("keep.txt"));
+        assert!(files.contains_key(".gitignore"));
+        assert!(
+            !files.contains_key("build/output.js"),
+            "build/ should be gitignored, found: {:?}",
+            files.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_scan_local_no_gitignore_flag_disables_gitignore() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("build")).unwrap();
+        fs::write(dir.path().join("build/output.js"), "compiled").unwrap();
+        fs::write(dir.path().join(".gitignore"), "build/\n").unwrap();
+        fs::create_dir_all(dir.path().join(".git")).unwrap();
+
+        // no_gitignore=true must bypass .gitignore rules.
+        let files = scan_local(dir.path(), true, &[]).unwrap();
+        assert!(files.contains_key("build/output.js"));
+    }
+
+    #[test]
     fn test_scan_local_legacy_syncignore_fallback() {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("keep.txt"), "keep").unwrap();
