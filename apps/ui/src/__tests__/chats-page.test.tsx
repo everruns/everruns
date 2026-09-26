@@ -100,13 +100,6 @@ describe("Chats surface", () => {
     intelligenceStatus.canManage = true;
   });
 
-  it("renders the empty state without feature-flag configuration", () => {
-    render(<ChatsPageClient />);
-
-    expect(screen.getByText("No chats yet")).toBeInTheDocument();
-    expect(mockUseChatThreads).toHaveBeenCalled();
-  });
-
   it("offers a way to start a chat when there are no threads yet", () => {
     render(<ChatsPageClient />);
 

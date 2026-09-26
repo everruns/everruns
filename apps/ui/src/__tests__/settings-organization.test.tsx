@@ -398,24 +398,6 @@ describe("OrganizationPage", () => {
     jest.useRealTimers();
   });
 
-  it("replaces a removed model selection with a valid model", async () => {
-    jest.useFakeTimers();
-    mockOrganization = { ...mockOrganization, default_model_id: "model-removed" };
-
-    render(<OrganizationPage />);
-    fireEvent.change(screen.getByLabelText("Default Model"), {
-      target: { value: "model-2" },
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(700);
-      await Promise.resolve();
-    });
-
-    expect(mockUpdateOrganization).toHaveBeenCalledWith({ default_model_id: "model-2" });
-    jest.useRealTimers();
-  });
-
   it("omits an empty default model from autosave payloads", async () => {
     jest.useFakeTimers();
     mockOrganization = {

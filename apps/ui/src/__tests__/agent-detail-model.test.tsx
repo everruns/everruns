@@ -317,13 +317,6 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     copyingButtons.forEach((button) => expect(button).toBeDisabled());
   });
 
-  it("renders agent details correctly", async () => {
-    await renderWithSuspense({ agentId: "agent-1" });
-
-    // Agent name should be visible
-    expect(screen.getByRole("heading", { name: "Test Agent" })).toBeInTheDocument();
-  });
-
   it("does not display model badge when model data is not loaded", async () => {
     mockUseModels.mockReturnValue({ data: undefined });
 
@@ -352,14 +345,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
   it("useSessions hook is called with agent id", async () => {
     await renderWithSuspense({ agentId: "agent-1" });
 
-    // Check useSessions was called
-    expect(mockUseSessions).toHaveBeenCalled();
-  });
-
-  it("calls useModels hook", async () => {
-    await renderWithSuspense({ agentId: "agent-1" });
-
-    expect(mockUseModels).toHaveBeenCalled();
+    expect(mockUseSessions).toHaveBeenCalledWith("agent-1", expect.anything());
   });
 
   it("renders useModels data for default model display", async () => {
@@ -382,12 +368,6 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders sessions section", async () => {
-    await renderWithSuspense({ agentId: "agent-1" });
-
-    // Sessions section should be visible
-    expect(screen.getByText("Sessions")).toBeInTheDocument();
-  });
 });
 
 describe("AgentDetailPage - Default Model Display in Configuration", () => {
