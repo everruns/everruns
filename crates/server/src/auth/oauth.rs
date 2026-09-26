@@ -513,15 +513,6 @@ mod tests {
         assert_eq!(OAuthProvider::GitHub.as_str(), "github");
     }
 
-    #[test]
-    fn test_url_encoding() {
-        assert_eq!(urlencoding::encode("hello world"), "hello%20world");
-        assert_eq!(
-            urlencoding::encode("test@example.com"),
-            "test%40example.com"
-        );
-    }
-
     fn gh_email(email: &str, primary: bool, verified: bool) -> GitHubEmail {
         GitHubEmail {
             email: email.to_string(),

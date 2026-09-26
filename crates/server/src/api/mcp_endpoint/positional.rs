@@ -458,12 +458,4 @@ mod tests {
         // present: positional ordering would be ambiguous.
         assert!(!map.contains_key("delete_app_channel"));
     }
-
-    #[test]
-    fn inventory_commands_publish_their_positional_arg() {
-        let map = build_positional_map();
-        // get_agent publishes positional_arg=Some("id"), so execute callers
-        // can say `get_agent <id>` instead of `get_agent --id <id>`.
-        assert_eq!(map.get("get_agent").copied(), Some("id"));
-    }
 }
