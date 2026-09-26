@@ -1,6 +1,6 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ReactNode } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
 import SchedulesPage from "@/app/(main)/durable/schedules/page";
 import type { DurableSchedule, SchedulesResponse } from "@/lib/api/types";
 
@@ -53,7 +53,7 @@ const mockUseTriggerSchedule = jest.fn();
 const mockUseDeleteSchedule = jest.fn();
 
 jest.mock("@/hooks/use-durable", () => ({
-  useSchedules: () => mockUseSchedules(),
+  useSchedules: (params?: unknown) => mockUseSchedules(params),
   useCreateSchedule: () => mockUseCreateSchedule(),
   usePauseSchedule: () => mockUsePauseSchedule(),
   useResumeSchedule: () => mockUseResumeSchedule(),
@@ -67,6 +67,57 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
   usePathname: () => "/durable/schedules",
 }));
+
+// Render the design-system Select as a native select so the test can pick a
+// status option without driving the popup — same shape used by other suites.
+jest.mock("@/components/ui/select", () => {
+  function collectOptions(node: ReactNode): ReactNode[] {
+    const options: ReactNode[] = [];
+    Children.forEach(node, (child) => {
+      if (!isValidElement(child)) return;
+      if ((child.type as { isSelectItem?: boolean }).isSelectItem) {
+        const props = child.props as { value: string; children: ReactNode };
+        options.push(
+          <option key={props.value} value={props.value}>
+            {props.children}
+          </option>,
+        );
+        return;
+      }
+      options.push(...collectOptions((child.props as { children?: ReactNode }).children));
+    });
+    return options;
+  }
+
+  function Select({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value: string;
+    onValueChange: (value: string) => void;
+    children: ReactNode;
+  }) {
+    return (
+      <select aria-label="Status" value={value} onChange={(e) => onValueChange(e.target.value)}>
+        {collectOptions(children)}
+      </select>
+    );
+  }
+
+  function SelectItem(_: { value: string; children: ReactNode }) {
+    return null;
+  }
+  SelectItem.isSelectItem = true;
+
+  return {
+    Select,
+    SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectItem,
+    SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectValue: () => null,
+  };
+});
 
 // Mock window.confirm for delete/trigger actions
 const mockConfirm = jest.fn();
@@ -232,14 +283,14 @@ describe("SchedulesPage", () => {
     it("shows Active badge for enabled schedules", () => {
       render(<SchedulesPage />, { wrapper });
 
-      const activeBadge = screen.getByText("Active");
+      const activeBadge = within(screen.getByRole("table")).getByText("Active");
       expect(activeBadge).toBeInTheDocument();
     });
 
     it("shows Paused badge for disabled schedules", () => {
       render(<SchedulesPage />, { wrapper });
 
-      const pausedBadge = screen.getByText("Paused");
+      const pausedBadge = within(screen.getByRole("table")).getByText("Paused");
       expect(pausedBadge).toBeInTheDocument();
     });
 
@@ -282,6 +333,32 @@ describe("SchedulesPage", () => {
       // Look for the select trigger
       const statusFilter = screen.getByRole("combobox");
       expect(statusFilter).toBeInTheDocument();
+    });
+
+    it("requests only enabled schedules when the Active status filter is chosen", () => {
+      render(<SchedulesPage />, { wrapper });
+
+      fireEvent.change(screen.getByRole("combobox", { name: "Status" }), {
+        target: { value: "active" },
+      });
+
+      expect(mockUseSchedules).toHaveBeenLastCalledWith({ enabled: true });
+    });
+
+    it("requests only paused schedules when the Paused status filter is chosen", () => {
+      render(<SchedulesPage />, { wrapper });
+
+      fireEvent.change(screen.getByRole("combobox", { name: "Status" }), {
+        target: { value: "paused" },
+      });
+
+      expect(mockUseSchedules).toHaveBeenLastCalledWith({ enabled: false });
+    });
+
+    it("requests all schedules (no enabled filter) by default", () => {
+      render(<SchedulesPage />, { wrapper });
+
+      expect(mockUseSchedules).toHaveBeenLastCalledWith({ enabled: undefined });
     });
   });
 
