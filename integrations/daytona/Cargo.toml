@@ -39,8 +39,14 @@ tracing.workspace = true
 
 [features]
 daytona-live-tests = []
+# Test-only: lets tests point DaytonaApiCallTool at a mock server via
+# ToolContext. Never enabled in shipped builds, so no runtime path can
+# redirect the API key elsewhere.
+test-util = []
 
 [dev-dependencies]
+# Enables `test-util` for this crate's own integration tests.
+everruns-integrations-daytona = { path = ".", features = ["test-util"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
 urlencoding = "2"
