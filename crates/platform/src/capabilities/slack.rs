@@ -198,6 +198,32 @@ const CHANNEL_SCHEMA_DESCRIPTION: &str = "Slack channel ID the message is in (e.
 const TIMESTAMP_SCHEMA_DESCRIPTION: &str =
     "The Slack message's `ts` value (e.g. \"1728394857.123456\"). Not a date.";
 
+/// Backend-authored narration shared by this capability's tools.
+///
+/// `crates/core/src/tool_narration.rs` is on the file-size allowlist
+/// (`scripts/lib/file-size-allowlist.txt`) and may not grow, so these four
+/// simple, English-only phrases live here rather than joining its
+/// `narrate_*` helpers (see `crates/platform/tests/capability_boundary.rs`,
+/// which requires every non-generic hosted tool to carry backend narration).
+fn narrate_action(
+    verb_started: &str,
+    verb_completed: &str,
+    verb_failed: &str,
+    target: Option<String>,
+    phase: everruns_core::tool_narration::ToolNarrationPhase,
+) -> String {
+    use everruns_core::tool_narration::ToolNarrationPhase;
+    let verb = match phase {
+        ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => verb_started,
+        ToolNarrationPhase::Completed => verb_completed,
+        ToolNarrationPhase::Failed => verb_failed,
+    };
+    match target {
+        Some(target) if !target.is_empty() => format!("{verb}: {target}"),
+        _ => verb.to_string(),
+    }
+}
+
 // ============================================================================
 // slack_add_reaction
 // ============================================================================
@@ -206,6 +232,23 @@ pub struct SlackAddReactionTool;
 
 #[async_trait]
 impl Tool for SlackAddReactionTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_provider::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let name = optional_str(&tool_call.arguments, "name");
+        Some(narrate_action(
+            "Adding reaction",
+            "Added reaction",
+            "Failed to add reaction",
+            name,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "slack_add_reaction"
     }
@@ -293,6 +336,22 @@ pub struct SlackUpdateMessageTool;
 
 #[async_trait]
 impl Tool for SlackUpdateMessageTool {
+    fn narrate(
+        &self,
+        _tool_call: &everruns_provider::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(narrate_action(
+            "Updating Slack message",
+            "Updated Slack message",
+            "Failed to update Slack message",
+            None,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "slack_update_message"
     }
@@ -378,6 +437,23 @@ pub struct SlackLookupUserTool;
 
 #[async_trait]
 impl Tool for SlackLookupUserTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_provider::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let user_id = optional_str(&tool_call.arguments, "user_id");
+        Some(narrate_action(
+            "Looking up Slack user",
+            "Looked up Slack user",
+            "Failed to look up Slack user",
+            user_id,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "slack_lookup_user"
     }
@@ -448,6 +524,23 @@ pub struct SlackUploadFileTool;
 
 #[async_trait]
 impl Tool for SlackUploadFileTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_provider::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let filename = optional_str(&tool_call.arguments, "filename");
+        Some(narrate_action(
+            "Uploading file to Slack",
+            "Uploaded file to Slack",
+            "Failed to upload file to Slack",
+            filename,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "slack_upload_file"
     }

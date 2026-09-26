@@ -912,11 +912,16 @@ jobs:
           # guard the entries themselves.
           cargo test -p everruns-integrations-catalog --all-features
           # everruns-platform is in CI, but by named target: these four files
-          # were never added to the list and so never ran. capability_boundary
-          # is deliberately absent — it fails against current code and is parked
-          # in the enumeration allowlist rather than wired in red.
+          # were never added to the list and so never ran.
           cargo test -p everruns-platform --test background_execution_test \
             --test citation_pipeline_test --test prompt_budget --test subagent_test
+          # capability_boundary's dependency/narration invariants only hold
+          # with `environment-capabilities` on: every hosted binary
+          # (crates/server, crates/worker) enables it, and some hosted
+          # capabilities (memory, data_knowledge, platform) declare a hard
+          # dependency on the filesystem integration it links.
+          cargo test -p everruns-platform --features environment-capabilities \
+            --test capability_boundary
           # Test-support (EVE-875): in-memory loop, test doubles, fixture
           # capabilities, and llmsim-driven suites that moved out of core.
           cargo test -p everruns-test-support --all-features
