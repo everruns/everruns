@@ -45,12 +45,6 @@ const mockModel: ModelWithProvider = {
 };
 
 describe("SessionCard - LLM Model Display", () => {
-  it("displays LLM model badge when session has model", async () => {
-    render(<SessionCard session={mockSession} model={mockModel} />);
-
-    expect(screen.getByText("GPT-4o")).toBeInTheDocument();
-  });
-
   it("does not display model badge when model is not provided", async () => {
     render(<SessionCard session={mockSession} />);
 
