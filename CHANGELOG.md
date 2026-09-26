@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Agent app framework over Engine** - An experimental framework for building agent apps directly on the Engine ([#3802](https://github.com/everruns/everruns/pull/3802)), with engine-level event listeners ([#3804](https://github.com/everruns/everruns/pull/3804)) and pluggable observability integrations ([#3806](https://github.com/everruns/everruns/pull/3806)).
 - **Server-side context compaction** - Anthropic conversations compact context server-side, keeping long agent runs within budget ([#3831](https://github.com/everruns/everruns/pull/3831)).
 - **Ask User through tasks** - The Ask User capability surfaces through the tasks channel, extending it beyond Platform Chat and MCP ([#3828](https://github.com/everruns/everruns/pull/3828)).
+- **Server hardening** - Platform Chat question-answers and tool-results now require the session owner ([#3842](https://github.com/everruns/everruns/pull/3842)), unrequested reasoning summaries stay hidden from responses ([#3840](https://github.com/everruns/everruns/pull/3840)), feature-flag revocations take effect immediately ([#3820](https://github.com/everruns/everruns/pull/3820)), retained observer event memory is bounded ([#3837](https://github.com/everruns/everruns/pull/3837)), and native endpoint sessions are reused rather than rebuilt ([#3814](https://github.com/everruns/everruns/pull/3814)).
 
 ### What's Changed
 
