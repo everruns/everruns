@@ -367,7 +367,6 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
       screen.getByText("No sessions yet. Start a new session to begin chatting."),
     ).toBeInTheDocument();
   });
-
 });
 
 describe("AgentDetailPage - Default Model Display in Configuration", () => {

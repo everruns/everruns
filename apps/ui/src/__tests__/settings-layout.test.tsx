@@ -221,5 +221,4 @@ describe("SettingsLayout", () => {
     expect(membersLink).toHaveClass("border-transparent");
     expect(apiKeysLink).toHaveClass("border-transparent");
   });
-
 });
