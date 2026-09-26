@@ -2729,6 +2729,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "everruns-integrations-daytona",
  "everruns-platform",
  "everruns-provider",
  "inventory",

@@ -85,7 +85,6 @@ integrations/bashkit/src/lib.rs
 integrations/browserless/src/tools.rs
 integrations/daytona/src/client.rs
 integrations/daytona/src/tools.rs
-integrations/daytona/tests/tool_integration.rs
 integrations/filesystem/src/lib.rs
 integrations/lua/src/lib.rs
 integrations/openai-image/src/image_capability.rs
