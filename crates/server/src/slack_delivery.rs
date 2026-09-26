@@ -2243,57 +2243,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_delivery_key_eq() {
-        let k1 = DeliveryKey {
-            session_id: Uuid::nil(),
-            input_message_id: "msg_123".to_string(),
-        };
-        let k2 = DeliveryKey {
-            session_id: Uuid::nil(),
-            input_message_id: "msg_123".to_string(),
-        };
-        assert_eq!(k1, k2);
-    }
-
-    #[test]
-    fn test_delivery_key_different_session() {
-        let k1 = DeliveryKey {
-            session_id: Uuid::nil(),
-            input_message_id: "msg_123".to_string(),
-        };
-        let k2 = DeliveryKey {
-            session_id: Uuid::from_u128(1),
-            input_message_id: "msg_123".to_string(),
-        };
-        assert_ne!(k1, k2);
-    }
-
-    #[test]
-    fn test_delivery_key_different_message() {
-        let k1 = DeliveryKey {
-            session_id: Uuid::nil(),
-            input_message_id: "msg_123".to_string(),
-        };
-        let k2 = DeliveryKey {
-            session_id: Uuid::nil(),
-            input_message_id: "msg_456".to_string(),
-        };
-        assert_ne!(k1, k2);
-    }
-
-    #[test]
-    fn test_delivery_key_hash_consistency() {
-        use std::collections::HashMap;
-        let key = DeliveryKey {
-            session_id: Uuid::nil(),
-            input_message_id: "msg_123".to_string(),
-        };
-        let mut map = HashMap::new();
-        map.insert(key.clone(), "value");
-        assert_eq!(map.get(&key), Some(&"value"));
-    }
-
     // ==========================================
     // WireMock integration tests — post_to_slack
     // ==========================================

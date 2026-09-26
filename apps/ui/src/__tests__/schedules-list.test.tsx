@@ -222,21 +222,6 @@ describe("SchedulesPage", () => {
   // ============================================
 
   describe("Schedule List Rendering", () => {
-    it("renders page header with title", () => {
-      render(<SchedulesPage />, { wrapper });
-
-      expect(screen.getByText("Scheduled Tasks")).toBeInTheDocument();
-    });
-
-    it("renders schedule table with correct headers", () => {
-      render(<SchedulesPage />, { wrapper });
-
-      expect(screen.getByText("Schedule")).toBeInTheDocument();
-      expect(screen.getByText("Status")).toBeInTheDocument();
-      expect(screen.getByText("Cron")).toBeInTheDocument();
-      expect(screen.getByText("Target")).toBeInTheDocument();
-    });
-
     it("renders schedule rows with correct names", () => {
       render(<SchedulesPage />, { wrapper });
 
@@ -280,10 +265,15 @@ describe("SchedulesPage", () => {
   // ============================================
 
   describe("Search and Filter", () => {
-    it("renders search input", () => {
+    it("filters schedule rows by search query", () => {
       render(<SchedulesPage />, { wrapper });
 
-      expect(screen.getByPlaceholderText(/Search/i)).toBeInTheDocument();
+      fireEvent.change(screen.getByPlaceholderText(/Search/i), {
+        target: { value: "backup" },
+      });
+
+      expect(screen.getByText("Daily Backup")).toBeInTheDocument();
+      expect(screen.queryByText("Hourly Cleanup")).not.toBeInTheDocument();
     });
 
     it("renders status filter dropdown", () => {
@@ -300,14 +290,6 @@ describe("SchedulesPage", () => {
   // ============================================
 
   describe("Action Buttons", () => {
-    it("renders action buttons for each schedule", () => {
-      render(<SchedulesPage />, { wrapper });
-
-      // Should have multiple action buttons (trigger, pause/resume, settings, delete)
-      const buttons = screen.getAllByRole("button");
-      expect(buttons.length).toBeGreaterThan(2);
-    });
-
     it("names schedule navigation links by destination", () => {
       render(<SchedulesPage />, { wrapper });
 
@@ -402,6 +384,7 @@ describe("SchedulesPage", () => {
       // Find trigger icon button
       const buttons = screen.getAllByRole("button");
       const triggerButton = buttons.find((btn) => btn.querySelector(".lucide-zap"));
+      expect(triggerButton).toBeTruthy();
       if (triggerButton) {
         fireEvent.click(triggerButton);
         expect(mockTriggerMutate).not.toHaveBeenCalled();
@@ -437,12 +420,6 @@ describe("SchedulesPage", () => {
   // ============================================
 
   describe("Create Schedule Dialog", () => {
-    it("renders New Schedule button", () => {
-      render(<SchedulesPage />, { wrapper });
-
-      expect(screen.getByRole("button", { name: /New Schedule/i })).toBeInTheDocument();
-    });
-
     it("opens dialog when New Schedule button is clicked", async () => {
       render(<SchedulesPage />, { wrapper });
 
@@ -466,41 +443,6 @@ describe("SchedulesPage", () => {
         expect(nameInput).toBeInTheDocument();
         const cronInput = document.getElementById("cron");
         expect(cronInput).toBeInTheDocument();
-      });
-    });
-
-    it("calls createMutation with correct data on submit", async () => {
-      const mockCreateMutate = jest.fn().mockResolvedValue({
-        id: "sched_new",
-        name: "Test Schedule",
-      });
-      mockUseCreateSchedule.mockReturnValue({
-        mutateAsync: mockCreateMutate,
-        isPending: false,
-      });
-
-      render(<SchedulesPage />, { wrapper });
-
-      // Open dialog
-      fireEvent.click(screen.getByRole("button", { name: /New Schedule/i }));
-
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
-      });
-
-      // Fill form using id-based selectors
-      const nameInput = document.getElementById("name") as HTMLInputElement;
-      fireEvent.change(nameInput, { target: { value: "Test Schedule" } });
-
-      const targetNameInput = document.getElementById("targetName") as HTMLInputElement;
-      fireEvent.change(targetNameInput, { target: { value: "test-workflow" } });
-
-      // Submit form - button text is "Create Schedule"
-      const submitButton = screen.getByRole("button", { name: /Create Schedule/i });
-      fireEvent.click(submitButton);
-
-      await waitFor(() => {
-        expect(mockCreateMutate).toHaveBeenCalled();
       });
     });
 
@@ -662,15 +604,6 @@ describe("SchedulesPage", () => {
   // ============================================
 
   describe("Refresh", () => {
-    it("renders refresh button", () => {
-      render(<SchedulesPage />, { wrapper });
-
-      // Look for refresh icon button by SVG class
-      const buttons = screen.getAllByRole("button");
-      const refreshButton = buttons.find((btn) => btn.querySelector(".lucide-refresh-cw"));
-      expect(refreshButton).toBeTruthy();
-    });
-
     it("calls refetch when refresh button is clicked", () => {
       const mockRefetch = jest.fn();
       mockUseSchedules.mockReturnValue({

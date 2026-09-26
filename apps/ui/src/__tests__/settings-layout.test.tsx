@@ -142,28 +142,24 @@ describe("SettingsLayout", () => {
     }
   });
 
-  it("highlights the active navigation item for providers", () => {
-    mockPathname.mockReturnValue("/settings/providers");
+  it.each([
+    ["/settings/providers", "LLM Providers"],
+    ["/settings/personal-access-tokens", "Personal access tokens"],
+    ["/settings/members", "Members"],
+    ["/settings/organization", "Organization"],
+    ["/settings/profile", "Profile"],
+    ["/settings/connections", "Connections"],
+  ])("highlights the active navigation item for %s", (pathname, linkName) => {
+    mockPathname.mockReturnValue(pathname);
     render(
       <SettingsLayout>
         <div>Test Content</div>
       </SettingsLayout>,
     );
 
-    const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
-    expect(providersLink).toHaveClass("border-accent");
-  });
-
-  it("highlights the active navigation item for personal-access-tokens", () => {
-    mockPathname.mockReturnValue("/settings/personal-access-tokens");
-    render(
-      <SettingsLayout>
-        <div>Test Content</div>
-      </SettingsLayout>,
+    expect(screen.getByRole("link", { name: new RegExp(linkName, "i") })).toHaveClass(
+      "border-accent",
     );
-
-    const apiKeysLink = screen.getByRole("link", { name: /Personal access tokens/i });
-    expect(apiKeysLink).toHaveClass("border-accent");
   });
 
   it("renders children content", () => {
@@ -175,18 +171,6 @@ describe("SettingsLayout", () => {
 
     expect(screen.getByTestId("child-content")).toBeInTheDocument();
     expect(screen.getByText("Test Child Content")).toBeInTheDocument();
-  });
-
-  it("highlights the active navigation item for members", () => {
-    mockPathname.mockReturnValue("/settings/members");
-    render(
-      <SettingsLayout>
-        <div>Test Content</div>
-      </SettingsLayout>,
-    );
-
-    const membersLink = screen.getByRole("link", { name: /Members/i });
-    expect(membersLink).toHaveClass("border-accent");
   });
 
   it("groups items under correct sections", () => {
@@ -236,41 +220,5 @@ describe("SettingsLayout", () => {
     expect(organizationLink).toHaveClass("border-transparent");
     expect(membersLink).toHaveClass("border-transparent");
     expect(apiKeysLink).toHaveClass("border-transparent");
-  });
-
-  it("highlights active item for Organization page", () => {
-    mockPathname.mockReturnValue("/settings/organization");
-    render(
-      <SettingsLayout>
-        <div>Test Content</div>
-      </SettingsLayout>,
-    );
-
-    const organizationLink = screen.getByRole("link", { name: /Organization/i });
-    expect(organizationLink).toHaveClass("border-accent");
-  });
-
-  it("highlights active item for Profile page", () => {
-    mockPathname.mockReturnValue("/settings/profile");
-    render(
-      <SettingsLayout>
-        <div>Test Content</div>
-      </SettingsLayout>,
-    );
-
-    const profileLink = screen.getByRole("link", { name: /Profile/i });
-    expect(profileLink).toHaveClass("border-accent");
-  });
-
-  it("highlights active item for Connections page", () => {
-    mockPathname.mockReturnValue("/settings/connections");
-    render(
-      <SettingsLayout>
-        <div>Test Content</div>
-      </SettingsLayout>,
-    );
-
-    const connectionsLink = screen.getByRole("link", { name: /Connections/i });
-    expect(connectionsLink).toHaveClass("border-accent");
   });
 });

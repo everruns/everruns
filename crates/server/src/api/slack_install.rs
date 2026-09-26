@@ -239,6 +239,25 @@ async fn begin_install(
             .into_response(StatusCode::BAD_REQUEST));
     }
 
+    // THREAT[TM-DOS-042]: app creation spends a deployment-wide Slack
+    // credential and cannot be rolled back atomically with our database write.
+    // Serialize it in PostgreSQL across server instances, then re-read under
+    // the lock so concurrent requests reuse the winner instead of creating
+    // orphaned apps. The guard stays live through persistence.
+    let _install_lock = state
+        .slack
+        .db
+        .lock_slack_install(endpoint.internal_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "Failed to lock Slack app installation");
+            ErrorResponse::new("Internal server error")
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+    let (app, endpoint) =
+        super::slack_events::resolve_slack_channel(&state.slack, SlackTarget::Endpoint(channel_id))
+            .await?;
+
     let mut config = parse_config(&endpoint.channel_config);
 
     // Reuse the app the endpoint already has rather than creating a second one
@@ -554,6 +573,7 @@ fn urlencoding_encode(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::StorageBackend;
     fn resolved_org(role: everruns_core::OrgRole) -> ResolvedOrg {
         ResolvedOrg {
             org_id: 41,
@@ -777,5 +797,34 @@ mod tests {
         let (status, _) =
             provisioning_error_response(SlackProvisioningError::Rejected("ratelimited".into()));
         assert_eq!(status, StatusCode::BAD_GATEWAY);
+    }
+
+    #[tokio::test]
+    async fn concurrent_installs_for_one_endpoint_are_serialized() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let endpoint_id = uuid::Uuid::now_v7();
+        let first = db
+            .lock_slack_install(endpoint_id)
+            .await
+            .expect("first lock");
+
+        let waiting_db = db.clone();
+        let waiting = tokio::spawn(async move {
+            let _guard = waiting_db
+                .lock_slack_install(endpoint_id)
+                .await
+                .expect("second lock");
+        });
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(20), waiting)
+                .await
+                .is_err(),
+            "a concurrent install must wait for the endpoint lock"
+        );
+
+        drop(first);
+        db.lock_slack_install(endpoint_id)
+            .await
+            .expect("lock released when guard drops");
     }
 }

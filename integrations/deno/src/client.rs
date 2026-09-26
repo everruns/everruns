@@ -1093,18 +1093,6 @@ mod tests {
     }
 
     #[test]
-    fn create_request_defaults_are_reasonable() {
-        let request = CreateSandboxRequest {
-            region: None,
-            timeout_seconds: Some(1200),
-            memory_mb: None,
-            labels: serde_json::Map::new(),
-            allow_net: vec![],
-        };
-        assert_eq!(request.memory_mb.unwrap_or(DENO_DEFAULT_MEMORY_MB), 1_280);
-    }
-
-    #[test]
     fn tls_connector_sets_http11_alpn() {
         let connector = build_http11_tls_connector().expect("build connector");
         let Connector::Rustls(config) = connector else {

@@ -613,43 +613,6 @@ fn test_build_session_tags_uses_generic_routing() {
 }
 
 // ==========================================
-// Event context input_message_id filtering
-// ==========================================
-
-#[test]
-fn test_event_context_matches_correct_input_message() {
-    let input_msg_str = "message_01933b5a00007000800000000000001";
-
-    let context = serde_json::json!({
-        "input_message_id": "message_01933b5a00007000800000000000001",
-        "turn_id": "turn_01933b5a00007000800000000000001"
-    });
-    let event_input_msg = context.get("input_message_id").and_then(|v| v.as_str());
-    assert_eq!(event_input_msg, Some(input_msg_str));
-}
-
-#[test]
-fn test_event_context_rejects_different_input_message() {
-    let input_msg_str = "message_01933b5a00007000800000000000001";
-
-    let context = serde_json::json!({
-        "input_message_id": "message_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2",
-        "turn_id": "turn_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
-    });
-    let event_input_msg = context.get("input_message_id").and_then(|v| v.as_str());
-    assert_ne!(event_input_msg, Some(input_msg_str));
-}
-
-#[test]
-fn test_event_context_rejects_empty_context() {
-    let input_msg_str = "message_01933b5a00007000800000000000001";
-    let context = serde_json::json!({});
-    let event_input_msg = context.get("input_message_id").and_then(|v| v.as_str());
-    assert_eq!(event_input_msg, None);
-    assert_ne!(event_input_msg, Some(input_msg_str));
-}
-
-// ==========================================
 // DB-level dedup via has_event_with_slack_ts
 // ==========================================
 

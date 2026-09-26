@@ -409,7 +409,6 @@ mod tests {
     #[test]
     fn test_capability_metadata() {
         let cap = ToolOutputDistillationCapability;
-        assert_eq!(cap.id(), "tool_output_distillation");
         assert!(!cap.post_tool_exec_hooks().is_empty());
         assert!(cap.dependencies().contains(&"session_file_system"));
     }

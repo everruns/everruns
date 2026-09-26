@@ -20231,7 +20231,7 @@ export interface components {
       draining: number;
       /** @description Workers in `stopped` state, neither running nor draining. */
       stopped: number;
-      /** @description Sum of `max_concurrency` across all `active` + `draining` workers. */
+      /** @description Sum of `max_concurrency` across `active` workers only. */
       total_capacity: number;
       /** @description Total tasks currently in flight across all workers. */
       total_load: number;

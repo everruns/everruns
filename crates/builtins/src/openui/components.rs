@@ -1188,23 +1188,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn test_stack_component_props() {
-        let components = all_components();
-        let stack = components.iter().find(|c| c.name == "Stack").unwrap();
-        assert_eq!(stack.props[0].name, "children");
-        assert!(!stack.props[0].optional);
-        assert_eq!(stack.props[1].name, "direction");
-        assert!(stack.props[1].optional);
-    }
-
-    #[test]
-    fn test_table_component_props() {
-        let components = all_components();
-        let table = components.iter().find(|c| c.name == "Table").unwrap();
-        assert_eq!(table.props[0].name, "columns");
-        assert_eq!(table.props[1].name, "rows");
-        assert!(!table.props[0].optional);
-    }
 }

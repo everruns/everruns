@@ -236,18 +236,4 @@ pub async fn batch_set_secrets(
     ))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
-
-    #[test]
-    fn test_batch_set_secrets_request_deserialization() {
-        let json = r#"{"secrets":{"KEY1":"value1","KEY2":"value2"}}"#;
-        let req: BatchSetSecretsRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.secrets.len(), 2);
-        assert_eq!(req.secrets["KEY1"], "value1");
-        assert_eq!(req.secrets["KEY2"], "value2");
-    }
-}
+// Trivial derive-only serde round-trips removed; covered by the derive + handler tests.

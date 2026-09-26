@@ -270,13 +270,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_grpc_status_to_sqldb_error_unmapped_code_falls_to_internal() {
-        let status = tonic::Status::unimplemented("not implemented");
-        let err = grpc_status_to_sqldb_error(status);
-        assert!(matches!(err, SessionSqlDbError::Internal(_)));
-    }
-
-    #[test]
     fn command_db_info_decodes_the_command_json_shape() {
         // Pins this against `DatabaseInfoResponse` in
         // `crates/server/src/api/session_databases.rs`: RFC 3339 strings, not
@@ -338,58 +331,73 @@ mod tests {
     }
 
     #[test]
-    fn test_grpc_status_to_sqldb_error_not_found() {
-        let status = tonic::Status::not_found("db not found");
-        let err = grpc_status_to_sqldb_error(status);
-        assert!(matches!(err, SessionSqlDbError::DatabaseNotFound(_)));
-    }
-
-    #[test]
-    fn test_grpc_status_to_sqldb_error_already_exists() {
-        let status = tonic::Status::already_exists("db exists");
-        let err = grpc_status_to_sqldb_error(status);
-        assert!(matches!(err, SessionSqlDbError::DatabaseAlreadyExists(_)));
-    }
-
-    #[test]
-    fn test_grpc_status_to_sqldb_error_invalid_argument() {
-        let status = tonic::Status::invalid_argument("bad name");
-        let err = grpc_status_to_sqldb_error(status);
-        assert!(matches!(err, SessionSqlDbError::InvalidDatabaseName(_)));
-    }
-
-    #[test]
-    fn test_grpc_status_to_sqldb_error_resource_exhausted() {
-        let status = tonic::Status::resource_exhausted("too many");
-        let err = grpc_status_to_sqldb_error(status);
-        assert!(matches!(err, SessionSqlDbError::LimitExceeded(_)));
-    }
-
-    #[test]
-    fn test_grpc_status_to_sqldb_error_deadline_exceeded() {
-        let status = tonic::Status::deadline_exceeded("timeout");
-        let err = grpc_status_to_sqldb_error(status);
-        assert!(matches!(err, SessionSqlDbError::QueryTimeout(_)));
-    }
-
-    #[test]
-    fn test_grpc_status_to_sqldb_error_permission_denied() {
-        let status = tonic::Status::permission_denied("blocked");
-        let err = grpc_status_to_sqldb_error(status);
-        assert!(matches!(err, SessionSqlDbError::AuthorizerBlocked(_)));
-    }
-
-    #[test]
-    fn test_grpc_status_to_sqldb_error_failed_precondition() {
-        let status = tonic::Status::failed_precondition("syntax error");
-        let err = grpc_status_to_sqldb_error(status);
-        assert!(matches!(err, SessionSqlDbError::QueryError(_)));
-    }
-
-    #[test]
-    fn test_grpc_status_to_sqldb_error_internal() {
-        let status = tonic::Status::internal("unexpected");
-        let err = grpc_status_to_sqldb_error(status);
-        assert!(matches!(err, SessionSqlDbError::Internal(_)));
+    fn grpc_status_maps_to_the_matching_sqldb_error() {
+        for (code, matches) in [
+            (
+                tonic::Code::NotFound,
+                matches!(
+                    grpc_status_to_sqldb_error(tonic::Status::not_found("db not found")),
+                    SessionSqlDbError::DatabaseNotFound(_)
+                ),
+            ),
+            (
+                tonic::Code::AlreadyExists,
+                matches!(
+                    grpc_status_to_sqldb_error(tonic::Status::already_exists("db exists")),
+                    SessionSqlDbError::DatabaseAlreadyExists(_)
+                ),
+            ),
+            (
+                tonic::Code::InvalidArgument,
+                matches!(
+                    grpc_status_to_sqldb_error(tonic::Status::invalid_argument("bad name")),
+                    SessionSqlDbError::InvalidDatabaseName(_)
+                ),
+            ),
+            (
+                tonic::Code::ResourceExhausted,
+                matches!(
+                    grpc_status_to_sqldb_error(tonic::Status::resource_exhausted("too many")),
+                    SessionSqlDbError::LimitExceeded(_)
+                ),
+            ),
+            (
+                tonic::Code::DeadlineExceeded,
+                matches!(
+                    grpc_status_to_sqldb_error(tonic::Status::deadline_exceeded("timeout")),
+                    SessionSqlDbError::QueryTimeout(_)
+                ),
+            ),
+            (
+                tonic::Code::PermissionDenied,
+                matches!(
+                    grpc_status_to_sqldb_error(tonic::Status::permission_denied("blocked")),
+                    SessionSqlDbError::AuthorizerBlocked(_)
+                ),
+            ),
+            (
+                tonic::Code::FailedPrecondition,
+                matches!(
+                    grpc_status_to_sqldb_error(tonic::Status::failed_precondition("syntax error")),
+                    SessionSqlDbError::QueryError(_)
+                ),
+            ),
+            (
+                tonic::Code::Internal,
+                matches!(
+                    grpc_status_to_sqldb_error(tonic::Status::internal("unexpected")),
+                    SessionSqlDbError::Internal(_)
+                ),
+            ),
+            (
+                tonic::Code::Unimplemented,
+                matches!(
+                    grpc_status_to_sqldb_error(tonic::Status::unimplemented("not implemented")),
+                    SessionSqlDbError::Internal(_)
+                ),
+            ),
+        ] {
+            assert!(matches, "{code:?} lost its sqldb meaning");
+        }
     }
 }
