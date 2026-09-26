@@ -157,6 +157,33 @@ impl ListEventsQuery {
 /// clients can explicitly request every supported event type.
 const MAX_EVENT_TYPE_FILTER_SIZE: usize = 64;
 
+/// Whether a live event delivered to this SSE stream should actually be sent
+/// to the client.
+///
+/// `InMemoryEventDelivery` partitions its broadcast channels by a hash of the
+/// session id, not one channel per session, so a subscriber for session A can
+/// be handed an event for session B when the two share a partition (see
+/// `event_delivery::InMemoryEventDelivery`). This is the layer that enforces
+/// session isolation despite that: a mismatched `session_id` is rejected
+/// before the (independent) event-type filter is even considered.
+fn event_passes_stream_filter(
+    event: &Event,
+    session_id: Uuid,
+    filter_types: &[String],
+    exclude_types: &[String],
+) -> bool {
+    if event.session_id.uuid() != session_id {
+        return false;
+    }
+    if !filter_types.is_empty() && !filter_types.iter().any(|t| t == event.event_type.as_str()) {
+        return false;
+    }
+    if exclude_types.iter().any(|t| t == event.event_type.as_str()) {
+        return false;
+    }
+    true
+}
+
 /// Validate a list of event type strings: checks size limit and known types.
 fn validate_event_type_list(
     types: &[String],
@@ -436,17 +463,6 @@ pub async fn stream_sse(
         Ok(sse)
     }
 
-    // Helper: check if event passes type filters
-    fn passes_filter(event_type: &str, filter_types: &[String], exclude_types: &[String]) -> bool {
-        if !filter_types.is_empty() && !filter_types.iter().any(|t| t == event_type) {
-            return false;
-        }
-        if exclude_types.iter().any(|t| t == event_type) {
-            return false;
-        }
-        true
-    }
-
     // Stream state machine
     #[derive(Clone)]
     enum StreamPhase {
@@ -634,7 +650,7 @@ pub async fn stream_sse(
                     tokio::select! {
                         event = recv_future => {
                             match event {
-                                Some(event) if event.session_id.uuid() == session_id && passes_filter(&event.event_type, &state.filter_types, &state.exclude_types) => {
+                                Some(event) if event_passes_stream_filter(&event, session_id, &state.filter_types, &state.exclude_types) => {
                                     let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
                                     let sse_event = event_to_sse(&event, retry_duration);
                                     Some((stream::iter(vec![sse_event]), state))
@@ -865,6 +881,81 @@ pub async fn events_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::events::{EventData, OutputMessageDeltaData};
+    use everruns_provider::typed_id::{MessageId, TurnId};
+
+    fn test_event(session_id: Uuid, event_type: &str) -> Event {
+        Event {
+            id: EventId::new(),
+            event_type: event_type.to_string(),
+            ts: chrono::Utc::now(),
+            session_id: SessionId::from_uuid(session_id),
+            context: Default::default(),
+            data: EventData::OutputMessageDelta(OutputMessageDeltaData {
+                turn_id: TurnId::new(),
+                message_id: MessageId::new(),
+                delta: "hi".to_string(),
+                accumulated: "hi".to_string(),
+                phase: None,
+            }),
+            metadata: None,
+            tags: None,
+            sequence: None,
+        }
+    }
+
+    // The layer that actually enforces session isolation for in-memory
+    // delivery (see the doc comment on `event_passes_stream_filter`): a
+    // partition collision must never leak another session's event out of the
+    // SSE stream, regardless of the event-type filters in effect.
+    #[test]
+    fn event_passes_stream_filter_rejects_other_sessions_event() {
+        let session_id = Uuid::new_v4();
+        let other_session_event = test_event(Uuid::new_v4(), "output.message.delta");
+        assert!(!event_passes_stream_filter(
+            &other_session_event,
+            session_id,
+            &[],
+            &[]
+        ));
+    }
+
+    #[test]
+    fn event_passes_stream_filter_accepts_matching_session_with_no_filters() {
+        let session_id = Uuid::new_v4();
+        let event = test_event(session_id, "output.message.delta");
+        assert!(event_passes_stream_filter(&event, session_id, &[], &[]));
+    }
+
+    #[test]
+    fn event_passes_stream_filter_honors_include_and_exclude_lists() {
+        let session_id = Uuid::new_v4();
+        let event = test_event(session_id, "output.message.delta");
+
+        // Not in the include list -> rejected even though the session matches.
+        assert!(!event_passes_stream_filter(
+            &event,
+            session_id,
+            &["turn.completed".to_string()],
+            &[]
+        ));
+
+        // In the exclude list -> rejected.
+        assert!(!event_passes_stream_filter(
+            &event,
+            session_id,
+            &[],
+            &["output.message.delta".to_string()]
+        ));
+
+        // In the include list and not excluded -> accepted.
+        assert!(event_passes_stream_filter(
+            &event,
+            session_id,
+            &["output.message.delta".to_string()],
+            &[]
+        ));
+    }
 
     /// EVE-1076: the connection guard is released when the *stream* is
     /// dropped, not merely when the guard is.
