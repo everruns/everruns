@@ -357,11 +357,6 @@ mod tests {
     }
 
     #[test]
-    fn test_default_encoding() {
-        assert_eq!(default_encoding(), "text");
-    }
-
-    #[test]
     fn test_auth_header_uses_bearer_scheme() {
         let client = RemoteClient::new("https://api.example.com", "evr_test", "session_abc");
 

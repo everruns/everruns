@@ -516,13 +516,11 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_path_unix() {
-        assert_eq!(normalize_path(Path::new("src/main.rs")), "src/main.rs");
-    }
-
-    #[test]
     fn test_normalize_path_nested() {
+        // Already-forward-slash paths pass through unchanged...
         assert_eq!(normalize_path(Path::new("a/b/c/d.txt")), "a/b/c/d.txt");
+        // ...and literal backslashes (as produced by Windows path components) are converted.
+        assert_eq!(normalize_path(Path::new("a\\b\\c")), "a/b/c");
     }
 
     #[test]
