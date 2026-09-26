@@ -2889,15 +2889,9 @@ mod tests {
         )
     }
 
-    #[tokio::test]
-    async fn get_agent_returns_none_for_missing_agent() {
-        let adapters = test_adapters();
-        let result = adapters
-            .get_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
-            .await
-            .unwrap();
-        assert!(result.is_none());
-    }
+    // Missing-agent lookup is covered by the `direct_adapter_contract` macro
+    // suite's `get_agent_nonexistent_returns_none` (same production path and
+    // assertion), so it is not duplicated here.
 
     #[tokio::test]
     async fn get_agent_resolves_by_public_id() {
@@ -3141,126 +3135,11 @@ mod tests {
         db.create_session_file(create).await.expect("seed file");
     }
 
-    #[tokio::test]
-    async fn grep_files_returns_matching_lines() {
-        let adapters = test_adapters();
-        let session_id = Uuid::new_v4();
-
-        seed_file(
-            &adapters.db,
-            session_id,
-            "/src/main.rs",
-            "fn main() {\n    println!(\"hello world\");\n}\n",
-        )
-        .await;
-
-        let results = adapters
-            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, "hello", None)
-            .await
-            .unwrap();
-
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].path, "/src/main.rs");
-        assert_eq!(results[0].line_number, 2);
-        assert!(results[0].line.contains("hello world"));
-    }
-
-    #[tokio::test]
-    async fn grep_files_returns_empty_for_no_match() {
-        let adapters = test_adapters();
-        let session_id = Uuid::new_v4();
-
-        seed_file(
-            &adapters.db,
-            session_id,
-            "/src/lib.rs",
-            "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
-        )
-        .await;
-
-        let results = adapters
-            .grep_files(
-                everruns_core::DEFAULT_ORG_ID,
-                session_id,
-                "nonexistent_pattern",
-                None,
-            )
-            .await
-            .unwrap();
-
-        assert!(results.is_empty());
-    }
-
-    #[tokio::test]
-    async fn grep_files_matches_multiple_lines_and_files() {
-        let adapters = test_adapters();
-        let session_id = Uuid::new_v4();
-
-        seed_file(
-            &adapters.db,
-            session_id,
-            "/a.txt",
-            "TODO fix this\nall good\nTODO refactor\n",
-        )
-        .await;
-        seed_file(
-            &adapters.db,
-            session_id,
-            "/b.txt",
-            "all good\nTODO cleanup\n",
-        )
-        .await;
-
-        let results = adapters
-            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, "TODO", None)
-            .await
-            .unwrap();
-
-        assert_eq!(results.len(), 3);
-        // Verify line numbers
-        let a_matches: Vec<_> = results.iter().filter(|m| m.path == "/a.txt").collect();
-        assert_eq!(a_matches.len(), 2);
-        assert_eq!(a_matches[0].line_number, 1);
-        assert_eq!(a_matches[1].line_number, 3);
-
-        let b_matches: Vec<_> = results.iter().filter(|m| m.path == "/b.txt").collect();
-        assert_eq!(b_matches.len(), 1);
-        assert_eq!(b_matches[0].line_number, 2);
-    }
-
-    #[tokio::test]
-    async fn grep_files_supports_regex_patterns() {
-        let adapters = test_adapters();
-        let session_id = Uuid::new_v4();
-
-        seed_file(
-            &adapters.db,
-            session_id,
-            "/nums.rs",
-            "let x = 42;\nlet y = 100;\nlet z = 7;\n",
-        )
-        .await;
-
-        let results = adapters
-            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, r"\d{3}", None)
-            .await
-            .unwrap();
-
-        assert_eq!(results.len(), 1);
-        assert!(results[0].line.contains("100"));
-    }
-
-    #[tokio::test]
-    async fn grep_files_invalid_regex_returns_error() {
-        let adapters = test_adapters();
-        let session_id = Uuid::new_v4();
-
-        let result = adapters
-            .grep_files(everruns_core::DEFAULT_ORG_ID, session_id, "[invalid", None)
-            .await;
-        assert!(result.is_err());
-    }
-
+    // Basic grep_files match/no-match/multi-file/regex/invalid-regex behavior
+    // is covered by the `direct_adapter_contract` macro suite below (EVE-61),
+    // which exercises the same production path (`grep_files`) so it is not
+    // duplicated here. This file keeps only the context-merging case, which
+    // the contract suite does not cover.
     #[tokio::test]
     async fn grep_files_returns_bounded_merged_context() {
         let adapters = test_adapters();
@@ -3683,16 +3562,10 @@ mod tests {
         assert!(agent.is_none(), "agent must NOT be visible in org 2");
     }
 
-    /// Regression test: image resolution must receive org_id so the gRPC
-    /// service scopes the lookup. Before EVE-56, resolve_image had no org_id
-    /// parameter.
-    #[tokio::test]
-    async fn resolve_image_requires_org_id() {
-        let adapters = test_adapters();
-        // resolve_image now requires org_id — compile-time proof the parameter exists
-        let result = adapters.resolve_image(1, Uuid::new_v4()).await.unwrap();
-        assert!(result.is_none());
-    }
+    // EVE-56: resolve_image must accept org_id so the gRPC service scopes the
+    // lookup by org — enforced at compile time by the signature, and the
+    // missing-image runtime behavior is covered by the `direct_adapter_contract`
+    // macro suite's `resolve_image_missing_returns_none`.
 
     /// Build a fake `AgentCapabilityRow` for testing.
     fn fake_capability_row(agent_id: Uuid, capability_id: &str) -> AgentCapabilityRow {
@@ -3812,31 +3685,10 @@ mod tests {
         row.id.uuid()
     }
 
-    #[tokio::test]
-    async fn get_mcp_server_by_prefix_returns_none_api_key_when_not_set() {
-        let adapters = test_adapters();
-        seed_mcp_server(&adapters.db, "My Server", None).await;
-
-        let info = adapters
-            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "my_server")
-            .await
-            .unwrap();
-        assert!(info.api_key.is_none());
-        assert_eq!(info.name, "My Server");
-    }
-
-    #[tokio::test]
-    async fn get_mcp_server_by_prefix_returns_decrypted_api_key() {
-        let adapters = test_adapters_with_encryption();
-        let encrypted = test_encryption().encrypt_string("sk-live-key").unwrap();
-        seed_mcp_server(&adapters.db, "Auth Server", Some(encrypted)).await;
-
-        let info = adapters
-            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "auth_server")
-            .await
-            .unwrap();
-        assert_eq!(info.api_key.as_deref(), Some("sk-live-key"));
-    }
+    // No-api-key and decrypted-api-key lookups are covered by the
+    // `direct_adapter_contract` macro suite's `mcp_server_no_api_key` and
+    // `mcp_server_with_encrypted_api_key` (same production path and
+    // assertions), so they are not duplicated here.
 
     #[tokio::test]
     async fn get_mcp_server_by_prefix_errors_when_encryption_not_configured() {
@@ -3851,14 +3703,9 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
-    async fn get_mcp_server_by_prefix_errors_when_server_not_found() {
-        let adapters = test_adapters();
-        let result = adapters
-            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "nonexistent")
-            .await;
-        assert!(result.is_err());
-    }
+    // Server-not-found lookup is covered by the `direct_adapter_contract`
+    // macro suite's `mcp_server_not_found_is_error` (same production path and
+    // assertion), so it is not duplicated here.
 
     // =========================================================================
     // Adapter contract test harness (EVE-61)
@@ -4175,35 +4022,12 @@ mod tests {
     // MCP auth-required execution coverage (EVE-55 / EVE-61)
     // =========================================================================
 
-    #[tokio::test]
-    async fn mcp_server_encrypted_key_decrypts_correctly() {
-        let adapters = test_adapters_with_encryption();
-        let enc = test_encryption();
-        let key = "sk-mcp-auth-test-12345";
-        let encrypted = enc.encrypt_string(key).unwrap();
-        seed_mcp_server(&adapters.db, "Auth Required MCP", Some(encrypted)).await;
-        let info = adapters
-            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "auth_required_mcp")
-            .await
-            .unwrap();
-        assert_eq!(info.api_key.as_deref(), Some(key));
-        assert_eq!(info.url, "https://example.com/mcp");
-    }
-
-    #[tokio::test]
-    async fn mcp_server_encrypted_key_without_encryption_service_fails() {
-        let adapters = test_adapters();
-        let enc = test_encryption();
-        let encrypted = enc.encrypt_string("sk-should-fail").unwrap();
-        seed_mcp_server(&adapters.db, "Fail MCP", Some(encrypted)).await;
-        let result = adapters
-            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "fail_mcp")
-            .await;
-        assert!(
-            result.is_err(),
-            "decryption without encryption service must fail"
-        );
-    }
+    // Decrypted-key retrieval is covered by the `direct_adapter_contract`
+    // macro suite's `mcp_server_with_encrypted_api_key`, and the
+    // no-encryption-service failure by
+    // `get_mcp_server_by_prefix_errors_when_encryption_not_configured` above
+    // (same production path and assertions in both cases), so neither is
+    // duplicated here.
 
     #[tokio::test]
     async fn mcp_server_wrong_org_not_found() {

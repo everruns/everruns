@@ -298,10 +298,8 @@ mod tests {
             ("skill/SKILL.md", b"---\nname: x\ndescription: y\n---\n\nz"),
             ("skill/sub/../../../etc/passwd", b"bad"),
         ]);
-        let result = extract_zip_archive(&data);
-        if let Err(e) = &result {
-            assert!(e.to_string().contains("traversal"));
-        }
+        let err = extract_zip_archive(&data).expect_err("path traversal must be rejected");
+        assert!(err.to_string().contains("traversal"), "{err}");
     }
 
     #[test]

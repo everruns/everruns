@@ -44918,7 +44918,7 @@
           },
           "total_capacity": {
             "type": "integer",
-            "description": "Sum of `max_concurrency` across all `active` + `draining` workers.",
+            "description": "Sum of `max_concurrency` across `active` workers only.",
             "minimum": 0
           },
           "total_load": {

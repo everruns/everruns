@@ -1119,36 +1119,8 @@ mod oauth_tests {
     // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
-
-    #[test]
-    fn test_error_response_internal_error_format() {
-        let error = ErrorResponse::new("Internal server error");
-        let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
-        assert_eq!(parsed["detail"], "Internal server error");
-    }
-
-    #[test]
-    fn test_error_response_not_found_format() {
-        let error = ErrorResponse::new("Provider not found");
-        let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
-        assert_eq!(parsed["detail"], "Provider not found");
-    }
-
-    #[test]
-    fn test_error_response_encryption_not_configured() {
-        let error = ErrorResponse::new("Encryption not configured. Cannot store API key.");
-        let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
-        assert_eq!(
-            parsed["detail"],
-            "Encryption not configured. Cannot store API key."
-        );
-    }
-}
+// Trivial ErrorResponse::new() + serialize round-trips removed; covered by
+// crates/server/src/api/common.rs::tests::test_error_response_into_response.
 
 #[cfg(test)]
 mod creation_tests {
