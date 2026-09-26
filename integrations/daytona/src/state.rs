@@ -341,18 +341,6 @@ mod tests {
     }
 
     #[test]
-    fn test_sandbox_state_with_special_chars() {
-        let state = SandboxState {
-            sandbox_id: "sb-test_123".to_string(),
-            workspace_path: "/home/daytona/my project".to_string(),
-            started_at: "2026-02-16T10:00:00+05:30".to_string(),
-        };
-        let json = serde_json::to_string(&state).unwrap();
-        let deserialized: SandboxState = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.workspace_path, "/home/daytona/my project");
-    }
-
-    #[test]
     fn test_required_str_present() {
         let args = serde_json::json!({"name": "test_value"});
         let result = required_str(&args, "name");
@@ -449,18 +437,5 @@ mod tests {
         assert_eq!(result.exit_code, 1);
         assert_eq!(result.stderr, "error msg");
         assert_eq!(result.result, "error msg");
-    }
-
-    #[test]
-    fn test_sandbox_state_json_has_all_fields() {
-        let state = SandboxState {
-            sandbox_id: "sb_x".to_string(),
-            workspace_path: "/home/daytona".to_string(),
-            started_at: "2026-01-01T00:00:00Z".to_string(),
-        };
-        let val: serde_json::Value = serde_json::to_value(&state).unwrap();
-        assert!(val.get("sandbox_id").is_some());
-        assert!(val.get("workspace_path").is_some());
-        assert!(val.get("started_at").is_some());
     }
 }

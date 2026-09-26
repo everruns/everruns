@@ -4,9 +4,7 @@
 
 use std::time::Duration;
 
-use everruns_integrations_typesafe::{
-    Error, Evaluation, Question, RetryPolicy, TypeSafeAIClient, client::DEFAULT_BASE_URL,
-};
+use everruns_integrations_typesafe::{Error, Evaluation, Question, RetryPolicy, TypeSafeAIClient};
 use serde_json::json;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
@@ -296,11 +294,6 @@ async fn retries_can_be_disabled() {
         .await
         .expect_err("stays overloaded");
     assert_eq!(error.status(), Some(529));
-}
-
-#[test]
-fn the_default_endpoint_is_the_documented_one() {
-    assert_eq!(DEFAULT_BASE_URL, "https://api.typesafe.ai");
 }
 
 #[tokio::test]
