@@ -92,9 +92,17 @@ pub(crate) enum ListenerRegistration {
     Host(Arc<dyn CoreEventListener>),
 }
 
+/// One dispatched event, shared by every listener that matched it.
+///
+/// The `core` half is `None` unless a host listener actually matched, so an
+/// app-only build never clones a `CoreEvent` it has nobody to hand it to
+/// (TM-DOS-037). When both listener kinds match, the two halves still travel in
+/// one `Arc`: sharing is what keeps a dispatch O(1) in the number of listeners
+/// rather than O(n), and the per-listener byte budget below is what bounds what
+/// a slow listener can pin.
 struct DispatchEvent {
     #[cfg(any(feature = "otel", feature = "braintrust"))]
-    core: CoreEvent,
+    core: Option<CoreEvent>,
     facade: SessionEvent,
 }
 
@@ -103,7 +111,9 @@ impl DispatchEvent {
         let facade = self.facade.as_json().to_string().len()
             + self.facade.canonical_json().to_string().len();
         #[cfg(any(feature = "otel", feature = "braintrust"))]
-        let core = serde_json::to_vec(&self.core).map_or(0, |value| value.len());
+        let core = self.core.as_ref().map_or(0, |core| {
+            serde_json::to_vec(core).map_or(0, |value| value.len())
+        });
         #[cfg(not(any(feature = "otel", feature = "braintrust")))]
         let core = 0;
         facade.saturating_add(core)
@@ -142,8 +152,14 @@ impl ListenerTarget {
     async fn on_event(&self, event: &DispatchEvent) {
         match self {
             Self::App(listener) => listener.on_event(&event.facade).await,
+            // `dispatch` clones the core half whenever a host listener matched,
+            // so a host listener can only be handed an event that carries one.
             #[cfg(any(feature = "otel", feature = "braintrust"))]
-            Self::Host(listener) => listener.on_event(&event.core).await,
+            Self::Host(listener) => {
+                if let Some(core) = event.core.as_ref() {
+                    listener.on_event(core).await;
+                }
+            }
         }
     }
 
@@ -163,14 +179,21 @@ enum ListenerFilter {
 }
 
 impl ListenerFilter {
-    fn matches(&self, event: &DispatchEvent) -> bool {
+    fn matches(&self, _core: &CoreEvent, facade: &SessionEvent) -> bool {
         match self {
-            Self::App(filter) => filter.matches(&event.facade),
+            Self::App(filter) => filter.matches(facade),
             #[cfg(any(feature = "otel", feature = "braintrust"))]
             Self::Host(None) => true,
             #[cfg(any(feature = "otel", feature = "braintrust"))]
-            Self::Host(Some(types)) => types.contains(&event.core.event_type.as_str()),
+            Self::Host(Some(types)) => types.contains(&_core.event_type.as_str()),
         }
+    }
+
+    /// Whether this listener consumes the raw `CoreEvent` half of a dispatch.
+    /// `dispatch` uses it to decide whether cloning that half is worth anything.
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    fn is_host(&self) -> bool {
+        matches!(self, Self::Host(_))
     }
 }
 
@@ -518,18 +541,52 @@ impl ObserverDispatcher {
         })
     }
 
+    /// Build the one payload every matching listener will share, or `None` when
+    /// nothing matched.
+    ///
+    /// Split out of `dispatch` so the cloning decision — the part TM-DOS-037
+    /// turns on — can be asserted directly, without standing up listener queues
+    /// and worker tasks to observe it second-hand.
+    fn build_event(&self, core: &CoreEvent, facade: &SessionEvent) -> Option<Arc<DispatchEvent>> {
+        // Match first, clone second. Filtering is a string compare, while the
+        // payload halves are full event clones, so deciding who wants this event
+        // before building it means an event nobody matched costs nothing and the
+        // `CoreEvent` half is only cloned when a host listener is there to read
+        // it (TM-DOS-037). Two filter passes rather than collecting the matches:
+        // an allocation per dispatched event would cost more than re-running the
+        // compare.
+        let mut any_match = false;
+        #[cfg(any(feature = "otel", feature = "braintrust"))]
+        let mut wants_core = false;
+        for slot in &self.slots {
+            if slot.filter.matches(core, facade) {
+                any_match = true;
+                #[cfg(any(feature = "otel", feature = "braintrust"))]
+                if slot.filter.is_host() {
+                    wants_core = true;
+                }
+            }
+        }
+        if !any_match {
+            return None;
+        }
+
+        Some(Arc::new(DispatchEvent {
+            #[cfg(any(feature = "otel", feature = "braintrust"))]
+            core: wants_core.then(|| core.clone()),
+            facade: facade.clone(),
+        }))
+    }
+
     pub(crate) fn dispatch(&self, core: &CoreEvent, facade: &SessionEvent) {
         if !self.accepting.load(Ordering::Acquire) {
             return;
         }
-        let _ = core;
-        let event = Arc::new(DispatchEvent {
-            #[cfg(any(feature = "otel", feature = "braintrust"))]
-            core: core.clone(),
-            facade: facade.clone(),
-        });
+        let Some(event) = self.build_event(core, facade) else {
+            return;
+        };
         for slot in &self.slots {
-            if slot.filter.matches(&event) {
+            if slot.filter.matches(core, facade) {
                 slot.try_send(Arc::clone(&event));
             }
         }
@@ -598,13 +655,19 @@ mod tests {
 
     use async_trait::async_trait;
     use everruns_core::event_emitter::EventEmitter;
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    use everruns_core::events::EventData;
+    use everruns_core::events::OutputMessageDeltaData;
     use everruns_core::events::{EventContext, EventRequest, TurnStartedData};
     use everruns_host::{HostBackends, HostEventEmitter, InMemoryEventLog};
     use everruns_provider::tool_types::ToolCall;
+    use everruns_provider::typed_id::EventId;
     use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
     use serde_json::json;
     use tokio::sync::Notify;
 
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    use super::{CoreEvent, CoreEventListener};
     use super::{
         EventFilter, EventListener, ListenerRegistration, OBSERVER_QUEUE_CAPACITY,
         ObserverDispatcher, reserve_retained_bytes,
@@ -625,6 +688,15 @@ mod tests {
                 events: Arc::new(Mutex::new(Vec::new())),
                 flushed: Arc::new(AtomicBool::new(false)),
                 filter: EventFilter::all(),
+            }
+        }
+
+        /// A recorder whose filter matches no event this suite dispatches.
+        fn none() -> Self {
+            Self {
+                events: Arc::new(Mutex::new(Vec::new())),
+                flushed: Arc::new(AtomicBool::new(false)),
+                filter: EventFilter::event_types(["never.dispatched"]),
             }
         }
 
@@ -658,6 +730,115 @@ mod tests {
         fn name(&self) -> &'static str {
             "recorder"
         }
+    }
+
+    /// An unfiltered host listener, for asserting that the core half is still
+    /// cloned when something consumes it.
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    struct CoreRecorder;
+
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    #[async_trait]
+    impl CoreEventListener for CoreRecorder {
+        async fn on_event(&self, _event: &CoreEvent) {}
+
+        fn name(&self) -> &'static str {
+            "core-recorder"
+        }
+    }
+
+    /// Build a core `output.message.delta` carrying a large `accumulated` prefix.
+    fn output_delta_with_accumulated(accumulated: &str) -> everruns_core::events::Event {
+        let turn_id = TurnId::new();
+        let message_id = MessageId::new();
+        EventRequest::new(
+            SessionId::new(),
+            EventContext::turn(turn_id, message_id),
+            OutputMessageDeltaData {
+                turn_id,
+                message_id,
+                delta: "x".to_string(),
+                accumulated: accumulated.to_string(),
+                phase: None,
+            },
+        )
+        .into_event(EventId::new(), 1)
+    }
+
+    /// An app-only dispatcher must not clone the `CoreEvent` at all: nobody is
+    /// there to read it, and it is the half that carries the growing
+    /// `accumulated` prefix (TM-DOS-037).
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    #[test]
+    fn app_only_dispatch_does_not_clone_the_core_event() {
+        let accumulated = "x".repeat(1024 * 1024);
+        let core = output_delta_with_accumulated(&accumulated);
+        let facade = SessionEvent::from_core_event(&core);
+
+        let dispatcher = ObserverDispatcher::new(
+            vec![ListenerRegistration::App(Arc::new(Recorder::all()))],
+            OBSERVER_QUEUE_CAPACITY,
+        );
+        let event = dispatcher
+            .build_event(&core, &facade)
+            .expect("app listener accepts output deltas");
+
+        assert!(
+            event.core.is_none(),
+            "an app-only dispatch retained the raw core event"
+        );
+
+        // The source event still carries the prefix; only the shared payload drops it.
+        let EventData::OutputMessageDelta(core_delta) = &core.data else {
+            panic!("core event is not an output delta")
+        };
+        assert_eq!(core_delta.accumulated, accumulated);
+        assert!(event.facade.data().get("accumulated").is_none());
+        assert!(
+            event.facade.canonical_json()["data"]
+                .get("accumulated")
+                .is_none()
+        );
+    }
+
+    /// A host listener still gets its core half, so the laziness above cannot be
+    /// implemented by simply never cloning.
+    #[cfg(any(feature = "otel", feature = "braintrust"))]
+    #[test]
+    fn a_host_listener_still_receives_the_core_event() {
+        let core = output_delta_with_accumulated("prefix");
+        let facade = SessionEvent::from_core_event(&core);
+
+        let dispatcher = ObserverDispatcher::new(
+            vec![ListenerRegistration::Host(Arc::new(CoreRecorder))],
+            OBSERVER_QUEUE_CAPACITY,
+        );
+        let event = dispatcher
+            .build_event(&core, &facade)
+            .expect("an unfiltered host listener accepts every event");
+
+        assert!(
+            event.core.is_some(),
+            "a host listener was handed a payload with no core event"
+        );
+    }
+
+    /// An event no listener matched is never built, so a filtered-out event costs
+    /// no clone of either half.
+    #[test]
+    fn an_unmatched_event_builds_no_payload() {
+        let core = output_delta_with_accumulated("prefix");
+        let facade = SessionEvent::from_core_event(&core);
+
+        let dispatcher = ObserverDispatcher::new(
+            vec![ListenerRegistration::App(Arc::new(Recorder::none()))],
+            OBSERVER_QUEUE_CAPACITY,
+        );
+
+        assert!(
+            dispatcher.build_event(&core, &facade).is_none(),
+            "a dispatch nothing matched still built a payload"
+        );
     }
 
     fn tool_agent() -> Agent {
