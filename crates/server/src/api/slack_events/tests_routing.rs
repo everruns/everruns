@@ -1029,6 +1029,28 @@ fn test_should_not_skip_thread_reply_for_human_message() {
     assert!(!should_skip_thread_reply(&reply, None));
 }
 
+#[test]
+fn test_event_belongs_to_input_message_matches_our_turn() {
+    let context = serde_json::json!({"input_message_id": "msg_abc"});
+    assert!(event_belongs_to_input_message(&context, "msg_abc"));
+}
+
+#[test]
+fn test_event_belongs_to_input_message_rejects_other_turn() {
+    // A different turn's input_message_id — e.g. a concurrent or prior turn
+    // on the same session — must not be treated as ours.
+    let context = serde_json::json!({"input_message_id": "msg_other"});
+    assert!(!event_belongs_to_input_message(&context, "msg_abc"));
+}
+
+#[test]
+fn test_event_belongs_to_input_message_rejects_missing_field() {
+    // Events with no input_message_id in context (e.g. session-level events)
+    // never match a turn.
+    let context = serde_json::json!({});
+    assert!(!event_belongs_to_input_message(&context, "msg_abc"));
+}
+
 #[tokio::test]
 async fn test_inject_thread_context_empty_replies() {
     // When fetch returns empty, inject_thread_context should succeed as no-op
