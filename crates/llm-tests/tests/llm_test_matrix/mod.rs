@@ -90,6 +90,13 @@ impl ProviderModelConfig {
         self.record_outcome(CELL_QUOTA);
     }
 
+    /// Record this cell as reached-but-unverified (the account no longer serves
+    /// the pinned model). A method for the same macro-hygiene reason as
+    /// `record_quota`.
+    pub fn record_model_unavailable(&self) {
+        self.record_outcome(CELL_MODEL_UNAVAILABLE);
+    }
+
     /// Append one machine-readable coverage record for this matrix cell to the
     /// file named by `LLM_MATRIX_COVERAGE_FILE`, when that variable is set
     /// (EVE-951). A no-op otherwise, so local runs are unchanged.
@@ -207,6 +214,11 @@ pub const CELL_SKIP_LIST: &str = "skip-list";
 /// it leaves the cell unverified, which is what the report exists to surface.
 pub const CELL_QUOTA: &str = "quota";
 
+/// The cell reached the provider but the account no longer serves the pinned
+/// model, so its assertions never ran. A vendor-catalogue condition, not a code
+/// regression — same reporting contract as `CELL_QUOTA`.
+pub const CELL_MODEL_UNAVAILABLE: &str = "model-unavailable";
+
 impl std::fmt::Display for ProviderModelConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}({})", self.provider_type, self.model_name)
@@ -306,15 +318,22 @@ pub const OPENROUTER_GPT6_LUNA: ProviderModelConfig = ProviderModelConfig::new(
 // API. The point of this case is to exercise our OpenAI-protocol driver's
 // streaming + tool-calling path against a third (non-OpenAI/Azure) host — not
 // to probe a model's intelligence — so the model must call tools reliably for
-// the `test_tool_call` assertion to be deterministic. Kimi K2 is purpose-built
-// for agentic tool use and calls tools deterministically. Fireworks has
-// churned its serverless catalog repeatedly: `gpt-oss-120b` flaked the "must
-// call tool" assert (#2550/#2556), and `llama-v3p3-70b-instruct` (#2597) was
-// then de-listed from the account entirely ("Model not available"). Kimi K2 is
-// a current, dependable tool-caller in the served catalog.
+// the `test_tool_call` assertion to be deterministic. The Kimi line is
+// purpose-built for agentic tool use and calls tools deterministically.
+//
+// Fireworks has churned its serverless catalog repeatedly, and every churn used
+// to red `main`: `gpt-oss-120b` flaked the "must call tool" assert
+// (#2550/#2556), `llama-v3p3-70b-instruct` (#2597) was de-listed from the
+// account, and `kimi-k2p6` (#3851) went the same way. Kimi K3 is the current
+// serverless flagship of that line and is the model this crate already carries a
+// profile for (`crates/model-profiles/src/profiles.rs`).
+//
+// A fourth de-listing no longer reds `main`: `is_model_unavailable` skips the
+// cell and the coverage report lists it as unverified, so the next churn shows
+// up as missing coverage to repoint rather than as a broken build.
 pub const FIREWORKS_KIMI_K2: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Fireworks,
-    "accounts/fireworks/models/kimi-k2p6",
+    "accounts/fireworks/models/kimi-k3",
     "FIREWORKS_API_KEY",
 );
 
@@ -423,6 +442,51 @@ pub fn is_quota_exhausted(err: &str) -> bool {
     }
 
     false
+}
+
+// A hosted provider can retire a model out from under a pinned matrix cell. That
+// is a vendor-catalogue event, not an everruns regression, and it has now reddened
+// `main` three times on Fireworks alone: `gpt-oss-120b` (#2550/#2556),
+// `llama-v3p3-70b-instruct` (#2597), and `kimi-k2p6` (#3851) — each time by
+// de-listing the exact id the cell named.
+//
+// It is the same class of false positive as an out-of-credits account, which
+// EVE-943 already settled must skip rather than fail, and EVE-951's coverage
+// report already makes such a skip visible instead of silent: the cell lands in
+// "Cells that did not run" with its reason, so nobody mistakes it for coverage.
+// So treat it the same way — skip loudly, report as unverified, keep `main`
+// honest about everruns' own behaviour.
+//
+// Detection keys on the driver's own canonical mapping of a provider 404 /
+// model-not-found / model-access-denied (`AgentLoopError::ModelNotAvailable`,
+// `crates/provider/src/error.rs`), not on free-form provider prose, so it cannot
+// swallow an unrelated failure. Authn/authz signals are excluded for the same
+// reason as in `is_quota_exhausted`: a broken credential must never skip
+// silently.
+//
+// This deliberately does NOT cover the negative test
+// `test_model_not_available_returns_user_friendly_error`, which asserts the
+// mapping itself. That test builds a bare `ModelSpec` rather than a matrix cell
+// and never goes through `run_live_turn!`, so it still fails loudly if the
+// driver stops producing this error.
+pub fn is_model_unavailable(err: &str) -> bool {
+    let e = err.to_lowercase();
+
+    // Never treat auth/permission failures as a retired model.
+    let auth_failure = e.contains("unauthorized")
+        || e.contains("forbidden")
+        || e.contains("invalid api key")
+        || e.contains("invalid_api_key")
+        || e.contains("authentication")
+        || e.contains(" 401")
+        || e.contains("401 ")
+        || e.contains(" 403")
+        || e.contains("403 ");
+    if auth_failure {
+        return false;
+    }
+
+    e.contains("model not available")
 }
 
 /// Skip the current test (with a loud stderr warning) if `result` failed due to
@@ -633,6 +697,18 @@ macro_rules! run_live_turn {
                         outcome = None;
                         break;
                     }
+                    if is_model_unavailable(err) {
+                        eprintln!(
+                            "SKIP: {} model retired by the provider: {}",
+                            $config.label(),
+                            err,
+                        );
+                        // Deterministic, so break instead of retrying: the
+                        // remaining attempts would re-ask for the same absent id.
+                        $config.record_model_unavailable();
+                        outcome = None;
+                        break;
+                    }
                 }
             }
             if ok_fn(&result) {
@@ -713,7 +789,7 @@ pub fn all_providers_registry() -> DriverRegistry {
 mod quota_detector_tests {
     use super::{
         LiveToolCallOutcome, assert_live_tool_call_contract, classify_live_tool_call,
-        is_quota_exhausted, is_transient_transport_error, live_retry_backoff,
+        is_model_unavailable, is_quota_exhausted, is_transient_transport_error, live_retry_backoff,
     };
     use everruns_core::turn::TurnStopReason;
     use everruns_provider::typed_id::TurnId;
@@ -1020,6 +1096,63 @@ mod quota_detector_tests {
         });
 
         assert_eq!(attempts.get(), 1, "quota is terminal, not worth retrying");
+        assert!(outcome.is_none(), "caller skips on None");
+        assert_eq!(started.elapsed(), Duration::ZERO);
+    }
+
+    #[test]
+    fn matches_the_driver_retired_model_mapping() {
+        // The exact string `AgentLoopError::ModelNotAvailable` renders, as it
+        // reached CI from Fireworks in #3851.
+        assert!(is_model_unavailable(
+            "Model not available: accounts/fireworks/models/kimi-k2p6"
+        ));
+        // Wrapped by the atom/activity error chain, which is how a worker turn
+        // surfaces it.
+        assert!(is_model_unavailable(
+            "ReasonAtom execution failed: Model not available: retired-model"
+        ));
+    }
+
+    #[test]
+    fn does_not_treat_auth_or_ordinary_failures_as_a_retired_model() {
+        // A revoked or wrong key must fail loudly, never skip — even when the
+        // provider phrases it in terms of model access.
+        assert!(!is_model_unavailable(
+            "403 Forbidden: Model not available: kimi-k3"
+        ));
+        assert!(!is_model_unavailable(
+            "Invalid API key: Model not available: kimi-k3"
+        ));
+        assert!(!is_model_unavailable("401 authentication_error"));
+        // Unrelated failures stay fatal.
+        assert!(!is_model_unavailable("Stream error: connection reset"));
+        assert!(!is_model_unavailable("insufficient_quota"));
+        assert!(!is_model_unavailable("Request too large"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn retired_model_skips_immediately() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        use tokio::time::Instant;
+
+        // Synthetic results against a real config: must not record coverage.
+        let _no_coverage = super::CoverageSuppressed::new();
+        let config = SYNTHETIC;
+        let attempts = Cell::new(0usize);
+        let started = Instant::now();
+
+        let outcome = run_live_turn!(config, 3, |r: &TurnResult| r.success, {
+            attempts.set(attempts.get() + 1);
+            failed_result("LLM error: Model not available: accounts/fireworks/models/gone")
+        });
+
+        assert_eq!(
+            attempts.get(),
+            1,
+            "a retired model id is deterministic, so re-asking cannot help"
+        );
         assert!(outcome.is_none(), "caller skips on None");
         assert_eq!(started.elapsed(), Duration::ZERO);
     }
