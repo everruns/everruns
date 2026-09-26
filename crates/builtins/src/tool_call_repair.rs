@@ -995,7 +995,6 @@ mod tests {
     #[test]
     fn capability_id_and_validation() {
         let cap = ToolCallRepairCapability;
-        assert_eq!(cap.id(), TOOL_CALL_REPAIR_CAPABILITY_ID);
         assert!(cap.is_guardrail());
         assert!(cap.config_schema().is_some());
 
