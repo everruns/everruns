@@ -344,16 +344,24 @@ mod tests {
 
     #[test]
     fn test_read_base_url_strips_trailing_slash() {
-        // Test the trimming logic directly
-        let input = "https://custom.example.com/";
-        assert_eq!(input.trim_end_matches('/'), "https://custom.example.com");
+        let var = "_TEST_BROWSERLESS_URL_TRAILING_SLASH";
+        // SAFETY: `var` is a name unique to this test, so no other test's env
+        // read or write races with it.
+        unsafe { std::env::set_var(var, "https://custom.example.com/") };
+        let result = read_base_url(var, "https://default.example.com");
+        unsafe { std::env::remove_var(var) };
+        assert_eq!(result, "https://custom.example.com");
     }
 
     #[test]
     fn test_read_base_url_falls_back_on_empty() {
-        // Test the empty-string fallback logic directly
-        let trimmed = "".trim_end_matches('/');
-        assert!(trimmed.is_empty());
+        let var = "_TEST_BROWSERLESS_URL_EMPTY";
+        // SAFETY: `var` is a name unique to this test, so no other test's env
+        // read or write races with it.
+        unsafe { std::env::set_var(var, "") };
+        let result = read_base_url(var, "https://default.example.com");
+        unsafe { std::env::remove_var(var) };
+        assert_eq!(result, "https://default.example.com");
     }
 
     #[test]

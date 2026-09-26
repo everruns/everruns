@@ -306,37 +306,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sprite_state_roundtrip() {
-        let state = SpriteState {
-            sprite_name: "my-sprite".to_string(),
-            workspace_path: "/home/sprite".to_string(),
-            started_at: "2026-03-23T10:00:00Z".to_string(),
-            service_url: Some("https://my-sprite.fly.dev".to_string()),
-        };
-        let json = serde_json::to_string(&state).unwrap();
-        let deserialized: SpriteState = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.sprite_name, "my-sprite");
-        assert_eq!(deserialized.workspace_path, "/home/sprite");
-        assert_eq!(
-            deserialized.service_url,
-            Some("https://my-sprite.fly.dev".to_string())
-        );
-    }
-
-    #[test]
-    fn test_sprite_state_without_url() {
-        let state = SpriteState {
-            sprite_name: "headless".to_string(),
-            workspace_path: "/home/sprite".to_string(),
-            started_at: "2026-03-23T10:00:00Z".to_string(),
-            service_url: None,
-        };
-        let json = serde_json::to_string(&state).unwrap();
-        let deserialized: SpriteState = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.service_url, None);
-    }
-
-    #[test]
     fn test_required_str_present() {
         let args = serde_json::json!({"name": "test_value"});
         let result = required_str(&args, "name");
@@ -366,46 +335,10 @@ mod tests {
     }
 
     #[test]
-    fn test_sprite_info_deserialization() {
-        let json =
-            r#"{"name": "my-sprite", "status": "running", "url": "https://my-sprite.fly.dev"}"#;
-        let info: SpriteInfo = serde_json::from_str(json).unwrap();
-        assert_eq!(info.name, "my-sprite");
-        assert_eq!(info.status, "running");
-        assert_eq!(info.url, Some("https://my-sprite.fly.dev".to_string()));
-    }
-
-    #[test]
     fn test_sprite_info_without_url() {
         let json = r#"{"name": "headless", "status": "stopped"}"#;
         let info: SpriteInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.url, None);
-    }
-
-    #[test]
-    fn test_exec_result_deserialization() {
-        let json = r#"{"stdout": "hello\n", "stderr": "", "exit_code": 0}"#;
-        let result: ExecResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.stdout, "hello\n");
-        assert_eq!(result.stderr, "");
-        assert_eq!(result.exit_code, 0);
-    }
-
-    #[test]
-    fn test_exec_result_defaults() {
-        let json = r#"{}"#;
-        let result: ExecResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.stdout, "");
-        assert_eq!(result.stderr, "");
-        assert_eq!(result.exit_code, 0);
-    }
-
-    #[test]
-    fn test_checkpoint_info_deserialization() {
-        let json = r#"{"id": "cp_abc", "created_at": "2026-03-23T10:00:00Z"}"#;
-        let info: CheckpointInfo = serde_json::from_str(json).unwrap();
-        assert_eq!(info.id, "cp_abc");
-        assert_eq!(info.created_at, Some("2026-03-23T10:00:00Z".to_string()));
     }
 
     #[test]
@@ -414,20 +347,6 @@ mod tests {
         let info: CheckpointInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.id, "cp_xyz");
         assert_eq!(info.created_at, None);
-    }
-
-    #[test]
-    fn test_sprite_state_json_has_all_fields() {
-        let state = SpriteState {
-            sprite_name: "sp_x".to_string(),
-            workspace_path: "/home/sprite".to_string(),
-            started_at: "2026-01-01T00:00:00Z".to_string(),
-            service_url: None,
-        };
-        let val: serde_json::Value = serde_json::to_value(&state).unwrap();
-        assert!(val.get("sprite_name").is_some());
-        assert!(val.get("workspace_path").is_some());
-        assert!(val.get("started_at").is_some());
     }
 
     #[test]

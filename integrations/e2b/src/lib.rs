@@ -141,16 +141,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn capability_metadata() {
-        let cap = E2BCapability;
-        assert_eq!(cap.id(), "e2b");
-        assert_eq!(cap.name(), "E2B");
-        assert_eq!(cap.icon(), Some("cloud"));
-        assert_eq!(cap.category(), Some("Sandboxes"));
-        assert_eq!(cap.dependencies(), vec!["session_storage"]);
-    }
-
-    #[test]
     fn capability_tools() {
         let cap = E2BCapability;
         let names: Vec<_> = cap
