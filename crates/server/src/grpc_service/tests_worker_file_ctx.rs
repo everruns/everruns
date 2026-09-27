@@ -22,8 +22,10 @@ use everruns_core::capability_types::VirtualFileTree;
 /// file is about. Constructing the service here rather than adding a helper to
 /// `tests.rs` keeps that file, which is on the size ratchet's debt list, from
 /// growing.
-async fn worker_service_with_virtual_mounts()
--> (WorkerServiceImpl, Arc<crate::domains::session_files::VirtualMountRegistry>) {
+async fn worker_service_with_virtual_mounts() -> (
+    WorkerServiceImpl,
+    Arc<crate::domains::session_files::VirtualMountRegistry>,
+) {
     let db = Arc::new(StorageBackend::in_memory());
     let grade = everruns_core::DeploymentGrade::Dev;
     let host_composition = crate::oss_host_composition_for_grade(grade);
