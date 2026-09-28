@@ -51,7 +51,10 @@ impl EventDelivery {
         match std::env::var("NATS_URL") {
             Ok(url) => match NatsEventDelivery::connect(&url).await {
                 Ok(nats) => {
-                    info!(url = %url, "Event delivery: NATS JetStream");
+                    info!(
+                        url = %crate::nats::redact_server_urls(&url),
+                        "Event delivery: NATS JetStream"
+                    );
                     Self::Nats(Arc::new(nats))
                 }
                 Err(e) => {
