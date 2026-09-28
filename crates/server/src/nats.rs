@@ -125,12 +125,11 @@ mod tests {
         );
     }
 
-    /// The shape that left production on the in-memory fallback: a generated
-    /// password with a bare `/`, which ends the URL authority and made the
-    /// whole URL fail to parse.
+    /// Regression test for a password with a bare `/`, which ends the URL
+    /// authority when parsed as a standard URL.
     #[test]
     fn password_with_an_unencoded_slash_is_accepted() {
-        let (addrs, creds) = parse_nats_url("nats://everruns_prod_nats:ODC05x/uceWsdB@nats:4222")
+        let (addrs, creds) = parse_nats_url("nats://test_user:test-password/with-slash@nats:4222")
             .expect("a bare slash in the password must not fail the parse");
         assert_eq!(addrs.len(), 1);
         assert_eq!(addrs[0].host(), "nats");
@@ -138,8 +137,8 @@ mod tests {
         assert_eq!(
             creds,
             Some((
-                "everruns_prod_nats".to_string(),
-                "ODC05x/uceWsdB".to_string()
+                "test_user".to_string(),
+                "test-password/with-slash".to_string()
             ))
         );
     }
