@@ -32,8 +32,14 @@ impl AppState {
 
 impl_auth_state!(AppState);
 
-/// Maximum upload size: 32 MiB (matches the Anthropic document limit).
-pub const MAX_FILE_SIZE_BYTES: usize = 32 * 1024 * 1024;
+/// Maximum upload size for files transferred inline over gRPC.
+///
+/// Base64 expands the payload by 4/3. Keeping the raw payload at 11 MiB leaves
+/// more than 1 MiB of the 16 MiB gRPC message for protobuf metadata.
+pub const MAX_FILE_SIZE_BYTES: usize = 11 * 1024 * 1024;
+
+/// Maximum number of distinct files resolved for one prompt.
+pub const MAX_FILES_PER_RESOLUTION: usize = 8;
 
 /// Allowed content types for model-input files.
 pub const ALLOWED_FILE_CONTENT_TYPES: &[&str] = &["application/pdf"];
