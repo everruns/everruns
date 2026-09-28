@@ -1543,6 +1543,14 @@ where
                 Some(Arc::new(self.event_emitter.clone()) as Arc<dyn EventEmitter>);
         }
         tool_context.event_context = Some(event_context.clone());
+        if let Some(registry) = tool_context.session_task_registry.take() {
+            tool_context.session_task_registry = Some(
+                crate::session_task::TurnCorrelatedSessionTaskRegistry::wrap(
+                    registry,
+                    event_context.clone(),
+                ),
+            );
+        }
         tool_context.tool_call_id = Some(tool_call.id.clone());
 
         // Cooperative cancellation for this call. The guard fires when this

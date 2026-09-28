@@ -20,6 +20,24 @@ use std::sync::Arc;
 use crate::error::Result;
 use crate::typed_id::SessionId;
 
+const ORIGIN_EVENT_CONTEXT_KEY: &str = "__everruns_origin_event_context";
+
+/// Persist turn correlation inside the task's opaque spec so later updates can
+/// emit lifecycle events for the turn that created the task. The key is
+/// server-owned and overwritten when a task is created from a tool context.
+pub fn set_task_origin_event_context(spec: &mut Value, context: &crate::events::EventContext) {
+    let Value::Object(spec) = spec else {
+        return;
+    };
+    if let Ok(value) = serde_json::to_value(context) {
+        spec.insert(ORIGIN_EVENT_CONTEXT_KEY.to_string(), value);
+    }
+}
+
+pub fn task_origin_event_context(task: &SessionTask) -> Option<crate::events::EventContext> {
+    serde_json::from_value(task.spec.get(ORIGIN_EVENT_CONTEXT_KEY)?.clone()).ok()
+}
+
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
@@ -278,6 +296,9 @@ where
 
 fn redacted_public_task_spec(spec: &Value) -> Value {
     let mut public = spec.clone();
+    if let Some(object) = public.as_object_mut() {
+        object.remove(ORIGIN_EVENT_CONTEXT_KEY);
+    }
     let Some(configs) = public.get_mut("push_configs").and_then(Value::as_array_mut) else {
         return public;
     };
@@ -691,6 +712,82 @@ pub trait SessionTaskRegistry: Send + Sync {
     ) -> Result<Vec<TaskMessage>>;
 }
 
+/// Turn-scoped view of a registry. Only creation is decorated; the durable
+/// task snapshot carries the origin for all later updates and worker reattach.
+pub struct TurnCorrelatedSessionTaskRegistry {
+    inner: Arc<dyn SessionTaskRegistry>,
+    context: crate::events::EventContext,
+}
+
+impl TurnCorrelatedSessionTaskRegistry {
+    pub fn wrap(
+        inner: Arc<dyn SessionTaskRegistry>,
+        context: crate::events::EventContext,
+    ) -> Arc<dyn SessionTaskRegistry> {
+        Arc::new(Self { inner, context })
+    }
+}
+
+#[async_trait]
+impl SessionTaskRegistry for TurnCorrelatedSessionTaskRegistry {
+    async fn create(&self, mut input: CreateSessionTask) -> Result<SessionTask> {
+        set_task_origin_event_context(&mut input.spec, &self.context);
+        self.inner.create(input).await
+    }
+
+    async fn update(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        update: SessionTaskUpdate,
+    ) -> Result<Option<SessionTask>> {
+        self.inner.update(session_id, task_id, update).await
+    }
+
+    async fn get(&self, session_id: SessionId, task_id: &str) -> Result<Option<SessionTask>> {
+        self.inner.get(session_id, task_id).await
+    }
+
+    async fn list(
+        &self,
+        session_id: SessionId,
+        filter: Option<&SessionTaskFilter>,
+    ) -> Result<Vec<SessionTask>> {
+        self.inner.list(session_id, filter).await
+    }
+
+    async fn request_cancel(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Option<SessionTask>> {
+        self.inner.request_cancel(session_id, task_id).await
+    }
+
+    async fn record_message(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        message: NewTaskMessage,
+    ) -> Result<TaskMessage> {
+        self.inner
+            .record_message(session_id, task_id, message)
+            .await
+    }
+
+    async fn list_messages(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        limit: Option<u32>,
+        after_id: Option<&str>,
+    ) -> Result<Vec<TaskMessage>> {
+        self.inner
+            .list_messages(session_id, task_id, limit, after_id)
+            .await
+    }
+}
+
 // ============================================================================
 // Executor — control plane, implemented per kind by capabilities
 // ============================================================================
@@ -971,6 +1068,21 @@ mod tests {
             },
             instant(10),
         )
+    }
+
+    #[test]
+    fn task_origin_context_is_durable_but_not_public() {
+        let mut task = task();
+        let context = crate::events::EventContext::turn(
+            crate::typed_id::TurnId::from_seed(2),
+            crate::typed_id::MessageId::from_seed(3),
+        );
+        set_task_origin_event_context(&mut task.spec, &context);
+
+        let stored = task_origin_event_context(&task).unwrap();
+        assert_eq!(stored.turn_id, context.turn_id);
+        assert_eq!(stored.input_message_id, context.input_message_id);
+        assert_eq!(snapshot(&task)["spec"], serde_json::json!({}));
     }
 
     #[test]

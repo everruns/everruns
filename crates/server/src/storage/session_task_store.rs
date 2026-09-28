@@ -99,7 +99,7 @@ impl DbSessionTaskRegistry {
         self
     }
 
-    async fn emit(&self, session_id: SessionId, data: EventData) {
+    async fn emit(&self, session_id: SessionId, context: EventContext, data: EventData) {
         let Some(emitter) = &self.emitter else {
             return;
         };
@@ -107,7 +107,7 @@ impl DbSessionTaskRegistry {
             event_type: data.event_type().to_string(),
             ts: Utc::now(),
             session_id,
-            context: EventContext::default(),
+            context,
             data,
             metadata: None,
             tags: None,
@@ -123,7 +123,9 @@ impl DbSessionTaskRegistry {
         } else {
             EventData::TaskUpdated(SessionTaskEventData { task: task.clone() })
         };
-        self.emit(task.session_id, data).await;
+        let context =
+            everruns_core::session_task::task_origin_event_context(task).unwrap_or_default();
+        self.emit(task.session_id, context, data).await;
     }
 
     /// Deliver a wake message to the owning session (best-effort, log on error).
@@ -423,7 +425,9 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
                 })
             }
         };
-        self.emit(session_id, data).await;
+        let context =
+            everruns_core::session_task::task_origin_event_context(&task).unwrap_or_default();
+        self.emit(session_id, context, data).await;
 
         // Wake on outbound messages for OnActivity tasks.
         if stored.direction == TaskMessageDirection::Outbound {
@@ -476,10 +480,36 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::events::Event;
     use everruns_core::session_task::{
         TaskInputRequest, TaskLinks, TaskMessagePart, TaskWakePolicy,
+        TurnCorrelatedSessionTaskRegistry,
     };
+    use everruns_provider::typed_id::{EventId, MessageId, TurnId};
     use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct RecordingEmitter {
+        requests: Mutex<Vec<EventRequest>>,
+    }
+
+    #[async_trait::async_trait]
+    impl EventEmitter for RecordingEmitter {
+        async fn emit(&self, request: EventRequest) -> Result<Event> {
+            self.requests.lock().unwrap().push(request.clone());
+            Ok(Event {
+                id: EventId::new(),
+                event_type: request.event_type,
+                ts: request.ts,
+                session_id: request.session_id,
+                context: request.context,
+                data: request.data,
+                metadata: request.metadata,
+                tags: request.tags,
+                sequence: None,
+            })
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Recording test waker
@@ -576,6 +606,46 @@ mod tests {
             links: TaskLinks::default(),
             wake_policy: TaskWakePolicy::Silent,
         }
+    }
+
+    #[tokio::test]
+    async fn lifecycle_events_keep_concurrent_turn_origins_isolated() {
+        let emitter = Arc::new(RecordingEmitter::default());
+        let base: Arc<dyn SessionTaskRegistry> = Arc::new(
+            DbSessionTaskRegistry::new(Arc::new(StorageBackend::in_memory()))
+                .with_event_emitter(emitter.clone()),
+        );
+        let session_id = SessionId::new();
+        let first_message = MessageId::from_seed(1);
+        let second_message = MessageId::from_seed(2);
+        let first = TurnCorrelatedSessionTaskRegistry::wrap(
+            base.clone(),
+            EventContext::turn(TurnId::from_seed(1), first_message),
+        );
+        let second = TurnCorrelatedSessionTaskRegistry::wrap(
+            base,
+            EventContext::turn(TurnId::from_seed(2), second_message),
+        );
+
+        let first_task = first.create(create_input(session_id)).await.unwrap();
+        second.create(create_input(session_id)).await.unwrap();
+        first
+            .update(
+                session_id,
+                &first_task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Running),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let requests = emitter.requests.lock().unwrap();
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[0].context.input_message_id, Some(first_message));
+        assert_eq!(requests[1].context.input_message_id, Some(second_message));
+        assert_eq!(requests[2].context.input_message_id, Some(first_message));
     }
 
     #[tokio::test]
