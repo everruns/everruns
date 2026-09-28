@@ -40,6 +40,10 @@ use crate::slack_api::{
 use crate::slack_api_error::{SlackApiError, parse_retry_after, retry_wait};
 use crate::storage::StorageBackend;
 
+#[path = "slack_delivery/session_scheduler.rs"]
+mod session_scheduler;
+use session_scheduler::SessionDeliveryScheduler;
+
 /// Which Slack surface a turn belongs to.
 ///
 /// One app serves both at once: enabling Slack's Agents feature adds an assistant
@@ -205,10 +209,8 @@ struct DeliveryKey {
     input_message_id: String,
 }
 
-/// Event-driven Slack delivery dispatcher.
-///
-/// Subscribes to the event notification broadcaster and delivers agent output
-/// messages to Slack as they arrive, with no fixed deadline.
+/// Delivers agent output to Slack from event broadcaster notifications, with no
+/// fixed deadline.
 pub struct SlackDeliveryDispatcher {
     /// Active deliveries: (session_id, input_message_id) → context
     deliveries: Arc<RwLock<HashMap<DeliveryKey, DeliveryContext>>>,
@@ -260,7 +262,6 @@ impl SlackDeliveryDispatcher {
             adapter,
         });
 
-        // Spawn the event processing loop
         let dispatcher_clone = dispatcher.clone();
         tokio::spawn(async move {
             dispatcher_clone.event_loop(event_rx, shutdown_rx).await;
@@ -330,20 +331,16 @@ impl SlackDeliveryDispatcher {
         let _ = self.shutdown_tx.send(true);
     }
 
-    /// Main event loop: listens for event notifications and processes them.
     async fn event_loop(
-        &self,
+        self: Arc<Self>,
         mut event_rx: broadcast::Receiver<EventNotificationPayload>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) {
         info!("Slack delivery dispatcher started");
 
-        // Streaming needs a cadence the notification stream cannot provide: deltas
-        // arrive per token, and `chat.appendStream` will not take them at that rate.
-        // The loop therefore selects over {notification, flush tick} rather than
-        // notifications alone (EVE-974).
         let mut flush = tokio::time::interval(STREAM_FLUSH_INTERVAL);
         flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut scheduler = SessionDeliveryScheduler::new();
 
         loop {
             tokio::select! {
@@ -358,22 +355,20 @@ impl SlackDeliveryDispatcher {
                 result = event_rx.recv() => {
                     match result {
                         Ok(payload) => {
-                            // Fast path: skip if no deliveries for this session
                             if !self.active_sessions.read().await.contains(&payload.session_id) {
                                 continue;
                             }
-                            self.process_session_events(payload.session_id).await;
+                            scheduler.schedule(self.clone(), payload.session_id);
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
                             warn!(
                                 skipped = n,
                                 "Slack delivery dispatcher lagged, processing all active sessions"
                             );
-                            // On lag, process all active sessions to catch up
                             let sessions: Vec<Uuid> =
                                 self.active_sessions.read().await.iter().copied().collect();
                             for session_id in sessions {
-                                self.process_session_events(session_id).await;
+                                scheduler.schedule(self.clone(), session_id);
                             }
                         }
                         Err(broadcast::error::RecvError::Closed) => {
@@ -382,8 +377,9 @@ impl SlackDeliveryDispatcher {
                         }
                     }
                 }
+                _ = scheduler.join_next(self.clone()), if !scheduler.is_empty() => {}
                 _ = shutdown_rx.changed() => {
-                    info!("Slack delivery dispatcher shutting down");
+                    scheduler.abort_all();
                     break;
                 }
             }
@@ -2086,6 +2082,9 @@ pub(crate) async fn post_slack_message(
 
 #[cfg(test)]
 mod tests {
+    #[path = "concurrency_tests.rs"]
+    mod concurrency_tests;
+
     use super::*;
 
     #[test]
