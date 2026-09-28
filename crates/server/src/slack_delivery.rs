@@ -1780,6 +1780,13 @@ const SLACK_MARKDOWN_BLOCK_LIMIT: usize = 12_000;
 /// Blocks Slack accepts in one `chat.postMessage` call.
 const SLACK_MAX_BLOCKS_PER_MESSAGE: usize = 50;
 
+/// Maximum assistant output considered for one Slack delivery.
+///
+/// This bounds synchronous payload construction before the first Slack API
+/// request. The cap still allows a full message's worth of Markdown blocks.
+const SLACK_MAX_OUTBOUND_REPLY_CHARS: usize =
+    SLACK_MARKDOWN_BLOCK_LIMIT * SLACK_MAX_BLOCKS_PER_MESSAGE;
+
 /// Cap on the `text` notification fallback.
 ///
 /// `text` is not rendered when `blocks` are present — it is what Slack shows in
@@ -1823,6 +1830,8 @@ fn truncate_chars(text: &str, limit: usize) -> &str {
 /// reopened — with its original info string — at the start of the next, so a
 /// split code block still renders as code on both sides.
 fn split_markdown_for_blocks(text: &str, limit: usize) -> Vec<String> {
+    // THREAT[TM-DOS-040]: Fence continuations must be bounded and every hard
+    // split iteration must either consume input or reset to a consumable state.
     debug_assert!(limit > 8, "limit must leave room for fence markers");
     if text.chars().count() <= limit {
         return vec![text.to_string()];
@@ -1865,8 +1874,10 @@ fn split_markdown_for_blocks(text: &str, limit: usize) -> Vec<String> {
     for line in text.split_inclusive('\n') {
         let line_len = line.chars().count();
 
-        // A single line past the limit has no safe boundary; hard-split it.
-        if line_len > effective {
+        // A line that does not fit the current chunk has to go through the
+        // hard-split path. This includes a short line following a long fence
+        // reopen prefix, not only lines that exceed an empty chunk.
+        if line_len > effective.saturating_sub(current_len) {
             flush(
                 &mut current,
                 &mut current_len,
@@ -1882,6 +1893,16 @@ fn split_markdown_for_blocks(text: &str, limit: usize) -> Vec<String> {
             let mut rest = line;
             while rest.chars().count() > effective.saturating_sub(current_len) {
                 let room = effective.saturating_sub(current_len);
+                // Fence reopen prefixes are bounded below, so this is
+                // unreachable. Keep the guard at the consumption point: no
+                // malformed Markdown may turn this into a zero-progress loop.
+                if room == 0 {
+                    current.clear();
+                    current_len = 0;
+                    open_fence = None;
+                    reopen = None;
+                    continue;
+                }
                 let head = truncate_chars(rest, room);
                 current.push_str(head);
                 current_len += head.chars().count();
@@ -1931,7 +1952,15 @@ fn split_markdown_for_blocks(text: &str, limit: usize) -> Vec<String> {
                 // A closing fence carries no info string.
                 Some((ref open_marker, _)) if open_marker == marker => open_fence = None,
                 Some(_) => {}
-                None => open_fence = Some((marker.to_string(), rest.trim_end().to_string())),
+                None => {
+                    // A continuation must leave room for its newline and at
+                    // least one input character. Fence info is presentation
+                    // metadata, so bounding only the repeated copy preserves
+                    // the original opening line while guaranteeing progress.
+                    let max_info_len = effective.saturating_sub(marker.chars().count() + 2);
+                    let info = truncate_chars(rest.trim_end(), max_info_len).to_string();
+                    open_fence = Some((marker.to_string(), info));
+                }
             }
         }
 
@@ -1952,15 +1981,17 @@ fn split_markdown_for_blocks(text: &str, limit: usize) -> Vec<String> {
 
 /// Build the `chat.postMessage` payloads for one reply.
 ///
-/// Normally one payload. A reply past
-/// `SLACK_MARKDOWN_BLOCK_LIMIT * SLACK_MAX_BLOCKS_PER_MESSAGE` (600k characters)
-/// spills into further messages rather than being truncated.
+/// Normally one payload. Replies are bounded to one full Slack message's worth
+/// of source text before splitting, which keeps synchronous payload allocation
+/// finite while still allowing fence continuations to spill into another API
+/// call when their added markers cross the 50-block boundary.
 fn build_post_payloads(
     channel: &str,
     thread_ts: &str,
     text: &str,
     correlation: Option<&SlackCorrelation>,
 ) -> Vec<serde_json::Value> {
+    let text = truncate_chars(text, SLACK_MAX_OUTBOUND_REPLY_CHARS);
     let chunks = split_markdown_for_blocks(text, SLACK_MARKDOWN_BLOCK_LIMIT);
 
     chunks
@@ -4505,6 +4536,65 @@ mod tests {
                 assert!(block.chars().count() <= SLACK_MARKDOWN_BLOCK_LIMIT);
             }
             assert_eq!(blocks.join(""), reply);
+        }
+
+        /// Regression for a zero-progress hard split: an opening fence whose
+        /// continuation prefix filled the effective block size used to make
+        /// the following oversized line loop and allocate forever.
+        #[test]
+        fn boundary_sized_fence_info_cannot_stall_hard_split() {
+            let effective = SLACK_MARKDOWN_BLOCK_LIMIT - 4;
+            let reply = format!(
+                "```{}\n{}",
+                "i".repeat(effective - 4),
+                "X".repeat(effective + 1)
+            );
+
+            let blocks = split_markdown_for_blocks(&reply, SLACK_MARKDOWN_BLOCK_LIMIT);
+
+            assert!(blocks.len() >= 2);
+            assert!(
+                blocks
+                    .iter()
+                    .all(|block| block.chars().count() <= SLACK_MARKDOWN_BLOCK_LIMIT)
+            );
+        }
+
+        /// Exercise varied limits, fence-info lengths, Unicode, and oversized
+        /// lines. Returning proves termination; every output block must retain
+        /// the splitter's hard size invariant.
+        #[test]
+        fn split_markdown_always_makes_progress_and_respects_limits() {
+            for limit in 9..80 {
+                for info_len in [0, 1, limit / 2, limit, limit * 2] {
+                    let reply = format!(
+                        "```{}\n{}\n~~~{}\n{}",
+                        "lang".repeat(info_len),
+                        "🚀".repeat(limit * 3),
+                        "x".repeat(info_len),
+                        "tail".repeat(limit * 2),
+                    );
+                    let blocks = split_markdown_for_blocks(&reply, limit);
+                    assert!(!blocks.is_empty());
+                    assert!(
+                        blocks.iter().all(|block| block.chars().count() <= limit),
+                        "limit {limit}, info length {info_len}, blocks: {blocks:?}"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn outbound_reply_source_has_a_total_cap() {
+            let reply = "z".repeat(SLACK_MAX_OUTBOUND_REPLY_CHARS + 10_000);
+            let payloads = build_post_payloads("C123", "", &reply, None);
+            let delivered_chars: usize = payloads
+                .iter()
+                .flat_map(|payload| blocks_of(payload))
+                .map(|block| block.chars().count())
+                .sum();
+
+            assert_eq!(delivered_chars, SLACK_MAX_OUTBOUND_REPLY_CHARS);
         }
 
         /// End to end through the real post path: the wire body Slack receives
