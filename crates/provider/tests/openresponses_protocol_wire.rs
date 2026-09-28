@@ -766,6 +766,104 @@ async fn function_call_only_in_the_completed_response_is_recovered() {
     );
 }
 
+/// A terminal response can retain a function-call item whose generation was
+/// cut off. Neither the typed decoder nor the compatibility JSON decoder may
+/// turn that unfinished item into an executable call.
+#[tokio::test]
+async fn incomplete_terminal_function_call_is_not_emitted() {
+    for typed in [false, true] {
+        let server = MockServer::start().await;
+        let mut event = serde_json::json!({
+            "type": "response.incomplete",
+            "response": {
+                "id": "resp_incomplete_call",
+                "status": "incomplete",
+                "incomplete_details": {"reason": "max_output_tokens"},
+                "output": [{
+                    "type": "function_call",
+                    "id": "fc_partial",
+                    "call_id": "call_partial",
+                    "name": "bash",
+                    "arguments": "{\"command\":\"rm -rf",
+                    "status": "incomplete"
+                }]
+            }
+        });
+        if typed {
+            event["sequence_number"] = serde_json::json!(1);
+            event["response"]["object"] = serde_json::json!("response");
+            event["response"]["created_at"] = serde_json::json!(1);
+            event["response"]["model"] = serde_json::json!("gpt-5-mini");
+        }
+        mount_sse(&server, sse_event(&event.to_string())).await;
+
+        let stream = driver(&server)
+            .chat_completion_stream(vec![], &config("gpt-5-mini"))
+            .await
+            .expect("stream should start");
+
+        assert_eq!(
+            drain_golden(stream).await,
+            vec![Golden::Done {
+                total: Some(0),
+                prompt: Some(0),
+                completion: Some(0),
+                cache_read: None,
+                finish: Some("length".into()),
+            }],
+            "typed={typed}"
+        );
+    }
+}
+
+/// Non-empty malformed arguments are not equivalent to a no-argument call.
+/// Dropping the call fails closed instead of executing it with `{}`.
+#[tokio::test]
+async fn malformed_terminal_function_call_arguments_are_not_emitted() {
+    for typed in [false, true] {
+        let server = MockServer::start().await;
+        let mut event = serde_json::json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp_malformed_call",
+                "status": "completed",
+                "output": [{
+                    "type": "function_call",
+                    "id": "fc_malformed",
+                    "call_id": "call_malformed",
+                    "name": "bash",
+                    "arguments": "{\"command\":",
+                    "status": "completed"
+                }]
+            }
+        });
+        if typed {
+            event["sequence_number"] = serde_json::json!(1);
+            event["response"]["object"] = serde_json::json!("response");
+            event["response"]["created_at"] = serde_json::json!(1);
+            event["response"]["model"] = serde_json::json!("gpt-5-mini");
+        }
+        mount_sse(&server, sse_event(&event.to_string())).await;
+
+        let stream = driver(&server)
+            .chat_completion_stream(vec![], &config("gpt-5-mini"))
+            .await
+            .expect("stream should start");
+
+        assert_eq!(
+            drain_golden(stream).await,
+            vec![Golden::Done {
+                total: Some(0),
+                prompt: Some(0),
+                completion: Some(0),
+                cache_read: None,
+                finish: Some("stop".into()),
+            }],
+            "typed={typed}"
+        );
+    }
+}
+
 /// Reconciling at completion stays a no-op when the incremental frames already
 /// delivered the call: the consumer overwrites its tool-call list on every
 /// `ToolCalls` event, so a redundant repeat would be harmless but the contract

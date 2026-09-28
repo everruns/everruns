@@ -46,19 +46,6 @@ pub(crate) struct ToolCallAccumulator {
     pub(crate) completed: bool,
 }
 
-impl ToolCallAccumulator {
-    /// The identity and body this entry would be emitted with. Compared, not
-    /// shown, so [`ToolCallStream`] can tell a repeat emission from a new one
-    /// without requiring `PartialEq` on the public `ToolCall`.
-    pub(crate) fn signature(&self) -> (String, String, String) {
-        (
-            self.call_id.clone(),
-            self.name.clone(),
-            self.arguments.clone(),
-        )
-    }
-}
-
 /// The tool calls one response has described so far, and what has already been
 /// handed to the consumer.
 ///
@@ -131,11 +118,14 @@ impl ToolCallStream {
     /// Fold every `function_call` item of a terminal `response` resource in.
     pub(crate) fn observe_response(&mut self, output: &[types::OutputItem]) {
         for item in output {
+            // THREAT[TM-LLM-041]: A truncated terminal item is model-controlled
+            // data, not an executable call, even when its partial body is JSON.
             if let types::OutputItem::FunctionCall {
                 id,
                 call_id,
                 name,
                 arguments,
+                status: types::ItemStatus::Completed,
                 ..
             } = item
             {
@@ -152,6 +142,9 @@ impl ToolCallStream {
         };
         for item in output {
             if item.get("type").and_then(|t| t.as_str()) != Some("function_call") {
+                continue;
+            }
+            if item.get("status").and_then(|s| s.as_str()) != Some("completed") {
                 continue;
             }
             let field = |key: &str| item.get(key).and_then(|v| v.as_str()).unwrap_or("");
@@ -180,46 +173,44 @@ impl ToolCallStream {
     /// *overwrites* its tool-call list on every `ToolCalls` event, so an event
     /// carrying only the newest call would drop the earlier ones.
     pub(crate) fn take_unemitted(&mut self) -> Option<Vec<ToolCall>> {
-        let signature: Vec<(String, String, String)> = self
-            .calls
+        let snapshot = self.snapshot();
+        let signature: Vec<(String, String, String)> = snapshot
             .iter()
-            .filter(|tc| tc.completed && !tc.name.is_empty())
-            .map(ToolCallAccumulator::signature)
+            .map(|tc| (tc.id.clone(), tc.name.clone(), tc.arguments.to_string()))
             .collect();
         if signature.is_empty() || signature == self.emitted {
             return None;
         }
         self.emitted = signature;
-        Some(self.snapshot())
+        Some(snapshot)
     }
 
     pub(crate) fn snapshot(&self) -> Vec<ToolCall> {
         self.calls
             .iter()
             .filter(|tc| tc.completed && !tc.name.is_empty())
-            .map(|tc| {
-                let arguments: Value =
-                    serde_json::from_str(&tc.arguments).unwrap_or_else(|error| {
-                        // An empty string is the ordinary shape of a no-argument
-                        // call. Anything else that fails to parse is a truncated
-                        // or corrupt body, and silently substituting `{}` would
-                        // run the tool with the wrong inputs, so say so.
-                        if !tc.arguments.trim().is_empty() {
+            .filter_map(|tc| {
+                let arguments = if tc.arguments.trim().is_empty() {
+                    json!({})
+                } else {
+                    match serde_json::from_str(&tc.arguments) {
+                        Ok(arguments) => arguments,
+                        Err(error) => {
                             tracing::warn!(
                                 tool = %tc.name,
                                 call_id = %tc.call_id,
                                 %error,
-                                "OpenResponses: unparseable tool-call arguments, \
-                                 falling back to empty arguments"
+                                "OpenResponses: dropping tool call with unparseable arguments"
                             );
+                            return None;
                         }
-                        json!({})
-                    });
-                ToolCall {
+                    }
+                };
+                Some(ToolCall {
                     id: tc.call_id.clone(),
                     name: tc.name.clone(),
                     arguments,
-                }
+                })
             })
             .collect()
     }
@@ -428,7 +419,10 @@ pub(crate) fn handle_streaming_event(
             // otherwise lose the call silently, and the finish reason below is
             // derived from what this driver emitted, so nothing downstream
             // could tell that apart from the model choosing to stop.
-            {
+            if matches!(
+                response.status,
+                types::ResponseStatus::Completed | types::ResponseStatus::Incomplete
+            ) {
                 let mut acc = accumulated_tool_calls.lock().unwrap();
                 acc.observe_response(&response.output);
                 if let Some(tool_calls) = acc.take_unemitted() {

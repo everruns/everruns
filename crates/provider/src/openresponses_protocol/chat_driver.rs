@@ -500,7 +500,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                         // otherwise lose the call silently, and the finish reason below is
                                         // derived from what this driver emitted, so nothing downstream
                                         // could tell that apart from the model choosing to stop.
-                                        {
+                                        if matches!(
+                                            response_obj.get("status").and_then(Value::as_str),
+                                            Some("completed" | "incomplete")
+                                        ) {
                                             let mut acc =
                                                 accumulated_tool_calls.lock().unwrap();
                                             acc.observe_response_json(response_obj);
