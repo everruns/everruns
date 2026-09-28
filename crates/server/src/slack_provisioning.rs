@@ -262,8 +262,16 @@ impl SlackApiProvisioner {
     ) -> SlackProvisioningResult<String> {
         for _ in 0..ROTATION_WAIT_ATTEMPTS {
             tokio::time::sleep(ROTATION_WAIT).await;
-            let row = self.connection(org_id).await?;
-            if row.token_generation >= original_generation + 2 {
+            let row = self
+                .db
+                .get_org_slack_connection(org_id)
+                .await
+                .map_err(storage_error)?
+                .ok_or(SlackProvisioningError::OrgNotConnected)?;
+            if row.state == "reconnect_required" {
+                return Err(SlackProvisioningError::ReconnectRequired);
+            }
+            if row.state == "connected" && row.token_generation > original_generation {
                 return self.decrypt_required(row.access_token_encrypted.as_deref());
             }
         }
@@ -451,7 +459,9 @@ impl SlackAppProvisioner for SlackApiProvisioner {
             .await
             .map_err(storage_error)?;
         Ok(SlackProvisioningConnectionStatus {
-            connected: row.as_ref().is_some_and(|row| row.state == "connected"),
+            connected: row
+                .as_ref()
+                .is_some_and(|row| matches!(row.state.as_str(), "connected" | "rotating")),
             reconnect_required: row
                 .as_ref()
                 .is_some_and(|row| row.state == "reconnect_required"),

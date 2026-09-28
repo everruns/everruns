@@ -53,7 +53,8 @@ impl Database {
         Ok(sqlx::query_as(
             r#"
             UPDATE org_slack_connections
-            SET token_generation = token_generation + 1
+            SET state = 'rotating',
+                token_generation = token_generation + 1
             WHERE org_id = $1
               AND token_generation = $2
               AND state = 'connected'
@@ -76,10 +77,11 @@ impl Database {
             SET access_token_encrypted = $3,
                 refresh_token_encrypted = $4,
                 access_token_expires_at = $5,
+                state = 'connected',
                 token_generation = token_generation + 1
             WHERE org_id = $1
               AND token_generation = $2
-              AND state = 'connected'
+              AND state = 'rotating'
             RETURNING *
             "#,
         )
@@ -107,7 +109,7 @@ impl Database {
                 token_generation = token_generation + 1
             WHERE org_id = $1
               AND token_generation = $2
-              AND state = 'connected'
+              AND state = 'rotating'
             "#,
         )
         .bind(org_id)

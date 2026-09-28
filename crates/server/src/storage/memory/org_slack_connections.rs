@@ -53,6 +53,7 @@ impl InMemoryDatabase {
         if row.token_generation != expected_generation || row.state != "connected" {
             return Ok(None);
         }
+        row.state = "rotating".to_string();
         row.token_generation += 1;
         row.updated_at = Self::now();
         Ok(Some(row.clone()))
@@ -66,12 +67,13 @@ impl InMemoryDatabase {
         let Some(row) = connections.get_mut(&input.org_id) else {
             return Ok(None);
         };
-        if row.token_generation != input.expected_generation || row.state != "connected" {
+        if row.token_generation != input.expected_generation || row.state != "rotating" {
             return Ok(None);
         }
         row.access_token_encrypted = Some(input.access_token_encrypted);
         row.refresh_token_encrypted = Some(input.refresh_token_encrypted);
         row.access_token_expires_at = Some(input.access_token_expires_at);
+        row.state = "connected".to_string();
         row.token_generation += 1;
         row.updated_at = Self::now();
         Ok(Some(row.clone()))
@@ -86,7 +88,7 @@ impl InMemoryDatabase {
         let Some(row) = connections.get_mut(&org_id) else {
             return Ok(false);
         };
-        if row.token_generation != expected_generation || row.state != "connected" {
+        if row.token_generation != expected_generation || row.state != "rotating" {
             return Ok(false);
         }
         row.state = "reconnect_required".to_string();
@@ -161,8 +163,15 @@ mod tests {
             .await
             .unwrap()
             .expect("claim succeeds");
+        assert_eq!(claimed.state, "rotating");
         assert!(
             db.claim_org_slack_connection_rotation(41, original.token_generation)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            db.claim_org_slack_connection_rotation(41, claimed.token_generation)
                 .await
                 .unwrap()
                 .is_none()
