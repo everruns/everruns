@@ -191,6 +191,9 @@ struct DeliveryContext {
     /// Open streams for this turn, keyed by output message id. A turn with three
     /// output messages is three streams, not one concatenated blob.
     streams: HashMap<String, StreamState>,
+    /// Messages whose open stream was replaced and closed by an output
+    /// guardrail. Their subsequent completed event must not post a duplicate.
+    replaced_messages: std::collections::HashSet<String>,
     /// Last event ID we've processed (for cursor-based pagination).
     since_event_id: Option<EventId>,
     /// Whether a reply has already reached Slack for this turn. Terminal states
@@ -310,6 +313,7 @@ impl SlackDeliveryDispatcher {
             active_tool_count: 0,
             last_status: None,
             streams: HashMap::new(),
+            replaced_messages: std::collections::HashSet::new(),
             since_event_id: None,
             delivered: false,
         };
@@ -467,6 +471,19 @@ impl SlackDeliveryDispatcher {
                 // discrete path below: they are accumulated per output message and
                 // flushed on a cadence Slack can absorb.
                 if streams_supported && ctx.reply_mode == SlackReplyMode::AllMessages {
+                    if event.event_type == events::OUTPUT_MESSAGE_REPLACED
+                        && let (Some(message_id), Some(replacement)) = (
+                            event.data.get("message_id").and_then(|v| v.as_str()),
+                            event.data.get("replacement").and_then(|v| v.as_str()),
+                        )
+                        && self
+                            .replace_stream(&key, &ctx, message_id, replacement)
+                            .await
+                    {
+                        delivered = true;
+                        continue;
+                    }
+
                     if event.event_type == "output.message.delta" {
                         if let (Some(message_id), Some(accumulated)) = (
                             event.data.get("message_id").and_then(|v| v.as_str()),
@@ -498,6 +515,17 @@ impl SlackDeliveryDispatcher {
                             .and_then(|m| m.get("id"))
                             .and_then(|v| v.as_str())
                     {
+                        if self
+                            .deliveries
+                            .write()
+                            .await
+                            .get_mut(&key)
+                            .is_some_and(|live| live.replaced_messages.remove(message_id))
+                        {
+                            delivered = true;
+                            continue;
+                        }
+
                         // The completed event is authoritative for the final text.
                         // Closing on the last delta alone truncates the reply by
                         // whatever arrived after it — and the last chunk is exactly
@@ -924,6 +952,48 @@ impl SlackDeliveryDispatcher {
             stream.stop(&handle, &self.delivery_context(ctx)).await
         {
             warn!(error = %e, "Failed to stop Slack stream");
+        }
+    }
+
+    /// Replace a guardrail-retracted stream in place and forget the closed
+    /// stream only after the platform confirms that the unsafe text is gone.
+    async fn replace_stream(
+        &self,
+        key: &DeliveryKey,
+        ctx: &DeliveryContext,
+        message_id: &str,
+        replacement: &str,
+    ) -> bool {
+        let handle = {
+            let deliveries = self.deliveries.read().await;
+            deliveries
+                .get(key)
+                .and_then(|live| live.streams.get(message_id))
+                .map(|state| state.handle.clone())
+        };
+        let Some(handle) = handle else {
+            return false;
+        };
+        let Some(stream) = self.streaming_for(ctx) else {
+            return false;
+        };
+
+        match stream
+            .replace(&handle, replacement, &self.delivery_context(ctx))
+            .await
+        {
+            ChannelDeliveryResult::Ok => {
+                if let Some(live) = self.deliveries.write().await.get_mut(key) {
+                    live.streams.remove(message_id);
+                    live.replaced_messages.insert(message_id.to_string());
+                }
+                true
+            }
+            ChannelDeliveryResult::TransientError(error)
+            | ChannelDeliveryResult::PermanentError(error) => {
+                error!(%error, "Failed to replace guardrail-retracted Slack stream");
+                false
+            }
         }
     }
 
@@ -1575,6 +1645,30 @@ impl ChannelStreamDelivery for SlackDeliveryAdapter {
         {
             Ok(_) => ChannelDeliveryResult::Ok,
             Err(e) => classify_slack_failure(e),
+        }
+    }
+
+    async fn replace(
+        &self,
+        handle: &str,
+        text: &str,
+        context: &ChannelDeliveryContext,
+    ) -> ChannelDeliveryResult {
+        // Slack does not permit an in-progress stream to be edited. Close it
+        // first, then rewrite the same message so retracted text cannot remain.
+        let stop_result = self.stop(handle, context).await;
+        if !matches!(stop_result, ChannelDeliveryResult::Ok) {
+            return stop_result;
+        }
+        let payload = serde_json::json!({
+            "channel": context.channel_id,
+            "ts": handle,
+            "text": text,
+            "blocks": [{ "type": "markdown", "text": text }],
+        });
+        match slack_api_call(&self.api_base, &context.auth_token, "chat.update", payload).await {
+            Ok(_) => ChannelDeliveryResult::Ok,
+            Err(error) => classify_slack_failure(error),
         }
     }
 
@@ -3172,6 +3266,7 @@ mod tests {
         enum Call {
             Start,
             Append(String, String),
+            Replace(String, String),
             Stop(String),
             Discrete(String),
         }
@@ -3267,6 +3362,16 @@ mod tests {
                 self.push(Call::Stop(handle.to_string()));
                 ChannelDeliveryResult::Ok
             }
+
+            async fn replace(
+                &self,
+                handle: &str,
+                text: &str,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                self.push(Call::Replace(handle.to_string(), text.to_string()));
+                ChannelDeliveryResult::Ok
+            }
         }
 
         async fn dispatcher_with(
@@ -3335,6 +3440,25 @@ mod tests {
             .await;
         }
 
+        async fn replaced(
+            db: &StorageBackend,
+            session: SessionId,
+            message_id: &str,
+            replacement: &str,
+        ) {
+            terminal_state_tests::emit(
+                db,
+                session,
+                events::OUTPUT_MESSAGE_REPLACED,
+                "msg_in",
+                serde_json::json!({
+                    "message_id": message_id,
+                    "replacement": replacement,
+                }),
+            )
+            .await;
+        }
+
         fn recorded(calls: &Arc<Mutex<Vec<Call>>>) -> Vec<Call> {
             calls.lock().expect("recorder").clone()
         }
@@ -3376,6 +3500,33 @@ mod tests {
             assert!(
                 !calls.iter().any(|c| matches!(c, Call::Discrete(_))),
                 "a streamed message must not also be posted discretely: {calls:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn guardrail_replacement_removes_streamed_text() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session = terminal_state_tests::seed_session(&db).await;
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let dispatcher =
+                dispatcher_with(db.clone(), RecordingAdapter::new(calls.clone())).await;
+            register(&dispatcher, session.uuid(), SlackSurface::Pane).await;
+
+            delta(&db, session, "m1", "protected output").await;
+            dispatcher.process_session_events(session.uuid()).await;
+            dispatcher.flush_open_streams().await;
+            replaced(&db, session, "m1", "Response blocked").await;
+            completed(&db, session, "m1", "Response blocked").await;
+            dispatcher.process_session_events(session.uuid()).await;
+
+            assert_eq!(
+                recorded(&calls),
+                vec![
+                    Call::Start,
+                    Call::Append("stream-1".to_string(), "protected output".to_string()),
+                    Call::Replace("stream-1".to_string(), "Response blocked".to_string()),
+                ],
+                "the platform-visible stream must contain only the safe replacement"
             );
         }
 

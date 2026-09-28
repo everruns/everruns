@@ -435,6 +435,12 @@ pub trait ChannelStreamDelivery: Send + Sync {
     /// Append newly produced text to an open stream.
     async fn append(&self, handle: &str, text: &str, context: &DeliveryContext) -> DeliveryResult;
 
+    /// Replace all text already delivered to the stream, then close it.
+    ///
+    /// Platforms advertising streaming must implement this operation because
+    /// output guardrails can retract text after an earlier delta was displayed.
+    async fn replace(&self, handle: &str, text: &str, context: &DeliveryContext) -> DeliveryResult;
+
     /// Close the stream.
     ///
     /// Must run for every `start`, including on failure and cancellation: an
