@@ -170,10 +170,29 @@ describe("publicly reachable detection", () => {
     ).toBe(false);
   });
 
+  it.each([
+    ["default", {}],
+    ["explicitly anonymous", { anonymous: true }],
+  ])("counts an FCP endpoint with %s configuration", (_name, config) => {
+    expect(isAnonymousExposure(channel({ channel_type: "fcp", channel_config: config }))).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ["anonymous access off", { anonymous: false }],
+    ["a configured token", { token_configured: true }],
+    ["a token", { token: "secret" }],
+  ])("does not count an FCP endpoint with %s", (_name, config) => {
+    expect(isAnonymousExposure(channel({ channel_type: "fcp", channel_config: config }))).toBe(
+      false,
+    );
+  });
+
   // Every other transport authenticates by construction — Slack signs, webhook
   // and api_endpoint carry a token or key, A2A carries an API key, and a
   // schedule has no inbound caller at all.
-  it.each(["slack", "webhook", "api_endpoint", "a2a", "fcp", "schedule"] as const)(
+  it.each(["slack", "webhook", "api_endpoint", "a2a", "schedule"] as const)(
     "does not count %s as anonymous",
     (kind) => {
       expect(isAnonymousExposure(channel({ channel_type: kind, channel_config: {} }))).toBe(false);
