@@ -198,6 +198,45 @@ async fn parked_session(server: &TestServer) -> SessionId {
     session.id
 }
 
+async fn another_users_platform_chat_session(server: &TestServer) -> SessionId {
+    let session_id = parked_session(server).await;
+    let owner = server
+        .db
+        .create_user(everruns_server::storage::models::CreateUserRow {
+            email: format!("platform-chat-owner-{}@example.com", Uuid::now_v7()),
+            name: "Platform Chat Owner".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .expect("create Platform Chat owner");
+    server
+        .db
+        .add_organization_member(TEST_ORG_ID, owner.id, "member")
+        .await
+        .expect("add Platform Chat owner to the caller's organization");
+    server
+        .db
+        .update_session(
+            TEST_ORG_ID,
+            session_id,
+            everruns_server::storage::models::UpdateSession {
+                harness_id: Some(server.seed_chat_harness_id.parse().unwrap()),
+                resolved_owner_user_id: everruns_durable::UpdateField::Set(owner.id),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update Platform Chat ownership")
+        .expect("session exists");
+    session_id
+}
+
 /// Emit the `ask_user` call the engine emits, with whatever questions the test
 /// needs. Ids are always present because normalization fills them in before the
 /// call is emitted.
@@ -655,6 +694,34 @@ async fn tasks_update_rejects_an_unoffered_option_without_resuming() {
         still_pending["result"]["inputRequests"]["ask_user"].is_object(),
         "{still_pending}"
     );
+}
+
+#[tokio::test]
+async fn tasks_update_rejects_non_owner_platform_chat_question_responses() {
+    for response in [
+        json!({
+            "action": "accept",
+            "content": { "target": "Production", "areas__0": true, "areas__1": false }
+        }),
+        json!({ "action": "decline" }),
+        json!({ "action": "cancel" }),
+    ] {
+        let (server, resumes) = test_server().await;
+        let session_id = another_users_platform_chat_session(&server).await;
+        emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
+
+        let result = task_request(
+            &server,
+            "tasks/update",
+            session_id,
+            json!({ "inputResponses": { "ask_user": response } }),
+        )
+        .await;
+
+        assert_eq!(result["result"]["isError"], true, "got {result}");
+        assert_eq!(resumes.load(Ordering::SeqCst), 0);
+        assert!(completed_results(&server, session_id).await.is_empty());
+    }
 }
 
 #[tokio::test]
