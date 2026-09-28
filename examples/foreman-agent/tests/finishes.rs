@@ -318,17 +318,20 @@ async fn the_factory_finishes_after_verifying_its_own_work() {
     // Not the supervisor's opinion of the work — the work.
     assert!(fixture::changed(&root));
     assert!(fixture::verify(&root).iter().all(|check| check.passed));
-    assert!(fixture::tests_pass(&root));
+    assert!(fixture::tests_pass(&root).await);
 }
 
-#[test]
-fn the_scripted_edits_leave_a_repository_that_passes_its_own_suite() {
+#[tokio::test]
+async fn the_scripted_edits_leave_a_repository_that_passes_its_own_suite() {
     // The scripted worker's edits are the same shell a live worker runs, so
     // running them here checks the fixture, the checks, and the scripts at
     // once — without starting a factory.
     let root = tempfile::tempdir().unwrap();
     fixture::materialize(root.path()).unwrap();
-    assert!(fixture::tests_pass(root.path()), "the fixture starts green");
+    assert!(
+        fixture::tests_pass(root.path()).await,
+        "the fixture starts green"
+    );
 
     for script in [
         include_str!("resources/write_rates.sh"),
@@ -349,5 +352,5 @@ fn the_scripted_edits_leave_a_repository_that_passes_its_own_suite() {
     }
     // And the suite it left behind still passes — including the boundaries
     // the job asked for.
-    assert!(fixture::tests_pass(root.path()));
+    assert!(fixture::tests_pass(root.path()).await);
 }

@@ -6,6 +6,8 @@
 //! makes assessment as slow as the work it is supposed to be watching.
 
 use std::collections::VecDeque;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -231,35 +233,80 @@ pub struct TestRun {
 /// a suite that hangs must not outlive the reading that asked for it, or take
 /// the runtime down with it at shutdown.
 pub async fn run_tests(repository: &Path, command: &str, config: &Config) -> TestRun {
-    let spawned = tokio::process::Command::new("bash")
-        .arg("-c")
-        .arg(command)
-        .current_dir(repository)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn();
+    #[cfg(windows)]
+    return TestRun {
+        command: command.to_owned(),
+        exit_code: None,
+        passed: false,
+        output_tail: "native test containment is unavailable on Windows; refusing to run"
+            .to_owned(),
+        ran_seconds_ago: 0.0,
+    };
+
+    use everruns_host::containment::{
+        ContainmentMode, SandboxLauncher, SandboxOptions, configure_stdio, provider,
+    };
+
+    // THREAT[TM-BASH-026]: test commands consume model-written repository content. Keep that
+    // content behind the same kernel boundary as any other untrusted shell input, and re-exec
+    // this binary so the boundary is available without a separately installed helper.
+    let launcher = match std::env::current_exe() {
+        Ok(executable) if executable.file_stem().is_some_and(|name| name == "foreman") => {
+            SandboxLauncher::ReexecSelf(vec!["__sandbox-exec".to_owned()])
+        }
+        Ok(executable) => SandboxLauncher::Helper(
+            executable
+                .parent()
+                .and_then(Path::parent)
+                .unwrap_or_else(|| Path::new("."))
+                .join("foreman"),
+        ),
+        Err(_) => SandboxLauncher::Discover,
+    };
+    let sandbox = provider(
+        SandboxOptions::new(ContainmentMode::WorkspaceWrite)
+            .launcher(launcher)
+            .temp_tag("foreman-tests"),
+    );
+    let spawned = sandbox
+        .command(repository, command)
+        .and_then(|mut command| {
+            configure_stdio(&mut command);
+            // A timeout kills the whole test process tree, not only its shell leader.
+            #[cfg(unix)]
+            command.as_std_mut().process_group(0);
+            command.spawn().map_err(Into::into)
+        });
 
     let budget = config.test_timeout;
     let (exit_code, passed, text) = match spawned {
-        Ok(child) => match tokio::time::timeout(budget, child.wait_with_output()).await {
-            Ok(Ok(output)) => {
-                let text = format!(
-                    "{}{}",
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr)
-                );
-                (output.status.code(), output.status.success(), text)
+        Ok(child) => {
+            let process_group = child.id();
+            match tokio::time::timeout(budget, child.wait_with_output()).await {
+                Ok(Ok(output)) => {
+                    kill_process_group(process_group);
+                    let text = format!(
+                        "{}{}",
+                        String::from_utf8_lossy(&output.stdout),
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                    (output.status.code(), output.status.success(), text)
+                }
+                Ok(Err(error)) => {
+                    kill_process_group(process_group);
+                    (None, false, format!("could not run the tests: {error}"))
+                }
+                // Dropping the future drops the child, and `kill_on_drop` ends it.
+                Err(_) => {
+                    kill_process_group(process_group);
+                    (
+                        None,
+                        false,
+                        format!("tests exceeded {:.0}s", budget.as_secs_f64()),
+                    )
+                }
             }
-            Ok(Err(error)) => (None, false, format!("could not run the tests: {error}")),
-            // Dropping the future drops the child, and `kill_on_drop` ends it.
-            Err(_) => (
-                None,
-                false,
-                format!("tests exceeded {:.0}s", budget.as_secs_f64()),
-            ),
-        },
+        }
         Err(error) => (None, false, format!("could not run the tests: {error}")),
     };
 
@@ -270,6 +317,16 @@ pub async fn run_tests(repository: &Path, command: &str, config: &Config) -> Tes
         output_tail: tail(&text, config.output_limit),
         ran_seconds_ago: 0.0,
     }
+}
+
+fn kill_process_group(process_group: Option<u32>) {
+    #[cfg(unix)]
+    if let Some(pid) = process_group {
+        // SAFETY: the child was placed in a fresh process group whose ID is its PID.
+        unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
+    }
+    #[cfg(not(unix))]
+    let _ = process_group;
 }
 
 /// Git evidence, gathered by the host rather than asked of the worker.
@@ -632,6 +689,36 @@ mod tests {
         assert!(!run.passed);
         assert_eq!(run.exit_code, None);
         assert!(run.output_tail.contains("exceeded"), "{}", run.output_tail);
+    }
+
+    #[tokio::test]
+    async fn model_written_tests_stay_inside_the_sandbox() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = std::env::current_dir()
+            .unwrap()
+            .join(format!("foreman-outside-{}", std::process::id()));
+        let escaped_secret = root.path().join("secret");
+        let background = root.path().join("background");
+        std::fs::remove_file(&outside).ok();
+
+        // SAFETY: this unique variable is scoped to this test and no other thread reads it.
+        unsafe { std::env::set_var("FOREMAN_TEST_SENTINEL_SECRET", "do-not-leak") };
+        let command = format!(
+            "printf %s \"${{FOREMAN_TEST_SENTINEL_SECRET-}}\" > secret; \
+             echo escaped > {}; \
+             python3 -c 'import socket; socket.socket()' && exit 91 || true; \
+             (sleep 1; echo survived > background) >/dev/null 2>&1 &",
+            outside.display()
+        );
+        let run = run_tests(root.path(), &command, &Config::default()).await;
+        // SAFETY: paired with the unique test-only variable assignment above.
+        unsafe { std::env::remove_var("FOREMAN_TEST_SENTINEL_SECRET") };
+
+        assert!(run.passed, "{}", run.output_tail);
+        assert_eq!(std::fs::read_to_string(escaped_secret).unwrap(), "");
+        assert!(!outside.exists());
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        assert!(!background.exists());
     }
 
     #[test]

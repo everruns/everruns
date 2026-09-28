@@ -24,6 +24,16 @@ use everruns_foreman_agent::{agent, fixture, run};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    match std::env::args().nth(1).as_deref() {
+        Some("__sandbox-exec") => {
+            everruns_host::containment::worker::run_from_args(std::env::args().skip(2))?;
+        }
+        // Test harnesses invoke the already-built Foreman binary as a helper directly.
+        Some("--cwd") => {
+            everruns_host::containment::worker::run_from_args(std::env::args().skip(1))?;
+        }
+        _ => {}
+    }
     match Cli::parse().command {
         Command::Run(options) => start(options).await,
         Command::Demo(options) => start_demo(options).await,
@@ -84,7 +94,7 @@ async fn start_demo(options: Demo) -> Result<()> {
     }
     // The last word is not a reading of the tests but a run of them.
     demo::check(
-        fixture::tests_pass(&workspace),
+        fixture::tests_pass(&workspace).await,
         "`bash tests/run.sh` passes",
     );
     if outcome.status == Status::Finished && !fixture::changed(&workspace) {

@@ -146,12 +146,10 @@ pub fn verify(root: &Path) -> Vec<Check> {
 ///
 /// The example's own last word on a run: the supervisor's reading of the tests
 /// is evidence, and this is the fact.
-pub fn tests_pass(root: &Path) -> bool {
-    Command::new("bash")
-        .arg("tests/run.sh")
-        .current_dir(root)
-        .output()
-        .is_ok_and(|output| output.status.success())
+pub async fn tests_pass(root: &Path) -> bool {
+    crate::observation::run_tests(root, TESTS, &crate::policy::Config::default())
+        .await
+        .passed
 }
 
 /// Whether the working copy differs from the fixture at all.
