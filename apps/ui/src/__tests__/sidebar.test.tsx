@@ -858,29 +858,60 @@ describe("Create Organization dialog", () => {
       return logout;
     };
 
-    it("navigates to /login and reports the failure instead of rejecting unhandled", async () => {
+    it("keeps the user in the app and reports a retryable failure", async () => {
       const unhandled = jest.fn();
       window.addEventListener("unhandledrejection", unhandled);
       const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
 
       const logout = renderMenuWithFailingLogout(new Error("Logout failed"));
 
-      await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Sign out failed. Your session may still be active. Try again.",
+      );
       expect(logout).toHaveBeenCalled();
       expect(consoleError).toHaveBeenCalledWith("Logout failed", expect.any(Error));
       expect(unhandled).not.toHaveBeenCalled();
+      expect(mockPush).not.toHaveBeenCalledWith("/login");
 
       consoleError.mockRestore();
       window.removeEventListener("unhandledrejection", unhandled);
     });
 
-    it("still navigates when the rejection is not an Error", async () => {
+    it("handles a non-Error rejection without presenting logout as successful", async () => {
       const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
 
       renderMenuWithFailingLogout("boom");
 
-      await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(mockPush).not.toHaveBeenCalledWith("/login");
 
+      consoleError.mockRestore();
+    });
+
+    it("retries logout and navigates only after it succeeds", async () => {
+      const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+      const logout = jest
+        .fn()
+        .mockRejectedValueOnce(new Error("Network unavailable"))
+        .mockResolvedValueOnce(undefined);
+      mockUseAuth.mockReturnValue({
+        user: { email: "test@example.com", name: "Test User" },
+        requiresAuth: true,
+        isAuthenticated: true,
+        config: { mode: "builtin" },
+        isLoading: false,
+        logout,
+        logoutPending: false,
+        createOrganization: undefined,
+      });
+      render(<Sidebar />);
+      fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+      fireEvent.click(screen.getByText("Sign out"));
+
+      fireEvent.click(await screen.findByRole("button", { name: "Try sign out again" }));
+
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
+      expect(logout).toHaveBeenCalledTimes(2);
       consoleError.mockRestore();
     });
   });
