@@ -22,6 +22,25 @@ use tokio::sync::{Notify, mpsc};
 use crate::factory::{Signal, Watcher, lock, note, with};
 use crate::observation::{WorkerKind, WorkerRecord, WorkerStatus};
 
+/// Non-secret host settings needed to locate and run an installed CLI.
+const OPERATING_ENVIRONMENT: &[&str] = &[
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LOGNAME",
+    "PATH",
+    "SHELL",
+    "TERM",
+    "TMPDIR",
+    "USER",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+];
+const CODEX_CREDENTIALS: &[&str] = &["OPENAI_API_KEY"];
+const YOLOP_CREDENTIALS: &[&str] = &["ANTHROPIC_API_KEY"];
+
 /// The `{repo}` placeholder in an external agent's command template.
 const REPO: &str = "{repo}";
 /// The `{mission}` placeholder in an external agent's command template.
@@ -84,6 +103,8 @@ pub struct ExternalAgent {
     pub coding: Vec<String>,
     /// Argv for a verification pass.
     pub verifying: Vec<String>,
+    /// Credential variables this known worker is permitted to inherit.
+    pub(crate) credential_environment: &'static [&'static str],
 }
 
 /// Why an external agent could not be described.
@@ -118,6 +139,7 @@ impl ExternalAgent {
             label: "codex".to_owned(),
             coding: argv(&base, "workspace-write"),
             verifying: argv(&base, "read-only"),
+            credential_environment: CODEX_CREDENTIALS,
         }
     }
 
@@ -135,6 +157,7 @@ impl ExternalAgent {
             label: "yolop".to_owned(),
             coding: argv.clone(),
             verifying: argv,
+            credential_environment: YOLOP_CREDENTIALS,
         }
     }
 
@@ -149,6 +172,9 @@ impl ExternalAgent {
             label,
             coding: words.clone(),
             verifying: words,
+            // An arbitrary command must opt into credentials through another
+            // mechanism; Foreman cannot safely infer which secrets it needs.
+            credential_environment: &[],
         })
     }
 
@@ -170,6 +196,11 @@ impl ExternalAgent {
                 other => other.to_owned(),
             })
             .collect()
+    }
+
+    /// The narrow credential boundary for this worker preset.
+    pub fn credential_environment(&self) -> &'static [&'static str] {
+        self.credential_environment
     }
 }
 
@@ -348,7 +379,13 @@ pub async fn pump_session(
 /// things: that the worker is alive, and what it last said. The repository's
 /// own diff carries the rest, which is why the supervisor reads it directly
 /// rather than asking the worker what it did.
-pub async fn pump_process(feed: Feed, argv: Vec<String>, cwd: PathBuf, stop: Arc<Notify>) {
+pub async fn pump_process(
+    feed: Feed,
+    argv: Vec<String>,
+    cwd: PathBuf,
+    credential_environment: &'static [&'static str],
+    stop: Arc<Notify>,
+) {
     let Some((program, arguments)) = argv.split_first() else {
         feed.finish(
             WorkerStatus::Failed,
@@ -360,9 +397,7 @@ pub async fn pump_process(feed: Feed, argv: Vec<String>, cwd: PathBuf, stop: Arc
     };
     note(&feed.events, format!("{} exec {program}", feed.id));
 
-    let mut child = match tokio::process::Command::new(program)
-        .args(arguments)
-        .current_dir(&cwd)
+    let mut child = match sanitized_command(program, arguments, &cwd, credential_environment)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -434,6 +469,25 @@ pub async fn pump_process(feed: Feed, argv: Vec<String>, cwd: PathBuf, stop: Arc
         Err(error) => (WorkerStatus::Failed, false, error.to_string()),
     };
     feed.finish(status, success, summary, Some(reason));
+}
+
+/// Build a child process without crossing Foreman's credential boundary.
+fn sanitized_command(
+    program: &str,
+    arguments: &[String],
+    cwd: &Path,
+    credential_environment: &[&str],
+) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(program);
+    // THREAT[TM-LLM-041]: workers must never inherit Foreman's supervisor key
+    // or ambient host credentials.
+    command.args(arguments).current_dir(cwd).env_clear();
+    for name in OPERATING_ENVIRONMENT.iter().chain(credential_environment) {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    command
 }
 
 fn feed_handle(feed: &Feed) -> Feed {
@@ -596,5 +650,35 @@ mod tests {
         let clipped = first_line(&"x".repeat(200));
         assert_eq!(clipped.chars().count(), 80);
         assert!(clipped.ends_with('…'));
+    }
+
+    #[tokio::test]
+    async fn every_external_worker_policy_excludes_unlisted_host_secrets() {
+        // Cargo supplies this variable to the test process, making it a stable
+        // sentinel without mutating the process environment in parallel tests.
+        assert!(std::env::var_os("CARGO_MANIFEST_DIR").is_some());
+        let custom = ExternalAgent::from_template("worker {mission}").unwrap();
+        for agent in [ExternalAgent::codex(), ExternalAgent::yolop(), custom] {
+            let arguments = vec![
+                "-c".to_owned(),
+                "printf '%s' \"${CARGO_MANIFEST_DIR-unset}\"".to_owned(),
+            ];
+            let output = sanitized_command(
+                "sh",
+                &arguments,
+                Path::new("."),
+                agent.credential_environment(),
+            )
+            .output()
+            .await
+            .unwrap();
+            assert_eq!(
+                String::from_utf8(output.stdout).unwrap(),
+                "unset",
+                "{}",
+                agent.label
+            );
+            assert!(!agent.credential_environment().contains(&"TYPESAFE_API_KEY"));
+        }
     }
 }
