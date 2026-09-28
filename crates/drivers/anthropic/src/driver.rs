@@ -640,6 +640,7 @@ impl AnthropicChatDriver {
     ) -> (Option<String>, Vec<AnthropicMessage>) {
         Self::convert_messages_with_options(
             messages,
+            None,
             prompt_cache_enabled,
             volatile_suffix_len,
             false,
@@ -648,6 +649,7 @@ impl AnthropicChatDriver {
 
     fn convert_messages_with_options(
         messages: &[Message],
+        prepared: Option<&layout::PreparedMessages<'_>>,
         prompt_cache_enabled: bool,
         volatile_suffix_len: usize,
         allow_unmatched_tool_results: bool,
@@ -658,9 +660,23 @@ impl AnthropicChatDriver {
         // (infinity_context / compaction). See `fold_system_messages`.
         let mut system_prompt = fold_system_messages(messages);
         let mut converted = Vec::new();
+        let mut in_place_systems = Vec::new();
         let visible_tool_use_ids = visible_tool_call_ids(messages);
 
-        for msg in messages {
+        for (message_index, msg) in messages.iter().enumerate() {
+            if let Some(clear_at) =
+                prepared.and_then(|layout| layout.in_place_system(message_index))
+            {
+                let converted_index = converted.len();
+                converted.push(AnthropicMessage {
+                    role: "user".to_string(),
+                    content: Self::convert_content(&msg.content),
+                    clear_at: None,
+                    preserved_content: None,
+                });
+                in_place_systems.push((converted_index, clear_at));
+                continue;
+            }
             match msg.role {
                 MessageRole::System => {
                     // Folded above into the top-level `system` field; never emit a
@@ -815,7 +831,7 @@ impl AnthropicChatDriver {
             }
         }
 
-        layout::place_system_messages(&mut system_prompt, &mut converted);
+        layout::place_system_messages(&mut system_prompt, &mut converted, &in_place_systems);
         if prompt_cache_enabled {
             layout::mark_recent_text_blocks_for_cache(&mut converted, volatile_suffix_len);
         }
