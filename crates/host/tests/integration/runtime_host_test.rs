@@ -2367,6 +2367,77 @@ async fn execution_waits_for_tool_results_when_session_hint_requests_it() {
     }
 }
 
+#[tokio::test]
+async fn durable_ask_user_pause_honors_the_session_hint() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let mut host_session = session(session_id, harness_id);
+    host_session.hints = Some(HashMap::from([("ask_user".to_string(), json!(true))]));
+    adapter.session_store.insert(host_session).await;
+
+    let input = turn_state(session_id, harness_id);
+    let output = json!({
+        "waiting_for_tool_results": true,
+        "client_tool_calls": [{
+            "id": "toolu_ask_1",
+            "name": everruns_provider::ASK_USER_TOOL_NAME,
+            "arguments": {"questions": []}
+        }]
+    });
+
+    let plan = advance_from_state(&adapter, "act", &input, &output, 0)
+        .await
+        .unwrap();
+
+    assert!(matches!(plan, TurnPlan::WaitForToolResults { .. }));
+    let stored = adapter
+        .session_store
+        .get_session(session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.status, SessionExecutionState::WaitingForToolResults);
+}
+
+#[tokio::test]
+async fn durable_ask_user_pause_without_hint_emits_unattended_completion() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+
+    let input = turn_state(session_id, harness_id);
+    let output = json!({
+        "waiting_for_tool_results": true,
+        "client_tool_calls": [{
+            "id": "toolu_ask_1",
+            "name": everruns_provider::ASK_USER_TOOL_NAME,
+            "arguments": {"questions": []}
+        }]
+    });
+
+    let plan = advance_from_state(&adapter, "act", &input, &output, 0)
+        .await
+        .unwrap();
+
+    assert!(matches!(plan, TurnPlan::ScheduleReason(_)));
+    let completion = adapter
+        .event_emitter
+        .events()
+        .await
+        .into_iter()
+        .find_map(|event| match event.data {
+            EventData::ToolCompleted(data) if data.tool_call_id == "toolu_ask_1" => Some(data),
+            _ => None,
+        })
+        .expect("unattended ask_user completion emitted");
+    assert_eq!(completion.tool_name, everruns_provider::ASK_USER_TOOL_NAME);
+}
+
 // ============================================================================
 // Lifecycle hook wire-in tests (user_prompt_submit, turn_end)
 // ============================================================================
