@@ -2502,6 +2502,7 @@ dependencies = [
  "everruns-example-demo",
  "everruns-foreman-agent",
  "everruns-openrouter",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",
