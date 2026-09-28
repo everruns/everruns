@@ -1366,7 +1366,7 @@ application's network authority, without hosted tenant policy.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-LLM-008 | Search result prompt injection | Medium | Results returned as `tool_result` role; inherent LLM limitation (same as TM-TOOL-005) | **ACCEPTED** |
+| TM-LLM-008 | Search result prompt injection | Medium | Results returned as `tool_result` role; inherent LLM limitation (same as TM-TOOL-005). The live [research example](../../examples/research-agent/src/main.rs) also bounds reasoning rounds and forbids parallel tool calls to limit request amplification. | **ACCEPTED** |
 | TM-LLM-009 | Search query privacy | Low | Queries sent to Brave Search (third party); caller responsibility to assess data classification | **CALLER RISK** |
 
 ## 21. Container Sandbox (TM-SANDBOX)
