@@ -1121,6 +1121,26 @@ impl WorkspaceFileService {
         Ok(results)
     }
 
+    /// Search files with bounded result metadata, excluding a private subtree
+    /// before content matching and accounting (THREAT[TM-TENANT-013]).
+    pub async fn grep_with_options_excluding(
+        &self,
+        session_id: Uuid,
+        pattern: &str,
+        options: &GrepOptions,
+        excluded_path_prefix: Option<&str>,
+    ) -> Result<GrepSearchResult> {
+        grep_session_files_with_options(
+            &self.db,
+            self.virtual_registry.as_deref(),
+            session_id,
+            pattern,
+            options,
+            excluded_path_prefix,
+        )
+        .await
+    }
+
     /// True when either end of a move or copy sits inside a Memory mount.
     async fn crosses_memory_mount(&self, session_id: Uuid, src: &str, dst: &str) -> bool {
         self.route_memory(session_id, src).await.is_some()
@@ -1683,6 +1703,7 @@ impl SessionFileSystem for WorkspaceFileService {
             session_id.uuid(),
             pattern,
             options,
+            None,
         )
         .await
         .map_err(file_system_error)
@@ -1839,6 +1860,7 @@ pub(crate) async fn grep_session_files_with_options(
     session_id: Uuid,
     pattern: &str,
     options: &GrepOptions,
+    excluded_path_prefix: Option<&str>,
 ) -> Result<GrepSearchResult> {
     anyhow::ensure!(
         pattern.len() <= MAX_GREP_PATTERN_LEN,
@@ -1873,16 +1895,18 @@ pub(crate) async fn grep_session_files_with_options(
             session_id,
             pattern,
             options.path_pattern.as_deref(),
-            None,
+            excluded_path_prefix,
             MAX_GREP_FILE_BYTES,
         )
         .await?;
     let mut text_files = Vec::new();
     let mut total_scanned = 0usize;
     for row in rows {
-        if path_matcher
-            .as_ref()
-            .is_some_and(|matcher| !matcher.is_match(&row.path))
+        if excluded_path_prefix
+            .is_some_and(|prefix| row.path == prefix || row.path.starts_with(&format!("{prefix}/")))
+            || path_matcher
+                .as_ref()
+                .is_some_and(|matcher| !matcher.is_match(&row.path))
             || row.size_bytes > MAX_GREP_FILE_BYTES
         {
             continue;
@@ -1902,9 +1926,11 @@ pub(crate) async fn grep_session_files_with_options(
     }
     if let Some(registry) = virtual_registry {
         for (path, text) in registry.grep_text_files(&session_id, MAX_GREP_FILE_BYTES as usize) {
-            if path_matcher
-                .as_ref()
-                .is_none_or(|matcher| matcher.is_match(&path))
+            if !excluded_path_prefix
+                .is_some_and(|prefix| path == prefix || path.starts_with(&format!("{prefix}/")))
+                && path_matcher
+                    .as_ref()
+                    .is_none_or(|matcher| matcher.is_match(&path))
             {
                 total_scanned = total_scanned.saturating_add(text.len());
                 anyhow::ensure!(

@@ -501,6 +501,7 @@ impl DirectWorkerAdapters {
             session_id,
             pattern,
             options,
+            None,
         )
         .await
         .map_err(|error| store_error(format!("Failed to grep files: {error}")))
