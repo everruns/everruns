@@ -162,9 +162,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // their encrypted payload, and it only does so on request. Stateful
         // continuations already retain that state server-side; Meta rejects
         // this include when paired with `previous_response_id`.
+        let should_include_reasoning = reasoning.is_some() || update_state.is_some();
         let include = previous_response_id
             .is_none()
-            .then_some(reasoning.is_some() || update_state.is_some())
+            .then_some(should_include_reasoning)
             .filter(|include| *include)
             .map(|_| vec!["reasoning.encrypted_content".to_string()]);
 
@@ -271,6 +272,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                     "stateful Responses continuation rejected for missing tool output; retrying once with repaired stateless replay"
                 );
                 request.previous_response_id = None;
+                request.include = should_include_reasoning
+                    .then(|| vec!["reasoning.encrypted_content".to_string()]);
                 request.input = coalesce_configuration_updates(
                     repair_unpaired_function_call_items(full_replay_input_items),
                 );
