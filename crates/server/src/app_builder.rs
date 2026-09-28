@@ -901,6 +901,7 @@ impl ServerAppBuilder {
             core_deps.auth.clone(),
             notifications_enabled,
             core_deps.event_delivery.clone(),
+            sse_tracker.clone(),
         );
         let tool_results_state = api::tool_results::AppState::new(
             core_deps.db.clone(),
