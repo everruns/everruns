@@ -227,7 +227,8 @@ fn test_build_session_tags_per_thread() {
         &config,
         &event,
         SlackSurface::Channel,
-    );
+    )
+    .unwrap();
     assert_eq!(tags.len(), 3);
     assert!(tags[0].starts_with("slack:app:"));
     assert!(tags[1].starts_with("slack:endpoint:"));
@@ -246,7 +247,8 @@ fn test_build_session_tags_per_thread_no_thread_ts() {
         &config,
         &event,
         SlackSurface::Channel,
-    );
+    )
+    .unwrap();
     assert_eq!(tags[2], "slack:thread:1234.5678"); // falls back to ts
 }
 
@@ -262,7 +264,8 @@ fn test_build_session_tags_per_channel() {
         &config,
         &event,
         SlackSurface::Channel,
-    );
+    )
+    .unwrap();
     assert_eq!(tags[2], "slack:channel:C123");
 }
 
@@ -279,8 +282,31 @@ fn test_build_session_tags_per_user() {
         &config,
         &event,
         SlackSurface::Channel,
-    );
+    )
+    .unwrap();
     assert_eq!(tags[2], "slack:user:U999");
+}
+
+#[test]
+fn test_build_session_tags_rejects_invocation_only_bindings() {
+    let app = test_app();
+    let event = test_event("C123", Some("1234.5678"), None);
+
+    for binding in [SessionBinding::Endpoint, SessionBinding::Ephemeral] {
+        let error = build_session_tags(
+            &app,
+            &app.channels[0],
+            &test_config(binding),
+            &event,
+            SlackSurface::Channel,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported Slack session binding")
+        );
+    }
 }
 
 #[test]
@@ -443,7 +469,8 @@ fn test_pane_forces_per_thread_routing() {
     config.agent_surface_enabled = true;
     let event = test_event("D_PANE", Some("1234.5678"), None);
 
-    let pane_tags = build_session_tags(&app, &app.channels[0], &config, &event, SlackSurface::Pane);
+    let pane_tags =
+        build_session_tags(&app, &app.channels[0], &config, &event, SlackSurface::Pane).unwrap();
     assert!(
         pane_tags.iter().any(|t| t == "slack:thread:1234.5678"),
         "pane must route per thread, got {pane_tags:?}"
@@ -460,7 +487,8 @@ fn test_pane_forces_per_thread_routing() {
         &config,
         &event,
         SlackSurface::Channel,
-    );
+    )
+    .unwrap();
     assert!(
         channel_tags.iter().any(|t| t == "slack:channel:D_PANE"),
         "channel surface must keep the configured strategy, got {channel_tags:?}"
@@ -586,7 +614,8 @@ fn test_build_session_tags_uses_generic_routing() {
         &config,
         &event,
         SlackSurface::Channel,
-    );
+    )
+    .unwrap();
     assert_eq!(tags[2], "slack:thread:1234.0000");
 
     let config_channel = test_config(SessionBinding::Conversation);
@@ -596,7 +625,8 @@ fn test_build_session_tags_uses_generic_routing() {
         &config_channel,
         &event,
         SlackSurface::Channel,
-    );
+    )
+    .unwrap();
     assert_eq!(tags_channel[2], "slack:channel:C123");
 
     let mut event_user = test_event("C123", Some("1234.5678"), None);
@@ -608,7 +638,8 @@ fn test_build_session_tags_uses_generic_routing() {
         &config_user,
         &event_user,
         SlackSurface::Channel,
-    );
+    )
+    .unwrap();
     assert_eq!(tags_user[2], "slack:user:U999");
 }
 
@@ -848,7 +879,8 @@ mod pane_rename_tests {
             &pane_config(),
             &rename_event(None),
             SlackSurface::Pane,
-        );
+        )
+        .unwrap();
         let session = state
             .db
             .create_session(CreateSessionRow {

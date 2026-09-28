@@ -120,7 +120,7 @@ pub(crate) fn build_session_tags(
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
     surface: SlackSurface,
-) -> Vec<String> {
+) -> anyhow::Result<Vec<String>> {
     let mut tags = vec![
         format!("slack:app:{}", app.public_id),
         format!("slack:endpoint:{}", slack_channel.public_id),
@@ -157,11 +157,14 @@ pub(crate) fn build_session_tags(
             SlackSurface::Channel => None,
         },
     );
+    if !everruns_platform::ChannelType::Slack.allows_binding(binding) {
+        anyhow::bail!("unsupported Slack session binding: {binding:?}");
+    }
     if let Some(routing_tag) = build_session_routing_tag("slack", &binding, &routing_metadata) {
         tags.push(routing_tag);
     }
 
-    tags
+    Ok(tags)
 }
 
 pub(crate) fn desired_session_tags(
