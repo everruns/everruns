@@ -15,7 +15,7 @@ use reqwest::Client;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use crate::server_compaction;
@@ -661,20 +661,12 @@ impl AnthropicChatDriver {
         let mut system_prompt = fold_system_messages(messages);
         let mut converted = Vec::new();
         let mut in_place_systems = Vec::new();
-        let visible_tool_use_ids = visible_tool_call_ids(messages);
+        let visible_tool_use_ids = layout::visible_tool_call_ids(messages);
 
         for (message_index, msg) in messages.iter().enumerate() {
-            if let Some(clear_at) =
-                prepared.and_then(|layout| layout.in_place_system(message_index))
-            {
-                let converted_index = converted.len();
-                converted.push(AnthropicMessage {
-                    role: "user".to_string(),
-                    content: Self::convert_content(&msg.content),
-                    clear_at: None,
-                    preserved_content: None,
-                });
-                in_place_systems.push((converted_index, clear_at));
+            if let Some(clear_at) = prepared.and_then(|p| p.in_place_system(message_index)) {
+                in_place_systems.push((converted.len(), clear_at));
+                converted.push(layout::in_place_system(Self::convert_content(&msg.content)));
                 continue;
             }
             match msg.role {
@@ -1074,15 +1066,6 @@ fn is_anthropic_model_not_found(status: reqwest::StatusCode, error_text: &str) -
         }
     }
     false
-}
-
-fn visible_tool_call_ids(messages: &[Message]) -> HashSet<&str> {
-    messages
-        .iter()
-        .filter(|msg| msg.role == MessageRole::Assistant)
-        .flat_map(|msg| msg.tool_calls.iter().flatten())
-        .map(|tool_call| tool_call.id.as_str())
-        .collect()
 }
 
 fn is_anthropic_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {

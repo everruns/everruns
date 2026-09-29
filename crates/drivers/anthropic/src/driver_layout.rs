@@ -20,6 +20,7 @@
 //!   dropped block degrades that turn instead of failing it.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 
 use everruns_provider::driver_registry::{Message, MessageRole};
 use everruns_provider::message::TURN_SCOPED_SYSTEM_MARKER;
@@ -127,6 +128,30 @@ pub(super) fn keep_later_system_messages_in_place<'a>(
 /// one. The position is a pure function of the conversation, so replaying the
 /// same history lays it out the same way. With no user message to follow, the
 /// text goes into top-level `system` as it did before.
+/// The carrier `convert_messages` emits for a system message that stays where
+/// it is. It goes out as a `user` message and `place_system_messages` below
+/// lifts it back out by index, so the provenance never rides in message text
+/// where user content could forge it.
+pub(super) fn in_place_system(content: Vec<AnthropicContentBlock>) -> AnthropicMessage {
+    AnthropicMessage {
+        role: "user".to_string(),
+        content,
+        clear_at: None,
+        preserved_content: None,
+    }
+}
+
+/// Tool-use ids a request will actually show the model. A `tool_result` whose
+/// `tool_use` was dropped is unmatched, and the API rejects the request.
+pub(super) fn visible_tool_call_ids(messages: &[Message]) -> HashSet<&str> {
+    messages
+        .iter()
+        .filter(|msg| msg.role == MessageRole::Assistant)
+        .flat_map(|msg| msg.tool_calls.iter().flatten())
+        .map(|tool_call| tool_call.id.as_str())
+        .collect()
+}
+
 pub(super) fn place_system_messages(
     system_prompt: &mut Option<String>,
     messages: &mut Vec<AnthropicMessage>,
