@@ -1,4 +1,16 @@
 # Everruns Knowledge Update Log
+## 2026-09-29
+
+* **The managed OpenAI Agents API is a conditional experiment, not a provider
+  driver replacement.** It can own the model/tool loop, compaction, remote MCP,
+  and optional sandbox, while Everruns can project its root-turn stream into the
+  canonical session event contract. Production use remains blocked on durable
+  reconciliation, approval and guardrail enforcement, scoped MCP authentication,
+  complete cost accounting, and session import/fork semantics. An off-by-default
+  protocol prototype demonstrates one client function, one MCP server, tool
+  results, reconnect handling, and event translation with offline tests. A live
+  provider run was unavailable because no API credential was present. See
+  [OpenAI Agents API Runtime Prototype](execution/openai-agents-api-prototype.md).
 
 ## 2026-09-28
 
