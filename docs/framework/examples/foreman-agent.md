@@ -107,8 +107,11 @@ exercises the whole request path rather than bypassing it.
 
 It already runs `git` rather than asking the worker what changed, and `--tests`
 applies the same reasoning to the suite: a worker reporting its own green tests
-is a claim, and a host-run result is a fact. It lands in the observation as
-`test_results` — the field Foreman declares and never fills — and
+is a claim, and an independently run result is a fact. The command runs in a
+networkless Docker container with no inherited host environment, over a
+read-only repository mount copied to isolated temporary storage. Docker is
+therefore required when `--tests` is used. The result lands in the observation
+as `test_results` — the field Foreman declares and never fills — and
 `tests_sufficient` moves on it. The suite runs once as a baseline before any
 worker starts, then whenever the floor is quiet; between times the last result
 is carried with its age, because a stale pass should not read as a fresh one.

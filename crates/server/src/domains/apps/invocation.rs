@@ -302,8 +302,13 @@ async fn find_or_create_invocation_session(
                 .await
             }
             None => {
-                db.find_session_by_tags_and_owner(app.org_id, app.owner_principal_id, &shared_tags)
-                    .await
+                db.find_endpoint_session_by_tags_and_owner(
+                    app.org_id,
+                    channel.internal_id,
+                    app.owner_principal_id,
+                    &shared_tags,
+                )
+                .await
             }
         }
         .map_err(classify_anyhow)?

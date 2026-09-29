@@ -77,6 +77,38 @@ impl CompactionCheckpointStore for DbCompactionCheckpointStore {
         }))
     }
 
+    async fn get_latest_format(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        format_version: u32,
+    ) -> everruns_provider::error::Result<Option<CompactionCheckpoint>> {
+        let row = self
+            .db
+            .get_compaction_checkpoint(session_id, provider_type, model, format_version as i32)
+            .await
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let plaintext = self
+            .encryption
+            .decrypt(&row.payload_encrypted)
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        let payload: CompactionCheckpointPayload = serde_json::from_slice(&plaintext)
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        Ok(Some(CompactionCheckpoint {
+            id: row.id,
+            session_id: row.session_id,
+            source_sequence: i64::from(row.source_sequence),
+            provider_type: row.provider_type,
+            model: row.model,
+            format_version: row.format_version as u32,
+            payload,
+        }))
+    }
+
     async fn install(
         &self,
         checkpoint: CompactionCheckpoint,
@@ -207,5 +239,35 @@ mod tests {
             .unwrap();
         assert_eq!(forked.source_sequence, 7);
         assert_eq!(forked.payload, checkpoint(source, 7).payload);
+    }
+
+    #[tokio::test]
+    async fn oversized_anthropic_prefix_is_rejected_before_storage() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let store = DbCompactionCheckpointStore::new(db, encryption());
+        let session_id = SessionId::new();
+        let checkpoint = CompactionCheckpoint {
+            id: Uuid::now_v7(),
+            session_id,
+            source_sequence: 8,
+            provider_type: "anthropic".to_string(),
+            model: "claude-opus-4-8".to_string(),
+            format_version: 2,
+            payload: CompactionCheckpointPayload::ProviderOpaque {
+                context: ProviderOpaqueContext::AnthropicMessagesPrefix {
+                    messages_json: "x".repeat(MAX_CHECKPOINT_PAYLOAD_BYTES),
+                },
+            },
+        };
+
+        let error = store.install(checkpoint).await.unwrap_err();
+        assert!(error.to_string().contains("exceeds 32 MiB"));
+        assert!(
+            store
+                .get_latest_format(session_id, "anthropic", "claude-opus-4-8", 2)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }

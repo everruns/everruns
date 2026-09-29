@@ -2929,33 +2929,6 @@ mod tests {
     // `MountFs`), exercised there; the file tools just hand raw paths to the
     // store.
 
-    #[test]
-    fn test_display_path_root_defaults_to_workspace_namespace() {
-        let store = MockFileStore::default();
-        assert_eq!(fs_display_path(&store, "/"), "/workspace");
-    }
-
-    #[test]
-    fn test_display_path_file_defaults_to_workspace_namespace() {
-        let store = MockFileStore::default();
-        assert_eq!(fs_display_path(&store, "/test.txt"), "/workspace/test.txt");
-    }
-
-    #[test]
-    fn test_display_path_nested_defaults_to_workspace_namespace() {
-        let store = MockFileStore::default();
-        assert_eq!(
-            fs_display_path(&store, "/foo/bar.txt"),
-            "/workspace/foo/bar.txt"
-        );
-    }
-
-    #[test]
-    fn test_display_path_no_leading_slash_defaults_to_workspace_namespace() {
-        let store = MockFileStore::default();
-        assert_eq!(fs_display_path(&store, "test.txt"), "/workspace/test.txt");
-    }
-
     #[tokio::test]
     async fn read_file_uses_mountfs_workspace_display_path() {
         // File tools run behind MountFs in production; mounted real-disk stores

@@ -26,7 +26,12 @@ split and the marking convention so later changes stay deliberate.
 * **Alpha** may break without a major bump. Applies to the decisions
   surface: `crates/everruns/src/decisions.rs` and its `everruns-core`
   re-exports in `crates/everruns/src/lib.rs`; and to the model-catalog
-  surface: `crates/everruns/src/models.rs` and its profile re-exports.
+  surface: `crates/everruns/src/models.rs` and its profile re-exports; and to
+  the host-integration hooks: per-tool approval (`crates/everruns/src/approval.rs`,
+  `FunctionTool::needs_approval`, `AgentBuilder::approver`), the tool call
+  context (`ToolCallContext`, `FunctionTool::with_context`), durable event
+  replay (`Session::events_after` / `events_from`), and `ask_user::AskContext`
+  with `AskUser::ask_in`.
 * **Unmarked** public items are provisional: treat as alpha until marked.
 
 ## Marking convention

@@ -169,10 +169,18 @@ impl ThreadContext {
     /// Record where the user is now looking. Last write wins.
     ///
     /// Returns true when this actually changed the stored position, so callers
-    /// can skip a write when the platform re-reports the same place.
+    /// can skip a write when the platform re-reports the same place. Observation
+    /// time is metadata and does not make an otherwise identical position new.
     pub fn set_current_view(&mut self, view: ChannelViewContext) -> bool {
         let view = (!view.is_empty()).then_some(view);
-        if self.current_view == view {
+        let same_position = match (&self.current_view, &view) {
+            (Some(current), Some(next)) => {
+                current.channel_id == next.channel_id && current.team_id == next.team_id
+            }
+            (None, None) => true,
+            _ => false,
+        };
+        if same_position {
             return false;
         }
         self.current_view = view;
@@ -875,14 +883,21 @@ mod tests {
         let view = ChannelViewContext {
             channel_id: Some("C123".to_string()),
             team_id: Some("T1".to_string()),
-            observed_at: None,
+            observed_at: Some(chrono::Utc::now()),
         };
 
         assert!(
             ctx.set_current_view(view.clone()),
             "first report is a change"
         );
-        assert!(!ctx.set_current_view(view), "identical report is not");
+        let repeated = ChannelViewContext {
+            observed_at: Some(chrono::Utc::now() + chrono::Duration::seconds(1)),
+            ..view
+        };
+        assert!(
+            !ctx.set_current_view(repeated),
+            "a new observation time does not make the same location a change"
+        );
 
         let moved = ChannelViewContext {
             channel_id: Some("C999".to_string()),

@@ -26,7 +26,7 @@ pub(super) fn proactive_source_fingerprint(
         Some(crate::ProviderOpaqueContext::OpenResponsesCompact { output, .. }) => {
             output.iter().map(crate::CompactInputItem::from).collect()
         }
-        None => Vec::new(),
+        Some(_) | None => Vec::new(),
     };
     input.extend(messages_to_compact_input(messages));
     let bytes = serde_json::to_vec(&input).unwrap_or_default();
@@ -84,7 +84,7 @@ pub(super) async fn try_apply_native_compaction(
                 output.iter().map(crate::CompactInputItem::from).collect(),
                 true,
             ),
-            None => (Vec::new(), false),
+            Some(_) | None => (Vec::new(), false),
         };
     if llm_config.reasoning_state.is_some()
         && let Some(crate::ProviderOpaqueContext::OpenResponsesCompact {
@@ -511,6 +511,8 @@ pub(super) async fn apply_proactive_compaction(
                     context.event_context.clone(),
                     ContextCompactedData {
                         checkpoint_id: applied.checkpoint_id.clone(),
+                        checkpoint_bytes: None,
+                        replay_source: None,
                         strategy_used: "native".to_string(),
                         trigger,
                         model: context.model.to_string(),
@@ -619,6 +621,8 @@ pub(super) async fn apply_proactive_compaction(
                 context.event_context.clone(),
                 ContextCompactedData {
                     checkpoint_id: None,
+                    checkpoint_bytes: None,
+                    replay_source: None,
                     strategy_used: fallback_strategy.to_string(),
                     messages_before,
                     messages_after: messages.len(),
@@ -1066,6 +1070,8 @@ pub(super) async fn apply_reactive_compaction(
                 context.event_context.clone(),
                 ContextCompactedData {
                     checkpoint_id,
+                    checkpoint_bytes: None,
+                    replay_source: None,
                     strategy_used: strategy_used.clone(),
                     trigger: CompactionTrigger::ContextBudget,
                     model: context.model.to_string(),
@@ -1096,6 +1102,8 @@ pub(super) async fn apply_reactive_compaction(
                 context.event_context.clone(),
                 ContextCompactedData {
                     checkpoint_id: None,
+                    checkpoint_bytes: None,
+                    replay_source: None,
                     strategy_used: strategy_used.clone(),
                     messages_before,
                     messages_after,
