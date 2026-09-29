@@ -412,8 +412,10 @@ mod host_compute {
                     self.root.display()
                 )));
             }
+            let root = std::fs::canonicalize(&self.root)
+                .map_err(|error| ComputeError::Unavailable(error.to_string()))?;
             Ok(Arc::new(HostComputeSession {
-                root: self.root.clone(),
+                root,
                 default_timeout_secs: self.default_timeout_secs,
                 #[cfg(feature = "native-containment")]
                 sandbox: self.containment.clone().map(crate::containment::provider),
@@ -433,7 +435,7 @@ mod host_compute {
     impl ComputeSession for HostComputeSession {
         async fn exec(&self, request: ExecRequest) -> Result<ExecResult, ComputeError> {
             let cwd = match &request.cwd {
-                Some(relative) => self.root.join(relative),
+                Some(relative) => safe_cwd(&self.root, relative)?,
                 None => self.root.clone(),
             };
             let mut command = self.shell(&cwd, &request.command)?;
@@ -478,13 +480,30 @@ mod host_compute {
             #[cfg(feature = "native-containment")]
             if let Some(sandbox) = &self.sandbox {
                 return sandbox
-                    .command(cwd, command)
+                    .command(&self.root, cwd, command)
                     .map_err(|error| ComputeError::Launch(format!("{error:#}")));
             }
             let mut shell = tokio::process::Command::new("bash");
             shell.arg("-lc").arg(command).current_dir(cwd);
             Ok(shell)
         }
+    }
+
+    fn safe_cwd(root: &std::path::Path, requested: &str) -> Result<PathBuf, ComputeError> {
+        let requested = std::path::Path::new(requested);
+        if requested.is_absolute()
+            || requested.components().any(|component| {
+                !matches!(
+                    component,
+                    std::path::Component::Normal(_) | std::path::Component::CurDir
+                )
+            })
+        {
+            return Err(ComputeError::Launch(
+                "working directory must be a relative path inside the workspace".to_string(),
+            ));
+        }
+        Ok(root.join(requested))
     }
 }
 
@@ -530,6 +549,18 @@ mod host_compute_tests {
 
         assert_eq!(result.exit_code, 3);
         assert!(!result.success());
+    }
+
+    #[tokio::test]
+    async fn working_directory_cannot_escape_the_configured_root() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        for cwd in ["/tmp", "../outside"] {
+            let error = session(directory.path().to_path_buf())
+                .exec(ExecRequest::new("true").cwd(cwd))
+                .await
+                .expect_err("outside cwd is rejected");
+            assert!(matches!(error, ComputeError::Launch(_)));
+        }
     }
 
     #[tokio::test]

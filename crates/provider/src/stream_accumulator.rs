@@ -19,6 +19,9 @@
 // - `take_pending_strict`: fallback flush at `[DONE]`/end-of-stream without a
 //   tool-call finish — malformed argument JSON causes the call to be dropped,
 //   since there was no explicit completion to trust.
+//
+// Either fallback logs a `tracing` warning naming the call, so a degraded or
+// dropped call is never silent.
 
 use crate::tool_types::ToolCall;
 use serde_json::{Value, json};
@@ -125,10 +128,16 @@ impl StreamToolCallAccumulator {
     pub fn take_finalized(&mut self) -> Vec<ToolCall> {
         std::mem::take(&mut self.calls)
             .into_iter()
-            .map(|c| ToolCall {
-                id: c.id,
-                name: c.name,
-                arguments: parse_arguments(&c.arguments).unwrap_or_else(|| json!({})),
+            .map(|c| {
+                let arguments = parse_arguments(&c.arguments).unwrap_or_else(|| {
+                    warn_malformed_arguments(&c, "degraded to {}");
+                    json!({})
+                });
+                ToolCall {
+                    id: c.id,
+                    name: c.name,
+                    arguments,
+                }
             })
             .collect()
     }
@@ -140,13 +149,33 @@ impl StreamToolCallAccumulator {
         std::mem::take(&mut self.calls)
             .into_iter()
             .filter_map(|c| {
+                let Some(arguments) = parse_arguments(&c.arguments) else {
+                    warn_malformed_arguments(&c, "call dropped");
+                    return None;
+                };
                 Some(ToolCall {
                     id: c.id,
                     name: c.name,
-                    arguments: parse_arguments(&c.arguments)?,
+                    arguments,
                 })
             })
             .collect()
+    }
+
+    /// Drain calls still pending when a Chat Completions stream ends.
+    ///
+    /// Calls survive only when the provider omitted a finish reason or
+    /// reported `tool_calls`: `length` or `content_filter` mean the response
+    /// was cut or rejected, so pending calls are discarded rather than
+    /// executed. Surviving calls go through the strict flush, since no
+    /// explicit completion chunk vouched for their arguments.
+    pub fn take_at_stream_end(&mut self, finish_reason: Option<&str>) -> Vec<ToolCall> {
+        if !matches!(finish_reason, None | Some("tool_calls")) {
+            // Drain so a repeated flush cannot re-emit, but do not execute.
+            self.calls.clear();
+            return Vec::new();
+        }
+        self.take_pending_strict()
     }
 
     /// Drain accumulated calls, keeping only those with a non-empty name and
@@ -156,13 +185,34 @@ impl StreamToolCallAccumulator {
         std::mem::take(&mut self.calls)
             .into_iter()
             .filter(|c| !c.name.is_empty())
-            .map(|c| ToolCall {
-                id: c.id,
-                name: c.name,
-                arguments: parse_arguments(&c.arguments).unwrap_or_else(|| json!({})),
+            .map(|c| {
+                let arguments = parse_arguments(&c.arguments).unwrap_or_else(|| {
+                    warn_malformed_arguments(&c, "degraded to {}");
+                    json!({})
+                });
+                ToolCall {
+                    id: c.id,
+                    name: c.name,
+                    arguments,
+                }
             })
             .collect()
     }
+}
+
+/// Say, rather than stay silent, when streamed tool arguments did not parse.
+///
+/// The fallback (an empty object, or dropping the call) is the contract, but a
+/// host debugging a tool loop needs to see that it happened. Only the size is
+/// logged: argument text is model output and may carry user data.
+fn warn_malformed_arguments(call: &PartialToolCall, outcome: &str) {
+    tracing::warn!(
+        tool_call_id = %call.id,
+        tool_name = %call.name,
+        argument_bytes = call.arguments.len(),
+        outcome,
+        "streamed tool-call arguments are not valid JSON"
+    );
 }
 
 /// Parse an accumulated argument fragment buffer into JSON. An empty buffer is

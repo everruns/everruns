@@ -182,20 +182,25 @@ pub(super) fn form_elicitation_result(
     questions: &[AskUserQuestion],
     signed: &str,
 ) -> Option<Value> {
-    let schema = requested_schema(questions)?;
+    let request = form_input_request(questions)?;
     Some(json!({
         "resultType": "input_required",
         "inputRequests": {
-            ASK_USER_REQUEST_KEY: {
-                "method": "elicitation/create",
-                "params": {
-                    "mode": "form",
-                    "message": form_message(questions),
-                    "requestedSchema": schema,
-                }
-            }
+            ASK_USER_REQUEST_KEY: request
         },
         "requestState": signed,
+    }))
+}
+
+pub(super) fn form_input_request(questions: &[AskUserQuestion]) -> Option<Value> {
+    let schema = requested_schema(questions)?;
+    Some(json!({
+        "method": "elicitation/create",
+        "params": {
+            "mode": "form",
+            "message": form_message(questions),
+            "requestedSchema": schema,
+        }
     }))
 }
 
@@ -284,6 +289,47 @@ use super::{
 use everruns_core::Caller;
 use everruns_provider::typed_id::SessionId;
 
+pub(super) async fn pending_questions_for_session(
+    caller: &Caller,
+    session_id: SessionId,
+    state: &AppState,
+) -> Result<Option<crate::api::question_answers::PendingQuestions>, String> {
+    let session = state
+        .session_service
+        .get(caller, session_id.uuid(), None)
+        .await
+        .map_err(|error| error.to_string())?;
+    let Some(session) = session else {
+        return Ok(None);
+    };
+    if session.status != everruns_platform::SessionStatus::WaitingForToolResults {
+        return Ok(None);
+    }
+
+    let events = state
+        .db
+        .list_events(
+            session_id,
+            None,
+            None,
+            &["tool.call_requested".to_string()],
+            &[],
+            None,
+            Some(crate::api::question_answers::QUESTION_LOOKBACK_EVENTS),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(crate::api::question_answers::pending_from_events(
+        &events, None,
+    ))
+}
+
+fn policy_denied(id: &Option<Value>, error: everruns_core::PolicyError) -> JsonRpcResponse {
+    let message = error.to_string();
+    let envelope = classify_mcp_execute_error(&message);
+    JsonRpcResponse::success(id.clone(), error_result_payload(&message, Some(&envelope)))
+}
+
 /// Serve an `ask_user` question set a session is parked on as a form mode
 /// elicitation (EVE-1060), and apply the answer that comes back.
 ///
@@ -319,29 +365,17 @@ pub(super) async fn ask_user_form_elicitation(
         .await
         .ok()?;
     let caller = Caller::from(&org);
-    let session = state
-        .session_service
-        .get(&caller, session_id.uuid(), None)
+    // THREAT[TM-AUTHZ-008]: this handler runs before the ordinary command
+    // dispatcher, so it must enforce the same session policy before reading
+    // the session or its pending question events.
+    if let Err(error) = crate::domains::sessions::SESSION_VIEW
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+    {
+        return Some(policy_denied(id, error));
+    }
+    let pending = pending_questions_for_session(&caller, session_id, state)
         .await
         .ok()??;
-    if session.status != everruns_platform::SessionStatus::WaitingForToolResults {
-        return None;
-    }
-
-    let events = state
-        .db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["tool.call_requested".to_string()],
-            &[],
-            None,
-            Some(crate::api::question_answers::QUESTION_LOOKBACK_EVENTS),
-        )
-        .await
-        .ok()?;
-    let pending = crate::api::question_answers::pending_from_events(&events, None)?;
     // THREAT[TM-AGENT-016]: a credential is never a form property. An
     // `ask_user` answer is a tool result, so a secret typed into one would be
     // plaintext in the event log and in model context for the rest of the
@@ -373,6 +407,11 @@ pub(super) async fn ask_user_form_elicitation(
             // another one is stale, not fatal: fall through and elicit afresh.
             Ok(token) if token.intent == intent => {
                 if let Some(response) = elicitation::input_response(params, ASK_USER_REQUEST_KEY) {
+                    if let Err(error) = crate::domains::sessions::SESSION_MANAGE
+                        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+                    {
+                        return Some(policy_denied(id, error));
+                    }
                     return apply_form_answers(id, response, &caller, session_id, &pending, state)
                         .await;
                 }

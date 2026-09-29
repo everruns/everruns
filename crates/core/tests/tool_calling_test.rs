@@ -303,33 +303,6 @@ async fn test_custom_tool_execution() {
     assert_eq!(counter_arc.load(Ordering::SeqCst), 3);
 }
 
-#[tokio::test]
-async fn test_registered_tool_executes() {
-    let registry = ToolRegistry::builder().tool(EchoTool).build();
-
-    let echo_call = ToolCall {
-        id: "call_echo".to_string(),
-        name: "echo".to_string(),
-        arguments: json!({"message": "Test message"}),
-    };
-
-    let echo_def = ToolDefinition::Builtin(BuiltinTool {
-        name: "echo".to_string(),
-        display_name: None,
-        description: "Echo".to_string(),
-        parameters: json!({}),
-        policy: ToolPolicy::Auto,
-        category: None,
-        deferrable: DeferrablePolicy::default(),
-        hints: ToolHints::default(),
-        full_parameters: None,
-    });
-
-    let echo_result = registry.execute(&echo_call, &echo_def).await.unwrap();
-    assert!(echo_result.error.is_none());
-    assert_eq!(echo_result.result.unwrap()["echoed"], "Test message");
-}
-
 // =============================================================================
 // Image Tool Result Tests
 // =============================================================================

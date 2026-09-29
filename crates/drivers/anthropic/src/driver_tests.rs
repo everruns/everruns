@@ -67,7 +67,14 @@ async fn assert_contract_request(config: LlmCallConfig, registered: bool, expect
         Ok(_) => panic!("expected capture response"),
         Err(error) => error,
     };
-    assert_eq!(error.llm_error_kind(), Some(LlmErrorKind::InvalidRequest));
+    assert_eq!(
+        error.llm_error_kind(),
+        Some(LlmErrorKind::InvalidRequest),
+        "model={}, max_tokens={:?}, effort={:?}: {error}",
+        config.model,
+        config.max_tokens,
+        config.reasoning_effort
+    );
     assert!(error.to_string().contains("request captured"), "{error}");
     server.verify().await;
     let requests = server.received_requests().await.unwrap();
@@ -100,6 +107,259 @@ async fn registered_and_direct_requests_apply_parallel_preferences_only_with_too
     }
 }
 
+#[test]
+fn server_compaction_requires_direct_eligible_anthropic_models() {
+    use everruns_provider::Provider;
+
+    let driver = AnthropicChatDriver::new();
+    let direct = Provider::new("anthropic", AnthropicChatDriver::new())
+        .base_url(DEFAULT_BASE_URL)
+        .endpoint()
+        .clone();
+    let custom = Provider::new("anthropic", AnthropicChatDriver::new())
+        .base_url("https://proxy.example.test/v1")
+        .endpoint()
+        .clone();
+
+    assert_eq!(
+        driver.provider_managed_reduction_option(&direct, "claude-opus-4-8", 120_000),
+        Some((
+            SERVER_COMPACTION_OPTION.to_string(),
+            json!({"trigger_tokens":72_000})
+        ))
+    );
+    assert_eq!(
+        driver.provider_managed_reduction_option(&direct, "claude-opus-4-8-20260101[1m]", 1_000),
+        Some((
+            SERVER_COMPACTION_OPTION.to_string(),
+            json!({"trigger_tokens":SERVER_COMPACTION_MIN_TOKENS})
+        ))
+    );
+    assert!(
+        driver
+            .provider_managed_reduction_option(&custom, "claude-opus-4-8", 120_000)
+            .is_none()
+    );
+    for model in [
+        "claude-opus-5-5",
+        "claude-sonnet-4-5",
+        "claude-haiku-4-5",
+        "unlisted-model",
+    ] {
+        assert!(
+            driver
+                .provider_managed_reduction_option(&direct, model, 120_000)
+                .is_none(),
+            "{model}"
+        );
+    }
+}
+
+#[test]
+fn server_compaction_rejects_a_configured_output_budget_below_the_minimum_trigger() {
+    use everruns_provider::Provider;
+
+    let driver = Provider::new("anthropic", AnthropicChatDriver::new())
+        .base_url(DEFAULT_BASE_URL)
+        .into_boxed_driver();
+    let endpoint = everruns_provider::ProviderEndpoint::default();
+    let mut config = LlmCallConfig::new("claude-opus-4-8");
+    config.max_tokens = Some(160_000);
+
+    assert_eq!(
+        driver.provider_managed_reduction_fallback_reason(&endpoint, &config),
+        Some("configured_output_budget")
+    );
+
+    config.max_tokens = Some(150_000);
+    assert_eq!(
+        driver.provider_managed_reduction_fallback_reason(&endpoint, &config),
+        None
+    );
+}
+#[test]
+fn server_compaction_request_contract_uses_top_level_cache_control() {
+    let request = AnthropicRequest {
+        model: "claude-opus-4-8".to_string(),
+        messages: vec![json!({
+            "role":"user",
+            "content":[{"type":"text","text":"hello"}]
+        })],
+        max_tokens: 32,
+        temperature: None,
+        system: None,
+        stream: true,
+        tools: None,
+        tool_choice: None,
+        thinking: None,
+        output_config: None,
+        diagnostics: None,
+        context_management: Some(AnthropicContextManagement {
+            edits: vec![AnthropicContextEdit::Compact {
+                trigger: AnthropicCompactionTrigger {
+                    r#type: "input_tokens",
+                    value: 120_000usize,
+                },
+                pause_after_compaction: false,
+            }],
+        }),
+        cache_control: Some(AnthropicCacheControl::ephemeral()),
+    };
+
+    let value = serde_json::to_value(request).unwrap();
+    assert_eq!(
+        value["context_management"],
+        json!({"edits":[{
+            "type":"compact_20260112",
+            "trigger":{"type":"input_tokens","value":120_000},
+            "pause_after_compaction":false
+        }]})
+    );
+    assert_eq!(value["cache_control"], json!({"type":"ephemeral"}));
+    assert!(
+        !serde_json::to_string(&value["messages"])
+            .unwrap()
+            .contains("cache_control")
+    );
+}
+
+#[test]
+fn split_compaction_deltas_build_an_exact_replay_checkpoint() {
+    let blocks = Mutex::new(BTreeMap::from([(
+        0,
+        json!({
+            "type":"compaction",
+            "content":"",
+            "encrypted_content":"cipher-v1"
+        }),
+    )]));
+    append_raw_block_field(&blocks, 0, "content", "first ");
+    set_raw_block_field(
+        &blocks,
+        0,
+        "encrypted_content",
+        Value::String("cipher-v2".to_string()),
+    );
+    append_raw_block_field(&blocks, 0, "content", "second");
+    let response = vec![
+        blocks.lock().unwrap().get(&0).unwrap().clone(),
+        json!({"type":"text","text":"answer","future_field":{"kept":true}}),
+    ];
+    let prior = vec![json!({
+        "role":"user",
+        "content":[{"type":"text","text":"original"}]
+    })];
+
+    let candidate = anthropic_checkpoint_candidate(true, &prior, &response)
+        .unwrap()
+        .expect("complete compaction should produce a checkpoint");
+    assert_eq!(
+        candidate.format_version,
+        SERVER_COMPACTION_CHECKPOINT_FORMAT
+    );
+    let ProviderOpaqueContext::AnthropicMessagesPrefix { messages_json } = candidate.context else {
+        panic!("expected Anthropic message-prefix checkpoint");
+    };
+    assert_eq!(
+        serde_json::from_str::<Value>(&messages_json).unwrap(),
+        json!([
+            {
+                "role":"user",
+                "content":[{"type":"text","text":"original"}]
+            },
+            {
+                "role":"assistant",
+                "content":[
+                    {
+                        "type":"compaction",
+                        "content":"first second",
+                        "encrypted_content":"cipher-v2"
+                    },
+                    {
+                        "type":"text",
+                        "text":"answer",
+                        "future_field":{"kept":true}
+                    }
+                ]
+            }
+        ])
+    );
+}
+
+#[test]
+fn incomplete_compaction_never_produces_a_checkpoint() {
+    assert!(
+        anthropic_checkpoint_candidate(
+            true,
+            &[],
+            &[json!({"type":"text","text":"ordinary response"})]
+        )
+        .unwrap()
+        .is_none()
+    );
+    let response = vec![json!({
+        "type":"compaction",
+        "content":"summary",
+        "encrypted_content":""
+    })];
+    assert!(anthropic_checkpoint_candidate(true, &[], &response).is_err());
+    assert!(
+        anthropic_checkpoint_candidate(false, &[], &response)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn three_turn_messages_keep_each_prior_wire_array_as_an_exact_prefix() {
+    let request_one = vec![json!({
+        "role":"user",
+        "content":[{"type":"text","text":"turn one"}]
+    })];
+    let response_one = vec![
+        json!({
+            "type":"compaction",
+            "content":"summary",
+            "encrypted_content":"ciphertext",
+            "future_field":{"preserved":true}
+        }),
+        json!({"type":"text","text":"answer one"}),
+    ];
+    let checkpoint = anthropic_checkpoint_candidate(true, &request_one, &response_one)
+        .unwrap()
+        .unwrap();
+    let ProviderOpaqueContext::AnthropicMessagesPrefix { messages_json } = checkpoint.context
+    else {
+        panic!("expected Anthropic prefix");
+    };
+    let mut request_two: Vec<Value> = serde_json::from_str(&messages_json).unwrap();
+    request_two.push(json!({
+        "role":"user",
+        "content":[{"type":"text","text":"turn two"}]
+    }));
+    assert_eq!(&request_two[..request_one.len()], request_one.as_slice());
+
+    let mut request_three = request_two.clone();
+    request_three.push(json!({
+        "role":"assistant",
+        "content":[{"type":"text","text":"answer two","provider_field":"unchanged"}]
+    }));
+    request_three.push(json!({
+        "role":"user",
+        "content":[{"type":"text","text":"turn three"}]
+    }));
+    assert_eq!(&request_three[..request_two.len()], request_two.as_slice());
+    assert_eq!(
+        request_three[1]["content"][0],
+        json!({
+            "type":"compaction",
+            "content":"summary",
+            "encrypted_content":"ciphertext",
+            "future_field":{"preserved":true}
+        })
+    );
+}
+
 #[tokio::test]
 async fn requests_resolve_model_limits_and_complete_reasoning_policies() {
     for (model, requested, expected_limit) in [
@@ -126,27 +386,35 @@ async fn requests_resolve_model_limits_and_complete_reasoning_policies() {
         (ReasoningEffort::Max, Some(32768), Some("max")),
     ] {
         for model in ["claude-sonnet-4-5", "claude-opus-4-8"] {
-            let mut config = contract_config(model, Some(1));
-            config.reasoning_effort = Some(effort);
-            let mut expected = json!({"model":model,"max_tokens":1,"stream":true,
+            // A one-token cap cannot accommodate thinking in either form, so the
+            // driver keeps the cap and omits it. Covering only the budget-based
+            // form would leave an adaptive model thinking with a one-token
+            // ceiling and returning nothing.
+            let mut capped = contract_config(model, Some(1));
+            capped.reasoning_effort = Some(effort);
+            assert_contract_request(
+                capped,
+                false,
+                json!({"model":model,"max_tokens":1,"stream":true,
+                "messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}),
+            )
+            .await;
+
+            // Given a cap with room for it, thinking is configured as usual and
+            // the cap is still honoured exactly rather than grown to fit.
+            let mut roomy = contract_config(model, Some(64_000));
+            roomy.reasoning_effort = Some(effort);
+            let mut expected = json!({"model":model,"max_tokens":64_000,"stream":true,
                 "messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]});
-            if model == "claude-sonnet-4-5" {
-                if let Some(budget) = budget {
-                    expected["max_tokens"] = json!(budget + 1024);
-                    expected["thinking"] = json!({"type":"enabled","budget_tokens":budget});
+            if model == "claude-opus-4-8" {
+                if let Some(level) = adaptive {
+                    expected["thinking"] = json!({"type":"adaptive","display":"summarized"});
+                    expected["output_config"] = json!({"effort":level});
                 }
-            } else if let Some(level) = adaptive {
-                let room = match level {
-                    "low" => 4_096,
-                    "medium" => 8_192,
-                    "high" => 16_384,
-                    _ => 32_768,
-                };
-                expected["max_tokens"] = json!(1 + room);
-                expected["thinking"] = json!({"type":"adaptive","display":"summarized"});
-                expected["output_config"] = json!({"effort":level});
+            } else if let Some(budget) = budget {
+                expected["thinking"] = json!({"type":"enabled","budget_tokens":budget});
             }
-            assert_contract_request(config, false, expected).await;
+            assert_contract_request(roomy, false, expected).await;
         }
     }
 }
@@ -502,11 +770,13 @@ fn test_thinking_config_serialization() {
     // Adaptive must not carry budget_tokens (400 on Fable 5.x / Opus 4.8 /
     // 4.7); display:"summarized" opts back into visible thinking text,
     // which those models omit by default.
-    let adaptive = serde_json::to_value(AnthropicThinking::adaptive("claude-test")).unwrap();
+    let adaptive = serde_json::to_value(AnthropicThinking::adaptive("claude-test", true)).unwrap();
     assert_eq!(
         adaptive,
         json!({"type": "adaptive", "display": "summarized"})
     );
+    let hidden = serde_json::to_value(AnthropicThinking::adaptive("claude-test", false)).unwrap();
+    assert_eq!(hidden, json!({"type": "adaptive", "display": "omitted"}));
 
     let enabled = serde_json::to_value(AnthropicThinking::Enabled {
         budget_tokens: 4096,
@@ -741,7 +1011,7 @@ fn discovered_profile_preserves_complete_catalog_metadata() {
             "structured_output":false, "open_weights":false,
             "limits":{"context":200000,"output":64000},
             "modalities":{"input":["text"],"output":["text"]},
-            "tool_search":false, "supports_phases":false
+            "tool_search":false, "supports_phases":false, "supports_server_compaction":false
         })
     );
 }

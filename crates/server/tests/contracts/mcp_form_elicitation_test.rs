@@ -12,24 +12,58 @@ use crate::test_harness;
 
 use async_trait::async_trait;
 use axum::http::{Method, StatusCode};
+use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_platform::{Agent, Session};
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
 use std::sync::{
     Arc,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use test_harness::TestServer;
 use uuid::Uuid;
 
 const LATEST: &str = "2026-07-28";
+const LEGACY: &str = "2025-06-18";
 const TEST_ORG_ID: i64 = 1;
 const CLIENT_CAPABILITIES_META_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
 
 /// Counts the durable resumes, which is how a test sees the turn restart.
 struct RecordingRunner {
     resume_calls: Arc<AtomicUsize>,
+}
+
+/// Withholds `org:sessions:manage`, but only once armed.
+///
+/// `session.view` and `session.manage` both rest on that one permission, which
+/// is the point of the test — a caller who cannot manage a session must not be
+/// able to read its pending questions either. It also means the fixture cannot
+/// build the parked session while the denial is live, since creating one needs
+/// the same permission. So arm it after setup, not before.
+#[derive(Default)]
+struct DenySessionManagement {
+    armed: AtomicBool,
+}
+
+impl DenySessionManagement {
+    fn arm(&self) {
+        self.armed.store(true, Ordering::SeqCst);
+    }
+}
+
+impl PermissionResolver for DenySessionManagement {
+    fn has_permission(&self, _caller: &Caller, permission: &Permission) -> bool {
+        !(self.armed.load(Ordering::SeqCst) && permission == &Permission::OrgSessionsManage)
+    }
+
+    fn caller_permissions(&self, caller: &Caller) -> Vec<Permission> {
+        Permission::ALL
+            .iter()
+            .copied()
+            .filter(|permission| self.has_permission(caller, permission))
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -83,20 +117,64 @@ fn elicitation_meta() -> Value {
     json!({ CLIENT_CAPABILITIES_META_KEY: { "elicitation": {} } })
 }
 
-async fn mcp_call(server: &TestServer, params: Value) -> Value {
-    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params });
+fn tasks_meta() -> Value {
+    json!({
+        CLIENT_CAPABILITIES_META_KEY: {
+            "elicitation": {},
+            "extensions": { "io.modelcontextprotocol/tasks": {} }
+        }
+    })
+}
+
+fn tasks_only_meta() -> Value {
+    json!({
+        CLIENT_CAPABILITIES_META_KEY: {
+            "extensions": { "io.modelcontextprotocol/tasks": {} }
+        }
+    })
+}
+
+async fn mcp_request(
+    server: &TestServer,
+    method: &str,
+    params: Value,
+    protocol_version: &str,
+) -> Value {
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params });
     server
         .request_raw(
             Method::POST,
             "/mcp",
             vec![
                 ("content-type", "application/json"),
-                ("MCP-Protocol-Version", LATEST),
+                ("MCP-Protocol-Version", protocol_version),
             ],
             serde_json::to_vec(&body).unwrap(),
         )
         .await
         .json()
+}
+
+async fn mcp_call(server: &TestServer, params: Value) -> Value {
+    mcp_request(server, "tools/call", params, LATEST).await
+}
+
+async fn task_request(
+    server: &TestServer,
+    method: &str,
+    session_id: SessionId,
+    input: Value,
+) -> Value {
+    let mut params = json!({
+        "taskId": session_id.to_string(),
+        "_meta": tasks_meta(),
+    });
+    if let (Some(params), Some(input)) = (params.as_object_mut(), input.as_object()) {
+        for (key, value) in input {
+            params.insert(key.clone(), value.clone());
+        }
+    }
+    mcp_request(server, method, params, LATEST).await
 }
 
 /// One `session_get_status` call, merging any MRTR params into the request.
@@ -243,6 +321,34 @@ async fn recorded_outcome(server: &TestServer, session_id: SessionId) -> Value {
     serde_json::from_str(text).expect("the ask_user result is JSON")
 }
 
+async fn input_message_texts(server: &TestServer, session_id: SessionId) -> Vec<String> {
+    server
+        .db
+        .list_events(
+            session_id,
+            None,
+            None,
+            &["input.message".to_string()],
+            &[],
+            None,
+            Some(50),
+        )
+        .await
+        .expect("list input messages")
+        .into_iter()
+        .filter_map(|event| {
+            event
+                .data
+                .get("message")?
+                .get("content")?
+                .as_array()?
+                .iter()
+                .find_map(|part| part.get("text").and_then(Value::as_str))
+                .map(str::to_string)
+        })
+        .collect()
+}
+
 #[tokio::test]
 async fn a_parked_question_set_reaches_a_capable_client_as_a_form() {
     let (server, _) = test_server().await;
@@ -293,6 +399,36 @@ async fn a_parked_question_set_reaches_a_capable_client_as_a_form() {
         assert_ne!(property["type"], "array");
         assert_ne!(property["type"], "object");
     }
+}
+
+#[tokio::test]
+async fn session_policy_denial_does_not_disclose_or_resolve_a_question_set() {
+    let resumes = Arc::new(AtomicUsize::new(0));
+    let policy = Arc::new(DenySessionManagement::default());
+    let server = TestServer::in_memory_with_runner_and_permission_resolver(
+        Arc::new(RecordingRunner {
+            resume_calls: resumes.clone(),
+        }),
+        policy.clone(),
+    )
+    .await;
+    let session_id = parked_session(&server).await;
+    emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
+    policy.arm();
+
+    let response = poll_status(&server, session_id, json!({ "_meta": elicitation_meta() })).await;
+
+    assert_eq!(response["result"]["isError"], true, "got {response}");
+    assert!(
+        response["result"]["requestState"].is_null(),
+        "got {response}"
+    );
+    assert!(
+        response["result"]["inputRequests"].is_null(),
+        "got {response}"
+    );
+    assert!(completed_results(&server, session_id).await.is_empty());
+    assert_eq!(resumes.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -487,6 +623,149 @@ async fn an_option_that_was_never_offered_is_refused_and_the_turn_stays_parked()
     assert_eq!(again["result"]["resultType"], "input_required");
 }
 
+#[tokio::test]
+async fn tasks_get_surfaces_the_pending_question_as_an_input_request() {
+    let (server, _) = test_server().await;
+    let session_id = parked_session(&server).await;
+    emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
+
+    let response = task_request(&server, "tasks/get", session_id, json!({})).await;
+
+    let task = &response["result"];
+    assert_eq!(task["status"], "input_required", "{response}");
+    let request = &task["inputRequests"]["ask_user"];
+    assert_eq!(request["method"], "elicitation/create");
+    assert_eq!(request["params"]["mode"], "form");
+    assert_eq!(
+        request["params"]["requestedSchema"]["properties"]["target"]["enum"],
+        json!(["Staging", "Production"])
+    );
+    assert_eq!(
+        request["params"]["requestedSchema"]["properties"]["areas__0"]["type"],
+        "boolean"
+    );
+    assert!(
+        task["result"]["events"].is_array(),
+        "the existing status snapshot must remain available: {response}"
+    );
+}
+
+#[tokio::test]
+async fn tasks_update_resolves_a_structured_answer_through_the_shared_operation() {
+    let (server, resumes) = test_server().await;
+    let session_id = parked_session(&server).await;
+    emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
+
+    let response = task_request(
+        &server,
+        "tasks/update",
+        session_id,
+        json!({
+            "inputResponses": {
+                "ask_user": {
+                    "action": "accept",
+                    "content": {
+                        "target": "Production",
+                        "areas__0": true,
+                        "areas__1": false
+                    }
+                }
+            }
+        }),
+    )
+    .await;
+
+    assert!(response["error"].is_null(), "{response}");
+    let outcome = recorded_outcome(&server, session_id).await;
+    assert_eq!(outcome["status"], "answered");
+    assert_eq!(outcome["answered_by"], "user");
+    assert_eq!(outcome["answers"][0]["selected"], json!(["Production"]));
+    assert_eq!(outcome["answers"][1]["selected"], json!(["API"]));
+    assert_eq!(resumes.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn tasks_update_rejects_an_unoffered_option_without_resuming() {
+    let (server, resumes) = test_server().await;
+    let session_id = parked_session(&server).await;
+    emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
+
+    let response = task_request(
+        &server,
+        "tasks/update",
+        session_id,
+        json!({
+            "inputResponses": {
+                "ask_user": {
+                    "action": "accept",
+                    "content": {
+                        "target": "Wherever",
+                        "areas__0": true,
+                        "areas__1": false
+                    }
+                }
+            }
+        }),
+    )
+    .await;
+
+    assert_eq!(response["error"]["code"], -32602, "{response}");
+    assert_eq!(resumes.load(Ordering::SeqCst), 0);
+    assert!(completed_results(&server, session_id).await.is_empty());
+    let still_pending = task_request(&server, "tasks/get", session_id, json!({})).await;
+    assert_eq!(still_pending["result"]["status"], "input_required");
+    assert!(
+        still_pending["result"]["inputRequests"]["ask_user"].is_object(),
+        "{still_pending}"
+    );
+}
+
+#[tokio::test]
+async fn free_text_tasks_update_cancels_the_question_then_delivers_the_message() {
+    let (server, resumes) = test_server().await;
+    let session_id = parked_session(&server).await;
+    emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
+
+    let response = task_request(
+        &server,
+        "tasks/update",
+        session_id,
+        json!({ "message": "Use staging and skip the UI." }),
+    )
+    .await;
+
+    assert!(response["error"].is_null(), "{response}");
+    let outcome = recorded_outcome(&server, session_id).await;
+    assert_eq!(outcome["status"], "cancelled");
+    assert_eq!(outcome["answered_by"], "unattended");
+    assert_eq!(
+        input_message_texts(&server, session_id).await,
+        vec!["Use staging and skip the UI.".to_string()]
+    );
+    assert_eq!(resumes.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_legacy_client_cannot_enter_the_tasks_question_flow() {
+    let (server, _) = test_server().await;
+    let session_id = parked_session(&server).await;
+    emit_ask_user(&server, session_id, "call_1", choice_questions()).await;
+
+    let response = mcp_request(
+        &server,
+        "tasks/get",
+        json!({
+            "taskId": session_id.to_string(),
+            "_meta": tasks_meta(),
+        }),
+        LEGACY,
+    )
+    .await;
+
+    assert_eq!(response["error"]["code"], -32601, "{response}");
+    assert!(response["result"].is_null(), "{response}");
+}
+
 /// The hint is a claim about the client, so only a client that can be elicited
 /// makes it. Without it the turn never parks (EVE-1057).
 #[tokio::test]
@@ -496,6 +775,7 @@ async fn agent_run_declares_the_ask_user_hint_only_for_a_capable_client() {
 
     for (meta, expected) in [
         (json!({ "_meta": elicitation_meta() }), Some(json!(true))),
+        (json!({ "_meta": tasks_only_meta() }), None),
         (json!({}), None),
     ] {
         let mut params = json!({

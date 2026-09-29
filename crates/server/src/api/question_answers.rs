@@ -316,12 +316,20 @@ pub(crate) async fn resolve_question_answers_with_source(
     answered_by: AskUserAnsweredBy,
     submitted: &[AskUserAnswer],
 ) -> Result<AskUserResult, ResolveError> {
-    state
+    let session = state
         .session_service
         .get(caller, session_id.uuid(), None)
         .await
         .map_err(|error| ResolveError::Internal(error.to_string()))?
         .ok_or(ResolveError::NoPendingQuestions)?;
+    if !crate::domains::sessions::platform_chat_owner_matches_session(state.db, caller, &session)
+        .await
+        .map_err(|error| ResolveError::Internal(error.to_string()))?
+    {
+        // THREAT[TM-AGENT-017]: do not expose whether another user's Platform
+        // Chat session is currently waiting, let alone mutate or resume it.
+        return Err(ResolveError::NoPendingQuestions);
+    }
 
     let requested = state
         .db
