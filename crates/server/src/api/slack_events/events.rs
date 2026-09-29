@@ -567,11 +567,8 @@ pub(crate) async fn process_slack_message(
     let desired_tags = desired_session_tags(&routing_tags, slack_config.reply_mode);
 
     // Find or create session
-    let (session, is_new_session) = match state
-        .db
-        .find_app_session_by_tags(org_id, app.internal_id, &routing_tags)
-        .await?
-    {
+    let existing = find_slack_session(state, app, slack_channel, &routing_tags).await?;
+    let (session, is_new_session) = match existing {
         Some(row) => {
             tracing::debug!(
                 session_id = %row.id,
@@ -976,18 +973,40 @@ pub(crate) fn slack_message_metadata(
     metadata
 }
 
-/// Build session tags for finding/creating sessions based on the binding.
-///
-/// Uses the generic `build_session_routing_tag()` from channel abstractions.
-/// Since EVE-1005 there is no Slack-specific strategy type to convert from —
-/// the channel config stores `SessionBinding` directly.
+async fn find_slack_session(
+    state: &SlackState,
+    app: &crate::api::app_ingress::IngressContext,
+    slack_channel: &crate::api::app_ingress::IngressEndpoint,
+    routing_tags: &[String],
+) -> anyhow::Result<Option<crate::storage::models::SessionRow>> {
+    match app.historical_app_id {
+        Some(app_id) => {
+            state
+                .db
+                .find_app_session_by_tags(app.org_id, app_id, routing_tags)
+                .await
+        }
+        None => {
+            state
+                .db
+                .find_endpoint_session_by_tags_and_owner(
+                    app.org_id,
+                    slack_channel.internal_id,
+                    app.owner_principal_id,
+                    routing_tags,
+                )
+                .await
+        }
+    }
+}
+
 /// Cancel the turn running in the pane thread the stop button was pressed in.
 ///
 /// Authorization comes from the lookup, not a separate check:
-/// `find_app_session_by_tags` is scoped to this app's org and internal id, so a
-/// session belonging to any other app simply does not resolve and the stop is
-/// logged and dropped. That keeps the webhook's blast radius exactly as wide as
-/// it already was for inbound messages.
+/// lookup is scoped to this historical App or native endpoint and its org, so a
+/// session belonging to another endpoint does not resolve and the stop is logged
+/// and dropped. That keeps the webhook's blast radius exactly as wide as it was
+/// for inbound messages.
 ///
 /// A stop for a turn that already finished is a no-op rather than an error:
 /// `cancel_session_turn_for` reads the session's terminal state first and skips
@@ -1025,11 +1044,7 @@ pub(crate) async fn handle_agent_session_stopped(
         &routing_event,
         SlackSurface::Pane,
     );
-    let Some(row) = state
-        .db
-        .find_app_session_by_tags(app.org_id, app.internal_id, &routing_tags)
-        .await?
-    else {
+    let Some(row) = find_slack_session(state, app, slack_channel, &routing_tags).await? else {
         tracing::info!(
             app_id = %app.public_id,
             tags = ?routing_tags,
@@ -1103,11 +1118,7 @@ pub(crate) async fn handle_agent_session_title_changed(
         &routing_event,
         SlackSurface::Pane,
     );
-    let Some(row) = state
-        .db
-        .find_app_session_by_tags(app.org_id, app.internal_id, &routing_tags)
-        .await?
-    else {
+    let Some(row) = find_slack_session(state, app, slack_channel, &routing_tags).await? else {
         tracing::debug!(
             app_id = %app.public_id,
             tags = ?routing_tags,
@@ -1176,11 +1187,7 @@ pub(crate) async fn handle_app_context_changed(
         &routing_event,
         SlackSurface::Pane,
     );
-    let Some(row) = state
-        .db
-        .find_app_session_by_tags(app.org_id, app.internal_id, &routing_tags)
-        .await?
-    else {
+    let Some(row) = find_slack_session(state, app, slack_channel, &routing_tags).await? else {
         tracing::debug!(
             app_id = %app.public_id,
             tags = ?routing_tags,

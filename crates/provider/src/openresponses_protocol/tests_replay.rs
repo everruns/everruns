@@ -1224,71 +1224,59 @@ fn test_handle_streaming_event_reasoning_summary_delta() {
     }
 }
 
-#[test]
-fn test_request_reasoning_none_is_omitted() {
-    // When reasoning effort is "none", the reasoning field should be omitted
-    // to avoid API errors on models that don't support reasoning params
-    let config = LlmCallConfig {
-        model: "gpt-5.2".to_string(),
-        reasoning_effort: Some(crate::model::ReasoningEffort::None),
-        ..Default::default()
-    };
+/// The request's `reasoning` field follows the configured effort, on the
+/// actual wire the driver sends — not a copy of its filter logic.
+///
+/// effort=none must omit the field entirely (sending it errors on models
+/// that reject reasoning params); any requesting effort must carry it with
+/// the effort name and the "detailed" summary the driver always asks for.
+#[tokio::test]
+async fn reasoning_field_reflects_effort_on_the_wire() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    // Simulate the driver's filter logic
-    let reasoning = config
-        .reasoning_effort
-        .filter(crate::model::ReasoningEffort::requests_reasoning)
-        .map(|effort| ResponsesReasoning {
-            effort: effort.as_str().to_string(),
-            summary: "detailed".to_string(),
-        });
+    let server = MockServer::builder().start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .mount(&server)
+        .await;
 
-    assert!(
-        reasoning.is_none(),
-        "reasoning should be None for effort=none"
-    );
-}
+    let endpoint = crate::runtime_provider::RuntimeProvider::new(
+        "reasoning-test",
+        OpenResponsesProtocolChatDriver::new(),
+    )
+    .base_url(format!("{}/v1", server.uri()))
+    .auth(crate::runtime_provider::BearerAuth::new("test-key"));
+    let driver = OpenResponsesProtocolChatDriver::new();
 
-#[test]
-fn test_request_reasoning_high_is_included() {
-    // When reasoning effort is "high", the reasoning field should be present
-    let config = LlmCallConfig {
-        model: "gpt-5.2".to_string(),
-        reasoning_effort: Some(crate::model::ReasoningEffort::High),
-        ..Default::default()
-    };
-
-    let reasoning = config
-        .reasoning_effort
-        .filter(crate::model::ReasoningEffort::requests_reasoning)
-        .map(|effort| ResponsesReasoning {
-            effort: effort.as_str().to_string(),
-            summary: "detailed".to_string(),
-        });
-
-    assert!(
-        reasoning.is_some(),
-        "reasoning should be present for effort=high"
-    );
-    let r = reasoning.unwrap();
-    assert_eq!(r.effort, "high");
-    assert_eq!(r.summary, "detailed");
-}
-
-#[test]
-fn test_request_reasoning_none_case_insensitive() {
-    // "None", "NONE", "none" should all be filtered out
-    for effort in &["none", "None", "NONE"] {
-        let reasoning = Some(effort.to_string())
-            .as_ref()
-            .filter(|e| !e.eq_ignore_ascii_case("none"))
-            .cloned();
-
-        assert!(
-            reasoning.is_none(),
-            "effort={effort:?} should be filtered out"
-        );
+    for effort in [
+        crate::model::ReasoningEffort::None,
+        crate::model::ReasoningEffort::High,
+    ] {
+        let config = LlmCallConfig {
+            model: "gpt-5.2".to_string(),
+            reasoning_effort: Some(effort),
+            ..Default::default()
+        };
+        let _ = driver
+            .chat_completion_stream(
+                endpoint.endpoint(),
+                vec![Message::text(MessageRole::User, "hi")],
+                &config,
+            )
+            .await;
     }
+
+    let requests = server.received_requests().await.expect("recorded requests");
+    assert_eq!(requests.len(), 2);
+    let none_body: serde_json::Value = requests[0].body_json().unwrap();
+    assert!(
+        none_body.get("reasoning").is_none(),
+        "effort=none must omit reasoning: {none_body}"
+    );
+    let high_body: serde_json::Value = requests[1].body_json().unwrap();
+    assert_eq!(high_body["reasoning"]["effort"], "high");
+    assert_eq!(high_body["reasoning"]["summary"], "detailed");
 }
 
 #[test]

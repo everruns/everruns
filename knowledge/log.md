@@ -1,7 +1,43 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-28
+
+* **Inbound MCP form mode elicitation now has a design, and the blocker that
+  held it turned out to be sharper than recorded.** EVE-1068 framed the open
+  question as attribution: a third-party server authoring a question that renders
+  in Everruns' chrome. The deeper reason form mode was left undeclared is in
+  `protocol.rs` — a form answer is carried by a tool result, so it lands in the
+  event log and permanently in model context, which is what URL mode exists to
+  avoid. That forces a conclusion the issue did not anticipate: `ask_user`'s
+  `Secret` kind cannot serve this path at all, because its `session:{name}`
+  reference is meaningless to a remote server, so the only behaviors available
+  are refuse or leak. The design refuses credential-shaped properties and names
+  URL mode back to the server. It also specifies the per-server
+  `elicitation_policy` that `mcp-servers.md` listed as not built, defaulting to
+  URL-mode-only so existing configuration is unchanged. Recorded in [inbound form
+  mode elicitation](integrations/mcp-form-elicitation.md), threatened as
+  TM-TOOL-043 through TM-TOOL-047. No product code changes.
+
 ## 2026-09-24
 
+* **serve now speaks the everruns server's `/v1` API and is a thin layer over
+  `everruns::Engine`.** Sessions, messages, `/sse` (`since_id` or
+  `after_sequence`), `/events`, cancel and `/question-answers` match the
+  server's shapes, so the official Rust SDK drives a serve app (tested
+  end to end). The eve-style wire API and serve's own event log are gone: the
+  durable log, approvals and `ask_user` are the runtime's, and serve keeps only
+  a session catalog. eve stays the ergonomics reference, not the wire shape.
+  Recorded in [serve](framework/serve.md).
+* **An experimental app framework, serve, pairs Topcoat's API shape with eve's
+  hosting model on the existing runtime.** Attribute macros register agents,
+  tools, channels, schedules, connections and evals at link time. The built
+  binary emits a manifest that is the whole contract with a host. One `/v1`
+  wire API resumes by event-log cursor instead of a continuation token. Because
+  the binary is the behavior, a restart no longer needs the application to
+  reattach agents by hand. It is a proof of concept, published as
+  `everruns-serve` (plus `-macros` and `-build`, since crates.io `serve` is
+  taken) but outside the stability policy. Recorded as
+  [serve](framework/serve.md).
 * **Anthropic Infinity Context now has an append-only design target instead of
   a notice-only cache fix.** Stabilizing `[N earlier messages ...]` would still
   move the recent window, so it cannot preserve the full prompt prefix. The

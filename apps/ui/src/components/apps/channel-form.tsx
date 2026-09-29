@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import {
   CalendarClock,
   ChevronDown,
+  CircleAlert,
   Globe,
   Hash,
   MessageSquareText,
@@ -53,7 +54,13 @@ import {
   getSlackReplyModeDisplayName,
 } from "@/lib/app-channels";
 import { generateChannelToken } from "@/lib/channel-tokens";
-import { beginSlackInstall } from "@/lib/api/agent-endpoints";
+import {
+  beginSlackInstall,
+  clearSlackConnection,
+  setSlackConnection,
+  testSlackConnection,
+} from "@/lib/api/agent-endpoints";
+import type { SlackInstallCapability } from "@/lib/api/agent-endpoints";
 import { ApiError } from "@/lib/api/client";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
@@ -580,13 +587,149 @@ function useSlackInstall(endpointId?: string, onUnavailable?: () => void) {
   return { begin, pending, unavailable, error } as const;
 }
 
+function SlackOrganizationConnection({
+  capability,
+  onChanged,
+}: {
+  capability: SlackInstallCapability;
+  onChanged?: () => void | Promise<unknown>;
+}) {
+  const [refreshToken, setRefreshToken] = useState("");
+  const [pending, setPending] = useState<"connect" | "test" | "clear" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (action: "connect" | "test" | "clear") => {
+    setPending(action);
+    setError(null);
+    try {
+      if (action === "connect") await setSlackConnection(refreshToken);
+      if (action === "test") await testSlackConnection();
+      if (action === "clear") await clearSlackConnection();
+      setRefreshToken("");
+      await onChanged?.();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update the Slack connection.");
+    } finally {
+      setPending(null);
+    }
+  };
+
+  if (capability.connected && !capability.reconnect_required) {
+    return (
+      <div className="space-y-3 border p-4">
+        <div>
+          <p className="text-sm font-medium">Organization connected to Slack</p>
+          <p className="text-xs text-muted-foreground">
+            New endpoints can create and install their own Slack app.
+          </p>
+        </div>
+        {capability.can_manage && (
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void run("test")}
+              disabled={pending !== null}
+            >
+              {pending === "test" ? "Testing…" : "Test connection"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void run("clear")}
+              disabled={pending !== null}
+            >
+              {pending === "clear" ? "Disconnecting…" : "Disconnect"}
+            </Button>
+          </div>
+        )}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+    );
+  }
+
+  const reconnect = capability.reconnect_required;
+  return (
+    <div className="space-y-4 border p-4">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">
+          {reconnect
+            ? "Reconnect your organization to Slack"
+            : "Connect your organization to Slack"}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {reconnect
+            ? "Slack rejected the saved refresh token. Add a new configuration refresh token."
+            : "Connect once for this organization, then each endpoint can create its own Slack app."}
+        </p>
+      </div>
+      {capability.can_manage ? (
+        <>
+          <div className="flex gap-2 border border-warning/40 bg-warning/10 p-3 text-xs">
+            <CircleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+            <p>
+              A Slack workspace administrator must generate this token. It can create and modify any
+              Slack app in that workspace. Everruns rotates it immediately and stores only the
+              encrypted replacement.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="slack_configuration_refresh_token">
+              Slack configuration refresh token
+            </Label>
+            <Input
+              id="slack_configuration_refresh_token"
+              type="password"
+              autoComplete="off"
+              value={refreshToken}
+              onChange={(event) => setRefreshToken(event.target.value)}
+              placeholder="xoxe-1-..."
+            />
+            <p className="text-xs text-muted-foreground">
+              Create a configuration token in Slack&apos;s app manifest settings. Paste the refresh
+              token, not the access token.{" "}
+              <a
+                className="underline"
+                href="https://docs.slack.dev/app-manifests/configuring-apps-with-app-manifests/#config-tokens"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Slack instructions
+              </a>
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={() => void run("connect")}
+            disabled={!refreshToken.trim() || pending !== null}
+          >
+            <Slack className="size-4" />
+            {pending === "connect"
+              ? "Connecting…"
+              : reconnect
+                ? "Reconnect Slack"
+                : "Connect Slack"}
+          </Button>
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Ask an organization administrator to connect Slack provisioning. You can still configure
+          this endpoint manually.
+        </p>
+      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 export function ChannelForm({
   state,
   onChange,
   mode,
   section = "all",
   endpointId,
-  slackInstallAvailable = true,
+  slackInstallCapability,
+  onSlackCapabilityChanged,
 }: {
   state: ChannelFormState;
   onChange: (state: ChannelFormState) => void;
@@ -598,7 +741,8 @@ export function ChannelForm({
    * callback route, so the button appears only after the endpoint is saved.
    */
   endpointId?: string;
-  slackInstallAvailable?: boolean;
+  slackInstallCapability?: SlackInstallCapability;
+  onSlackCapabilityChanged?: () => void | Promise<unknown>;
 }) {
   const update = <K extends keyof ChannelFormState>(key: K, value: ChannelFormState[K]) =>
     onChange({ ...state, [key]: value });
@@ -611,8 +755,9 @@ export function ChannelForm({
     state.slackTeamId ||
     state.slackChannelId,
   );
+  const slackInstallAvailable = slackInstallCapability?.connected === true;
   const [manualSlackOpen, setManualSlackOpen] = useState(
-    slackCredentialsEntered || !slackInstallAvailable,
+    slackCredentialsEntered || slackInstallCapability?.supported === false,
   );
   const openManualSlack = useCallback(() => setManualSlackOpen(true), []);
   const slackInstall = useSlackInstall(endpointId, openManualSlack);
@@ -1121,6 +1266,12 @@ export function ChannelForm({
 
       {state.kind === "slack" && (section === "all" || section === "invocation") && (
         <div className="space-y-4">
+          {slackInstallCapability?.supported && (
+            <SlackOrganizationConnection
+              capability={slackInstallCapability}
+              onChanged={onSlackCapabilityChanged}
+            />
+          )}
           {mode === "edit" && endpointId && slackInstallAvailable && !slackInstall.unavailable && (
             <div className="border p-4 space-y-3">
               <div className="space-y-1">

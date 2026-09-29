@@ -15,11 +15,10 @@ use thiserror::Error;
 /// Result type alias for agent loop operations
 pub type Result<T> = std::result::Result<T, AgentLoopError>;
 
-// The provider error taxonomy moved to `llm_error` when this file outgrew what
-// anyone can hold in their head; it is re-exported here so every existing path
-// keeps working.
-use crate::llm_error::provider_error_code_in;
+// Stable provider errors remain re-exported here for compatibility; internal
+// capability markers stay private to keep this surface focused.
 pub use crate::llm_error::{BillingPressureReason, LlmError, LlmErrorKind};
+use crate::llm_error::{RejectedProviderCapability, provider_error_code_in};
 /// Errors that can occur during agent loop execution
 #[derive(Debug, Error)]
 pub enum AgentLoopError {
@@ -155,6 +154,31 @@ impl AgentLoopError {
             error = error.with_code(code);
         }
         AgentLoopError::Llm(error)
+    }
+
+    /// Create a structured pre-stream provider capability rejection.
+    pub fn provider_capability_rejected(
+        capability: RejectedProviderCapability,
+        status: u16,
+        body: &str,
+        msg: impl Into<String>,
+    ) -> Self {
+        let mut error = LlmError::new(LlmErrorKind::InvalidRequest, msg)
+            .with_status(status)
+            .with_rejected_capability(capability);
+        if let Some(code) = provider_error_code_in(body) {
+            error = error.with_code(code);
+        }
+        AgentLoopError::Llm(error)
+    }
+
+    /// Whether this error rejects the specified provider capability.
+    pub fn rejected_provider_capability(&self, capability: RejectedProviderCapability) -> bool {
+        matches!(
+            self,
+            AgentLoopError::Llm(error)
+                if error.rejected_capability == Some(capability)
+        )
     }
 
     /// Attach the HTTP status to an LLM error that was classified elsewhere.

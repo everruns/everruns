@@ -206,6 +206,9 @@ service WorkerService {
     // Get a value by key
     rpc SessionStorageGetValue(SessionStorageGetValueRequest) returns (SessionStorageGetValueResponse);
 
+    // Atomically remove and return a value by key
+    rpc SessionStorageTakeValue(SessionStorageTakeValueRequest) returns (SessionStorageTakeValueResponse);
+
     // Delete a key/value pair
     rpc SessionStorageDeleteValue(SessionStorageDeleteValueRequest) returns (SessionStorageDeleteValueResponse);
 
@@ -1232,6 +1235,15 @@ message SessionStorageGetValueRequest {
 }
 
 message SessionStorageGetValueResponse {
+    optional string value = 1;
+}
+
+message SessionStorageTakeValueRequest {
+    Uuid session_id = 1;
+    string key = 2;
+}
+
+message SessionStorageTakeValueResponse {
     optional string value = 1;
 }
 

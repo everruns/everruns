@@ -11,7 +11,6 @@ use everruns_core::ExecutionContext;
 use everruns_core::MessageRetriever;
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::harness_definition::HarnessDefinition;
-use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_core::{CompactionCheckpointStore, Controls, RuntimeMessage};
 use everruns_engine::{ReasonInput, ReasonResult};
@@ -34,6 +33,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+#[path = "reason_atom/native_compact_failure_test.rs"]
+mod native_compact_failure_test;
+
+#[path = "reason_atom/provider_managed_checkpoint_test.rs"]
+mod provider_managed_checkpoint_test;
+#[path = "reason_atom/provider_managed_fallback_test.rs"]
+mod provider_managed_fallback_test;
 
 async fn set_default_test_model(
     provider_store: &InMemoryProviderStore,
@@ -170,11 +177,6 @@ type CapturedLlmCall = (
     Vec<everruns_provider::driver_registry::Message>,
     everruns_provider::driver_registry::LlmCallConfig,
 );
-
-#[derive(Clone, Debug)]
-struct NativeCompactFailureDriver {
-    attempts: Arc<AtomicUsize>,
-}
 
 /// Cost the fake gateway reports for each compaction call, mirroring an
 /// OpenAI-compatible gateway that returns `usage.cost` (EVE-895).
@@ -482,47 +484,6 @@ impl everruns_core::CompactionCheckpointStore for FailingProactiveAttemptStore {
 }
 
 #[async_trait]
-impl everruns_provider::driver_registry::ChatDriver for NativeCompactFailureDriver {
-    async fn chat_completion_stream(
-        &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _messages: Vec<everruns_provider::driver_registry::Message>,
-        _config: &everruns_provider::driver_registry::LlmCallConfig,
-    ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
-    {
-        if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
-            return Err(everruns_provider::error::AgentLoopError::request_too_large(
-                "force compact",
-            ));
-        }
-        Ok(Box::pin(stream::iter(vec![
-            Ok(
-                everruns_provider::driver_registry::LlmStreamEvent::TextDelta(
-                    "fallback succeeded".to_string(),
-                ),
-            ),
-            Ok(everruns_provider::driver_registry::LlmStreamEvent::Done(
-                Box::default(),
-            )),
-        ])))
-    }
-
-    fn supports_compact(&self) -> bool {
-        true
-    }
-
-    async fn compact(
-        &self,
-        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
-        _request: everruns_provider::compact::CompactRequest,
-    ) -> everruns_provider::error::Result<Option<everruns_provider::compact::CompactResponse>> {
-        Err(everruns_provider::error::AgentLoopError::llm(
-            "compact failed",
-        ))
-    }
-}
-
-#[async_trait]
 impl everruns_provider::driver_registry::ChatDriver for NativeCompactRetryDriver {
     async fn chat_completion_stream(
         &self,
@@ -560,7 +521,10 @@ impl everruns_provider::driver_registry::ChatDriver for NativeCompactRetryDriver
         let everruns_provider::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
             output,
             ..
-        } = context;
+        } = context
+        else {
+            panic!("expected Open Responses compact output");
+        };
         assert!(matches!(
             &output[0],
             everruns_provider::compact::CompactOutputItem::Message { role, content }
@@ -1091,84 +1055,6 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
     assert!(messages.iter().any(|message| {
         matches!(&message.content, everruns_provider::driver_registry::MessageContent::Text(text) if text == "latest delta")
     }));
-}
-
-#[tokio::test]
-async fn native_compact_failure_does_not_install_checkpoint() {
-    use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
-    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
-    use everruns_core::execution_loading::SessionStore;
-
-    let (
-        harness_store,
-        agent_store,
-        session_store,
-        message_retriever,
-        provider_store,
-        harness_id,
-        agent_id,
-        session_id,
-    ) = setup_test_environment().await;
-    set_default_test_model(
-        &provider_store,
-        DriverId::OpenAI,
-        "gpt-5.4",
-        Some("fake-api-key"),
-    )
-    .await;
-    let mut session = session_store
-        .get_session(session_id.into())
-        .await
-        .unwrap()
-        .unwrap();
-    session.capabilities = vec![AgentCapabilityConfig::with_config(
-        COMPACTION_CAPABILITY_ID,
-        json!({ "strategy": "native", "proactive": false }),
-    )];
-    session_store.add_session(session).await;
-    message_retriever
-        .seed(session_id.into(), vec![RuntimeMessage::user("raw history")])
-        .await;
-
-    let driver = NativeCompactFailureDriver {
-        attempts: Arc::new(AtomicUsize::new(0)),
-    };
-    let mut drivers = DriverRegistry::new();
-    drivers.register(DriverId::OpenAI, move |_| Box::new(driver.clone()));
-    let mut capabilities = CapabilityRegistry::new();
-    capabilities.register(CompactionCapability);
-    let checkpoint_store = Arc::new(everruns_host::InMemoryCompactionCheckpointStore::default());
-    let atom = reason_atom_with_stores(
-        harness_store,
-        agent_store,
-        session_store,
-        message_retriever,
-        provider_store,
-        capabilities,
-        drivers,
-        InMemoryEventEmitter::new(),
-    )
-    .with_compaction_checkpoint_store(checkpoint_store.clone());
-
-    atom.execute(ReasonInput {
-        context: create_context(session_id),
-        harness_id,
-        agent_id: Some(agent_id.into()),
-        org_id: 0,
-        mcp_tool_definitions: vec![],
-        previous_response_id: None,
-        iteration: 1,
-    })
-    .await
-    .expect("fallback retry should succeed");
-
-    assert!(
-        checkpoint_store
-            .get_latest(session_id.into(), "openai", "gpt-5.4")
-            .await
-            .unwrap()
-            .is_none()
-    );
 }
 
 /// EVE-895: compaction is a separate billable model call. Its provider-reported
@@ -2006,177 +1892,6 @@ async fn test_reason_atom_with_tool_calls() {
     assert_eq!(result.tool_calls.len(), 1);
     assert_eq!(result.tool_calls[0].name, "get_weather");
     assert_eq!(result.tool_calls[0].id, "call_weather_1");
-}
-
-#[tokio::test]
-async fn test_reason_atom_with_echo_response() {
-    let (
-        harness_store,
-        agent_store,
-        session_store,
-        message_retriever,
-        provider_store,
-        harness_id,
-        agent_id,
-        session_id,
-    ) = setup_test_environment().await;
-
-    // Add a user message
-    message_retriever
-        .seed(
-            session_id.into(),
-            vec![RuntimeMessage::user("Hello, how are you?")],
-        )
-        .await;
-
-    // Create a driver that echoes the user input
-    let driver_registry = create_custom_driver_registry(LlmSimConfig::echo());
-
-    let atom = reason_atom_with_stores(
-        harness_store,
-        agent_store,
-        session_store,
-        message_retriever.clone(),
-        provider_store,
-        CapabilityRegistry::new(),
-        driver_registry,
-        InMemoryEventEmitter::new(),
-    );
-
-    let context = create_context(session_id);
-    let input = ReasonInput {
-        context,
-        harness_id,
-        agent_id: Some(agent_id.into()),
-        org_id: 0,
-        mcp_tool_definitions: vec![],
-        previous_response_id: None,
-        iteration: 1,
-    };
-
-    let result = atom
-        .execute(input)
-        .await
-        .expect("ReasonAtom should succeed");
-
-    assert!(result.success);
-    assert_eq!(result.text, "Echo: Hello, how are you?");
-}
-
-#[tokio::test]
-async fn test_reason_atom_with_different_configs() {
-    // Test that different LlmSimConfig settings produce different results
-    // Note: Sequence responses work within a single driver instance, but each
-    // registry.create_chat_driver() call creates a fresh driver. For registry-based
-    // usage, use fixed responses or test sequences at the driver level.
-
-    let (
-        harness_store,
-        agent_store,
-        session_store,
-        message_retriever,
-        provider_store,
-        harness_id,
-        agent_id,
-        session_id,
-    ) = setup_test_environment().await;
-
-    // First test with one configuration
-    message_retriever
-        .seed(session_id.into(), vec![RuntimeMessage::user("Question 1")])
-        .await;
-
-    let driver_registry1 = create_custom_driver_registry(LlmSimConfig::fixed("Response A"));
-
-    let atom1 = reason_atom_with_stores(
-        harness_store.clone(),
-        agent_store.clone(),
-        session_store.clone(),
-        message_retriever.clone(),
-        provider_store.clone(),
-        CapabilityRegistry::new(),
-        driver_registry1,
-        InMemoryEventEmitter::new(),
-    );
-
-    let context1 = create_context(session_id);
-    let result1 = atom1
-        .execute(ReasonInput {
-            context: context1,
-            harness_id,
-            agent_id: Some(agent_id.into()),
-            org_id: 0,
-            mcp_tool_definitions: vec![],
-            previous_response_id: None,
-            iteration: 1,
-        })
-        .await
-        .expect("First call should succeed");
-
-    assert_eq!(result1.text, "Response A");
-
-    // Second test with a different configuration
-    let session_id2 = Uuid::now_v7();
-    let session2 = ExecutionSession {
-        id: session_id2.into(),
-        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id2),
-        organization_id: "default".to_string(),
-        harness_id,
-        agent_id: Some(agent_id.into()),
-        title: Some("Test ExecutionSession 2".to_string()),
-        goal: None,
-        locale: None,
-        tags: vec![],
-        status: SessionExecutionState::Started,
-        model_id: None,
-        capabilities: vec![],
-        tools: vec![],
-        mcp_servers: Default::default(),
-        system_prompt: None,
-        initial_files: vec![],
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        usage: None,
-        parent_session_id: None,
-        forked_from_session_id: None,
-        blueprint_id: None,
-        blueprint_config: None,
-    };
-    session_store.add_session(session2).await;
-    message_retriever
-        .seed(session_id2.into(), vec![RuntimeMessage::user("Question 2")])
-        .await;
-
-    let driver_registry2 = create_custom_driver_registry(LlmSimConfig::fixed("Response B"));
-
-    let atom2 = reason_atom_with_stores(
-        harness_store.clone(),
-        agent_store.clone(),
-        session_store.clone(),
-        message_retriever.clone(),
-        provider_store.clone(),
-        CapabilityRegistry::new(),
-        driver_registry2,
-        InMemoryEventEmitter::new(),
-    );
-
-    let context2 = create_context(session_id2);
-    let result2 = atom2
-        .execute(ReasonInput {
-            context: context2,
-            harness_id,
-            agent_id: Some(agent_id.into()),
-            org_id: 0,
-            mcp_tool_definitions: vec![],
-            previous_response_id: None,
-            iteration: 1,
-        })
-        .await
-        .expect("Second call should succeed");
-
-    assert_eq!(result2.text, "Response B");
 }
 
 #[tokio::test]
@@ -3189,25 +2904,6 @@ async fn test_previous_response_id_round_trips_through_serde() {
     assert_eq!(result_json["response_id"], "resp_out_456");
     let result_rt: ReasonResult = serde_json::from_value(result_json).unwrap();
     assert_eq!(result_rt.response_id.as_deref(), Some("resp_out_456"));
-}
-
-#[tokio::test]
-async fn test_llm_call_config_previous_response_id() {
-    let agent = RuntimeAgent::new("test prompt", "test-model");
-
-    // Builder sets previous_response_id
-    let config = everruns_core::llm_conversions::llm_call_config_builder_from_agent(&agent)
-        .previous_response_id(Some("resp_prev_001".to_string()))
-        .build();
-    assert_eq!(
-        config.previous_response_id.as_deref(),
-        Some("resp_prev_001")
-    );
-
-    // Builder defaults to None
-    let config_default =
-        everruns_core::llm_conversions::llm_call_config_builder_from_agent(&agent).build();
-    assert_eq!(config_default.previous_response_id, None);
 }
 
 // ============================================================================
