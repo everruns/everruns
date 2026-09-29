@@ -28,13 +28,16 @@
 // trace_id groups all spans in a turn, span_id identifies each span, parent_span_id links to parent.
 // Atom-level events (reason, act) provide finer-grained tracing of the agentic loop.
 
+use super::braintrust_delivery::{
+    DeliveryAttempt, PermanentFailureReporting, report_permanent_failure,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rand::RngExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{self, Duration};
@@ -161,24 +164,12 @@ struct BraintrustState {
     dropped_events: AtomicU64,
     retried_batches: AtomicU64,
     failed_batches: AtomicU64,
-    /// A permanent rejection (auth, unknown project) repeats on every batch
-    /// until the deployment is reconfigured. Report it once per process at
-    /// error level; later repeats are counted in `failed_batches` and logged
-    /// at debug so one misconfiguration does not flood error alerting
-    /// (Sentry EVERRUNS-1K).
-    permanent_failure_logged: AtomicBool,
+    permanent_failure_reporting: Mutex<PermanentFailureReporting>,
 }
 
 enum DeliveryMessage {
     Event(Box<BraintrustLogEvent>),
     Flush(oneshot::Sender<()>),
-}
-
-#[derive(Debug)]
-enum DeliveryAttempt {
-    Success,
-    Retryable(String),
-    Permanent(String),
 }
 
 /// Response from Braintrust list projects API
@@ -479,7 +470,7 @@ impl BraintrustListener {
             dropped_events: AtomicU64::new(0),
             retried_batches: AtomicU64::new(0),
             failed_batches: AtomicU64::new(0),
-            permanent_failure_logged: AtomicBool::new(false),
+            permanent_failure_reporting: Mutex::new(PermanentFailureReporting::default()),
         });
 
         Ok(Self { state })
@@ -614,16 +605,9 @@ impl BraintrustListener {
                     error!(reason = %reason, "Failed to send Braintrust batch");
                     return;
                 }
-                DeliveryAttempt::Permanent(reason) => {
+                DeliveryAttempt::Permanent { class, reason } => {
                     state.failed_batches.fetch_add(1, Ordering::Relaxed);
-                    if state.permanent_failure_logged.swap(true, Ordering::Relaxed) {
-                        debug!(reason = %reason, "Braintrust batch rejected again");
-                    } else {
-                        error!(
-                            reason = %reason,
-                            "Braintrust rejected batch; further rejections are logged at debug until reconfigured"
-                        );
-                    }
+                    report_permanent_failure(&state.permanent_failure_reporting, &class, &reason);
                     return;
                 }
             }
@@ -656,14 +640,26 @@ impl BraintrustListener {
                 } else {
                     let status = response.status();
                     let body = response.text().await.unwrap_or_default();
-                    DeliveryAttempt::Permanent(format!("HTTP {} {}", status, body))
+                    DeliveryAttempt::Permanent {
+                        // The numeric status, not `Display`, which appends the
+                        // reason phrase and would make the class wordier without
+                        // distinguishing anything.
+                        class: format!("HTTP {}", status.as_u16()),
+                        reason: format!("HTTP {} {}", status, body),
+                    }
                 }
             }
             Err(e) => {
                 if e.is_timeout() || e.is_connect() || e.is_request() {
                     DeliveryAttempt::Retryable(e.to_string())
                 } else {
-                    DeliveryAttempt::Permanent(e.to_string())
+                    // One class for every non-transient transport failure: the
+                    // Display text carries request-specific detail, so it would
+                    // re-report on noise rather than on a changed fault.
+                    DeliveryAttempt::Permanent {
+                        class: "transport".to_string(),
+                        reason: e.to_string(),
+                    }
                 }
             }
         }

@@ -8,5 +8,6 @@
 pub mod commands;
 pub mod queries;
 pub mod types;
+pub mod webhook;
 
 pub use commands::*;

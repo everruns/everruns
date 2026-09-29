@@ -720,6 +720,52 @@ async fn function_call_without_output_item_added_still_emits_the_tool_call() {
     );
 }
 
+/// A model sometimes closes a synchronous function call with arguments that
+/// are not JSON (seen live: `{"name": "sql-style", "arguments": }`). That must
+/// not fail the whole turn: the call goes through the same lenient snapshot as
+/// streamed calls, so the tool sees empty arguments and can answer with an
+/// error the model recovers from.
+#[tokio::test]
+async fn malformed_sync_function_call_arguments_do_not_fail_the_turn() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"activate_skill","arguments":"{\"name\": \"sql-style\", \"arguments\": }"}}"#,
+        "",
+        r#"data: {"type":"response.completed","response":{"id":"resp_bad","status":"completed","output":[],"usage":{"input_tokens":15,"output_tokens":8}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "load the skill")],
+            &config("gpt-5-mini"),
+        )
+        .await
+        .expect("stream should start");
+
+    assert_eq!(
+        drain_golden(stream).await,
+        vec![
+            Golden::ToolCall {
+                name: "activate_skill".into(),
+                args: "{}".into(),
+            },
+            Golden::Done {
+                total: Some(23),
+                prompt: Some(15),
+                completion: Some(8),
+                cache_read: None,
+                finish: Some("tool_calls".into()),
+            },
+        ]
+    );
+}
+
 /// The terminal response resource is the last chance to notice a call the
 /// incremental frames never described. Reconciling against its `output` list
 /// emits the call ahead of `Done`, which is what ends the stream for the

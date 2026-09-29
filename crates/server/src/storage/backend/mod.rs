@@ -27,6 +27,7 @@ use super::mcp_catalog::*;
 use super::mcp_tool_cache::*;
 use super::memory::InMemoryDatabase;
 use super::models::*;
+use super::org_slack_connections::*;
 use super::reporting::models::ReportingOutboxRow;
 use super::repositories::Database;
 use super::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
@@ -101,6 +102,28 @@ pub enum StorageBackend {
     Postgres(Database),
     /// In-memory database (dev mode)
     InMemory(std::sync::Arc<InMemoryDatabase>),
+}
+
+/// Keeps an endpoint's Slack app creation serialized until dropped.
+pub enum SlackInstallLock<'a> {
+    Postgres(sqlx::Transaction<'static, sqlx::Postgres>),
+    InMemory(tokio::sync::MutexGuard<'a, ()>),
+}
+
+impl StorageBackend {
+    pub async fn lock_slack_install(
+        &self,
+        endpoint_id: uuid::Uuid,
+    ) -> anyhow::Result<SlackInstallLock<'_>> {
+        match self {
+            Self::Postgres(db) => Ok(SlackInstallLock::Postgres(
+                db.lock_slack_install(endpoint_id).await?,
+            )),
+            Self::InMemory(db) => Ok(SlackInstallLock::InMemory(
+                db.slack_install_lock.lock().await,
+            )),
+        }
+    }
 }
 
 mod harnesses_sessions;

@@ -10,6 +10,7 @@
 
 #[cfg(feature = "braintrust")]
 pub mod braintrust;
+mod braintrust_delivery;
 pub mod composite;
 #[cfg(feature = "otel")]
 pub mod openinference;

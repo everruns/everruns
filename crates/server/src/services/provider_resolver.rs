@@ -652,20 +652,6 @@ mod tests {
         assert_eq!(get_default_api_key_with_lookup("openai", &env), None);
     }
 
-    #[test]
-    fn test_cache_key_different_org_ids() {
-        let key_a: CacheKey = (1, Uuid::new_v4());
-        let key_b: CacheKey = (2, key_a.1);
-        assert_ne!(key_a, key_b);
-    }
-
-    #[test]
-    fn test_cache_key_different_model_ids() {
-        let key_a: CacheKey = (1, Uuid::new_v4());
-        let key_b: CacheKey = (1, Uuid::new_v4());
-        assert_ne!(key_a, key_b);
-    }
-
     // --- Integration tests with in-memory storage ---
 
     use crate::storage::StorageBackend;

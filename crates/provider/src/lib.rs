@@ -50,9 +50,11 @@ pub mod openai_wire;
 pub mod openresponses_protocol;
 pub mod openresponses_types;
 pub mod provider;
+mod provider_managed;
 pub mod reasoning;
 pub mod runtime_provider;
 pub mod stream_accumulator;
+mod stream_error;
 #[cfg(feature = "http")]
 pub mod stream_reconnect;
 pub mod tool_schema_compat;
@@ -85,13 +87,17 @@ pub use driver_registry::{
     LlmStreamError, LlmStreamEvent, Message, MessageContent, MessageRole, ProviderConfig,
     ProviderMetadata, ProviderOpaqueContext, ServiceKind, fold_system_messages,
 };
+// Pre-0.31 names, kept as deprecated aliases.
 pub use error::{
     AgentLoopError, BillingPressureReason, FileSystemError, FileSystemErrorClass, LlmError,
     LlmErrorKind, Result, StoreResultExt, classify_fs_error, from_json, json_val,
 };
 pub use execution_phase::{ExecutionPhase, PhaseSource};
+pub use llm_error::RejectedProviderCapability;
 pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
 pub use message::ProviderOpaqueContent;
+#[allow(deprecated)]
+pub use message::{LlmMessage, LlmMessageContent, LlmMessageRole};
 pub use model::{
     CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,
     ModelVendor, ModelWithProvider, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,

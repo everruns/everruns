@@ -780,8 +780,13 @@ async fn resolve_session(
     if let Some(session_id) = cookie_session_id {
         match state.db.get_session(app.org_id, session_id.into()).await {
             Ok(Some(row))
-                if row.app_id == Some(app.internal_id)
-                    && row.tags.contains(&app_tag)
+                if match app.historical_app_id {
+                    Some(app_id) => row.app_id == Some(app_id),
+                    None => {
+                        row.endpoint_id == Some(channel.internal_id)
+                            && row.owner_principal_id == app.owner_principal_id
+                    }
+                } && row.tags.contains(&app_tag)
                     && row.tags.contains(&endpoint_tag) =>
             {
                 if let Some(age) = expired_age_seconds(

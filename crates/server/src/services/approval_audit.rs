@@ -25,7 +25,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use everruns_core::{Event, EventData, EventListener, TOOL_COMPLETED};
 use everruns_platform::{AgentAction, AuditEvent};
-use everruns_provider::typed_id::SessionId;
+use everruns_provider::typed_id::{MessageId, SessionId};
 use serde_json::Value;
 use tracing::instrument;
 use uuid::Uuid;
@@ -37,8 +37,6 @@ use crate::storage::StorageBackend;
 const REQUEST_APPROVAL_TOOL: &str = "request_approval";
 const RECORD_APPROVAL_TOOL: &str = "record_approval";
 
-const INPUT_MESSAGE_EVENT: &str = "input.message";
-
 /// Writes an org-level audit row for every approval asked for and granted.
 pub struct ApprovalAuditListener {
     db: Arc<StorageBackend>,
@@ -49,30 +47,18 @@ impl ApprovalAuditListener {
         Self { db }
     }
 
-    /// The identity that sent the last user message before `before_sequence`.
-    ///
-    /// That message is the consent: `record_approval` is called in the turn the
-    /// affirmative reply started. Reading the initiator from the event the API
-    /// itself wrote is what keeps the attribution out of the model's hands.
+    /// The identity that sent the exact message correlated by the tool context.
     async fn approver(
         &self,
         session_id: SessionId,
-        before_sequence: i32,
+        message_id: MessageId,
     ) -> (Option<Uuid>, Option<String>) {
-        let rows = match self
+        let row = match self
             .db
-            .list_events(
-                session_id,
-                None,
-                None,
-                &[INPUT_MESSAGE_EVENT.to_string()],
-                &[],
-                Some(before_sequence),
-                Some(1),
-            )
+            .find_input_message_event(session_id, message_id)
             .await
         {
-            Ok(rows) => rows,
+            Ok(row) => row,
             Err(error) => {
                 // A row with no actor still beats no row: the approval happened
                 // whether or not this lookup did.
@@ -81,7 +67,7 @@ impl ApprovalAuditListener {
             }
         };
 
-        let Some(metadata) = rows.first().and_then(|row| row.metadata.as_ref()) else {
+        let Some(metadata) = row.as_ref().and_then(|row| row.metadata.as_ref()) else {
             return (None, None);
         };
         (
@@ -128,6 +114,15 @@ fn audited_action(tool_name: &str) -> Option<AgentAction> {
         RECORD_APPROVAL_TOOL => Some(AgentAction::ApprovalGranted),
         _ => None,
     }
+}
+
+fn correlated_message_id(action: &AgentAction, payload: &Value) -> Option<MessageId> {
+    let key = match action {
+        AgentAction::ApprovalRequested => "asked_after_message",
+        AgentAction::ApprovalGranted => "approved_in_message",
+        _ => return None,
+    };
+    detail_str(payload, key)?.parse().ok()
 }
 
 /// Cap on each free-text detail copied into an audit row.
@@ -178,9 +173,6 @@ impl EventListener for ApprovalAuditListener {
         if !data.success {
             return;
         }
-        let Some(sequence) = event.sequence else {
-            return;
-        };
         let payload = data
             .result
             .as_deref()
@@ -192,9 +184,13 @@ impl EventListener for ApprovalAuditListener {
             return;
         };
 
-        // The ask is attributed to whoever was in the conversation when it was
-        // raised; the grant to whoever answered it.
-        let (actor, principal_id) = self.approver(event.session_id, sequence).await;
+        // Only a correlation emitted from trusted ToolContext can name the
+        // actor associated with the ask or grant. Missing, malformed, stale, or cross-session IDs
+        // deliberately produce an unattributed audit row.
+        let (actor, principal_id) = match correlated_message_id(&action, &payload) {
+            Some(message_id) => self.approver(event.session_id, message_id).await,
+            None => (None, None),
+        };
 
         let mut audit_event = AuditEvent::agent(action, org_id, actor)
             .target("session", event.session_id.to_string())
@@ -334,6 +330,72 @@ mod tests {
         assert_eq!(
             AgentAction::ApprovalRequested.as_str(),
             "agent.approval.requested"
+        );
+    }
+
+    #[test]
+    fn approval_correlation_rejects_missing_and_malformed_message_ids() {
+        let message_id = MessageId::new();
+        assert_eq!(
+            correlated_message_id(
+                &AgentAction::ApprovalGranted,
+                &json!({"approved_in_message": message_id})
+            ),
+            Some(message_id)
+        );
+        assert_eq!(
+            correlated_message_id(&AgentAction::ApprovalGranted, &json!({})),
+            None
+        );
+        assert_eq!(
+            correlated_message_id(
+                &AgentAction::ApprovalGranted,
+                &json!({"approved_in_message": "stale-or-invalid"})
+            ),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn approver_uses_exact_message_when_inputs_are_interleaved() {
+        use crate::storage::models::CreateEventRow;
+        use chrono::Utc;
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let listener = ApprovalAuditListener::new(db.clone());
+        let session_id = SessionId::new();
+        let first_message = MessageId::new();
+        let second_message = MessageId::new();
+        let first_user = Uuid::new_v4();
+        let second_user = Uuid::new_v4();
+
+        for (message_id, user_id) in [(first_message, first_user), (second_message, second_user)] {
+            db.create_event(CreateEventRow {
+                session_id,
+                event_type: "input.message".to_string(),
+                ts: Utc::now(),
+                context: json!({}),
+                data: json!({"message": {"id": message_id}}),
+                metadata: Some(json!({
+                    "initiator": {"type": "user", "user_id": user_id}
+                })),
+                tags: None,
+            })
+            .await
+            .expect("create input event");
+        }
+
+        assert_eq!(
+            listener.approver(session_id, first_message).await.0,
+            Some(first_user)
+        );
+        assert_eq!(
+            listener.approver(session_id, second_message).await.0,
+            Some(second_user)
+        );
+        assert_eq!(
+            listener.approver(session_id, MessageId::new()).await,
+            (None, None)
         );
     }
 }
