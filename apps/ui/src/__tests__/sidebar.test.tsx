@@ -480,11 +480,8 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: "Settings" })).toHaveClass("border-l-primary");
   });
 
-  it("renders version in footer", () => {
-    render(<Sidebar />);
-
-    expect(screen.getByText(/^Everruns v\d+\.\d+\.\d+$/)).toBeInTheDocument();
-  });
+  // Duplicate of "renders only the version when no current user is available"
+  // removed here (same default render, same version-text assertion).
 
   // Pure-styling and hardcoded-count change-detectors removed (compact-shell
   // utility classes, exact nav-item count, nav overflow classes): they broke on

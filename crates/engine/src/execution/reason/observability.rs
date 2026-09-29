@@ -2,11 +2,14 @@ use serde_json::json;
 use std::collections::{BTreeSet, HashMap};
 
 use crate::capabilities::CapabilityRegistry;
+use crate::event_emitter::EventEmitter;
 use crate::events::{
-    CapabilityUsageKind, CapabilityUsageRecord, LlmPromptCacheInfo, LlmRequestOptions,
-    LlmToolSearchInfo,
+    CapabilityUsageData, CapabilityUsageKind, CapabilityUsageRecord, EventContext, EventRequest,
+    LlmPromptCacheInfo, LlmRequestOptions, LlmToolSearchInfo,
 };
+use crate::execution::ExecutionContext;
 use crate::tool_types::ToolDefinition;
+use crate::typed_id::SessionId;
 
 pub(super) fn build_request_options(
     config: &crate::driver_registry::LlmCallConfig,
@@ -88,6 +91,49 @@ pub(super) fn build_request_options(
     {
         provider_options.insert("gemini".to_string(), json!({ "cached_content": true }));
     }
+    if provider == "anthropic" {
+        let mut anthropic = json!({});
+        if let Some(option) = config.driver_options.get("anthropic/server_compaction") {
+            anthropic["reduction_mode"] = json!("server_compaction");
+            anthropic["trigger_tokens"] = option
+                .get("trigger_tokens")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+        }
+        if let Some(option) = config
+            .driver_options
+            .get("everruns/provider_managed_reduction")
+        {
+            anthropic["replay_source"] = option
+                .get("replay_source")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+        }
+        if let Some(option) = config
+            .driver_options
+            .get("everruns/provider_managed_reduction_fallback")
+        {
+            anthropic["reduction_mode"] = json!("legacy");
+            anthropic["fallback_reason"] = option
+                .get("reason")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+        }
+        if config
+            .driver_options
+            .get("everruns/provider_managed_compaction_observed")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+        {
+            anthropic["compaction_block_observed"] = json!(true);
+        }
+        if anthropic
+            .as_object()
+            .is_some_and(|options| !options.is_empty())
+        {
+            provider_options.insert("anthropic".to_string(), anthropic);
+        }
+    }
 
     let request_options = LlmRequestOptions {
         temperature: config.temperature,
@@ -167,6 +213,35 @@ pub(super) fn capability_usage_snapshot_records(
     }
 
     records
+}
+
+pub(super) async fn emit_capability_usage_snapshot(
+    emitter: &dyn EventEmitter,
+    registry: &CapabilityRegistry,
+    session_id: SessionId,
+    context: &ExecutionContext,
+    resolved_capability_configs: &[crate::CapabilityRef],
+    tool_definitions: &[ToolDefinition],
+) {
+    let records =
+        capability_usage_snapshot_records(registry, resolved_capability_configs, tool_definitions);
+    if records.is_empty() {
+        return;
+    }
+    if let Err(error) = emitter
+        .emit(EventRequest::new(
+            session_id,
+            EventContext::from_execution_context(context),
+            CapabilityUsageData { records },
+        ))
+        .await
+    {
+        tracing::warn!(
+            session_id = %session_id,
+            error = %error,
+            "ReasonAtom: failed to emit capability.usage event"
+        );
+    }
 }
 
 #[cfg(test)]

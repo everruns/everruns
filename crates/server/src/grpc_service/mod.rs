@@ -15,6 +15,8 @@ mod tests;
 mod tests_platform_command_surface;
 #[cfg(test)]
 mod tests_sqldb_sharing;
+#[cfg(test)]
+mod tests_worker_file_ctx;
 
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::session_files::WorkspaceFileService;
@@ -210,6 +212,8 @@ use everruns_internal_protocol::proto::{
     SessionStorageSetSecretResponse,
     SessionStorageSetValueRequest,
     SessionStorageSetValueResponse,
+    SessionStorageTakeValueRequest,
+    SessionStorageTakeValueResponse,
     SessionTaskMessageResponse,
     SessionTaskResponse,
     SetSessionStatusRequest,
@@ -742,7 +746,7 @@ impl WorkerServiceImpl {
         caller: everruns_core::Caller,
     ) -> Result<crate::domains::common::Ctx, Status> {
         let org_id = caller.org_id;
-        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags_cached(
+        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             org_id,
             &everruns_platform::FeatureFlags::current(),

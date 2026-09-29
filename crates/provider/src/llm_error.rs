@@ -27,6 +27,14 @@ pub enum BillingPressureReason {
     InsufficientCredits,
 }
 
+/// Provider feature rejected before a response stream began.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RejectedProviderCapability {
+    /// Anthropic threshold server-side compaction.
+    AnthropicServerCompaction,
+}
+
 /// Semantic classification of an LLM provider error, assigned by the driver
 /// at the provider boundary where the HTTP status and response body are still
 /// available. Downstream consumers prefer this over re-parsing error strings;
@@ -188,6 +196,11 @@ pub struct LlmError {
     /// folded into it: `kind` is Everruns' taxonomy, this is the provider's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+    /// Everruns capability that the provider rejected before a response stream
+    /// started. Runtime fallback policy consumes this marker without parsing
+    /// provider error prose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejected_capability: Option<RejectedProviderCapability>,
     /// Delay the provider asked for before another attempt, in seconds
     /// (`Retry-After` or an equivalent rate-limit header).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -211,6 +224,7 @@ impl LlmError {
             message: message.into(),
             status: None,
             code: None,
+            rejected_capability: None,
             retry_after_secs: None,
             retry_attempts: 0,
             retry_wait_ms: 0,
@@ -229,6 +243,13 @@ impl LlmError {
     #[must_use]
     pub fn with_code(mut self, code: impl Into<String>) -> Self {
         self.code = Some(code.into());
+        self
+    }
+
+    /// Mark a provider capability as rejected before streaming began.
+    #[must_use]
+    pub fn with_rejected_capability(mut self, capability: RejectedProviderCapability) -> Self {
+        self.rejected_capability = Some(capability);
         self
     }
 

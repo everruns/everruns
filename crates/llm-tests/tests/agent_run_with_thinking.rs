@@ -38,6 +38,7 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 #[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
+#[case::anthropic_sonnet5_5(ANTHROPIC_SONNET55)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
@@ -227,6 +228,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 #[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
+#[case::anthropic_sonnet5_5(ANTHROPIC_SONNET55)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 // Include GPT-6 Astra in the reasoning-plus-tool-call scenario; its

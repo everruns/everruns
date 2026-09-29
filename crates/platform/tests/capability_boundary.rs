@@ -2,18 +2,18 @@ use everruns_capability::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
 use everruns_core::capabilities::{
     Capability, CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
 };
+#[cfg(feature = "environment-capabilities")]
 use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
 use everruns_platform::capabilities::{
     AgentHandoffCapability, SessionScheduleCapability, SubagentCapability,
     register_hosted_capabilities,
 };
+#[cfg(feature = "environment-capabilities")]
 use everruns_provider::tool_types::ToolCall;
 use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 
 const HOSTED_IDS: &[&str] = &[
     "research",
-    "model_scout",
-    "openrouter_workspace",
     "memory",
     "background_execution",
     "session_schedule",
@@ -29,10 +29,17 @@ const HOSTED_IDS: &[&str] = &[
     "platform_management",
 ];
 
+// Registered only when the `environment-capabilities` feature links the
+// OpenRouter integration crate (crates/platform/Cargo.toml). Off by default
+// so lightweight hosts (and a bare `cargo test -p everruns-platform`) do not
+// pull in that dependency; checked separately so the rest of this file's
+// boundary checks still run without the feature.
+const ENVIRONMENT_GATED_HOSTED_IDS: &[&str] = &["model_scout", "openrouter_workspace"];
+
 #[test]
 fn framework_registry_does_not_advertise_hosted_capabilities() {
     let registry = CapabilityRegistry::new();
-    for id in HOSTED_IDS {
+    for id in HOSTED_IDS.iter().chain(ENVIRONMENT_GATED_HOSTED_IDS) {
         assert!(!registry.has(id), "Framework registry advertised {id}");
     }
 }
@@ -45,8 +52,27 @@ fn product_registration_adds_the_hosted_catalog() {
     for id in HOSTED_IDS {
         assert!(registry.has(id), "product registry omitted {id}");
     }
+    #[cfg(feature = "environment-capabilities")]
+    for id in ENVIRONMENT_GATED_HOSTED_IDS {
+        assert!(registry.has(id), "product registry omitted {id}");
+    }
+    #[cfg(not(feature = "environment-capabilities"))]
+    for id in ENVIRONMENT_GATED_HOSTED_IDS {
+        assert!(
+            !registry.has(id),
+            "{id} should require the environment-capabilities feature"
+        );
+    }
 }
 
+// `memory`, `data_knowledge`, and `platform` declare an unconditional
+// dependency on `session_file_system`, which only registers when
+// `environment-capabilities` links the filesystem integration crate
+// (crates/platform/Cargo.toml). The full hosted catalog is only a coherent
+// dependency graph with that feature on — every hosted binary
+// (crates/server, crates/worker) enables it — so this check requires it too
+// rather than reporting a dangling dependency that is not actually a bug.
+#[cfg(feature = "environment-capabilities")]
 #[test]
 fn hosted_catalog_keeps_dependency_tool_and_narration_invariants() {
     let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(

@@ -391,6 +391,21 @@ pub(crate) fn should_skip_thread_reply(
     false
 }
 
+/// Whether an event row was triggered by the given input message.
+///
+/// The polling loop in [`wait_and_post_response`] sees every event on the
+/// session, including ones from a previous or concurrent turn; this decides
+/// which of those the bot should act on (post to Slack, stop polling on
+/// completion/failure). Events with no `input_message_id` in their context
+/// (or a different one) never match — only an exact match to our turn's
+/// input message id does.
+pub(crate) fn event_belongs_to_input_message(
+    context: &serde_json::Value,
+    our_input_message_id: &str,
+) -> bool {
+    context.get("input_message_id").and_then(|v| v.as_str()) == Some(our_input_message_id)
+}
+
 /// Wait for the agent turn to complete and stream responses to Slack.
 ///
 /// Posts each `output.message.completed` text to Slack as it arrives, giving
@@ -430,11 +445,7 @@ pub(crate) async fn wait_and_post_response(
             since_id = Some(event_row.id);
 
             // Only consider events triggered by our input message
-            let event_input_msg = event_row
-                .context
-                .get("input_message_id")
-                .and_then(|v| v.as_str());
-            let is_our_turn = event_input_msg == Some(&input_msg_str);
+            let is_our_turn = event_belongs_to_input_message(&event_row.context, &input_msg_str);
 
             // Post each assistant message to Slack as it arrives. This gives
             // users progress visibility during multi-step agent turns (e.g.

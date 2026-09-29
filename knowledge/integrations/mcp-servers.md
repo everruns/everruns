@@ -104,7 +104,9 @@ shapes (`crates/mcp/src/http.rs::resolve_input_required`):
   elicitation](#url-mode-elicitation) below.
 - **Anything else** (form mode elicitation, sampling, roots): the client
   declares none of these. Fail with an error naming the requested keys rather
-  than returning the empty result a caller would misread as success.
+  than returning the empty result a caller would misread as success. Form mode
+  has a design for being answered: [inbound form mode
+  elicitation](mcp-form-elicitation.md).
 
 Bounded at two rounds (`MAX_INPUT_REQUIRED_ROUNDS`): a server may keep asking,
 but each round costs a human interaction and holds the turn open, so looping
@@ -202,6 +204,21 @@ reason.
 
 Not yet built: a per-server opt-in policy — today any server the operator
 configured may elicit, gated only by the host's handler.
+[Inbound form mode elicitation](mcp-form-elicitation.md) specifies that policy
+(`elicitation_policy`), because form mode needs it more than URL mode does.
+
+#### Form mode elicitation
+
+Not answered. The client declares no `form` capability, so a compliant server
+cannot ask, and a server that asks anyway is reported by
+`gather_input_responses` rather than answered.
+
+This is a deliberate gap, not an oversight: a form answer is carried by a tool
+result, so it would land in the event log and permanently in model context — the
+thing URL mode exists to avoid — and the question text would be third-party
+authored while rendering in Everruns' own chrome.
+[Inbound form mode elicitation](mcp-form-elicitation.md) is the design and threat
+model for closing it (TM-TOOL-043 through TM-TOOL-047).
 
 #### `protocol_mode`
 

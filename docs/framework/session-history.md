@@ -125,16 +125,18 @@ Enable `local` and configure a trusted application data directory when sessions
 must survive a new Agent or process:
 
 ```rust
-use everruns::{Agent, Engine, LocalConfig, Model};
+use everruns::{Agent, Engine, LocalConfig, OpenAI};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-let build_agent = || Agent::builder()
-    .instructions("Remember the conversation.")
-    .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
-    .local(LocalConfig::new(".everruns-data"))
-    .build();
+let build_agent = || -> Result<Agent, Box<dyn std::error::Error>> {
+    Ok(Agent::builder()
+        .instructions("Remember the conversation.")
+        .provider(OpenAI::from_env()?)
+        .model("gpt-5.6-terra")
+        .local(LocalConfig::new(".everruns-data"))
+        .build()?)
+};
 
 let first_engine = Engine::new();
 let session = first_engine.create(build_agent()?);
