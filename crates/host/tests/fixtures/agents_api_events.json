@@ -1,0 +1,73 @@
+[
+  {
+    "id": "evt_turn",
+    "type": "agent.session.turn.created",
+    "session": {"id": "sess_fixture"},
+    "turn": {"id": "turn_fixture", "subagent_id": null}
+  },
+  {
+    "id": "evt_function",
+    "type": "agent.session.requires_action",
+    "session": {
+      "id": "sess_fixture",
+      "required_actions": [
+        {
+          "type": "function_call",
+          "turn_id": "turn_fixture",
+          "call_id": "call_customer",
+          "name": "lookup_customer",
+          "arguments": {"customer_id": "123"}
+        }
+      ]
+    }
+  },
+  {
+    "id": "evt_mcp",
+    "type": "agent.session.turn.item.added",
+    "session_id": "sess_fixture",
+    "item": {
+      "id": "call_docs",
+      "type": "mcp_call",
+      "server_label": "docs",
+      "name": "search",
+      "arguments": {"query": "Agents API"},
+      "status": "completed",
+      "output": {"content": [{"type": "text", "text": "Agents API documentation"}]},
+      "duration_ms": 87
+    }
+  },
+  {
+    "id": "evt_delta_1",
+    "type": "agent.session.turn.output_text.delta",
+    "session_id": "sess_fixture",
+    "delta": "Customer 123 "
+  },
+  {
+    "id": "evt_delta_2",
+    "type": "agent.session.turn.output_text.delta",
+    "session_id": "sess_fixture",
+    "delta": "is documented."
+  },
+  {
+    "id": "evt_complete",
+    "type": "agent.session.turn.completed",
+    "session_id": "sess_fixture",
+    "turn": {
+      "id": "turn_fixture",
+      "subagent_id": null,
+      "duration_ms": 642,
+      "usage": {
+        "input_tokens": 101,
+        "output_tokens": 23,
+        "cache_read_tokens": 40,
+        "cost_usd": 0.0042,
+        "container_seconds": 0
+      }
+    }
+  },
+  {
+    "id": "evt_idle",
+    "type": "agent.session.idle",
+    "session_id": "sess_fixture"
+  }
+]
