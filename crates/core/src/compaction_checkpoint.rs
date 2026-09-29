@@ -13,6 +13,8 @@ use crate::error::Result;
 use crate::typed_id::SessionId;
 
 pub const COMPACTION_CHECKPOINT_FORMAT_VERSION: u32 = 1;
+/// Checkpoint format for Anthropic wire-level message-prefix replay.
+pub const ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -42,7 +44,16 @@ pub struct ProactiveCompactionAttempt {
 
 impl CompactionCheckpoint {
     pub fn is_compatible(&self, provider_type: &str, model: &str) -> bool {
-        self.format_version == COMPACTION_CHECKPOINT_FORMAT_VERSION
+        self.is_compatible_format(provider_type, model, COMPACTION_CHECKPOINT_FORMAT_VERSION)
+    }
+    /// Whether this checkpoint matches a provider, model, and format contract.
+    pub fn is_compatible_format(
+        &self,
+        provider_type: &str,
+        model: &str,
+        format_version: u32,
+    ) -> bool {
+        self.format_version == format_version
             && self.provider_type == provider_type
             && self.model == model
     }
@@ -56,6 +67,19 @@ pub trait CompactionCheckpointStore: Send + Sync {
         provider_type: &str,
         model: &str,
     ) -> Result<Option<CompactionCheckpoint>>;
+    /// Return the latest checkpoint only when it uses the requested format.
+    async fn get_latest_format(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        format_version: u32,
+    ) -> Result<Option<CompactionCheckpoint>> {
+        Ok(self
+            .get_latest(session_id, provider_type, model)
+            .await?
+            .filter(|checkpoint| checkpoint.format_version == format_version))
+    }
 
     /// Install a checkpoint only if no newer source boundary is canonical.
     async fn install(&self, checkpoint: CompactionCheckpoint) -> Result<bool>;
@@ -179,6 +203,25 @@ impl CompactionCheckpointStore for InMemoryCompactionCheckpointStore {
                 provider_type.to_string(),
                 model.to_string(),
                 COMPACTION_CHECKPOINT_FORMAT_VERSION,
+            ))
+            .cloned())
+    }
+    async fn get_latest_format(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        format_version: u32,
+    ) -> Result<Option<CompactionCheckpoint>> {
+        Ok(self
+            .checkpoints
+            .read()
+            .await
+            .get(&(
+                session_id,
+                provider_type.to_string(),
+                model.to_string(),
+                format_version,
             ))
             .cloned())
     }

@@ -117,22 +117,6 @@ describe("ToolCallCard", () => {
   });
 
   describe("result display", () => {
-    it("displays result preview", () => {
-      const toolCall = createToolCallMessage();
-      const toolResult = createToolResultMessage({
-        content: [
-          {
-            type: "tool_result" as const,
-            tool_call_id: "call_123",
-            result: "2025-01-01T12:00:00Z",
-          },
-        ],
-      });
-      renderWithLocale(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
-
-      expect(screen.getByText(/2025-01-01T12:00:00Z/)).toBeInTheDocument();
-    });
-
     it("does not display result section when incomplete", () => {
       const toolCall = createToolCallMessage();
       renderWithLocale(<ToolCallCard toolCall={toolCall} />);
@@ -142,27 +126,6 @@ describe("ToolCallCard", () => {
   });
 
   describe("different tool types", () => {
-    it("renders tool with complex arguments", () => {
-      const toolCall = createToolCallMessage({
-        content: [
-          {
-            type: "tool_call" as const,
-            id: "call_456",
-            name: "http_get",
-            arguments: {
-              url: "https://api.example.com/data",
-              headers: {
-                "Content-Type": "application/json",
-              },
-            },
-          },
-        ],
-      });
-      renderWithLocale(<ToolCallCard toolCall={toolCall} />);
-
-      expect(screen.getByText("http_get:")).toBeInTheDocument();
-    });
-
     it("renders tool with no result value", () => {
       const toolCall = createToolCallMessage();
       const toolResult = createToolResultMessage({

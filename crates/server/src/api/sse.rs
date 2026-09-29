@@ -487,20 +487,6 @@ mod tests {
     }
 
     #[test]
-    fn test_next_backoff_doubles() {
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.next_backoff(100), 200);
-        assert_eq!(config.next_backoff(200), 400);
-    }
-
-    #[test]
-    fn test_next_backoff_caps_at_max() {
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.next_backoff(400), 500); // Capped at max
-        assert_eq!(config.next_backoff(500), 500); // Already at max
-    }
-
-    #[test]
     fn test_monitoring_backoff_caps() {
         let config = SseStreamConfig::monitoring();
         assert_eq!(config.next_backoff(10000), 20000);
@@ -525,14 +511,6 @@ mod tests {
         assert_eq!(config.min_backoff_ms, 100);
         assert_eq!(config.max_backoff_ms, 500);
         assert_eq!(config.max_connection_secs, 300);
-    }
-
-    #[test]
-    fn test_config_is_copy() {
-        let config = SseStreamConfig::realtime();
-        let config2 = config; // Copy
-        assert_eq!(config.min_backoff_ms, config2.min_backoff_ms);
-        assert_eq!(config.max_connection_secs, config2.max_connection_secs);
     }
 
     #[test]

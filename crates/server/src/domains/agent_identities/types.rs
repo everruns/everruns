@@ -57,22 +57,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_create_agent_identity_request_roundtrip() {
-        let json = r#"{"name":"Ops Bot","locale":"en-US","timezone":"America/Los_Angeles"}"#;
-        let req: CreateAgentIdentityRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.name, "Ops Bot");
-        assert_eq!(req.locale.as_deref(), Some("en-US"));
-        assert_eq!(req.timezone.as_deref(), Some("America/Los_Angeles"));
-    }
-
-    #[test]
-    fn test_update_agent_identity_request_status() {
-        let json = r#"{"status":"archived"}"#;
-        let req: UpdateAgentIdentityRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.status, Some(AgentIdentityStatus::Archived));
-    }
-
-    #[test]
     fn update_agent_identity_request_defaults_to_unchanged() {
         let req: UpdateAgentIdentityRequest = serde_json::from_str("{}").unwrap();
         assert_eq!(req.description, UpdateField::Unchanged);

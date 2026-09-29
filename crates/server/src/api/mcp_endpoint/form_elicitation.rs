@@ -324,6 +324,12 @@ pub(super) async fn pending_questions_for_session(
     ))
 }
 
+fn policy_denied(id: &Option<Value>, error: everruns_core::PolicyError) -> JsonRpcResponse {
+    let message = error.to_string();
+    let envelope = classify_mcp_execute_error(&message);
+    JsonRpcResponse::success(id.clone(), error_result_payload(&message, Some(&envelope)))
+}
+
 /// Serve an `ask_user` question set a session is parked on as a form mode
 /// elicitation (EVE-1060), and apply the answer that comes back.
 ///
@@ -359,6 +365,14 @@ pub(super) async fn ask_user_form_elicitation(
         .await
         .ok()?;
     let caller = Caller::from(&org);
+    // THREAT[TM-AUTHZ-008]: this handler runs before the ordinary command
+    // dispatcher, so it must enforce the same session policy before reading
+    // the session or its pending question events.
+    if let Err(error) = crate::domains::sessions::SESSION_VIEW
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+    {
+        return Some(policy_denied(id, error));
+    }
     let pending = pending_questions_for_session(&caller, session_id, state)
         .await
         .ok()??;
@@ -393,6 +407,11 @@ pub(super) async fn ask_user_form_elicitation(
             // another one is stale, not fatal: fall through and elicit afresh.
             Ok(token) if token.intent == intent => {
                 if let Some(response) = elicitation::input_response(params, ASK_USER_REQUEST_KEY) {
+                    if let Err(error) = crate::domains::sessions::SESSION_MANAGE
+                        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+                    {
+                        return Some(policy_denied(id, error));
+                    }
                     return apply_form_answers(id, response, &caller, session_id, &pending, state)
                         .await;
                 }

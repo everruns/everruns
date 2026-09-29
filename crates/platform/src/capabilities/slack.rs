@@ -198,6 +198,32 @@ const CHANNEL_SCHEMA_DESCRIPTION: &str = "Slack channel ID the message is in (e.
 const TIMESTAMP_SCHEMA_DESCRIPTION: &str =
     "The Slack message's `ts` value (e.g. \"1728394857.123456\"). Not a date.";
 
+/// Backend-authored narration shared by this capability's tools.
+///
+/// `crates/core/src/tool_narration.rs` is on the file-size allowlist
+/// (`scripts/lib/file-size-allowlist.txt`) and may not grow, so these four
+/// simple, English-only phrases live here rather than joining its
+/// `narrate_*` helpers (see `crates/platform/tests/capability_boundary.rs`,
+/// which requires every non-generic hosted tool to carry backend narration).
+fn narrate_action(
+    verb_started: &str,
+    verb_completed: &str,
+    verb_failed: &str,
+    target: Option<String>,
+    phase: everruns_core::tool_narration::ToolNarrationPhase,
+) -> String {
+    use everruns_core::tool_narration::ToolNarrationPhase;
+    let verb = match phase {
+        ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => verb_started,
+        ToolNarrationPhase::Completed => verb_completed,
+        ToolNarrationPhase::Failed => verb_failed,
+    };
+    match target {
+        Some(target) if !target.is_empty() => format!("{verb}: {target}"),
+        _ => verb.to_string(),
+    }
+}
+
 // ============================================================================
 // slack_add_reaction
 // ============================================================================
@@ -206,6 +232,23 @@ pub struct SlackAddReactionTool;
 
 #[async_trait]
 impl Tool for SlackAddReactionTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_provider::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let name = optional_str(&tool_call.arguments, "name");
+        Some(narrate_action(
+            "Adding reaction",
+            "Added reaction",
+            "Failed to add reaction",
+            name,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "slack_add_reaction"
     }
@@ -293,6 +336,22 @@ pub struct SlackUpdateMessageTool;
 
 #[async_trait]
 impl Tool for SlackUpdateMessageTool {
+    fn narrate(
+        &self,
+        _tool_call: &everruns_provider::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(narrate_action(
+            "Updating Slack message",
+            "Updated Slack message",
+            "Failed to update Slack message",
+            None,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "slack_update_message"
     }
@@ -378,6 +437,23 @@ pub struct SlackLookupUserTool;
 
 #[async_trait]
 impl Tool for SlackLookupUserTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_provider::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let user_id = optional_str(&tool_call.arguments, "user_id");
+        Some(narrate_action(
+            "Looking up Slack user",
+            "Looked up Slack user",
+            "Failed to look up Slack user",
+            user_id,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "slack_lookup_user"
     }
@@ -448,6 +524,23 @@ pub struct SlackUploadFileTool;
 
 #[async_trait]
 impl Tool for SlackUploadFileTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_provider::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let filename = optional_str(&tool_call.arguments, "filename");
+        Some(narrate_action(
+            "Uploading file to Slack",
+            "Uploaded file to Slack",
+            "Failed to upload file to Slack",
+            filename,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "slack_upload_file"
     }
@@ -471,7 +564,7 @@ impl Tool for SlackUploadFileTool {
                 },
                 "thread_ts": {
                     "type": "string",
-                    "description": "Thread `ts` to share into. Omit to post at channel level."
+                    "description": "Thread `ts` of the current Slack conversation."
                 },
                 "filename": {
                     "type": "string",
@@ -487,7 +580,7 @@ impl Tool for SlackUploadFileTool {
                     "description": "Optional message posted alongside the file."
                 }
             },
-            "required": ["channel", "filename", "content"],
+            "required": ["channel", "thread_ts", "filename", "content"],
             "additionalProperties": false
         })
     }
@@ -525,12 +618,16 @@ impl Tool for SlackUploadFileTool {
                 MAX_UPLOAD_BYTES
             ));
         }
+        let thread_ts = match required_str(&arguments, "thread_ts") {
+            Ok(value) => value.to_string(),
+            Err(result) => return result,
+        };
 
         run(
             context,
             SlackAction::UploadFile {
                 channel,
-                thread_ts: optional_str(&arguments, "thread_ts"),
+                thread_ts: Some(thread_ts),
                 filename,
                 content,
                 initial_comment: optional_str(&arguments, "initial_comment"),
@@ -723,7 +820,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upload_file_omits_absent_optional_arguments() {
+    async fn upload_file_omits_absent_initial_comment() {
         let invoker = Arc::new(RecordingInvoker::new(SlackActionOutcome::FileUploaded {
             file_id: "F1".to_string(),
             permalink: None,
@@ -736,7 +833,7 @@ mod tests {
                     "channel": "C1",
                     "filename": "report.md",
                     "content": "hello",
-                    "thread_ts": "   "
+                    "thread_ts": "1.2"
                 }),
                 &context,
             )
@@ -747,11 +844,30 @@ mod tests {
         assert!(matches!(
             &seen[0],
             SlackAction::UploadFile {
-                thread_ts: None,
+                thread_ts: Some(thread_ts),
                 initial_comment: None,
                 ..
-            }
+            } if thread_ts == "1.2"
         ));
+    }
+
+    #[tokio::test]
+    async fn upload_file_requires_a_thread() {
+        let invoker = Arc::new(RecordingInvoker::new(SlackActionOutcome::FileUploaded {
+            file_id: "F1".to_string(),
+            permalink: None,
+        }));
+        let context = context_with(invoker.clone());
+
+        let result = SlackUploadFileTool
+            .execute_with_context(
+                json!({ "channel": "C1", "filename": "report.md", "content": "hello" }),
+                &context,
+            )
+            .await;
+
+        assert!(!result.is_success());
+        assert!(invoker.seen.lock().expect("poisoned").is_empty());
     }
 
     #[tokio::test]

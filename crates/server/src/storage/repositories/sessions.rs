@@ -1025,6 +1025,36 @@ impl Database {
         Ok(row)
     }
 
+    /// Find a native endpoint session matching ALL given tags + owner within an org.
+    pub async fn find_endpoint_session_by_tags_and_owner(
+        &self,
+        org_id: i64,
+        endpoint_id: Uuid,
+        owner_principal_id: PrincipalId,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        let row = sqlx::query_as::<_, SessionRow>(
+            r#"
+            SELECT id, org_id, workspace_id, app_id, endpoint_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
+                   forked_from_session_id, forked_from_sequence,
+                   blueprint_id, blueprint_config, archived_at, event_count, task_count
+            FROM sessions
+            WHERE org_id = $1 AND endpoint_id = $2 AND owner_principal_id = $3 AND tags @> $4
+            ORDER BY created_at ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(org_id)
+        .bind(endpoint_id)
+        .bind(owner_principal_id)
+        .bind(tags)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     /// Find a single session matching ALL given tags + owner within an org.
     pub async fn find_session_by_tags_and_owner(
         &self,

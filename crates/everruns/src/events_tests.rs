@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{
-    ActStartedData, OutputMessageDeltaData, OutputMessageReplacedData, ToolStartedData,
-    TurnCancelledData, TurnStartedData,
+    ActStartedData, OutputMessageDeltaData, OutputMessageReplacedData, ReasonThinkingDeltaData,
+    ToolStartedData, TurnCancelledData, TurnStartedData,
 };
 use everruns_host::{HostEventEmitter, InMemoryEventLog};
 use everruns_provider::tool_types::ToolCall;
@@ -565,4 +565,37 @@ async fn tool_lifecycle_keeps_order_and_reaches_arguments_canonically() {
     );
     assert_eq!(completed.canonical_json()["data"]["status"], "success");
     assert!(completed.canonical_json()["data"]["result"].is_array());
+}
+
+#[tokio::test]
+async fn reasoning_delta_omits_the_repeated_accumulated_prefix() {
+    let session_id = SessionId::new();
+    let turn_id = TurnId::new();
+    let message_id = MessageId::new();
+    let bus = bus(session_id);
+    let emitter = host(bus.clone());
+    let mut stream = bus.subscribe();
+
+    emitter
+        .emit(everruns_core::EventRequest::new(
+            session_id,
+            everruns_core::EventContext::turn(turn_id, message_id),
+            ReasonThinkingDeltaData {
+                turn_id,
+                delta: "next".to_string(),
+                accumulated: "a long growing prefix next".to_string(),
+            },
+        ))
+        .await
+        .unwrap();
+
+    let event = stream.recv().await.unwrap().unwrap();
+    let SessionEventKind::ReasoningDelta { delta, accumulated } = &event.kind else {
+        panic!("expected reasoning delta");
+    };
+    assert_eq!(delta, "next");
+    assert!(accumulated.is_empty());
+    assert!(event.data().get("accumulated").is_none());
+    assert!(event.as_json()["data"].get("accumulated").is_none());
+    assert!(event.canonical_json()["data"].get("accumulated").is_none());
 }

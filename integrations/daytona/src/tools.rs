@@ -2145,7 +2145,7 @@ impl Tool for DaytonaApiCallTool {
             body = Some(Self::inject_labels(context, body.unwrap_or_else(|| json!({}))).await);
         }
 
-        let client = DaytonaClient::new(api_key);
+        let client = crate::client_test_override::daytona_client_from_context(api_key, context);
         match client.api_call(method, &path, body).await {
             Ok(response) => {
                 let response = if let Some(owned_ids) = sandbox_scope.as_ref() {
