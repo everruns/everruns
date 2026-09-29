@@ -132,6 +132,7 @@ mod seed_ids {
     pub const CLAUDE_FABLE_5_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030f);
     pub const CLAUDE_OPUS_5_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000310);
     pub const CLAUDE_OPUS_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030e);
+    pub const CLAUDE_SONNET_5_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000311);
     pub const CLAUDE_SONNET_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030c);
     pub const CLAUDE_OPUS_4_8: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030d);
     pub const CLAUDE_OPUS_4_7: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000309);
@@ -146,6 +147,7 @@ mod seed_ids {
     pub const CLAUDE_OPUS_5_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003aa);
     pub const CLAUDE_OPUS_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a8);
     pub const CLAUDE_OPUS_4_7_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a7);
+    pub const CLAUDE_SONNET_5_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003ab);
     pub const CLAUDE_SONNET_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a5);
 
     // LlmSim Models (0x400-0x4FF)
@@ -164,6 +166,8 @@ mod seed_ids {
     pub const BEDROCK_CLAUDE_OPUS_5_5: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000705);
     pub const BEDROCK_CLAUDE_OPUS_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000703);
+    pub const BEDROCK_CLAUDE_SONNET_5_5: Uuid =
+        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000706);
     pub const BEDROCK_CLAUDE_SONNET_5: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000704);
 }

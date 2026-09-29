@@ -389,6 +389,12 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-opus-4-8[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-6[1m]"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-sonnet-5-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(
+        &["claude-sonnet-5-5[1m]"],
+        ModelVendor::Anthropic,
+        ANTHROPIC,
+    ),
     md(&["claude-sonnet-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-6"], ModelVendor::Anthropic, ANTHROPIC),
@@ -2567,6 +2573,7 @@ fn anthropic_family_supports_tool_search(family: &str) -> bool {
             | "claude-opus-4-6"
             | "claude-opus-4-5"
             | "claude-opus-4"
+            | "claude-sonnet-5-5"
             | "claude-sonnet-5"
             | "claude-sonnet-4-6"
             | "claude-sonnet-4-5"
@@ -2950,6 +2957,8 @@ mod tests {
             ),
             ("anthropic", "claude-sonnet-5", "claude-sonnet-5"),
             ("anthropic", "claude-sonnet-5-latest", "claude-sonnet-5"),
+            ("anthropic", "claude-sonnet-5-5", "claude-sonnet-5-5"),
+            ("anthropic", "claude-sonnet-5-5-latest", "claude-sonnet-5-5"),
             ("gemini", "gemini-2.0-flash", "gemini-2.0-flash"),
             (
                 "gemini",
@@ -3919,6 +3928,7 @@ mod tests {
             "claude-opus-4-6",
             "claude-opus-4-5",
             "claude-opus-4",
+            "claude-sonnet-5-5",
             "claude-sonnet-4-6",
             "claude-sonnet-4-5",
             "claude-haiku-4-5",

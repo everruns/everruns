@@ -8,8 +8,15 @@ use crate::driver::normalize_anthropic_id;
 
 /// Families where thinking cannot be disabled: omitting `thinking` still runs
 /// adaptive thinking at the API's default effort.
-const THINKING_ALWAYS_ON_FAMILIES: &[&str] =
-    &["claude-fable-5-1", "claude-fable-5", "claude-opus-5-5"];
+///
+/// Sonnet 5.5 rejects `disabled` too; its thinking-off mode (`between_tools`)
+/// is not something the driver sends, so it is treated as always on.
+const THINKING_ALWAYS_ON_FAMILIES: &[&str] = &[
+    "claude-fable-5-1",
+    "claude-fable-5",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+];
 
 /// The effort to send: the caller's, or [`default_effort`] when it chose none.
 ///
@@ -123,7 +130,12 @@ mod tests {
 
     #[test]
     fn thinking_always_on_families_get_the_profile_default() {
-        for model in ["claude-opus-5-5", "claude-fable-5-1", "claude-fable-5"] {
+        for model in [
+            "claude-opus-5-5",
+            "claude-sonnet-5-5",
+            "claude-fable-5-1",
+            "claude-fable-5",
+        ] {
             assert_eq!(effort_for(model), Some(ReasoningEffort::High), "{model}");
         }
     }
@@ -144,6 +156,9 @@ mod tests {
         config.reasoning_effort = Some(ReasoningEffort::None);
         let opus55 = resolve(&config, "claude-opus-5-5", &profile("claude-opus-5-5"));
         assert_eq!(opus55, Some(ReasoningEffort::Low));
+        // Sonnet 5.5 rejects `thinking: disabled` too.
+        let sonnet55 = resolve(&config, "claude-sonnet-5-5", &profile("claude-sonnet-5-5"));
+        assert_eq!(sonnet55, Some(ReasoningEffort::Low));
         // Where omitting `thinking` turns it off, `None` keeps meaning off.
         let opus48 = resolve(&config, "claude-opus-4-8", &profile("claude-opus-4-8"));
         assert_eq!(opus48, Some(ReasoningEffort::None));
