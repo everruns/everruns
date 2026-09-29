@@ -31,7 +31,8 @@ use super::{
 };
 
 /// Families whose thinking blocks are bound to the conversation prefix.
-const PRESERVED_THINKING_FAMILIES: &[&str] = &["claude-fable-5-1", "claude-opus-5-5"];
+const PRESERVED_THINKING_FAMILIES: &[&str] =
+    &["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5"];
 
 /// Beta that lets a request choose what happens to a block whose prefix changed.
 pub(super) const THINKING_BINDING_BETA: &str = "thinking-binding-controls-2026-08-01";
@@ -490,7 +491,9 @@ mod tests {
     fn preserved_thinking_models_ask_the_api_to_drop_mismatched_blocks() {
         for (model, binds) in [
             ("claude-opus-5-5", true),
+            ("claude-sonnet-5-5", true),
             ("claude-fable-5-1[1m]", true),
+            ("claude-sonnet-5", false),
             ("claude-opus-5", false),
             ("claude-opus-4-8", false),
         ] {

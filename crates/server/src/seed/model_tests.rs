@@ -135,8 +135,8 @@ async fn test_model_seed_detects_display_name_change() {
 }
 
 /// End-to-end catalog check: after seeding, the current-generation models
-/// must surface for the picker. `claude-sonnet-5` (and its 1M twin) is the
-/// enabled favorite Sonnet while the superseded `claude-sonnet-4-6` is
+/// must surface for the picker. `claude-sonnet-5-5` (and its 1M twin) is the
+/// enabled favorite Sonnet, `claude-sonnet-5` stays enabled, while the superseded `claude-sonnet-4-6` is
 /// disabled, and the Gemini 3.x models are catalogued. Guards against the
 /// profile registry and seed catalog drifting apart again.
 #[tokio::test]
@@ -217,9 +217,19 @@ async fn test_seed_surfaces_current_gen_models() {
         "Opus 5 (1M) twin must be seeded and enabled"
     );
     assert_eq!(
+        anthropic.get("claude-sonnet-5-5"),
+        Some(&(true, true)),
+        "Sonnet 5.5 must be the enabled favorite Sonnet"
+    );
+    assert_eq!(
+        anthropic.get("claude-sonnet-5-5[1m]"),
+        Some(&(true, true)),
+        "Sonnet 5.5 (1M) twin must be seeded and enabled"
+    );
+    assert_eq!(
         anthropic.get("claude-sonnet-5"),
         Some(&(true, true)),
-        "Sonnet 5 must be the enabled favorite Sonnet"
+        "Sonnet 5 must stay enabled for existing agents"
     );
     assert_eq!(
         anthropic.get("claude-sonnet-5[1m]"),
