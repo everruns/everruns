@@ -1252,11 +1252,9 @@ const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-sonnet-4-6",
 ];
 
-/// Anthropic families that support the 1M context window (Anthropic docs:
-/// context-windows / long-context pricing). Gates `[1m]` suffix handling. These
-/// coincide with `ADAPTIVE_THINKING_FAMILIES` today but are a distinct
-/// capability — kept separate so a future divergence (1M without adaptive
-/// thinking, or vice versa) cannot silently mis-gate either path.
+/// Anthropic families with the 1M context window; gates `[1m]` suffix handling.
+/// Same list as `ADAPTIVE_THINKING_FAMILIES` today but a distinct capability,
+/// kept separate so a future divergence cannot silently mis-gate either path.
 const MILLION_CONTEXT_FAMILIES: &[&str] = &[
     "claude-fable-5-1",
     "claude-fable-5",

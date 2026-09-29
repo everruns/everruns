@@ -62,9 +62,7 @@ mod seed_ids {
     pub const E2B_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_00000000010f);
     pub const DENO_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000110);
     pub const SPRITES_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000111);
-    // 0x…0109 belonged to the retired Cloud Cost & Security Auditor demo
-    // agent (removed with EVE-875: it depended on the fake_aws demo
-    // capability, which product registries no longer register). Do not reuse.
+    // 0x…0109: retired Cloud Cost & Security Auditor demo agent (EVE-875). Do not reuse.
     pub const PLATFORM_MANAGER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010a);
     pub const WEB_RESEARCHER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010b);
@@ -85,8 +83,6 @@ mod seed_ids {
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
     pub const LINEAR_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000502);
-
-    // Harnesses (0x600-0x6FF) — now managed by org_init module
 
     // OpenAI Models (0x200-0x2FF)
     pub const GPT_5_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000201);
