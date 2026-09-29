@@ -329,7 +329,7 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // Anthropic current-gen (Fable 5.1, Opus 5.5, Opus 5, Sonnet 5, Opus 4.8)
+    // Anthropic current-gen (Fable 5.1, Opus 5.5, Opus 5, Sonnet 5.5, Sonnet 5, Opus 4.8)
     SeedModel {
         // Fable 5.1 is Anthropic's top tier above Opus (successor to Fable 5,
         // which is intentionally not seeded). Priced well above Opus 5.5, so Opus 5.5
@@ -400,6 +400,26 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         is_favorite: true, // Favorite model
     },
     SeedModel {
+        // Sonnet 5.5 is the current Sonnet — the favorite everyday Anthropic model.
+        id: seed_ids::CLAUDE_SONNET_5_5,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-sonnet-5-5",
+        display_name: "Claude Sonnet 5.5",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        // 1M-context twin of the 200K base above (driver sends the `context-1m`
+        // beta header for `[1m]` ids).
+        id: seed_ids::CLAUDE_SONNET_5_5_1M,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-sonnet-5-5[1m]",
+        display_name: "Claude Sonnet 5.5 (1M)",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        // Sonnet 5 is the previous Sonnet, kept enabled for existing agents.
         id: seed_ids::CLAUDE_SONNET_5,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-sonnet-5",
@@ -560,6 +580,14 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::BEDROCK_PROVIDER,
         model_id: "global.anthropic.claude-opus-5",
         display_name: "Claude Opus 5 (Bedrock)",
+        enabled: false,
+        is_favorite: false,
+    },
+    SeedModel {
+        id: seed_ids::BEDROCK_CLAUDE_SONNET_5_5,
+        provider_id: seed_ids::BEDROCK_PROVIDER,
+        model_id: "global.anthropic.claude-sonnet-5-5",
+        display_name: "Claude Sonnet 5.5 (Bedrock)",
         enabled: false,
         is_favorite: false,
     },
