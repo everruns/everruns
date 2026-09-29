@@ -495,7 +495,7 @@ impl DirectWorkerAdapters {
         pattern: &str,
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
-        crate::domains::session_files::service::grep_session_files_with_options(
+        crate::domains::session_files::grep::grep_session_files_with_options(
             &self.db,
             self.virtual_registry.as_deref(),
             session_id,
