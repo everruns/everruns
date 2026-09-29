@@ -1114,8 +1114,7 @@ impl PreToolUseHook for GuardrailPreToolHook {
                         if utility_calls >= MAX_JUDGE_CALLS_PER_INVOCATION {
                             tracing::warn!(
                                 tool = %tool_call.name,
-                                "guardrails: judge call cap reached for tool_use, skipping \
-                                 utility-LLM check"
+                                "guardrails: judge cap reached; tool_use utility check skipped"
                             );
                             continue;
                         }
@@ -1323,8 +1322,7 @@ impl PostToolExecHook for GuardrailPostToolHook {
                         if utility_calls >= MAX_JUDGE_CALLS_PER_INVOCATION {
                             tracing::warn!(
                                 tool = %tool_call.name,
-                                "guardrails: judge call cap reached for tool_output, skipping \
-                                 utility-LLM check"
+                                "guardrails: judge cap reached; tool_output utility check skipped"
                             );
                             continue;
                         }
