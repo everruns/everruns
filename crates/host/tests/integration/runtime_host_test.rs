@@ -46,13 +46,13 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 #[derive(Clone, Default)]
-struct TestSessionStore {
+pub(super) struct TestSessionStore {
     sessions: Arc<RwLock<HashMap<SessionId, ExecutionSession>>>,
     fail_status_writes: Arc<AtomicBool>,
 }
 
 impl TestSessionStore {
-    async fn insert(&self, session: ExecutionSession) {
+    pub(super) async fn insert(&self, session: ExecutionSession) {
         self.sessions.write().await.insert(session.id, session);
     }
 
@@ -98,15 +98,15 @@ impl SessionMutator for TestSessionStore {
 }
 
 #[derive(Clone)]
-struct MockHostAdapter {
+pub(super) struct MockHostAdapter {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     harness_store: Arc<InMemoryHarnessStore>,
     agent_store: Arc<InMemoryAgentStore>,
-    session_store: Arc<TestSessionStore>,
+    pub(super) session_store: Arc<TestSessionStore>,
     message_store: Arc<InMemoryMessageRetriever>,
     provider_store: Arc<InMemoryProviderStore>,
-    event_emitter: Arc<InMemoryEventEmitter>,
+    pub(super) event_emitter: Arc<InMemoryEventEmitter>,
     file_store: Arc<InMemorySessionFileStore>,
     session_task_registry: Option<Arc<dyn SessionTaskRegistry>>,
 }
@@ -742,7 +742,7 @@ fn harness() -> HarnessDefinition {
     }
 }
 
-fn session(session_id: SessionId, harness_id: HarnessId) -> ExecutionSession {
+pub(super) fn session(session_id: SessionId, harness_id: HarnessId) -> ExecutionSession {
     ExecutionSession {
         id: session_id,
         workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
@@ -784,7 +784,7 @@ fn agent(
     }
 }
 
-fn turn_state(session_id: SessionId, harness_id: HarnessId) -> TurnState {
+pub(super) fn turn_state(session_id: SessionId, harness_id: HarnessId) -> TurnState {
     TurnState {
         org_id: 1,
         session_id,
@@ -805,7 +805,7 @@ fn turn_state(session_id: SessionId, harness_id: HarnessId) -> TurnState {
     }
 }
 
-async fn advance_from_state(
+pub(super) async fn advance_from_state(
     adapter: &MockHostAdapter,
     completed_activity: &str,
     state: &TurnState,
@@ -823,7 +823,7 @@ async fn advance_from_state(
     .await
 }
 
-fn mock_host() -> MockHostAdapter {
+pub(super) fn mock_host() -> MockHostAdapter {
     let mut capability_registry = CapabilityRegistry::new();
     capability_registry.register(TestMathCapability);
     let mut driver_registry = DriverRegistry::new();
@@ -2365,77 +2365,6 @@ async fn execution_waits_for_tool_results_when_session_hint_requests_it() {
         }
         other => panic!("expected WaitForToolResults, got {other:?}"),
     }
-}
-
-#[tokio::test]
-async fn durable_ask_user_pause_honors_the_session_hint() {
-    let adapter = mock_host();
-    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
-    let session_id = SessionId::from_uuid(Uuid::now_v7());
-    let mut host_session = session(session_id, harness_id);
-    host_session.hints = Some(HashMap::from([("ask_user".to_string(), json!(true))]));
-    adapter.session_store.insert(host_session).await;
-
-    let input = turn_state(session_id, harness_id);
-    let output = json!({
-        "waiting_for_tool_results": true,
-        "client_tool_calls": [{
-            "id": "toolu_ask_1",
-            "name": everruns_provider::ASK_USER_TOOL_NAME,
-            "arguments": {"questions": []}
-        }]
-    });
-
-    let plan = advance_from_state(&adapter, "act", &input, &output, 0)
-        .await
-        .unwrap();
-
-    assert!(matches!(plan, TurnPlan::WaitForToolResults { .. }));
-    let stored = adapter
-        .session_store
-        .get_session(session_id)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(stored.status, SessionExecutionState::WaitingForToolResults);
-}
-
-#[tokio::test]
-async fn durable_ask_user_pause_without_hint_emits_unattended_completion() {
-    let adapter = mock_host();
-    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
-    let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter
-        .session_store
-        .insert(session(session_id, harness_id))
-        .await;
-
-    let input = turn_state(session_id, harness_id);
-    let output = json!({
-        "waiting_for_tool_results": true,
-        "client_tool_calls": [{
-            "id": "toolu_ask_1",
-            "name": everruns_provider::ASK_USER_TOOL_NAME,
-            "arguments": {"questions": []}
-        }]
-    });
-
-    let plan = advance_from_state(&adapter, "act", &input, &output, 0)
-        .await
-        .unwrap();
-
-    assert!(matches!(plan, TurnPlan::ScheduleReason(_)));
-    let completion = adapter
-        .event_emitter
-        .events()
-        .await
-        .into_iter()
-        .find_map(|event| match event.data {
-            EventData::ToolCompleted(data) if data.tool_call_id == "toolu_ask_1" => Some(data),
-            _ => None,
-        })
-        .expect("unattended ask_user completion emitted");
-    assert_eq!(completion.tool_name, everruns_provider::ASK_USER_TOOL_NAME);
 }
 
 // ============================================================================
