@@ -131,6 +131,7 @@ fn profile(
         tool_search: true,
         supported_parameters: Vec::new(),
         supports_phases: true,
+        supports_server_compaction: false,
     }
 }
 

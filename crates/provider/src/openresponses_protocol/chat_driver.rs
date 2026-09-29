@@ -129,7 +129,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 input_items.extend(transcript_input_items);
                 coalesce_configuration_updates(input_items)
             }
-            None => finalize_input_for_request(transcript_input_items, &previous_response_id),
+            Some(_) | None => {
+                finalize_input_for_request(transcript_input_items, &previous_response_id)
+            }
         };
 
         let tools = if config.tools.is_empty() {
@@ -633,6 +635,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             request_body: None,
                                             cache_diagnostics: None,
                                             provider_opaque_content: None,
+                                            provider_checkpoint_candidate: None,
                                         })))
                                     }
 

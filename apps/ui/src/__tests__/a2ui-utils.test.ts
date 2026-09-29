@@ -86,14 +86,12 @@ describe("parseA2UI", () => {
     expect((result as { type: string }).type).toBe("Card");
   });
 
-  it("handles unterminated strings by truncating", () => {
+  it("handles unterminated strings without throwing", () => {
     const partial = '{"type":"Card","props":{"variant":"muted';
-    const result = parseA2UI(partial);
-    // May recover outer type, may be null — either is acceptable as long as
-    // it doesn't throw.
-    if (result !== null) {
-      expect((result as { type: string }).type).toBe("Card");
-    }
+    // The dangling string leaves no safe recovery point that yields valid
+    // JSON once brackets are closed, so this degrades to null rather than
+    // throwing.
+    expect(parseA2UI(partial)).toBeNull();
   });
 
   it("parses nested children", () => {

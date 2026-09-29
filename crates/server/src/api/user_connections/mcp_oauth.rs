@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use axum::http::StatusCode;
 use everruns_core::EgressService;
+use everruns_mcp::validate_oauth_resource;
 use serde::{Deserialize, Serialize};
 
 use super::{AppState, mcp_oauth_redirect_uri, parse_and_validate_url, resource_origin};
@@ -68,13 +69,17 @@ pub(super) async fn ensure_mcp_oauth_registration(
             .as_ref()
             .and_then(|metadata| metadata.resource.clone())
     {
-        validate_safe_url(&resource).map_err(|e| {
+        oauth.resource = Some(resource);
+    }
+    if let Some(resource) = oauth.resource.as_deref() {
+        // THREAT[TM-MCP-008]: validate discovered and preconfigured audiences
+        // before persisting them or involving the authorization server.
+        validate_oauth_resource(resource, &row.url).map_err(|e| {
             (
                 StatusCode::BAD_REQUEST,
                 format!("OAuth protected resource blocked: {e}"),
             )
         })?;
-        oauth.resource = Some(resource);
     }
     let metadata = if !needs_server_discovery {
         OAuthServerMetadata {

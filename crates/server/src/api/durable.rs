@@ -63,6 +63,34 @@ pub struct AppState {
 
 impl_auth_state!(AppState);
 
+/// Map a system health snapshot to a metrics sample point. Shared by the
+/// background sampler and the SSE polling loop (and their tests) so the
+/// mapping is exercised for real rather than re-derived in the test.
+fn metrics_point_from_health(health: &SystemHealth) -> MetricsPoint {
+    let load_percentage = if health.total_capacity > 0 {
+        (health.current_load as f64 / health.total_capacity as f64) * 100.0
+    } else {
+        0.0
+    };
+    MetricsPoint {
+        timestamp: Utc::now(),
+        running_workflows: health.running_workflows,
+        pending_workflows: health.pending_workflows,
+        pending_tasks: health.pending_tasks,
+        claimed_tasks: health.claimed_tasks,
+        active_workers: health.active_workers,
+        load_percentage,
+        dlq_size: health.dlq_size,
+        // Use DB-based cumulative counts (reliable even when workers go stale)
+        tasks_completed_total: health.completed_tasks as u64,
+        tasks_failed_total: health.failed_tasks as u64,
+        tasks_started_total: health.started_tasks as u64,
+        workflows_completed_total: health.completed_workflows as u64,
+        workflows_failed_total: health.failed_workflows as u64,
+        workflows_started_total: health.started_workflows as u64,
+    }
+}
+
 impl AppState {
     /// Create new state with an optional workflow event store
     ///
@@ -121,30 +149,7 @@ impl AppState {
                                 continue;
                             }
                         };
-
-                        let load_percentage = if health.total_capacity > 0 {
-                            (health.current_load as f64 / health.total_capacity as f64) * 100.0
-                        } else {
-                            0.0
-                        };
-
-                        MetricsPoint {
-                            timestamp: Utc::now(),
-                            running_workflows: health.running_workflows,
-                            pending_workflows: health.pending_workflows,
-                            pending_tasks: health.pending_tasks,
-                            claimed_tasks: health.claimed_tasks,
-                            active_workers: health.active_workers,
-                            load_percentage,
-                            dlq_size: health.dlq_size,
-                            // Use DB-based cumulative counts (reliable even when workers go stale)
-                            tasks_completed_total: health.completed_tasks as u64,
-                            tasks_failed_total: health.failed_tasks as u64,
-                            tasks_started_total: health.started_tasks as u64,
-                            workflows_completed_total: health.completed_workflows as u64,
-                            workflows_failed_total: health.failed_workflows as u64,
-                            workflows_started_total: health.started_workflows as u64,
-                        }
+                        metrics_point_from_health(&health)
                     }
                     None => {
                         // Dev mode without store: push zeroed data
@@ -471,7 +476,7 @@ pub struct WorkersSummaryResponse {
     pub draining: usize,
     /// Workers in `stopped` state, neither running nor draining.
     pub stopped: usize,
-    /// Sum of `max_concurrency` across all `active` + `draining` workers.
+    /// Sum of `max_concurrency` across `active` workers only.
     pub total_capacity: usize,
     /// Total tasks currently in flight across all workers.
     pub total_load: usize,
@@ -485,6 +490,27 @@ pub struct WorkersListResponse {
     /// Total number of items matching the query, across all pages.
     pub total: usize,
     pub summary: WorkersSummaryResponse,
+}
+
+/// Compute the aggregate counts/capacity for a page of workers. Shared by the
+/// `list_workers` handler and its tests so the summary rules are exercised for
+/// real, not re-derived in the test.
+fn workers_summary(workers: &[WorkerResponse]) -> WorkersSummaryResponse {
+    WorkersSummaryResponse {
+        active: workers.iter().filter(|w| w.status == "active").count(),
+        draining: workers.iter().filter(|w| w.status == "draining").count(),
+        stopped: workers.iter().filter(|w| w.status == "stopped").count(),
+        total_capacity: workers
+            .iter()
+            .filter(|w| w.status == "active")
+            .map(|w| w.max_concurrency as usize)
+            .sum(),
+        total_load: workers
+            .iter()
+            .filter(|w| w.status == "active")
+            .map(|w| w.current_load as usize)
+            .sum(),
+    }
 }
 
 /// Workflow response
@@ -1051,22 +1077,7 @@ pub async fn list_workers(
 
     let total = workers.len();
     let data: Vec<WorkerResponse> = workers.into_iter().map(WorkerResponse::from).collect();
-
-    let summary = WorkersSummaryResponse {
-        active: data.iter().filter(|w| w.status == "active").count(),
-        draining: data.iter().filter(|w| w.status == "draining").count(),
-        stopped: data.iter().filter(|w| w.status == "stopped").count(),
-        total_capacity: data
-            .iter()
-            .filter(|w| w.status == "active")
-            .map(|w| w.max_concurrency as usize)
-            .sum(),
-        total_load: data
-            .iter()
-            .filter(|w| w.status == "active")
-            .map(|w| w.current_load as usize)
-            .sum(),
-    };
+    let summary = workers_summary(&data);
 
     Ok(Json(WorkersListResponse {
         data,
@@ -2548,24 +2559,10 @@ mod tests {
         }
     }
 
-    /// Build a WorkersListResponse the same way list_workers() does
+    /// Build a WorkersListResponse via the same shared summary fn list_workers() uses.
     fn build_workers_list(workers: Vec<WorkerResponse>) -> WorkersListResponse {
         let total = workers.len();
-        let summary = WorkersSummaryResponse {
-            active: workers.iter().filter(|w| w.status == "active").count(),
-            draining: workers.iter().filter(|w| w.status == "draining").count(),
-            stopped: workers.iter().filter(|w| w.status == "stopped").count(),
-            total_capacity: workers
-                .iter()
-                .filter(|w| w.status == "active")
-                .map(|w| w.max_concurrency as usize)
-                .sum(),
-            total_load: workers
-                .iter()
-                .filter(|w| w.status == "active")
-                .map(|w| w.current_load as usize)
-                .sum(),
-        };
+        let summary = workers_summary(&workers);
         WorkersListResponse {
             data: workers,
             total,
@@ -2953,59 +2950,6 @@ mod tests {
     }
 
     #[test]
-    fn test_health_started_counts_consistency() {
-        // Invariant: started >= completed + failed
-        // (started includes in-progress tasks that haven't finished yet)
-        let health = SystemHealth {
-            total_workers: 3,
-            active_workers: 3,
-            workers_accepting: 3,
-            total_capacity: 30,
-            current_load: 5,
-            pending_tasks: 10,
-            claimed_tasks: 5,
-            completed_tasks: 100,
-            failed_tasks: 10,
-            started_tasks: 115, // 115 >= 100 + 10 (5 still in progress)
-            running_workflows: 3,
-            pending_workflows: 2,
-            completed_workflows: 50,
-            failed_workflows: 5,
-            started_workflows: 58, // 58 >= 50 + 5 (3 still running)
-            dlq_size: 0,
-        };
-
-        let response = HealthResponse::from(health);
-
-        // started_tasks >= completed_tasks + failed_tasks
-        assert!(
-            response.started_tasks >= response.completed_tasks + response.failed_tasks,
-            "started_tasks ({}) must be >= completed ({}) + failed ({})",
-            response.started_tasks,
-            response.completed_tasks,
-            response.failed_tasks
-        );
-
-        // started_workflows >= completed_workflows + failed_workflows
-        assert!(
-            response.started_workflows >= response.completed_workflows + response.failed_workflows,
-            "started_workflows ({}) must be >= completed ({}) + failed ({})",
-            response.started_workflows,
-            response.completed_workflows,
-            response.failed_workflows
-        );
-
-        // Verify the in-progress count can be derived
-        let in_progress_tasks =
-            response.started_tasks - response.completed_tasks - response.failed_tasks;
-        assert_eq!(in_progress_tasks, 5);
-
-        let in_progress_workflows =
-            response.started_workflows - response.completed_workflows - response.failed_workflows;
-        assert_eq!(in_progress_workflows, 3);
-    }
-
-    #[test]
     fn test_health_response_from_system_health_maps_started_fields() {
         let health = SystemHealth {
             total_workers: 4,
@@ -3052,91 +2996,6 @@ mod tests {
     }
 
     #[test]
-    fn test_metrics_point_started_totals_monotonically_increasing_in_timeseries() {
-        // When constructing a MetricsTimeSeriesResponse, started totals should
-        // be monotonically non-decreasing (cumulative counters never decrease)
-        let response = MetricsTimeSeriesResponse {
-            points: vec![
-                MetricsPoint {
-                    timestamp: Utc::now(),
-                    running_workflows: 1,
-                    pending_workflows: 0,
-                    pending_tasks: 2,
-                    claimed_tasks: 1,
-                    active_workers: 2,
-                    load_percentage: 10.0,
-                    dlq_size: 0,
-                    tasks_completed_total: 10,
-                    tasks_failed_total: 1,
-                    tasks_started_total: 12,
-                    workflows_completed_total: 5,
-                    workflows_failed_total: 0,
-                    workflows_started_total: 6,
-                },
-                MetricsPoint {
-                    timestamp: Utc::now(),
-                    running_workflows: 2,
-                    pending_workflows: 1,
-                    pending_tasks: 3,
-                    claimed_tasks: 2,
-                    active_workers: 2,
-                    load_percentage: 20.0,
-                    dlq_size: 0,
-                    tasks_completed_total: 15,
-                    tasks_failed_total: 2,
-                    tasks_started_total: 20,
-                    workflows_completed_total: 8,
-                    workflows_failed_total: 1,
-                    workflows_started_total: 12,
-                },
-                MetricsPoint {
-                    timestamp: Utc::now(),
-                    running_workflows: 0,
-                    pending_workflows: 0,
-                    pending_tasks: 1,
-                    claimed_tasks: 0,
-                    active_workers: 2,
-                    load_percentage: 5.0,
-                    dlq_size: 0,
-                    tasks_completed_total: 22,
-                    tasks_failed_total: 3,
-                    tasks_started_total: 26,
-                    workflows_completed_total: 13,
-                    workflows_failed_total: 1,
-                    workflows_started_total: 14,
-                },
-            ],
-            resolution_seconds: 10,
-            instance_count: 1,
-        };
-
-        // Verify monotonicity of cumulative counters
-        for window in response.points.windows(2) {
-            assert!(
-                window[1].tasks_started_total >= window[0].tasks_started_total,
-                "tasks_started_total must be monotonically non-decreasing"
-            );
-            assert!(
-                window[1].workflows_started_total >= window[0].workflows_started_total,
-                "workflows_started_total must be monotonically non-decreasing"
-            );
-            assert!(
-                window[1].tasks_completed_total >= window[0].tasks_completed_total,
-                "tasks_completed_total must be monotonically non-decreasing"
-            );
-            assert!(
-                window[1].workflows_completed_total >= window[0].workflows_completed_total,
-                "workflows_completed_total must be monotonically non-decreasing"
-            );
-        }
-
-        // Verify serialization includes all new fields
-        let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("\"tasks_started_total\""));
-        assert!(json.contains("\"workflows_started_total\""));
-    }
-
-    #[test]
     fn test_health_response_zero_started_counts() {
         // Edge case: fresh system with no activity
         let health = SystemHealth {
@@ -3166,8 +3025,8 @@ mod tests {
 
     #[test]
     fn test_metrics_sampler_maps_started_fields_from_health() {
-        // Verify the mapping logic used by the metrics sampler: health.started_tasks -> tasks_started_total
-        // This mirrors the code in spawn_metrics_sampler and the SSE polling loop
+        // Verify the mapping used by the metrics sampler: health.started_tasks -> tasks_started_total.
+        // Calls the real mapping fn (shared with spawn_metrics_sampler) instead of re-deriving it.
         let health = SystemHealth {
             total_workers: 2,
             active_workers: 2,
@@ -3187,29 +3046,7 @@ mod tests {
             dlq_size: 0,
         };
 
-        let load_percentage = if health.total_capacity > 0 {
-            (health.current_load as f64 / health.total_capacity as f64) * 100.0
-        } else {
-            0.0
-        };
-
-        // Build MetricsPoint exactly as spawn_metrics_sampler and SSE loop do
-        let point = MetricsPoint {
-            timestamp: Utc::now(),
-            running_workflows: health.running_workflows,
-            pending_workflows: health.pending_workflows,
-            pending_tasks: health.pending_tasks,
-            claimed_tasks: health.claimed_tasks,
-            active_workers: health.active_workers,
-            load_percentage,
-            dlq_size: health.dlq_size,
-            tasks_completed_total: health.completed_tasks as u64,
-            tasks_failed_total: health.failed_tasks as u64,
-            tasks_started_total: health.started_tasks as u64,
-            workflows_completed_total: health.completed_workflows as u64,
-            workflows_failed_total: health.failed_workflows as u64,
-            workflows_started_total: health.started_workflows as u64,
-        };
+        let point = metrics_point_from_health(&health);
 
         // Verify the mapping
         assert_eq!(point.tasks_started_total, 96);
@@ -3598,6 +3435,10 @@ mod tests {
                 .unwrap();
 
             assert_eq!(response.status(), StatusCode::OK);
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(payload["policies"]["durable.view"], true);
+            assert_eq!(payload["policies"]["durable.manage"], true);
         }
     }
 }

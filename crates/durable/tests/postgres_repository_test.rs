@@ -938,13 +938,6 @@ async fn test_system_health_includes_completed_and_failed_counts() {
     cleanup_workflow(&store, wf_pending).await;
 }
 
-/// Verify WORKER_HEARTBEAT_TIMEOUT_SECS constant is used consistently.
-#[test]
-fn test_worker_heartbeat_timeout_constant() {
-    use everruns_durable::persistence::WORKER_HEARTBEAT_TIMEOUT_SECS;
-    assert_eq!(WORKER_HEARTBEAT_TIMEOUT_SECS, 60);
-}
-
 // ============================================
 // EVE-605: maintained durable health counters
 // ============================================

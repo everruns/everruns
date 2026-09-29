@@ -1295,12 +1295,10 @@ mod tests {
 
     #[test]
     fn parse_image_id_strings() {
-        let value = json!({
-            "prompt": "edit",
-            "image_id": ImageId::new().to_string()
-        });
+        let id = ImageId::new();
+        let value = json!({ "prompt": "edit", "image_id": id.to_string() });
         let args: EditImageArgs = serde_json::from_value(value).unwrap();
-        assert!(args.image_id.is_some());
+        assert_eq!(args.image_id, Some(id));
     }
 
     #[test]

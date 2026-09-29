@@ -213,6 +213,10 @@ export default defineConfig({
                   ],
                 },
                 {
+                  label: "Experimental",
+                  items: [{ label: "Serve", slug: "framework/serve" }],
+                },
+                {
                   label: "Examples",
                   items: [
                     { label: "Overview", slug: "framework/examples" },

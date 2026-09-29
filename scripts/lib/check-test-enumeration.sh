@@ -38,8 +38,6 @@ allowlist_reason() {
   case "$1" in
     everruns-server:test_harness)
       echo "shared TestServer helper module, not a standalone test target" ;;
-    everruns-platform:capability_boundary)
-      echo "2 of its 5 tests fail against current code; parked pending triage, not silently skipped" ;;
     everruns-durable:agent_reliability_test)
       echo "end-to-end infrastructure-failure tests; needs PostgreSQL and a running worker" ;;
     everruns-llm-tests:tool_search_test)

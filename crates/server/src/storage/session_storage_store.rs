@@ -84,6 +84,13 @@ impl SessionStorageStore for DbSessionStorageStore {
         Ok(row.map(|r| r.value))
     }
 
+    async fn take_value(&self, session_id: SessionId, key: &str) -> Result<Option<String>> {
+        self.db
+            .take_session_key_value(session_id.uuid(), key)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))
+    }
+
     async fn delete_value(&self, session_id: SessionId, key: &str) -> Result<bool> {
         self.db
             .delete_session_key_value(session_id.uuid(), key)
