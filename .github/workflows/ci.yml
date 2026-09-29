@@ -26,6 +26,9 @@ permissions:
   # `Build Check` reads the checks already posted on the PR head so a
   # label-event run can defer to a verdict a real run gave (EVE-1077).
   checks: read
+  # ...and lists this commit's other CI runs, so it can tell "no real run will
+  # ever report" from "the real run has not reported yet" (EVE-1110).
+  actions: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -2737,7 +2740,9 @@ jobs:
       - browserless-live-test
       - daytona-live-test
       - e2b-live-test
-    timeout-minutes: 10
+    # Long enough for a gated-off run to outwait the code run it defers to
+    # (EVE-1110). Every other path through this job answers in seconds.
+    timeout-minutes: 45
     steps:
       - name: Verify all jobs passed
         env:
@@ -2765,25 +2770,63 @@ jobs:
           # which is precisely the EVE-939 case, where the gated-off run is the
           # only run on the SHA. Only a pass is inherited, so a real failure
           # stays red until a real run supersedes it.
+          #
+          # "Already" was the remaining hole (EVE-1110). A label applied in the
+          # same second the PR opens resolves in ~30s, while the code run posts
+          # its own `Build Check` last, 15-30 minutes later. Answering at that
+          # point failed closed on a commit whose real run was still going, and
+          # nothing later supersedes that red — every PR from label-on-open
+          # tooling started life blocked. So when the verdict is not in yet,
+          # wait for the sibling run rather than guess: a gated-off run has all
+          # the time in the world and no verdict worth giving early.
           if [ "$RUN_CI" != "true" ]; then
             if [ -z "${HEAD_SHA:-}" ]; then
               echo "run_ci=false and no pull request head to consult, so there is nothing to attest"
               exit 1
             fi
 
-            passed="$(
-              gh api \
-                "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?check_name=Build+Check&status=completed&per_page=100" \
-                --jq '[.check_runs[] | select(.conclusion == "success")] | length'
-            )"
+            # Bounded so the answer is a legible red rather than a job the
+            # runner kills at its own ceiling. Sized under this job's
+            # timeout-minutes, and over a cold full CI run.
+            deadline=$(( SECONDS + 38 * 60 ))
 
-            if [ "${passed:-0}" -gt 0 ]; then
-              echo "run_ci=false: deferring to the Build Check that already passed on $HEAD_SHA"
-              exit 0
-            fi
+            while :; do
+              passed="$(
+                gh api \
+                  "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?check_name=Build+Check&status=completed&per_page=100" \
+                  --jq '[.check_runs[] | select(.conclusion == "success")] | length' || echo 0
+              )"
 
-            echo "run_ci=false: this run executed no jobs and none has passed on $HEAD_SHA, so it has nothing to attest"
-            exit 1
+              if [ "${passed:-0}" -gt 0 ]; then
+                echo "run_ci=false: deferring to the Build Check that already passed on $HEAD_SHA"
+                exit 0
+              fi
+
+              # Sibling ci.yml runs on this same commit only. This run is
+              # excluded by id: it is in progress by definition, since it is
+              # what is executing this step.
+              in_flight="$(
+                gh api \
+                  "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${HEAD_SHA}&per_page=100" \
+                  --jq "[.workflow_runs[]
+                         | select(.path == \".github/workflows/ci.yml\")
+                         | select(.id != ${GITHUB_RUN_ID})
+                         | select(.status != \"completed\")] | length" || echo 0
+              )"
+
+              if [ "${in_flight:-0}" -eq 0 ]; then
+                echo "run_ci=false: this run executed no jobs and none has passed on $HEAD_SHA, so it has nothing to attest"
+                exit 1
+              fi
+
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "run_ci=false: waited out ${in_flight} CI run(s) still in flight on $HEAD_SHA without a Build Check verdict, so there is nothing to attest"
+                exit 1
+              fi
+
+              echo "run_ci=false: ${in_flight} CI run(s) still in flight on $HEAD_SHA; waiting for a verdict to defer to"
+              sleep 30
+            done
           fi
 
           echo "Job results: $RESULTS"
