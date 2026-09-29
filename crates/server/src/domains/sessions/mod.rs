@@ -38,20 +38,3 @@ pub(crate) fn platform_chat_owner_matches(
     // must bind to that same owner; internal worker paths retain their existing bypass.
     !is_platform_chat || caller.is_internal || caller.user_id == session.resolved_owner_user_id
 }
-
-pub(crate) async fn platform_chat_owner_matches_session(
-    db: &crate::storage::StorageBackend,
-    caller: &everruns_core::Caller,
-    session: &everruns_platform::Session,
-) -> anyhow::Result<bool> {
-    let harness = db.get_harness(caller.org_id, session.harness_id).await?;
-    let is_platform_chat = harness
-        .as_ref()
-        .is_some_and(|harness| harness.is_built_in && harness.name == "platform-chat");
-
-    Ok(platform_chat_owner_matches(
-        caller,
-        session,
-        is_platform_chat,
-    ))
-}
