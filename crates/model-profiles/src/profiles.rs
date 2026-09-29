@@ -389,6 +389,12 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-opus-4-8[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-6[1m]"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-sonnet-5-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(
+        &["claude-sonnet-5-5[1m]"],
+        ModelVendor::Anthropic,
+        ANTHROPIC,
+    ),
     md(&["claude-sonnet-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-6"], ModelVendor::Anthropic, ANTHROPIC),
@@ -2544,40 +2550,10 @@ fn anthropic_1m_variant(mut profile: ModelProfile) -> ModelProfile {
     profile
 }
 
-/// Whether a Claude model `family` supports Anthropic's hosted tool_search
-/// (the `tool_search_tool_*_20251119` server tools). Per docs.claude.com, this
-/// is Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, and Fable 5.x — the 3.x families do not
-/// support it. Centralized here (rather than per-literal) because the rule is a
-/// clean family cutoff; contrast the OpenAI profiles, which set `tool_search`
-/// per model literal.
-///
-/// Only families with a corresponding profile in `anthropic_profile_data_inner`
-/// belong here — Anthropic docs also list Mythos 5, but this registry has no
-/// `claude-mythos-5` descriptor, so including it would be a dead branch. Add the
-/// family here when (and if) its profile lands.
-fn anthropic_family_supports_tool_search(family: &str) -> bool {
-    matches!(
-        family,
-        "claude-fable-5-1"
-            | "claude-fable-5"
-            | "claude-opus-5-5"
-            | "claude-opus-5"
-            | "claude-opus-4-8"
-            | "claude-opus-4-7"
-            | "claude-opus-4-6"
-            | "claude-opus-4-5"
-            | "claude-opus-4"
-            | "claude-sonnet-5"
-            | "claude-sonnet-4-6"
-            | "claude-sonnet-4-5"
-            | "claude-haiku-4-5"
-    )
-}
-
 fn anthropic_profile_data(model_id: &str) -> Option<ModelProfile> {
     // Assign family capabilities centrally; match arms hold model-specific data.
     anthropic_profiles::anthropic_profile_data_inner(model_id).map(|mut profile| {
-        profile.tool_search = anthropic_family_supports_tool_search(&profile.family);
+        profile.tool_search = anthropic_capabilities::supports_tool_search(&profile.family);
         anthropic_capabilities::apply(&mut profile);
         profile
     })
@@ -2950,6 +2926,8 @@ mod tests {
             ),
             ("anthropic", "claude-sonnet-5", "claude-sonnet-5"),
             ("anthropic", "claude-sonnet-5-latest", "claude-sonnet-5"),
+            ("anthropic", "claude-sonnet-5-5", "claude-sonnet-5-5"),
+            ("anthropic", "claude-sonnet-5-5-latest", "claude-sonnet-5-5"),
             ("gemini", "gemini-2.0-flash", "gemini-2.0-flash"),
             (
                 "gemini",
@@ -3919,6 +3897,7 @@ mod tests {
             "claude-opus-4-6",
             "claude-opus-4-5",
             "claude-opus-4",
+            "claude-sonnet-5-5",
             "claude-sonnet-4-6",
             "claude-sonnet-4-5",
             "claude-haiku-4-5",

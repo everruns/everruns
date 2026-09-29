@@ -349,9 +349,61 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
         "claude-opus-4-6[1m]" => {
             anthropic_profile_data("claude-opus-4-6").map(anthropic_1m_variant)
         }
+        "claude-sonnet-5-5[1m]" => {
+            anthropic_profile_data("claude-sonnet-5-5").map(anthropic_1m_variant)
+        }
         "claude-sonnet-5[1m]" => {
             anthropic_profile_data("claude-sonnet-5").map(anthropic_1m_variant)
         }
+
+        // Claude Sonnet 5.5 (current Sonnet; successor to Sonnet 5 at the same price)
+        // Source: Anthropic model card (claude-api skill). Same tokenizer, 200K/1M-twin
+        // context, and 128K output as Sonnet 5 at $2/$10 (cache-read $0.20).
+        // `thinking: disabled` returns 400 (the thinking-off mode is `between_tools`,
+        // which the driver does not send), so the driver treats thinking as always
+        // on. Non-default sampling parameters are rejected (`temperature: false`),
+        // and forced `tool_choice` any/tool returns 400 — the driver only sends
+        // `auto`. API default effort stays `high`, with levels recalibrated from
+        // Sonnet 5.
+        "claude-sonnet-5-5" => Some(ModelProfile {
+            name: "Claude Sonnet 5.5".into(),
+            family: "claude-sonnet-5-5".into(),
+            description: None,
+            release_date: None,
+            last_updated: None,
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 2.00,
+                output: 10.00,
+                cache_read: Some(0.20),
+                cache_write: None,
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                // Bare id is the 200K profile; `claude-sonnet-5-5[1m]` is the 1M twin.
+                context: 200_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+            supports_server_compaction: false,
+        }),
 
         // Claude Sonnet 5
         // Source: Anthropic model card and docs.claude.com — Sonnet 5 is not yet

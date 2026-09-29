@@ -1249,7 +1249,7 @@ struct AnthropicOutputConfig {
 }
 
 /// Claude families that use adaptive thinking. On Fable 5.x, Opus 5.5/5/4.8/4.7,
-/// and Sonnet 5 budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6
+/// and Sonnet 5.5/5 budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6
 /// it is deprecated and adaptive is the recommended form. Keep in sync with the
 /// adaptive-thinking profiles in `everruns_provider::model_profiles`.
 ///
@@ -1263,15 +1263,14 @@ const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
+    "claude-sonnet-5-5",
     "claude-sonnet-5",
     "claude-sonnet-4-6",
 ];
 
-/// Anthropic families that support the 1M context window (Anthropic docs:
-/// context-windows / long-context pricing). Gates `[1m]` suffix handling. These
-/// coincide with `ADAPTIVE_THINKING_FAMILIES` today but are a distinct
-/// capability — kept separate so a future divergence (1M without adaptive
-/// thinking, or vice versa) cannot silently mis-gate either path.
+/// Anthropic families with the 1M context window; gates `[1m]` suffix handling.
+/// Same list as `ADAPTIVE_THINKING_FAMILIES` today but a distinct capability,
+/// kept separate so a future divergence cannot silently mis-gate either path.
 const MILLION_CONTEXT_FAMILIES: &[&str] = &[
     "claude-fable-5-1",
     "claude-fable-5",
@@ -1280,6 +1279,7 @@ const MILLION_CONTEXT_FAMILIES: &[&str] = &[
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
+    "claude-sonnet-5-5",
     "claude-sonnet-5",
     "claude-sonnet-4-6",
 ];

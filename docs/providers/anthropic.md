@@ -45,7 +45,7 @@ the limit cannot accommodate thinking, the driver omits thinking rather than
 exceed the limit, so the whole allowance goes to the visible answer and a small
 limit returns a short answer rather than an empty one.
 
-Claude models that always think (Opus 5.5, Fable 5.x) always get an explicit
+Claude models that always think (Opus 5.5, Sonnet 5.5, Fable 5.x) always get an explicit
 effort: the model's default when you choose none, and `low` when you choose
 `none`. These and the other adaptive-thinking models reject assistant prefill, so
 a conversation must end with a user or tool message.
