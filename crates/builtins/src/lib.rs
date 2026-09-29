@@ -72,10 +72,10 @@ pub mod usage_limit_auto_continue;
 // Compatibility paths used by the collocated implementation tests. These are
 // aliases of core's provider-neutral execution modules, not copied contracts.
 pub use ask_user::{
-    ASK_USER_CAPABILITY_ID, ASK_USER_TOOL_NAME, AskUser, AskUserAnswer, AskUserAnsweredBy,
-    AskUserCapability, AskUserOption, AskUserQuestion, AskUserQuestionKind, AskUserRequest,
-    AskUserResult, AskUserStatus, DEFAULT_ASK_USER_TIMEOUT_SECONDS, DefaultsResponder,
-    MAX_ASK_USER_HEADER_CHARS, MAX_ASK_USER_OPTIONS, MAX_ASK_USER_QUESTIONS,
+    ASK_USER_CAPABILITY_ID, ASK_USER_TOOL_NAME, AskContext, AskUser, AskUserAnswer,
+    AskUserAnsweredBy, AskUserCapability, AskUserOption, AskUserQuestion, AskUserQuestionKind,
+    AskUserRequest, AskUserResult, AskUserStatus, DEFAULT_ASK_USER_TIMEOUT_SECONDS,
+    DefaultsResponder, MAX_ASK_USER_HEADER_CHARS, MAX_ASK_USER_OPTIONS, MAX_ASK_USER_QUESTIONS,
     MAX_ASK_USER_SECRET_NAME_CHARS, SESSION_SECRET_REF_PREFIX, normalize_ask_user_arguments,
     session_secret_ref, validate_ask_user_request,
 };
@@ -189,7 +189,7 @@ pub use stateless_todo_list::{
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use tool_approval::{
     ApprovalDecision, ApprovalMode, TOOL_APPROVAL_CAPABILITY_ID, ToolApprovalCapability,
-    ToolApprover,
+    ToolApprovalPolicy, ToolApprover,
 };
 pub use tool_call_repair::{
     DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,

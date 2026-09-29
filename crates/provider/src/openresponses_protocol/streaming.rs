@@ -255,11 +255,15 @@ pub(crate) fn completed_tool_call_event(
 
     let call: crate::native_async::NativeToolCall = serde_json::from_value(complete)
         .map_err(|_| AgentLoopError::llm("invalid completed tool call"))?;
-    call.validate()?;
     *finish_reason.lock().unwrap() = Some("tool_calls".to_string());
     if call.is_async() || matches!(call, crate::native_async::NativeToolCall::Custom { .. }) {
+        // Native calls are checkpointed verbatim, so they must be well formed.
+        call.validate()?;
         return Ok(LlmStreamEvent::NativeToolCall(call));
     }
+    // A synchronous call joins the lenient accumulator below: arguments that
+    // are not JSON become `{}` with a warning (see `ToolCallStream::snapshot`)
+    // rather than failing the turn over one malformed call.
 
     let crate::native_async::NativeToolCall::Function {
         call_id,
@@ -524,6 +528,7 @@ pub(crate) fn handle_streaming_event(
                 request_body: None,
                 cache_diagnostics: None,
                 provider_opaque_content: None,
+                provider_checkpoint_candidate: None,
             }))
         }
 

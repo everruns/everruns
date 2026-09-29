@@ -738,8 +738,14 @@ async fn test_on_event_batches_multiple_events_into_one_request() {
     assert_eq!(body["events"].as_array().unwrap().len(), 2);
 }
 
+/// A repeating rejection is reported once, then suppressed and counted.
+///
+/// This is the flood control (Sentry EVERRUNS-1K): a wrong project id fails
+/// every batch, and every batch must not become an error-level event. It drives
+/// the real delivery loop, so it also pins what the loop records as the failure
+/// class — the assertions below are the only place that is observable.
 #[tokio::test]
-async fn test_permanent_rejection_is_reported_once_per_process() {
+async fn test_permanent_rejection_is_reported_once_within_the_interval() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/project_logs/test-project-id/insert"))
@@ -752,12 +758,6 @@ async fn test_permanent_rejection_is_reported_once_per_process() {
     config.api_url = server.uri();
     config.delivery.flush_interval = Duration::from_millis(10);
     let listener = BraintrustListener::new(config).unwrap();
-    assert!(
-        !listener
-            .state
-            .permanent_failure_logged
-            .load(Ordering::Relaxed)
-    );
 
     for _ in 0..2 {
         let turn_id = TurnId::new();
@@ -781,11 +781,20 @@ async fn test_permanent_rejection_is_reported_once_per_process() {
 
     assert_eq!(listener.state.failed_batches.load(Ordering::Relaxed), 2);
     assert_eq!(listener.state.retried_batches.load(Ordering::Relaxed), 0);
-    assert!(
-        listener
-            .state
-            .permanent_failure_logged
-            .load(Ordering::Relaxed)
+
+    // Probing the state machine is how the loop's own bookkeeping becomes
+    // observable: both rejections reached it, and only the first was reported.
+    let mut reporting = listener.state.permanent_failure_reporting.lock().unwrap();
+    assert_eq!(
+        reporting.note("HTTP 403", time::Instant::now()),
+        None,
+        "suppressed, which also pins the recorded class as the bare status: a class of \
+         `HTTP 403 Forbidden` would read as a *changed* class here and report instead"
+    );
+    assert_eq!(
+        reporting.note("HTTP 401", time::Instant::now()),
+        Some(2),
+        "a changed class reports, carrying the loop's second rejection and the line above"
     );
 }
 

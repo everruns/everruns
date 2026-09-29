@@ -63,6 +63,21 @@ impl Database {
     // App Channel CRUD
     // ============================================
 
+    /// Hold a transaction-scoped, cross-instance lock for one Slack endpoint.
+    pub async fn lock_slack_install(
+        &self,
+        endpoint_id: Uuid,
+    ) -> Result<sqlx::Transaction<'static, sqlx::Postgres>> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "SELECT pg_advisory_xact_lock(hashtextextended('slack_install:' || $1::text, 0))",
+        )
+        .bind(endpoint_id)
+        .execute(&mut *tx)
+        .await?;
+        Ok(tx)
+    }
+
     pub async fn create_app_channel(
         &self,
         app_id: Uuid,
