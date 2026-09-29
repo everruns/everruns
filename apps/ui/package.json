@@ -55,7 +55,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@ag-ui/core": "^0.0.59",
+    "@ag-ui/core": "^1.0.0",
     "@google/design.md": "0.4.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
