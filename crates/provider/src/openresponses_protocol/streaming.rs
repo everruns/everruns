@@ -189,28 +189,34 @@ impl ToolCallStream {
         self.calls
             .iter()
             .filter(|tc| tc.completed && !tc.name.is_empty())
-            .filter_map(|tc| {
-                let arguments = if tc.arguments.trim().is_empty() {
-                    json!({})
-                } else {
-                    match serde_json::from_str(&tc.arguments) {
-                        Ok(arguments) => arguments,
-                        Err(error) => {
+            .map(|tc| {
+                let arguments: Value =
+                    serde_json::from_str(&tc.arguments).unwrap_or_else(|error| {
+                        // An empty string is the ordinary shape of a no-argument
+                        // call. Anything else that fails to parse is a truncated
+                        // or corrupt body — but the turn is not the place to fail
+                        // on it. Dropping the call here leaves the finish reason
+                        // this driver already derived saying `tool_calls` with
+                        // nothing to run, and hands the model no error to recover
+                        // from. `{}` reaches the tool, which rejects it, and the
+                        // model retries (EVE-1083, #3802). Nothing executes the
+                        // malformed body either way.
+                        if !tc.arguments.trim().is_empty() {
                             tracing::warn!(
                                 tool = %tc.name,
                                 call_id = %tc.call_id,
                                 %error,
-                                "OpenResponses: dropping tool call with unparseable arguments"
+                                "OpenResponses: unparseable tool-call arguments, \
+                                 falling back to empty arguments"
                             );
-                            return None;
                         }
-                    }
-                };
-                Some(ToolCall {
+                        json!({})
+                    });
+                ToolCall {
                     id: tc.call_id.clone(),
                     name: tc.name.clone(),
                     arguments,
-                })
+                }
             })
             .collect()
     }

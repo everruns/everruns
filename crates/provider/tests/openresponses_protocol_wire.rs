@@ -862,10 +862,13 @@ async fn incomplete_terminal_function_call_is_not_emitted() {
     }
 }
 
-/// Non-empty malformed arguments are not equivalent to a no-argument call.
-/// Dropping the call fails closed instead of executing it with `{}`.
+/// A truncated body is a reason to hand the tool `{}`, not to drop the call.
+/// The finish reason this driver derives already says `tool_calls`, so dropping
+/// would end the turn with nothing to run and no error for the model to recover
+/// from. `{}` reaches the tool, which rejects it, and the model retries. Either
+/// way the malformed body itself is never executed.
 #[tokio::test]
-async fn malformed_terminal_function_call_arguments_are_not_emitted() {
+async fn malformed_terminal_function_call_arguments_reach_the_tool_empty() {
     for typed in [false, true] {
         let server = MockServer::start().await;
         let mut event = serde_json::json!({
@@ -898,18 +901,23 @@ async fn malformed_terminal_function_call_arguments_are_not_emitted() {
 
         assert_eq!(
             drain_golden(stream).await,
-            vec![Golden::Done {
-                total: Some(0),
-                prompt: Some(0),
-                completion: Some(0),
-                cache_read: None,
-                finish: Some("stop".into()),
-            }],
+            vec![
+                Golden::ToolCall {
+                    name: "bash".into(),
+                    args: "{}".into(),
+                },
+                Golden::Done {
+                    total: Some(0),
+                    prompt: Some(0),
+                    completion: Some(0),
+                    cache_read: None,
+                    finish: Some("tool_calls".into()),
+                }
+            ],
             "typed={typed}"
         );
     }
 }
-
 /// Reconciling at completion stays a no-op when the incremental frames already
 /// delivered the call: the consumer overwrites its tool-call list on every
 /// `ToolCalls` event, so a redundant repeat would be harmless but the contract
