@@ -75,6 +75,45 @@ if not guards_run_ci:
         "run_ci != 'true'. A run where every job skipped would report success, "
         "turning 'nothing ran' into a green required check (EVE-939)."
     )
+
+# --- 2b. ...but it must fail closed by deferring, not by blanket refusal -----
+# Refusing unconditionally is the other half of the trap: GitHub resolves a
+# required check by the newest run of that name, so a label applied after CI
+# finished supersedes the real green and blocks a PR nobody touched
+# (EVE-1077). The gated-off run must look for a verdict a real run already
+# published on the same head SHA, and inherit only a pass.
+defers_to_head_sha = (
+    "check-runs" in verify
+    and "check_name=Build+Check" in verify
+    and "HEAD_SHA" in verify
+)
+if not defers_to_head_sha:
+    errors.append(
+        f"{workflow}: the 'Build Check' verify step does not consult the Checks "
+        "API for a 'Build Check' that already passed on the pull request head "
+        "SHA. Without that, a label event landing after CI finished turns a "
+        "green PR red and blocks it (EVE-1077)."
+    )
+
+# Inheriting anything other than a pass would let a gated-off run launder a
+# real failure into a green required check.
+if 'select(.conclusion == "success")' not in verify:
+    errors.append(
+        f"{workflow}: the 'Build Check' verify step does not restrict the "
+        "verdict it inherits to a successful run, so a gated-off run could "
+        "report a pass the real run never gave (EVE-939)."
+    )
+
+# Reading those check runs needs the scope; without it the query 404s and the
+# deferral silently becomes the blanket refusal it replaced.
+permissions = doc.get("permissions") or {}
+if permissions.get("checks") != "read":
+    errors.append(
+        f"{workflow}: workflow permissions do not grant 'checks: read', so "
+        "'Build Check' cannot read the verdict it is meant to defer to "
+        "(EVE-1077). Current permissions:\n"
+        f"  {permissions}"
+    )
 # --- 3. the UI opt-out must guard every UI E2E path --------------------------
 opt_out_policy = None
 for job in doc["jobs"].values():
@@ -108,7 +147,8 @@ else:
 if errors:
     sys.exit("\n\n".join(errors))
 
-print("ci.yml: label-event runs cannot cancel real runs, and Build Check "
-      "refuses to pass a run that executed nothing; UI E2E opt-outs cannot "
-      "suppress affected smoke or endpoint-budget coverage")
+print("ci.yml: label-event runs cannot cancel real runs, Build Check refuses "
+      "to pass a run that executed nothing unless a real run already passed on "
+      "the same head SHA, and UI E2E opt-outs cannot suppress affected smoke "
+      "or endpoint-budget coverage")
 PY

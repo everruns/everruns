@@ -107,6 +107,8 @@ fn threshold_server_compaction_is_explicitly_profile_gated() {
     for id in [
         "claude-opus-5-5",
         "claude-opus-5-5[1m]",
+        "claude-sonnet-5-5",
+        "claude-sonnet-5-5[1m]",
         "claude-haiku-4-5",
         "claude-sonnet-4-5",
     ] {
@@ -128,7 +130,9 @@ fn test_clear_at_capability_is_profile_gated() {
         "claude-opus-5-5",
         "claude-opus-5",
         "claude-opus-4-8",
+        "claude-sonnet-5-5",
         "claude-opus-5-5[1m]",
+        "claude-sonnet-5-5[1m]",
         "claude-opus-5-5-20260101[1m]",
         "claude-fable-5-1-20260901[1m]",
     ] {
@@ -199,6 +203,31 @@ fn test_claude_opus_4_7_and_4_6_have_1m_variants() {
         assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
         assert!(m1.name.ends_with("(1M)"));
     }
+}
+
+#[test]
+fn test_claude_sonnet_5_5_1m_variant() {
+    let base = get_model_profile("anthropic", "claude-sonnet-5-5").unwrap();
+    assert_eq!(base.name, "Claude Sonnet 5.5");
+    assert_eq!(base.family, "claude-sonnet-5-5");
+    assert!(base.reasoning);
+    assert!(!base.temperature);
+    assert!(base.tool_search);
+    let base_cost = base.cost.as_ref().unwrap();
+    assert_eq!((base_cost.input, base_cost.output), (2.00, 10.00));
+    assert_eq!(base_cost.cache_read, Some(0.20));
+    assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
+    assert_eq!(base.limits.as_ref().unwrap().output, 128_000);
+
+    let m1 = get_model_profile("anthropic", "claude-sonnet-5-5[1m]").unwrap();
+    assert_eq!(m1.name, "Claude Sonnet 5.5 (1M)");
+    assert_eq!(m1.family, "claude-sonnet-5-5");
+    assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
+    assert_eq!(m1.cost.unwrap().input, base.cost.unwrap().input);
+
+    // Sonnet 5.5 must not collapse onto the Sonnet 5 profile.
+    let sonnet5 = get_model_profile("anthropic", "claude-sonnet-5").unwrap();
+    assert_eq!(sonnet5.family, "claude-sonnet-5");
 }
 
 #[test]

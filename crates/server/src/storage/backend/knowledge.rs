@@ -741,13 +741,7 @@ impl StorageBackend {
         org_id: i64,
         flags: &std::collections::HashMap<String, bool>,
     ) -> Result<()> {
-        let result = dispatch!(self, replace_org_feature_flags, org_id, flags);
-        // Invalidate here rather than at the call sites: this is the only write
-        // path, so seeding, the settings API and tests all drop the cached row
-        // without having to remember to. Invalidate even on failure — a partial
-        // transaction is cheaper to re-read than to reason about.
-        crate::services::org_feature_flags::invalidate_org_feature_flags(org_id).await;
-        result
+        dispatch!(self, replace_org_feature_flags, org_id, flags)
     }
 
     pub async fn create_model(&self, org_id: i64, input: CreateModelRow) -> Result<ModelRow> {

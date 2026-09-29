@@ -548,6 +548,9 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         let body: OpenAiChatCompletionResponse = response.json().await.map_err(|error| {
             AgentLoopError::llm(format!("failed to decode non-streaming response: {error}"))
         })?;
+        if let Some(error) = body.error {
+            return Err(error.into_stream_error().into_agent_error());
+        }
         let response_model = body.model.clone();
         let (text, tool_calls, reasoning, finish_reason) = match body.choices.into_iter().next() {
             Some(choice) => {
@@ -840,7 +843,8 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     provider_cost_usd: cost,
                                     model: Some(model),
                                     response_model: served_model,
-                                    finish_reason: reason.or_else(|| Some("stop".to_string())),
+                                    // Never defaulted: `None` says the provider sent none.
+                                    finish_reason: reason,
                                     retry_metadata: retry_metadata_for_done
                                         .map(|arc| (*arc).clone()),
                                     response_id: resp_id,
@@ -855,6 +859,10 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                         }
 
                         match serde_json::from_str::<OpenAiStreamChunk>(&event.data) {
+                            Ok(chunk) if chunk.error.is_some() => {
+                                let error = chunk.error.unwrap_or_default();
+                                vec![Ok(LlmStreamEvent::Error(error.into_stream_error()))]
+                            }
                             Ok(chunk) => {
                                 if chunk.model.is_some() {
                                     *response_model.lock().unwrap() = chunk.model.clone();
@@ -903,12 +911,14 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     let mut counts = completion_tokens.lock().unwrap();
                                     let mut acc = accumulated_tool_calls.lock().unwrap();
                                     let mut fr = finish_reason.lock().unwrap();
-                                    let stream_event = process_stream_choice(
+                                    let Some(stream_event) = process_stream_choice(
                                         choice,
                                         &mut counts.estimated,
                                         &mut acc,
                                         &mut fr,
-                                    );
+                                    ) else {
+                                        return Vec::new();
+                                    };
                                     // Mirror reasoning deltas into the artifact
                                     // buffer as they stream, so the durable item
                                     // assembled at [DONE] carries the whole text.
@@ -919,7 +929,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     }
                                     return vec![Ok(stream_event)];
                                 }
-                                vec![Ok(LlmStreamEvent::TextDelta(String::new()))]
+                                Vec::new() // usage- or role-only chunk
                             }
                             Err(e) => vec![Ok(LlmStreamEvent::Error(
                                 format!("Failed to parse chunk: {}", e).into(),
@@ -951,37 +961,14 @@ impl std::fmt::Debug for OpenAIProtocolChatDriver {
 
 pub use crate::openai_errors::{is_openai_model_not_found, is_openai_request_too_large};
 
-/// Drains tool calls that were accumulated but not yet emitted, returning a
-/// final `ToolCalls` event for the `[DONE]` handler. Returns `None` when nothing
-/// is pending (the common case, since the finish chunk normally drains them).
-///
-/// The fallback may only emit calls when the provider omitted a finish reason or
-/// reported `tool_calls`. Non-tool finish reasons such as `length` and
-/// `content_filter` indicate an incomplete or rejected response, so pending
-/// calls are discarded instead of being executed. Malformed streamed argument
-/// JSON is likewise dropped (via the accumulator's strict flush) because this
-/// fallback runs without an explicit final tool-call completion chunk.
+/// Drains tool calls still pending at `[DONE]`; see
+/// [`StreamToolCallAccumulator::take_at_stream_end`] for which calls survive.
 fn take_pending_tool_calls(
     accumulated_tool_calls: &mut StreamToolCallAccumulator,
     finish_reason: Option<&str>,
 ) -> Option<LlmStreamEvent> {
-    if accumulated_tool_calls.is_empty() {
-        return None;
-    }
-
-    // A non-tool finish reason means the response was cut/rejected; drain the
-    // accumulator (so a repeated flush cannot re-emit) but do not execute.
-    if !matches!(finish_reason, None | Some("tool_calls")) {
-        let _ = accumulated_tool_calls.take_finalized();
-        return None;
-    }
-
-    let calls = accumulated_tool_calls.take_pending_strict();
-    if calls.is_empty() {
-        None
-    } else {
-        Some(LlmStreamEvent::ToolCalls(calls))
-    }
+    let calls = accumulated_tool_calls.take_at_stream_end(finish_reason);
+    (!calls.is_empty()).then_some(LlmStreamEvent::ToolCalls(calls))
 }
 
 /// Processes a single chat-completion stream choice, updating the running
@@ -993,12 +980,13 @@ fn take_pending_tool_calls(
 /// empty content, otherwise it short-circuits before the finish handler and the
 /// accumulated tool calls are silently dropped. Emitting drains the accumulator
 /// so a repeated finish chunk does not re-emit the same calls.
+/// `None` when the chunk has nothing to emit: no empty `TextDelta` filler.
 fn process_stream_choice(
     choice: &OpenAiStreamChoice,
     total_tokens: &mut u32,
     accumulated_tool_calls: &mut StreamToolCallAccumulator,
     finish_reason: &mut Option<String>,
-) -> LlmStreamEvent {
+) -> Option<LlmStreamEvent> {
     // THREAT[TM-TOOL-036]: a terminal reason can share a final tool fragment.
     // Preserve it before any delta branch returns, especially for rejected calls.
     if let Some(reason) = &choice.finish_reason {
@@ -1017,17 +1005,17 @@ fn process_stream_choice(
                 tc.function.as_ref().and_then(|f| f.arguments.as_deref()),
             );
         }
-        return LlmStreamEvent::TextDelta(String::new());
+        return None;
     }
 
     // Reasoning delta. Checked before content: a chunk carries one or the
     // other, and reasoning must reach the reasoning channel rather than being
     // dropped (which is what happened before this protocol parsed it at all).
     if let Some(reasoning) = choice.delta.reasoning_text() {
-        return LlmStreamEvent::ReasoningDelta {
+        return Some(LlmStreamEvent::ReasoningDelta {
             delta: reasoning.to_string(),
             summary: false,
-        };
+        });
     }
 
     // Content delta. Guard on non-empty: an empty-content delta that rides along
@@ -1036,16 +1024,18 @@ fn process_stream_choice(
         && !content.is_empty()
     {
         *total_tokens += 1;
-        return LlmStreamEvent::TextDelta(content.clone());
+        return Some(LlmStreamEvent::TextDelta(content.clone()));
     }
 
     // Emit completed calls immediately. Draining prevents repeated finish
     // chunks from emitting the same calls again.
     if choice.finish_reason.as_deref() == Some("tool_calls") && !accumulated_tool_calls.is_empty() {
-        return LlmStreamEvent::ToolCalls(accumulated_tool_calls.take_finalized());
+        return Some(LlmStreamEvent::ToolCalls(
+            accumulated_tool_calls.take_finalized(),
+        ));
     }
 
-    LlmStreamEvent::TextDelta(String::new())
+    None
 }
 
 // ============================================================================
@@ -1095,7 +1085,7 @@ mod tests {
             &mut acc,
             &mut finish_reason,
         );
-        assert!(matches!(e, LlmStreamEvent::TextDelta(s) if s.is_empty()));
+        assert!(e.is_none());
 
         // Chunk 3: tool_calls delta streams the arguments.
         let e = process_stream_choice(
@@ -1106,7 +1096,7 @@ mod tests {
             &mut acc,
             &mut finish_reason,
         );
-        assert!(matches!(e, LlmStreamEvent::TextDelta(s) if s.is_empty()));
+        assert!(e.is_none());
 
         // Chunk 4: content:"" alongside finish_reason:"tool_calls" — must NOT
         // short-circuit; emits the accumulated call with parsed JSON arguments.
@@ -1117,7 +1107,7 @@ mod tests {
             &mut finish_reason,
         );
         match e {
-            LlmStreamEvent::ToolCalls(calls) => {
+            Some(LlmStreamEvent::ToolCalls(calls)) => {
                 assert_eq!(calls.len(), 1);
                 assert_eq!(calls[0].id, "call_1");
                 assert_eq!(calls[0].name, "read_file");
@@ -1135,10 +1125,7 @@ mod tests {
             &mut acc,
             &mut finish_reason,
         );
-        assert!(
-            matches!(e, LlmStreamEvent::TextDelta(s) if s.is_empty()),
-            "tool calls must only be emitted once"
-        );
+        assert!(e.is_none(), "tool calls must only be emitted once");
     }
 
     /// Non-empty content deltas are still emitted and counted as output tokens.
@@ -1154,7 +1141,7 @@ mod tests {
             &mut acc,
             &mut finish_reason,
         );
-        assert!(matches!(e, LlmStreamEvent::TextDelta(s) if s == "hello"));
+        assert!(matches!(e, Some(LlmStreamEvent::TextDelta(s)) if s == "hello"));
         assert_eq!(total_tokens, 1);
     }
 
@@ -1207,7 +1194,7 @@ mod tests {
             &mut finish_reason,
         );
         match e {
-            LlmStreamEvent::ToolCalls(calls) => {
+            Some(LlmStreamEvent::ToolCalls(calls)) => {
                 assert_eq!(calls.len(), 1);
                 assert_eq!(calls[0].id, "call_1");
                 assert_eq!(calls[0].name, "write_file");
@@ -1244,7 +1231,7 @@ mod tests {
             &mut finish_reason,
         );
         match e {
-            LlmStreamEvent::ToolCalls(calls) => {
+            Some(LlmStreamEvent::ToolCalls(calls)) => {
                 assert_eq!(calls.len(), 1);
                 assert_eq!(
                     serde_json::to_value(&calls).unwrap(),
@@ -1328,7 +1315,7 @@ mod tests {
             &mut finish_reason,
         );
 
-        assert!(matches!(e, LlmStreamEvent::TextDelta(s) if s.is_empty()));
+        assert!(e.is_none());
         assert_eq!(finish_reason.as_deref(), Some("length"));
         assert!(take_pending_tool_calls(&mut acc, finish_reason.as_deref()).is_none());
         assert!(acc.is_empty());

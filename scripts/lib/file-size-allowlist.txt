@@ -50,7 +50,6 @@ crates/server/src/api/app_a2a.rs
 crates/server/src/api/common.rs
 crates/server/src/api/durable.rs
 crates/server/src/api/mcp_endpoint/mod.rs
-crates/server/src/api/organizations.rs
 crates/server/src/api/sessions.rs
 crates/server/src/api/voice.rs
 crates/server/src/app_builder.rs
@@ -85,7 +84,6 @@ integrations/bashkit/src/lib.rs
 integrations/browserless/src/tools.rs
 integrations/daytona/src/client.rs
 integrations/daytona/src/tools.rs
-integrations/daytona/tests/tool_integration.rs
 integrations/filesystem/src/lib.rs
 integrations/lua/src/lib.rs
 integrations/openai-image/src/image_capability.rs
