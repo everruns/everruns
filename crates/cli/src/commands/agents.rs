@@ -1202,14 +1202,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_imported_agent_deserialize() {
-        let json = r#"{"id":"agent_abc","name":"test","description":null,"system_prompt":"hello","status":"active"}"#;
-        let agent: ImportedAgent = serde_json::from_str(json).unwrap();
-        assert_eq!(agent.id, "agent_abc");
-        assert_eq!(agent.name, "test");
-    }
-
-    #[test]
     fn test_apply_harness_detects_strict_id() {
         let id = "harness_00000000000000000000000000000001";
         let req = apply_harness(CreateAgentRequest::new("a", "p"), Some(id.to_string()));

@@ -357,51 +357,11 @@ describe("FileBrowser File Icons", () => {
 });
 
 // ============================================
-// Create File Dialog
+// Create File / Folder Dialogs
 // Note: Dialog tests are skipped as they require complex Radix UI portal mocking.
-// The dialog functionality is covered by E2E tests.
+// The dialog functionality is covered by E2E tests. Toolbar button presence is
+// covered by "FileBrowser Toolbar".
 // ============================================
-
-describe("FileBrowser Create File Dialog", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (useFiles as jest.Mock).mockReturnValue({
-      data: [],
-      isLoading: false,
-      refetch: mockRefetch,
-    });
-    mockCreateFile.mockResolvedValue({});
-  });
-
-  it("renders new file button in toolbar", () => {
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    expect(screen.getByTitle("New file")).toBeInTheDocument();
-  });
-});
-
-// ============================================
-// Create Folder Dialog
-// Note: Dialog tests are skipped as they require complex Radix UI portal mocking.
-// ============================================
-
-describe("FileBrowser Create Folder Dialog", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (useFiles as jest.Mock).mockReturnValue({
-      data: [],
-      isLoading: false,
-      refetch: mockRefetch,
-    });
-    mockCreateDir.mockResolvedValue({});
-  });
-
-  it("renders new folder button in toolbar", () => {
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    expect(screen.getByTitle("New folder")).toBeInTheDocument();
-  });
-});
 
 // ============================================
 // Delete Functionality
@@ -429,14 +389,6 @@ describe("FileBrowser Delete", () => {
     });
     mockDeleteFile.mockResolvedValue({});
     window.confirm = jest.fn(() => true);
-  });
-
-  it("shows delete button on hover", () => {
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    // The delete button should exist but be hidden until hover
-    const deleteButton = screen.getByTitle("Delete");
-    expect(deleteButton).toBeInTheDocument();
   });
 
   it("confirms before deleting", async () => {

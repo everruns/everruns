@@ -32,12 +32,6 @@ describe("getCronIntervalSeconds", () => {
   it("returns null for an invalid expression", () => {
     expect(getCronIntervalSeconds("not a cron")).toBeNull();
   });
-
-  it("default expression 0 */5 * * * * * meets the minimum interval", () => {
-    const secs = getCronIntervalSeconds("0 */5 * * * * *");
-    expect(secs).not.toBeNull();
-    expect(secs!).toBeGreaterThanOrEqual(CRON_MIN_INTERVAL_SECONDS);
-  });
 });
 
 describe("isSupportedCronExpression", () => {

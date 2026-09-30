@@ -258,3 +258,28 @@ pub enum MessageRole {
     Assistant,
     Tool,
 }
+
+// The names these types had before 0.31. Aliases rather than removals so an
+// embedder whose own code defines a `Message` upgrades with a warning instead
+// of a compile error.
+
+/// Pre-0.31 name of [`Message`].
+///
+/// Deprecated: an alias, so existing code compiles with a warning. To migrate
+/// without colliding with an application's own `Message`, import under a
+/// local name:
+///
+/// ```
+/// use everruns_provider::{Message as LlmMessage, MessageRole};
+///
+/// let message = LlmMessage::text(MessageRole::User, "hi");
+/// # let _ = message;
+/// ```
+#[deprecated(since = "0.32.0", note = "renamed to `Message`")]
+pub type LlmMessage = Message;
+/// Pre-0.31 name of [`MessageContent`].
+#[deprecated(since = "0.32.0", note = "renamed to `MessageContent`")]
+pub type LlmMessageContent = MessageContent;
+/// Pre-0.31 name of [`MessageRole`].
+#[deprecated(since = "0.32.0", note = "renamed to `MessageRole`")]
+pub type LlmMessageRole = MessageRole;

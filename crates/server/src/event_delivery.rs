@@ -342,29 +342,36 @@ mod tests {
         }
     }
 
+    /// Partitions are shared by hash, not one-per-session (see `partition_for`):
+    /// a subscriber for session A can be handed a partition that also carries
+    /// session B's events. `InMemoryEventDelivery` makes no isolation guarantee
+    /// by itself — the caller (the SSE handler, see
+    /// `api::events::event_passes_stream_filter`) is responsible for dropping
+    /// events that belong to a different session. This test proves only the
+    /// guarantee this layer does own: a session's own event is always
+    /// delivered to its subscriber, even when another session's event shares
+    /// the same partition and arrives first.
     #[tokio::test]
-    async fn test_in_memory_partitioning() {
+    async fn test_in_memory_delivery_delivers_own_session_despite_partition_sharing() {
         let delivery = InMemoryEventDelivery::new();
         let session_a = Uuid::new_v4();
         let session_b = Uuid::new_v4();
 
-        // Subscribe to session A
         let mut sub_a = delivery.subscribe(session_a);
 
-        // Publish to session B — subscriber for A should not see it
-        // (unless they happen to share a partition, but that's filtered by caller)
+        // Publish to session B first — may or may not land in A's partition.
         let event_b = make_test_event(session_b);
         delivery.publish(&event_b).unwrap();
 
-        // Publish to session A
+        // Publish to session A — this MUST reach subscriber A regardless.
         let event_a = make_test_event(session_a);
         delivery.publish(&event_a).unwrap();
 
-        // The subscriber may receive event_b if same partition, but that's OK —
-        // the SSE handler filters by session_id. Just verify event_a arrives.
         match &mut sub_a {
             EventSubscription::InMemory(rx) => {
-                // Drain until we find event_a or timeout
+                // Drain until we find event_a or timeout. Any interleaved
+                // event_b (partition collision) is expected and skipped here —
+                // filtering it out is the SSE handler's job, not this layer's.
                 let timeout = tokio::time::timeout(std::time::Duration::from_millis(100), async {
                     loop {
                         match rx.recv().await {

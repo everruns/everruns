@@ -822,8 +822,7 @@ export interface App {
   deleted_at: string | null;
 }
 
-// From legacy auth-types.ts; retained as UI compatibility over generated OpenAPI schemas.
-// Authentication, user, and organization types
+// From legacy auth-types.ts: auth, user, and org types kept as UI compatibility over OpenAPI.
 // ============================================
 // Authentication types
 // ============================================
@@ -853,6 +852,7 @@ export interface FeatureFlags {
   public_chat: boolean;
   /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
   webmcp: boolean;
+  reports: boolean;
   /** Machine-payment custody, policy, audit, and paid capability surfaces. */
   machine_payments: boolean;
 }

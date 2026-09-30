@@ -148,11 +148,17 @@ export function useLogout() {
     // every org-sensitive query (durable, admin, sessions) in memory for
     // whoever logged in next, on the one path where the user had already
     // declared they were done (EVERRUNS-1Z).
-    onSettled: () => {
-      // Clear ALL cached queries to prevent data leaking across users.
-      // Selective removal (only auth keys) left org-sensitive data
-      // (durable, admin, sessions, etc.) cached for the next user.
+    onSettled: (_data, error) => {
+      // Keep only the current user's identity after a failure so the UI can
+      // accurately show that the session may still be active and offer retry.
+      const currentUser = error ? queryClient.getQueryData(authKeys.user()) : undefined;
+      // Clear cached application data to prevent it leaking across users.
+      // The identity restored on failure is the minimum state needed to avoid
+      // falsely presenting an active session as signed out.
       queryClient.clear();
+      if (currentUser) {
+        queryClient.setQueryData(authKeys.user(), currentUser);
+      }
       // Clear persisted org selection
       localStorage.removeItem(ORG_STORAGE_KEY);
     },
