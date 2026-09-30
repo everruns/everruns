@@ -120,9 +120,7 @@ async fn receive(
 
     match event.as_str() {
         "ping" => return Ok((StatusCode::OK, Json(GitHubWebhookResponse::default()))),
-        "installation"
-            if payload.get("action").and_then(|a| a.as_str()) == Some("deleted") =>
-        {
+        "installation" if payload.get("action").and_then(|a| a.as_str()) == Some("deleted") => {
             forget_installation(&state, &app, &payload).await;
             return Ok((StatusCode::ACCEPTED, Json(GitHubWebhookResponse::default())));
         }
