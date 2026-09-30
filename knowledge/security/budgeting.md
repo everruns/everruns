@@ -77,7 +77,7 @@ A spending cap bound to a **subject** (who) in a **currency** (what unit). Multi
 
 **Subject types**: `session`, `agent_endpoint`, `app_channel`, `app`, `agent`, `user`, `org`, budgets cascade through the hierarchy from most specific (session) to most general (org). A session's effective budgets include all matching levels.
 
-`agent_endpoint` budgets resolve from the session's structural endpoint reference. Slack and FCP routing tags do not determine budget identity. `app` and `app_channel` are legacy compatibility levels gated behind the experimental `app_budgets` feature flag (`FEATURE_APP_BUDGETS`, auto-enabled in `DeploymentGrade::Dev`). Sessions opt into those legacy levels via the standard tags emitted by the apps domain (`app:<app_id>`, `app_channel:<channel_id>`). The legacy `slack:app:<id>` tag is also recognised for backwards compatibility.
+`agent_endpoint` budgets resolve from the session's structural endpoint reference. Slack and FCP routing tags do not determine budget identity. `app` and `app_channel` are legacy compatibility levels gated behind the experimental `endpoint_budgets` feature flag (`FEATURE_ENDPOINT_BUDGETS`, auto-enabled in `DeploymentGrade::Dev`). Sessions opt into those legacy levels via the standard tags emitted by the apps domain (`app:<app_id>`, `app_channel:<channel_id>`). The legacy `slack:app:<id>` tag is also recognised for backwards compatibility.
 
 **Currencies**: Strings (not enum), new currencies added without migrations. Built-in: `usd` (via ModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).
 
@@ -318,9 +318,9 @@ Apps own one or more channels. Both layers can hold budgets:
 | `app` | every session created for the app (any channel) |
 | `app_channel` | sessions originating from a specific channel only |
 
-The hierarchy resolver pulls these subjects from session tags (`app:<id>`, `app_channel:<id>`). The flag `FEATURE_APP_BUDGETS` (experimental, auto-on in dev) is required to create or list app/channel budgets via the API; the storage and check pipeline always honours existing rows so the flag can flip without a backfill.
+The hierarchy resolver pulls these subjects from session tags (`app:<id>`, `app_channel:<id>`). The flag `FEATURE_ENDPOINT_BUDGETS` (experimental, auto-on in dev) is required to create or list budgets via the API; the storage and check pipeline always honours existing rows so the flag can flip without a backfill.
 
-UI: the App detail page surfaces a "Budgets" card (gated by `app_budgets`) that lists every budget attached to the app or any of its channels, and exposes a form for the common period presets (sliding 1h / 5h / 24h / 7d / 30d, calendar month) plus a "Custom JSON" escape hatch that accepts the raw `BudgetPeriod` payload, the in-product DSL, so advanced rules ship without waiting for first-class form fields.
+UI: the Agent Integrations tab surfaces budget controls (gated by `endpoint_budgets`) for the agent and for each of its endpoints, and exposes a form for the common period presets (sliding 1h / 5h / 24h / 7d / 30d, calendar month) plus a "Custom JSON" escape hatch that accepts the raw `BudgetPeriod` payload, the in-product DSL, so advanced rules ship without waiting for first-class form fields.
 
 ## Future Work
 

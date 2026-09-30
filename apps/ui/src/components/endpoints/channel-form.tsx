@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { CronInput, CronLabel, isSupportedCronExpression } from "@/components/apps/cron-label";
+import { CronInput, CronLabel, isSupportedCronExpression } from "@/components/endpoints/cron-label";
 import {
   DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
   DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS,

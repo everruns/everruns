@@ -15,9 +15,9 @@ import { usePolicies } from "@/hooks/use-policies";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { buttonVariants } from "@/components/ui/button";
-import { ChannelRow } from "@/components/apps/channel-row";
-import { MiniTimeline } from "@/components/apps/mini-timeline";
-import { type StatStripStats } from "@/components/apps/stat-strip";
+import { ChannelRow } from "@/components/endpoints/channel-row";
+import { MiniTimeline } from "@/components/endpoints/mini-timeline";
+import { type StatStripStats } from "@/components/endpoints/stat-strip";
 import { EndpointDetailsPanel } from "@/components/agents/integrations/endpoint-details-panel";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import { BudgetPanel } from "@/components/budgets/budget-panel";
@@ -87,7 +87,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const publishEndpoint = usePublishAgentEndpoint(agent.id);
   const triggerEndpoint = useTriggerAgentEndpoint(agent.id);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const budgetsEnabled = useFeatureFlag("app_budgets");
+  const budgetsEnabled = useFeatureFlag("endpoint_budgets");
 
   const suspended = agent.exposures_suspended ?? false;
   const canManage = canAgent("agent.manage");

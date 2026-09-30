@@ -24,8 +24,8 @@ import {
   getDefaultChannelFormState,
   isChannelFormValid,
   type ChannelFormState,
-} from "@/components/apps/channel-form";
-import { CronLabel } from "@/components/apps/cron-label";
+} from "@/components/endpoints/channel-form";
+import { CronLabel } from "@/components/endpoints/cron-label";
 import {
   BackLink,
   PageBreadcrumb,

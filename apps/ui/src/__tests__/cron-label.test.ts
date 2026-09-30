@@ -2,7 +2,7 @@ import {
   CRON_MIN_INTERVAL_SECONDS,
   getCronIntervalSeconds,
   isSupportedCronExpression,
-} from "@/components/apps/cron-label";
+} from "@/components/endpoints/cron-label";
 
 describe("getCronIntervalSeconds", () => {
   it("returns 60 for every-minute 7-field expression", () => {

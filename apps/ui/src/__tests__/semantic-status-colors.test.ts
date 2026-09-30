@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { createElement } from "react";
 import { render, screen } from "@testing-library/react";
-import { MiniTimeline } from "@/components/apps/mini-timeline";
+import { MiniTimeline } from "@/components/endpoints/mini-timeline";
 
 const sourceRoot = join(process.cwd(), "src");
 const rawPaletteUtility =

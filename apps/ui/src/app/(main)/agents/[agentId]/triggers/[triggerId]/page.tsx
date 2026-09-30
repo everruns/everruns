@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResourceNotFound } from "@/components/resource-not-found";
-import { CronLabel } from "@/components/apps/cron-label";
+import { CronLabel } from "@/components/endpoints/cron-label";
 import {
   EMPTY_TRIGGER_FORM,
   isTriggerFormValid,

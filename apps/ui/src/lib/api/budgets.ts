@@ -1,4 +1,4 @@
-// Budget API client. The UI gates budget management with `app_budgets`.
+// Budget API client. The UI gates budget management with `endpoint_budgets`.
 
 import { api } from "./client";
 import type { Budget, CreateBudgetRequest, UpdateBudgetRequest } from "./types";

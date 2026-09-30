@@ -1,7 +1,7 @@
 "use client";
 
 import type { InvocationSessionMode } from "@/lib/api/types";
-import { CronInput, isSupportedCronExpression } from "@/components/apps/cron-label";
+import { CronInput, isSupportedCronExpression } from "@/components/endpoints/cron-label";
 import { Label } from "@/components/ui/label";
 import {
   Select,

@@ -45,10 +45,10 @@ pub struct FeatureFlags {
     pub knowledge: bool,
     /// Plugin marketplace and installed-plugin management UI. Experimental.
     pub plugins: bool,
-    /// App / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).
+    /// Agent / endpoint scoped budgets and periodic budget resets (`5h`, `1d`, ...).
     /// Experimental.
-    pub app_budgets: bool,
-    /// Immutable agent versions, snapshots, forks, and app version binding.
+    pub endpoint_budgets: bool,
+    /// Immutable agent versions, snapshots, forks, and endpoint version binding.
     /// Experimental.
     pub agent_versions: bool,
     /// Realtime voice endpoints and microphone controls. Experimental.
@@ -196,11 +196,11 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         platform_managed: false,
     },
     FeatureFlagDefinition {
-        name: "app_budgets",
-        label: "App budgets",
-        description: "Adds spending limits scoped to individual apps and channels, with automatic \
-             resets on a schedule. It helps you cap and control costs so a single app or channel \
-             can't run away with your usage.",
+        name: "endpoint_budgets",
+        label: "Endpoint budgets",
+        description: "Adds spending limits scoped to individual agents and endpoints, with \
+             automatic resets on a schedule. It helps you cap and control costs so a single agent \
+             or endpoint can't run away with your usage.",
         experimental: true,
         platform_managed: false,
     },
@@ -208,8 +208,8 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         name: "agent_versions",
         label: "Agent versions",
         description: "Captures immutable snapshots of your agents so you can fork, roll back, and \
-             pin apps to a specific version. This gives you a safety net to experiment freely \
-             and return to a known-good agent at any time.",
+             pin endpoints to a specific version. This gives you a safety net to experiment \
+             freely and return to a known-good agent at any time.",
         experimental: true,
         platform_managed: false,
     },
@@ -306,7 +306,7 @@ impl FeatureFlags {
             memory: opt_in("memory", system.memory),
             knowledge: opt_in("knowledge", system.knowledge),
             plugins: opt_in("plugins", system.plugins),
-            app_budgets: opt_in("app_budgets", system.app_budgets),
+            endpoint_budgets: opt_in("endpoint_budgets", system.endpoint_budgets),
             agent_versions: opt_in("agent_versions", system.agent_versions),
             voice: opt_in("voice", system.voice),
             agent_delegation: opt_in("agent_delegation", system.agent_delegation),
@@ -328,7 +328,7 @@ impl FeatureFlags {
             memory: experimental_flag("FEATURE_MEMORY", grade),
             knowledge: experimental_flag("FEATURE_KNOWLEDGE", grade),
             plugins: experimental_flag("FEATURE_PLUGINS", grade),
-            app_budgets: experimental_flag("FEATURE_APP_BUDGETS", grade),
+            endpoint_budgets: experimental_flag("FEATURE_ENDPOINT_BUDGETS", grade),
             agent_versions: experimental_flag("FEATURE_AGENT_VERSIONS", grade),
             voice: experimental_flag("FEATURE_VOICE", grade),
             agent_delegation: experimental_flag("FEATURE_AGENT_DELEGATION", grade),
@@ -368,7 +368,7 @@ impl FeatureFlags {
             ("memory".to_string(), self.memory),
             ("knowledge".to_string(), self.knowledge),
             ("plugins".to_string(), self.plugins),
-            ("app_budgets".to_string(), self.app_budgets),
+            ("endpoint_budgets".to_string(), self.endpoint_budgets),
             ("agent_versions".to_string(), self.agent_versions),
             ("voice".to_string(), self.voice),
             ("agent_delegation".to_string(), self.agent_delegation),
@@ -391,7 +391,7 @@ impl FeatureFlags {
             "memory" => self.memory,
             "knowledge" => self.knowledge,
             "plugins" => self.plugins,
-            "app_budgets" => self.app_budgets,
+            "endpoint_budgets" => self.endpoint_budgets,
             "agent_versions" => self.agent_versions,
             "voice" => self.voice,
             "agent_delegation" => self.agent_delegation,
@@ -432,7 +432,7 @@ impl FeatureFlags {
             memory: true,
             knowledge: true,
             plugins: true,
-            app_budgets: true,
+            endpoint_budgets: true,
             agent_versions: true,
             voice: true,
             agent_delegation: true,
@@ -573,7 +573,7 @@ mod tests {
             memory: true,
             knowledge: true,
             plugins: true,
-            app_budgets: true,
+            endpoint_budgets: true,
             agent_versions: true,
             voice: true,
             agent_delegation: true,
@@ -589,7 +589,7 @@ mod tests {
         assert!(flags.is_enabled("memory"));
         assert!(flags.is_enabled("knowledge"));
         assert!(flags.is_enabled("plugins"));
-        assert!(flags.is_enabled("app_budgets"));
+        assert!(flags.is_enabled("endpoint_budgets"));
         assert!(flags.is_enabled("agent_versions"));
         assert!(flags.is_enabled("voice"));
         assert!(flags.is_enabled("agent_delegation"));
@@ -645,7 +645,7 @@ mod tests {
             memory: true,
             knowledge: true,
             plugins: true,
-            app_budgets: true,
+            endpoint_budgets: true,
             agent_versions: true,
             voice: true,
             agent_delegation: true,
@@ -657,7 +657,7 @@ mod tests {
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"notifications\":true"));
-        assert!(json.contains("\"app_budgets\":true"));
+        assert!(json.contains("\"endpoint_budgets\":true"));
         assert!(json.contains("\"agent_versions\":true"));
         assert!(json.contains("\"voice\":true"));
         assert!(json.contains("\"agent_delegation\":true"));

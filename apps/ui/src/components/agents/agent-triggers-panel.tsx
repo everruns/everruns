@@ -11,7 +11,7 @@ import {
   useUpdateAgentTrigger,
 } from "@/hooks/use-agent-triggers";
 import type { AgentTrigger } from "@/lib/api/types";
-import { CronLabel } from "@/components/apps/cron-label";
+import { CronLabel } from "@/components/endpoints/cron-label";
 import {
   EMPTY_TRIGGER_FORM,
   isTriggerFormValid,

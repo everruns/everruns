@@ -692,10 +692,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_budget_rejects_retired_app_subjects_when_app_budgets_is_enabled() {
+    async fn create_budget_rejects_retired_app_subjects_when_budgets_enabled() {
         let ctx =
             ctx_for_role(OrgRole::Owner).with_feature_flags(everruns_platform::FeatureFlags {
-                app_budgets: true,
+                endpoint_budgets: true,
                 ..Default::default()
             });
         for subject_type in ["app", "app_channel"] {

@@ -16,7 +16,7 @@ import {
   ChannelTypePicker,
   getDefaultChannelFormState,
   isChannelFormValid,
-} from "@/components/apps/channel-form";
+} from "@/components/endpoints/channel-form";
 import {
   BackLink,
   PageBreadcrumb,

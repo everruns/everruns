@@ -21,8 +21,8 @@ import {
   DropdownMenuPositioner,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CronLabel } from "@/components/apps/cron-label";
-import { MiniTimeline, type TimelineBin } from "@/components/apps/mini-timeline";
+import { CronLabel } from "@/components/endpoints/cron-label";
+import { MiniTimeline, type TimelineBin } from "@/components/endpoints/mini-timeline";
 import type {
   AgUiChannelConfig,
   AppChannel,

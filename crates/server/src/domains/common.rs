@@ -457,7 +457,7 @@ pub(crate) fn all_feature_flags_for_test() -> FeatureFlags {
         memory: true,
         knowledge: true,
         plugins: true,
-        app_budgets: true,
+        endpoint_budgets: true,
         agent_versions: true,
         voice: true,
         agent_delegation: true,

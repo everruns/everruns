@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { Suspense } from "react";
 import EditAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/[endpointId]/page";
 import NewAgentEndpointPage from "@/app/(main)/agents/[agentId]/endpoints/new/page";
-import { ChannelForm, getDefaultChannelFormState } from "@/components/apps/channel-form";
+import { ChannelForm, getDefaultChannelFormState } from "@/components/endpoints/channel-form";
 import { beginSlackInstall } from "@/lib/api/agent-endpoints";
 import type { SlackInstallCapability } from "@/lib/api/agent-endpoints";
 import type { Agent, AppChannel } from "@/lib/api/types";
