@@ -78,6 +78,16 @@ pub(crate) struct ResponsesRequest {
 pub(crate) struct ResponsesText {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) verbosity: Option<String>,
+    /// Structured output: `{type: "json_schema", name, schema, strict}`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) format: Option<serde_json::Value>,
+}
+
+impl ResponsesText {
+    /// `None` when neither control is set, so `text` is omitted entirely.
+    pub(crate) fn into_option(self) -> Option<Self> {
+        (self.verbosity.is_some() || self.format.is_some()).then_some(self)
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

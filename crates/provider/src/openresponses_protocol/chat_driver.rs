@@ -201,9 +201,14 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             parallel_tool_calls: config
                 .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
             service_tier: config.speed.clone(),
-            text: config.verbosity.clone().map(|verbosity| ResponsesText {
-                verbosity: Some(verbosity),
-            }),
+            text: ResponsesText {
+                verbosity: config.verbosity.clone(),
+                format: config
+                    .response_format
+                    .as_ref()
+                    .map(|f| f.responses_text_format()),
+            }
+            .into_option(),
             include,
         };
 
@@ -742,6 +747,11 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
 
     /// The Responses API accepts the top-level `parallel_tool_calls` boolean.
     fn supports_parallel_tool_calls(&self, _model: &str) -> bool {
+        true
+    }
+
+    /// Structured output goes out as `text.format`.
+    fn supports_response_format(&self, _model: &str) -> bool {
         true
     }
 

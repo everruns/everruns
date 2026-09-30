@@ -197,6 +197,13 @@ pub trait ChatDriver: Send + Sync {
         false
     }
 
+    /// Whether this driver enforces [`LlmCallConfig::response_format`] natively
+    /// for `model`. `false` (the default) makes the provider reject the call
+    /// rather than silently drop the constraint.
+    fn supports_response_format(&self, _model: &str) -> bool {
+        false
+    }
+
     /// Resolve a provider-managed history reduction request for this endpoint
     /// and model. A bound provider substitutes its captured real endpoint.
     fn provider_managed_reduction_option(
@@ -321,6 +328,10 @@ impl ChatDriver for Box<dyn ChatDriver> {
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
         (**self).supports_parallel_tool_calls(model)
+    }
+
+    fn supports_response_format(&self, model: &str) -> bool {
+        (**self).supports_response_format(model)
     }
 
     fn provider_managed_reduction_option(
@@ -531,6 +542,9 @@ pub struct LlmCallConfig {
     /// [`collect_turn`](crate::turn_collector::collect_turn). Unbounded by
     /// default, so a driver that ignores them behaves as before.
     pub limits: crate::turn_collector::TurnLimits,
+    /// Schema the reply must satisfy, enforced by the provider. A driver that
+    /// cannot enforce it fails the call (see [`ChatDriver::supports_response_format`]).
+    pub response_format: Option<crate::structured_output::ResponseFormat>,
 }
 
 impl LlmCallConfig {
@@ -573,159 +587,8 @@ pub struct LlmResponse {
     pub metadata: LlmCompletionMetadata,
 }
 
-/// Builder for LlmCallConfig with fluent API
-///
-/// Chain methods like `reasoning_effort()`, `temperature()`, etc. and call
-/// `build()` to get the final config. To start from a core `RuntimeAgent`, use
-/// `everruns_core::llm_conversions::llm_call_config_builder_from_agent`.
-pub struct LlmCallConfigBuilder {
-    config: LlmCallConfig,
-}
-
-impl LlmCallConfigBuilder {
-    /// Construct a builder wrapping an existing config.
-    pub fn from_config(config: LlmCallConfig) -> Self {
-        Self { config }
-    }
-
-    /// Set reasoning effort for models that support it.
-    pub fn reasoning_effort(mut self, effort: crate::model::ReasoningEffort) -> Self {
-        self.config.reasoning_effort = Some(effort);
-        self
-    }
-
-    /// Set speed (service tier): "flex", "default", "priority", "fast" or "ultrafast"
-    pub fn speed(mut self, speed: impl Into<String>) -> Self {
-        self.config.speed = Some(speed.into());
-        self
-    }
-
-    /// Set verbosity: "low", "medium", or "high"
-    pub fn verbosity(mut self, verbosity: impl Into<String>) -> Self {
-        self.config.verbosity = Some(verbosity.into());
-        self
-    }
-
-    /// Set the model
-    pub fn model(mut self, model: impl Into<String>) -> Self {
-        self.config.model = model.into();
-        self
-    }
-
-    /// Set temperature
-    pub fn temperature(mut self, temp: f32) -> Self {
-        self.config.temperature = Some(temp);
-        self
-    }
-
-    /// Set max tokens
-    pub fn max_tokens(mut self, tokens: u32) -> Self {
-        self.config.max_tokens = Some(tokens);
-        self
-    }
-
-    /// Set tools
-    pub fn tools(mut self, tools: Vec<ToolDefinition>) -> Self {
-        self.config.tools = tools;
-        self
-    }
-
-    /// Set metadata for API tracking
-    ///
-    /// This metadata is sent to the LLM provider for tracking and debugging.
-    /// Typically includes session_id, agent_id, org_id, turn_id, exec_id.
-    pub fn metadata(mut self, metadata: HashMap<String, String>) -> Self {
-        self.config.metadata = metadata;
-        self
-    }
-
-    /// Add a single metadata key-value pair
-    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.config.metadata.insert(key.into(), value.into());
-        self
-    }
-
-    /// Set previous response ID for stateful continuation
-    pub fn previous_response_id(mut self, id: Option<String>) -> Self {
-        self.config.previous_response_id = id;
-        self
-    }
-
-    /// Set standalone provider-owned compact context for the request.
-    pub fn provider_opaque_context(mut self, context: Option<ProviderOpaqueContext>) -> Self {
-        self.config.provider_opaque_context = context;
-        self
-    }
-
-    /// Set tool_search configuration
-    pub fn tool_search(mut self, config: ToolSearchConfig) -> Self {
-        self.config.tool_search = Some(config);
-        self
-    }
-
-    /// Set prompt caching configuration
-    pub fn prompt_cache(mut self, config: PromptCacheConfig) -> Self {
-        self.config.prompt_cache = Some(config);
-        self
-    }
-
-    /// Set a driver-namespaced opaque per-call option (`"<driver-id>/<option>"`).
-    /// The value's shape is owned by the driver crate named in the key; this
-    /// crate passes it through untouched.
-    pub fn driver_option(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
-        self.config.driver_options.insert(key.into(), value);
-        self
-    }
-
-    /// Set the request-level parallel tool calling preference (EVE-598).
-    pub fn parallel_tool_calls(mut self, parallel_tool_calls: Option<bool>) -> Self {
-        self.config.parallel_tool_calls = parallel_tool_calls;
-        self
-    }
-
-    /// Set the number of trailing volatile messages that must not anchor a
-    /// message-level prompt-cache breakpoint (see
-    /// [`LlmCallConfig::volatile_suffix_len`]).
-    pub fn volatile_suffix_len(mut self, len: usize) -> Self {
-        self.config.volatile_suffix_len = len;
-        self
-    }
-
-    /// Replace the extra HTTP headers sent with this call.
-    pub fn extra_headers(mut self, headers: Vec<(String, String)>) -> Self {
-        self.config.extra_headers = headers;
-        self
-    }
-
-    /// Add one extra HTTP header to send with this call.
-    pub fn extra_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
-        self.config.extra_headers.push((name.into(), value.into()));
-        self
-    }
-
-    /// Record the exact request body this call sends.
-    pub fn capture_request(mut self, capture: bool) -> Self {
-        self.config.capture_request = capture;
-        self
-    }
-
-    /// Request provider prompt-cache diagnostics for this call.
-    pub fn cache_diagnostics(mut self, config: CacheDiagnosticsConfig) -> Self {
-        self.config.cache_diagnostics = Some(config);
-        self
-    }
-
-    /// Bound how long this call may run and how much it may return.
-    pub fn limits(mut self, limits: crate::turn_collector::TurnLimits) -> Self {
-        self.config.limits = limits;
-        self
-    }
-
-    /// Build the configuration
-    pub fn build(self) -> LlmCallConfig {
-        self.config
-    }
-}
+// `LlmCallConfigBuilder` lives in `llm_call_config_builder.rs`.
+pub use crate::llm_call_config_builder::LlmCallConfigBuilder;
 
 // The Message->Message adapters (plain, with-images, and image-file
 // helpers) live in everruns-core (`llm_conversions`): they depend on core
@@ -1067,6 +930,10 @@ impl ChatDriver for CredentialGateDriver {
         self.inner.supports_parallel_tool_calls(model)
     }
 
+    fn supports_response_format(&self, model: &str) -> bool {
+        self.inner.supports_response_format(model)
+    }
+
     async fn compact(
         &self,
         _endpoint: &crate::runtime_provider::ProviderEndpoint,
@@ -1191,6 +1058,10 @@ impl ChatDriver for RequestOptionsDriver {
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
         self.inner.supports_parallel_tool_calls(model)
+    }
+
+    fn supports_response_format(&self, model: &str) -> bool {
+        self.inner.supports_response_format(model)
     }
 
     async fn compact(

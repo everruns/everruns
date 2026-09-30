@@ -245,6 +245,10 @@ impl ChatDriver for OpenAIChatDriver {
         self.inner.supports_parallel_tool_calls(model)
     }
 
+    fn supports_response_format(&self, model: &str) -> bool {
+        self.inner.supports_response_format(model)
+    }
+
     async fn compact(
         &self,
         endpoint: &ProviderEndpoint,
@@ -372,6 +376,10 @@ impl ChatDriver for OpenAICompletionsChatDriver {
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
         self.inner.supports_parallel_tool_calls(model)
+    }
+
+    fn supports_response_format(&self, model: &str) -> bool {
+        self.inner.supports_response_format(model)
     }
 }
 

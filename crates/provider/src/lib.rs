@@ -31,6 +31,7 @@ pub mod driver_registry;
 pub mod error;
 pub mod execution_phase;
 pub mod hosted_mcp;
+mod llm_call_config_builder;
 pub mod llm_error;
 pub mod llm_retry;
 pub mod message;
@@ -60,6 +61,7 @@ mod stream_error;
 pub mod stream_event;
 #[cfg(feature = "http")]
 pub mod stream_reconnect;
+pub mod structured_output;
 pub mod tool_schema_compat;
 pub mod tool_types;
 pub mod turn_collector;

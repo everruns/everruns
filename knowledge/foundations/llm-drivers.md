@@ -357,6 +357,14 @@ The verbosity selector maps to OpenAI's `verbosity` request parameter (`low`, `m
 
 The two OpenAI drivers place the field differently: the Responses API nests it under `text.verbosity`, while the Chat Completions API takes it as a top-level `verbosity` field. Other drivers ignore it. Per-model availability lives in the model profile's `verbosity` config (currently the GPT-5.5, GPT-5.6, and GPT-6 Astra series).
 
+### Structured Output
+
+A call can require its answer to validate against a JSON Schema: `LlmCallConfig.response_format` carries a provider-neutral `ResponseFormat` (see `crates/provider/src/structured_output.rs`), and each driver maps it to its native control. The OpenAI Responses driver sends it as `text.format` (next to `text.verbosity`), the Chat Completions driver as the top-level `response_format`. Strict adherence is the default because a caller asking for a schema wants it enforced, not approximated; `non_strict()` opts out for schemas that cannot meet OpenAI's strict-mode rules.
+
+A driver declares support through `ChatDriver::supports_response_format`, which defaults to false and must be forwarded by wrapper drivers like the other capability hooks. The provider refuses a call carrying a format on a driver without support, with a configuration error, before any request is sent. Silently dropping the schema would return free text to a caller that believes it holds validated JSON. The simulator reports support, so offline tests and examples can exercise the path. Anthropic (`output_config.format`) and Gemini (`responseJsonSchema`) have native equivalents and are the next drivers to wire.
+
+Scope: single completions (Framework `Completion::response_format`, evals, utility-style calls). Agent turns do not set it; an agent's final message stays prose, and tools remain the way an agent returns structured data.
+
 ### Completion Metadata
 
 `LlmCompletionMetadata` returned on stream completion. Token buckets are

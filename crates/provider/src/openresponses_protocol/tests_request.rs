@@ -253,6 +253,7 @@ fn test_request_serializes_verbosity() {
         service_tier: None,
         text: verbosity.map(|v| ResponsesText {
             verbosity: Some(v.to_string()),
+            format: None,
         }),
         model: "gpt-5.6-sol".to_string(),
         input: vec![ResponsesInputItem::Message {
