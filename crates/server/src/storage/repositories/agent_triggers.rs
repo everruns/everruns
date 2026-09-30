@@ -1,5 +1,6 @@
 // PostgreSQL repository: Agent Trigger CRUD
 
+use super::super::agent_trigger_deliveries::*;
 use super::super::models::*;
 use super::Database;
 use crate::kernel_imports::{

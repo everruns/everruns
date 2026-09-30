@@ -79,6 +79,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use uuid::Uuid;
 
 use super::IngressEndpointRow;
+use super::agent_trigger_deliveries::AgentTriggerDeliveryRow;
 use super::mcp_event_subscriptions::*;
 use super::mcp_tool_cache::*;
 use super::models::*;

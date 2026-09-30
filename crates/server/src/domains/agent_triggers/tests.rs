@@ -4,6 +4,7 @@
 // in-memory workflow store).
 
 use super::*;
+use crate::domains::agent_triggers::deliveries::ListAgentTriggerDeliveries;
 use crate::domains::agent_triggers::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
 use crate::domains::common::Ctx;
 use crate::event_delivery::EventDelivery;
@@ -1166,16 +1167,18 @@ async fn delivery_history_is_bounded_per_trigger() {
     let db = Arc::new(StorageBackend::in_memory());
     let trigger_id = TriggerId::new();
     for index in 0..5 {
-        db.record_agent_trigger_delivery(crate::storage::models::CreateAgentTriggerDeliveryRow {
-            org_id: DEFAULT_ORG_ID,
-            trigger_id,
-            source: "webhook".to_string(),
-            event_id: Some(format!("e{index}")),
-            event_type: None,
-            subject: None,
-            status: "dispatched".to_string(),
-            reason: None,
-        })
+        db.record_agent_trigger_delivery(
+            crate::storage::agent_trigger_deliveries::CreateAgentTriggerDeliveryRow {
+                org_id: DEFAULT_ORG_ID,
+                trigger_id,
+                source: "webhook".to_string(),
+                event_id: Some(format!("e{index}")),
+                event_type: None,
+                subject: None,
+                status: "dispatched".to_string(),
+                reason: None,
+            },
+        )
         .await
         .unwrap();
     }

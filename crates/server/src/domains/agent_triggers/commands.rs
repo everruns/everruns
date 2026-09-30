@@ -80,68 +80,6 @@ fn agent_trigger_max_per_org() -> i64 {
 // Config validation / normalization
 // ============================================================================
 
-/// A trigger fires into nothing that is listening, so only the invocation-keyed
-/// bindings mean anything on it, plus `per_thread` when the trigger names an
-/// event subject to key the session on (one session per pull request, ticket,
-/// or thread).
-///
-/// Before EVE-1005 this was enforced by the type system alone — triggers used
-/// `InvocationSessionMode`, which simply had no `per_thread` to express. Now
-/// that one `SessionBinding` spans both worlds, the constraint has to be
-/// checked rather than merely unrepresentable.
-fn validate_trigger_binding(
-    binding: SessionBinding,
-    has_subject: bool,
-) -> Result<(), CommandError> {
-    if binding == SessionBinding::Thread && has_subject {
-        return Ok(());
-    }
-    if binding.is_message_keyed() {
-        let hint = if binding == SessionBinding::Thread {
-            " per_thread needs a subject_template to key sessions on."
-        } else {
-            ""
-        };
-        return Err(CommandError::bad_request(format!(
-            "session_mode {} is not valid for an agent trigger: a trigger has no thread, \
-             conversation or requester to key a session on. Use shared_session or \
-             session_per_invocation.{hint}",
-            serde_json::to_string(&binding)
-                .unwrap_or_default()
-                .trim_matches('"')
-        )));
-    }
-    Ok(())
-}
-
-/// Normalize an optional template: blank means unset.
-fn optional_template(value: Option<String>) -> Option<String> {
-    value.filter(|value| !value.trim().is_empty())
-}
-
-/// Normalize an optional filter: no conditions means unset. Every condition
-/// needs a path and at least one accepted value.
-fn optional_filter(
-    filter: Option<everruns_platform::TriggerEventFilter>,
-) -> Result<Option<everruns_platform::TriggerEventFilter>, CommandError> {
-    let Some(filter) = filter.filter(|filter| !filter.conditions.is_empty()) else {
-        return Ok(None);
-    };
-    if filter.conditions.len() > 20 {
-        return Err(CommandError::bad_request(
-            "A trigger filter may have at most 20 conditions",
-        ));
-    }
-    for condition in &filter.conditions {
-        if condition.path.trim().is_empty() || condition.any_of.is_empty() {
-            return Err(CommandError::bad_request(
-                "Each filter condition needs a path and at least one accepted value",
-            ));
-        }
-    }
-    Ok(Some(filter))
-}
-
 fn validate_schedule_config(cron_expression: &str, message: &str) -> Result<String, CommandError> {
     if message.trim().is_empty() {
         return Err(CommandError::bad_request(
@@ -424,7 +362,7 @@ fn parse_agent_id(raw: &str) -> Result<AgentId, CommandError> {
 }
 
 /// Resolve a trigger and confirm it belongs to the named agent (org-scoped).
-async fn resolve_trigger_for_agent(
+pub(super) async fn resolve_trigger_for_agent(
     ctx: &Ctx,
     agent_id: &str,
     trigger_id: &str,
@@ -483,7 +421,7 @@ impl Command for CreateAgentTrigger {
                 .subject_template
                 .as_deref()
                 .is_some_and(|template| !template.trim().is_empty());
-        validate_trigger_binding(req.session_mode, has_subject)?;
+        events::validate_trigger_binding(req.session_mode, has_subject)?;
         webhook::require_publication_permission(ctx, req.trigger_type, req.enabled)?;
         let trigger_id = TriggerId::new();
         let (ingress_id, config, config_encrypted) = match req.trigger_type {
@@ -519,9 +457,9 @@ impl Command for CreateAgentTrigger {
                     session_mode: req.session_mode,
                     message: req.message,
                     rate_limit_per_minute: req.rate_limit_per_minute,
-                    event_id_template: optional_template(req.event_id_template),
-                    subject_template: optional_template(req.subject_template),
-                    filter: optional_filter(req.filter)?,
+                    event_id_template: events::optional_template(req.event_id_template),
+                    subject_template: events::optional_template(req.subject_template),
+                    filter: events::optional_filter(req.filter)?,
                 };
                 let (config, encrypted) = prepare_trigger_config(ctx, &config)?;
                 (
@@ -730,73 +668,6 @@ impl Command for ListAgentTriggerRuns {
 inventory::submit! { CommandDescriptor::of::<ListAgentTriggerRuns>() }
 
 // ============================================================================
-// ListAgentTriggerDeliveries
-// ============================================================================
-
-/// Recent events a trigger received and what happened to each.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ListAgentTriggerDeliveries {
-    pub agent_id: String,
-    pub trigger_id: String,
-    /// Maximum rows to return (1-200, default 50).
-    #[serde(default)]
-    pub limit: Option<i64>,
-}
-
-impl Command for ListAgentTriggerDeliveries {
-    type Output = Vec<everruns_platform::AgentTriggerDelivery>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_agent_trigger_deliveries",
-            category: "agent_triggers",
-            description: "List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed.",
-            method: "GET",
-            path: "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_VIEW)
-    }
-
-    async fn execute(
-        self,
-        ctx: &Ctx,
-    ) -> Result<Vec<everruns_platform::AgentTriggerDelivery>, CommandError> {
-        let (_, trigger) = resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
-        let limit = self
-            .limit
-            .unwrap_or(50)
-            .clamp(1, events::DELIVERY_HISTORY_LIMIT);
-        let rows = ctx
-            .db
-            .list_agent_trigger_deliveries(ctx.org_id(), trigger.id, limit)
-            .await
-            .map_err(classify_anyhow)?;
-        Ok(rows
-            .into_iter()
-            .map(|row| everruns_platform::AgentTriggerDelivery {
-                id: row.id,
-                source: row.source,
-                event_id: row.event_id,
-                event_type: row.event_type,
-                subject: row.subject,
-                status: row
-                    .status
-                    .parse()
-                    .unwrap_or(everruns_platform::TriggerDeliveryStatus::Failed),
-                reason: row.reason,
-                session_id: row.session_id.map(SessionId::from_uuid),
-                created_at: row.created_at,
-            })
-            .collect())
-    }
-}
-
-inventory::submit! { CommandDescriptor::of::<ListAgentTriggerDeliveries>() }
-
-// ============================================================================
 // UpdateAgentTrigger
 // ============================================================================
 
@@ -864,7 +735,7 @@ impl Command for UpdateAgentTriggerCmd {
                     config.timezone = tz;
                 }
                 if let Some(mode) = req.session_mode {
-                    validate_trigger_binding(mode, false)?;
+                    events::validate_trigger_binding(mode, false)?;
                     config.session_mode = mode;
                 }
                 if let Some(message) = req.message {
@@ -891,15 +762,18 @@ impl Command for UpdateAgentTriggerCmd {
                     config.rate_limit_per_minute = Some(limit);
                 }
                 if let Some(template) = req.event_id_template {
-                    config.event_id_template = optional_template(Some(template));
+                    config.event_id_template = events::optional_template(Some(template));
                 }
                 if let Some(template) = req.subject_template {
-                    config.subject_template = optional_template(Some(template));
+                    config.subject_template = events::optional_template(Some(template));
                 }
                 if let Some(filter) = req.filter {
-                    config.filter = optional_filter(Some(filter))?;
+                    config.filter = events::optional_filter(Some(filter))?;
                 }
-                validate_trigger_binding(config.session_mode, config.subject_template.is_some())?;
+                events::validate_trigger_binding(
+                    config.session_mode,
+                    config.subject_template.is_some(),
+                )?;
                 validate_webhook_config(&config.token, &config.message, req.auth.as_ref())?;
                 prepare_trigger_config(ctx, &config)?
             }
@@ -1407,33 +1281,15 @@ fn trigger_session_tags(
     ]
 }
 
-/// Which session an event lands in.
-pub(super) struct TriggerSessionRoute<'a> {
-    pub(super) trigger_id: TriggerId,
-    pub(super) session_mode: SessionBinding,
-    /// Event subject; with `per_thread` it keys one session per subject.
-    pub(super) subject: Option<&'a str>,
-    pub(super) source: everruns_platform::SessionSource,
-    pub(super) webhook: Option<&'a WebhookCompatibilityContext>,
-}
-
-/// Session tag for one event subject. Hashed so arbitrary source text (repo
-/// names, titles) never lands in tags verbatim and the tag length is fixed.
-fn subject_session_tag(subject: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(subject.as_bytes());
-    format!("agent_trigger_subject:{}", hex::encode(&digest[..16]))
-}
-
 pub(super) async fn find_or_create_trigger_session(
     db: &Arc<StorageBackend>,
     session_service: &SessionService,
     org_id: i64,
     agent: &AgentRow,
     execution_context: &TriggerExecutionContext,
-    route: TriggerSessionRoute<'_>,
+    route: events::TriggerSessionRoute<'_>,
 ) -> Result<(SessionId, bool), CommandError> {
-    let TriggerSessionRoute {
+    let events::TriggerSessionRoute {
         trigger_id,
         session_mode,
         subject,
@@ -1445,7 +1301,7 @@ pub(super) async fn find_or_create_trigger_session(
     // without a subject cannot be keyed and gets a fresh session instead.
     let session_mode = match (session_mode, subject) {
         (SessionBinding::Thread, Some(subject)) => {
-            shared_tags.push(subject_session_tag(subject));
+            shared_tags.push(events::subject_session_tag(subject));
             SessionBinding::Endpoint
         }
         (SessionBinding::Thread, None) => SessionBinding::Ephemeral,

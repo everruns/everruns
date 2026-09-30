@@ -20,8 +20,8 @@
 //! busy source cannot grow the table without limit.
 
 use super::commands::{
-    AgentTriggerInvocationResult, TriggerSessionRoute, WebhookCompatibilityContext,
-    dispatch_trigger_message, emit_agent_trigger_audit_event, find_or_create_trigger_session,
+    AgentTriggerInvocationResult, WebhookCompatibilityContext, dispatch_trigger_message,
+    emit_agent_trigger_audit_event, find_or_create_trigger_session,
     resolve_trigger_execution_context,
 };
 use crate::domains::apps::invocation::{render_message_template, template_lookup};
@@ -29,7 +29,8 @@ use crate::domains::common::{CommandError, classify_anyhow};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::storage::StorageBackend;
-use crate::storage::models::{AgentRow, AgentTriggerRow, CreateAgentTriggerDeliveryRow};
+use crate::storage::agent_trigger_deliveries::CreateAgentTriggerDeliveryRow;
+use crate::storage::models::{AgentRow, AgentTriggerRow};
 use everruns_platform::{SessionBinding, TriggerDeliveryStatus, TriggerEventFilter};
 use serde_json::Value;
 use std::sync::Arc;
@@ -303,6 +304,86 @@ fn truncate(value: &str, max: usize) -> String {
         end -= 1;
     }
     value[..end].to_string()
+}
+
+/// Normalize an optional template: blank means unset.
+pub(super) fn optional_template(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.trim().is_empty())
+}
+
+/// Normalize an optional filter: no conditions means unset. Every condition
+/// needs a path and at least one accepted value.
+pub(super) fn optional_filter(
+    filter: Option<everruns_platform::TriggerEventFilter>,
+) -> Result<Option<everruns_platform::TriggerEventFilter>, crate::domains::common::CommandError> {
+    let Some(filter) = filter.filter(|filter| !filter.conditions.is_empty()) else {
+        return Ok(None);
+    };
+    if filter.conditions.len() > 20 {
+        return Err(crate::domains::common::CommandError::bad_request(
+            "A trigger filter may have at most 20 conditions",
+        ));
+    }
+    for condition in &filter.conditions {
+        if condition.path.trim().is_empty() || condition.any_of.is_empty() {
+            return Err(crate::domains::common::CommandError::bad_request(
+                "Each filter condition needs a path and at least one accepted value",
+            ));
+        }
+    }
+    Ok(Some(filter))
+}
+
+/// A trigger fires into nothing that is listening, so only the invocation-keyed
+/// bindings mean anything on it, plus `per_thread` when the trigger names an
+/// event subject to key the session on (one session per pull request, ticket,
+/// or thread).
+///
+/// Before EVE-1005 this was enforced by the type system alone — triggers used
+/// `InvocationSessionMode`, which simply had no `per_thread` to express. Now
+/// that one `everruns_platform::SessionBinding` spans both worlds, the constraint has to be
+/// checked rather than merely unrepresentable.
+pub(super) fn validate_trigger_binding(
+    binding: everruns_platform::SessionBinding,
+    has_subject: bool,
+) -> Result<(), crate::domains::common::CommandError> {
+    if binding == everruns_platform::SessionBinding::Thread && has_subject {
+        return Ok(());
+    }
+    if binding.is_message_keyed() {
+        let hint = if binding == everruns_platform::SessionBinding::Thread {
+            " per_thread needs a subject_template to key sessions on."
+        } else {
+            ""
+        };
+        return Err(crate::domains::common::CommandError::bad_request(format!(
+            "session_mode {} is not valid for an agent trigger: a trigger has no thread, \
+             conversation or requester to key a session on. Use shared_session or \
+             session_per_invocation.{hint}",
+            serde_json::to_string(&binding)
+                .unwrap_or_default()
+                .trim_matches('"')
+        )));
+    }
+    Ok(())
+}
+
+/// Which session an event lands in.
+pub(super) struct TriggerSessionRoute<'a> {
+    pub(super) trigger_id: everruns_provider::typed_id::TriggerId,
+    pub(super) session_mode: everruns_platform::SessionBinding,
+    /// Event subject; with `per_thread` it keys one session per subject.
+    pub(super) subject: Option<&'a str>,
+    pub(super) source: everruns_platform::SessionSource,
+    pub(super) webhook: Option<&'a WebhookCompatibilityContext>,
+}
+
+/// Session tag for one event subject. Hashed so arbitrary source text (repo
+/// names, titles) never lands in tags verbatim and the tag length is fixed.
+pub(super) fn subject_session_tag(subject: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(subject.as_bytes());
+    format!("agent_trigger_subject:{}", hex::encode(&digest[..16]))
 }
 
 #[cfg(test)]

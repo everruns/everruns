@@ -1,5 +1,6 @@
 // In-memory storage: Agent Trigger CRUD
 
+use super::super::agent_trigger_deliveries::*;
 use super::super::models::*;
 use super::InMemoryDatabase;
 use crate::kernel_imports::{
