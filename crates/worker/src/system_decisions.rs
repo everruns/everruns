@@ -9,6 +9,9 @@
 //! - `UTILITY_TYPESAFE_API_KEY` registers the `typesafe` driver.
 //! - A configured utility LLM (`UTILITY_OPENAI_API_KEY` or
 //!   `UTILITY_OPENROUTER_API_KEY`) registers the `llm` driver.
+//! - `DECISIONS_OPENAI_PREVIEW=1` with `UTILITY_OPENAI_API_KEY` registers the
+//!   `openai` driver (OpenAI's Decisions API). Opt-in because the API is in
+//!   limited preview and the driver's wire shape is unverified (EVE-1118).
 //! - `DECISIONS_DRIVER` picks the default driver. Unset keeps today's
 //!   behavior: `typesafe` when its key is present, otherwise disabled. The
 //!   `llm` fallback is opt-in, because it spends utility-model tokens on every
@@ -23,6 +26,7 @@ use std::sync::Arc;
 
 use everruns_core::{DecisionsService, DisabledDecisionsService, UtilityLlmService};
 use everruns_host::{DecisionDriverRegistry, LLM_DECISION_DRIVER_ID, LlmDecisionDriver};
+use everruns_integrations_openai_decisions::{OPENAI_DECISION_DRIVER_ID, OpenAIDecisions};
 use everruns_integrations_typesafe::{SystemDecisionsConfig, TYPESAFE_DECISION_DRIVER_ID};
 
 /// Environment variable naming the default decision driver.
@@ -31,10 +35,17 @@ pub const DECISIONS_DRIVER_ENV: &str = "DECISIONS_DRIVER";
 /// Environment variable naming the default driver's model.
 pub const DECISIONS_MODEL_ENV: &str = "DECISIONS_MODEL";
 
+/// Environment variable that opts into the preview `openai` driver.
+pub const DECISIONS_OPENAI_PREVIEW_ENV: &str = "DECISIONS_OPENAI_PREVIEW";
+
+/// The deployment's OpenAI key, shared with the utility LLM.
+const UTILITY_OPENAI_API_KEY_ENV: &str = "UTILITY_OPENAI_API_KEY";
+
 /// Deployment decision configuration, resolved from the environment.
 #[derive(Clone, Default)]
 pub struct SystemDecisions {
     typesafe: Option<SystemDecisionsConfig>,
+    openai_key: Option<String>,
     driver: Option<String>,
     model: Option<String>,
 }
@@ -44,6 +55,7 @@ impl std::fmt::Debug for SystemDecisions {
         // `SystemDecisionsConfig`'s own Debug redacts the key.
         f.debug_struct("SystemDecisions")
             .field("typesafe", &self.typesafe)
+            .field("openai", &self.openai_key.as_ref().map(|_| "<redacted>"))
             .field("driver", &self.driver)
             .field("model", &self.model)
             .finish()
@@ -55,6 +67,9 @@ impl SystemDecisions {
     pub fn from_env() -> Self {
         Self {
             typesafe: Some(SystemDecisionsConfig::from_env()),
+            openai_key: env_value(DECISIONS_OPENAI_PREVIEW_ENV)
+                .filter(|flag| matches!(flag.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+                .and_then(|_| env_value(UTILITY_OPENAI_API_KEY_ENV)),
             driver: env_value(DECISIONS_DRIVER_ENV),
             model: env_value(DECISIONS_MODEL_ENV),
         }
@@ -63,6 +78,12 @@ impl SystemDecisions {
     /// Enable the `typesafe` driver with `config`.
     pub fn typesafe(mut self, config: SystemDecisionsConfig) -> Self {
         self.typesafe = Some(config);
+        self
+    }
+
+    /// Enable the preview `openai` driver with a deployment-owned key.
+    pub fn openai_preview(mut self, api_key: impl Into<String>) -> Self {
+        self.openai_key = Some(api_key.into());
         self
     }
 
@@ -90,6 +111,11 @@ impl SystemDecisions {
         if let Some(driver) = self.typesafe.and_then(SystemDecisionsConfig::into_driver) {
             registry = registry.with(driver);
         }
+        if let Some(api_key) = self.openai_key {
+            // Guardrails sit on latency-critical seams: no retries, as with
+            // the TypeSafe deployment client.
+            registry = registry.with(OpenAIDecisions::new(api_key).max_attempts(1));
+        }
         if utility.is_configured() {
             registry = registry.with(LlmDecisionDriver::new(utility));
         }
@@ -113,7 +139,8 @@ impl SystemDecisions {
             format!(
                 "{DECISIONS_DRIVER_ENV}={default}: {error} (typesafe needs \
                  UTILITY_TYPESAFE_API_KEY; llm needs UTILITY_OPENAI_API_KEY or \
-                 UTILITY_OPENROUTER_API_KEY)"
+                 UTILITY_OPENROUTER_API_KEY; {OPENAI_DECISION_DRIVER_ID} needs \
+                 {DECISIONS_OPENAI_PREVIEW_ENV}=1 and UTILITY_OPENAI_API_KEY)"
             )
         })?;
         tracing::info!(
@@ -239,6 +266,23 @@ mod tests {
             .err()
             .expect("a configuration error");
         assert!(error.contains("'nope' is not configured"), "{error}");
+    }
+
+    #[test]
+    fn the_openai_driver_is_preview_opt_in() {
+        let error = SystemDecisions::default()
+            .driver("openai")
+            .into_service(no_utility())
+            .err()
+            .expect("a configuration error");
+        assert!(error.contains("DECISIONS_OPENAI_PREVIEW=1"), "{error}");
+
+        let service = SystemDecisions::default()
+            .openai_preview("sk-test")
+            .driver("openai")
+            .into_service(no_utility())
+            .unwrap();
+        assert_eq!(service.name(), "DecisionRouter");
     }
 
     #[test]

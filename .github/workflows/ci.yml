@@ -989,6 +989,8 @@ jobs:
           # path-filtered on integrations/typesafe/**, so a break introduced from
           # everruns-core/-capability/-provider would otherwise reach main unseen.
           cargo check -p everruns-integrations-typesafe --no-default-features
+          # Wire fixtures only; the live smoke sits behind `live-tests`.
+          cargo test -p everruns-integrations-openai-decisions
 
               ;;
           esac

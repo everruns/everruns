@@ -16,6 +16,11 @@
   needed a new `DecisionOutcome::calibrated` flag. `DECISIONS_DRIVER` and
   `DECISIONS_MODEL` select the default; a TypeSafe-only deployment behaves as
   before. Recorded in [Decisions Service](operations/decisions-service.md#decision-drivers).
+* **OpenAI's Decisions API is a preview decision driver (EVE-1118).** Its wire
+  shape is unpublished and our account is not enabled yet, so the driver ships
+  opt-in (`DECISIONS_OPENAI_PREVIEW`), unpublished, with the inferred shape
+  isolated in one module. It never spreads the API's single confidence into a
+  distribution. The Jev comparison waits for access.
 
 * **OpenAI's Agents API can be wrapped only behind a constrained runtime boundary.**
   Function required actions preserve Everruns approvals and guardrails, but direct

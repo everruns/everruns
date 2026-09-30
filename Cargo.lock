@@ -2883,6 +2883,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-openai-decisions"
+version = "0.32.0"
+dependencies = [
+ "async-trait",
+ "everruns-core",
+ "everruns-provider",
+ "futures",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-integrations-openai-image"
 version = "0.32.0"
 dependencies = [
@@ -3487,6 +3503,7 @@ dependencies = [
  "everruns-integrations-daytona",
  "everruns-integrations-deno",
  "everruns-integrations-e2b",
+ "everruns-integrations-openai-decisions",
  "everruns-integrations-sprites",
  "everruns-integrations-typesafe",
  "everruns-internal-protocol",
