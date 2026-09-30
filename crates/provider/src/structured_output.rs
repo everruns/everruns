@@ -15,7 +15,7 @@
 //! message stays prose.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// Constrains the model's reply format.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -67,9 +67,10 @@ impl ResponseFormat {
     }
 
     /// OpenAI Responses `text.format` object.
+    #[cfg(feature = "http")]
     pub(crate) fn responses_text_format(&self) -> Value {
         match self {
-            Self::JsonSchema(format) => json!({
+            Self::JsonSchema(format) => serde_json::json!({
                 "type": "json_schema",
                 "name": format.name,
                 "schema": format.schema,
@@ -79,9 +80,10 @@ impl ResponseFormat {
     }
 
     /// OpenAI Chat Completions `response_format` object.
+    #[cfg(feature = "http")]
     pub(crate) fn chat_completions_response_format(&self) -> Value {
         match self {
-            Self::JsonSchema(format) => json!({
+            Self::JsonSchema(format) => serde_json::json!({
                 "type": "json_schema",
                 "json_schema": {
                     "name": format.name,
