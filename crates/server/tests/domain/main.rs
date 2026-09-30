@@ -52,6 +52,7 @@ mod org_creation_test;
 mod org_invitations_test;
 mod org_isolation_test;
 mod org_lifecycle_test;
+mod payment_policy_app_subject_test;
 mod reporting_integration_test;
 mod schedule_integration_test;
 mod service_mcp_oauth_lifecycle_test;

@@ -7155,9 +7155,13 @@ export interface components {
        */
       subject_id: string;
       /**
-       * @description Class of subject this policy binds to. One of: `user`, `agent_identity`, `agent`, `app`, `session`, `org`.
+       * @description Class of subject this policy binds to. One of: `user`, `agent_identity`,
+       *     `agent`, `agent_endpoint`, `session`, `org`.
        *     The prefix on `subject_id` must match: `user`→`user_…`, `agent_identity`→`identity_…`,
-       *     `agent`→`agent_…`, `app`→`app_…`, `session`→`session_…`, `org`→`org_…`.
+       *     `agent`→`agent_…`, `agent_endpoint`→`appchan_…` (an endpoint kept the
+       *     identifier it carried as an App channel), `session`→`session_…`,
+       *     `org`→`org_…`. The identifier must be the API-facing one — an internal
+       *     uuid will be stored and then never match (EVE-1130).
        * @example agent_identity
        */
       subject_type: string;
