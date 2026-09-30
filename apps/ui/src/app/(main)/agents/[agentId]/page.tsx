@@ -508,75 +508,80 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           </p>
         )}
 
-        <PageControlStrip>
-          <SectionTabs
-            value={activeTab}
-            onValueChange={(value) => setActiveTab(value as AgentTab)}
-            items={getAgentTabItems(sessionCount)}
-          />
-        </PageControlStrip>
-
-        {activeTab === "agent" && (
-          <div className="grid min-w-0 border bg-background lg:grid-cols-[minmax(0,1fr)_340px]">
-            <AgentPromptPane
-              className="lg:border-r"
-              value={draft.fields.system_prompt}
-              editing={editing}
-              onEdit={isActive ? startEdit : undefined}
-              onChange={(value) => draft.setField("system_prompt", value)}
-              error={draft.errors.system_prompt}
-              checks={
-                editing ? (
-                  <AgentChecks
-                    systemPrompt={draft.fields.system_prompt}
-                    capabilities={draft.capabilities}
-                    tools={agent.tools ?? []}
-                    onApplyFix={(start, end, replacement) =>
-                      draft.setField(
-                        "system_prompt",
-                        applyByteSpanReplacement(
-                          draft.fields.system_prompt,
-                          start,
-                          end,
-                          replacement,
-                        ),
-                      )
-                    }
-                  />
-                ) : undefined
-              }
+        {/* The tab row and the workspace are one surface: no gap between them. */}
+        <div className="flex min-w-0 flex-col">
+          <PageControlStrip>
+            <SectionTabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as AgentTab)}
+              items={getAgentTabItems(sessionCount)}
+              className="border-x border-t bg-background px-2"
             />
-            <AgentConfigColumn
-              className="border-t lg:border-t-0"
-              agent={agent}
-              draft={draft}
-              editing={editing}
-              readOnly={readOnly}
-              allCapabilities={allCapabilities ?? []}
-              defaultModel={defaultModel}
-              onStartEdit={startEdit}
-              moreRows={moreRows}
-              onOpenRow={(id) => setOpenSection(id as AgentSettingsSection)}
-            />
-          </div>
-        )}
+          </PageControlStrip>
 
-        {activeTab === "preview" && (
-          <AgentPreview
-            systemPrompt={draft.fields.system_prompt}
-            capabilities={draft.capabilities}
-            initialFiles={draft.files}
-            tools={agent.tools ?? []}
-          />
-        )}
+          {activeTab === "agent" && (
+            <div className="grid min-w-0 border-x border-b bg-background lg:grid-cols-[minmax(0,1fr)_340px]">
+              <AgentPromptPane
+                className="lg:border-r"
+                value={draft.fields.system_prompt}
+                editing={editing}
+                onEdit={isActive ? startEdit : undefined}
+                onChange={(value) => draft.setField("system_prompt", value)}
+                error={draft.errors.system_prompt}
+                checks={
+                  editing ? (
+                    <AgentChecks
+                      systemPrompt={draft.fields.system_prompt}
+                      capabilities={draft.capabilities}
+                      tools={agent.tools ?? []}
+                      onApplyFix={(start, end, replacement) =>
+                        draft.setField(
+                          "system_prompt",
+                          applyByteSpanReplacement(
+                            draft.fields.system_prompt,
+                            start,
+                            end,
+                            replacement,
+                          ),
+                        )
+                      }
+                    />
+                  ) : undefined
+                }
+              />
+              <AgentConfigColumn
+                className="border-t lg:border-t-0"
+                agent={agent}
+                draft={draft}
+                editing={editing}
+                readOnly={readOnly}
+                allCapabilities={allCapabilities ?? []}
+                defaultModel={defaultModel}
+                onStartEdit={startEdit}
+                moreRows={moreRows}
+                onOpenRow={(id) => setOpenSection(id as AgentSettingsSection)}
+              />
+            </div>
+          )}
 
-        {activeTab === "integrations" && <AgentIntegrationsPanel agent={agent} />}
-
-        {activeTab === "stats" && (
-          <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
-        )}
-
-        {activeTab === "sessions" && <AgentSessionsPanel agentId={agentId} />}
+          {activeTab !== "agent" && (
+            <div className="min-w-0 pt-5 sm:pt-6">
+              {activeTab === "preview" && (
+                <AgentPreview
+                  systemPrompt={draft.fields.system_prompt}
+                  capabilities={draft.capabilities}
+                  initialFiles={draft.files}
+                  tools={agent.tools ?? []}
+                />
+              )}
+              {activeTab === "integrations" && <AgentIntegrationsPanel agent={agent} />}
+              {activeTab === "stats" && (
+                <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
+              )}
+              {activeTab === "sessions" && <AgentSessionsPanel agentId={agentId} />}
+            </div>
+          )}
+        </div>
 
         <PageFooter>
           <BackLink href="/agents">Back to Agents</BackLink>
