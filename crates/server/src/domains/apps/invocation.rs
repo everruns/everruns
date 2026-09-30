@@ -337,6 +337,8 @@ async fn find_or_create_invocation_session(
             app.agent_version_policy.clone(),
             app.agent_version_id,
             Some(channel.internal_id),
+            // Endpoint ingress, not a trigger.
+            None,
             // Pass the App's owner so the resulting session matches the
             // owner-keyed lookup in `find_app_session_by_tags_and_owner` —
             // shared-session reuse depends on this. See `create_from_app` doc.

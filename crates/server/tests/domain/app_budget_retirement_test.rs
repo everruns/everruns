@@ -1,10 +1,11 @@
 //! Evidence for retiring the `app` budget level (EVE-1129, migration 151).
 //!
-//! `app_channel` deliberately survives. Migration 138 moved App webhooks onto
-//! `agent_triggers`, moved their budgets back from `agent_endpoint` to
-//! `app_channel`, and deleted the endpoint rows, so for a webhook trigger it is
-//! the only attribution there is and has no structural successor to retire onto
-//! (EVE-1138). Only `app` had one: the agent.
+//! `app_channel` outlived `app` by one migration, because 138 had moved App
+//! webhooks onto `agent_triggers`, moved their budgets back from
+//! `agent_endpoint` to `app_channel`, and deleted the endpoint rows, leaving it
+//! with no structural successor to retire onto. Migration 153 gives it one; see
+//! `trigger_budget_subject_test.rs` (EVE-1138). Only `app` had one from the
+//! start: the agent.
 //!
 //! Migration 137 fanned each App cap out per endpoint but deliberately left the
 //! App budget in place and enforced, so the aggregate ceiling kept binding
@@ -185,7 +186,7 @@ async fn seed_app_budget(
         // including the `app` row this helper just seeded. The constraint still
         // rejects new rows, which is all these tests need it for.
         "ALTER TABLE budgets ADD CONSTRAINT budgets_subject_type_check
-         CHECK (subject_type IN ('session', 'agent', 'user', 'org', 'app_channel',
+         CHECK (subject_type IN ('session', 'agent', 'user', 'org', 'agent_trigger',
                                  'agent_endpoint'))
          NOT VALID",
     )

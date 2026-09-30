@@ -76,7 +76,7 @@ impl InMemoryDatabase {
         self.get_active_budgets_for_subjects(
             org_id,
             BudgetSubjectLookup {
-                app_channel_id: None,
+                trigger_id: None,
                 session_id: Some(session_id),
                 agent_id,
                 user_id,

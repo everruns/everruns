@@ -348,9 +348,11 @@ rest proceeds.
    would tighten every existing cap without consent. The App budget was kept enforced
    alongside so the original aggregate ceiling kept binding until the subject type could be
    dropped — which it now has been: migration 151 (EVE-1129) converted each `app` budget onto
-   the App's agent and removed the level. `app_channel` survives, because migration 138 moved
-   App webhooks onto agent triggers and their budgets back off `agent_endpoint`, leaving the
-   tag as a webhook trigger's only attribution (EVE-1138). `sessions.app_id` remains permanent
+   the App's agent and removed the level. `app_channel` outlived it by one migration, because
+   138 had moved App webhooks onto agent triggers and their budgets back off `agent_endpoint`,
+   leaving the tag as a webhook trigger's only attribution; migration 153 (EVE-1138) adds
+   `sessions.trigger_id` and re-keys those budgets onto the `agent_trigger` subject, so no
+   budget subject is resolved from a session tag any more. `sessions.app_id` remains permanent
    historical attribution.
 5. **Unify the binding enums** (EVE-1005); move webhook from endpoint to trigger type
    (EVE-1006).

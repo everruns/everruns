@@ -1274,6 +1274,7 @@ pub(super) async fn find_or_create_trigger_session(
                 // `execution_app_id` but never an endpoint pointer, so there
                 // is nothing structural to record here.
                 None,
+                Some(trigger_id.uuid()),
                 execution_context.owner_principal_id,
                 execution_context.resolved_owner_user_id,
                 source,
@@ -1287,6 +1288,7 @@ pub(super) async fn find_or_create_trigger_session(
                 execution_context.harness_id.uuid(),
                 agent.id.uuid(),
                 agent.id,
+                Some(trigger_id.uuid()),
                 execution_context.owner_principal_id,
                 execution_context.resolved_owner_user_id,
                 source,

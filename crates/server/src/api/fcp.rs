@@ -826,6 +826,8 @@ async fn resolve_session(
             app.agent_version_policy.clone(),
             app.agent_version_id,
             Some(channel.internal_id),
+            // Endpoint ingress, not a trigger.
+            None,
             app.owner_principal_id,
             app.resolved_owner_user_id,
             everruns_platform::SessionSource::Fcp,

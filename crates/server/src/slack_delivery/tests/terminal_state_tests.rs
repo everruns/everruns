@@ -20,6 +20,7 @@ pub(super) async fn seed_session(db: &StorageBackend) -> everruns_provider::type
         org_id: ORG,
         app_id: None,
         endpoint_id: None,
+        trigger_id: None,
         harness_id: Some(HarnessId::from_uuid(uuid::Uuid::nil())),
         agent_id: Some(AgentId::from_uuid(uuid::Uuid::nil())),
         agent_version_id: None,

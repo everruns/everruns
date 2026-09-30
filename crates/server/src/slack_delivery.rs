@@ -2403,35 +2403,14 @@ mod tests {
 
             let session = db
                 .create_session(CreateSessionRow {
-                    source: everruns_platform::SessionSource::Api,
-                    workspace_id: None,
                     org_id,
                     app_id,
-                    endpoint_id: None,
                     harness_id: Some(HarnessId::from_uuid(uuid::Uuid::nil())),
                     agent_id: Some(AgentId::from_uuid(uuid::Uuid::nil())),
-                    agent_version_id: None,
-                    agent_config_hash: None,
-                    agent_identity_id: None,
                     owner_principal_id: PrincipalId::from_seed(1),
-                    resolved_owner_user_id: None,
                     title: Some("recovery test".to_string()),
-                    locale: None,
                     tags: vec![format!("slack:app:{app_public_id}")],
-                    model_id: None,
-                    capabilities: serde_json::json!([]),
-                    tools: serde_json::json!([]),
-                    mcp_servers: serde_json::json!({}),
-                    system_prompt: None,
-                    initial_files: serde_json::Value::Array(vec![]),
-                    hints: None,
-                    max_iterations: None,
-                    parallel_tool_calls: None,
-                    blueprint_id: None,
-                    blueprint_config: None,
-                    network_access: None,
-                    parent_session_id: None,
-                    budget_root_session_id: None,
+                    ..Default::default()
                 })
                 .await
                 .expect("create session");

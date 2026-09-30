@@ -16,6 +16,7 @@ use serde_json::json;
 use sqlx::{Connection, PgConnection, PgPool};
 use uuid::Uuid;
 
+use crate::session_row_fixture::base_session_row;
 use everruns_core::message_filter::MessageQuery;
 use everruns_durable::UpdateField;
 use everruns_server::api::common::Pagination;
@@ -584,35 +585,10 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
     let owner_principal_id = create_test_user_principal(&backend, TEST_ORG_ID, owner.id).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: Some(owner.id),
             title: Some(format!("connection-owner-scope-{}", Uuid::now_v7())),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -752,35 +728,10 @@ async fn test_detached_budget_root_override_canonicalizes_postgres_chain() {
         .expect("add owner to org");
     let owner_principal_id = create_test_user_principal(&backend, TEST_ORG_ID, owner.id).await;
     let base = CreateSessionRow {
-        source: everruns_platform::SessionSource::Api,
-        workspace_id: None,
-        org_id: TEST_ORG_ID,
-        app_id: None,
-        endpoint_id: None,
-        harness_id: None,
-        agent_id: None,
-        agent_identity_id: None,
-        agent_version_id: None,
-        agent_config_hash: None,
         owner_principal_id,
         resolved_owner_user_id: Some(owner.id),
         title: Some(format!("detached-root-{}", Uuid::now_v7())),
-        locale: None,
-        tags: vec![],
-        model_id: None,
-        capabilities: serde_json::json!([]),
-        tools: serde_json::json!([]),
-        mcp_servers: serde_json::json!({}),
-        system_prompt: None,
-        initial_files: serde_json::json!([]),
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
-        parent_session_id: None,
-        budget_root_session_id: None,
+        ..base_session_row(TEST_ORG_ID)
     };
     let root = backend.create_session(base.clone()).await.expect("root");
     let mut detached_input = base.clone();
@@ -891,35 +842,11 @@ async fn test_session_crud() {
         .expect("Failed to create app");
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
             app_id: Some(app.id),
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
             title: Some("Test Session".to_string()),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -1148,35 +1075,9 @@ async fn test_event_crud() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -1254,35 +1155,9 @@ async fn test_event_exclude_types() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -1368,35 +1243,9 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -1476,35 +1325,9 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -1600,35 +1423,9 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -1833,35 +1630,9 @@ async fn test_event_filter_types() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -2150,35 +1921,9 @@ async fn test_session_file_crud() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -2803,35 +2548,9 @@ async fn test_session_usage_tracking() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -2918,35 +2637,9 @@ async fn test_session_previews() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -3552,35 +3245,9 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
             title: Some(format!("monitor-inactive-sched-test-{}", Uuid::now_v7())),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create test session");
@@ -3947,35 +3614,9 @@ async fn list_org_session_tasks_pg() {
         async move {
             backend
                 .create_session(CreateSessionRow {
-                    source: everruns_platform::SessionSource::Api,
-                    workspace_id: None,
-                    org_id,
-                    app_id: None,
-                    endpoint_id: None,
-                    harness_id: None,
-                    agent_id: None,
-                    agent_version_id: None,
-                    agent_config_hash: None,
-                    agent_identity_id: None,
                     owner_principal_id: owner,
-                    resolved_owner_user_id: None,
                     title: Some(format!("eve-583-{}", Uuid::now_v7())),
-                    locale: None,
-                    tags: vec![],
-                    model_id: None,
-                    capabilities: json!([]),
-                    tools: json!([]),
-                    mcp_servers: json!({}),
-                    system_prompt: None,
-                    initial_files: json!([]),
-                    hints: None,
-                    network_access: None,
-                    max_iterations: None,
-                    parallel_tool_calls: None,
-                    blueprint_id: None,
-                    blueprint_config: None,
-                    parent_session_id: None,
-                    budget_root_session_id: None,
+                    ..base_session_row(org_id)
                 })
                 .await
                 .expect("create session")
@@ -4184,35 +3825,8 @@ async fn delete_session_purges_events_and_detaches_usage_records() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -4310,35 +3924,8 @@ async fn append_only_guards_still_reject_ordinary_mutations() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create session");
@@ -4499,35 +4086,9 @@ async fn seed_overdue_schedules(
     let owner_principal_id = create_test_principal(backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
-            org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id,
-            resolved_owner_user_id: None,
             title: Some(format!("{label}-{}", Uuid::now_v7())),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..base_session_row(TEST_ORG_ID)
         })
         .await
         .expect("Failed to create test session");

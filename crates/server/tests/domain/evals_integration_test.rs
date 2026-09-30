@@ -570,35 +570,11 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
     let session = server
         .db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
             org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: principal.id,
-            resolved_owner_user_id: None,
             title: Some("Eval: case-one".to_string()),
-            locale: None,
             tags: vec!["eval".to_string()],
-            model_id: None,
-            capabilities: json!([]),
-            tools: json!([]),
-            mcp_servers: json!({}),
-            system_prompt: None,
-            initial_files: json!([]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
-            workspace_id: None,
+            ..Default::default()
         })
         .await
         .expect("create session");
@@ -998,35 +974,11 @@ async fn seed_run_with_tool_iterations(
     let session = server
         .db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
             org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: principal.id,
-            resolved_owner_user_id: None,
             title: Some("Eval: case-mv".to_string()),
-            locale: None,
             tags: vec!["eval".to_string()],
-            model_id: None,
-            capabilities: json!([]),
-            tools: json!([]),
-            mcp_servers: json!({}),
-            system_prompt: None,
-            initial_files: json!([]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
-            workspace_id: None,
+            ..Default::default()
         })
         .await
         .expect("create session");
@@ -1356,35 +1308,10 @@ async fn seed_session_with_raw_events(
     let session = server
         .db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
             org_id: TEST_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: principal.id,
-            resolved_owner_user_id: None,
             title: Some("ATIF export test".to_string()),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: json!([]),
-            tools: json!([]),
-            mcp_servers: json!({}),
-            system_prompt: None,
-            initial_files: json!([]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
-            workspace_id: None,
+            ..Default::default()
         })
         .await
         .expect("create session");

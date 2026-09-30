@@ -273,6 +273,7 @@ mod tests {
                 org_id: 1,
                 app_id: None,
                 endpoint_id: None,
+                trigger_id: None,
                 harness_id: None,
                 agent_id: None,
                 agent_version_id: None,

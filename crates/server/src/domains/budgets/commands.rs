@@ -9,7 +9,14 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 fn validate_subject_type(subject_type: &str) -> Result<(), CommandError> {
-    const SUPPORTED: &[&str] = &["session", "agent", "user", "org", "agent_endpoint"];
+    const SUPPORTED: &[&str] = &[
+        "session",
+        "agent",
+        "user",
+        "org",
+        "agent_trigger",
+        "agent_endpoint",
+    ];
     if SUPPORTED.contains(&subject_type) {
         return Ok(());
     }
@@ -674,7 +681,14 @@ mod tests {
 
     #[test]
     fn validate_subject_type_accepts_supported_subjects() {
-        for kind in ["session", "agent", "user", "org", "agent_endpoint"] {
+        for kind in [
+            "session",
+            "agent",
+            "user",
+            "org",
+            "agent_trigger",
+            "agent_endpoint",
+        ] {
             assert!(validate_subject_type(kind).is_ok(), "expected {kind} ok");
         }
     }
@@ -743,15 +757,48 @@ mod tests {
         .expect("agent endpoint budget remains writable");
         assert_eq!(updated.limit, 20.0);
     }
-    /// `app_channel` only. Migration 151 (EVE-1129) deleted every `app` budget
-    /// row and dropped the subject type from the CHECK constraint, so there is
-    /// no historical `app` budget left to read — this covered a row that can no
-    /// longer exist. `app_channel` survives and is still live for webhook
-    /// triggers (EVE-1138), so its archival reads still need pinning.
+
+    /// The successor level has a write path. `app_channel` never did — it was
+    /// only ever reachable through migration 138 — which is why an operator
+    /// could not cap a webhook trigger by hand before EVE-1138.
     #[tokio::test]
-    async fn historical_app_channel_budget_reads_remain_available() {
+    async fn agent_trigger_budget_is_creatable_and_updatable() {
         let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app_channel"] {
+        let budget = CreateBudget(CreateBudgetRequest {
+            subject_type: "agent_trigger".to_string(),
+            subject_id: "trg_0199a1b2c3d44e5f8091a2b3c4d5e6f7".to_string(),
+            currency: "usd".to_string(),
+            limit: 10.0,
+            soft_limit: None,
+            period: None,
+            metadata: None,
+        })
+        .execute(&ctx)
+        .await
+        .expect("agent trigger budgets are creatable");
+
+        let updated = UpdateBudgetCmd {
+            budget_id: budget.id.to_string(),
+            limit: Some(20.0),
+            soft_limit: None,
+            status: None,
+            metadata: None,
+        }
+        .execute(&ctx)
+        .await
+        .expect("agent trigger budgets are writable");
+        assert_eq!(updated.limit, 20.0);
+    }
+    /// Both App-shaped levels are retired now — 151 deleted the `app` rows
+    /// (EVE-1129) and 153 re-keyed the `app_channel` ones onto `agent_trigger`
+    /// (EVE-1138) — so neither can be stored again. What this pins is the read
+    /// path: a row carrying a retired subject type, restored from a backup or
+    /// left by a partial migration, must still be readable so an operator can
+    /// see it, rather than failing to deserialize.
+    #[tokio::test]
+    async fn a_retired_subject_type_stays_readable() {
+        let ctx = ctx_for_role(OrgRole::Owner);
+        for subject_type in ["app", "app_channel"] {
             let budget_id = seed_historical_budget(&ctx, subject_type).await;
             ctx.db
                 .create_budget_ledger_entry(CreateBudgetLedgerRow {
@@ -796,11 +843,12 @@ mod tests {
         }
     }
 
-    /// Same narrowing as the read test above: `app` rows are gone.
+    /// The write path is the other half: readable is not writable. A retired
+    /// subject type may be inspected but never updated back into use.
     #[tokio::test]
-    async fn update_budget_rejects_historical_app_channel_subjects() {
+    async fn update_budget_rejects_retired_subject_types() {
         let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app_channel"] {
+        for subject_type in ["app", "app_channel"] {
             let budget_id = seed_historical_budget(&ctx, subject_type).await;
             let err = UpdateBudgetCmd {
                 budget_id: budget_id.to_string(),

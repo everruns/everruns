@@ -55,6 +55,7 @@ async fn platform_chat_starter_is_unique_per_owner_even_after_archive() {
         org_id: TEST_ORG_ID,
         app_id: None,
         endpoint_id: None,
+        trigger_id: None,
         harness_id: Some(platform_chat.id),
         agent_id: None,
         agent_version_id: None,

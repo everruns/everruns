@@ -43,8 +43,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
-/// Request to create a session
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+/// Request to create a session. `Default` is every field absent.
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
     /// How this session was started. Clients may declare only `chat` (an
     /// interactive thread) or `api` (the default); every other source is

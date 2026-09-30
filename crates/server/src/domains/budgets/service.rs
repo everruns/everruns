@@ -16,7 +16,7 @@ use everruns_core::events::{Event, EventData, LLM_GENERATION};
 use everruns_platform::{Budget, LedgerEntry};
 use everruns_provider::model_profiles::estimate_cost_usd;
 use everruns_provider::provider::DriverId;
-use everruns_provider::typed_id::{AgentId, BudgetId, SessionId};
+use everruns_provider::typed_id::{AgentId, BudgetId, SessionId, TriggerId};
 use everruns_provider::user_facing_error::codes as user_facing_error_codes;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -39,14 +39,16 @@ struct BudgetScope {
     agent_subject_id: Option<String>,
     user_subject_id: Option<String>,
     org_subject_id: String,
-    /// Public ID of the originating app channel, from the `app_channel:<id>`
-    /// session tag. Still live: migration 138 moved App webhooks onto
-    /// `agent_triggers`, moved their budgets back from `agent_endpoint` to
-    /// `app_channel`, and deleted the endpoint rows, so for a webhook trigger
-    /// this is the only attribution there is. The `app` level above it was
-    /// retired onto the agent; this one has no structural successor to retire
-    /// onto yet (EVE-1129, EVE-1138).
-    app_channel_subject_id: Option<String>,
+    /// Public ID (`trg_`) of the trigger whose ingress started the session,
+    /// from the `sessions.trigger_id` column.
+    ///
+    /// Design Decision: no budget subject is resolved from a session tag. This
+    /// was the last one — a webhook trigger's cap was keyed on the
+    /// `app_channel:` tag because migration 138 deleted the endpoint row it
+    /// had been keyed on and left nothing structural behind. Migration 153
+    /// adds `sessions.trigger_id` and re-keys those budgets onto the trigger's
+    /// own API id, which is what every other level already does (EVE-1138).
+    trigger_subject_id: Option<String>,
     /// Public ID of the endpoint referenced by `sessions.endpoint_id`.
     endpoint_subject_id: Option<String>,
     session_id: Option<uuid::Uuid>,
@@ -63,7 +65,7 @@ impl BudgetScope {
             agent_id: self.agent_subject_id.as_deref(),
             user_id: self.user_subject_id.as_deref(),
             org_public_id: Some(self.org_subject_id.as_str()),
-            app_channel_id: self.app_channel_subject_id.as_deref(),
+            trigger_id: self.trigger_subject_id.as_deref(),
             endpoint_id: self.endpoint_subject_id.as_deref(),
         }
     }
@@ -133,7 +135,7 @@ impl BudgetService {
             agent_subject_id: self.agent_subject_id(org_id, agent_id, None).await,
             user_subject_id: None,
             org_subject_id: everruns_core::org_public_id_from_internal(org_id),
-            app_channel_subject_id: None,
+            trigger_subject_id: None,
             endpoint_subject_id: None,
             session_id: SessionId::parse(session_id).ok().map(|id| id.uuid()),
             user_id: None,
@@ -200,7 +202,9 @@ impl BudgetService {
         _session_subject_id: &str,
         agent_id_override: Option<&str>,
     ) -> Result<BudgetScope, anyhow::Error> {
-        let app_channel_subject_id = extract_app_channel_subject(&session.tags);
+        let trigger_subject_id = session
+            .trigger_id
+            .map(|id| TriggerId::from_uuid(id).to_string());
         let endpoint_subject_id = match session.endpoint_id {
             Some(endpoint_id) => {
                 self.db
@@ -219,7 +223,7 @@ impl BudgetService {
                 .await,
             user_subject_id: session.resolved_owner_user_id.map(|id| id.to_string()),
             org_subject_id: everruns_core::org_public_id_from_internal(session.org_id),
-            app_channel_subject_id,
+            trigger_subject_id,
             endpoint_subject_id,
             session_id: Some(session.id.uuid()),
             user_id: session.resolved_owner_user_id,
@@ -252,7 +256,7 @@ impl BudgetService {
         for (subject_type, subject_id) in [
             ("session", Some(scope.session_subject_id.as_str())),
             ("agent_endpoint", scope.endpoint_subject_id.as_deref()),
-            ("app_channel", scope.app_channel_subject_id.as_deref()),
+            ("agent_trigger", scope.trigger_subject_id.as_deref()),
             ("agent", scope.agent_subject_id.as_deref()),
             ("user", scope.user_subject_id.as_deref()),
             ("org", Some(scope.org_subject_id.as_str())),
@@ -826,18 +830,6 @@ impl EventListener for BudgetService {
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/// Pull the app channel id from session tags.
-///
-/// The `app:` half of this is gone: the `app` budget level was retired onto the
-/// agent, which is a column rather than a tag (EVE-1129). `app_channel` still
-/// resolves this way because a webhook trigger has no endpoint row to resolve
-/// from — migration 138 deleted it — so the tag is the only identifier left.
-/// The prefix stays reserved, so an org member cannot forge it.
-fn extract_app_channel_subject(tags: &[String]) -> Option<String> {
-    tags.iter()
-        .find_map(|tag| tag.strip_prefix("app_channel:").map(str::to_string))
-}
 
 /// Decide whether a budget's period has elapsed and the balance should reset.
 fn period_elapsed(period: &BudgetPeriod, started: DateTime<Utc>, now: DateTime<Utc>) -> bool {

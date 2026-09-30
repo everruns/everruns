@@ -71,6 +71,7 @@ impl SessionService {
             None,
             None,
             None,
+            None,
             source,
             req,
         )
@@ -107,6 +108,10 @@ impl SessionService {
         // the same rule the 137 backfill follows: derive or leave unknown,
         // never guess an App's endpoint for it.
         endpoint_internal_id: Option<Uuid>,
+        // Internal id of the trigger whose ingress resolved, recorded as
+        // `sessions.trigger_id` (EVE-1138). Set for the migrated App webhooks
+        // that now run as triggers; `None` for every other App channel.
+        trigger_internal_id: Option<Uuid>,
         owner_principal_id: PrincipalId,
         resolved_owner_user_id: Option<Uuid>,
         source: SessionSource,
@@ -120,6 +125,7 @@ impl SessionService {
             Some((agent_version_policy, agent_version_id)),
             app_internal_id,
             endpoint_internal_id,
+            trigger_internal_id,
             Some((owner_principal_id, resolved_owner_user_id)),
             source,
             req,
@@ -140,6 +146,10 @@ impl SessionService {
         harness_id: Uuid,
         agent_internal_id: Uuid,
         agent_public_id: AgentId,
+        // The trigger that started this session, recorded as
+        // `sessions.trigger_id` so its budget subject is a column rather than
+        // the `agent_trigger:` tag (EVE-1138).
+        trigger_internal_id: Option<Uuid>,
         owner_principal_id: PrincipalId,
         resolved_owner_user_id: Option<Uuid>,
         source: SessionSource,
@@ -153,6 +163,7 @@ impl SessionService {
             None,
             None,
             None,
+            trigger_internal_id,
             Some((owner_principal_id, resolved_owner_user_id)),
             source,
             req,
@@ -177,6 +188,11 @@ impl SessionService {
         // inferred from tags — the tag spelling differs per transport and a
         // multi-endpoint App makes `app_id` alone ambiguous.
         endpoint_id: Option<Uuid>,
+        // Agent trigger whose ingress is creating this session (EVE-1138).
+        // Passed rather than inferred from the `app_channel:`/`agent_trigger:`
+        // tags: it is the budget subject for trigger ingress, and no budget
+        // subject is resolved from a tag any more.
+        trigger_id: Option<Uuid>,
         // (principal, resolved_user) override; used by app-channel ingress so
         // the session owner matches the App row (not the internal caller).
         owner_override: Option<(PrincipalId, Option<Uuid>)>,
@@ -427,6 +443,7 @@ impl SessionService {
             source,
             app_id,
             endpoint_id,
+            trigger_id,
             harness_id: Some(harness_id),
             agent_id,
             agent_version_id: resolved_agent_version.as_ref().map(|version| version.id),
@@ -620,6 +637,7 @@ impl SessionService {
             source,
             app_id: None,
             endpoint_id: None,
+            trigger_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
             agent_version_id: None,

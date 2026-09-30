@@ -100,9 +100,10 @@ impl SessionService {
                 agent_internal_id,
                 agent_public_id,
                 None,
-                // A fork is not an app-channel arrival: it has no `app_id`
-                // today and gets no `endpoint_id` for the same reason. It
-                // keeps only the origin, below.
+                // A fork is not an ingress arrival: it has no `app_id` today
+                // and gets no `endpoint_id` or `trigger_id` for the same
+                // reason. It keeps only the origin, below.
+                None,
                 None,
                 None,
                 None,
