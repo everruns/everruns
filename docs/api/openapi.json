@@ -23574,7 +23574,8 @@
             "$ref": "#/components/schemas/ToolCallRepairedData"
           },
           {
-            "$ref": "#/components/schemas/HostedToolCallData"
+            "$ref": "#/components/schemas/HostedToolCallData",
+            "description": "A provider-executed (hosted) tool call changed state."
           },
           {
             "$ref": "#/components/schemas/LlmGenerationData"
