@@ -252,9 +252,9 @@ adaptive thinking needs, since it carries no budget — the driver omits thinkin
 cap. A small cap therefore returns a short answer rather than an empty one. Source:
 `crates/drivers/anthropic/src/effort.rs`.
 
-**Append-only history (Anthropic)**: Claude Opus 5.5 and Fable 5.1 bind each thinking block to the conversation prefix that produced it (`system`, tools, every earlier message), and every model's prompt cache needs the same prefix. Only the leading run of system messages goes into top-level `system`; later system messages stay in place on models whose profile advertises `mid_conversation_system`. Turn-scoped facts and reminders additionally carry `clear_at: "next_user_message"` under beta `mid-conversation-system-clear-at-2026-08-21`, so the transcript retains each copy while the API stops rendering it after the turn. Models without that profile capability retain the user facts and system-fold fallbacks. Requests to Opus 5.5 and Fable 5.1 set `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`): context management edits earlier history by design, and a dropped block degrades that turn instead of failing it. Drops are logged from `input_transformations`. Source: `crates/drivers/anthropic/src/driver_layout.rs`.
+**Append-only history (Anthropic)**: Claude Opus 5.5, Sonnet 5.5, and Fable 5.1 bind each thinking block to the conversation prefix that produced it (`system`, tools, every earlier message), and every model's prompt cache needs the same prefix. Only the leading run of system messages goes into top-level `system`; later system messages stay in place on models whose profile advertises `mid_conversation_system`. Turn-scoped facts and reminders additionally carry `clear_at: "next_user_message"` under beta `mid-conversation-system-clear-at-2026-08-21`, so the transcript retains each copy while the API stops rendering it after the turn. Models without that profile capability retain the user facts and system-fold fallbacks. Requests to Opus 5.5, Sonnet 5.5, and Fable 5.1 set `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`): context management edits earlier history by design, and a dropped block degrades that turn instead of failing it. Drops are logged from `input_transformations`. Source: `crates/drivers/anthropic/src/driver_layout.rs`.
 
-**Always-thinking Claude models**: on families where thinking cannot be disabled (Opus 5.5, Fable 5.x)
+**Always-thinking Claude models**: on families where thinking cannot be disabled (Opus 5.5, Sonnet 5.5, Fable 5.x)
 the driver always sends an explicit effort. No caller effort sends the profile default, and an explicit
 `none` sends `low`, the closest level the API accepts. Requests that end on an assistant turn (prefill)
 are rejected with a configuration error before any network call on every adaptive-thinking family,
@@ -288,7 +288,7 @@ replay state (signature / encrypted payload), and identity (provider, item id,
 bound tool call). Only readable text is ever rendered or published; replay state
 is carried verbatim and never leaves the driver boundary.
 
-Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5.x, Opus 5.5/5/4.8/4.7, Sonnet 5, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5.x, Opus 5.5/5/4.8/4.7, and Sonnet 5 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/model-profiles/src/profiles.rs`.
+Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5.x, Opus 5.5/5/4.8/4.7, Sonnet 5.5/5, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5.x, Opus 5.5/5/4.8/4.7, and Sonnet 5.5/5 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/model-profiles/src/profiles.rs`.
 
 #### Stream Events
 
@@ -739,6 +739,25 @@ loop therefore never dispatches them; the only client-visible artifact is
 - **Usage accounting (follow-up)**: `usage.server_tool_use` is not yet surfaced in
   `LlmCompletionMetadata`; capturing it for cost tracking requires extending that shared
   cross-provider struct and is tracked separately.
+
+### OpenAI Hosted Tools
+
+OpenAI hosted tools (EVE-1115, `web_search` first) are the OpenAI counterpart of OpenRouter
+server tools: model-decided, executed inside the response, never dispatched by the agent loop.
+
+- **Contract**: `everruns_provider::openai_hosted_tools` owns the typed selection and the
+  `openai/hosted_tools` driver option; the `openai_server_tools` capability contributes it.
+- **Rendering**: the Open Responses driver appends the wire entries only when built
+  `with_hosted_tools(true)` (the OpenAI and Azure OpenAI driver). Any other Responses endpoint
+  returns a configuration error instead of sending a request without them.
+- **Loud off-provider**: unlike OpenRouter's no-op, the reason step fails the turn when the
+  option reaches a provider outside `HOSTED_TOOLS_DRIVER_IDS`. An agent configured to search
+  must not quietly answer from memory.
+- **Stream**: `web_search_call` items and `response.web_search_call.*` events are skipped;
+  citations stay in the answer text. The engine counts the option as provider-executed, so a
+  mid-stream failure is not reissued (same rule as OpenRouter server tools).
+- **Follow-ups**: surfacing hosted calls as session tool events, pricing per-call usage
+  (counts are logged today), and code interpreter, file search, and remote MCP.
 
 ### OpenRouter Capacity Strategy
 

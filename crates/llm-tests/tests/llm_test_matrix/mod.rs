@@ -248,11 +248,19 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
 // Current Anthropic tiers only; superseded Opus 4.7 / Sonnet 4.6 entries were
 // dropped when Opus 5 / Sonnet 5 took their matrix rows, and Opus 5.5 took the
 // Opus row from Opus 5. `ANTHROPIC_OPUS5` stays for the Opus 5-specific
-// regression in `tool_search_test.rs`.
+// regression in `tool_search_test.rs`. Sonnet 5.5 runs alongside Sonnet 5
+// (same $2/$10 tier) so its always-on thinking and preserved-thinking wiring
+// is exercised live.
 pub const ANTHROPIC_OPUS55: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-5-5", "ANTHROPIC_API_KEY");
 pub const ANTHROPIC_OPUS5: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-5", "ANTHROPIC_API_KEY");
+
+pub const ANTHROPIC_SONNET55: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Anthropic,
+    "claude-sonnet-5-5",
+    "ANTHROPIC_API_KEY",
+);
 
 pub const ANTHROPIC_SONNET5: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-sonnet-5", "ANTHROPIC_API_KEY");
