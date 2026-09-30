@@ -5492,7 +5492,6 @@ export interface components {
       | "agent"
       | "user"
       | "organization"
-      | "app"
       | "app_channel"
       | "agent_endpoint";
     /**

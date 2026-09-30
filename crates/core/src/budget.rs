@@ -57,13 +57,16 @@ pub enum BudgetSubjectType {
     Agent,
     User,
     Organization,
-    /// Bound to an `App` (every session created for the app counts).
-    App,
     /// Bound to a single `AppChannel` (only sessions for that channel count).
+    ///
+    /// Retained where `App` was not: migration 138 moved App webhooks onto
+    /// `agent_triggers`, moved their budgets back from `agent_endpoint` to
+    /// `app_channel`, and deleted the endpoint rows, so for a webhook trigger
+    /// this is the only attribution there is (EVE-1138).
     AppChannel,
     /// Bound to a single agent endpoint — the exposure a session arrived
-    /// through (EVE-1004). Successor to `AppChannel`, which is retained until
-    /// the App abstraction is deleted.
+    /// through (EVE-1004). Successor to `AppChannel` for everything except the
+    /// webhook triggers migration 138 moved back; EVE-1138 finishes that.
     AgentEndpoint,
 }
 
@@ -75,7 +78,6 @@ impl BudgetSubjectType {
             BudgetSubjectType::Agent => "agent",
             BudgetSubjectType::User => "user",
             BudgetSubjectType::Organization => "org",
-            BudgetSubjectType::App => "app",
             BudgetSubjectType::AppChannel => "app_channel",
             BudgetSubjectType::AgentEndpoint => "agent_endpoint",
         }
@@ -95,9 +97,13 @@ impl From<&str> for BudgetSubjectType {
             "agent" => BudgetSubjectType::Agent,
             "user" => BudgetSubjectType::User,
             "org" | "organization" => BudgetSubjectType::Organization,
-            "app" => BudgetSubjectType::App,
             "app_channel" => BudgetSubjectType::AppChannel,
             "agent_endpoint" => BudgetSubjectType::AgentEndpoint,
+            // Unknown wire strings, including the retired "app", fall back to
+            // the narrowest subject rather than the widest. Migration 151
+            // deleted every `app` row, so this is unreachable for stored data,
+            // and mislabelling one as a session budget would still bind it more
+            // tightly than mislabelling it as an org budget.
             _ => BudgetSubjectType::Session,
         }
     }
