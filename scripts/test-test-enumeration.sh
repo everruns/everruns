@@ -20,6 +20,12 @@ with tempfile.TemporaryDirectory(prefix="everruns-enumeration-") as directory:
     (anchor / "tests").mkdir(parents=True)
     (anchor / "Cargo.toml").write_text('[package]\nname = "anchor"\n')
     (anchor / "tests/smoke.rs").write_text("")
+    domain = anchor / "tests/domain"
+    domain.mkdir()
+    (domain / "main.rs").write_text("mod declared;\n")
+    (domain / "declared.rs").write_text("")
+    undeclared = domain / "undeclared_security_regression.rs"
+    undeclared.write_text("")
     for package in ("first", "second", "library-only"):
         crate = root / "crates/drivers" / package
         (crate / "src").mkdir(parents=True)
@@ -40,7 +46,9 @@ with tempfile.TemporaryDirectory(prefix="everruns-enumeration-") as directory:
 
     # A comment and a library-only crate must not evade inventory discovery.
     check("    cargo test -p first -p second\n    # cargo test -p library-only\n",
-          ["library-only: driver library has no unit-test invocation"])
+          ["library-only: driver library has no unit-test invocation",
+           "anchor: crates/anchor/tests/domain/undeclared_security_regression.rs — not declared as a module in crates/anchor/tests/domain/main.rs"])
+    undeclared.unlink()
     # Identically named targets belong to their package, not the global YAML.
     check("    cargo test -p first --lib\n    cargo test -p second --test chat_wire\n"
           "    cargo test -p second -p library-only --lib\n",

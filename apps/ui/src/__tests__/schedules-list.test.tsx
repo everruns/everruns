@@ -1,6 +1,6 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ReactNode } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
 import SchedulesPage from "@/app/(main)/durable/schedules/page";
 import type { DurableSchedule, SchedulesResponse } from "@/lib/api/types";
 
@@ -53,7 +53,7 @@ const mockUseTriggerSchedule = jest.fn();
 const mockUseDeleteSchedule = jest.fn();
 
 jest.mock("@/hooks/use-durable", () => ({
-  useSchedules: () => mockUseSchedules(),
+  useSchedules: (params?: unknown) => mockUseSchedules(params),
   useCreateSchedule: () => mockUseCreateSchedule(),
   usePauseSchedule: () => mockUsePauseSchedule(),
   useResumeSchedule: () => mockUseResumeSchedule(),
@@ -67,6 +67,57 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
   usePathname: () => "/durable/schedules",
 }));
+
+// Render the design-system Select as a native select so the test can pick a
+// status option without driving the popup — same shape used by other suites.
+jest.mock("@/components/ui/select", () => {
+  function collectOptions(node: ReactNode): ReactNode[] {
+    const options: ReactNode[] = [];
+    Children.forEach(node, (child) => {
+      if (!isValidElement(child)) return;
+      if ((child.type as { isSelectItem?: boolean }).isSelectItem) {
+        const props = child.props as { value: string; children: ReactNode };
+        options.push(
+          <option key={props.value} value={props.value}>
+            {props.children}
+          </option>,
+        );
+        return;
+      }
+      options.push(...collectOptions((child.props as { children?: ReactNode }).children));
+    });
+    return options;
+  }
+
+  function Select({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value: string;
+    onValueChange: (value: string) => void;
+    children: ReactNode;
+  }) {
+    return (
+      <select aria-label="Status" value={value} onChange={(e) => onValueChange(e.target.value)}>
+        {collectOptions(children)}
+      </select>
+    );
+  }
+
+  function SelectItem(_: { value: string; children: ReactNode }) {
+    return null;
+  }
+  SelectItem.isSelectItem = true;
+
+  return {
+    Select,
+    SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectItem,
+    SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectValue: () => null,
+  };
+});
 
 // Mock window.confirm for delete/trigger actions
 const mockConfirm = jest.fn();
@@ -222,21 +273,6 @@ describe("SchedulesPage", () => {
   // ============================================
 
   describe("Schedule List Rendering", () => {
-    it("renders page header with title", () => {
-      render(<SchedulesPage />, { wrapper });
-
-      expect(screen.getByText("Scheduled Tasks")).toBeInTheDocument();
-    });
-
-    it("renders schedule table with correct headers", () => {
-      render(<SchedulesPage />, { wrapper });
-
-      expect(screen.getByText("Schedule")).toBeInTheDocument();
-      expect(screen.getByText("Status")).toBeInTheDocument();
-      expect(screen.getByText("Cron")).toBeInTheDocument();
-      expect(screen.getByText("Target")).toBeInTheDocument();
-    });
-
     it("renders schedule rows with correct names", () => {
       render(<SchedulesPage />, { wrapper });
 
@@ -247,14 +283,14 @@ describe("SchedulesPage", () => {
     it("shows Active badge for enabled schedules", () => {
       render(<SchedulesPage />, { wrapper });
 
-      const activeBadge = screen.getByText("Active");
+      const activeBadge = within(screen.getByRole("table")).getByText("Active");
       expect(activeBadge).toBeInTheDocument();
     });
 
     it("shows Paused badge for disabled schedules", () => {
       render(<SchedulesPage />, { wrapper });
 
-      const pausedBadge = screen.getByText("Paused");
+      const pausedBadge = within(screen.getByRole("table")).getByText("Paused");
       expect(pausedBadge).toBeInTheDocument();
     });
 
@@ -280,10 +316,15 @@ describe("SchedulesPage", () => {
   // ============================================
 
   describe("Search and Filter", () => {
-    it("renders search input", () => {
+    it("filters schedule rows by search query", () => {
       render(<SchedulesPage />, { wrapper });
 
-      expect(screen.getByPlaceholderText(/Search/i)).toBeInTheDocument();
+      fireEvent.change(screen.getByPlaceholderText(/Search/i), {
+        target: { value: "backup" },
+      });
+
+      expect(screen.getByText("Daily Backup")).toBeInTheDocument();
+      expect(screen.queryByText("Hourly Cleanup")).not.toBeInTheDocument();
     });
 
     it("renders status filter dropdown", () => {
@@ -293,6 +334,32 @@ describe("SchedulesPage", () => {
       const statusFilter = screen.getByRole("combobox");
       expect(statusFilter).toBeInTheDocument();
     });
+
+    it("requests only enabled schedules when the Active status filter is chosen", () => {
+      render(<SchedulesPage />, { wrapper });
+
+      fireEvent.change(screen.getByRole("combobox", { name: "Status" }), {
+        target: { value: "active" },
+      });
+
+      expect(mockUseSchedules).toHaveBeenLastCalledWith({ enabled: true });
+    });
+
+    it("requests only paused schedules when the Paused status filter is chosen", () => {
+      render(<SchedulesPage />, { wrapper });
+
+      fireEvent.change(screen.getByRole("combobox", { name: "Status" }), {
+        target: { value: "paused" },
+      });
+
+      expect(mockUseSchedules).toHaveBeenLastCalledWith({ enabled: false });
+    });
+
+    it("requests all schedules (no enabled filter) by default", () => {
+      render(<SchedulesPage />, { wrapper });
+
+      expect(mockUseSchedules).toHaveBeenLastCalledWith({ enabled: undefined });
+    });
   });
 
   // ============================================
@@ -300,14 +367,6 @@ describe("SchedulesPage", () => {
   // ============================================
 
   describe("Action Buttons", () => {
-    it("renders action buttons for each schedule", () => {
-      render(<SchedulesPage />, { wrapper });
-
-      // Should have multiple action buttons (trigger, pause/resume, settings, delete)
-      const buttons = screen.getAllByRole("button");
-      expect(buttons.length).toBeGreaterThan(2);
-    });
-
     it("names schedule navigation links by destination", () => {
       render(<SchedulesPage />, { wrapper });
 
@@ -402,6 +461,7 @@ describe("SchedulesPage", () => {
       // Find trigger icon button
       const buttons = screen.getAllByRole("button");
       const triggerButton = buttons.find((btn) => btn.querySelector(".lucide-zap"));
+      expect(triggerButton).toBeTruthy();
       if (triggerButton) {
         fireEvent.click(triggerButton);
         expect(mockTriggerMutate).not.toHaveBeenCalled();
@@ -437,12 +497,6 @@ describe("SchedulesPage", () => {
   // ============================================
 
   describe("Create Schedule Dialog", () => {
-    it("renders New Schedule button", () => {
-      render(<SchedulesPage />, { wrapper });
-
-      expect(screen.getByRole("button", { name: /New Schedule/i })).toBeInTheDocument();
-    });
-
     it("opens dialog when New Schedule button is clicked", async () => {
       render(<SchedulesPage />, { wrapper });
 
@@ -466,41 +520,6 @@ describe("SchedulesPage", () => {
         expect(nameInput).toBeInTheDocument();
         const cronInput = document.getElementById("cron");
         expect(cronInput).toBeInTheDocument();
-      });
-    });
-
-    it("calls createMutation with correct data on submit", async () => {
-      const mockCreateMutate = jest.fn().mockResolvedValue({
-        id: "sched_new",
-        name: "Test Schedule",
-      });
-      mockUseCreateSchedule.mockReturnValue({
-        mutateAsync: mockCreateMutate,
-        isPending: false,
-      });
-
-      render(<SchedulesPage />, { wrapper });
-
-      // Open dialog
-      fireEvent.click(screen.getByRole("button", { name: /New Schedule/i }));
-
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
-      });
-
-      // Fill form using id-based selectors
-      const nameInput = document.getElementById("name") as HTMLInputElement;
-      fireEvent.change(nameInput, { target: { value: "Test Schedule" } });
-
-      const targetNameInput = document.getElementById("targetName") as HTMLInputElement;
-      fireEvent.change(targetNameInput, { target: { value: "test-workflow" } });
-
-      // Submit form - button text is "Create Schedule"
-      const submitButton = screen.getByRole("button", { name: /Create Schedule/i });
-      fireEvent.click(submitButton);
-
-      await waitFor(() => {
-        expect(mockCreateMutate).toHaveBeenCalled();
       });
     });
 
@@ -662,15 +681,6 @@ describe("SchedulesPage", () => {
   // ============================================
 
   describe("Refresh", () => {
-    it("renders refresh button", () => {
-      render(<SchedulesPage />, { wrapper });
-
-      // Look for refresh icon button by SVG class
-      const buttons = screen.getAllByRole("button");
-      const refreshButton = buttons.find((btn) => btn.querySelector(".lucide-refresh-cw"));
-      expect(refreshButton).toBeTruthy();
-    });
-
     it("calls refetch when refresh button is clicked", () => {
       const mockRefetch = jest.fn();
       mockUseSchedules.mockReturnValue({

@@ -1,30 +1,9 @@
 //! Tests: manifest_build.
 
 use super::*;
-use everruns_core::channel::SessionBinding;
 use everruns_worker::AgentRunner;
 
 use super::tests_support::*;
-
-#[test]
-fn test_thread_context_triggers_only_for_per_thread_with_thread_ts() {
-    // PerThread + thread_ts present → should trigger context injection
-    let config = test_config(SessionBinding::Thread);
-    let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
-    assert!(config.session_strategy == SessionBinding::Thread && event.thread_ts.is_some());
-
-    // PerThread + no thread_ts → should NOT trigger (new thread, no prior context)
-    let event_no_thread = test_event("C123", Some("1234.5678"), None);
-    assert!(event_no_thread.thread_ts.is_none());
-
-    // PerChannel → should NOT trigger
-    let config_channel = test_config(SessionBinding::Conversation);
-    assert!(config_channel.session_strategy != SessionBinding::Thread);
-
-    // PerUser → should NOT trigger
-    let config_user = test_config(SessionBinding::Requester);
-    assert!(config_user.session_strategy != SessionBinding::Thread);
-}
 
 #[test]
 fn test_manifest_includes_history_scopes_for_thread_context() {

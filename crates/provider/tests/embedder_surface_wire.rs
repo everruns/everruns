@@ -392,13 +392,9 @@ async fn a_streaming_caller_sees_deltas_live_and_still_gets_the_folded_turn() {
     .await
     .expect("the turn folds");
 
-    // The observer sees every event, including the empty delta the finish
-    // frame rides in on; only the fold skips empties. A renderer therefore
-    // filters, and the text it shows still matches the folded turn.
-    assert_eq!(
-        seen,
-        vec!["Hel".to_string(), "lo".to_string(), String::new()]
-    );
+    // Every delta carries content: the finish frame emits no empty filler, so
+    // a renderer needs no filter and its text matches the folded turn.
+    assert_eq!(seen, vec!["Hel".to_string(), "lo".to_string()]);
     let rendered: String = seen.concat();
     assert_eq!(rendered, turn.text);
     assert_eq!(turn.text, "Hello");

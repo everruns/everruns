@@ -11,6 +11,7 @@
 //! Run with: `cargo test -p everruns-host --features lua,bashkit,host-shell --test integration -- --test-threads=1`
 //! Run one module: `cargo test -p everruns-host --features lua,bashkit,host-shell --test integration <module>:: -- --test-threads=1`
 
+mod durable_ask_user_pause_test;
 mod engine_planned_turn_test;
 mod event_log_contract;
 mod execution_contract_guard;

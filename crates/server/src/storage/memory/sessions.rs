@@ -917,6 +917,29 @@ impl InMemoryDatabase {
         Ok(result.into_iter().next())
     }
 
+    /// Find a native endpoint session matching ALL given tags + owner within an org.
+    pub async fn find_endpoint_session_by_tags_and_owner(
+        &self,
+        org_id: i64,
+        endpoint_id: Uuid,
+        owner_principal_id: PrincipalId,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        let sessions = self.sessions.read();
+        let mut result: Vec<_> = sessions
+            .values()
+            .filter(|s| {
+                s.org_id == org_id
+                    && s.endpoint_id == Some(endpoint_id)
+                    && s.owner_principal_id == owner_principal_id
+                    && tags.iter().all(|tag| s.tags.contains(tag))
+            })
+            .cloned()
+            .collect();
+        result.sort_by_key(|session| session.created_at);
+        Ok(result.into_iter().next())
+    }
+
     /// Find a single session matching ALL given tags + owner within an org.
     pub async fn find_session_by_tags_and_owner(
         &self,
