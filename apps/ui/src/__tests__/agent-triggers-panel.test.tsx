@@ -37,6 +37,20 @@ jest.mock("@/hooks/use-agent-triggers", () => ({
         created_at: "2026-07-17T00:00:00Z",
         updated_at: "2026-07-17T00:00:00Z",
       } satisfies AgentTrigger,
+      {
+        id: "trg_github",
+        agent_id: "agent_123",
+        trigger_type: "github",
+        config: {
+          events: ["pull_request.opened"],
+          repositories: ["acme/api"],
+          session_mode: "per_thread",
+          message: "Review the PR",
+        },
+        enabled: true,
+        created_at: "2026-07-17T00:00:00Z",
+        updated_at: "2026-07-17T00:00:00Z",
+      } as unknown as AgentTrigger,
     ],
     isLoading: false,
   }),
@@ -90,5 +104,17 @@ describe("AgentTriggersPanel", () => {
       "/agents/agent_123/triggers/new",
     );
     expect(screen.queryByRole("button", { name: "Add trigger" })).not.toBeInTheDocument();
+  });
+
+  it("renders a GitHub trigger with events, repositories, and an editor link", () => {
+    render(<AgentTriggersPanel agentId="agent_123" />);
+
+    expect(screen.getByText("GitHub pull requests")).toBeInTheDocument();
+    expect(screen.getByText(/pull_request\.opened · acme\/api/)).toBeInTheDocument();
+    expect(screen.getByText("One session per pull request")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Open trigger editor" }).at(-1)).toHaveAttribute(
+      "href",
+      "/agents/agent_123/triggers/trg_github",
+    );
   });
 });

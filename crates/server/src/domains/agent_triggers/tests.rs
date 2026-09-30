@@ -6,6 +6,9 @@
 use super::*;
 use crate::domains::agent_triggers::deliveries::ListAgentTriggerDeliveries;
 use crate::domains::agent_triggers::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
+use crate::domains::agent_triggers::webhook_invocation::{
+    WebhookTriggerInvocationRequest, invoke_webhook_agent_trigger,
+};
 use crate::domains::common::Ctx;
 use crate::event_delivery::EventDelivery;
 use crate::storage::StorageBackend;
@@ -153,6 +156,8 @@ fn webhook_req(enabled: bool) -> CreateAgentTriggerRequest {
         event_id_template: None,
         subject_template: None,
         filter: None,
+        github_events: None,
+        repositories: None,
         auth: None,
         enabled,
     }
@@ -225,6 +230,8 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
         event_id_template: None,
         subject_template: None,
         filter: None,
+        github_events: None,
+        repositories: None,
         auth: None,
         enabled,
     }
@@ -1194,4 +1201,193 @@ async fn delivery_history_is_bounded_per_trigger() {
         .unwrap();
     let ids: Vec<_> = kept.iter().filter_map(|row| row.event_id.clone()).collect();
     assert_eq!(ids, vec!["e4", "e3", "e2"]);
+}
+
+// ---- GitHub triggers ------------------------------------------------------
+
+fn github_req(repositories: Option<Vec<String>>) -> CreateAgentTriggerRequest {
+    CreateAgentTriggerRequest {
+        trigger_type: AgentTriggerType::GitHub,
+        session_mode: SessionBinding::Thread,
+        message: "Summarize {{github.repository}}#{{github.number}}".to_string(),
+        token: None,
+        repositories,
+        ..webhook_req(true)
+    }
+}
+
+fn github_delivery(
+    delivery_id: &str,
+    event: &str,
+    action: &str,
+    repo: &str,
+    sender: &str,
+) -> crate::domains::agent_triggers::github::GitHubDelivery {
+    crate::domains::agent_triggers::github::GitHubDelivery {
+        event: event.to_string(),
+        delivery_id: delivery_id.to_string(),
+        payload: serde_json::json!({
+            "action": action,
+            "number": 7,
+            "pull_request": {"number": 7, "title": "Fix", "html_url": "https://x/pull/7"},
+            "repository": {"full_name": repo},
+            "sender": {"login": sender},
+        }),
+    }
+}
+
+#[tokio::test]
+async fn github_trigger_needs_the_identitys_app_and_routes_its_deliveries() {
+    use crate::domains::agent_triggers::github::dispatch_github_delivery;
+    use crate::storage::github_app_rows::CreateGitHubAppRow;
+
+    let db = Arc::new(StorageBackend::in_memory());
+    let (agent_id, _) = seed_agent(&db).await;
+    let ctx = role_ctx(db.clone(), OrgRole::Owner);
+
+    // No GitHub connection yet: creating the trigger is refused.
+    let err = CreateAgentTrigger {
+        agent_id: agent_id.clone(),
+        req: github_req(None),
+    }
+    .run(&ctx)
+    .await
+    .expect_err("GitHub trigger needs GitHub connected");
+    assert!(err.message().contains("GitHub"), "got: {err}");
+
+    let agent = db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let (identity_id, _) = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
+        .await
+        .unwrap();
+    let app = db
+        .create_github_app(CreateGitHubAppRow {
+            id: uuid::Uuid::new_v4(),
+            org_id: DEFAULT_ORG_ID,
+            agent_identity_id: identity_id,
+            app_id: 42,
+            slug: "pr-summarizer".to_string(),
+            name: "pr-summarizer".to_string(),
+            html_url: "https://github.com/apps/pr-summarizer".to_string(),
+            owner_login: Some("acme".to_string()),
+            client_id: None,
+            client_secret_encrypted: None,
+            private_key_encrypted: vec![1],
+            webhook_secret_encrypted: Some(vec![1]),
+            created_by_user_id: None,
+        })
+        .await
+        .unwrap();
+
+    let trigger = CreateAgentTrigger {
+        agent_id: agent_id.clone(),
+        req: github_req(Some(vec!["Acme/API".to_string()])),
+    }
+    .run(&ctx)
+    .await
+    .expect("create GitHub trigger");
+    assert_eq!(trigger.trigger_type, AgentTriggerType::GitHub);
+    assert!(
+        trigger.ingress_id.is_none(),
+        "GitHub triggers share the App's webhook"
+    );
+
+    let runner = Arc::new(RecordingRunner::default());
+    let session_service = SessionService::new(db.clone());
+    let message_service = MessageService::new(
+        db.clone(),
+        runner.clone(),
+        false,
+        EventDelivery::in_memory(),
+    );
+    let fire = async |delivery| {
+        dispatch_github_delivery(
+            &db,
+            &session_service,
+            &message_service,
+            &app,
+            &delivery,
+            None,
+        )
+        .await
+        .expect("delivery routed")
+        .into_iter()
+        .map(|dispatch| dispatch.outcome.expect("dispatch ok"))
+        .collect::<Vec<_>>()
+    };
+
+    let opened = fire(github_delivery(
+        "d1",
+        "pull_request",
+        "opened",
+        "acme/api",
+        "octo",
+    ))
+    .await;
+    let [events::TriggerEventOutcome::Dispatched(first)] = opened.as_slice() else {
+        panic!("opened PR must dispatch, got {opened:?}");
+    };
+    let redelivered = fire(github_delivery(
+        "d1",
+        "pull_request",
+        "opened",
+        "acme/api",
+        "octo",
+    ))
+    .await;
+    assert!(matches!(
+        redelivered.as_slice(),
+        [events::TriggerEventOutcome::Duplicate]
+    ));
+    let pushed = fire(github_delivery(
+        "d2",
+        "pull_request",
+        "synchronize",
+        "acme/api",
+        "octo",
+    ))
+    .await;
+    let [events::TriggerEventOutcome::Dispatched(second)] = pushed.as_slice() else {
+        panic!("push to the same PR must dispatch, got {pushed:?}");
+    };
+    assert_eq!(first.session_id, second.session_id, "one session per PR");
+
+    let other_repo = fire(github_delivery(
+        "d3",
+        "pull_request",
+        "opened",
+        "acme/web",
+        "octo",
+    ))
+    .await;
+    assert!(matches!(
+        other_repo.as_slice(),
+        [events::TriggerEventOutcome::Filtered]
+    ));
+    // Unsubscribed actions and the App's own activity are not routed at all.
+    assert!(
+        fire(github_delivery(
+            "d4",
+            "pull_request",
+            "closed",
+            "acme/api",
+            "octo"
+        ))
+        .await
+        .is_empty()
+    );
+    assert!(
+        fire(github_delivery(
+            "d5",
+            "pull_request",
+            "opened",
+            "acme/api",
+            "pr-summarizer[bot]"
+        ))
+        .await
+        .is_empty()
+    );
 }

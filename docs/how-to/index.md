@@ -30,6 +30,7 @@ Each how-to here solves one concrete problem. They assume you already understand
 - [Package an agent skill](/how-to/package-a-skill/), author a SKILL.md, bundle scripts and references.
 - [Publish a skill to the registry](/how-to/publish-a-skill-to-the-registry/), share skills across agents.
 - [Publish an agent as a Slack app](/how-to/publish-to-slack/), deploy an agent to a Slack workspace.
+- [Summarize GitHub pull requests](/how-to/summarize-github-pull-requests/), connect GitHub and comment a summary on every pull request.
 
 ## Upgrading
 

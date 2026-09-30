@@ -1364,6 +1364,8 @@ GitHub Scout is a blueprint-only integration. It gives the child agent private r
 | TM-GHAPP-003 | App private key, client secret or webhook secret leak | High | Encrypted at rest with the server encryption key; never returned by any API or written to logs; GitHub error bodies are not echoed. Installation tokens are minted per use (1h TTL) and never stored. | MITIGATED |
 | TM-GHAPP-004 | Open redirect through `return_to` | Medium | Only same-origin UI paths are accepted (leading `/`, no `//`, backslash or control characters), and the value travels inside the sealed state. | MITIGATED |
 | TM-GHAPP-005 | Over-broad App permissions | Medium | The manifest requests contents and metadata read, pull requests and issues write. The installing user picks repositories on GitHub. | **CALLER RISK** |
+| TM-GHAPP-006 | Forged GitHub webhook starts agent runs | High | The webhook route carries no user auth, so the App's `X-Hub-Signature-256` HMAC over the raw body is the only gate: it is checked before any parsing with a constant-time compare, and a missing or empty secret fails closed. Deliveries only reach triggers of agents bound to that App's identity. | MITIGATED |
+| TM-GHAPP-007 | Replayed or self-caused deliveries loop runs | Medium | The GitHub delivery id is the event id, so the shared pipeline records a replay as a duplicate. Deliveries whose sender is the App's own bot are dropped, so an agent's comment cannot re-trigger it. | MITIGATED |
 
 ## 18. E2B Cloud Sandbox (TM-E2B)
 

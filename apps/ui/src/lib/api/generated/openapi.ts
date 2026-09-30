@@ -4883,7 +4883,7 @@ export interface components {
      * @description The kind of event that fires an agent trigger.
      * @enum {string}
      */
-    AgentTriggerType: "schedule" | "webhook";
+    AgentTriggerType: "schedule" | "webhook" | "github";
     /** @description Immutable snapshot of an Agent's authored and resolved runtime config. */
     AgentVersion: {
       /**
@@ -6607,6 +6607,11 @@ export interface components {
       event_id_template?: string | null;
       filter?: components["schemas"]["TriggerEventFilter"] | null;
       /**
+       * @description GitHub only: subscribed events (`pull_request` or
+       *     `pull_request.opened`). Defaults to pull request open/update events.
+       */
+      github_events?: string[] | null;
+      /**
        * @description Message content or `{{template}}` sent when the trigger fires.
        * @example Run the daily digest
        */
@@ -6616,6 +6621,8 @@ export interface components {
        * @description Optional per-ingress, per-IP webhook request limit.
        */
       rate_limit_per_minute?: number | null;
+      /** @description GitHub only: repositories (`owner/name`) to accept; empty accepts all. */
+      repositories?: string[] | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
       /**
@@ -17733,6 +17740,8 @@ export interface components {
       /** @description Replacement idempotency-key template. An empty string removes it. */
       event_id_template?: string | null;
       filter?: components["schemas"]["TriggerEventFilter"] | null;
+      /** @description Replacement GitHub event subscriptions. */
+      github_events?: string[] | null;
       /** @description Replacement message sent when the trigger fires. */
       message?: string | null;
       /**
@@ -17740,6 +17749,8 @@ export interface components {
        * @description Replacement per-ingress, per-IP webhook request limit.
        */
       rate_limit_per_minute?: number | null;
+      /** @description Replacement GitHub repository scope. An empty list accepts all. */
+      repositories?: string[] | null;
       session_mode?: components["schemas"]["SessionBinding"] | null;
       /** @description Replacement subject template. An empty string removes it. */
       subject_template?: string | null;

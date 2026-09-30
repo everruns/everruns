@@ -38,6 +38,11 @@ export const queryKeys = {
       ["agent-triggers", agentId, triggerId, "runs"] as const,
   },
 
+  agentGithub: {
+    status: (agentId: string) => ["agent-github", agentId, "status"] as const,
+    repositories: (identityId: string) => ["agent-github", identityId, "repositories"] as const,
+  },
+
   // Agent example queries
   agentExamples: {
     all: ["agent-examples"] as const,

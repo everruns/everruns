@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Clock3, ExternalLink, Pencil, Play, Plus, Trash2, Webhook } from "lucide-react";
+import {
+  Clock3,
+  ExternalLink,
+  GitPullRequest,
+  Pencil,
+  Play,
+  Plus,
+  Trash2,
+  Webhook,
+} from "lucide-react";
 import {
   useAgentTriggerRuns,
   useAgentTriggers,
@@ -100,7 +109,7 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
         <div>
           <CardTitle>Triggers</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            Wake this agent on a recurring schedule.
+            Wake this agent on a schedule or on events.
           </p>
         </div>
         <Link href={`/agents/${agentId}/triggers/new`} className={buttonVariants({ size: "sm" })}>
@@ -116,21 +125,34 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
           </div>
         ) : (
           triggers.map((trigger) => {
+            const isGithub = trigger.trigger_type === "github";
             const isSchedule = trigger.trigger_type === "schedule";
-            const config = isSchedule
-              ? getScheduleTriggerConfig(trigger)
-              : getWebhookTriggerConfig(trigger);
+            const githubConfig = trigger.config as unknown as {
+              events?: string[];
+              repositories?: string[];
+              session_mode?: string;
+              message: string;
+            };
+            const config = isGithub
+              ? githubConfig
+              : isSchedule
+                ? getScheduleTriggerConfig(trigger)
+                : getWebhookTriggerConfig(trigger);
             return (
               <div key={trigger.id} className="space-y-3 border p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      {isSchedule ? (
+                      {isGithub ? (
+                        <GitPullRequest className="size-4 text-muted-foreground" />
+                      ) : isSchedule ? (
                         <Clock3 className="size-4 text-muted-foreground" />
                       ) : (
                         <Webhook className="size-4 text-muted-foreground" />
                       )}
-                      {isSchedule ? (
+                      {isGithub ? (
+                        <span className="font-medium">GitHub pull requests</span>
+                      ) : isSchedule ? (
                         <CronLabel
                           expr={getScheduleTriggerConfig(trigger).cron_expression}
                           tz={getScheduleTriggerConfig(trigger).timezone}
@@ -143,10 +165,20 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">{config.message}</p>
+                    {isGithub && (
+                      <p className="text-xs text-muted-foreground">
+                        {(githubConfig.events ?? []).join(", ")} ·{" "}
+                        {githubConfig.repositories?.length
+                          ? githubConfig.repositories.join(", ")
+                          : "all repositories"}
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {config.session_mode === "session_per_invocation"
                         ? "New session per run"
-                        : "Shared session"}
+                        : config.session_mode === "per_thread"
+                          ? "One session per pull request"
+                          : "Shared session"}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -157,6 +189,15 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                         updateTrigger.mutate({ triggerId: trigger.id, request: { enabled } })
                       }
                     />
+                    {isGithub && (
+                      <Link
+                        href={`/agents/${agentId}/triggers/${trigger.id}`}
+                        className={buttonVariants({ variant: "ghost", size: "icon" })}
+                        aria-label="Open trigger editor"
+                      >
+                        <ExternalLink className="size-4" />
+                      </Link>
+                    )}
                     {isSchedule && (
                       <>
                         <Button
@@ -191,10 +232,14 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                   </div>
                 </div>
                 {isSchedule && <TriggerRuns agentId={agentId} triggerId={trigger.id} />}
-                <div className="border-t pt-4">
-                  <p className="mb-3 text-xs font-medium uppercase text-muted-foreground">Set up</p>
-                  <TriggerSetupGuidance trigger={trigger} />
-                </div>
+                {!isGithub && (
+                  <div className="border-t pt-4">
+                    <p className="mb-3 text-xs font-medium uppercase text-muted-foreground">
+                      Set up
+                    </p>
+                    <TriggerSetupGuidance trigger={trigger} />
+                  </div>
+                )}
               </div>
             );
           })

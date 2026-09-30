@@ -122,6 +122,18 @@ and `{{payload.repository.full_name}}#{{payload.number}}`). Filtered and
 duplicate requests still get `202`, so senders do not retry them. Threats are
 tracked as TM-TRIGGER in `knowledge/security/threat-model.md`.
 
+**GitHub triggers** (`trigger_type: github`) need no token or template. The
+agent's identity must have its own GitHub App connected (see
+`knowledge/integrations/github-apps.md`); that App's signed webhook is the only
+ingress, so one App serves every GitHub trigger on agents sharing the identity.
+A trigger subscribes to events (`pull_request` or `pull_request.opened`,
+defaulting to pull requests opened, reopened, pushed to or marked ready), may be
+scoped to repositories, and gets the GitHub delivery id as event id and
+`owner/repo#number` as subject, so `per_thread` means one session per pull
+request or issue. Unsubscribed events are not recorded; a repository outside
+the scope is a recorded filter miss. Events the App itself caused are dropped so
+an agent commenting on a pull request does not wake itself.
+
 ## Ownership and provenance
 
 Trigger sessions are owned by the **agent's own `agent_identity` principal**, so
