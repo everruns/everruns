@@ -96,6 +96,8 @@ pub struct LlmCompletionMetadata {
     /// it inline (e.g. OpenRouter's `usage.cost`). `None` for providers that do
     /// not return a cost.
     pub provider_cost_usd: Option<f64>,
+    /// Service tier the provider reports serving (OpenAI `service_tier`); prices the call.
+    pub service_tier: Option<String>,
     /// Configured model used for the request.
     pub model: Option<String>,
     /// Model the provider reported serving, when its response includes one.

@@ -55,6 +55,28 @@ pub fn estimate_cost_usd(
     )
 }
 
+/// [`estimate_cost_usd`] priced at the service tier that served the request.
+/// See `everruns_model_profiles::estimate_cost_usd_for_speed`.
+pub fn estimate_cost_usd_for_speed(
+    provider_type: &DriverId,
+    model_id: &str,
+    input_tokens: u32,
+    output_tokens: u32,
+    cache_read_tokens: u32,
+    cache_creation_tokens: u32,
+    served_tier: Option<&str>,
+) -> Option<f64> {
+    everruns_model_profiles::estimate_cost_usd_for_speed(
+        provider_type.as_str(),
+        model_id,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        served_tier,
+    )
+}
+
 /// Get the vendor/brand for a model id, or None if it is not in the registry
 /// (or not offered under the given provider type).
 pub fn get_model_vendor(provider_type: &DriverId, model_id: &str) -> Option<ModelVendor> {

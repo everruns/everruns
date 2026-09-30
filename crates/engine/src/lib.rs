@@ -56,7 +56,7 @@ pub(crate) use everruns_provider::user_facing_error::{
 };
 pub(crate) use everruns_provider::{
     ChatDriver, CompactInputItem, ProviderEndpoint, ProviderOpaqueContext, compact,
-    driver_registry, error, llm_retry, model, model_profiles, tool_types, typed_id,
+    driver_registry, error, llm_retry, model_profiles, tool_types, typed_id,
 };
 
 pub(crate) mod tool_call_integrity {

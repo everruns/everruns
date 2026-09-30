@@ -16,12 +16,16 @@ mod anthropic_capabilities;
 mod enumeration;
 mod gpt6;
 mod model_id_match;
+mod speed;
+
 pub use enumeration::*;
+pub use speed::estimate_cost_usd_for_speed;
+use speed::{speed_flex_only, speed_flex_priority, speed_priority_only};
 
 use crate::types::{
     CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
-    ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue, ServiceKind, Speed, SpeedConfig,
-    SpeedValue, Verbosity, VerbosityConfig, VerbosityValue,
+    ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue, ServiceKind, Verbosity,
+    VerbosityConfig, VerbosityValue,
 };
 
 // Helper functions for creating reasoning effort configurations
@@ -165,61 +169,6 @@ fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
             effort(ReasoningEffort::Xhigh, "Max"),
         ],
         default: ReasoningEffort::High,
-    }
-}
-
-// Helper functions for creating speed (service tier) configurations.
-//
-// Availability is sourced from OpenAI's official tier tables: the API pricing
-// page for Flex, the Priority processing page for first-party priority models,
-// and the specialized pricing table for Codex priority. A model gets a speed
-// config only when it has a Flex and/or Priority row. Chat-latest,
-// deep-research, and unlisted variants have no speed config. Display names
-// follow Codex's speed selector ("Fast" for priority).
-
-fn speed(value: Speed, name: &str) -> SpeedValue {
-    SpeedValue {
-        value,
-        name: name.into(),
-    }
-}
-
-/// Speed for models with both flex and priority pricing rows
-/// (gpt-5.4, gpt-5.4-mini, gpt-5.5, gpt-5.6 series).
-fn speed_flex_priority() -> SpeedConfig {
-    SpeedConfig {
-        values: vec![
-            speed(Speed::Flex, "Flex"),
-            speed(Speed::Default, "Standard"),
-            speed(Speed::Priority, "Fast"),
-        ],
-        default: Speed::Default,
-    }
-}
-
-/// Speed for models with only a flex pricing row
-/// (gpt-5.4-nano, gpt-5.4-pro, gpt-5.5-pro).
-fn speed_flex_only() -> SpeedConfig {
-    SpeedConfig {
-        values: vec![
-            speed(Speed::Flex, "Flex"),
-            speed(Speed::Default, "Standard"),
-        ],
-        default: Speed::Default,
-    }
-}
-
-/// Speed for models with only a priority pricing row
-/// (gpt-4.1 family, gpt-5/gpt-5-mini,
-/// gpt-5-codex, gpt-5.1/gpt-5.1-codex, gpt-5.2, gpt-5.3-codex,
-/// o3, o4-mini).
-fn speed_priority_only() -> SpeedConfig {
-    SpeedConfig {
-        values: vec![
-            speed(Speed::Default, "Standard"),
-            speed(Speed::Priority, "Fast"),
-        ],
-        default: Speed::Default,
     }
 }
 
@@ -370,6 +319,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["gpt-6-astra"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-6-sol"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-6-luna"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-6.1-sol"], ModelVendor::OpenAi, OPENAI),
     // Anthropic
     md(&["claude-fable-5-1"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-fable-5"], ModelVendor::Anthropic, ANTHROPIC),
@@ -801,7 +751,7 @@ fn openai_embedding_profile(name: &str, family: &str, input_cost: f64) -> ModelP
 
 fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id {
-        "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna" => gpt6::profile_data(model_id),
+        "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna" | "gpt-6.1-sol" => gpt6::profile_data(model_id),
         "text-embedding-3-small" => Some(openai_embedding_profile(
             "Text Embedding 3 Small",
             "text-embedding-3-small",
@@ -2903,6 +2853,7 @@ mod claude_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::Speed;
 
     #[test]
     fn versioned_and_canonical_aliases_resolve_to_the_same_profile() {

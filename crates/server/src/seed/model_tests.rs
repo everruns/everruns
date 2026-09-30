@@ -180,6 +180,11 @@ async fn test_seed_surfaces_current_gen_models() {
         Some(&(true, true)),
         "GPT-6 Luna must be seeded as an enabled favorite"
     );
+    assert_eq!(
+        openai.get("gpt-6.1-sol"),
+        Some(&(true, true)),
+        "GPT-6.1 Sol must be seeded as an enabled favorite"
+    );
 
     let anthropic = db
         .list_models_for_provider(DEFAULT_ORG_ID, seed_ids::ANTHROPIC_PROVIDER)

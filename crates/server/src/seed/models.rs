@@ -62,7 +62,15 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         enabled: true, // Enabled by default
         is_favorite: false,
     },
-    // OpenAI GPT-6 series (Astra / Sol / Luna)
+    // OpenAI GPT-6 series (Astra / Sol / Luna, and the GPT-6.1 Sol refresh)
+    SeedModel {
+        id: seed_ids::GPT_6_1_SOL,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-6.1-sol",
+        display_name: "GPT-6.1 Sol",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
     SeedModel {
         // GPT-6 Astra is OpenAI's flagship, available as an enabled favorite
         // for the hardest reasoning/agentic work.

@@ -123,6 +123,7 @@ mod seed_ids {
     pub const GPT_6_ASTRA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022a);
     pub const GPT_6_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022b);
     pub const GPT_6_LUNA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022c);
+    pub const GPT_6_1_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022d);
 
     // Anthropic Models (0x300-0x3FF)
     pub const CLAUDE_FABLE_5_1: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030f);
@@ -168,9 +169,7 @@ mod seed_ids {
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000704);
 }
 
-// ============================================
-// Seeder Result
-// ============================================
+// ---- Seeder Result ----
 
 /// Result of running a seeder
 #[derive(Debug, Default)]

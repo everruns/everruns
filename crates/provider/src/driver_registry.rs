@@ -454,16 +454,15 @@ pub struct LlmCallConfig {
     /// caller explicitly asking for no reasoning, which drivers honor by
     /// omitting the reasoning request fields rather than sending a default.
     pub reasoning_effort: Option<crate::model::ReasoningEffort>,
-    /// Speed (service tier) for this call: "flex", "default", or "priority".
-    /// Serialized as OpenAI `service_tier`; omitted when `None` so the
-    /// provider keeps its default ("auto") routing.
+    /// Speed (service tier) for this call: "flex", "default", "priority",
+    /// "fast" or "ultrafast". Serialized as OpenAI `service_tier`; omitted
+    /// when `None` so the provider keeps its default ("auto") routing.
     pub speed: Option<String>,
     /// Verbosity for this call: "low", "medium", or "high". Serialized as
     /// OpenAI `verbosity`; omitted when `None` so the provider keeps its
     /// default ("medium") output length.
     pub verbosity: Option<String>,
-    /// Metadata to send with the API request for tracking and debugging.
-    /// Keys and values are strings. Both OpenAI and Anthropic support metadata fields.
+    /// String metadata sent with the API request for tracking (OpenAI and Anthropic).
     /// Typically includes: session_id, agent_id, org_id, turn_id, exec_id.
     pub metadata: HashMap<String, String>,
     /// Previous response ID for stateful continuation (OpenAI Responses API).
@@ -595,7 +594,7 @@ impl LlmCallConfigBuilder {
         self
     }
 
-    /// Set speed (service tier): "flex", "default", or "priority"
+    /// Set speed (service tier): "flex", "default", "priority", "fast" or "ultrafast"
     pub fn speed(mut self, speed: impl Into<String>) -> Self {
         self.config.speed = Some(speed.into());
         self

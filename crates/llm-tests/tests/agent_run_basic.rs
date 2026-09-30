@@ -42,6 +42,7 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::openai_gpt6_astra(OPENAI_GPT6_ASTRA)]
 #[case::openai_gpt6_sol(OPENAI_GPT6_SOL)]
+#[case::openai_gpt61_sol(OPENAI_GPT61_SOL)]
 #[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt56_luna(OPENROUTER_GPT56_LUNA)]
@@ -95,6 +96,7 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::openai_gpt6_astra(OPENAI_GPT6_ASTRA)]
 #[case::openai_gpt6_sol(OPENAI_GPT6_SOL)]
+#[case::openai_gpt61_sol(OPENAI_GPT61_SOL)]
 #[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt56_luna(OPENROUTER_GPT56_LUNA)]
@@ -155,6 +157,7 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
 #[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::openai_gpt6_sol(OPENAI_GPT6_SOL)]
+#[case::openai_gpt61_sol(OPENAI_GPT61_SOL)]
 #[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 // Gemini excluded: rejects additionalProperties in nested object schemas (separate issue)

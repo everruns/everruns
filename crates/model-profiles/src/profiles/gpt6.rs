@@ -1,15 +1,18 @@
-// GPT-6 series profiles: Astra (flagship), Sol (balanced), Luna (fast/cheap).
+// GPT-6 series profiles: Astra (flagship), Sol (balanced), Luna (fast/cheap),
+// and the GPT-6.1 Sol refresh.
 //
-// All three share a 1.05M context, 128K output, and a tier that bills prompts
+// All of them share a 1.05M context, 128K output, and a tier that bills prompts
 // above 272K input tokens at 2x input/cache and 1.5x output for the whole
 // request. Source: developers.openai.com/api/docs/models/gpt-6-{astra,sol,luna}
 // (models.dev did not yet list them at the time of addition; refresh once it
 // catches up).
 
-use super::{effort, speed_flex_priority, verbosity_standard};
+use super::effort;
+use super::speed::priced_speed;
+use super::verbosity_standard;
 use crate::types::{
     CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ReasoningEffort,
-    ReasoningEffortConfig,
+    ReasoningEffortConfig, Speed, SpeedConfig,
 };
 
 pub(super) fn profile_data(model_id: &str) -> Option<ModelProfile> {
@@ -23,16 +26,20 @@ pub(super) fn profile_data(model_id: &str) -> Option<ModelProfile> {
         // `summary: "auto"`/`"concise"` — only `encrypted_content`. It is
         // therefore excluded from the extended-thinking transcript test in
         // `crates/llm-tests`, which asserts on readable reasoning text.
-        "gpt-6-astra" => Some(profile(
-            "GPT-6 Astra",
-            "gpt-6-astra",
-            "OpenAI's most capable model, built for the hardest end-to-end work: complex reasoning, coding, computer use, research, and document creation.",
-            "2026-09-04",
-            "2026-04-30",
-            [10.00, 50.00, 1.00],
-            // Astra drops `none`.
-            efforts(&ALL_EFFORTS[1..]),
-        )),
+        "gpt-6-astra" => Some(ModelProfile {
+            // Ultrafast is GA for Astra (guides/ultrafast-mode, 2026-09-29).
+            speed: Some(speeds(Speed::Priority, true)),
+            ..profile(
+                "GPT-6 Astra",
+                "gpt-6-astra",
+                "OpenAI's most capable model, built for the hardest end-to-end work: complex reasoning, coding, computer use, research, and document creation.",
+                "2026-09-04",
+                "2026-04-30",
+                [10.00, 50.00, 1.00],
+                // Astra drops `none`.
+                efforts(&ALL_EFFORTS[1..]),
+            )
+        }),
         // GPT-6 Sol / Luna: faster, cheaper tiers built on Astra, publicly
         // released 2026-09-22 at half the price of their GPT-5.6 namesakes.
         // They keep `none` effort alongside Astra's `max`.
@@ -54,6 +61,27 @@ pub(super) fn profile_data(model_id: &str) -> Option<ModelProfile> {
             [0.10, 0.50, 0.01],
             efforts(&ALL_EFFORTS),
         )),
+        // GPT-6.1 Sol: near-Astra agentic coding and computer use at Sol's
+        // price, released at DevDay 2026-09-29. Cached input drops to $0.10;
+        // it drops `none` effort like Astra and caps input at 922K. OpenAI's
+        // docs name the premium tier `fast` for this model; Ultrafast is
+        // announced "in the coming days", so it is not offered yet.
+        "gpt-6.1-sol" => {
+            let mut sol = profile(
+                "GPT-6.1 Sol",
+                "gpt-6.1-sol",
+                "Near-Astra performance at a lower cost for complex coding, computer use, and professional work.",
+                "2026-09-29",
+                "2026-04-30",
+                [2.00, 10.00, 0.10],
+                efforts(&ALL_EFFORTS[1..]),
+            );
+            sol.speed = Some(speeds(Speed::Fast, false));
+            if let Some(limits) = sol.limits.as_mut() {
+                limits.input = Some(922_000);
+            }
+            Some(sol)
+        }
         _ => None,
     }
 }
@@ -75,6 +103,23 @@ fn efforts(values: &[(ReasoningEffort, &str)]) -> ReasoningEffortConfig {
             .map(|&(value, name)| effort(value, name))
             .collect(),
         default: ReasoningEffort::Medium,
+    }
+}
+
+/// Flex, Standard and the 2x premium tier (`Priority` or its newer `Fast`
+/// name), optionally with the 6x Ultrafast tier.
+fn speeds(premium: Speed, ultrafast: bool) -> SpeedConfig {
+    let mut values = vec![
+        priced_speed(Speed::Flex, "Flex", 0.5),
+        priced_speed(Speed::Default, "Standard", 1.0),
+        priced_speed(premium, "Fast", 2.0),
+    ];
+    if ultrafast {
+        values.push(priced_speed(Speed::Ultrafast, "Ultrafast", 6.0));
+    }
+    SpeedConfig {
+        values,
+        default: Speed::Default,
     }
 }
 
@@ -126,7 +171,7 @@ fn profile(
             output: vec![Modality::Text],
         }),
         reasoning_effort: Some(reasoning_effort),
-        speed: Some(speed_flex_priority()),
+        speed: Some(speeds(Speed::Priority, false)),
         verbosity: Some(verbosity_standard()),
         tool_search: true,
         supported_parameters: Vec::new(),
@@ -170,6 +215,15 @@ mod tests {
                 [0.20, 0.75, 0.02],
                 &ALL_EFFORTS[..],
             ),
+            (
+                "gpt-6.1-sol",
+                "GPT-6.1 Sol",
+                "2026-04-30",
+                "2026-09-29",
+                [2.00, 10.00, 0.10],
+                [4.00, 15.00, 0.20],
+                &ALL_EFFORTS[1..],
+            ),
         ] {
             let profile = get_model_profile("openai", id).unwrap();
             assert_eq!(profile.name, name);
@@ -210,5 +264,35 @@ mod tests {
                 "{id}"
             );
         }
+    }
+
+    #[test]
+    fn test_gpt6_speed_tiers() {
+        let tiers = |id: &str| {
+            get_model_profile("openai", id)
+                .unwrap()
+                .speed
+                .unwrap()
+                .values
+                .into_iter()
+                .map(|v| (v.value, v.cost_multiplier))
+                .collect::<Vec<_>>()
+        };
+        use Speed::*;
+        let base = |premium| {
+            vec![
+                (Flex, Some(0.5)),
+                (Default, Some(1.0)),
+                (premium, Some(2.0)),
+            ]
+        };
+        let mut astra = base(Priority);
+        astra.push((Ultrafast, Some(6.0)));
+        assert_eq!(tiers("gpt-6-astra"), astra);
+        assert_eq!(tiers("gpt-6-sol"), base(Priority));
+        assert_eq!(tiers("gpt-6-luna"), base(Priority));
+        assert_eq!(tiers("gpt-6.1-sol"), base(Fast));
+        let sol = get_model_profile("openai", "gpt-6.1-sol").unwrap();
+        assert_eq!(sol.limits.unwrap().input, Some(922_000));
     }
 }

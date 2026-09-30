@@ -248,8 +248,8 @@ pub(super) async fn emit_capability_usage_snapshot(
 mod tests {
     use super::*;
     use crate::llm_conversions::llm_call_config_builder_from_agent;
-    use crate::model::ReasoningEffort;
     use everruns_core::runtime_agent::RuntimeAgent;
+    use everruns_provider::model::ReasoningEffort;
 
     #[test]
     fn request_options_capture_sampling_and_streaming_intent() {

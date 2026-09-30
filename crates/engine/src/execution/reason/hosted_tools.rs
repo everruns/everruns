@@ -53,13 +53,15 @@ pub(super) fn completion_usage(
     model: &str,
 ) -> Option<TokenUsage> {
     let (input, output) = (meta.prompt_tokens?, meta.completion_tokens?);
-    let tokens = crate::model_profiles::estimate_cost_usd(
+    // Priced at the tier that served the call, not the one requested.
+    let tokens = crate::model_profiles::estimate_cost_usd_for_speed(
         provider_type,
         model,
         input,
         output,
         meta.cache_read_tokens.unwrap_or(0),
         meta.cache_creation_tokens.unwrap_or(0),
+        meta.service_tier.as_deref(),
     );
     let hosted = hosted_calls_cost_usd(&meta.hosted_tool_calls, model);
     let estimated = match (tokens, hosted) {

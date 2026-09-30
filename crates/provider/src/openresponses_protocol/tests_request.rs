@@ -238,11 +238,10 @@ fn test_request_serializes_service_tier() {
     let json = serde_json::to_value(make(None)).unwrap();
     assert!(json.get("service_tier").is_none());
 
-    let json = serde_json::to_value(make(Some("priority"))).unwrap();
-    assert_eq!(json["service_tier"], "priority");
-
-    let json = serde_json::to_value(make(Some("flex"))).unwrap();
-    assert_eq!(json["service_tier"], "flex");
+    for tier in ["flex", "priority", "fast", "ultrafast"] {
+        let json = serde_json::to_value(make(Some(tier))).unwrap();
+        assert_eq!(json["service_tier"], tier);
+    }
 }
 
 /// Verbosity serializes as a nested `text.verbosity` object only when set,
