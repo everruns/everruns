@@ -1336,6 +1336,19 @@
         "help": "Whether the trigger is active on creation (default `true`)."
       },
       {
+        "field": "event_id_template",
+        "long": "event-id-template",
+        "kind": "string",
+        "required": false,
+        "help": "Webhook only: template for the delivery idempotency key."
+      },
+      {
+        "field": "filter",
+        "long": "filter",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "message",
         "long": "message",
         "kind": "string",
@@ -1362,6 +1375,13 @@
           "shared_session",
           "session_per_invocation"
         ]
+      },
+      {
+        "field": "subject_template",
+        "long": "subject-template",
+        "kind": "string",
+        "required": false,
+        "help": "Webhook only: template for the event subject."
       },
       {
         "field": "timezone",
@@ -1406,6 +1426,39 @@
         "long": "agent-id",
         "kind": "string",
         "required": true
+      },
+      {
+        "field": "trigger_id",
+        "long": "trigger-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_trigger_deliveries",
+    "path": [
+      "agents",
+      "triggers",
+      "deliveries"
+    ],
+    "verb": "list",
+    "description": "List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum rows to return (1-200, default 50)."
       },
       {
         "field": "trigger_id",
@@ -1555,6 +1608,19 @@
         "help": "Replacement enabled state."
       },
       {
+        "field": "event_id_template",
+        "long": "event-id-template",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement idempotency-key template."
+      },
+      {
+        "field": "filter",
+        "long": "filter",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "message",
         "long": "message",
         "kind": "string",
@@ -1573,6 +1639,13 @@
         "long": "session-mode",
         "kind": "string",
         "required": false
+      },
+      {
+        "field": "subject_template",
+        "long": "subject-template",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement subject template."
       },
       {
         "field": "timezone",
