@@ -50,6 +50,33 @@ impl StorageBackend {
         dispatch!(self, get_agent_identity_connection, identity_id, provider)
     }
 
+    pub async fn create_github_app(&self, input: CreateGitHubAppRow) -> Result<GitHubAppRow> {
+        dispatch!(self, create_github_app, input)
+    }
+
+    pub async fn get_github_app_unscoped(&self, id: Uuid) -> Result<Option<GitHubAppRow>> {
+        dispatch!(self, get_github_app_unscoped, id)
+    }
+
+    pub async fn get_github_app_for_identity(
+        &self,
+        org_id: i64,
+        agent_identity_id: AgentIdentityId,
+    ) -> Result<Option<GitHubAppRow>> {
+        dispatch!(self, get_github_app_for_identity, org_id, agent_identity_id)
+    }
+
+    pub async fn get_identity_github_app_for_session(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<(GitHubAppRow, i64)>> {
+        dispatch!(self, get_identity_github_app_for_session, session_id)
+    }
+
+    pub async fn delete_github_app(&self, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_github_app, id)
+    }
+
     pub async fn list_agent_identity_connections(
         &self,
         identity_id: AgentIdentityId,

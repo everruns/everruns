@@ -24,6 +24,7 @@ mod declarative_capabilities;
 mod evals;
 mod events;
 mod files;
+mod github_apps;
 mod harnesses;
 mod knowledge_bases;
 mod knowledge_indexes;
@@ -81,6 +82,7 @@ use uuid::Uuid;
 use super::IngressEndpointRow;
 use super::agent_trigger_deliveries::AgentTriggerDeliveryRow;
 use super::mcp_event_subscriptions::*;
+use super::github_app_rows::GitHubAppRow;
 use super::mcp_tool_cache::*;
 use super::models::*;
 use super::org_slack_connections::*;
@@ -201,6 +203,7 @@ pub struct InMemoryDatabase {
     principals: RwLock<HashMap<PrincipalId, PrincipalRow>>,
     // Agent identity connections (identity-scoped external accounts)
     agent_identity_connections: RwLock<HashMap<Uuid, AgentIdentityConnectionRow>>,
+    github_apps: RwLock<HashMap<Uuid, GitHubAppRow>>,
     // Organization settings (default model, etc.)
     org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
     org_feature_flags: RwLock<HashMap<i64, HashMap<String, bool>>>,
@@ -364,6 +367,7 @@ impl Default for InMemoryDatabase {
             agent_trigger_deliveries: RwLock::new(Vec::new()),
             principals: RwLock::new(HashMap::new()),
             agent_identity_connections: RwLock::new(HashMap::new()),
+            github_apps: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
             org_feature_flags: RwLock::new(HashMap::new()),
             org_slack_connections: RwLock::new(HashMap::new()),

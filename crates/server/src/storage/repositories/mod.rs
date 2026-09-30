@@ -19,6 +19,7 @@ mod declarative_capabilities;
 mod evals;
 mod events;
 mod files;
+mod github_apps;
 mod harnesses;
 mod knowledge_bases;
 mod knowledge_indexes;

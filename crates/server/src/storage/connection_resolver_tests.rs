@@ -992,3 +992,99 @@ async fn failed_refresh_fails_closed_and_preserves_existing_grant() {
         Some(original_refresh.as_slice())
     );
 }
+
+// ---------------------------------------------------------------------------
+// Per-agent GitHub App: the identity's own App mints the token
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn github_token_is_minted_from_the_identitys_own_app() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let github = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/app/installations/4242/access_tokens"))
+        .respond_with(
+            ResponseTemplate::new(201).set_body_json(serde_json::json!({ "token": "ghs_agent" })),
+        )
+        .expect(1)
+        .mount(&github)
+        .await;
+
+    let db = StorageBackend::InMemory(Arc::new(InMemoryDatabase::new()));
+    let encryption = encryption();
+    let identity_id = AgentIdentityId::from_seed(11);
+    let pem = std::fs::read_to_string(format!(
+        "{}/tests/fixtures/test-server-key.pem",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    db.create_github_app(crate::storage::github_app_rows::CreateGitHubAppRow {
+        id: Uuid::now_v7(),
+        org_id: DEFAULT_ORG_ID,
+        agent_identity_id: identity_id,
+        app_id: 99,
+        slug: "pr-bot".to_string(),
+        name: "pr-bot".to_string(),
+        html_url: "https://github.com/apps/pr-bot".to_string(),
+        owner_login: None,
+        client_id: None,
+        client_secret_encrypted: None,
+        private_key_encrypted: encryption.encrypt_string(&pem).unwrap(),
+        webhook_secret_encrypted: None,
+        created_by_user_id: None,
+    })
+    .await
+    .unwrap();
+    db.upsert_agent_identity_connection(CreateAgentIdentityConnectionRow {
+        agent_identity_id: identity_id,
+        provider: "github".to_string(),
+        connection_type: "github_app".to_string(),
+        provider_user_id: None,
+        provider_username: Some("acme".to_string()),
+        access_token_encrypted: None,
+        refresh_token_encrypted: None,
+        scopes: None,
+        expires_at: None,
+        installation_id: Some(4242),
+        provider_metadata: None,
+    })
+    .await
+    .unwrap();
+    let mut input = session_input(None);
+    input.agent_identity_id = Some(identity_id);
+    let session = db.create_session(input).await.unwrap();
+
+    let exchange = Arc::new(FakeRefreshExchange {
+        calls: AtomicUsize::new(0),
+        delay: StdDuration::ZERO,
+        result: FakeRefreshResult::Success,
+    });
+    // A deployment-wide App is configured too: the agent's own App must win.
+    let global = GitHubAppTokenMinter::new("1".to_string(), "not-a-key".to_string());
+    let resolver =
+        DbConnectionResolver::with_oauth_refresh(db.clone(), encryption, Some(global), exchange)
+            .with_github_apps_api(crate::github_apps::GitHubAppApi::new(
+                crate::github_apps::GitHubEndpoints {
+                    api_url: github.uri(),
+                    web_url: "https://github.com".to_string(),
+                },
+            ));
+
+    let token = resolver
+        .get_connection_token(session.id, "github")
+        .await
+        .unwrap();
+    assert_eq!(token.as_deref(), Some("ghs_agent"));
+
+    // A session without that identity falls through to the other paths.
+    let other = db.create_session(session_input(None)).await.unwrap();
+    assert_eq!(
+        resolver
+            .get_connection_token(other.id, "github")
+            .await
+            .unwrap(),
+        None
+    );
+}

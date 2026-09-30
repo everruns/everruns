@@ -55,6 +55,8 @@ pub struct DbConnectionResolver {
     encryption: EncryptionService,
     /// GitHub App service for minting installation tokens (None = legacy OAuth only)
     github_app: Option<GitHubAppTokenMinter>,
+    /// GitHub client for per-agent Apps (see `crate::github_apps`).
+    github_apps: crate::github_apps::GitHubAppApi,
     oauth_refresh: Arc<dyn OAuthRefreshExchange>,
     // THREAT[TM-TOOL-025]: per-grant single-flight locks prevent refresh
     // stampedes; the bounded idle cache prevents session-id memory exhaustion.
@@ -129,12 +131,22 @@ impl DbConnectionResolver {
             db,
             encryption,
             github_app,
+            github_apps: crate::github_apps::GitHubAppApi::new(
+                crate::github_apps::GitHubEndpoints::from_env(),
+            ),
             oauth_refresh,
             refresh_locks: Cache::builder()
                 .max_capacity(REFRESH_LOCK_MAX_CAPACITY)
                 .time_to_idle(REFRESH_LOCK_IDLE_TTL)
                 .build(),
         }
+    }
+
+    /// Point per-agent GitHub App calls at another API (tests).
+    #[cfg(test)]
+    pub(crate) fn with_github_apps_api(mut self, api: crate::github_apps::GitHubAppApi) -> Self {
+        self.github_apps = api;
+        self
     }
 
     fn parse_mcp_oauth_provider(provider: &str) -> Option<Uuid> {
@@ -517,6 +529,38 @@ impl UserConnectionResolver for DbConnectionResolver {
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<String>> {
+        // Per-agent GitHub App: an agent identity that created its own App
+        // (manifest flow) mints with that App's key, so the trigger, the tools
+        // and the GitHub MCP all act as the same installation.
+        if provider == "github"
+            && let Some((app, installation_id)) = self
+                .db
+                .get_identity_github_app_for_session(session_id)
+                .await
+                .map_err(|e| {
+                    AgentLoopError::store(format!("Failed to resolve agent GitHub App: {e}"))
+                })?
+        {
+            let private_key = self
+                .encryption
+                .decrypt_to_string(&app.private_key_encrypted)
+                .map_err(|e| {
+                    AgentLoopError::store(format!("Failed to decrypt GitHub App key: {e}"))
+                })?;
+            let credentials = crate::github_apps::AppCredentials {
+                app_id: app.app_id,
+                private_key_pem: private_key,
+            };
+            let token = self
+                .github_apps
+                .mint_installation_token(&credentials, installation_id)
+                .await
+                .map_err(|e| {
+                    AgentLoopError::store(format!("Failed to mint GitHub installation token: {e}"))
+                })?;
+            return Ok(Some(token));
+        }
+
         // GitHub App path: mint a fresh installation token
         if provider == "github"
             && let Some(ref minter) = self.github_app

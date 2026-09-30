@@ -34,6 +34,7 @@ pub mod events;
 pub mod fcp;
 pub mod feature_flags;
 pub mod files;
+pub mod github_apps;
 pub mod harness_examples;
 pub mod harnesses;
 pub mod http_signing_keys;
