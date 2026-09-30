@@ -114,7 +114,9 @@ pub(crate) enum ResponsesInputItem {
     FunctionCallOutput {
         r#type: String,
         call_id: String,
-        output: String,
+        /// Plain text, or `input_text` / `input_image` / `input_file` parts
+        /// when the tool result carries attachments (a screenshot).
+        output: ResponsesContent,
     },
     /// Reasoning item for o-series and GPT-5 models
     /// Contains encrypted reasoning content that preserves reasoning context across turns
@@ -200,6 +202,12 @@ impl From<&CompactOutputItem> for ResponsesInputItem {
 pub(crate) enum ResponsesContent {
     Text(String),
     Parts(Vec<ResponsesContentPart>),
+}
+
+impl From<String> for ResponsesContent {
+    fn from(text: String) -> Self {
+        Self::Text(text)
+    }
 }
 
 // The "Input" prefix matches OpenAI's Responses API naming convention

@@ -15,6 +15,7 @@
 
 pub mod cdp;
 pub mod client;
+pub mod computer;
 pub mod connection;
 pub mod session_tools;
 pub mod state;
@@ -43,11 +44,20 @@ use tools::{
 // ============================================================================
 
 /// Capability plugins this crate contributes to a hosted catalog.
-pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    experimental_only: false,
-    feature_flag: None,
-    factory: || Box::new(BrowserlessCapability),
-}];
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
+    IntegrationPlugin {
+        experimental_only: false,
+        feature_flag: None,
+        factory: || Box::new(BrowserlessCapability),
+    },
+    // Computer use ships behind experimental mode until the native OpenAI and
+    // Anthropic computer tools land (EVE-1119 phase 2).
+    IntegrationPlugin {
+        experimental_only: true,
+        feature_flag: None,
+        factory: || Box::new(computer::BrowserlessComputerUseCapability),
+    },
+];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {

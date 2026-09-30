@@ -289,13 +289,55 @@ fn test_function_call_output_serialization() {
     let item = ResponsesInputItem::FunctionCallOutput {
         r#type: "function_call_output".to_string(),
         call_id: "call_123".to_string(),
-        output: r#"{"result": 42}"#.to_string(),
+        output: r#"{"result": 42}"#.to_string().into(),
     };
 
     let json = serde_json::to_value(&item).unwrap();
     assert_eq!(json["type"], "function_call_output");
     assert_eq!(json["call_id"], "call_123");
     assert_eq!(json["output"], r#"{"result": 42}"#);
+}
+
+#[test]
+fn tool_result_images_reach_function_call_output() {
+    // A computer-use screenshot arrives as an image part on the tool message;
+    // `function_call_output` must carry it as `input_image`, not drop it.
+    let mut msg = Message::parts(
+        MessageRole::Tool,
+        vec![
+            crate::message::LlmContentPart::text(r#"{"status":"ok"}"#),
+            crate::message::LlmContentPart::image("data:image/png;base64,iVBORw0KGgo="),
+        ],
+    );
+    msg.tool_call_id = Some("call_shot".to_string());
+
+    let json = serde_json::to_value(OpenResponsesProtocolChatDriver::convert_message(
+        &msg, false,
+    ))
+    .unwrap();
+    assert_eq!(
+        json,
+        json!({
+            "type": "function_call_output",
+            "call_id": "call_shot",
+            "output": [
+                {"type": "input_text", "text": "{\"status\":\"ok\"}"},
+                {"type": "input_image", "image_url": "data:image/png;base64,iVBORw0KGgo="}
+            ]
+        })
+    );
+
+    // Text-only parts still collapse to the plain string form.
+    let mut text_only = Message::parts(
+        MessageRole::Tool,
+        vec![crate::message::LlmContentPart::text("done")],
+    );
+    text_only.tool_call_id = Some("call_text".to_string());
+    let json = serde_json::to_value(OpenResponsesProtocolChatDriver::convert_message(
+        &text_only, false,
+    ))
+    .unwrap();
+    assert_eq!(json["output"], "done");
 }
 
 #[test]
@@ -668,12 +710,12 @@ fn compute_delta_keeps_tool_results_after_last_assistant_turn() {
         ResponsesInputItem::FunctionCallOutput {
             r#type: "function_call_output".to_string(),
             call_id: "call_a".to_string(),
-            output: "a result".to_string(),
+            output: "a result".to_string().into(),
         },
         ResponsesInputItem::FunctionCallOutput {
             r#type: "function_call_output".to_string(),
             call_id: "call_b".to_string(),
-            output: "b result".to_string(),
+            output: "b result".to_string().into(),
         },
     ];
 
@@ -737,7 +779,7 @@ fn compute_delta_drops_prior_reasoning_items() {
         ResponsesInputItem::FunctionCallOutput {
             r#type: "function_call_output".to_string(),
             call_id: "call_z".to_string(),
-            output: "result".to_string(),
+            output: "result".to_string().into(),
         },
     ];
     let trimmed = compute_delta_input_items(items);
@@ -770,7 +812,7 @@ fn finalize_input_drops_locally_orphaned_tool_output_without_previous_response_i
         ResponsesInputItem::FunctionCallOutput {
             r#type: "function_call_output".to_string(),
             call_id: "call_trimmed".to_string(),
-            output: "result".to_string(),
+            output: "result".to_string().into(),
         },
     ];
 
@@ -787,7 +829,7 @@ fn finalize_input_keeps_tool_output_with_previous_response_id_even_without_local
         ResponsesInputItem::FunctionCallOutput {
             r#type: "function_call_output".to_string(),
             call_id: "call_server_side".to_string(),
-            output: "stateful result".to_string(),
+            output: "stateful result".to_string().into(),
         },
         ResponsesInputItem::Message {
             r#type: "message".to_string(),

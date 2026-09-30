@@ -2,6 +2,10 @@
 
 ## 2026-09-30
 
+* **Computer use**: Added the provider-neutral [computer use](execution/computer-use.md)
+  contract and its first backend on Browserless, with threat-model entries
+  TM-TOOL-048 to TM-TOOL-050.
+
 * **Decisions are now answered by pluggable decision drivers (EVE-1117).** The
   service was hard-wired to TypeSafe; OpenAI's Decisions API made "there will
   be other classifiers" concrete. A `DecisionDriver` declares capabilities and
