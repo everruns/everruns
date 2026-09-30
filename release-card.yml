@@ -1,19 +1,19 @@
-version: 0.31.0
-date: 2026-09-24
+version: 0.32.0
+date: 2026-09-26
 headline:
-  - Ask User,
-  - everywhere.
+  - Slack apps,
+  - per organization.
 summary:
-  - Ask User reaches agents over MCP and A2A,
-  - always-thinking models stay reliable,
-  - and the server holds up under load.
+  - Each organization provisions its own Slack app,
+  - an agent app framework lands over the Engine,
+  - and Anthropic compacts context server-side.
 highlights:
-  - title: Ask User over MCP and A2A
-    description: The Ask User capability now reaches agents over MCP form-mode elicitation and inbound A2A.
-    source: "#3781"
-  - title: Always-thinking reliability
-    description: Always-thinking models no longer return 400s or empty answers.
-    source: "#3782"
-  - title: Server resilience under load
-    description: Background sweeps get their own database pool; the server returns 503 on pool exhaustion.
-    source: "#3788"
+  - title: Per-org Slack app provisioning
+    description: Each organization provisions its own Slack app, with concurrent installs serialized.
+    source: "#3830"
+  - title: Agent app framework over Engine
+    description: An experimental framework for agent apps on the Engine, with event listeners and observability.
+    source: "#3802"
+  - title: Server-side context compaction
+    description: Anthropic compacts conversation context server-side to keep long runs in budget.
+    source: "#3831"

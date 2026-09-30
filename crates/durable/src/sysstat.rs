@@ -340,8 +340,9 @@ mod tests {
 
     #[test]
     fn host_name_is_not_empty_when_present() {
-        if let Some(name) = host_name() {
-            assert!(!name.is_empty());
-        }
+        // Gated on target_os = "linux": /proc/sys/kernel/hostname is always
+        // readable, so this must resolve rather than silently no-op.
+        let name = host_name().expect("/proc/sys/kernel/hostname should be readable on Linux");
+        assert!(!name.is_empty());
     }
 }

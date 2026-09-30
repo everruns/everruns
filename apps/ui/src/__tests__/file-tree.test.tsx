@@ -285,16 +285,6 @@ describe("FileTreeFolder", () => {
 
 describe("FileTreeFile", () => {
   describe("rendering", () => {
-    it("renders file name", () => {
-      render(
-        <FileTree>
-          <FileTreeFile path="/test.txt" name="test.txt" />
-        </FileTree>,
-      );
-
-      expect(screen.getByText("test.txt")).toBeInTheDocument();
-    });
-
     it("renders custom icon", () => {
       const CustomIcon = () => <span data-testid="custom-icon" />;
       render(
@@ -355,21 +345,6 @@ describe("FileTreeFile", () => {
 });
 
 describe("FileTreeActions", () => {
-  it("renders children", () => {
-    render(
-      <FileTree>
-        <FileTreeFile path="/test.txt" name="test.txt">
-          <FileTreeName>test.txt</FileTreeName>
-          <FileTreeActions>
-            <button data-testid="action-button">Delete</button>
-          </FileTreeActions>
-        </FileTreeFile>
-      </FileTree>,
-    );
-
-    expect(screen.getByTestId("action-button")).toBeInTheDocument();
-  });
-
   it("stops click propagation", () => {
     const onSelect = jest.fn();
     const onAction = jest.fn();

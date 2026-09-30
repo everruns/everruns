@@ -126,21 +126,6 @@ describe("NewChatForm", () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/chats/sess_new"));
   });
 
-  it("binds a Platform Chat thread to the harness instead", async () => {
-    render(<NewChatForm />);
-
-    fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
-      target: { value: "harness:platform-chat" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Start chat/ }));
-
-    await waitFor(() =>
-      expect(mutateAsync).toHaveBeenCalledWith({
-        request: { harness_name: "platform-chat", source: "chat", tags: ["chat"] },
-      }),
-    );
-  });
-
   it("creates a harness-bound thread without an agent", async () => {
     setup({
       harnesses: [

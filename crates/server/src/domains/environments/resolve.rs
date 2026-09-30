@@ -81,6 +81,13 @@ fn session_sandbox_recovery_enabled(config: &serde_json::Value) -> bool {
         .unwrap_or(false)
 }
 
+fn bashkit_http_enabled(config: &serde_json::Value) -> bool {
+    config
+        .get("enable_http")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+}
+
 /// Derive the environment a session runs in from its effective capabilities.
 pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionEnvironmentResponse {
     let compute = COMPUTE_CAPABILITIES.iter().find_map(|wanted| {
@@ -151,6 +158,11 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
             _ => ("managed", None, EnvironmentCapabilities::default(), "none"),
         };
 
+    let network = match capability.id() {
+        "bashkit_shell" if !bashkit_http_enabled(config) => "deny",
+        _ => "allow",
+    };
+
     SessionEnvironmentResponse {
         target: Some(EnvironmentTarget {
             kind: kind.to_string(),
@@ -158,10 +170,7 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
         }),
         containment: EnvironmentContainment {
             level: "isolated".to_string(),
-            // Every shipping target enforces its own boundary and Everruns
-            // egress is default-deny; an allowlist is a profile field that does
-            // not exist yet, so reporting one would be fiction.
-            network: "deny".to_string(),
+            network: network.to_string(),
         },
         durability: durability.to_string(),
         capabilities: caps,
@@ -255,6 +264,33 @@ mod tests {
         assert!(!view.capabilities.native_processes);
         assert!(view.capabilities.portable_checkpoint);
         assert_eq!(view.durability, "checkpointed");
+        assert_eq!(view.containment.network, "deny");
+    }
+
+    #[test]
+    fn bashkit_reports_network_access_when_http_is_enabled() {
+        let view = environment_from_capabilities(&[CapabilityRef::with_config(
+            "bashkit_shell",
+            json!({ "enable_http": true }),
+        )]);
+
+        assert_eq!(view.containment.network, "allow");
+    }
+
+    #[test]
+    fn networked_sandboxes_do_not_claim_to_deny_egress() {
+        for capability in [
+            CapabilityRef::with_config("session_sandbox", json!({ "provider": "daytona" })),
+            capability("daytona"),
+            capability("e2b"),
+            capability("container_sandbox"),
+            capability("docker_container"),
+        ] {
+            let view = environment_from_capabilities(&[capability]);
+
+            assert_eq!(view.containment.network, "allow");
+            assert!(!view.capabilities.network_enforced);
+        }
     }
 
     #[test]
