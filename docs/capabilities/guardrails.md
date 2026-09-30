@@ -53,7 +53,7 @@ Deterministic rules (`regex`, `blocklist`, `tool_pattern`) run in the streaming 
 The two model-backed types, `llm_judge` and `moderation`, choose which system model answers them with `engine`:
 
 - **`utility_llm`** (the default) prompts your org's utility model for a verdict — `allow`/`block` for a judge, 0-100 scores per category for moderation. One request per check.
-- **`jev`** asks [Jev](/integrations/typesafe/), TypeSafe's System One model, a typed question and gets a calibrated probability back. The `threshold` you configure (a percentage, default 50) decides the verdict, and every jev check on a stage is answered in a **single** request. It needs `UTILITY_TYPESAFE_API_KEY` on the deployment.
+- **`jev`** asks [Jev](/integrations/typesafe/), TypeSafe's System One model, a typed question and gets a calibrated probability back. The `threshold` you configure (a percentage, default 50) decides the verdict, and every jev check on a stage is answered in a **single** request. It needs `UTILITY_TYPESAFE_API_KEY` on the deployment, or `DECISIONS_DRIVER=llm` to have the utility model answer the same questions (a yes/no label rather than a calibrated probability, so the threshold then only checks which answer it picked).
 
 ```json
 {

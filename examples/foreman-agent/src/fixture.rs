@@ -4,10 +4,13 @@
 //! so the supervisor's `git diff` has a baseline to describe. Never point this
 //! at a repository you care about: the worker may change anything inside it.
 
-use std::fs;
-use std::io;
-use std::path::Path;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
+use std::path::{Component, Path};
 use std::process::Command;
+
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 /// The job the factory is started on.
 ///
@@ -45,13 +48,60 @@ pub const FILES: [(&str, &str); 3] = [
 pub fn materialize(root: &Path) -> io::Result<()> {
     for (path, contents) in FILES {
         let target = root.join(path);
+        // THREAT[TM-FS-019]: Never follow attacker-prepared fixture paths outside `root`.
+        reject_symlinks(root, &target)?;
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(target, contents)?;
+        reject_symlinks(root, &target)?;
+
+        let mut options = OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        options.custom_flags(libc::O_NOFOLLOW);
+        options.open(target)?.write_all(contents.as_bytes())?;
     }
     commit_baseline(root);
     Ok(())
+}
+
+/// Reject an existing symlink in the fixture root or destination path.
+fn reject_symlinks(root: &Path, target: &Path) -> io::Result<()> {
+    let relative = target.strip_prefix(root).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("fixture path escapes its root: {}", target.display()),
+        )
+    })?;
+    let mut current = root.to_owned();
+    reject_symlink(&current)?;
+
+    for component in relative.components() {
+        let Component::Normal(segment) = component else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("invalid fixture path: {}", target.display()),
+            ));
+        };
+        current.push(segment);
+        reject_symlink(&current)?;
+    }
+    Ok(())
+}
+
+fn reject_symlink(path: &Path) -> io::Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "fixture paths must not contain symlinks: {}",
+                path.display()
+            ),
+        )),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 /// Best-effort baseline commit. Without Git the run still works; the supervisor
@@ -178,6 +228,9 @@ fn read_tests(root: &Path) -> String {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
+
     #[test]
     fn the_fixture_starts_before_the_job_is_done() {
         let root = tempfile::tempdir().unwrap();
@@ -219,5 +272,41 @@ mod tests {
         // repository they own: files are rewritten, history is not.
         materialize(outer.path()).unwrap();
         assert_eq!(head(outer.path()), before);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn materializing_rejects_a_symlinked_root() {
+        let outer = tempfile::tempdir().unwrap();
+        let outside = outer.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        let root = outer.path().join("workspace");
+        symlink(&outside, &root).unwrap();
+
+        assert!(materialize(&root).is_err());
+        assert!(!outside.join("README.md").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn materializing_rejects_a_symlinked_parent() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        symlink(outside.path(), root.path().join("lib")).unwrap();
+
+        assert!(materialize(root.path()).is_err());
+        assert!(!outside.path().join("rates.sh").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn materializing_rejects_a_symlinked_file() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        fs::write(outside.path(), "keep me").unwrap();
+        symlink(outside.path(), root.path().join("README.md")).unwrap();
+
+        assert!(materialize(root.path()).is_err());
+        assert_eq!(fs::read_to_string(outside.path()).unwrap(), "keep me");
     }
 }

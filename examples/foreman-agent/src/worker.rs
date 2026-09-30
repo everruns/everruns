@@ -479,7 +479,7 @@ fn sanitized_command(
     credential_environment: &[&str],
 ) -> tokio::process::Command {
     let mut command = tokio::process::Command::new(program);
-    // THREAT[TM-LLM-041]: workers must never inherit Foreman's supervisor key
+    // THREAT[TM-LLM-042]: workers must never inherit Foreman's supervisor key
     // or ambient host credentials.
     command.args(arguments).current_dir(cwd).env_clear();
     for name in OPERATING_ENVIRONMENT.iter().chain(credential_environment) {

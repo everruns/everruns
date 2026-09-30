@@ -1068,10 +1068,10 @@ impl OtelEventListener {
                 oi::LLM_INVOCATION_PARAMETERS,
                 serde_json::Value::Object(invocation).to_string(),
             ));
-            for (i, tool) in data.tools.iter().enumerate() {
-                attrs.push(oi::tool_attributes(i, &tool.name, &tool.description));
-            }
             if self.record_content {
+                for (i, tool) in data.tools.iter().enumerate() {
+                    attrs.push(oi::tool_attributes(i, &tool.name, &tool.description));
+                }
                 let input = serde_json::json!({
                     "messages": data
                         .messages
@@ -1196,7 +1196,9 @@ impl OtelEventListener {
                 gen_ai::tool_type::FUNCTION,
             ));
             attrs.push(KeyValue::new(gen_ai::TOOL_CALL_ID, call_id.to_string()));
-            if let Some(description) = description {
+            if self.record_content
+                && let Some(description) = description
+            {
                 attrs.push(KeyValue::new(
                     gen_ai::TOOL_DESCRIPTION,
                     description.to_string(),
@@ -1208,7 +1210,9 @@ impl OtelEventListener {
         }
         if self.conventions.openinference {
             attrs.push(KeyValue::new(oi::TOOL_NAME, name.to_string()));
-            if let Some(description) = description {
+            if self.record_content
+                && let Some(description) = description
+            {
                 attrs.push(KeyValue::new(oi::TOOL_DESCRIPTION, description.to_string()));
             }
         }
