@@ -118,6 +118,7 @@ const mockFeatureFlags = {
   observers: true,
   public_chat: true,
   webmcp: true,
+  reports: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => mockFeatureFlags,
@@ -162,6 +163,7 @@ describe("Sidebar", () => {
       observers: true,
       public_chat: true,
       webmcp: true,
+      reports: true,
     });
     mockPush.mockClear();
     mockPrefetch.mockClear();
@@ -354,11 +356,13 @@ describe("Sidebar", () => {
       knowledge: false,
       plugins: false,
       observers: false,
+      reports: false,
     });
 
     render(<Sidebar />);
 
     expect(screen.queryByText("Evals")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reports")).not.toBeInTheDocument();
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
     expect(screen.queryByText("Memory")).not.toBeInTheDocument();
     expect(screen.queryByText("Knowledge indexes")).not.toBeInTheDocument();
