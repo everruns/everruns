@@ -49,6 +49,12 @@ to our callback.
 - **Disconnect uninstalls, keeps the App.** GitHub has no API to delete an App;
   a reconnect reuses it.
 
+- **One webhook per App, fanned out to triggers.** Deliveries arrive at
+  `/v1/github/apps/{app_row_id}/webhook`, are verified against that App's
+  webhook secret, and go to the GitHub triggers of agents on the App's identity
+  (`knowledge/runtime-resources/agent-triggers.md`). An `installation.deleted`
+  delivery removes the identity's connection.
+
 ## Where it lives
 
 - Service: `crates/server/src/github_apps.rs`
