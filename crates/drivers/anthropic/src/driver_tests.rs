@@ -142,7 +142,7 @@ fn server_compaction_requires_direct_eligible_anthropic_models() {
     );
     for model in [
         "claude-opus-5-5",
-        "claude-sonnet-4-5",
+        "claude-opus-4-5",
         "claude-haiku-4-5",
         "unlisted-model",
     ] {
@@ -363,9 +363,9 @@ fn three_turn_messages_keep_each_prior_wire_array_as_an_exact_prefix() {
 #[tokio::test]
 async fn requests_resolve_model_limits_and_complete_reasoning_policies() {
     for (model, requested, expected_limit) in [
-        ("claude-sonnet-4-5-20250514", None, 64000),
+        ("claude-sonnet-4-6-20260217", None, 64000),
         ("claude-test", None, 16384),
-        ("claude-sonnet-4-5", Some(99), 99),
+        ("claude-sonnet-4-6", Some(99), 99),
         ("claude-test", Some(99), 99),
     ] {
         assert_contract_request(
@@ -385,7 +385,7 @@ async fn requests_resolve_model_limits_and_complete_reasoning_policies() {
         (ReasoningEffort::Xhigh, Some(32768), Some("max")),
         (ReasoningEffort::Max, Some(32768), Some("max")),
     ] {
-        for model in ["claude-sonnet-4-5", "claude-opus-4-8"] {
+        for model in ["claude-opus-4-5", "claude-opus-4-8"] {
             // A one-token cap cannot accommodate thinking in either form, so the
             // driver keeps the cap and omits it. Covering only the budget-based
             // form would leave an adaptive model thinking with a one-token

@@ -1273,7 +1273,7 @@ const MILLION_CONTEXT_FAMILIES: &[&str] = &[
 /// The suffix is honored only when the bare id belongs to a family that
 /// actually supports the 1M window (`MILLION_CONTEXT_FAMILIES`). A
 /// manually-configured id that merely ends in `[1m]` but is not 1M-capable —
-/// e.g. `claude-haiku-4-5[1m]` or `claude-sonnet-4-5[1m]` — is left untouched. We
+/// e.g. `claude-haiku-4-5[1m]` or `claude-opus-4-5[1m]` — is left untouched. We
 /// must never rewrite an arbitrary configured id or send the `context-1m` beta
 /// header to a model that does not support the 1M window (it can 400 or
 /// silently truncate on models where the header was retired). Date-suffixed 1M

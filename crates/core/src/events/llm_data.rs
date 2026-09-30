@@ -98,7 +98,7 @@ pub struct LlmToolSearchInfo {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmGenerationMetadata {
     /// Model identifier used for generation
-    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-5"))]
+    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-6"))]
     pub model: String,
 
     /// Provider type (openai, anthropic, etc.)
@@ -109,8 +109,8 @@ pub struct LlmGenerationMetadata {
     /// Model the provider reported actually serving the request.
     ///
     /// `model` is what was *asked for*, which is routinely an alias that
-    /// resolves at request time — `claude-sonnet-4-5` served by
-    /// `claude-sonnet-4-5-20250929`, or an OpenRouter route landing on one
+    /// resolves at request time — `claude-sonnet-4-6` served by
+    /// `claude-sonnet-4-6-20260217`, or an OpenRouter route landing on one
     /// upstream of several. Collapsing the two loses the only record of which
     /// weights produced the answer, which is what a regression in output
     /// quality has to be correlated against.
@@ -119,7 +119,7 @@ pub struct LlmGenerationMetadata {
     /// consumers fall back to `model` rather than being told the alias was
     /// confirmed.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-5-20250929"))]
+    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-6-20260217"))]
     pub response_model: Option<String>,
 
     /// Token usage statistics

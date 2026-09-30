@@ -349,7 +349,6 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-sonnet-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-6"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-5"], ModelVendor::Anthropic, ANTHROPIC),
-    md(&["claude-sonnet-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-haiku-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4"], ModelVendor::Anthropic, ANTHROPIC),
     // Google Gemini
@@ -572,8 +571,8 @@ pub fn get_model_vendor(provider_type: &str, model_id: &str) -> Option<ModelVend
 /// Stable public profile key: `"{vendor}/{canonical_id}"` (knowledge/foundations/providers.md).
 ///
 /// The key identifies the model's identity independent of which provider
-/// serves it: `("anthropic", "claude-sonnet-4-5-20250929")` and a gateway
-/// alias of the same model both map to `"anthropic/claude-sonnet-4-5"`.
+/// serves it: `("anthropic", "claude-sonnet-4-6-20260217")` and a gateway
+/// alias of the same model both map to `"anthropic/claude-sonnet-4-6"`.
 pub fn get_model_profile_key(provider_type: &str, model_id: &str) -> Option<String> {
     resolve_descriptor(provider_type, model_id)
         .map(|descriptor| format!("{}/{}", descriptor.vendor.slug(), descriptor.ids[0]))
@@ -2864,11 +2863,6 @@ mod tests {
             ("anthropic", "claude-opus-4-6-20260205", "claude-opus-4-6"),
             ("anthropic", "claude-opus-4-7", "claude-opus-4-7"),
             ("anthropic", "claude-opus-4-7-20260416", "claude-opus-4-7"),
-            (
-                "anthropic",
-                "claude-sonnet-4-5-20250929",
-                "claude-sonnet-4-5",
-            ),
             ("anthropic", "claude-sonnet-4-6", "claude-sonnet-4-6"),
             (
                 "anthropic",
@@ -3094,8 +3088,8 @@ mod tests {
     fn test_profile_keys_and_service_kinds() {
         // Canonical key from a dated wire id (version-suffix normalization).
         assert_eq!(
-            get_model_profile_key("anthropic", "claude-sonnet-4-5-20250929").as_deref(),
-            Some("anthropic/claude-sonnet-4-5")
+            get_model_profile_key("anthropic", "claude-sonnet-4-6-20260217").as_deref(),
+            Some("anthropic/claude-sonnet-4-6")
         );
         // Gateway alias and bare id share one key (same model identity).
         for (provider, id) in [
@@ -3850,7 +3844,6 @@ mod tests {
             "claude-opus-4",
             "claude-sonnet-5-5",
             "claude-sonnet-4-6",
-            "claude-sonnet-4-5",
             "claude-haiku-4-5",
         ] {
             let p = get_model_profile("anthropic", id)

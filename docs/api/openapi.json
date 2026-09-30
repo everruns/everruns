@@ -29981,7 +29981,7 @@
                     "display_name": {
                       "type": "string",
                       "description": "Human-readable display name.",
-                      "example": "Claude Sonnet 4.5"
+                      "example": "Claude Sonnet 5.5"
                     },
                     "enabled": {
                       "type": "boolean",
@@ -30006,7 +30006,7 @@
                     "model_id": {
                       "type": "string",
                       "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
-                      "example": "claude-sonnet-4-5"
+                      "example": "claude-sonnet-5-5"
                     },
                     "model_vendor": {
                       "oneOf": [
@@ -30917,7 +30917,7 @@
           "model": {
             "type": "string",
             "description": "Model identifier used for generation",
-            "example": "claude-sonnet-4-5"
+            "example": "claude-sonnet-4-6"
           },
           "provider": {
             "type": [
@@ -30951,8 +30951,8 @@
               "string",
               "null"
             ],
-            "description": "Model the provider reported actually serving the request.\n\n`model` is what was *asked for*, which is routinely an alias that\nresolves at request time — `claude-sonnet-4-5` served by\n`claude-sonnet-4-5-20250929`, or an OpenRouter route landing on one\nupstream of several. Collapsing the two loses the only record of which\nweights produced the answer, which is what a regression in output\nquality has to be correlated against.\n\n`None` when the provider reported no model, which is the honest answer:\nconsumers fall back to `model` rather than being told the alias was\nconfirmed.",
-            "example": "claude-sonnet-4-5-20250929"
+            "description": "Model the provider reported actually serving the request.\n\n`model` is what was *asked for*, which is routinely an alias that\nresolves at request time — `claude-sonnet-4-6` served by\n`claude-sonnet-4-6-20260217`, or an OpenRouter route landing on one\nupstream of several. Collapsing the two loses the only record of which\nweights produced the answer, which is what a regression in output\nquality has to be correlated against.\n\n`None` when the provider reported no model, which is the honest answer:\nconsumers fall back to `model` rather than being told the alias was\nconfirmed.",
+            "example": "claude-sonnet-4-6-20260217"
           },
           "retry": {
             "oneOf": [
@@ -32611,7 +32611,7 @@
           "display_name": {
             "type": "string",
             "description": "Human-readable display name.",
-            "example": "Claude Sonnet 4.5"
+            "example": "Claude Sonnet 5.5"
           },
           "enabled": {
             "type": "boolean",
@@ -32636,7 +32636,7 @@
           "model_id": {
             "type": "string",
             "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
-            "example": "claude-sonnet-4-5"
+            "example": "claude-sonnet-5-5"
           },
           "model_vendor": {
             "oneOf": [
@@ -44055,7 +44055,7 @@
               "display_name": {
                 "type": "string",
                 "description": "Human-readable display name.",
-                "example": "Claude Sonnet 4.5"
+                "example": "Claude Sonnet 5.5"
               },
               "enabled": {
                 "type": "boolean",
@@ -44080,7 +44080,7 @@
               "model_id": {
                 "type": "string",
                 "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-5.2`).",
-                "example": "claude-sonnet-4-5"
+                "example": "claude-sonnet-5-5"
               },
               "model_vendor": {
                 "oneOf": [

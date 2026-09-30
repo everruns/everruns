@@ -135,7 +135,7 @@ fn driver(server: &MockServer) -> Provider {
 
 #[tokio::test]
 async fn provider_reported_model_is_distinct_and_optional() {
-    for reported in [Some("claude-sonnet-4-5-20250929"), None] {
+    for reported in [Some("claude-opus-4-5-20251101"), None] {
         let server = MockServer::start().await;
         let mut start = serde_json::json!({
             "type": "message_start",
@@ -211,7 +211,7 @@ async fn text_stream_golden_events() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![Message::text(MessageRole::User, "hi")],
-            &config("claude-sonnet-4-5"),
+            &config("claude-opus-4-5"),
         )
         .await
         .expect("stream should start");
@@ -284,7 +284,7 @@ async fn thinking_stream_golden_events() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![Message::text(MessageRole::User, "think")],
-            &config("claude-sonnet-4-5"),
+            &config("claude-opus-4-5"),
         )
         .await
         .expect("stream should start");
@@ -350,7 +350,7 @@ async fn fragmented_tool_use_golden_events() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![Message::text(MessageRole::User, "weather?")],
-            &config("claude-sonnet-4-5"),
+            &config("claude-opus-4-5"),
         )
         .await
         .expect("stream should start");
@@ -528,7 +528,7 @@ async fn cache_diagnostics_and_extra_headers_round_trip() {
     .concat();
     mount_sse(&server, body).await;
 
-    let mut call_config = config("claude-sonnet-4-5");
+    let mut call_config = config("claude-opus-4-5");
     call_config.cache_diagnostics = Some(CacheDiagnosticsConfig {
         enabled: true,
         previous_message_id: Some("msg_1".to_string()),
@@ -603,7 +603,7 @@ async fn cache_diagnostics_first_turn_sends_explicit_null() {
     )
     .await;
 
-    let mut call_config = config("claude-sonnet-4-5");
+    let mut call_config = config("claude-opus-4-5");
     call_config.cache_diagnostics = Some(CacheDiagnosticsConfig {
         enabled: true,
         previous_message_id: None,
@@ -636,7 +636,7 @@ async fn cache_diagnostics_absent_when_not_requested() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![Message::text(MessageRole::User, "hi")],
-            &config("claude-sonnet-4-5"),
+            &config("claude-opus-4-5"),
         )
         .await
         .expect("stream should start");
@@ -831,7 +831,7 @@ async fn interleaved_thinking_keeps_each_signature_with_its_own_block() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![Message::text(MessageRole::User, "think twice")],
-            &config("claude-sonnet-4-5"),
+            &config("claude-opus-4-5"),
         )
         .await
         .expect("stream should start");
@@ -893,7 +893,7 @@ async fn redacted_thinking_survives_as_an_opaque_artifact() {
     let stream = driver(&server)
         .chat_completion_stream(
             vec![Message::text(MessageRole::User, "hi")],
-            &config("claude-sonnet-4-5"),
+            &config("claude-opus-4-5"),
         )
         .await
         .expect("stream should start");
@@ -938,7 +938,7 @@ async fn every_reasoning_effort_sends_a_thinking_budget() {
         )
         .await;
 
-        let mut call_config = config("claude-sonnet-4-5");
+        let mut call_config = config("claude-opus-4-5");
         call_config.reasoning_effort = Some(effort);
 
         let stream = driver(&server)

@@ -292,7 +292,7 @@ pub struct OpenRouterRoutePlan {
 ///
 /// `model_slug_for_candidate` resolves Everruns `ModelId` references to the
 /// OpenRouter model slugs used on the wire (for example
-/// `anthropic/claude-sonnet-4.5`). Storage-backed resolution lives outside this
+/// `anthropic/claude-sonnet-5.5`). Storage-backed resolution lives outside this
 /// foundational router module, so the caller supplies the lookup.
 pub fn compile_openrouter_route_plan(
     route: &ModelRouterRoute,
@@ -573,7 +573,7 @@ mod tests {
             if candidate.model_id == ModelId::from_seed(1) {
                 Some("openai/gpt-5-mini".to_string())
             } else if candidate.model_id == ModelId::from_seed(2) {
-                Some("anthropic/claude-sonnet-4.5".to_string())
+                Some("anthropic/claude-sonnet-5.5".to_string())
             } else {
                 None
             }
@@ -584,7 +584,7 @@ mod tests {
         assert_eq!(
             plan.routing,
             Some(
-                serde_json::json!({"models":["openai/gpt-5-mini","anthropic/claude-sonnet-4.5"],"route":"fallback"})
+                serde_json::json!({"models":["openai/gpt-5-mini","anthropic/claude-sonnet-5.5"],"route":"fallback"})
             )
         );
     }
