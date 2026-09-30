@@ -104,7 +104,7 @@ Why the Engine:
 - Each `on_event` runs in a spawned task. A panic is isolated to that delivery
   and counted without stopping the listener's drain task.
 - The `output.message.delta` accumulated prefix stays stripped for app listeners
-  (TM-DOS-037).
+  (TM-DOS-040).
 
 ### 4. Lifecycle: explicit flush
 

@@ -9,7 +9,8 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use everruns_core::RuntimeMessage;
 use everruns_host::{
     EventCursor, EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventLogError,
-    MAX_EVENT_HISTORY_PAGE_SIZE,
+    EventReadLimit, EventReadRequest, MAX_EVENT_HISTORY_PAGE_SIZE, MAX_EVENT_HISTORY_REPLAY,
+    MAX_EVENT_PAGE_SIZE,
 };
 
 use crate::engine::SessionExecution;
@@ -471,6 +472,45 @@ impl std::error::Error for ResumeError {
             Self::Environment(error) => Some(error),
             _ => None,
         }
+    }
+}
+
+/// Read every durable canonical event of `session_id` with a sequence greater
+/// than `after`, oldest first, from one stable snapshot.
+///
+/// Bounded by [`MAX_EVENT_HISTORY_REPLAY`] envelopes; a larger backlog is
+/// [`HistoryError::HistoryTooLarge`] rather than an unbounded allocation.
+pub(crate) async fn durable_events_after(
+    execution: &dyn SessionExecution,
+    session_id: SessionId,
+    after: i32,
+) -> Result<Vec<crate::SessionEvent>, HistoryError> {
+    execution.ensure_cataloged().await?;
+    let backends = execution
+        .backends()
+        .await
+        .map_err(|error| error.history_error())?;
+    let limit = EventReadLimit::new(MAX_EVENT_PAGE_SIZE).map_err(map_event_error)?;
+    let mut request = EventReadRequest::from_cursor(
+        EventCursor::after(session_id, after.max(0)).map_err(map_event_error)?,
+        limit,
+    );
+    let mut events = Vec::new();
+    loop {
+        let page = backends
+            .host
+            .event_log
+            .read_page(request)
+            .await
+            .map_err(map_event_error)?;
+        if events.len() + page.events.len() > MAX_EVENT_HISTORY_REPLAY {
+            return Err(HistoryError::HistoryTooLarge);
+        }
+        events.extend(page.events.iter().map(crate::SessionEvent::from_core_event));
+        let Some(cursor) = page.next_cursor else {
+            return Ok(events);
+        };
+        request = EventReadRequest::from_cursor(cursor, limit);
     }
 }
 

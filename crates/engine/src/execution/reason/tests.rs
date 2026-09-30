@@ -1,6 +1,8 @@
 use super::compaction::materially_reduced;
 use super::*;
-use crate::driver_registry::{LlmCallConfig, PromptCacheConfig, PromptCacheStrategy};
+use crate::driver_registry::{
+    LlmCallConfig, LlmCompletionMetadata, PromptCacheConfig, PromptCacheStrategy,
+};
 use crate::events::CapabilityUsageKind;
 use everruns_provider::reasoning::{ReasoningContentPart, ReasoningText};
 use serde_json::json;
@@ -25,6 +27,37 @@ fn compaction_cost_combines_with_actual_generation_cost() {
 
     assert_eq!(usage.actual_cost_usd, Some(0.2625));
     assert_eq!(usage.effective_cost_usd(), Some(0.2625));
+}
+
+fn replay_metadata() -> LlmCompletionMetadata {
+    let mut metadata = LlmCompletionMetadata::default();
+    metadata.provider_opaque_content = Some(everruns_provider::ProviderOpaqueContent::new(
+        "anthropic",
+        json!([{"type":"text","text":"provider text"}]),
+    ));
+    metadata.provider_checkpoint_candidate =
+        Some(crate::driver_registry::ProviderCheckpointCandidate {
+            format_version: crate::ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION,
+            context: crate::driver_registry::ProviderOpaqueContext::AnthropicMessagesPrefix {
+                messages_json: "[]".to_string(),
+            },
+        });
+    metadata
+}
+
+#[test]
+fn blocked_or_rejected_output_discards_provider_replay_artifacts() {
+    let metadata = replay_metadata();
+
+    for (guardrail_allowed, rejected_tool_calls) in [(false, false), (true, true)] {
+        let (opaque, checkpoint) = provider_managed_compaction::replay_artifacts(
+            Some(&metadata),
+            guardrail_allowed,
+            rejected_tool_calls,
+        );
+        assert!(opaque.is_none());
+        assert!(checkpoint.is_none());
+    }
 }
 
 #[test]
@@ -826,12 +859,14 @@ use everruns_provider::runtime_provider::ProviderEndpoint;
 #[derive(Debug)]
 struct LifecycleStubPolicy {
     window_pressure: bool,
+    strategy: CompactionStrategy,
+    masked_count: usize,
 }
 
 impl CompactionPolicy for LifecycleStubPolicy {
     fn settings(&self) -> CompactionSettings {
         CompactionSettings {
-            strategy: CompactionStrategy::Native,
+            strategy: self.strategy,
             budget_percent: 0.85,
             summarization_model: None,
         }
@@ -861,10 +896,10 @@ impl CompactionPolicy for LifecycleStubPolicy {
         false
     }
 
-    fn apply_observation_masking(&self, _messages: &[Message]) -> ObservationMaskingResult {
+    fn apply_observation_masking(&self, messages: &[Message]) -> ObservationMaskingResult {
         ObservationMaskingResult {
-            messages: vec![],
-            masked_count: 0,
+            messages: messages.to_vec(),
+            masked_count: self.masked_count,
         }
     }
 
@@ -1097,6 +1132,8 @@ fn lifecycle_test_config() -> crate::driver_registry::LlmCallConfig {
 async fn proactive_pressure_without_native_support_emits_skip() {
     let policy = LifecycleStubPolicy {
         window_pressure: true,
+        strategy: CompactionStrategy::Native,
+        masked_count: 0,
     };
     let driver = NoNativeCompactDriver;
     let emitter = TestEventEmitter::new();
@@ -1128,6 +1165,8 @@ async fn proactive_pressure_without_native_support_emits_skip() {
 async fn proactive_checkpoint_install_failure_emits_failed() {
     let policy = LifecycleStubPolicy {
         window_pressure: true,
+        strategy: CompactionStrategy::Native,
+        masked_count: 0,
     };
     let driver = InstallingCompactDriver;
     let emitter = TestEventEmitter::new();
@@ -1166,6 +1205,8 @@ async fn proactive_endpoint_error_without_fallback_install_emits_skipped() {
     // attempt lifecycle still closes: as skipped, not dangling.
     let policy = LifecycleStubPolicy {
         window_pressure: true,
+        strategy: CompactionStrategy::Native,
+        masked_count: 0,
     };
     let driver = FailingCompactDriver;
     let emitter = TestEventEmitter::new();
@@ -1197,5 +1238,57 @@ async fn proactive_endpoint_error_without_fallback_install_emits_skipped() {
             assert_eq!(skipped.trigger, CompactionTrigger::ContextBudget);
         }
         other => panic!("expected a skipped event, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn proactive_observation_masking_emits_only_install() {
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+        strategy: CompactionStrategy::ObservationMasking,
+        masked_count: 1,
+    };
+    assert_fallback_emits_only_install(&policy, None).await;
+}
+
+#[tokio::test]
+async fn proactive_auto_without_native_support_emits_only_install() {
+    let policy = LifecycleStubPolicy {
+        window_pressure: true,
+        strategy: CompactionStrategy::Auto,
+        masked_count: 1,
+    };
+    assert_fallback_emits_only_install(&policy, None).await;
+}
+
+async fn assert_fallback_emits_only_install(
+    policy: &LifecycleStubPolicy,
+    store: Option<&std::sync::Arc<dyn crate::CompactionCheckpointStore>>,
+) {
+    let driver = NoNativeCompactDriver;
+    let emitter = TestEventEmitter::new();
+    let event_context = crate::events::EventContext::default();
+    let ctx = lifecycle_test_context(policy, &driver, &emitter, &event_context, store);
+    let mut messages: Vec<Message> = vec![];
+    let mut config = lifecycle_test_config();
+
+    let outcome = apply_proactive_compaction(ctx, &mut messages, &mut config)
+        .await
+        .expect("fallback succeeds");
+    assert!(outcome.is_none(), "fallback has no native checkpoint");
+
+    let events = emitter.events().await;
+    assert_eq!(
+        events.len(),
+        1,
+        "one terminal install event, got {events:?}"
+    );
+    match &events[0].data {
+        EventData::ContextCompacted(compacted) => {
+            assert_eq!(compacted.strategy_used, "masking");
+            assert_eq!(compacted.trigger, CompactionTrigger::ContextBudget);
+            assert!(compacted.checkpoint_id.is_none());
+        }
+        other => panic!("expected a compacted event, got {other:?}"),
     }
 }

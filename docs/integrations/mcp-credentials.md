@@ -19,7 +19,7 @@ for triggers that create a new session per invocation.
 
 Use **Rotate** to replace a value. Use the revoke action to delete the binding;
 future calls then return a setup-required result with a link back to the
-Credentials tab.
+agent's Credentials settings.
 
 Session Storage has a separate encrypted secret lifecycle for session-local
 workflows. Those secrets do not follow per-invocation sessions, and a model can

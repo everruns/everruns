@@ -148,12 +148,20 @@ pub async fn submit_tool_results(
 
     // Get session and verify status
     let caller = Caller::from(&org);
-    state
+    let session = state
         .session_service
         .get(&caller, session_id.uuid(), None)
         .await
         .log_internal_error_json("get session")?
         .ok_or_not_found_json("Session")?;
+    if !crate::domains::sessions::platform_chat_owner_matches_session(&state.db, &caller, &session)
+        .await
+        .log_internal_error_json("authorize session owner")?
+    {
+        // THREAT[TM-AGENT-017]: raw tool results are another user-driven way
+        // to resume Platform Chat and must bind to its persisted owner too.
+        return Err(ErrorResponse::not_found("Session"));
+    }
     let turn_id = TurnId::from_uuid(session_id.uuid());
     let event_message_id = MessageId::from_uuid(session_id.uuid());
 

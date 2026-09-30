@@ -486,7 +486,7 @@ mod tests {
         let schedule = CreateScheduleRow {
             name: "limited-schedule".to_string(),
             description: None,
-            cron_expression: "* * * * *".to_string(),
+            cron_expression: "0 * * * * * *".to_string(), // every minute (7-field cron)
             timezone: "UTC".to_string(),
             target_type: ScheduleTargetType::Workflow,
             target_name: "test-workflow".to_string(),
@@ -501,16 +501,37 @@ mod tests {
 
         let schedule_id = store.create_schedule(schedule).await.unwrap();
 
+        // Simulate an execution already in flight (e.g. a long-running workflow
+        // triggered by a previous poll that hasn't completed yet), so the next
+        // poll is at the max_concurrent limit and must skip.
+        store
+            .create_schedule_execution(schedule_id, Utc::now())
+            .await
+            .unwrap();
+        assert_eq!(
+            store.count_running_executions(schedule_id).await.unwrap(),
+            1
+        );
+
         let scheduler = DurableScheduler::with_defaults(
             Arc::clone(&store) as Arc<dyn WorkflowEventStore>,
             "test-scheduler-1".to_string(),
         );
 
-        // First trigger should work
+        // Due trigger should be skipped, not run, because max_concurrent is
+        // already reached by the in-flight execution above.
         scheduler.process_due_schedules().await.unwrap();
 
         let stats = store.get_schedule_stats(schedule_id).await.unwrap();
-        assert_eq!(stats.total_executions, 1);
+        assert_eq!(stats.total_executions, 2, "in-flight + skipped execution");
+        assert_eq!(
+            stats.skipped_executions, 1,
+            "the due trigger must be recorded as skipped"
+        );
+
+        // The schedule must still be rescheduled, not stuck, despite the skip.
+        let updated = store.get_schedule(schedule_id).await.unwrap();
+        assert!(updated.next_trigger_at.unwrap() > Utc::now());
     }
 
     #[tokio::test]
