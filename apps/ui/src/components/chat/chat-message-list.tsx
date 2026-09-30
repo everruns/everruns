@@ -266,8 +266,8 @@ export const ChatMessageList = memo(function ChatMessageList({
     return groups;
   }, [chatEvents, isWorkLogEvent]);
   const activityGroups = useMemo(
-    () => buildToolActivityGroups(chatEvents, t("working")),
-    [chatEvents, t],
+    () => buildToolActivityGroups(chatEvents, t("working"), locale),
+    [chatEvents, t, locale],
   );
 
   // A retried reason activity re-emits the turn's model-change marker, and the

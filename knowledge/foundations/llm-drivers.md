@@ -68,7 +68,7 @@ graph TD
 
 ### ChatDriver Trait
 
-1. **Trait Definition**: See `crates/provider/src/driver_registry.rs` for `ChatDriver` trait, `LlmStreamEvent`, `ProviderType`, and `LlmCallConfig`.
+1. **Trait Definition**: See `crates/provider/src/driver_registry.rs` for `ChatDriver` trait, `ProviderType`, and `LlmCallConfig`, and `crates/provider/src/stream_event.rs` for `LlmStreamEvent`.
 
 2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error). In-band provider failures use `LlmStreamError` so stable provider code and HTTP status survive the driver boundary.
 
@@ -753,11 +753,13 @@ server tools: model-decided, executed inside the response, never dispatched by t
 - **Loud off-provider**: unlike OpenRouter's no-op, the reason step fails the turn when the
   option reaches a provider outside `HOSTED_TOOLS_DRIVER_IDS`. An agent configured to search
   must not quietly answer from memory.
-- **Stream**: `web_search_call` items and `response.web_search_call.*` events are skipped;
-  citations stay in the answer text. The engine counts the option as provider-executed, so a
-  mid-stream failure is not reissued (same rule as OpenRouter server tools).
-- **Follow-ups**: surfacing hosted calls as session tool events, pricing per-call usage
-  (counts are logged today), and code interpreter, file search, and remote MCP.
+- **Stream**: `web_search_call` item frames become `LlmStreamEvent::HostedToolCall` progress
+  (never `ToolCalls`), which the engine persists as `tool.hosted_call` for the activity UI;
+  no `tool.completed` is emitted because that event carries tool results into replay. `Done`
+  counts calls in `hosted_tool_calls`, and the engine adds their list price
+  (`hosted_call_price_usd`) to the estimated cost. The engine counts the option as
+  provider-executed, so a mid-stream failure is not reissued.
+- **Follow-ups**: code interpreter, file search, and remote MCP.
 
 ### OpenRouter Capacity Strategy
 

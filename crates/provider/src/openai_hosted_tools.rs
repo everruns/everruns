@@ -16,7 +16,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// `driver_options` key carrying [`OpenAiHostedTools`].
 pub const OPENAI_HOSTED_TOOLS_OPTION: &str = "openai/hosted_tools";
@@ -145,11 +145,11 @@ impl WebSearchTool {
 /// Count hosted tool calls in a terminal Responses `output` array, keyed by
 /// item type (`web_search_call`, ...). Hosted calls bill per call on top of
 /// tokens, so this is what cost accounting prices.
-pub fn count_hosted_tool_calls(output: &[Value]) -> HashMap<String, u32> {
-    let mut counts = HashMap::new();
+pub fn count_hosted_tool_calls(output: &[Value]) -> BTreeMap<String, u32> {
+    let mut counts = BTreeMap::new();
     for item in output {
         if let Some(kind) = item.get("type").and_then(Value::as_str)
-            && HOSTED_CALL_ITEM_TYPES.contains(&kind)
+            && hosted_call_tool(kind).is_some()
         {
             *counts.entry(kind.to_string()).or_insert(0) += 1;
         }
@@ -157,8 +157,39 @@ pub fn count_hosted_tool_calls(output: &[Value]) -> HashMap<String, u32> {
     counts
 }
 
-/// Output item types OpenAI emits for hosted tool calls.
-const HOSTED_CALL_ITEM_TYPES: [&str; 1] = ["web_search_call"];
+/// The configured tool name for a hosted call output item type, or `None`
+/// when the item is not a hosted call.
+pub fn hosted_call_tool(item_type: &str) -> Option<&'static str> {
+    match item_type {
+        "web_search_call" => Some("web_search"),
+        _ => None,
+    }
+}
+
+/// Price-table estimate for one hosted call, in USD.
+///
+/// OpenAI prices web search per 1,000 calls: $10 for reasoning models
+/// (GPT-5 and newer, o-series) and $25 for GPT-4o / GPT-4.1, whose rate also
+/// covers the search content tokens. Other models' search content tokens are
+/// already in the reported input usage. Source: openai.com/api/pricing.
+pub fn hosted_call_price_usd(item_type: &str, model: &str) -> Option<f64> {
+    match item_type {
+        "web_search_call" if model.starts_with("gpt-4o") || model.starts_with("gpt-4.1") => {
+            Some(25.0 / 1000.0)
+        }
+        "web_search_call" => Some(10.0 / 1000.0),
+        _ => None,
+    }
+}
+
+/// Estimated USD for every hosted call in `counts`; `None` when there are none
+/// or none is priced.
+pub fn hosted_calls_cost_usd(counts: &BTreeMap<String, u32>, model: &str) -> Option<f64> {
+    counts
+        .iter()
+        .filter_map(|(kind, count)| hosted_call_price_usd(kind, model).map(|p| p * *count as f64))
+        .reduce(|a, b| a + b)
+}
 
 #[cfg(test)]
 mod tests {
@@ -247,5 +278,17 @@ mod tests {
         let counts = count_hosted_tool_calls(&output);
         assert_eq!(counts.len(), 1);
         assert_eq!(counts["web_search_call"], 2);
+    }
+
+    #[test]
+    fn hosted_calls_are_priced_per_model_family() {
+        let counts = BTreeMap::from([("web_search_call".to_string(), 3)]);
+        let sol = hosted_calls_cost_usd(&counts, "gpt-6.1-sol").unwrap();
+        assert!((sol - 0.03).abs() < 1e-9, "{sol}");
+        let legacy = hosted_calls_cost_usd(&counts, "gpt-4.1-mini").unwrap();
+        assert!((legacy - 0.075).abs() < 1e-9, "{legacy}");
+        assert_eq!(hosted_calls_cost_usd(&BTreeMap::new(), "gpt-6.1-sol"), None);
+        let unpriced = BTreeMap::from([("unknown_call".to_string(), 1)]);
+        assert_eq!(hosted_calls_cost_usd(&unpriced, "gpt-6.1-sol"), None);
     }
 }

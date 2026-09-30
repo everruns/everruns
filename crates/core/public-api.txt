@@ -474,6 +474,7 @@ everruns_core::events::EventData::TaskUpdated	variant
 everruns_core::events::EventData::ToolCallRepaired	variant
 everruns_core::events::EventData::ToolCallRequested	variant
 everruns_core::events::EventData::ToolCompleted	variant
+everruns_core::events::EventData::ToolHostedCall	variant
 everruns_core::events::EventData::ToolOutputDelta	variant
 everruns_core::events::EventData::ToolProgress	variant
 everruns_core::events::EventData::ToolStarted	variant
@@ -522,6 +523,7 @@ everruns_core::events::TASK_UPDATED	constant
 everruns_core::events::TOOL_CALL_REPAIRED	constant
 everruns_core::events::TOOL_CALL_REQUESTED	constant
 everruns_core::events::TOOL_COMPLETED	constant
+everruns_core::events::TOOL_HOSTED_CALL	constant
 everruns_core::events::TOOL_OUTPUT_DELTA	constant
 everruns_core::events::TOOL_PROGRESS	constant
 everruns_core::events::TOOL_STARTED	constant
@@ -604,6 +606,7 @@ everruns_core::events::tool_data::CapabilityUsageKind::Exposed	variant
 everruns_core::events::tool_data::CapabilityUsageKind::Invoked	variant
 everruns_core::events::tool_data::CapabilityUsageKind::Resolved	variant
 everruns_core::events::tool_data::CapabilityUsageRecord	struct
+everruns_core::events::tool_data::HostedToolCallData	struct
 everruns_core::events::tool_data::ToolCallRepairedData	struct
 everruns_core::events::tool_data::ToolCallRequestedData	struct
 everruns_core::events::tool_data::ToolCallSummary	struct

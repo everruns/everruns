@@ -260,4 +260,39 @@ describe("buildToolActivityGroups", () => {
     expect(built.byAnchorEventId.get("request")?.rows.map((row) => row.id)).toEqual(["client"]);
     expect(built.groupedEventIds.has("request")).toBe(false);
   });
+
+  it("folds hosted web search calls into one row per call", () => {
+    const hosted = (id: string, status: string, summary: string | undefined, seq: number) =>
+      event(
+        id,
+        "tool.hosted_call",
+        undefined,
+        { turn_id: "turn-test", call_id: "ws_1", tool_name: "web_search", status, summary },
+        seq,
+      );
+    const built = buildToolActivityGroups(
+      [hosted("h1", "in_progress", undefined, 1), hosted("h2", "completed", "everruns news", 2)],
+      "Working",
+    );
+    const group = built.byAnchorEventId.get("h1");
+    expect(group?.rows).toEqual([
+      { id: "ws_1", label: "Search web for everruns news", state: "completed" },
+    ]);
+    expect(built.groupedEventIds.has("h1")).toBe(true);
+    expect(built.groupedEventIds.has("h2")).toBe(true);
+  });
+
+  it("marks a failed hosted call and localizes its label", () => {
+    const failed = event(
+      "h1",
+      "tool.hosted_call",
+      undefined,
+      { turn_id: "turn-test", call_id: "ws_2", tool_name: "web_search", status: "failed" },
+      1,
+    );
+    const row = buildToolActivityGroups([failed], "Працюю", "uk").byAnchorEventId.get("h1")
+      ?.rows[0];
+    expect(row?.state).toBe("error");
+    expect(row?.label).toBe("Пошук у вебі");
+  });
 });

@@ -284,7 +284,9 @@ pub async fn collect_turn(
                 ));
             }
             LlmStreamEvent::MessagePhase(phase) => turn.phase = Some(phase),
-            LlmStreamEvent::ProviderCompactionStarted => {}
+            // Hosted calls already ran inside the response; the terminal
+            // metadata carries their counts.
+            LlmStreamEvent::ProviderCompactionStarted | LlmStreamEvent::HostedToolCall(_) => {}
             LlmStreamEvent::Done(metadata) => {
                 turn.metadata = *metadata;
                 turn.complete = true;

@@ -4,13 +4,17 @@
 //! when this endpoint cannot run them. Response side: hosted calls arrive as
 //! `web_search_call` output items and `response.web_search_call.*` events.
 //! They are provider-executed, so they never become agent tool calls; the
-//! stream skips them and the answer text carries the citations.
+//! stream reports them as `HostedToolCall` progress events, never as agent
+//! tool calls, and the answer text carries the citations.
 
 use serde_json::Value;
 
 use crate::driver_registry::LlmCallConfig;
 use crate::error::{AgentLoopError, Result};
-use crate::openai_hosted_tools::{OpenAiHostedTools, count_hosted_tool_calls};
+use std::collections::BTreeMap;
+
+use crate::driver_registry::{HostedToolCall, HostedToolCallStatus, LlmStreamEvent};
+use crate::openai_hosted_tools::{OpenAiHostedTools, count_hosted_tool_calls, hosted_call_tool};
 
 use super::OpenResponsesProtocolChatDriver;
 
@@ -38,20 +42,119 @@ impl OpenResponsesProtocolChatDriver {
     }
 }
 
-/// Record hosted tool calls from a terminal `response` object. Hosted tools
-/// bill per call on top of tokens; the counts go to tracing until usage
-/// accounting carries them.
-pub(crate) fn record_hosted_tool_calls(response: &Value) {
-    let Some(output) = response.get("output").and_then(Value::as_array) else {
-        return;
+/// Hosted call counts from a terminal `response` object, for
+/// [`crate::driver_registry::LlmCompletionMetadata::hosted_tool_calls`].
+pub(crate) fn hosted_tool_calls(response: &Value) -> BTreeMap<String, u32> {
+    response
+        .get("output")
+        .and_then(Value::as_array)
+        .map(|output| count_hosted_tool_calls(output))
+        .unwrap_or_default()
+}
+
+/// Map a hosted call's `response.output_item.added` / `.done` frame to a
+/// [`LlmStreamEvent::HostedToolCall`]. `None` for every other frame.
+pub(crate) fn hosted_call_event(event_data: &str) -> Option<LlmStreamEvent> {
+    // Cheap pre-filter: text deltas dominate the stream.
+    if !event_data.contains("_call") || !event_data.contains("response.output_item.") {
+        return None;
+    }
+    let frame: Value = serde_json::from_str(event_data).ok()?;
+    let done = match frame.get("type").and_then(Value::as_str)? {
+        "response.output_item.added" => false,
+        "response.output_item.done" => true,
+        _ => return None,
     };
-    let response_id = response.get("id").and_then(Value::as_str).unwrap_or("");
-    for (kind, count) in count_hosted_tool_calls(output) {
-        tracing::info!(
-            hosted_tool = %kind,
-            calls = count,
-            response_id,
-            "OpenResponsesDriver: hosted tool calls"
-        );
+    let item = frame.get("item")?;
+    let tool = hosted_call_tool(item.get("type").and_then(Value::as_str)?)?;
+    let failed = matches!(
+        item.get("status").and_then(Value::as_str),
+        Some("failed" | "incomplete")
+    );
+    let status = match (done, failed) {
+        (_, true) => HostedToolCallStatus::Failed,
+        (true, false) => HostedToolCallStatus::Completed,
+        (false, false) => HostedToolCallStatus::InProgress,
+    };
+    // `web_search_call.action`: `search` carries `query`, `open_page` a `url`,
+    // `find` a `pattern` within a `url`.
+    let action = item.get("action");
+    let field = |key: &str| action.and_then(|a| a.get(key)).and_then(Value::as_str);
+    let summary = field("query")
+        .or_else(|| field("url"))
+        .map(|detail| detail.chars().take(200).collect());
+    Some(LlmStreamEvent::HostedToolCall(HostedToolCall {
+        id: item
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        tool: tool.to_string(),
+        status,
+        summary,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn event(frame: Value) -> Option<HostedToolCall> {
+        match hosted_call_event(&frame.to_string())? {
+            LlmStreamEvent::HostedToolCall(call) => Some(call),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn web_search_item_frames_become_hosted_call_events() {
+        let started = event(json!({
+            "type": "response.output_item.added", "output_index": 0,
+            "item": { "type": "web_search_call", "id": "ws_1", "status": "in_progress" }
+        }))
+        .unwrap();
+        assert_eq!(started.status, HostedToolCallStatus::InProgress);
+        assert_eq!(started.tool, "web_search");
+        assert_eq!(started.summary, None);
+
+        let done = event(json!({
+            "type": "response.output_item.done", "output_index": 0,
+            "item": { "type": "web_search_call", "id": "ws_1", "status": "completed",
+                      "action": { "type": "search", "query": "everruns release" } }
+        }))
+        .unwrap();
+        assert_eq!(done.id, "ws_1");
+        assert_eq!(done.status, HostedToolCallStatus::Completed);
+        assert_eq!(done.summary.as_deref(), Some("everruns release"));
+
+        let failed = event(json!({
+            "type": "response.output_item.done",
+            "item": { "type": "web_search_call", "id": "ws_2", "status": "failed" }
+        }))
+        .unwrap();
+        assert_eq!(failed.status, HostedToolCallStatus::Failed);
+    }
+
+    #[test]
+    fn other_frames_are_not_hosted_calls() {
+        for frame in [
+            json!({ "type": "response.output_item.done",
+                    "item": { "type": "function_call", "id": "fc_1", "call_id": "c", "name": "f", "arguments": "{}" } }),
+            json!({ "type": "response.web_search_call.searching", "item_id": "ws_1" }),
+            json!({ "type": "response.output_text.delta", "delta": "a web_search_call" }),
+        ] {
+            assert!(event(frame).is_none());
+        }
+    }
+
+    #[test]
+    fn terminal_response_counts_hosted_calls() {
+        let counts = hosted_tool_calls(&json!({ "output": [
+            { "type": "web_search_call", "id": "ws_1" },
+            { "type": "message", "id": "m" },
+        ]}));
+        assert_eq!(counts.get("web_search_call"), Some(&1));
+        assert!(hosted_tool_calls(&json!({})).is_empty());
     }
 }
