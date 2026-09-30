@@ -218,11 +218,34 @@ impl ServerPaymentAuthority {
             .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
 
         let host = request_host(&request.url)?;
+        let agent_id = self.agent_id.or(session.agent_id);
+        let agent_public_id = match agent_id {
+            Some(agent_id) => self
+                .db
+                .get_agent_public_id(self.org_id, agent_id)
+                .await
+                .map_err(|error| {
+                    AgentLoopError::store(format!("Failed to resolve payment agent: {error}"))
+                })?,
+            None => None,
+        };
+        let endpoint_public_id = match session.endpoint_id {
+            Some(endpoint_id) => self
+                .db
+                .get_agent_endpoint_public_id(self.org_id, endpoint_id)
+                .await
+                .map_err(|error| {
+                    AgentLoopError::store(format!("Failed to resolve payment endpoint: {error}"))
+                })?,
+            None => None,
+        };
         let candidates = subject_candidates(
             session_id,
-            self.agent_id.or(session.agent_id),
+            agent_id,
+            agent_public_id,
             session.agent_identity_id,
             session.resolved_owner_user_id,
+            endpoint_public_id,
         );
         let mut policies = Vec::new();
         let mut seen_policy_ids = HashSet::new();
@@ -497,17 +520,39 @@ fn request_host(url: &str) -> Result<String> {
         .ok_or_else(|| AgentLoopError::config("Paid request URL has no host"))
 }
 
+/// The `(subject_type, subject_id)` pairs a policy may be bound to for this
+/// session. A policy authorizes a payment only on an exact match, so a subject
+/// missing from here is a subject that can be stored and never applied.
+///
+/// `agent_public_id` and `endpoint_public_id` are resolved by the caller,
+/// because both need a lookup. They are the identifiers the API and the UI
+/// expose, and therefore the only ones an operator can put in a policy
+/// (EVE-1130) — the typed ids taken off the session row spell internal uuids.
+/// Those internal spellings are kept alongside rather than replaced: a policy
+/// stored with one still applies, and dropping it would disable that policy
+/// rather than fix anything.
+///
+/// There is deliberately no `app` candidate. The subject type is retired
+/// (migration 152), and nothing produced a candidate for it even before that.
 fn subject_candidates(
     session_id: SessionId,
     agent_id: Option<AgentId>,
+    agent_public_id: Option<String>,
     agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
     user_id: Option<uuid::Uuid>,
+    endpoint_public_id: Option<String>,
 ) -> Vec<(&'static str, String)> {
     let mut candidates = vec![
         ("session", session_id.to_string()),
         ("session", session_id.uuid().to_string()),
         ("org", "org".to_string()),
     ];
+    if let Some(endpoint_public_id) = endpoint_public_id {
+        candidates.push(("agent_endpoint", endpoint_public_id));
+    }
+    if let Some(agent_public_id) = agent_public_id {
+        candidates.push(("agent", agent_public_id));
+    }
     if let Some(agent_id) = agent_id {
         candidates.push(("agent", agent_id.to_string()));
         candidates.push(("agent", agent_id.uuid().to_string()));
@@ -794,6 +839,82 @@ mod tests {
             payload["payload"]["signature"]
                 .as_str()
                 .is_some_and(|signature| signature.starts_with("0x") && signature.len() == 132)
+        );
+    }
+
+    /// EVE-1130: a policy only ever authorizes a payment if `subject_candidates`
+    /// produces the exact `(subject_type, subject_id)` pair it was stored with.
+    /// The `agent` subject is the one an operator reaches for, and the pair they
+    /// can actually create is the agent's `public_id` — the identifier the API
+    /// and the UI expose. Rendering the typed `AgentId` off the session row
+    /// instead spells the internal uuid, which no stored policy can match, so
+    /// the policy is accepted and then silently never applies.
+    #[test]
+    fn agent_candidates_include_the_public_id_an_operator_can_bind_to() {
+        let session_id = SessionId::new();
+        let agent_id = AgentId::new();
+        let agent_public_id = AgentId::new().to_string();
+        assert_ne!(agent_id.to_string(), agent_public_id);
+
+        let candidates = subject_candidates(
+            session_id,
+            Some(agent_id),
+            Some(agent_public_id.clone()),
+            None,
+            None,
+            None,
+        );
+
+        assert!(
+            candidates.contains(&("agent", agent_public_id.clone())),
+            "the agent's public id must be a candidate: {candidates:?}"
+        );
+        // The internal spellings stay: a policy stored with one still applies,
+        // and removing them would disable it rather than fix anything.
+        assert!(candidates.contains(&("agent", agent_id.to_string())));
+    }
+
+    /// `agent_endpoint` is offered as a subject, so it has to resolve. A subject
+    /// that can be selected and stored but never matched is worse than one that
+    /// is absent: it reads as authority scoped to an endpoint while nothing
+    /// enforces the scope.
+    #[test]
+    fn agent_endpoint_is_a_candidate_when_the_session_arrived_through_one() {
+        let session_id = SessionId::new();
+        let endpoint_public_id = "appchan_0199f0c2d4b17a3e9c1155aa77e30b41".to_string();
+
+        let candidates = subject_candidates(
+            session_id,
+            None,
+            None,
+            None,
+            None,
+            Some(endpoint_public_id.clone()),
+        );
+
+        assert!(
+            candidates.contains(&("agent_endpoint", endpoint_public_id)),
+            "an endpoint-scoped policy must be reachable: {candidates:?}"
+        );
+    }
+
+    /// `app` is retired. Nothing produced an `app` candidate even before this
+    /// change, so every `app` policy the API accepted was already inert — which
+    /// is why migration 152 converts them onto the agent instead of trusting
+    /// that they were doing nothing.
+    #[test]
+    fn app_is_never_a_candidate() {
+        let candidates = subject_candidates(
+            SessionId::new(),
+            Some(AgentId::new()),
+            Some(AgentId::new().to_string()),
+            None,
+            None,
+            Some("appchan_0199f0c2d4b17a3e9c1155aa77e30b41".to_string()),
+        );
+        assert!(
+            !candidates.iter().any(|(kind, _)| *kind == "app"),
+            "{candidates:?}"
         );
     }
 

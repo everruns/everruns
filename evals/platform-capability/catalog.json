@@ -5469,7 +5469,7 @@
           "type": "string"
         },
         "subject_type": {
-          "description": "Class of subject this policy binds to. One of: `user`, `agent_identity`, `agent`, `app`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `agent_identity`→`identity_…`,\n`agent`→`agent_…`, `app`→`app_…`, `session`→`session_…`, `org`→`org_…`.",
+          "description": "Class of subject this policy binds to. One of: `user`, `agent_identity`,\n`agent`, `agent_endpoint`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `agent_identity`→`identity_…`,\n`agent`→`agent_…`, `agent_endpoint`→`appchan_…` (an endpoint kept the\nidentifier it carried as an App channel), `session`→`session_…`,\n`org`→`org_…`. The identifier must be the API-facing one — an internal\nuuid will be stored and then never match (EVE-1130).",
           "example": "agent_identity",
           "type": "string"
         }

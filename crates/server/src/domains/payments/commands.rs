@@ -32,8 +32,12 @@ fn validate_status(value: &str) -> Result<(), CommandError> {
 }
 
 fn validate_subject_type(value: &str) -> Result<(), CommandError> {
+    // `app` is retired (EVE-1130, migration 152). `agent_endpoint` takes its
+    // place as the exposure-level subject, and is resolvable — `subject_candidates`
+    // produces it from `sessions.endpoint_id`, which is what makes it enforceable
+    // rather than merely storable.
     match value {
-        "user" | "agent_identity" | "agent" | "app" | "session" | "org" => Ok(()),
+        "user" | "agent_identity" | "agent" | "agent_endpoint" | "session" | "org" => Ok(()),
         _ => Err(CommandError::bad_request("Invalid subject_type")),
     }
 }
@@ -644,6 +648,34 @@ mod tests {
             Arc::new(StorageBackend::in_memory()),
             Some(Arc::new(encryption)),
         )
+    }
+
+    /// EVE-1130: `app` is retired. It must be refused as client input — a 400
+    /// naming the field — rather than accepted and then silently never matched,
+    /// which is what it did before, and rather than a 500.
+    #[test]
+    fn subject_type_rejects_app_and_accepts_agent_endpoint() {
+        let rejected = validate_subject_type("app").expect_err("`app` must be refused");
+        assert!(
+            matches!(rejected.kind, CommandErrorKind::BadRequest(_)),
+            "expected 400, got: {:?}",
+            rejected.kind
+        );
+        assert_eq!(rejected.status(), axum::http::StatusCode::BAD_REQUEST);
+
+        for subject_type in [
+            "user",
+            "agent_identity",
+            "agent",
+            "agent_endpoint",
+            "session",
+            "org",
+        ] {
+            assert!(
+                validate_subject_type(subject_type).is_ok(),
+                "{subject_type} must be accepted"
+            );
+        }
     }
 
     fn x402_account_request(private_key: Option<String>) -> CreatePaymentAccountRequest {

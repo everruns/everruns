@@ -321,7 +321,7 @@ export default function PaymentSettingsPage() {
                   <SelectItem value="agent_identity">Agent Identity</SelectItem>
                   <SelectItem value="user">User</SelectItem>
                   <SelectItem value="agent">Agent</SelectItem>
-                  <SelectItem value="app">App</SelectItem>
+                  <SelectItem value="agent_endpoint">Endpoint</SelectItem>
                   <SelectItem value="session">Session</SelectItem>
                   <SelectItem value="org">Organization</SelectItem>
                 </SelectContent>
