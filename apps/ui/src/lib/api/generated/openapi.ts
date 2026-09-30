@@ -6846,7 +6846,7 @@ export interface components {
        * @example Atlassian MCP Server for Jira and Confluence
        */
       description?: string | null;
-      elicitation_policy?: null | components["schemas"]["McpElicitationPolicy"];
+      elicitation_policy?: components["schemas"]["McpElicitationPolicy"] | null;
       /**
        * @description Additional HTTP headers for authentication.
        * @example {
@@ -17882,7 +17882,7 @@ export interface components {
        * @example Updated description
        */
       description?: string | null;
-      elicitation_policy?: null | components["schemas"]["McpElicitationPolicy"];
+      elicitation_policy?: components["schemas"]["McpElicitationPolicy"] | null;
       /**
        * @description Additional HTTP headers for authentication.
        * @example {
