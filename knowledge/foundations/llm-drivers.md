@@ -159,7 +159,7 @@ pin DNS only after private-range validation.
    - `max_tokens`: Optional token limit
    - `tools`: Tool definitions
    - `reasoning_effort`: Optional reasoning level (low, medium, high)
-   - `speed`: Optional speed selector (flex, default, priority), sent as OpenAI `service_tier`
+   - `speed`: Optional speed selector (flex, default, priority, fast, ultrafast), sent as OpenAI `service_tier`
    - `verbosity`: Optional verbosity selector (low, medium, high), sent as OpenAI `verbosity`
    - `metadata`: Optional request metadata for provider-side correlation
    - `previous_response_id`: Optional OpenAI Responses continuation handle
@@ -345,7 +345,9 @@ The UI also prevents setting reasoning on non-thinking models (checks `profile.r
 
 ### Speed (Service Tier)
 
-The speed selector maps to OpenAI's `service_tier` request parameter: `flex` trades latency for batch-rate pricing, `priority` buys faster and more consistent latency at a premium, `default` pins the standard tier. The API rejects values outside the closed set at message creation. It is resolved per turn from the latest user message's `controls.speed` and guarded like reasoning effort: ReasonAtom strips the value (with a warning log) when the model profile carries no `speed` config, and unknown models pass through. When unset, the field is omitted so the provider keeps its default (`auto`) routing.
+The speed selector maps to OpenAI's `service_tier` request parameter: `flex` trades latency for batch-rate pricing, `priority` buys faster and more consistent latency at a premium, `default` pins the standard tier. `fast` is OpenAI's current name for `priority` (Fast mode); the API accepts both and older models echo `priority` for either, so the two are one tier wherever a profile is checked. `ultrafast` is a separate premium tier (6x Standard, GA for GPT-6 Astra only at the time of writing). The API rejects values outside the closed set at message creation. It is resolved per turn from the latest user message's `controls.speed` and guarded like reasoning effort: ReasonAtom strips the value (with a warning log) when the model profile carries no `speed` config, and unknown models pass through. When unset, the field is omitted so the provider keeps its default (`auto`) routing.
+
+A tier is model-gated at OpenAI, so the OpenAI drivers' pre-flight check rejects a tier the model's profile does not list with a configuration error (`default` is always allowed) instead of letting the provider answer 400; on the session path ReasonAtom has already dropped it. Cost follows the tier that served the call, not the one requested: the Responses driver carries the response's echoed `service_tier` on the completion metadata, and the price-table estimate scales by that tier's `cost_multiplier` from the profile (recorded only where OpenAI prices the tier as a flat multiple of Standard: GPT-6 series Flex 0.5x, Fast 2x, Ultrafast 6x). A ramp-limited premium request that degrades to `default` is therefore priced at Standard. The Chat Completions driver does not surface the echoed tier yet and prices at Standard.
 
 Per-model availability lives in the model profile's `speed` config, sourced from OpenAI's official tier tables, the API pricing page for Flex, the Priority-processing docs for first-party priority models, and the specialized Codex priority table (models without a tier row get no config). Profiles mask the config for every provider surface except first-party OpenAI, Azure and gateways have their own capacity models. Both OpenAI drivers (Responses and Chat Completions) serialize the value verbatim as `service_tier`; other drivers ignore it.
 

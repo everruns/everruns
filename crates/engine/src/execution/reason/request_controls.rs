@@ -64,14 +64,10 @@ pub(super) fn resolve_request_controls(
                 );
                 return false;
             };
-            let supported = speed_config.values.iter().any(|value| {
-                matches!(
-                    (&value.value, speed.as_str()),
-                    (crate::model::Speed::Flex, "flex")
-                        | (crate::model::Speed::Default, "default")
-                        | (crate::model::Speed::Priority, "priority")
-                )
-            });
+            let supported = speed_config
+                .values
+                .iter()
+                .any(|value| value.value.matches_tier(speed));
             if !supported {
                 tracing::warn!(
                     model,

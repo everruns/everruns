@@ -307,10 +307,12 @@ pub fn normalize_controls_locale(
 ///
 /// THREAT[TM-API-002]: `controls.speed` is client input that is persisted and
 /// forwarded verbatim to the provider as `service_tier`; reject anything
-/// outside the closed value set at the trust boundary.
+/// outside the closed value set at the trust boundary. Whether the session's
+/// model offers the tier is checked where the model is resolved: the runtime
+/// drops a tier the model's profile does not list.
 pub fn validate_controls_speed(speed: Option<&str>) -> Result<(), ValidationError> {
     match speed {
-        None | Some("flex") | Some("default") | Some("priority") => Ok(()),
+        None | Some("flex" | "default" | "priority" | "fast" | "ultrafast") => Ok(()),
         Some(other) => {
             tracing::warn!("Invalid controls.speed value: {:?}", other);
             Err(ValidationError)
@@ -550,11 +552,11 @@ mod tests {
     #[test]
     fn test_controls_speed_accepts_known_tiers_and_rejects_others() {
         assert!(validate_controls_speed(None).is_ok());
-        for tier in ["flex", "default", "priority"] {
+        for tier in ["flex", "default", "priority", "fast", "ultrafast"] {
             assert!(validate_controls_speed(Some(tier)).is_ok(), "{tier}");
         }
         for bad in [
-            "fast",
+            "ultra",
             "auto",
             "scale",
             "PRIORITY",
@@ -582,7 +584,7 @@ mod tests {
             model_id: None,
             locale: None,
             reasoning: None,
-            speed: Some("fast".to_string()),
+            speed: Some("turbo".to_string()),
             verbosity: None,
             error_disclosure: None,
             hints: None,

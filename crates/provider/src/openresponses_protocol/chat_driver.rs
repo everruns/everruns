@@ -649,6 +649,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             cache_creation_tokens: written,
                                             reasoning_tokens: reasoning_used,
                                             provider_cost_usd,
+                                            service_tier: response_obj
+                                                .get("service_tier")
+                                                .and_then(Value::as_str)
+                                                .map(str::to_owned),
                                             model: Some(model),
                                             response_model: response_obj
                                                 .get("model")

@@ -19,6 +19,7 @@ pub fn supports_cache_options(model: &str) -> bool {
             "openai/gpt-6-astra"
                 | "openai/gpt-6-sol"
                 | "openai/gpt-6-luna"
+                | "openai/gpt-6.1-sol"
                 | "openai/gpt-5.6-sol"
                 | "openai/gpt-5.6-terra"
                 | "openai/gpt-5.6-luna"
@@ -37,6 +38,23 @@ pub(crate) fn validate_config(config: &LlmCallConfig) -> Result<()> {
                 effort.as_str(),
                 config.model
             )));
+        }
+        // Tiers are model-gated at OpenAI; fail with a clear error instead of
+        // a provider 400. `fast` and `priority` name the same tier; `default`
+        // is always accepted.
+        if let Some(speed) = config.speed.as_deref().filter(|speed| *speed != "default") {
+            let offered = profile.speed.as_ref().is_some_and(|tiers| {
+                tiers
+                    .values
+                    .iter()
+                    .any(|tier| tier.value.matches_tier(speed))
+            });
+            if !offered {
+                return Err(AgentLoopError::Configuration(format!(
+                    "Speed '{speed}' is unsupported by {}",
+                    config.model
+                )));
+            }
         }
         if config.temperature.is_some() && profile.family == "gpt-6-astra" {
             return Err(AgentLoopError::Configuration(format!(
@@ -113,7 +131,7 @@ pub(crate) fn validate_body(
     if eu
         && matches!(
             body.get("service_tier").and_then(Value::as_str),
-            Some("fast" | "priority")
+            Some("fast" | "priority" | "ultrafast")
         )
     {
         return Err(invalid(
@@ -139,7 +157,7 @@ mod tests {
             .base_url("https://api.openai.com/v1");
         let unrelated = Provider::new("custom", OpenAIProtocolChatDriver::new())
             .base_url("https://eu.api.openai.com.example/v1");
-        for tier in ["fast", "priority"] {
+        for tier in ["fast", "priority", "ultrafast"] {
             let body = json!({"model":"gpt-6-astra", "service_tier":tier});
             assert!(validate_body(&body, eu.endpoint(), true).is_err());
             assert!(validate_body(&body, eu_absolute.endpoint(), true).is_err());
@@ -210,5 +228,33 @@ mod tests {
         config.reasoning_effort = Some(ReasoningEffort::None);
         config.temperature = None;
         assert!(validate_config(&config).is_ok());
+    }
+
+    #[test]
+    fn speed_is_gated_by_the_model_profile() {
+        let check = |model: &str, speed: &str| {
+            validate_config(&LlmCallConfig {
+                model: model.to_string(),
+                speed: Some(speed.to_string()),
+                ..Default::default()
+            })
+        };
+        for speed in ["flex", "default", "priority", "fast", "ultrafast"] {
+            assert!(check("gpt-6-astra", speed).is_ok(), "{speed}");
+        }
+        for speed in ["flex", "default", "priority", "fast"] {
+            assert!(check("gpt-6.1-sol", speed).is_ok(), "{speed}");
+        }
+        let err = check("gpt-6.1-sol", "ultrafast").unwrap_err().to_string();
+        assert!(
+            err.contains("Speed 'ultrafast' is unsupported by gpt-6.1-sol"),
+            "{err}"
+        );
+        assert!(check("gpt-5.5-pro", "fast").is_err());
+        // No tier rows: only the provider default is valid.
+        assert!(check("gpt-5-nano", "default").is_ok());
+        assert!(check("gpt-5-nano", "flex").is_err());
+        // Models outside the registry are left to the provider.
+        assert!(check("some-gateway-model", "ultrafast").is_ok());
     }
 }

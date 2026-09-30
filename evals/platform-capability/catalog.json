@@ -4136,7 +4136,7 @@
               ]
             },
             "speed": {
-              "description": "Speed (service tier) for this message turn: \"flex\", \"default\", or\n\"priority\". Only sent to providers whose model profile advertises a\nspeed config (OpenAI `service_tier`).",
+              "description": "Speed (service tier) for this message turn: \"flex\", \"default\",\n\"priority\", \"fast\" (OpenAI's newer name for priority) or \"ultrafast\".\nOnly sent when the model's profile lists the tier (OpenAI\n`service_tier`); otherwise the runtime drops it.",
               "type": [
                 "string",
                 "null"

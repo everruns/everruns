@@ -139,7 +139,7 @@ Optional per-message overrides for model selection, reasoning configuration, spe
 
 **Speed (Service Tier):**
 
-When `controls.speed` is set (`flex`, `default`, or `priority`), OpenAI requests carry the matching `service_tier`; see [LLM Drivers spec](llm-drivers.md).
+When `controls.speed` is set (`flex`, `default`, `priority`, `fast`, or `ultrafast`), OpenAI requests carry the matching `service_tier`; see [LLM Drivers spec](llm-drivers.md).
 
 **Verbosity:**
 

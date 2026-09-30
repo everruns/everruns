@@ -243,8 +243,10 @@ pub struct ReasoningEffortConfig {
 /// Speed level for models that expose a latency/price service tier.
 /// Wire values map 1:1 to the OpenAI `service_tier` request parameter:
 /// `flex` (slower, cheaper), `default` (standard), `priority` (faster,
-/// premium). `auto` is deliberately not offered — omitting the field
-/// preserves the provider's default routing.
+/// premium), `fast` (OpenAI's current name for `priority`; the API accepts
+/// both), and `ultrafast` (premium speed tier, model-gated). `auto` is
+/// deliberately not offered — omitting the field preserves the provider's
+/// default routing.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -252,6 +254,31 @@ pub enum Speed {
     Flex,
     Default,
     Priority,
+    Fast,
+    Ultrafast,
+}
+
+impl Speed {
+    /// The `service_tier` wire value.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Flex => "flex",
+            Self::Default => "default",
+            Self::Priority => "priority",
+            Self::Fast => "fast",
+            Self::Ultrafast => "ultrafast",
+        }
+    }
+
+    /// Whether a `service_tier` wire value selects this speed. OpenAI treats
+    /// `fast` and `priority` as the same tier (older models echo `priority`
+    /// for a `fast` request), so each matches the other.
+    pub fn matches_tier(&self, tier: &str) -> bool {
+        match self {
+            Self::Priority | Self::Fast => matches!(tier, "priority" | "fast"),
+            other => other.as_str() == tier,
+        }
+    }
 }
 
 /// Named speed value for UI display
@@ -262,6 +289,11 @@ pub struct SpeedValue {
     pub value: Speed,
     /// Display name (e.g., "Flex", "Fast")
     pub name: String,
+    /// Price of this tier relative to the standard rate (e.g. `2.0` for Fast,
+    /// `0.5` for Flex), applied to every token bucket. `None` when the tier's
+    /// rate is not recorded; cost estimates then use the standard rate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_multiplier: Option<f64>,
 }
 
 /// Speed configuration for a model

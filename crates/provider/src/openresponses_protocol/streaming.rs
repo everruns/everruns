@@ -530,6 +530,7 @@ pub(crate) fn handle_streaming_event(
                 cache_creation_tokens: written,
                 reasoning_tokens: reasoning_used,
                 provider_cost_usd,
+                service_tier: response.service_tier,
                 model: Some(model),
                 response_model: Some(response.model),
                 finish_reason: Some(reason),

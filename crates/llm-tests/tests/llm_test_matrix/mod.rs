@@ -280,6 +280,10 @@ pub const OPENAI_GPT6_ASTRA: ProviderModelConfig =
 pub const OPENAI_GPT6_SOL: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-sol", "OPENAI_API_KEY");
 
+// GPT-6.1 Sol: near-Astra quality at Sol's price (DevDay 2026-09-29).
+pub const OPENAI_GPT61_SOL: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-6.1-sol", "OPENAI_API_KEY");
+
 pub const OPENAI_GPT6_LUNA: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-6-luna", "OPENAI_API_KEY");
 

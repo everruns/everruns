@@ -54,7 +54,8 @@ pub(crate) struct ResponsesRequest {
     /// `None` to preserve the provider default.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) parallel_tool_calls: Option<bool>,
-    /// Speed selector: OpenAI service tier ("flex", "default", "priority").
+    /// Speed selector: OpenAI service tier ("flex", "default", "priority",
+    /// "fast", "ultrafast").
     /// Omitted when `None` so the provider keeps its default ("auto") routing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) service_tier: Option<String>,

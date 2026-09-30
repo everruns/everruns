@@ -127,9 +127,10 @@ pub struct Controls {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<ReasoningConfig>,
 
-    /// Speed (service tier) for this message turn: "flex", "default", or
-    /// "priority". Only sent to providers whose model profile advertises a
-    /// speed config (OpenAI `service_tier`).
+    /// Speed (service tier) for this message turn: "flex", "default",
+    /// "priority", "fast" (OpenAI's newer name for priority) or "ultrafast".
+    /// Only sent when the model's profile lists the tier (OpenAI
+    /// `service_tier`); otherwise the runtime drops it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speed: Option<String>,
 

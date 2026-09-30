@@ -1143,3 +1143,59 @@ async fn astra_invalid_effort_fails_before_http() {
     }
     assert!(server.received_requests().await.unwrap().is_empty());
 }
+
+/// The requested tier reaches the wire verbatim, and the completion carries the
+/// tier the provider says served the call (which prices it), through both the
+/// typed and the generic `response.completed` parsers.
+#[tokio::test]
+async fn service_tier_is_sent_and_the_served_tier_is_reported() {
+    use serde_json::json;
+    for (model, requested, served, typed) in [
+        ("gpt-6.1-sol", "fast", Some("fast"), true),
+        ("gpt-6-astra", "ultrafast", Some("ultrafast"), false),
+        // A ramp-limited premium request degrades to Standard.
+        ("gpt-6-astra", "ultrafast", Some("default"), true),
+        ("gpt-6.1-sol", "flex", None, false),
+    ] {
+        let server = MockServer::start().await;
+        let mut event = json!({"type":"response.completed", "response": {
+            "id":"resp_tier", "object":"response", "created_at":1780000000,
+            "status":"completed", "model":model, "output":[],
+            "usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}
+        }});
+        if let Some(served) = served {
+            event["response"]["service_tier"] = json!(served);
+        }
+        if typed {
+            event["sequence_number"] = json!(1);
+        }
+        mount_sse(&server, format!("data: {event}\n\n")).await;
+        let mut cfg = config(model);
+        cfg.speed = Some(requested.into());
+        let response = driver(&server)
+            .chat_completion(vec![Message::text(MessageRole::User, "hi")], &cfg)
+            .await
+            .unwrap();
+        assert_eq!(response.metadata.service_tier.as_deref(), served, "{model}");
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(body["service_tier"], requested);
+    }
+}
+
+#[tokio::test]
+async fn tier_the_model_does_not_offer_fails_before_http() {
+    let server = MockServer::start().await;
+    let mut cfg = config("gpt-6.1-sol");
+    cfg.speed = Some("ultrafast".into());
+    let err = driver(&server)
+        .chat_completion(vec![], &cfg)
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Speed 'ultrafast' is unsupported by gpt-6.1-sol"),
+        "{err}"
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
+}

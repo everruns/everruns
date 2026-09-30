@@ -6292,9 +6292,10 @@ export interface components {
       model_id?: string | null;
       reasoning?: components["schemas"]["ReasoningConfig"] | null;
       /**
-       * @description Speed (service tier) for this message turn: "flex", "default", or
-       *     "priority". Only sent to providers whose model profile advertises a
-       *     speed config (OpenAI `service_tier`).
+       * @description Speed (service tier) for this message turn: "flex", "default",
+       *     "priority", "fast" (OpenAI's newer name for priority) or "ultrafast".
+       *     Only sent when the model's profile lists the tier (OpenAI
+       *     `service_tier`); otherwise the runtime drops it.
        */
       speed?: string | null;
       /**
@@ -16547,11 +16548,13 @@ export interface components {
      * @description Speed level for models that expose a latency/price service tier.
      *     Wire values map 1:1 to the OpenAI `service_tier` request parameter:
      *     `flex` (slower, cheaper), `default` (standard), `priority` (faster,
-     *     premium). `auto` is deliberately not offered — omitting the field
-     *     preserves the provider's default routing.
+     *     premium), `fast` (OpenAI's current name for `priority`; the API accepts
+     *     both), and `ultrafast` (premium speed tier, model-gated). `auto` is
+     *     deliberately not offered — omitting the field preserves the provider's
+     *     default routing.
      * @enum {string}
      */
-    Speed: "flex" | "default" | "priority";
+    Speed: "flex" | "default" | "priority" | "fast" | "ultrafast";
     /** @description Speed configuration for a model */
     SpeedConfig: {
       /** @description Default speed for this model */
@@ -16561,6 +16564,13 @@ export interface components {
     };
     /** @description Named speed value for UI display */
     SpeedValue: {
+      /**
+       * Format: double
+       * @description Price of this tier relative to the standard rate (e.g. `2.0` for Fast,
+       *     `0.5` for Flex), applied to every token bucket. `None` when the tier's
+       *     rate is not recorded; cost estimates then use the standard rate.
+       */
+      cost_multiplier?: number | null;
       /** @description Display name (e.g., "Flex", "Fast") */
       name: string;
       /** @description The API value (e.g., "flex", "priority") */
