@@ -9,7 +9,6 @@ import {
   runAgentTrigger,
   updateAgentTrigger,
 } from "@/lib/api/agent-triggers";
-import type { CreateAgentTriggerRequest, UpdateAgentTriggerRequest } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 
 export function useAgentTriggers(agentId: string) {
@@ -34,7 +33,8 @@ function useInvalidateAgentTriggers(agentId: string) {
 export function useCreateAgentTrigger(agentId: string) {
   const invalidate = useInvalidateAgentTriggers(agentId);
   return useMutation({
-    mutationFn: (request: CreateAgentTriggerRequest) => createAgentTrigger(agentId, request),
+    mutationFn: (request: Parameters<typeof createAgentTrigger>[1]) =>
+      createAgentTrigger(agentId, request),
     onSuccess: invalidate,
   });
 }
@@ -47,7 +47,7 @@ export function useUpdateAgentTrigger(agentId: string) {
       request,
     }: {
       triggerId: string;
-      request: UpdateAgentTriggerRequest;
+      request: Parameters<typeof updateAgentTrigger>[2];
     }) => updateAgentTrigger(agentId, triggerId, request),
     onSuccess: invalidate,
   });

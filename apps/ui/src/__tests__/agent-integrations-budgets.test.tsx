@@ -57,6 +57,10 @@ jest.mock("@/components/agents/integrations/endpoint-details-panel", () => ({
   ),
 }));
 
+jest.mock("@/components/agents/agent-github-card", () => ({
+  AgentGitHubCard: () => <div>Agent GitHub</div>,
+}));
+
 jest.mock("@/components/agents/agent-triggers-panel", () => ({
   AgentTriggersPanel: () => <div>Agent triggers</div>,
 }));

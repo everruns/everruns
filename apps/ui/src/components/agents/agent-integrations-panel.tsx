@@ -19,6 +19,7 @@ import { ChannelRow } from "@/components/apps/channel-row";
 import { MiniTimeline } from "@/components/apps/mini-timeline";
 import { type StatStripStats } from "@/components/apps/stat-strip";
 import { EndpointDetailsPanel } from "@/components/agents/integrations/endpoint-details-panel";
+import { AgentGitHubCard } from "@/components/agents/agent-github-card";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import { BudgetPanel } from "@/components/budgets/budget-panel";
 import {
@@ -243,6 +244,8 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                 ))}
               </div>
             )}
+
+            <AgentGitHubCard agentId={agent.id} />
 
             <AgentTriggersPanel agentId={agent.id} />
           </section>

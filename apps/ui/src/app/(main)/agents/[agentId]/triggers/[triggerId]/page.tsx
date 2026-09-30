@@ -1,8 +1,8 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { CalendarClock, Check, Pencil, Play, Trash2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { CalendarClock, Check, GitPullRequest, Pencil, Play, Trash2 } from "lucide-react";
 import { useAgent } from "@/hooks/use-agents";
 import {
   useAgentTriggers,
@@ -23,6 +23,12 @@ import {
   type TriggerConfig,
   type TriggerFormState,
 } from "@/components/agents/trigger-form";
+import {
+  EMPTY_GITHUB_FORM,
+  GitHubTriggerForm,
+  isGitHubFormValid,
+  type GitHubTriggerFormState,
+} from "@/components/agents/github-trigger-form";
 import {
   PageContainer,
   PageBreadcrumb,
@@ -54,13 +60,35 @@ export default function AgentTriggerPage({
   const runTrigger = useRunAgentTrigger(agentId);
 
   const [form, setForm] = useState<TriggerFormState>(EMPTY_TRIGGER_FORM);
+  const [githubForm, setGithubForm] = useState<GitHubTriggerFormState>(EMPTY_GITHUB_FORM);
   const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
 
   const trigger = isNew ? undefined : triggers.find((candidate) => candidate.id === triggerId);
   const returnHref = `/agents/${agentId}?tab=integrations`;
+  // trigger_type is widened to string: the generated types predate "github".
+  const isGithub = trigger
+    ? (trigger.trigger_type as string) === "github"
+    : searchParams?.get("type") === "github";
 
   useEffect(() => {
     if (!trigger) return;
+    if ((trigger.trigger_type as string) === "github") {
+      const config = trigger.config as unknown as {
+        events?: string[];
+        repositories?: string[];
+        session_mode?: string;
+        message: string;
+      };
+      setGithubForm({
+        events: config.events ?? [],
+        repositories: config.repositories ?? [],
+        session_mode: config.session_mode ?? "per_thread",
+        message: config.message,
+        enabled: trigger.enabled,
+      });
+      return;
+    }
     const config = trigger.config as TriggerConfig;
     setForm({
       cron_expression: config.cron_expression,
@@ -72,6 +100,40 @@ export default function AgentTriggerPage({
   }, [trigger]);
 
   const save = async () => {
+    if (isGithub) {
+      if (!isGitHubFormValid(githubForm)) {
+        setError("Select at least one event and enter a non-empty message.");
+        return;
+      }
+      setError(null);
+      try {
+        if (trigger) {
+          await updateTrigger.mutateAsync({
+            triggerId: trigger.id,
+            request: {
+              github_events: githubForm.events,
+              repositories: githubForm.repositories,
+              session_mode: githubForm.session_mode,
+              message: githubForm.message,
+              enabled: githubForm.enabled,
+            },
+          });
+        } else {
+          await createTrigger.mutateAsync({
+            trigger_type: "github",
+            github_events: githubForm.events,
+            repositories: githubForm.repositories,
+            session_mode: githubForm.session_mode,
+            message: githubForm.message,
+            enabled: githubForm.enabled,
+          });
+        }
+        router.push(returnHref);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Unable to save trigger.");
+      }
+      return;
+    }
     if (!isTriggerFormValid(form)) {
       setError("Enter a valid schedule and a non-empty message.");
       return;
@@ -106,6 +168,8 @@ export default function AgentTriggerPage({
 
   const agentName = getDisplayName(agent);
   const title = isNew ? "New trigger" : "Trigger";
+  const enabled = isGithub ? githubForm.enabled : form.enabled;
+  const formValid = isGithub ? isGitHubFormValid(githubForm) : isTriggerFormValid(form);
 
   return (
     <PageContainer>
@@ -118,7 +182,7 @@ export default function AgentTriggerPage({
       />
 
       <PageMasthead
-        icon={<CalendarClock />}
+        icon={isGithub ? <GitPullRequest /> : <CalendarClock />}
         title={title}
         badges={
           <>
@@ -128,30 +192,32 @@ export default function AgentTriggerPage({
                 Editing
               </Badge>
             )}
-            <Badge variant={form.enabled ? "default" : "secondary"}>
-              {form.enabled ? "enabled" : "disabled"}
+            <Badge variant={enabled ? "default" : "secondary"}>
+              {enabled ? "enabled" : "disabled"}
             </Badge>
           </>
         }
         description={
-          // Read-only surfaces always render the cadence, never the raw cron.
-          <>
-            <CronLabel expr={form.cron_expression} tz={form.timezone} /> · {agentName}
-          </>
+          isGithub ? (
+            <>Pull request events · {agentName}</>
+          ) : (
+            // Read-only surfaces always render the cadence, never the raw cron.
+            <>
+              <CronLabel expr={form.cron_expression} tz={form.timezone} /> · {agentName}
+            </>
+          )
         }
         actions={
           <>
             <Button
               type="submit"
               form="trigger-edit-form"
-              disabled={
-                !isTriggerFormValid(form) || createTrigger.isPending || updateTrigger.isPending
-              }
+              disabled={!formValid || createTrigger.isPending || updateTrigger.isPending}
             >
               <Check className="size-4" />
               {createTrigger.isPending || updateTrigger.isPending ? "Saving..." : "Save"}
             </Button>
-            {trigger && (
+            {trigger && !isGithub && (
               <Button
                 type="button"
                 variant="outline"
@@ -180,10 +246,18 @@ export default function AgentTriggerPage({
           <PageMain>
             <Card>
               <CardHeader>
-                <CardTitle>Schedule</CardTitle>
+                <CardTitle>{isGithub ? "GitHub" : "Schedule"}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <TriggerFormFields value={form} onChange={setForm} />
+                {isGithub ? (
+                  <GitHubTriggerForm
+                    agentId={agentId}
+                    value={githubForm}
+                    onChange={setGithubForm}
+                  />
+                ) : (
+                  <TriggerFormFields value={form} onChange={setForm} />
+                )}
                 {error && <p className="text-sm text-destructive">{error}</p>}
               </CardContent>
             </Card>

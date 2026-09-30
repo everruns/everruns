@@ -7,6 +7,15 @@ import type {
   UpdateAgentTriggerRequest,
 } from "./types";
 
+// Temporary: GitHub trigger fields are not in the generated OpenAPI types yet.
+// Remove once the types are regenerated.
+export type GitHubTriggerFields = {
+  trigger_type?: string;
+  github_events?: string[];
+  repositories?: string[];
+  session_mode?: string;
+};
+
 const base = (agentId: string) => `/v1/agents/${agentId}/triggers`;
 
 export async function listAgentTriggers(agentId: string): Promise<AgentTrigger[]> {
@@ -15,7 +24,7 @@ export async function listAgentTriggers(agentId: string): Promise<AgentTrigger[]
 
 export async function createAgentTrigger(
   agentId: string,
-  request: CreateAgentTriggerRequest,
+  request: Omit<CreateAgentTriggerRequest, "trigger_type" | "session_mode"> & GitHubTriggerFields,
 ): Promise<AgentTrigger> {
   return (await api.post<AgentTrigger>(base(agentId), request)).data;
 }
@@ -23,7 +32,7 @@ export async function createAgentTrigger(
 export async function updateAgentTrigger(
   agentId: string,
   triggerId: string,
-  request: UpdateAgentTriggerRequest,
+  request: Omit<UpdateAgentTriggerRequest, "session_mode"> & GitHubTriggerFields,
 ): Promise<AgentTrigger> {
   return (await api.patch<AgentTrigger>(`${base(agentId)}/${triggerId}`, request)).data;
 }

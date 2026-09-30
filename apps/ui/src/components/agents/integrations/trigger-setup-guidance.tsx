@@ -31,6 +31,8 @@ function webhookUrl(trigger: AgentTrigger): string | null {
 }
 
 export function TriggerSetupGuidance({ trigger }: { trigger: AgentTrigger }) {
+  // GitHub triggers need no manual setup (the App delivers events). The generated types predate "github".
+  if ((trigger.trigger_type as string) === "github") return null;
   if (trigger.trigger_type === "webhook") {
     const config = getWebhookTriggerConfig(trigger);
     const url = webhookUrl(trigger);
