@@ -67,7 +67,13 @@ export const defaultOperationalNavigation: NavigationItem[] = [
   // (EVE-1010). It sits here rather than under Building because reading it is
   // an operational act; the editing it links to lives on the agent.
   { name: "Exposures", href: "/exposures", icon: Radio },
-  { name: "Reports", href: "/reports", icon: ChartColumn },
+  {
+    name: "Reports",
+    href: "/reports",
+    icon: ChartColumn,
+    flag: "reports",
+    experimental: true,
+  },
 ];
 
 export const defaultBuildingNavigation: NavigationItem[] = [

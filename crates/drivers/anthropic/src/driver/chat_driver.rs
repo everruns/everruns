@@ -45,8 +45,10 @@ impl ChatDriver for AnthropicChatDriver {
             _ => Vec::new(),
         };
         let message_cache_enabled = prompt_cache_enabled && !wants_server_compaction;
+        let prepared = layout::keep_later_system_messages_in_place(&messages, &config.model);
         let (system_prompt, converted_messages) = Self::convert_messages_with_options(
-            &layout::keep_later_system_messages_in_place(&messages, &config.model),
+            &prepared.messages,
+            Some(&prepared),
             message_cache_enabled,
             config.volatile_suffix_len,
             !prefix_messages.is_empty(),

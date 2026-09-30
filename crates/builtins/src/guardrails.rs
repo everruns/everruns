@@ -988,10 +988,10 @@ impl PostGenerationOutputGuardrail for ModerationOutputGuardrail {
                     if utility_calls >= MAX_MODERATION_CALLS_PER_INVOCATION {
                         tracing::warn!(
                             "guardrails: moderation call cap reached \
-                             ({MAX_MODERATION_CALLS_PER_INVOCATION}); remaining output checks \
+                             ({MAX_MODERATION_CALLS_PER_INVOCATION}); utility-LLM output check \
                              skipped (fail-open)"
                         );
-                        break;
+                        continue;
                     }
                     utility_calls += 1;
                     run_moderation_check(service.as_ref(), check, ctx.message_text).await
@@ -1114,9 +1114,9 @@ impl PreToolUseHook for GuardrailPreToolHook {
                         if utility_calls >= MAX_JUDGE_CALLS_PER_INVOCATION {
                             tracing::warn!(
                                 tool = %tool_call.name,
-                                "guardrails: judge call cap reached for tool_use, skipping remaining"
+                                "guardrails: judge cap reached; tool_use utility check skipped"
                             );
-                            break;
+                            continue;
                         }
                         utility_calls += 1;
                         run_judge_check(
@@ -1322,10 +1322,9 @@ impl PostToolExecHook for GuardrailPostToolHook {
                         if utility_calls >= MAX_JUDGE_CALLS_PER_INVOCATION {
                             tracing::warn!(
                                 tool = %tool_call.name,
-                                "guardrails: judge call cap reached for tool_output, skipping \
-                                 remaining"
+                                "guardrails: judge cap reached; tool_output utility check skipped"
                             );
-                            break;
+                            continue;
                         }
                         utility_calls += 1;
                         run_judge_check(
@@ -2386,7 +2385,7 @@ mod tests {
             Ok(everruns_core::DecisionOutcome {
                 model: "stub".to_string(),
                 answers,
-                usage: Default::default(),
+                ..Default::default()
             })
         }
     }
@@ -2548,6 +2547,7 @@ mod tests {
         );
     }
 
+    include!("guardrails_cap_regression_tests.rs");
     #[tokio::test]
     async fn jev_checks_fail_open_without_a_service() {
         let hooks = GuardrailsCapability.pre_tool_use_hooks_with_config(&judge_config(json!({})));

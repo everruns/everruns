@@ -134,7 +134,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
         };
 
-        let tools = if config.tools.is_empty() {
+        let mut tools = if config.tools.is_empty() {
             None
         } else if let Some(ref ts_config) = config.tool_search {
             if ts_config.enabled && supports_tool_search {
@@ -148,6 +148,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         } else {
             Some(Self::convert_tools(&config.tools))
         };
+        let hosted_tools = self.hosted_tools_for(config)?;
+        if !hosted_tools.is_empty() {
+            tools
+                .get_or_insert_with(Vec::new)
+                .extend(hosted_tools.into_iter().map(ResponsesTool::Hosted));
+        }
 
         // Build reasoning config if specified.
         // Skip when effort is "none" — sending reasoning params to models that
@@ -164,9 +170,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // their encrypted payload, and it only does so on request. Stateful
         // continuations already retain that state server-side; Meta rejects
         // this include when paired with `previous_response_id`.
+        let should_include_reasoning = reasoning.is_some() || update_state.is_some();
         let include = previous_response_id
             .is_none()
-            .then_some(reasoning.is_some() || update_state.is_some())
+            .then_some(should_include_reasoning)
             .filter(|include| *include)
             .map(|_| vec!["reasoning.encrypted_content".to_string()]);
 
@@ -273,6 +280,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                     "stateful Responses continuation rejected for missing tool output; retrying once with repaired stateless replay"
                 );
                 request.previous_response_id = None;
+                request.include = should_include_reasoning
+                    .then(|| vec!["reasoning.encrypted_content".to_string()]);
                 request.input = coalesce_configuration_updates(
                     repair_unpaired_function_call_items(full_replay_input_items),
                 );
@@ -495,6 +504,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     | Some("response.done") => {
                                         // Response completed - extract usage
                                         let response_obj = json.get("response").unwrap_or(&json);
+                                        super::hosted_tools::record_hosted_tool_calls(response_obj);
 
                                         // Reconcile against the response's own output list before ending
                                         // the stream. Every incremental frame is best-effort: one that is
@@ -502,7 +512,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                         // otherwise lose the call silently, and the finish reason below is
                                         // derived from what this driver emitted, so nothing downstream
                                         // could tell that apart from the model choosing to stop.
-                                        {
+                                        if matches!(
+                                            response_obj.get("status").and_then(Value::as_str),
+                                            Some("completed" | "incomplete")
+                                        ) {
                                             let mut acc =
                                                 accumulated_tool_calls.lock().unwrap();
                                             acc.observe_response_json(response_obj);

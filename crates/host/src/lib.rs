@@ -45,6 +45,7 @@ mod composition;
 pub mod compute;
 #[cfg(feature = "native-containment")]
 pub mod containment;
+pub mod decisions;
 #[cfg(feature = "direct-egress")]
 mod egress;
 pub mod environment_preamble;
@@ -63,6 +64,8 @@ mod mcp;
 mod mcp_cache;
 #[cfg(any(feature = "otel", feature = "braintrust"))]
 pub mod observability;
+#[cfg(feature = "openai-agents-api-prototype")]
+pub mod openai_agents_api;
 #[cfg(feature = "process")]
 mod process_command;
 mod real_disk;
@@ -118,6 +121,10 @@ pub use file_store_decorators::{
 
 pub use capabilities::{
     compose_runtime_capability_registry, runtime_capability_registry, runtime_egress_service,
+};
+pub use decisions::{
+    DecisionDriverRegistry, DecisionRouter, DecisionRoutingError, LLM_DECISION_DRIVER_ID,
+    LlmDecisionDriver,
 };
 pub use host::{
     ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, ToolContextRequest,

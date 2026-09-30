@@ -563,7 +563,7 @@ pub(crate) async fn process_slack_message(
     let org_public_id = org_row.public_id;
 
     // Build session tags based on strategy
-    let routing_tags = build_session_tags(app, slack_channel, slack_config, event, surface);
+    let routing_tags = build_session_tags(app, slack_channel, slack_config, event, surface)?;
     let desired_tags = desired_session_tags(&routing_tags, slack_config.reply_mode);
 
     // Find or create session
@@ -1043,7 +1043,7 @@ pub(crate) async fn handle_agent_session_stopped(
         slack_config,
         &routing_event,
         SlackSurface::Pane,
-    );
+    )?;
     let Some(row) = find_slack_session(state, app, slack_channel, &routing_tags).await? else {
         tracing::info!(
             app_id = %app.public_id,
@@ -1117,7 +1117,7 @@ pub(crate) async fn handle_agent_session_title_changed(
         slack_config,
         &routing_event,
         SlackSurface::Pane,
-    );
+    )?;
     let Some(row) = find_slack_session(state, app, slack_channel, &routing_tags).await? else {
         tracing::debug!(
             app_id = %app.public_id,
@@ -1186,7 +1186,7 @@ pub(crate) async fn handle_app_context_changed(
         slack_config,
         &routing_event,
         SlackSurface::Pane,
-    );
+    )?;
     let Some(row) = find_slack_session(state, app, slack_channel, &routing_tags).await? else {
         tracing::debug!(
             app_id = %app.public_id,

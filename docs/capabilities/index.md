@@ -79,6 +79,7 @@ Provider-executed and built-in tool capabilities.
 
 | Capability | ID | Tools |
 |---|---|---|
+| [OpenAI Server Tools](/capabilities/openai-server-tools/) | `openai_server_tools` | 0 |
 | [OpenRouter Server Tools](/capabilities/openrouter-server-tools/) | `openrouter_server_tools` | 0 |
 
 ### Integrations

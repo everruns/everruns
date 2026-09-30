@@ -470,6 +470,7 @@ impl Factory {
                     feed,
                     argv,
                     self.workspace.clone(),
+                    external.credential_environment(),
                     Arc::clone(&notify),
                 ));
                 Stop::Process(notify)
@@ -851,6 +852,7 @@ mod tests {
             label: "stand-in".to_owned(),
             coding: argv.clone(),
             verifying: argv,
+            credential_environment: &[],
         }
     }
 

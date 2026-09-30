@@ -127,6 +127,7 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     href: "/reports",
     icon: ChartColumn,
     keywords: ["analytics", "saved report"],
+    flag: "reports",
   },
   {
     title: "Chats",
@@ -349,6 +350,7 @@ export function useGlobalSearch(query: string) {
   const knowledgeEnabled = featureFlags.knowledge;
   const pluginsEnabled = featureFlags.plugins;
   const observersEnabled = featureFlags.observers;
+  const reportsEnabled = featureFlags.reports;
   const navigationPages = useMemo(
     () => NAVIGATION_PAGES.filter((page) => !page.flag || featureFlags[page.flag]),
     [featureFlags],
@@ -378,7 +380,7 @@ export function useGlobalSearch(query: string) {
   const { data: observersData } = useObservers({
     enabled: observersEnabled && entitySearchEnabled,
   });
-  const { data: savedReportsData } = useSavedReports(entitySearchEnabled);
+  const { data: savedReportsData } = useSavedReports(reportsEnabled && entitySearchEnabled);
 
   const agents = agentsData ?? EMPTY_ARRAY;
   const sessions = sessionsData?.data ?? EMPTY_ARRAY;
@@ -393,21 +395,19 @@ export function useGlobalSearch(query: string) {
   const knowledgeIndexes = knowledgeEnabled ? (knowledgeIndexesData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const installedPlugins = pluginsEnabled ? (installedPluginsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const observers = observersEnabled ? (observersData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
-  const savedReports = savedReportsData ?? EMPTY_ARRAY;
+  const savedReports = reportsEnabled ? (savedReportsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
 
   return useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) {
       // Show top navigation pages when empty
-      return navigationPages.slice(0, 6).map(
-        (page): SearchResult => ({
-          id: `nav:${page.href}`,
-          category: "navigation",
-          icon: page.icon,
-          title: page.title,
-          href: page.href,
-        }),
-      );
+      return navigationPages.slice(0, 6).map((page): SearchResult => ({
+        id: `nav:${page.href}`,
+        category: "navigation",
+        icon: page.icon,
+        title: page.title,
+        href: page.href,
+      }));
     }
 
     const tokens = q.split(/\s+/).filter(Boolean);

@@ -40,6 +40,10 @@ use crate::slack_api::{
 use crate::slack_api_error::{SlackApiError, parse_retry_after, retry_wait};
 use crate::storage::StorageBackend;
 
+#[path = "slack_delivery/session_scheduler.rs"]
+mod session_scheduler;
+use session_scheduler::SessionDeliveryScheduler;
+
 /// Which Slack surface a turn belongs to.
 ///
 /// One app serves both at once: enabling Slack's Agents feature adds an assistant
@@ -191,8 +195,15 @@ struct DeliveryContext {
     /// Open streams for this turn, keyed by output message id. A turn with three
     /// output messages is three streams, not one concatenated blob.
     streams: HashMap<String, StreamState>,
+    /// Messages whose open stream was replaced and closed by an output
+    /// guardrail. Their subsequent completed event must not post a duplicate.
+    replaced_messages: std::collections::HashSet<String>,
     /// Last event ID we've processed (for cursor-based pagination).
     since_event_id: Option<EventId>,
+    /// Whether replay has reached this turn. Session-wide cancellation only
+    /// applies after this boundary, so an older cancellation cannot terminate a
+    /// newly registered follow-up in a reused session.
+    turn_boundary_reached: bool,
     /// Whether a reply has already reached Slack for this turn. Terminal states
     /// only announce themselves when the user got nothing (EVE-966).
     delivered: bool,
@@ -205,10 +216,8 @@ struct DeliveryKey {
     input_message_id: String,
 }
 
-/// Event-driven Slack delivery dispatcher.
-///
-/// Subscribes to the event notification broadcaster and delivers agent output
-/// messages to Slack as they arrive, with no fixed deadline.
+/// Delivers agent output to Slack from event broadcaster notifications, with no
+/// fixed deadline.
 pub struct SlackDeliveryDispatcher {
     /// Active deliveries: (session_id, input_message_id) → context
     deliveries: Arc<RwLock<HashMap<DeliveryKey, DeliveryContext>>>,
@@ -260,7 +269,6 @@ impl SlackDeliveryDispatcher {
             adapter,
         });
 
-        // Spawn the event processing loop
         let dispatcher_clone = dispatcher.clone();
         tokio::spawn(async move {
             dispatcher_clone.event_loop(event_rx, shutdown_rx).await;
@@ -310,7 +318,9 @@ impl SlackDeliveryDispatcher {
             active_tool_count: 0,
             last_status: None,
             streams: HashMap::new(),
+            replaced_messages: std::collections::HashSet::new(),
             since_event_id: None,
+            turn_boundary_reached: false,
             delivered: false,
         };
 
@@ -330,20 +340,16 @@ impl SlackDeliveryDispatcher {
         let _ = self.shutdown_tx.send(true);
     }
 
-    /// Main event loop: listens for event notifications and processes them.
     async fn event_loop(
-        &self,
+        self: Arc<Self>,
         mut event_rx: broadcast::Receiver<EventNotificationPayload>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) {
         info!("Slack delivery dispatcher started");
 
-        // Streaming needs a cadence the notification stream cannot provide: deltas
-        // arrive per token, and `chat.appendStream` will not take them at that rate.
-        // The loop therefore selects over {notification, flush tick} rather than
-        // notifications alone (EVE-974).
         let mut flush = tokio::time::interval(STREAM_FLUSH_INTERVAL);
         flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut scheduler = SessionDeliveryScheduler::new();
 
         loop {
             tokio::select! {
@@ -358,22 +364,20 @@ impl SlackDeliveryDispatcher {
                 result = event_rx.recv() => {
                     match result {
                         Ok(payload) => {
-                            // Fast path: skip if no deliveries for this session
                             if !self.active_sessions.read().await.contains(&payload.session_id) {
                                 continue;
                             }
-                            self.process_session_events(payload.session_id).await;
+                            scheduler.schedule(self.clone(), payload.session_id);
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
                             warn!(
                                 skipped = n,
                                 "Slack delivery dispatcher lagged, processing all active sessions"
                             );
-                            // On lag, process all active sessions to catch up
                             let sessions: Vec<Uuid> =
                                 self.active_sessions.read().await.iter().copied().collect();
                             for session_id in sessions {
-                                self.process_session_events(session_id).await;
+                                scheduler.schedule(self.clone(), session_id);
                             }
                         }
                         Err(broadcast::error::RecvError::Closed) => {
@@ -382,8 +386,9 @@ impl SlackDeliveryDispatcher {
                         }
                     }
                 }
+                _ = scheduler.join_next(self.clone()), if !scheduler.is_empty() => {}
                 _ = shutdown_rx.changed() => {
-                    info!("Slack delivery dispatcher shutting down");
+                    scheduler.abort_all();
                     break;
                 }
             }
@@ -438,6 +443,7 @@ impl SlackDeliveryDispatcher {
 
             let mut new_since_id = ctx.since_event_id;
             let mut delivered = ctx.delivered;
+            let mut turn_boundary_reached = ctx.turn_boundary_reached;
             let mut terminal_event: Option<String> = None;
             let streams_supported = self.streaming_for(&ctx).is_some();
 
@@ -451,13 +457,17 @@ impl SlackDeliveryDispatcher {
                 // in-flight turn's id, so a per-turn match would never fire — which is
                 // exactly the registration leak EVE-966 describes. Cancellation is
                 // session-scoped anyway (`cancel_run` takes a session), so every
-                // delivery on this session is terminal once it arrives.
+                // delivery on this session is terminal once it arrives. The turn
+                // boundary prevents a cancellation from an earlier, persisted turn
+                // from matching a later registration that reuses the session.
                 let event_input_msg = event
                     .context
                     .get("input_message_id")
                     .and_then(|v| v.as_str());
-                let is_our_turn = event_input_msg == Some(&ctx.input_message_id)
-                    || event.event_type == "turn.cancelled";
+                let matches_turn = event_input_msg == Some(&ctx.input_message_id);
+                turn_boundary_reached |= matches_turn;
+                let is_our_turn =
+                    matches_turn || (event.event_type == "turn.cancelled" && turn_boundary_reached);
 
                 if !is_our_turn {
                     continue;
@@ -467,6 +477,19 @@ impl SlackDeliveryDispatcher {
                 // discrete path below: they are accumulated per output message and
                 // flushed on a cadence Slack can absorb.
                 if streams_supported && ctx.reply_mode == SlackReplyMode::AllMessages {
+                    if event.event_type == events::OUTPUT_MESSAGE_REPLACED
+                        && let (Some(message_id), Some(replacement)) = (
+                            event.data.get("message_id").and_then(|v| v.as_str()),
+                            event.data.get("replacement").and_then(|v| v.as_str()),
+                        )
+                        && self
+                            .replace_stream(&key, &ctx, message_id, replacement)
+                            .await
+                    {
+                        delivered = true;
+                        continue;
+                    }
+
                     if event.event_type == "output.message.delta" {
                         if let (Some(message_id), Some(accumulated)) = (
                             event.data.get("message_id").and_then(|v| v.as_str()),
@@ -498,6 +521,17 @@ impl SlackDeliveryDispatcher {
                             .and_then(|m| m.get("id"))
                             .and_then(|v| v.as_str())
                     {
+                        if self
+                            .deliveries
+                            .write()
+                            .await
+                            .get_mut(&key)
+                            .is_some_and(|live| live.replaced_messages.remove(message_id))
+                        {
+                            delivered = true;
+                            continue;
+                        }
+
                         // The completed event is authoritative for the final text.
                         // Closing on the last delta alone truncates the reply by
                         // whatever arrived after it — and the last chunk is exactly
@@ -675,13 +709,17 @@ impl SlackDeliveryDispatcher {
                     }
                 }
                 self.unregister(&key).await;
-            } else if new_since_id != ctx.since_event_id || delivered != ctx.delivered {
+            } else if new_since_id != ctx.since_event_id
+                || delivered != ctx.delivered
+                || turn_boundary_reached != ctx.turn_boundary_reached
+            {
                 // Update the cursor
                 // Stream state lives in the shared map and is never written back
-                // from a clone, so only the cursor and delivered flag move here.
+                // from a clone, so only scalar replay state moves here.
                 let mut deliveries = self.deliveries.write().await;
                 if let Some(live) = deliveries.get_mut(&key) {
                     live.since_event_id = new_since_id;
+                    live.turn_boundary_reached = turn_boundary_reached;
                     live.delivered = delivered;
                 }
             }
@@ -817,114 +855,6 @@ impl SlackDeliveryDispatcher {
             })
             .accumulated = accumulated.to_string();
         true
-    }
-
-    /// Replace the accumulated text for an open stream, if it is still open.
-    async fn set_accumulated(&self, key: &DeliveryKey, message_id: &str, text: String) -> bool {
-        let mut deliveries = self.deliveries.write().await;
-        match deliveries
-            .get_mut(key)
-            .and_then(|c| c.streams.get_mut(message_id))
-        {
-            Some(state) => {
-                state.accumulated = text;
-                true
-            }
-            None => false,
-        }
-    }
-
-    /// Output messages with a stream still open on this delivery.
-    async fn open_stream_ids(&self, key: &DeliveryKey) -> Vec<String> {
-        self.deliveries
-            .read()
-            .await
-            .get(key)
-            .map(|ctx| ctx.streams.keys().cloned().collect())
-            .unwrap_or_default()
-    }
-
-    /// Take the text waiting on one stream, advancing `sent` under the lock.
-    ///
-    /// Claiming before the network call is what makes concurrent flushes safe:
-    /// two flushers cannot both read the same `sent` and transmit the same bytes.
-    /// Returns the handle, the claimed text, and the offset to restore if the send
-    /// fails.
-    async fn claim_pending(
-        &self,
-        key: &DeliveryKey,
-        message_id: &str,
-    ) -> Option<(String, String, usize)> {
-        let mut deliveries = self.deliveries.write().await;
-        let state = deliveries.get_mut(key)?.streams.get_mut(message_id)?;
-
-        let pending = state.pending().to_string();
-        if pending.is_empty() {
-            return None;
-        }
-
-        let claimed_from = state.sent;
-        state.sent = state.accumulated.len();
-        Some((state.handle.clone(), pending, claimed_from))
-    }
-
-    /// Give a claim back after a failed send, so the text is retried rather than
-    /// silently dropped from the middle of a reply.
-    async fn release_claim(&self, key: &DeliveryKey, message_id: &str, claimed_from: usize) {
-        let mut deliveries = self.deliveries.write().await;
-        if let Some(ctx) = deliveries.get_mut(key)
-            && let Some(state) = ctx.streams.get_mut(message_id)
-        {
-            state.sent = state.sent.min(claimed_from);
-        }
-    }
-
-    /// Send whatever has accumulated on one stream since the last flush.
-    async fn flush_stream(&self, key: &DeliveryKey, ctx: &DeliveryContext, message_id: &str) {
-        let Some(stream) = self.streaming_for(ctx) else {
-            return;
-        };
-        let Some((handle, pending, claimed_from)) = self.claim_pending(key, message_id).await
-        else {
-            return;
-        };
-
-        if let ChannelDeliveryResult::TransientError(e) | ChannelDeliveryResult::PermanentError(e) =
-            stream
-                .append(&handle, &pending, &self.delivery_context(ctx))
-                .await
-        {
-            warn!(error = %e, "Failed to append to Slack stream");
-            self.release_claim(key, message_id, claimed_from).await;
-        }
-    }
-
-    /// Flush the tail and close the stream, then forget it.
-    ///
-    /// Always closes, even when the append failed — a stream left open spins in
-    /// the client forever, which is worse than a truncated reply.
-    async fn close_stream(&self, key: &DeliveryKey, ctx: &DeliveryContext, message_id: &str) {
-        self.flush_stream(key, ctx, message_id).await;
-
-        let handle = {
-            let mut deliveries = self.deliveries.write().await;
-            match deliveries
-                .get_mut(key)
-                .and_then(|c| c.streams.remove(message_id))
-            {
-                Some(state) => state.handle,
-                None => return,
-            }
-        };
-
-        let Some(stream) = self.streaming_for(ctx) else {
-            return;
-        };
-        if let ChannelDeliveryResult::TransientError(e) | ChannelDeliveryResult::PermanentError(e) =
-            stream.stop(&handle, &self.delivery_context(ctx)).await
-        {
-            warn!(error = %e, "Failed to stop Slack stream");
-        }
     }
 
     /// Flush every open stream across every delivery. Driven by the timer.
@@ -1518,85 +1448,8 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
 pub(crate) const SLACK_RECIPIENT_USER_ID: &str = "slack_recipient_user_id";
 pub(crate) const SLACK_RECIPIENT_TEAM_ID: &str = "slack_recipient_team_id";
 
-/// Slack caps `markdown_text` at 12,000 characters per append.
-const SLACK_APPEND_MAX_CHARS: usize = 12_000;
-
-#[async_trait]
-impl ChannelStreamDelivery for SlackDeliveryAdapter {
-    async fn start(&self, context: &ChannelDeliveryContext) -> Result<String, String> {
-        let mut payload = serde_json::json!({ "channel": context.channel_id });
-
-        if !context.thread_ref.is_empty() {
-            payload["thread_ts"] = serde_json::Value::String(context.thread_ref.clone());
-        }
-        for (extra_key, field) in [
-            (SLACK_RECIPIENT_USER_ID, "recipient_user_id"),
-            (SLACK_RECIPIENT_TEAM_ID, "recipient_team_id"),
-        ] {
-            if let Some(value) = context.extra.get(extra_key) {
-                payload[field] = serde_json::Value::String(value.clone());
-            }
-        }
-
-        let body = slack_api_call(
-            &self.api_base,
-            &context.auth_token,
-            "chat.startStream",
-            payload,
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-
-        body.get("ts")
-            .and_then(|ts| ts.as_str())
-            .map(str::to_string)
-            .ok_or_else(|| "chat.startStream returned no ts".to_string())
-    }
-
-    async fn append(
-        &self,
-        handle: &str,
-        text: &str,
-        context: &ChannelDeliveryContext,
-    ) -> ChannelDeliveryResult {
-        let payload = serde_json::json!({
-            "channel": context.channel_id,
-            "ts": handle,
-            "markdown_text": truncate_chars(text, SLACK_APPEND_MAX_CHARS),
-        });
-
-        match slack_api_call(
-            &self.api_base,
-            &context.auth_token,
-            "chat.appendStream",
-            payload,
-        )
-        .await
-        {
-            Ok(_) => ChannelDeliveryResult::Ok,
-            Err(e) => classify_slack_failure(e),
-        }
-    }
-
-    async fn stop(&self, handle: &str, context: &ChannelDeliveryContext) -> ChannelDeliveryResult {
-        let payload = serde_json::json!({
-            "channel": context.channel_id,
-            "ts": handle,
-        });
-
-        match slack_api_call(
-            &self.api_base,
-            &context.auth_token,
-            "chat.stopStream",
-            payload,
-        )
-        .await
-        {
-            Ok(_) => ChannelDeliveryResult::Ok,
-            Err(e) => classify_slack_failure(e),
-        }
-    }
-}
+#[path = "slack_delivery/streams.rs"]
+mod streams;
 
 /// Map a Slack transport failure onto a `ChannelDeliveryResult`.
 /// Slack's agent-surface methods, in one place.
@@ -1774,11 +1627,12 @@ async fn post_to_slack_with_retry_base(
     unreachable!()
 }
 
-/// Characters Slack accepts in one `markdown` block.
-const SLACK_MARKDOWN_BLOCK_LIMIT: usize = 12_000;
-
-/// Blocks Slack accepts in one `chat.postMessage` call.
-const SLACK_MAX_BLOCKS_PER_MESSAGE: usize = 50;
+#[path = "slack_delivery/markdown_split.rs"]
+mod markdown_split;
+use markdown_split::{
+    SLACK_MARKDOWN_BLOCK_LIMIT, SLACK_MAX_BLOCKS_PER_MESSAGE, SLACK_MAX_OUTBOUND_REPLY_CHARS,
+    split_markdown_for_blocks, truncate_chars,
+};
 
 /// Cap on the `text` notification fallback.
 ///
@@ -1808,159 +1662,19 @@ impl SlackCorrelation {
     }
 }
 
-/// Truncate on a char boundary, so multi-byte text cannot panic the slice.
-fn truncate_chars(text: &str, limit: usize) -> &str {
-    match text.char_indices().nth(limit) {
-        Some((idx, _)) => &text[..idx],
-        None => text,
-    }
-}
-
-/// Split Markdown into pieces that each fit one Slack `markdown` block.
-///
-/// Splits on line boundaries, and never leaves a fenced code block open: when a
-/// boundary lands inside a fence the fence is closed at the end of the piece and
-/// reopened — with its original info string — at the start of the next, so a
-/// split code block still renders as code on both sides.
-fn split_markdown_for_blocks(text: &str, limit: usize) -> Vec<String> {
-    debug_assert!(limit > 8, "limit must leave room for fence markers");
-    if text.chars().count() <= limit {
-        return vec![text.to_string()];
-    }
-
-    let mut chunks: Vec<String> = Vec::new();
-    let mut current = String::new();
-    let mut current_len = 0usize;
-    // The fence currently open, as (marker, info string) — e.g. ("```", "rust").
-    let mut open_fence: Option<(String, String)> = None;
-    // Reopened at the top of the next chunk when a split interrupts a fence.
-    let mut reopen: Option<String> = None;
-
-    // Reserve room for the closing fence we may have to append.
-    let effective = limit.saturating_sub(4);
-
-    let flush = |current: &mut String,
-                 current_len: &mut usize,
-                 open_fence: &Option<(String, String)>,
-                 chunks: &mut Vec<String>,
-                 reopen: &mut Option<String>| {
-        if current.is_empty() {
-            return;
-        }
-        let mut chunk = std::mem::take(current);
-        if let Some((marker, info)) = open_fence {
-            // Close the fence here and reopen it in the next chunk.
-            if !chunk.ends_with('\n') {
-                chunk.push('\n');
-            }
-            chunk.push_str(marker);
-            *reopen = Some(format!("{}{}", marker, info));
-        } else {
-            *reopen = None;
-        }
-        chunks.push(chunk);
-        *current_len = 0;
-    };
-
-    for line in text.split_inclusive('\n') {
-        let line_len = line.chars().count();
-
-        // A single line past the limit has no safe boundary; hard-split it.
-        if line_len > effective {
-            flush(
-                &mut current,
-                &mut current_len,
-                &open_fence,
-                &mut chunks,
-                &mut reopen,
-            );
-            if let Some(ref head) = reopen.take() {
-                current.push_str(head);
-                current.push('\n');
-                current_len = head.chars().count() + 1;
-            }
-            let mut rest = line;
-            while rest.chars().count() > effective.saturating_sub(current_len) {
-                let room = effective.saturating_sub(current_len);
-                let head = truncate_chars(rest, room);
-                current.push_str(head);
-                current_len += head.chars().count();
-                rest = &rest[head.len()..];
-                flush(
-                    &mut current,
-                    &mut current_len,
-                    &open_fence,
-                    &mut chunks,
-                    &mut reopen,
-                );
-                if let Some(ref h) = reopen.take() {
-                    current.push_str(h);
-                    current.push('\n');
-                    current_len = h.chars().count() + 1;
-                }
-            }
-            current.push_str(rest);
-            current_len += rest.chars().count();
-            continue;
-        }
-
-        if current_len + line_len > effective {
-            flush(
-                &mut current,
-                &mut current_len,
-                &open_fence,
-                &mut chunks,
-                &mut reopen,
-            );
-            if let Some(head) = reopen.take() {
-                current.push_str(&head);
-                current.push('\n');
-                current_len = head.chars().count() + 1;
-            }
-        }
-
-        // Track fence state after placement, so the marker line itself lands in
-        // the chunk that opens or closes it.
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed
-            .strip_prefix("```")
-            .or_else(|| trimmed.strip_prefix("~~~"))
-        {
-            let marker = &trimmed[..3];
-            match open_fence {
-                // A closing fence carries no info string.
-                Some((ref open_marker, _)) if open_marker == marker => open_fence = None,
-                Some(_) => {}
-                None => open_fence = Some((marker.to_string(), rest.trim_end().to_string())),
-            }
-        }
-
-        current.push_str(line);
-        current_len += line_len;
-    }
-
-    flush(
-        &mut current,
-        &mut current_len,
-        &open_fence,
-        &mut chunks,
-        &mut reopen,
-    );
-
-    chunks
-}
-
 /// Build the `chat.postMessage` payloads for one reply.
 ///
-/// Normally one payload. A reply past
-/// `SLACK_MARKDOWN_BLOCK_LIMIT * SLACK_MAX_BLOCKS_PER_MESSAGE` (600k characters)
-/// spills into further messages rather than being truncated.
+/// Normally one payload. Replies are bounded to one full Slack message's worth
+/// of source text before splitting, which keeps synchronous payload allocation
+/// finite while still allowing fence continuations to spill into another API
+/// call when their added markers cross the 50-block boundary.
 fn build_post_payloads(
     channel: &str,
     thread_ts: &str,
     text: &str,
     correlation: Option<&SlackCorrelation>,
 ) -> Vec<serde_json::Value> {
+    let text = truncate_chars(text, SLACK_MAX_OUTBOUND_REPLY_CHARS);
     let chunks = split_markdown_for_blocks(text, SLACK_MARKDOWN_BLOCK_LIMIT);
 
     chunks
@@ -2086,6 +1800,9 @@ pub(crate) async fn post_slack_message(
 
 #[cfg(test)]
 mod tests {
+    #[path = "concurrency_tests.rs"]
+    mod concurrency_tests;
+
     use super::*;
 
     #[test]
@@ -3121,6 +2838,7 @@ mod tests {
         enum Call {
             Start,
             Append(String, String),
+            Replace(String, String),
             Stop(String),
             Discrete(String),
         }
@@ -3216,6 +2934,16 @@ mod tests {
                 self.push(Call::Stop(handle.to_string()));
                 ChannelDeliveryResult::Ok
             }
+
+            async fn replace(
+                &self,
+                handle: &str,
+                text: &str,
+                _context: &ChannelDeliveryContext,
+            ) -> ChannelDeliveryResult {
+                self.push(Call::Replace(handle.to_string(), text.to_string()));
+                ChannelDeliveryResult::Ok
+            }
         }
 
         async fn dispatcher_with(
@@ -3284,6 +3012,25 @@ mod tests {
             .await;
         }
 
+        async fn replaced(
+            db: &StorageBackend,
+            session: SessionId,
+            message_id: &str,
+            replacement: &str,
+        ) {
+            terminal_state_tests::emit(
+                db,
+                session,
+                events::OUTPUT_MESSAGE_REPLACED,
+                "msg_in",
+                serde_json::json!({
+                    "message_id": message_id,
+                    "replacement": replacement,
+                }),
+            )
+            .await;
+        }
+
         fn recorded(calls: &Arc<Mutex<Vec<Call>>>) -> Vec<Call> {
             calls.lock().expect("recorder").clone()
         }
@@ -3325,6 +3072,33 @@ mod tests {
             assert!(
                 !calls.iter().any(|c| matches!(c, Call::Discrete(_))),
                 "a streamed message must not also be posted discretely: {calls:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn guardrail_replacement_removes_streamed_text() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let session = terminal_state_tests::seed_session(&db).await;
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let dispatcher =
+                dispatcher_with(db.clone(), RecordingAdapter::new(calls.clone())).await;
+            register(&dispatcher, session.uuid(), SlackSurface::Pane).await;
+
+            delta(&db, session, "m1", "protected output").await;
+            dispatcher.process_session_events(session.uuid()).await;
+            dispatcher.flush_open_streams().await;
+            replaced(&db, session, "m1", "Response blocked").await;
+            completed(&db, session, "m1", "Response blocked").await;
+            dispatcher.process_session_events(session.uuid()).await;
+
+            assert_eq!(
+                recorded(&calls),
+                vec![
+                    Call::Start,
+                    Call::Append("stream-1".to_string(), "protected output".to_string()),
+                    Call::Replace("stream-1".to_string(), "Response blocked".to_string()),
+                ],
+                "the platform-visible stream must contain only the safe replacement"
             );
         }
 
@@ -3901,381 +3675,8 @@ mod tests {
         }
     }
 
-    mod terminal_state_tests {
-        use super::*;
-        use crate::storage::StorageBackend;
-        use crate::storage::models::{CreateEventRow, CreateSessionRow};
-        use everruns_provider::typed_id::PrincipalId;
-        use everruns_provider::typed_id::{AgentId, HarnessId};
-        use tokio::sync::broadcast;
-        use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        const ORG: i64 = 30;
-        const INPUT_MSG: &str = "msg_turn_one";
-        const FRONTEND: &str = "https://app.example.com";
-        const CHANNEL: &str = "C_TERMINAL";
-        const THREAD_TS: &str = "1700000000.000100";
-
-        pub(super) async fn seed_session(
-            db: &StorageBackend,
-        ) -> everruns_provider::typed_id::SessionId {
-            db.create_session(CreateSessionRow {
-                source: everruns_platform::SessionSource::Api,
-                workspace_id: None,
-                org_id: ORG,
-                app_id: None,
-                endpoint_id: None,
-                harness_id: Some(HarnessId::from_uuid(uuid::Uuid::nil())),
-                agent_id: Some(AgentId::from_uuid(uuid::Uuid::nil())),
-                agent_version_id: None,
-                agent_config_hash: None,
-                agent_identity_id: None,
-                owner_principal_id: PrincipalId::from_seed(1),
-                resolved_owner_user_id: None,
-                title: Some("terminal state test".to_string()),
-                locale: None,
-                tags: vec![],
-                model_id: None,
-                capabilities: serde_json::json!([]),
-                tools: serde_json::json!([]),
-                mcp_servers: serde_json::json!({}),
-                system_prompt: None,
-                initial_files: serde_json::Value::Array(vec![]),
-                hints: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                blueprint_id: None,
-                blueprint_config: None,
-                network_access: None,
-                parent_session_id: None,
-                budget_root_session_id: None,
-            })
-            .await
-            .expect("create session")
-            .id
-        }
-
-        pub(super) async fn emit(
-            db: &StorageBackend,
-            session_id: everruns_provider::typed_id::SessionId,
-            event_type: &str,
-            input_message_id: &str,
-            data: serde_json::Value,
-        ) {
-            db.create_event(CreateEventRow {
-                session_id,
-                event_type: event_type.to_string(),
-                ts: chrono::Utc::now(),
-                context: serde_json::json!({ "input_message_id": input_message_id }),
-                data,
-                metadata: None,
-                tags: None,
-            })
-            .await
-            .expect("create event");
-        }
-
-        fn reply_event_data(text: &str) -> serde_json::Value {
-            serde_json::json!({
-                "message": { "content": [{ "type": "text", "text": text }] }
-            })
-        }
-
-        /// Slack mock that accepts every post, plus a dispatcher pointed at it.
-        async fn dispatcher_against_slack(
-            db: Arc<StorageBackend>,
-        ) -> (Arc<SlackDeliveryDispatcher>, MockServer) {
-            let mock_server = MockServer::start().await;
-            Mock::given(method("POST"))
-                .and(path("/chat.postMessage"))
-                .respond_with(
-                    ResponseTemplate::new(200)
-                        .set_body_json(serde_json::json!({ "ok": true, "ts": "1.2" })),
-                )
-                .mount(&mock_server)
-                .await;
-
-            let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
-            let dispatcher = SlackDeliveryDispatcher::start_with_adapter(
-                db,
-                rx,
-                FRONTEND.to_string(),
-                Arc::new(SlackDeliveryAdapter::with_api_base(mock_server.uri())),
-            );
-            (dispatcher, mock_server)
-        }
-
-        /// Text of every message the dispatcher posted, in order.
-        async fn posted_texts(mock_server: &MockServer) -> Vec<String> {
-            mock_server
-                .received_requests()
-                .await
-                .unwrap_or_default()
-                .iter()
-                .map(|req| {
-                    let body: serde_json::Value =
-                        serde_json::from_slice(&req.body).expect("slack post body is json");
-                    body["text"].as_str().unwrap_or_default().to_string()
-                })
-                .collect()
-        }
-
-        async fn register_turn(dispatcher: &SlackDeliveryDispatcher, session_id: uuid::Uuid) {
-            dispatcher
-                .register(DeliveryRegistration {
-                    session_id,
-                    input_message_id: INPUT_MSG.to_string(),
-                    bot_token: "xoxb-test-token".to_string(),
-                    channel: CHANNEL.to_string(),
-                    thread_ts: THREAD_TS.to_string(),
-                    reply_mode: SlackReplyMode::AllMessages,
-                    surface: SlackSurface::Channel,
-                    recipient_user_id: None,
-                    recipient_team_id: None,
-                    tool_visibility: PublicToolVisibility::default(),
-                    generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
-                        .to_string(),
-                    approvals_enabled: true,
-                })
-                .await;
-        }
-
-        #[tokio::test]
-        async fn turn_failed_without_reply_posts_one_notice() {
-            let db = Arc::new(StorageBackend::in_memory());
-            let session_id = seed_session(&db).await;
-            let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
-            register_turn(&dispatcher, session_id.uuid()).await;
-
-            emit(
-                &db,
-                session_id,
-                "turn.failed",
-                INPUT_MSG,
-                serde_json::json!({ "error": "provider exploded: secret-bearing detail" }),
-            )
-            .await;
-            dispatcher.process_session_events(session_id.uuid()).await;
-
-            let texts = posted_texts(&mock_server).await;
-            assert_eq!(texts.len(), 1, "expected exactly one notice, got {texts:?}");
-            assert!(
-                texts[0].contains("could not finish"),
-                "unexpected notice: {}",
-                texts[0]
-            );
-            assert!(
-                texts[0].contains(&format!("{FRONTEND}/sessions/{session_id}/chat")),
-                "notice must link back to the session: {}",
-                texts[0]
-            );
-            assert!(
-                !texts[0].contains("secret-bearing detail"),
-                "notice must not leak internal error text: {}",
-                texts[0]
-            );
-            assert_eq!(
-                dispatcher.active_delivery_count().await,
-                0,
-                "a failed turn must release its registration"
-            );
-        }
-
-        #[tokio::test]
-        async fn turn_completed_without_output_posts_notice() {
-            let db = Arc::new(StorageBackend::in_memory());
-            let session_id = seed_session(&db).await;
-            let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
-            register_turn(&dispatcher, session_id.uuid()).await;
-
-            emit(
-                &db,
-                session_id,
-                "turn.completed",
-                INPUT_MSG,
-                serde_json::json!({}),
-            )
-            .await;
-            dispatcher.process_session_events(session_id.uuid()).await;
-
-            let texts = posted_texts(&mock_server).await;
-            assert_eq!(texts.len(), 1, "expected exactly one notice, got {texts:?}");
-            assert!(
-                texts[0].contains("without a reply"),
-                "unexpected notice: {}",
-                texts[0]
-            );
-        }
-
-        #[tokio::test]
-        async fn delivered_reply_suppresses_notice() {
-            let db = Arc::new(StorageBackend::in_memory());
-            let session_id = seed_session(&db).await;
-            let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
-            register_turn(&dispatcher, session_id.uuid()).await;
-
-            emit(
-                &db,
-                session_id,
-                "output.message.completed",
-                INPUT_MSG,
-                reply_event_data("Here is your answer."),
-            )
-            .await;
-            emit(
-                &db,
-                session_id,
-                "turn.completed",
-                INPUT_MSG,
-                serde_json::json!({}),
-            )
-            .await;
-            dispatcher.process_session_events(session_id.uuid()).await;
-
-            let texts = posted_texts(&mock_server).await;
-            assert_eq!(texts, vec!["Here is your answer.".to_string()]);
-            assert_eq!(dispatcher.active_delivery_count().await, 0);
-        }
-
-        /// The reply and the terminal event usually arrive in separate
-        /// notifications, so `delivered` has to survive between passes or every
-        /// answered turn would be chased by a spurious "no reply" notice.
-        #[tokio::test]
-        async fn reply_in_earlier_pass_still_suppresses_notice() {
-            let db = Arc::new(StorageBackend::in_memory());
-            let session_id = seed_session(&db).await;
-            let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
-            register_turn(&dispatcher, session_id.uuid()).await;
-
-            emit(
-                &db,
-                session_id,
-                "output.message.completed",
-                INPUT_MSG,
-                reply_event_data("Answered early."),
-            )
-            .await;
-            dispatcher.process_session_events(session_id.uuid()).await;
-
-            emit(
-                &db,
-                session_id,
-                "turn.completed",
-                INPUT_MSG,
-                serde_json::json!({}),
-            )
-            .await;
-            dispatcher.process_session_events(session_id.uuid()).await;
-
-            let texts = posted_texts(&mock_server).await;
-            assert_eq!(texts, vec!["Answered early.".to_string()]);
-        }
-
-        /// Both cancel paths mint a fresh `input_message_id`, so the delivery used
-        /// to sit registered forever and the user was never told.
-        #[tokio::test]
-        async fn turn_cancelled_notifies_and_unregisters() {
-            let db = Arc::new(StorageBackend::in_memory());
-            let session_id = seed_session(&db).await;
-            let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
-            register_turn(&dispatcher, session_id.uuid()).await;
-
-            emit(
-                &db,
-                session_id,
-                "turn.cancelled",
-                "msg_freshly_minted_by_cancel",
-                serde_json::json!({ "reason": "User requested cancellation" }),
-            )
-            .await;
-            dispatcher.process_session_events(session_id.uuid()).await;
-
-            let texts = posted_texts(&mock_server).await;
-            assert_eq!(texts.len(), 1, "expected exactly one notice, got {texts:?}");
-            assert!(
-                texts[0].contains("cancelled"),
-                "unexpected notice: {}",
-                texts[0]
-            );
-            assert_eq!(
-                dispatcher.active_delivery_count().await,
-                0,
-                "cancelling must not leak the delivery registration"
-            );
-        }
-
-        /// A reply Slack refused is not a delivered reply: the user still needs to
-        /// be told the turn is over.
-        #[tokio::test]
-        async fn failed_delivery_still_yields_notice() {
-            let db = Arc::new(StorageBackend::in_memory());
-            let session_id = seed_session(&db).await;
-
-            // Reject every post with a permanent error so no retry budget burns.
-            let mock_server = MockServer::start().await;
-            Mock::given(method("POST"))
-                .and(path("/chat.postMessage"))
-                .respond_with(ResponseTemplate::new(200).set_body_json(
-                    serde_json::json!({ "ok": false, "error": "channel_not_found" }),
-                ))
-                .mount(&mock_server)
-                .await;
-
-            let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
-            let dispatcher = SlackDeliveryDispatcher::start_with_adapter(
-                db.clone(),
-                rx,
-                FRONTEND.to_string(),
-                Arc::new(SlackDeliveryAdapter::with_api_base(mock_server.uri())),
-            );
-            register_turn(&dispatcher, session_id.uuid()).await;
-
-            emit(
-                &db,
-                session_id,
-                "output.message.completed",
-                INPUT_MSG,
-                reply_event_data("Answer nobody will see."),
-            )
-            .await;
-            emit(
-                &db,
-                session_id,
-                "turn.completed",
-                INPUT_MSG,
-                serde_json::json!({}),
-            )
-            .await;
-            dispatcher.process_session_events(session_id.uuid()).await;
-
-            let texts = posted_texts(&mock_server).await;
-            assert_eq!(
-                texts.len(),
-                2,
-                "the lost reply and then the notice, got {texts:?}"
-            );
-            assert!(
-                texts[1].contains("without a reply"),
-                "unexpected notice: {}",
-                texts[1]
-            );
-            assert_eq!(dispatcher.active_delivery_count().await, 0);
-        }
-
-        #[tokio::test]
-        async fn notice_without_frontend_url_omits_link() {
-            let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
-            let dispatcher = SlackDeliveryDispatcher::start(
-                Arc::new(StorageBackend::in_memory()),
-                rx,
-                String::new(),
-            );
-
-            let notice = dispatcher.terminal_notice("turn.failed", uuid::Uuid::nil());
-            assert_eq!(notice, "The agent could not finish this request.");
-        }
-    }
+    #[path = "terminal_state_tests.rs"]
+    mod terminal_state_tests;
 
     // ==========================================
     // Markdown block rendering (EVE-971)
@@ -4454,6 +3855,65 @@ mod tests {
                 assert!(block.chars().count() <= SLACK_MARKDOWN_BLOCK_LIMIT);
             }
             assert_eq!(blocks.join(""), reply);
+        }
+
+        /// Regression for a zero-progress hard split: an opening fence whose
+        /// continuation prefix filled the effective block size used to make
+        /// the following oversized line loop and allocate forever.
+        #[test]
+        fn boundary_sized_fence_info_cannot_stall_hard_split() {
+            let effective = SLACK_MARKDOWN_BLOCK_LIMIT - 4;
+            let reply = format!(
+                "```{}\n{}",
+                "i".repeat(effective - 4),
+                "X".repeat(effective + 1)
+            );
+
+            let blocks = split_markdown_for_blocks(&reply, SLACK_MARKDOWN_BLOCK_LIMIT);
+
+            assert!(blocks.len() >= 2);
+            assert!(
+                blocks
+                    .iter()
+                    .all(|block| block.chars().count() <= SLACK_MARKDOWN_BLOCK_LIMIT)
+            );
+        }
+
+        /// Exercise varied limits, fence-info lengths, Unicode, and oversized
+        /// lines. Returning proves termination; every output block must retain
+        /// the splitter's hard size invariant.
+        #[test]
+        fn split_markdown_always_makes_progress_and_respects_limits() {
+            for limit in 9..80 {
+                for info_len in [0, 1, limit / 2, limit, limit * 2] {
+                    let reply = format!(
+                        "```{}\n{}\n~~~{}\n{}",
+                        "lang".repeat(info_len),
+                        "🚀".repeat(limit * 3),
+                        "x".repeat(info_len),
+                        "tail".repeat(limit * 2),
+                    );
+                    let blocks = split_markdown_for_blocks(&reply, limit);
+                    assert!(!blocks.is_empty());
+                    assert!(
+                        blocks.iter().all(|block| block.chars().count() <= limit),
+                        "limit {limit}, info length {info_len}, blocks: {blocks:?}"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn outbound_reply_source_has_a_total_cap() {
+            let reply = "z".repeat(SLACK_MAX_OUTBOUND_REPLY_CHARS + 10_000);
+            let payloads = build_post_payloads("C123", "", &reply, None);
+            let delivered_chars: usize = payloads
+                .iter()
+                .flat_map(blocks_of)
+                .map(|block| block.chars().count())
+                .sum();
+
+            assert_eq!(delivered_chars, SLACK_MAX_OUTBOUND_REPLY_CHARS);
         }
 
         /// End to end through the real post path: the wire body Slack receives

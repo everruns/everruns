@@ -16,11 +16,10 @@ use crate::client::{
 };
 use async_trait::async_trait;
 use everruns_core::{
-    DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionUsage,
-    DecisionsService, DisabledDecisionsService,
+    DecisionAnswer, DecisionDriver, DecisionDriverCapabilities, DecisionOutcome, DecisionQuestion,
+    DecisionRequest, DecisionUsage, DecisionsService, NativePrimitives,
 };
 use everruns_provider::error::{AgentLoopError, Result};
-use std::sync::Arc;
 
 /// Environment variable used by the deployment-owned judgment client.
 ///
@@ -38,6 +37,9 @@ pub const UTILITY_TYPESAFE_API_KEY_ENV: &str = "UTILITY_TYPESAFE_API_KEY";
 /// embedders, are free to choose — there will be other classifiers and other
 /// models, and the type should not be the thing preventing that.
 pub const DECISIONS_MODEL: &str = DEFAULT_MODEL;
+
+/// Driver id for `DECISIONS_DRIVER` and `typesafe/...` routing.
+pub const TYPESAFE_DECISION_DRIVER_ID: &str = "typesafe";
 
 /// The TypeSafe provider, behind core's provider-neutral decisions.
 ///
@@ -116,10 +118,21 @@ impl TypeSafeAI {
     }
 }
 
+// The vendor answers all three primitives with calibrated distributions, and
+// owns every `jev-*` id, so a request naming one reaches it without a
+// `typesafe/` prefix.
 #[async_trait]
-impl DecisionsService for TypeSafeAI {
-    fn is_configured(&self) -> bool {
-        true
+impl DecisionDriver for TypeSafeAI {
+    fn id(&self) -> &str {
+        TYPESAFE_DECISION_DRIVER_ID
+    }
+
+    fn capabilities(&self) -> DecisionDriverCapabilities {
+        DecisionDriverCapabilities::new(NativePrimitives::ALL, true)
+    }
+
+    fn model_prefixes(&self) -> &[&str] {
+        &["jev-"]
     }
 
     async fn evaluate(&self, request: DecisionRequest) -> Result<DecisionOutcome> {
@@ -154,7 +167,21 @@ impl DecisionsService for TypeSafeAI {
                 input_tokens: judgment.usage.input_tokens,
                 output_tokens: judgment.usage.output_tokens,
             },
+            calibrated: true,
         })
+    }
+}
+
+/// Embedders holding one TypeSafe key use it directly, with no registry:
+/// `Decisions::new("jev-latest", TypeSafeAI::from_env()?)`.
+#[async_trait]
+impl DecisionsService for TypeSafeAI {
+    fn is_configured(&self) -> bool {
+        true
+    }
+
+    async fn evaluate(&self, request: DecisionRequest) -> Result<DecisionOutcome> {
+        DecisionDriver::evaluate(self, request).await
     }
 
     fn name(&self) -> &'static str {
@@ -262,13 +289,16 @@ impl SystemDecisionsConfig {
         }
     }
 
-    /// Materialize the configured service behind core's neutral trait.
-    pub fn into_service(self) -> Arc<dyn DecisionsService> {
+    /// The deployment's TypeSafe driver, when a key is configured.
+    ///
+    /// The platform registers it with the other decision drivers; which one
+    /// answers by default is `DECISIONS_DRIVER`'s call, not this crate's.
+    pub fn into_driver(self) -> Option<TypeSafeAI> {
         match self {
-            Self::Disabled => Arc::new(DisabledDecisionsService),
+            Self::Disabled => None,
             // Guardrails are the primary caller and sit on latency-critical
             // seams, so the deployment client does not retry.
-            Self::TypeSafeAI { api_key } => Arc::new(TypeSafeAI::without_retries(api_key)),
+            Self::TypeSafeAI { api_key } => Some(TypeSafeAI::without_retries(api_key)),
         }
     }
 }
@@ -375,27 +405,23 @@ mod tests {
     #[tokio::test]
     async fn empty_requests_are_rejected_before_any_round_trip() {
         let service = TypeSafeAI::new("unused");
-        let error = service
-            .evaluate(DecisionRequest::new("state"))
+        let error = DecisionsService::evaluate(&service, DecisionRequest::new("state"))
             .await
             .unwrap_err();
         assert!(error.to_string().contains("at least one question"));
     }
 
     #[test]
-    fn env_config_is_disabled_without_a_key() {
+    fn env_config_yields_a_driver_only_with_a_key() {
         // Set/unset is process-global; assert the branch logic directly instead.
-        assert!(
-            !SystemDecisionsConfig::Disabled
-                .into_service()
-                .is_configured()
-        );
-        assert!(
-            SystemDecisionsConfig::TypeSafeAI {
-                api_key: "k".to_string()
-            }
-            .into_service()
-            .is_configured()
-        );
+        assert!(SystemDecisionsConfig::Disabled.into_driver().is_none());
+        let driver = SystemDecisionsConfig::TypeSafeAI {
+            api_key: "k".to_string(),
+        }
+        .into_driver()
+        .expect("a key yields a driver");
+        assert_eq!(DecisionDriver::id(&driver), "typesafe");
+        assert_eq!(driver.model_prefixes(), &["jev-"]);
+        assert!(driver.capabilities().calibrated);
     }
 }

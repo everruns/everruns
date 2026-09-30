@@ -2501,6 +2501,7 @@ dependencies = [
  "everruns-example-demo",
  "everruns-foreman-agent",
  "everruns-openrouter",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",
@@ -2558,6 +2559,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "eventsource-stream",
  "everruns-builtins",
  "everruns-capability",
  "everruns-core",
@@ -3241,6 +3243,7 @@ dependencies = [
  "everruns-example-demo",
  "everruns-integrations-brave-search",
  "everruns-openrouter",
+ "serde_json",
  "tokio",
 ]
 

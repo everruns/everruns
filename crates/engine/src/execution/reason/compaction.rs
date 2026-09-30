@@ -539,34 +539,6 @@ pub(super) async fn apply_proactive_compaction(
         }
         applied
     } else {
-        // Pressure without a native attempt still closes the lifecycle:
-        // record why native did not run before the fallback below.
-        if local_pressure {
-            let _ = context
-                .event_emitter
-                .emit(EventRequest::new(
-                    context.session_id,
-                    context.event_context.clone(),
-                    ContextCompactionSkippedData {
-                        reason: CompactionReason::ProactiveBudget,
-                        trigger,
-                        skip_reason: proactive_skip_reason(
-                            native_strategy,
-                            context.chat_driver.supports_compact(),
-                            durable_source.is_some(),
-                        ),
-                        strategy: settings.strategy.to_string(),
-                        model: context.model.to_string(),
-                        provider: Some(context.provider_type.to_string()),
-                        driver: None,
-                        tokens_observed: estimated_tokens_before,
-                        budget_remaining_tokens: Some(budget_remaining_before),
-                        source_sequence: context.message_source_sequence,
-                        messages_observed: messages.len(),
-                    },
-                ))
-                .await;
-        }
         None
     };
 
@@ -649,9 +621,10 @@ pub(super) async fn apply_proactive_compaction(
                 },
             ))
             .await;
-    } else if should_attempt && applied.is_none() {
-        // A native attempt ran but yielded no checkpoint and the fallback
-        // installed nothing: close the attempt lifecycle as skipped.
+    } else if local_pressure && applied.is_none() {
+        // Nothing installed after evaluating both native compaction and its
+        // fallback: close the lifecycle as skipped only now that the terminal
+        // outcome is known.
         let _ = context
             .event_emitter
             .emit(EventRequest::new(
@@ -660,7 +633,15 @@ pub(super) async fn apply_proactive_compaction(
                 ContextCompactionSkippedData {
                     reason: CompactionReason::ProactiveBudget,
                     trigger,
-                    skip_reason: CompactionSkipReason::NativeReturnedNone,
+                    skip_reason: if should_attempt {
+                        CompactionSkipReason::NativeReturnedNone
+                    } else {
+                        proactive_skip_reason(
+                            native_strategy,
+                            context.chat_driver.supports_compact(),
+                            durable_source.is_some(),
+                        )
+                    },
                     strategy: settings.strategy.to_string(),
                     model: context.model.to_string(),
                     provider: Some(context.provider_type.to_string()),

@@ -49,6 +49,7 @@ environment-capabilities = [
     "dep:everruns-integrations-bashkit",
     "dep:everruns-integrations-web-fetch",
     "dep:everruns-integrations-openrouter",
+    "dep:everruns-builtins",
 ]
 lua = ["dep:everruns-integrations-lua"]
 # Outbound A2A delegation is product-owned and optional for lightweight hosts.
