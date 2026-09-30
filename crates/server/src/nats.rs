@@ -52,6 +52,26 @@ fn split_credentials(part: &str) -> (String, Option<Credentials>) {
     )
 }
 
+/// Remove userinfo from server URLs before they cross an observability boundary.
+///
+/// This intentionally also handles strings that are not valid URLs: parsing errors
+/// must not turn malformed configuration into a credential disclosure.
+pub fn redact_server_urls(url: &str) -> String {
+    url.split(',')
+        .map(str::trim)
+        .map(|part| {
+            let Some((prefix, host)) = part.rsplit_once('@') else {
+                return part.to_string();
+            };
+            match prefix.rsplit_once("://") {
+                Some((scheme, _userinfo)) => format!("{scheme}://[redacted]@{host}"),
+                None => format!("[redacted]@{host}"),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 /// Percent-decode when the value is valid percent-encoding, else take it
 /// literally. A generated password containing a bare `%` is not an encoding
 /// mistake to reject — it is a password.
@@ -71,10 +91,7 @@ fn parse_nats_url(url: &str) -> Result<(Vec<ServerAddr>, Option<Credentials>)> {
     let mut credentials = None;
     for part in url.split(',').map(str::trim).filter(|p| !p.is_empty()) {
         let (bare, found) = split_credentials(part);
-        addrs.push(
-            bare.parse::<ServerAddr>()
-                .with_context(|| format!("Invalid NATS URL: {bare}"))?,
-        );
+        addrs.push(bare.parse::<ServerAddr>().context("Invalid NATS URL")?);
         if credentials.is_none() {
             credentials = found;
         }
@@ -176,6 +193,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn server_urls_are_redacted_for_logs() {
+        for (url, expected) in [
+            (
+                "nats://control:secret@nats:4222",
+                "nats://[redacted]@nats:4222",
+            ),
+            (
+                "nats://control:p%40ss%2Fword@nats:4222",
+                "nats://[redacted]@nats:4222",
+            ),
+            ("control:secret@nats:4222", "[redacted]@nats:4222"),
+            (
+                "nats://first:secret@nats1:4222, nats://nats2:4222,nats://second:p/w@nats3:4222",
+                "nats://[redacted]@nats1:4222,nats://nats2:4222,nats://[redacted]@nats3:4222",
+            ),
+        ] {
+            let redacted = redact_server_urls(url);
+            assert_eq!(redacted, expected);
+            assert!(!redacted.contains("secret"));
+            assert!(!redacted.contains("p%40ss"));
+            assert!(!redacted.contains("p/w"));
+        }
+    }
+
     /// Every server in the list must still be dialled, and none of them may
     /// carry userinfo into the address the client connects to.
     #[test]
@@ -194,6 +236,16 @@ mod tests {
     #[test]
     fn invalid_url_is_an_error() {
         assert!(credentials_from_url("not a url").is_err());
+    }
+
+    #[test]
+    fn invalid_url_error_does_not_include_credentials() {
+        let secret = "never-log-this";
+        let error = credentials_from_url(&format!("nats://user:{secret}@invalid host"))
+            .expect_err("malformed URL must fail");
+        let rendered = error_chain(&error);
+        assert!(rendered.starts_with("Invalid NATS URL:"));
+        assert!(!rendered.contains(secret));
     }
 
     #[test]
