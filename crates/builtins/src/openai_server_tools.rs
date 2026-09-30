@@ -11,12 +11,13 @@
 // reason step fails the turn with a message naming the provider, because an
 // agent configured to search the web must not quietly answer without it.
 //
-// `web_search` ships first. Code interpreter, file search and remote MCP are
-// follow-ups under the same capability.
+// Web search, code interpreter, hosted shell and file search. Remote MCP is a
+// follow-up under the same capability.
 
 use async_trait::async_trait;
 use everruns_provider::openai_hosted_tools::{
-    OpenAiHostedTools, SearchContextSize, WebSearchTool, WebSearchUserLocation,
+    ContainerMemory, ContainerTool, FileSearchTool, OpenAiHostedTools, SearchContextSize,
+    WebSearchTool, WebSearchUserLocation,
 };
 use serde_json::{Value, json};
 
@@ -32,10 +33,30 @@ const CONTEXT_SIZE_KEY: &str = "web_search_context_size";
 const ALLOWED_DOMAINS_KEY: &str = "web_search_allowed_domains";
 const LOCATION_KEY: &str = "web_search_user_location";
 const LOCATION_FIELDS: [&str; 4] = ["country", "region", "city", "timezone"];
+const MEMORY_KEY: &str = "container_memory_limit";
+const VECTOR_STORES_KEY: &str = "file_search_vector_store_ids";
+const MAX_RESULTS_KEY: &str = "file_search_max_results";
+const CONFIG_KEYS: [&str; 7] = [
+    TOOLS_KEY,
+    CONTEXT_SIZE_KEY,
+    ALLOWED_DOMAINS_KEY,
+    LOCATION_KEY,
+    MEMORY_KEY,
+    VECTOR_STORES_KEY,
+    MAX_RESULTS_KEY,
+];
 const WEB_SEARCH: &str = "web_search";
+const CODE_INTERPRETER: &str = "code_interpreter";
+const SHELL: &str = "shell";
+const FILE_SEARCH: &str = "file_search";
 
 /// Hosted tool names this capability accepts, in UI order.
-const TOOL_NAMES: [(&str, &str); 1] = [(WEB_SEARCH, "Web search")];
+const TOOL_NAMES: [(&str, &str); 4] = [
+    (WEB_SEARCH, "Web search"),
+    (CODE_INTERPRETER, "Code interpreter"),
+    (SHELL, "Hosted shell"),
+    (FILE_SEARCH, "File search"),
+];
 
 /// OpenAI server tools capability.
 pub struct OpenAiServerToolsCapability;
@@ -72,21 +93,46 @@ pub fn hosted_tools_from_config(config: &Value) -> OpenAiHostedTools {
             };
             (location != WebSearchUserLocation::default()).then_some(location)
         }),
-        allowed_domains: config
-            .get(ALLOWED_DOMAINS_KEY)
-            .and_then(Value::as_array)
-            .map(|domains| {
-                domains
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::trim)
-                    .filter(|domain| !domain.is_empty())
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default(),
+        allowed_domains: string_list(config.get(ALLOWED_DOMAINS_KEY)),
     });
-    OpenAiHostedTools { web_search }
+    let container = || ContainerTool {
+        memory_limit: config
+            .get(MEMORY_KEY)
+            .and_then(|memory| serde_json::from_value::<ContainerMemory>(memory.clone()).ok()),
+    };
+    let vector_store_ids: Vec<String> = string_list(config.get(VECTOR_STORES_KEY));
+    OpenAiHostedTools {
+        web_search,
+        code_interpreter: enabled(CODE_INTERPRETER).then(container),
+        shell: enabled(SHELL).then(container),
+        // OpenAI rejects file search without a vector store, so no ids means off.
+        file_search: (enabled(FILE_SEARCH) && !vector_store_ids.is_empty()).then(|| {
+            FileSearchTool {
+                vector_store_ids,
+                max_num_results: config
+                    .get(MAX_RESULTS_KEY)
+                    .and_then(Value::as_u64)
+                    .filter(|max| (1..=50).contains(max))
+                    .map(|max| max as u32),
+            }
+        }),
+    }
+}
+
+/// Trimmed, non-empty strings from a JSON array; anything else is dropped.
+fn string_list(value: Option<&Value>) -> Vec<String> {
+    value
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[async_trait]
@@ -100,10 +146,11 @@ impl Capability for OpenAiServerToolsCapability {
     }
 
     fn description(&self) -> &str {
-        "Enables OpenAI's hosted tools, starting with web search, on agents that \
-         run on the OpenAI or Azure OpenAI Responses API. OpenAI runs these tools \
-         and sends conversation content to them. Agents on other providers fail \
-         with an explanation instead of running without the tools."
+        "Enables OpenAI's hosted tools (web search, code interpreter, hosted shell, \
+         file search) on agents that run on the OpenAI or Azure OpenAI Responses API. \
+         OpenAI runs these tools in its own infrastructure and sends conversation \
+         content to them. Agents on other providers fail with an explanation instead \
+         of running without the tools."
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {
@@ -113,7 +160,7 @@ impl Capability for OpenAiServerToolsCapability {
                 name: None,
                 description: None,
                 config_description: Some(
-                    "Choose which OpenAI hosted tools the model may invoke and how web search behaves.",
+                    "Choose which OpenAI hosted tools the model may invoke and how they behave.",
                 ),
                 config_overlay: None,
             },
@@ -121,10 +168,10 @@ impl Capability for OpenAiServerToolsCapability {
                 locale: "uk",
                 name: Some("Серверні інструменти OpenAI"),
                 description: Some(
-                    "Вмикає розміщені інструменти OpenAI, починаючи з веб-пошуку, для агентів на OpenAI або Azure OpenAI Responses API. Інструменти виконує OpenAI, і вони отримують вміст розмови. Агенти на інших провайдерах завершуються з поясненням, а не працюють без інструментів.",
+                    "Вмикає розміщені інструменти OpenAI (веб-пошук, інтерпретатор коду, розміщений командний рядок, пошук у файлах) для агентів на OpenAI або Azure OpenAI Responses API. Інструменти виконує OpenAI у власній інфраструктурі, і вони отримують вміст розмови. Агенти на інших провайдерах завершуються з поясненням, а не працюють без інструментів.",
                 ),
                 config_description: Some(
-                    "Визначає, які розміщені інструменти OpenAI може викликати модель і як працює веб-пошук.",
+                    "Визначає, які розміщені інструменти OpenAI може викликати модель і як вони працюють.",
                 ),
                 config_overlay: Some(json!({
                     "properties": {
@@ -133,7 +180,12 @@ impl Capability for OpenAiServerToolsCapability {
                             "description": "Розміщені інструменти OpenAI, які може викликати модель.",
                             "items": {
                                 "title": "Інструмент",
-                                "enum_labels": { WEB_SEARCH: "Веб-пошук" },
+                                "enum_labels": {
+                                    WEB_SEARCH: "Веб-пошук",
+                                    CODE_INTERPRETER: "Інтерпретатор коду",
+                                    SHELL: "Розміщений командний рядок",
+                                    FILE_SEARCH: "Пошук у файлах",
+                                },
                             },
                         },
                         CONTEXT_SIZE_KEY: {
@@ -147,6 +199,18 @@ impl Capability for OpenAiServerToolsCapability {
                         LOCATION_KEY: {
                             "title": "Приблизне розташування",
                             "description": "Локалізує результати пошуку.",
+                        },
+                        MEMORY_KEY: {
+                            "title": "Пам'ять контейнера",
+                            "description": "Пам'ять контейнера OpenAI для інтерпретатора коду й командного рядка. Більший контейнер коштує дорожче.",
+                        },
+                        VECTOR_STORES_KEY: {
+                            "title": "Векторні сховища",
+                            "description": "Ідентифікатори векторних сховищ OpenAI (vs_...), у яких шукає пошук у файлах.",
+                        },
+                        MAX_RESULTS_KEY: {
+                            "title": "Максимум результатів",
+                            "description": "Скільки результатів пошуку у файлах повертати, від 1 до 50.",
                         },
                     },
                 })),
@@ -183,6 +247,10 @@ impl Capability for OpenAiServerToolsCapability {
             .iter()
             .map(|size| size.as_str())
             .collect();
+        let memory_limits: Vec<&str> = ContainerMemory::ALL
+            .iter()
+            .map(|memory| memory.as_str())
+            .collect();
         Some(json!({
             "type": "object",
             "properties": {
@@ -218,6 +286,26 @@ impl Capability for OpenAiServerToolsCapability {
                     },
                     "additionalProperties": false,
                 },
+                MEMORY_KEY: {
+                    "type": "string",
+                    "title": "Container memory",
+                    "description": "Memory for the OpenAI container that runs code interpreter and hosted shell. Larger containers cost more. OpenAI defaults to 1g.",
+                    "enum": memory_limits,
+                },
+                VECTOR_STORES_KEY: {
+                    "type": "array",
+                    "title": "Vector stores",
+                    "description": "OpenAI vector store ids (vs_...) that file search reads. Required for file search.",
+                    "items": { "type": "string" },
+                    "uniqueItems": true,
+                },
+                MAX_RESULTS_KEY: {
+                    "type": "integer",
+                    "title": "Max file search results",
+                    "description": "Results per file search, 1 to 50.",
+                    "minimum": 1,
+                    "maximum": 50,
+                },
             },
             "additionalProperties": false,
         }))
@@ -225,7 +313,7 @@ impl Capability for OpenAiServerToolsCapability {
 
     fn config_ui_schema(&self) -> Option<Value> {
         Some(json!({
-            "ui:order": [TOOLS_KEY, CONTEXT_SIZE_KEY, ALLOWED_DOMAINS_KEY, LOCATION_KEY],
+            "ui:order": CONFIG_KEYS,
             TOOLS_KEY: { "ui:widget": "checkboxes" },
         }))
     }
@@ -238,14 +326,7 @@ impl Capability for OpenAiServerToolsCapability {
             .as_object()
             .ok_or_else(|| "config must be an object".to_string())?;
         for key in obj.keys() {
-            if ![
-                TOOLS_KEY,
-                CONTEXT_SIZE_KEY,
-                ALLOWED_DOMAINS_KEY,
-                LOCATION_KEY,
-            ]
-            .contains(&key.as_str())
-            {
+            if !CONFIG_KEYS.contains(&key.as_str()) {
                 return Err(format!("unknown config key: {key}"));
             }
         }
@@ -283,6 +364,40 @@ impl Capability for OpenAiServerToolsCapability {
                     ));
                 }
             }
+        }
+        if let Some(memory) = obj.get(MEMORY_KEY)
+            && serde_json::from_value::<ContainerMemory>(memory.clone()).is_err()
+        {
+            return Err(format!("`{MEMORY_KEY}` must be 1g, 4g, 16g or 64g"));
+        }
+        if let Some(ids) = obj.get(VECTOR_STORES_KEY) {
+            let ids = ids
+                .as_array()
+                .ok_or_else(|| format!("`{VECTOR_STORES_KEY}` must be an array of ids"))?;
+            if ids
+                .iter()
+                .any(|id| id.as_str().is_none_or(|id| id.trim().is_empty()))
+            {
+                return Err(format!(
+                    "`{VECTOR_STORES_KEY}` entries must be vector store ids"
+                ));
+            }
+        }
+        if let Some(max) = obj.get(MAX_RESULTS_KEY)
+            && !max.as_u64().is_some_and(|max| (1..=50).contains(&max))
+        {
+            return Err(format!(
+                "`{MAX_RESULTS_KEY}` must be a whole number from 1 to 50"
+            ));
+        }
+        let file_search_on = obj
+            .get(TOOLS_KEY)
+            .and_then(Value::as_array)
+            .is_some_and(|tools| tools.iter().any(|tool| tool.as_str() == Some(FILE_SEARCH)));
+        if file_search_on && string_list(obj.get(VECTOR_STORES_KEY)).is_empty() {
+            return Err(format!(
+                "file search needs at least one vector store id in `{VECTOR_STORES_KEY}`"
+            ));
         }
         if let Some(location) = obj.get(LOCATION_KEY) {
             let location = location
@@ -355,6 +470,32 @@ mod tests {
             LOCATION_KEY: "Kyiv",
         }));
         assert_eq!(tools.web_search, Some(WebSearchTool::default()));
+        // File search without a vector store would be rejected by OpenAI.
+        let tools = hosted_tools_from_config(&json!({ "tools": ["file_search"] }));
+        assert!(tools.is_empty());
+    }
+
+    #[test]
+    fn container_and_file_tools_contribute_their_options() {
+        let tools = hosted_tools_from_config(&json!({
+            "tools": ["code_interpreter", "shell", "file_search"],
+            MEMORY_KEY: "4g",
+            VECTOR_STORES_KEY: ["vs_1"],
+            MAX_RESULTS_KEY: 8,
+        }));
+        let container = Some(ContainerTool {
+            memory_limit: Some(ContainerMemory::FourGb),
+        });
+        assert_eq!(tools.code_interpreter, container);
+        assert_eq!(tools.shell, container);
+        assert_eq!(
+            tools.file_search,
+            Some(FileSearchTool {
+                vector_store_ids: vec!["vs_1".into()],
+                max_num_results: Some(8),
+            })
+        );
+        assert_eq!(tools.web_search, None);
     }
 
     #[test]
@@ -370,8 +511,22 @@ mod tests {
             }))
             .is_ok()
         );
+        assert!(
+            cap.validate_config(&json!({
+                "tools": ["code_interpreter", "shell", "file_search"],
+                MEMORY_KEY: "16g",
+                VECTOR_STORES_KEY: ["vs_1"],
+                MAX_RESULTS_KEY: 50,
+            }))
+            .is_ok()
+        );
         for bad in [
-            json!({ "tools": ["code_interpreter"] }),
+            json!({ "tools": ["image_generation"] }),
+            json!({ "tools": ["file_search"] }),
+            json!({ "tools": ["file_search"], VECTOR_STORES_KEY: [" "] }),
+            json!({ MEMORY_KEY: "2g" }),
+            json!({ MAX_RESULTS_KEY: 0 }),
+            json!({ MAX_RESULTS_KEY: 51 }),
             json!({ "tools": "web_search" }),
             json!({ CONTEXT_SIZE_KEY: "huge" }),
             json!({ ALLOWED_DOMAINS_KEY: ["https://openai.com"] }),

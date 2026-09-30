@@ -67,6 +67,8 @@ pub const TRANSCRIPT_REPAIRED: &str = "transcript.repaired";
 /// `tool_call_repair` capability (EVE-600). Carries an outcome label
 /// (`local-salvage` | `re-prompt` | `gave-up`).
 pub const TOOL_CALL_REPAIRED: &str = "tool.call_repaired";
+/// A provider-executed (hosted) tool call changed state (EVE-1115).
+pub const TOOL_HOSTED_CALL: &str = "tool.hosted_call";
 
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
@@ -177,6 +179,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TOOL_CALL_REQUESTED,
     TRANSCRIPT_REPAIRED,
     TOOL_CALL_REPAIRED,
+    TOOL_HOSTED_CALL,
     LLM_GENERATION,
     REASON_THINKING_STARTED,
     REASON_THINKING_DELTA,
@@ -613,6 +616,8 @@ pub enum EventData {
     // Recovery / repair events
     TranscriptRepaired(TranscriptRepairedData),
     ToolCallRepaired(ToolCallRepairedData),
+    /// A provider-executed (hosted) tool call changed state.
+    ToolHostedCall(HostedToolCallData),
 
     // LLM events
     LlmGeneration(LlmGenerationData),
@@ -836,6 +841,7 @@ event_data_kinds! {
     // Recovery / repair events
     TranscriptRepaired(TranscriptRepairedData) = TRANSCRIPT_REPAIRED,
     ToolCallRepaired(ToolCallRepairedData) = TOOL_CALL_REPAIRED,
+    ToolHostedCall(HostedToolCallData) = TOOL_HOSTED_CALL,
 
     // LLM events
     LlmGeneration(LlmGenerationData) = LLM_GENERATION,
@@ -924,6 +930,7 @@ impl_from_event_data! {
     ToolCallRequestedData => ToolCallRequested,
     TranscriptRepairedData => TranscriptRepaired,
     ToolCallRepairedData => ToolCallRepaired,
+    HostedToolCallData => ToolHostedCall,
     LlmGenerationData => LlmGeneration,
     ReasonThinkingStartedData => ReasonThinkingStarted,
     ReasonThinkingDeltaData => ReasonThinkingDelta,

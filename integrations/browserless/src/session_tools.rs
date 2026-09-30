@@ -458,6 +458,26 @@ pub async fn keep_session_alive(context: &ToolContext, session: &mut CdpSession)
     }
 }
 
+/// Record `ws_endpoint` as the session's persistent browser, creating the
+/// session state and lease when none exists yet. Used by callers that opened a
+/// browser implicitly (the `computer` tool) rather than through
+/// `browserless_open_browser`.
+pub async fn register_session_endpoint(
+    context: &ToolContext,
+    ws_endpoint: String,
+) -> Result<(), ToolExecutionResult> {
+    let state = match get_browser_session(context).await {
+        Ok(Some(mut state)) => {
+            state.ws_endpoint = ws_endpoint;
+            state.last_active_at = chrono::Utc::now().to_rfc3339();
+            state
+        }
+        _ => BrowserSessionState::new(ws_endpoint),
+    };
+    save_browser_session(context, &state).await?;
+    upsert_browser_session_lease(context, &state).await
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

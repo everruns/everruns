@@ -130,6 +130,20 @@ Drivers today:
 |---|---|---|---|
 | `typesafe` | [`integrations/typesafe`](../../integrations/typesafe/src/decisions.rs) | all three primitives, owns `jev-*` | yes |
 | `llm` | [`crates/host/src/decisions/llm.rs`](../../crates/host/src/decisions/llm.rs) | all three, via the utility LLM and a validated JSON reply | no |
+| `openai` (preview) | [`integrations/openai-decisions`](../../integrations/openai-decisions/src/lib.rs) | choice native; noul and score asked as choices; one call per question, concurrent | only when a response carries a probability for every label |
+
+The `openai` driver fronts OpenAI's Decisions API (DevDay 2026, limited
+preview). Its wire shape is **provisional**: no reference was published, and the
+endpoint (`POST /v1/decisions`, confirmed) refused our account with "Decision
+API is not enabled for this user" on 2026-09-30. The inferred request and
+response live alone in
+[`wire.rs`](../../integrations/openai-decisions/src/wire.rs) so verifying them
+touches one module and its fixtures. It is registered only with
+`DECISIONS_OPENAI_PREVIEW=1`, and the crate is unpublished until the shape is
+verified. The single confidence the API is reported to return is not spread
+into a distribution. Comparing it with Jev on the guardrail gallery (accuracy,
+p50/p95 latency, cost per 1K decisions) waits for access; no default changes
+before that.
 
 The `llm` driver answers with the utility model the deployment pinned and
 refuses a request naming another model. It sends questions under positional
@@ -146,6 +160,8 @@ which both the server and the worker platform call, so the two never drift:
 
 - `UTILITY_TYPESAFE_API_KEY` registers `typesafe`.
 - A configured utility LLM registers `llm`.
+- `DECISIONS_OPENAI_PREVIEW=1` with `UTILITY_OPENAI_API_KEY` registers the
+  preview `openai` driver, with retries off like the TypeSafe client.
 - `DECISIONS_DRIVER` picks the default driver. Unset: `typesafe` when its key
   is present, otherwise the disabled service.
 - `DECISIONS_MODEL` is what the default driver is asked for when a request

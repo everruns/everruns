@@ -1,0 +1,111 @@
+[
+  {
+    "event_id": "evt_turn",
+    "type": "agent.session.turn.created",
+    "session_id": "sess_fixture",
+    "turn_id": "turn_fixture",
+    "turn": {"id": "turn_fixture", "subagent_id": null, "status": "queued", "usage": null}
+  },
+  {
+    "event_id": "evt_turn_progress",
+    "type": "agent.session.turn.in_progress",
+    "session_id": "sess_fixture",
+    "turn_id": "turn_fixture",
+    "turn": {"id": "turn_fixture", "subagent_id": null, "status": "in_progress", "usage": null}
+  },
+  {
+    "event_id": "evt_function",
+    "type": "agent.session.requires_action",
+    "session": {
+      "id": "sess_fixture",
+      "status": "requires_action",
+      "required_actions": [
+        {
+          "type": "function_call",
+          "turn_id": "turn_fixture",
+          "call_id": "call_customer",
+          "name": "lookup_customer",
+          "arguments": {"customer_id": "123"}
+        }
+      ]
+    }
+  },
+  {
+    "event_id": "evt_mcp",
+    "type": "agent.session.turn.item.added",
+    "session_id": "sess_fixture",
+    "turn_id": "turn_fixture",
+    "item": {
+      "id": "call_docs",
+      "type": "mcp_call",
+      "server_label": "docs",
+      "name": "search",
+      "arguments": {"query": "Agents API"},
+      "status": "completed",
+      "output": {"content": [{"type": "text", "text": "Agents API documentation"}]},
+      "duration_ms": 87
+    }
+  },
+  {
+    "event_id": "evt_subagent_turn",
+    "type": "agent.session.turn.completed",
+    "session_id": "sess_fixture",
+    "turn_id": "turn_subagent",
+    "turn": {"id": "turn_subagent", "subagent_id": "subagent_1", "status": "completed", "usage": null}
+  },
+  {
+    "event_id": "evt_delta_1",
+    "type": "agent.session.turn.output_text.delta",
+    "session_id": "sess_fixture",
+    "turn_id": "turn_fixture",
+    "item_id": "msg_answer",
+    "output_index": 0,
+    "content_index": 0,
+    "delta": "Customer 123 "
+  },
+  {
+    "event_id": "evt_delta_2",
+    "type": "agent.session.turn.output_text.delta",
+    "session_id": "sess_fixture",
+    "turn_id": "turn_fixture",
+    "item_id": "msg_answer",
+    "output_index": 0,
+    "content_index": 0,
+    "delta": "is documented"
+  },
+  {
+    "event_id": "evt_text_done",
+    "type": "agent.session.turn.output_text.done",
+    "session_id": "sess_fixture",
+    "turn_id": "turn_fixture",
+    "item_id": "msg_answer",
+    "output_index": 0,
+    "content_index": 0,
+    "text": "Customer 123 is documented."
+  },
+  {
+    "event_id": "evt_complete",
+    "type": "agent.session.turn.completed",
+    "session_id": "sess_fixture",
+    "turn_id": "turn_fixture",
+    "turn": {
+      "id": "turn_fixture",
+      "subagent_id": null,
+      "status": "completed",
+      "started_at": 1790733657,
+      "completed_at": 1790733658,
+      "usage": {
+        "input_tokens": 101,
+        "input_tokens_details": {"cached_tokens": 40},
+        "output_tokens": 23,
+        "output_tokens_details": {"reasoning_tokens": 5},
+        "total_tokens": 124
+      }
+    }
+  },
+  {
+    "event_id": "evt_idle",
+    "type": "agent.session.idle",
+    "session": {"id": "sess_fixture", "status": "idle", "required_actions": []}
+  }
+]

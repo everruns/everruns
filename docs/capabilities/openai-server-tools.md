@@ -1,6 +1,6 @@
 ---
 title: OpenAI Server Tools
-description: Enable OpenAI's hosted tools, starting with web search, on agents that run on the OpenAI or Azure OpenAI Responses API. OpenAI runs them inside the response.
+description: Enable OpenAI's hosted tools (web search, code interpreter, hosted shell, file search) on agents that run on the OpenAI or Azure OpenAI Responses API. OpenAI runs them inside the response.
 sidebar:
   order: 94
 ---
@@ -11,23 +11,34 @@ sidebar:
 | **Category** | Tools |
 | **Features** | None |
 | **Dependencies** | None |
-| **Risk** | High (grants provider-executed web reach) |
+| **Risk** | High (grants provider-executed web reach and code execution) |
 
-Enables [OpenAI's hosted tools](https://platform.openai.com/docs/guides/tools-web-search)
+Enables [OpenAI's hosted tools](https://platform.openai.com/docs/guides/tools)
 on agents whose model runs on the [OpenAI](/providers/openai/) or Azure OpenAI
 provider. OpenAI runs a hosted tool inside the same response: the model decides to
 search, OpenAI performs the search, and the answer comes back grounded in the
 results with its sources cited. The agent loop never dispatches the call, so there
 is no extra round-trip through Everruns.
 
-Web search is available today. Code interpreter, file search, and remote MCP are
-planned for this capability.
+| Tool | What OpenAI runs |
+|---|---|
+| `web_search` | Searches the web and cites the pages it used |
+| `code_interpreter` | Python in an OpenAI-managed container |
+| `shell` | Shell commands in an OpenAI-managed container |
+| `file_search` | Retrieval over your OpenAI vector stores |
+
+Remote MCP is planned for this capability.
 
 ## Tools
 
 None. This capability configures the OpenAI request, it does not provide
-client-side tools. The only client-visible artifact is the answer, which cites the
-pages it used as links.
+client-side tools. Hosted calls appear in the session's activity (see
+[Activity and cost](#activity-and-cost)); their results stay inside OpenAI's
+response and reach the conversation only through the answer.
+
+Code interpreter and shell run in OpenAI's container, not in the session's
+Everruns sandbox: files they create are not in the session file system. Use
+Everruns' own execution capabilities when the agent's work must land there.
 
 ## Configuration
 
@@ -62,10 +73,28 @@ pages it used as links.
 }
 ```
 
+### Code, shell, and file search
+
+```json
+{
+  "capabilities": [
+    {
+      "capability_ref": "openai_server_tools",
+      "config": {
+        "tools": ["code_interpreter", "shell", "file_search"],
+        "container_memory_limit": "4g",
+        "file_search_vector_store_ids": ["vs_abc123"],
+        "file_search_max_results": 8
+      }
+    }
+  ]
+}
+```
+
 Config rules:
 
-- `tools`, array of hosted tool names. Only `web_search` is accepted today;
-  other names are rejected on write.
+- `tools`, array of hosted tool names: `web_search`, `code_interpreter`,
+  `shell`, `file_search`. Other names are rejected on write.
 - `web_search_context_size`, `low`, `medium`, or `high`: how much retrieved
   context the model may use per search. OpenAI defaults to `medium`.
 - `web_search_allowed_domains`, bare domains (no scheme or path) that limit where
@@ -73,7 +102,14 @@ Config rules:
 - `web_search_user_location`, optional `country` (two-letter ISO code), `region`,
   `city`, and `timezone` (IANA name) used to localize results.
 
-The web search options only take effect when `web_search` is in `tools`.
+- `container_memory_limit`, `1g`, `4g`, `16g`, or `64g`: memory for the
+  container that runs `code_interpreter` and `shell`. OpenAI defaults to `1g`;
+  larger containers cost more.
+- `file_search_vector_store_ids`, OpenAI vector store ids (`vs_...`) in the same
+  OpenAI account as the provider's API key. Required when `file_search` is on.
+- `file_search_max_results`, 1 to 50 results per search.
+
+Each option only takes effect when its tool is in `tools`.
 
 ## Provider support
 
@@ -88,19 +124,29 @@ asks a model for a tool it does not offer, and that error is shown on the turn.
 
 ## Security
 
-Web search sends conversation content to OpenAI-side tools and gives the model
-**provider-executed web reach**. OpenAI performs the requests, so Everruns' own
+Hosted tools send conversation content to OpenAI-side tools. Web search gives
+the model **provider-executed web reach**, code interpreter and shell give it
+**code execution in an OpenAI container**, and file search reads whatever the
+listed vector stores hold. OpenAI performs the requests, so Everruns' own
 egress controls do not apply, the same data-exfiltration class as client-side
 [Web Fetch](/capabilities/web-fetch/). The capability is rated **High risk** and
 uses the admin-only assignment gate. Grant it only to agents you trust with
-outbound web access.
+outbound web access and code execution, and list only vector stores whose
+contents every user of the agent may see.
 
-## Limitations
+## Activity and cost
 
-- **Hosted calls are not Everruns tool calls**: a search does not appear in the
-  session as a tool call yet; the answer's citations show what was used.
-- **Billing**: OpenAI bills hosted tool calls per call on top of tokens. Everruns
-  logs the per-call counts but does not yet price them in session usage.
+Each hosted call shows up in the session's activity as it happens, through the
+`tool.hosted_call` event, with a short detail: the search query, the first line
+of code, the shell commands, or the file search query. It is not an Everruns
+tool call: nothing is dispatched and no tool result is stored.
+
+OpenAI bills hosted tool calls per call on top of tokens. Session usage adds them
+to the estimated cost at OpenAI's list price: $10 per 1,000 web searches on GPT-5
+and newer reasoning models, $25 per 1,000 on GPT-4o and GPT-4.1, and $2.50 per
+1,000 file searches. Code interpreter and shell are billed by OpenAI per
+container session rather than per call, so they are not in the estimate; check
+OpenAI's usage dashboard for them. File search also bills vector store storage.
 
 ## See Also
 

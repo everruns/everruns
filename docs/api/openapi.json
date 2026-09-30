@@ -23589,6 +23589,10 @@
             "$ref": "#/components/schemas/ToolCallRepairedData"
           },
           {
+            "$ref": "#/components/schemas/HostedToolCallData",
+            "description": "A provider-executed (hosted) tool call changed state."
+          },
+          {
             "$ref": "#/components/schemas/LlmGenerationData"
           },
           {
@@ -25849,6 +25853,42 @@
             "description": "Number of workers currently accepting new task assignments (subset of `active_workers`; drains/backpressure excluded).",
             "example": 4,
             "minimum": 0
+          }
+        }
+      },
+      "HostedToolCallData": {
+        "type": "object",
+        "description": "Data for the `tool.hosted_call` event (EVE-1115).\n\nA provider-executed tool (OpenAI hosted `web_search`) changed state inside\nthe model's response. Informational: nothing was dispatched, and there is\nno matching `tool.started` / `tool.completed` or tool-result message.",
+        "required": [
+          "turn_id",
+          "call_id",
+          "tool_name",
+          "status"
+        ],
+        "properties": {
+          "call_id": {
+            "type": "string",
+            "description": "Provider item id; stable across the call's state changes."
+          },
+          "status": {
+            "type": "string",
+            "description": "`in_progress`, `completed`, or `failed`."
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short detail once known, e.g. the search query."
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "Hosted tool name, e.g. `web_search`."
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn this call belongs to.",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },

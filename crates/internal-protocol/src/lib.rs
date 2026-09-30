@@ -155,167 +155,65 @@ fn event_data_serialize_fallback(err: serde_json::Error) -> serde_json::Value {
 /// Note: Unsupported events should not reach serialization - they are filtered earlier.
 fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
     use everruns_core::EventData;
+    fn to_json(d: &impl serde::Serialize) -> serde_json::Value {
+        serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+    }
 
     match data {
-        EventData::InputMessage(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::OutputMessageStarted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::OutputMessageDelta(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::OutputMessageReplaced(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::OutputMessageCompleted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::TurnStarted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::TurnCompleted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::TurnFailed(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::TurnSealed(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::TurnCancelled(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ReasonStarted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ReasonCompleted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ReasonRecovered(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::CapabilityUsage(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ActStarted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ActCompleted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ToolStarted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ToolCompleted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ToolProgress(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ToolOutputDelta(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ToolCallRequested(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::LlmGeneration(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ReasonThinkingStarted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ReasonThinkingDelta(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ReasonThinkingCompleted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ReasonItem(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::SessionStarted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::SessionActivated(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::SessionIdled(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::SessionTitleUpdated(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::SessionModelChanged(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::TaskCreated(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::TaskUpdated(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::TaskMessageSent(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::TaskMessageReceived(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ContextCompacting(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ContextCompacted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ContextCompactionSkipped(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ContextCompactionFailed(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::BudgetWarning(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::BudgetPaused(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::BudgetExhausted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::BudgetResumed(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::FileWritten(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::VoiceSessionStarted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::VoiceInputTranscriptDelta(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::VoiceInputTranscriptCompleted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::VoiceOutputTranscriptDelta(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::VoiceOutputTranscriptCompleted(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::VoiceSessionEnded(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::VoiceSessionFailed(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::TranscriptRepaired(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
-        EventData::ToolCallRepaired(d) => {
-            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
-        }
+        EventData::InputMessage(d) => to_json(d),
+        EventData::OutputMessageStarted(d) => to_json(d),
+        EventData::OutputMessageDelta(d) => to_json(d),
+        EventData::OutputMessageReplaced(d) => to_json(d),
+        EventData::OutputMessageCompleted(d) => to_json(d),
+        EventData::TurnStarted(d) => to_json(d),
+        EventData::TurnCompleted(d) => to_json(d),
+        EventData::TurnFailed(d) => to_json(d),
+        EventData::TurnSealed(d) => to_json(d),
+        EventData::TurnCancelled(d) => to_json(d),
+        EventData::ReasonStarted(d) => to_json(d),
+        EventData::ReasonCompleted(d) => to_json(d),
+        EventData::ReasonRecovered(d) => to_json(d),
+        EventData::CapabilityUsage(d) => to_json(d),
+        EventData::ActStarted(d) => to_json(d),
+        EventData::ActCompleted(d) => to_json(d),
+        EventData::ToolStarted(d) => to_json(d),
+        EventData::ToolCompleted(d) => to_json(d),
+        EventData::ToolProgress(d) => to_json(d),
+        EventData::ToolHostedCall(d) => to_json(d),
+        EventData::ToolOutputDelta(d) => to_json(d),
+        EventData::ToolCallRequested(d) => to_json(d),
+        EventData::LlmGeneration(d) => to_json(d),
+        EventData::ReasonThinkingStarted(d) => to_json(d),
+        EventData::ReasonThinkingDelta(d) => to_json(d),
+        EventData::ReasonThinkingCompleted(d) => to_json(d),
+        EventData::ReasonItem(d) => to_json(d),
+        EventData::SessionStarted(d) => to_json(d),
+        EventData::SessionActivated(d) => to_json(d),
+        EventData::SessionIdled(d) => to_json(d),
+        EventData::SessionTitleUpdated(d) => to_json(d),
+        EventData::SessionModelChanged(d) => to_json(d),
+        EventData::TaskCreated(d) => to_json(d),
+        EventData::TaskUpdated(d) => to_json(d),
+        EventData::TaskMessageSent(d) => to_json(d),
+        EventData::TaskMessageReceived(d) => to_json(d),
+        EventData::ContextCompacting(d) => to_json(d),
+        EventData::ContextCompacted(d) => to_json(d),
+        EventData::ContextCompactionSkipped(d) => to_json(d),
+        EventData::ContextCompactionFailed(d) => to_json(d),
+        EventData::BudgetWarning(d) => to_json(d),
+        EventData::BudgetPaused(d) => to_json(d),
+        EventData::BudgetExhausted(d) => to_json(d),
+        EventData::BudgetResumed(d) => to_json(d),
+        EventData::FileWritten(d) => to_json(d),
+        EventData::VoiceSessionStarted(d) => to_json(d),
+        EventData::VoiceInputTranscriptDelta(d) => to_json(d),
+        EventData::VoiceInputTranscriptCompleted(d) => to_json(d),
+        EventData::VoiceOutputTranscriptDelta(d) => to_json(d),
+        EventData::VoiceOutputTranscriptCompleted(d) => to_json(d),
+        EventData::VoiceSessionEnded(d) => to_json(d),
+        EventData::VoiceSessionFailed(d) => to_json(d),
+        EventData::TranscriptRepaired(d) => to_json(d),
+        EventData::ToolCallRepaired(d) => to_json(d),
         EventData::Unsupported { data, .. } => {
             // Should not happen in production - unsupported events are filtered before reaching here
             data.clone()

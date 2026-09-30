@@ -436,22 +436,56 @@ impl OpenResponsesProtocolChatDriver {
     }
 
     fn convert_message(msg: &Message, supports_phases: bool) -> ResponsesInputItem {
-        // Handle tool result messages differently
-        // Note: OpenAI Responses API function_call_output only supports text output.
-        // Images in tool results are dropped with a warning.
+        // Tool results become `function_call_output`. Text-only results stay a
+        // plain string; results with images or files (a computer-use
+        // screenshot) send content parts, which `function_call_output` accepts
+        // as `input_text` / `input_image` / `input_file`.
         if msg.role == MessageRole::Tool
             && let Some(tool_call_id) = &msg.tool_call_id
         {
-            let mut has_images = false;
             let output = match &msg.content {
-                MessageContent::Text(text) => text.clone(),
-                MessageContent::Parts(parts) => {
-                    has_images = parts.iter().any(|p| {
+                MessageContent::Text(text) => ResponsesContent::Text(text.clone()),
+                MessageContent::Parts(parts)
+                    if parts.iter().any(|p| {
                         matches!(
                             p,
                             LlmContentPart::Image { .. } | LlmContentPart::File { .. }
                         )
-                    });
+                    }) =>
+                {
+                    ResponsesContent::Parts(
+                        parts
+                            .iter()
+                            .filter_map(|part| match part {
+                                LlmContentPart::Text { text } => {
+                                    Some(ResponsesContentPart::InputText {
+                                        r#type: "input_text".to_string(),
+                                        text: text.clone(),
+                                    })
+                                }
+                                LlmContentPart::Image { url } => {
+                                    Some(ResponsesContentPart::InputImage {
+                                        r#type: "input_image".to_string(),
+                                        image_url: url.clone(),
+                                    })
+                                }
+                                LlmContentPart::File { url, filename } => {
+                                    Some(ResponsesContentPart::InputFile {
+                                        r#type: "input_file".to_string(),
+                                        input_file: ResponsesInputFile {
+                                            file_data: Some(url.clone()),
+                                            file_url: None,
+                                            filename: filename.clone(),
+                                        },
+                                    })
+                                }
+                                LlmContentPart::Audio { .. }
+                                | LlmContentPart::ProviderOpaque(_) => None,
+                            })
+                            .collect(),
+                    )
+                }
+                MessageContent::Parts(parts) => ResponsesContent::Text(
                     parts
                         .iter()
                         .filter_map(|p| match p {
@@ -459,15 +493,9 @@ impl OpenResponsesProtocolChatDriver {
                             _ => None,
                         })
                         .collect::<Vec<_>>()
-                        .join("")
-                }
+                        .join(""),
+                ),
             };
-            if has_images {
-                tracing::warn!(
-                    tool_call_id = %tool_call_id,
-                    "OpenResponses API does not support images/files in tool results; attachments dropped"
-                );
-            }
             return ResponsesInputItem::FunctionCallOutput {
                 r#type: "function_call_output".to_string(),
                 call_id: tool_call_id.clone(),

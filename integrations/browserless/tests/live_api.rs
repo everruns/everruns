@@ -294,3 +294,181 @@ async fn live_no_resources_leaked_cdp() {
         "Should fail to reconnect after timeout — browser was cleaned up"
     );
 }
+
+// ============================================================================
+// Computer use (EVE-1119): the `computer` tool on a real Browserless browser
+// ============================================================================
+
+mod computer_use {
+    use super::api_token;
+    use async_trait::async_trait;
+    use everruns_core::capabilities::Capability;
+    use everruns_core::connection_services::UserConnectionResolver;
+    use everruns_core::network_access::NetworkAccessList;
+    use everruns_core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
+    use everruns_core::tool_context::ToolContext;
+    use everruns_core::tools::{Tool, ToolExecutionResult};
+    use everruns_integrations_browserless::computer::BrowserlessComputerUseCapability;
+    use everruns_integrations_browserless::session_tools::BrowserlessCloseBrowserTool;
+    use everruns_provider::error::Result;
+    use everruns_provider::typed_id::SessionId;
+    use serde_json::{Value, json};
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    struct Token(String);
+
+    #[async_trait]
+    impl UserConnectionResolver for Token {
+        async fn get_connection_token(&self, _: SessionId, _: &str) -> Result<Option<String>> {
+            Ok(Some(self.0.clone()))
+        }
+    }
+
+    #[derive(Default)]
+    struct Memory(Mutex<HashMap<String, String>>);
+
+    #[async_trait]
+    impl SessionStorageStore for Memory {
+        async fn set_value(&self, _: SessionId, key: &str, value: &str) -> Result<()> {
+            self.0
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), value.to_string());
+            Ok(())
+        }
+        async fn get_value(&self, _: SessionId, key: &str) -> Result<Option<String>> {
+            Ok(self.0.lock().unwrap().get(key).cloned())
+        }
+        async fn delete_value(&self, _: SessionId, key: &str) -> Result<bool> {
+            Ok(self.0.lock().unwrap().remove(key).is_some())
+        }
+        async fn list_keys(&self, _: SessionId) -> Result<Vec<KeyInfo>> {
+            Ok(vec![])
+        }
+        async fn set_secret(&self, _: SessionId, _: &str, _: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn get_secret(&self, _: SessionId, _: &str) -> Result<Option<String>> {
+            Ok(None)
+        }
+        async fn delete_secret(&self, _: SessionId, _: &str) -> Result<bool> {
+            Ok(false)
+        }
+        async fn list_secrets(&self, _: SessionId) -> Result<Vec<SecretInfo>> {
+            Ok(vec![])
+        }
+    }
+
+    fn context() -> ToolContext {
+        ToolContext::new(SessionId::new())
+            .with_storage_store_arc(Arc::new(Memory::default()))
+            .with_connection_resolver(Arc::new(Token(api_token())))
+    }
+
+    fn computer() -> Box<dyn Tool> {
+        BrowserlessComputerUseCapability
+            .tools_with_config(&json!({"display_width": 1024, "display_height": 768}))
+            .remove(0)
+    }
+
+    async fn run(tool: &dyn Tool, context: &ToolContext, args: Value) -> ToolExecutionResult {
+        tool.execute_with_context(args, context).await
+    }
+
+    fn png_size(result: &ToolExecutionResult) -> (u32, u32) {
+        use base64::Engine;
+        let ToolExecutionResult::SuccessWithImages { images, .. } = result else {
+            panic!("expected a screenshot, got {result:?}");
+        };
+        let png = base64::engine::general_purpose::STANDARD
+            .decode(&images[0].base64)
+            .unwrap();
+        (
+            u32::from_be_bytes(png[16..20].try_into().unwrap()),
+            u32::from_be_bytes(png[20..24].try_into().unwrap()),
+        )
+    }
+
+    async fn close(context: &ToolContext) {
+        BrowserlessCloseBrowserTool
+            .execute_with_context(json!({}), context)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn live_computer_navigates_types_keys_and_keeps_the_browser() {
+        let tool = computer();
+        let ctx = context();
+
+        let result = run(
+            tool.as_ref(),
+            &ctx,
+            json!({"action": "navigate", "url": "https://example.com"}),
+        )
+        .await;
+        assert_eq!(png_size(&result), (1024, 768));
+
+        // The second call reconnects to the same persistent browser: Tab
+        // focuses the page's only link, Enter follows it.
+        let result = run(tool.as_ref(), &ctx, json!({"action": "key", "text": "Tab"})).await;
+        assert!(result.is_success(), "{result:?}");
+        let result = run(
+            tool.as_ref(),
+            &ctx,
+            json!({"action": "key", "text": "Return"}),
+        )
+        .await;
+        assert!(result.is_success(), "{result:?}");
+
+        let mut session =
+            everruns_integrations_browserless::session_tools::try_get_cdp_session(&ctx)
+                .await
+                .expect("the computer tool keeps the browser alive");
+        let url = session.get_url().await.unwrap();
+        session.disconnect().await;
+        assert!(url.contains("iana.org"), "followed the link: {url}");
+
+        close(&ctx).await;
+    }
+
+    #[tokio::test]
+    async fn live_computer_resets_a_page_that_leaves_the_allowed_sites() {
+        let tool = computer();
+        let mut ctx = context();
+        ctx.network_access = Some(NetworkAccessList::allow_only(["example.com"]));
+
+        let result = run(
+            tool.as_ref(),
+            &ctx,
+            json!({"action": "navigate", "url": "https://example.com"}),
+        )
+        .await;
+        assert!(result.is_success(), "{result:?}");
+
+        run(tool.as_ref(), &ctx, json!({"action": "key", "text": "Tab"})).await;
+        let result = run(
+            tool.as_ref(),
+            &ctx,
+            json!({"action": "key", "text": "Return"}),
+        )
+        .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("blocked"), "{msg}"),
+            other => panic!("expected the guard to fire, got {other:?}"),
+        }
+
+        let result = run(
+            tool.as_ref(),
+            &ctx,
+            json!({"action": "navigate", "url": "https://www.iana.org/"}),
+        )
+        .await;
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(_)),
+            "{result:?}"
+        );
+
+        close(&ctx).await;
+    }
+}

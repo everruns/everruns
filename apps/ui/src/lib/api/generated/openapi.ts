@@ -8020,6 +8020,7 @@ export interface components {
       | components["schemas"]["ToolCallRequestedData"]
       | components["schemas"]["TranscriptRepairedData"]
       | components["schemas"]["ToolCallRepairedData"]
+      | components["schemas"]["HostedToolCallData"]
       | components["schemas"]["LlmGenerationData"]
       | components["schemas"]["ReasonThinkingDeltaData"]
       | components["schemas"]["ReasonItemData"]
@@ -9255,6 +9256,28 @@ export interface components {
        * @example 4
        */
       workers_accepting: number;
+    };
+    /**
+     * @description Data for the `tool.hosted_call` event (EVE-1115).
+     *
+     *     A provider-executed tool (OpenAI hosted `web_search`) changed state inside
+     *     the model's response. Informational: nothing was dispatched, and there is
+     *     no matching `tool.started` / `tool.completed` or tool-result message.
+     */
+    HostedToolCallData: {
+      /** @description Provider item id; stable across the call's state changes. */
+      call_id: string;
+      /** @description `in_progress`, `completed`, or `failed`. */
+      status: string;
+      /** @description Short detail once known, e.g. the search query. */
+      summary?: string | null;
+      /** @description Hosted tool name, e.g. `web_search`. */
+      tool_name: string;
+      /**
+       * @description Turn this call belongs to.
+       * @example turn_01933b5a00007000800000000000001
+       */
+      turn_id: string;
     };
     /** @description Image content part (base64 or URL) */
     ImageContentPart: {

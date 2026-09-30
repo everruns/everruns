@@ -92,6 +92,10 @@ pub struct FeatureFlags {
     /// Deployment-controlled and off by default on every grade because spend is
     /// irreversible. Unlike experimental flags, this is not org-configurable.
     pub machine_payments: bool,
+    /// OpenAI Agents API runtime-backend prototype. Platform-managed and off by
+    /// default because it sends the agent loop and session data to OpenAI.
+    #[serde(default)]
+    pub openai_agents_api: bool,
 }
 
 /// Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
@@ -290,6 +294,13 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         experimental: true,
         platform_managed: false,
     },
+    FeatureFlagDefinition {
+        name: "openai_agents_api",
+        label: "OpenAI Agents API runtime",
+        description: "Allows selected OpenAI-only sessions to use the feature-gated Agents API prototype instead of the native Everruns loop.",
+        experimental: true,
+        platform_managed: true,
+    },
 ];
 
 /// Whether a flag may only be enabled for an org by a platform user.
@@ -330,6 +341,7 @@ impl FeatureFlags {
             reports: opt_in("reports", system.reports),
             environments: opt_in("environments", system.environments),
             machine_payments: system.machine_payments,
+            openai_agents_api: opt_in("openai_agents_api", system.openai_agents_api),
         }
     }
 
@@ -360,6 +372,7 @@ impl FeatureFlags {
                 sandboxes_enabled() || grade.experimental_features_enabled(),
             ),
             machine_payments: standard_flag("FEATURE_MACHINE_PAYMENTS", false),
+            openai_agents_api: standard_flag("FEATURE_OPENAI_AGENTS_API", false),
         }
     }
 
@@ -394,6 +407,7 @@ impl FeatureFlags {
             ("reports".to_string(), self.reports),
             ("platform_chat_v2".to_string(), self.platform_chat_v2),
             ("machine_payments".to_string(), self.machine_payments),
+            ("openai_agents_api".to_string(), self.openai_agents_api),
         ]))
     }
 
@@ -417,6 +431,7 @@ impl FeatureFlags {
             "webmcp" => self.webmcp,
             "reports" => self.reports,
             "machine_payments" => self.machine_payments,
+            "openai_agents_api" => self.openai_agents_api,
             _ => false,
         }
     }
@@ -460,6 +475,7 @@ impl FeatureFlags {
             webmcp: true,
             reports: true,
             machine_payments: true,
+            openai_agents_api: true,
         }
     }
 }
@@ -601,6 +617,7 @@ mod tests {
             webmcp: true,
             reports: true,
             machine_payments: true,
+            openai_agents_api: true,
         };
         assert!(flags.is_enabled("notifications"));
         assert!(flags.is_enabled("evals"));
@@ -621,6 +638,7 @@ mod tests {
         assert!(flags.is_enabled("webmcp"));
         assert!(flags.is_enabled("reports"));
         assert!(flags.is_enabled("machine_payments"));
+        assert!(flags.is_enabled("openai_agents_api"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -675,6 +693,7 @@ mod tests {
             webmcp: true,
             reports: true,
             machine_payments: true,
+            openai_agents_api: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"notifications\":true"));
@@ -685,6 +704,7 @@ mod tests {
         assert!(json.contains("\"observers\":true"));
         assert!(json.contains("\"webmcp\":true"));
         assert!(json.contains("\"machine_payments\":true"));
+        assert!(json.contains("\"openai_agents_api\":true"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
         assert_eq!(flags, parsed);
@@ -877,5 +897,24 @@ mod tests {
         assert!(!definition.platform_managed);
 
         restore_env("FEATURE_REPORTS", prev);
+    }
+
+    #[test]
+    fn openai_agents_api_is_platform_managed_and_off_by_default() {
+        let _lock = lock_env();
+        let previous = std::env::var("FEATURE_OPENAI_AGENTS_API").ok();
+        unsafe { std::env::remove_var("FEATURE_OPENAI_AGENTS_API") };
+        assert!(!FeatureFlags::from_env(&DeploymentGrade::Dev).openai_agents_api);
+        assert!(is_platform_managed("openai_agents_api"));
+
+        unsafe { std::env::set_var("FEATURE_OPENAI_AGENTS_API", "true") };
+        let system = FeatureFlags::from_env(&DeploymentGrade::Prod);
+        assert!(system.openai_agents_api);
+        assert!(
+            !FeatureFlags::for_org(&system, &std::collections::HashMap::new()).openai_agents_api
+        );
+        let enrolled = std::collections::HashMap::from([("openai_agents_api".to_string(), true)]);
+        assert!(FeatureFlags::for_org(&system, &enrolled).openai_agents_api);
+        restore_env("FEATURE_OPENAI_AGENTS_API", previous);
     }
 }

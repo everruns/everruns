@@ -30,6 +30,11 @@ an empty `TextDelta` as filler for wire frames with nothing to report
 the provider explicitly finished the call, and drop the call otherwise;
 either case logs a `tracing` warning.
 
+**Hosted tool calls** are tools the provider runs inside the response
+(OpenAI `web_search`). [`HostedToolCall`](Self::HostedToolCall) reports
+their progress for display; never dispatch them. `Done` counts them in
+[`hosted_tool_calls`](LlmCompletionMetadata::hosted_tool_calls).
+
 **`Done`** carries [`LlmCompletionMetadata`]: usage, the served model, and
 `finish_reason` as the provider reported it, normalized to the Chat
 Completions vocabulary (`stop`, `length`, `tool_calls`, `content_filter`,

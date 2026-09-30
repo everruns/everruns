@@ -138,6 +138,9 @@ Guard rails:
 #[serde(deny_unknown_fields, default)]
 #[schemars(crate = "everruns_capability::schemars")]
 pub struct ScoutConfig {
+    /// Model used to run the scout. If omitted, the blueprint default is used.
+    #[schemars(length(min = 1))]
+    pub model: Option<String>,
     /// Maximum number of models to probe.
     #[schemars(range(min = 1, max = MAX_PROBE_CANDIDATES))]
     pub max_candidates: u32,
@@ -157,6 +160,7 @@ pub struct ScoutConfig {
 impl Default for ScoutConfig {
     fn default() -> Self {
         Self {
+            model: None,
             max_candidates: DEFAULT_PROBE_CANDIDATES,
             max_spend_usd: DEFAULT_MAX_SPEND_USD,
             probe_timeout_ms: DEFAULT_PROBE_TIMEOUT_MS,
@@ -1032,7 +1036,8 @@ mod tests {
 
         // Every ScoutConfig field reaches the schema, with the runtime bounds
         // attached — no hand-maintained copy to drift.
-        assert_eq!(properties.len(), 5);
+        assert_eq!(properties.len(), 6);
+        assert_eq!(properties["model"]["minLength"], 1);
         assert_eq!(
             properties["max_candidates"]["maximum"],
             MAX_PROBE_CANDIDATES
@@ -1072,6 +1077,18 @@ mod tests {
             blueprint
                 .validate_config(Some(&json!({"max_candidates": 5})))
                 .is_ok()
+        );
+        assert!(
+            blueprint
+                .validate_config(Some(&json!({"model": "approved/model"})))
+                .is_ok(),
+            "the Default blueprint model must remain host-overridable"
+        );
+        assert!(
+            blueprint
+                .validate_config(Some(&json!({"model": ""})))
+                .is_err(),
+            "an empty model override must be rejected"
         );
         // Previously the schema described these bounds and nothing checked them.
         assert!(

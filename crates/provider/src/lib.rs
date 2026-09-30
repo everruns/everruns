@@ -57,6 +57,7 @@ pub mod reasoning;
 pub mod runtime_provider;
 pub mod stream_accumulator;
 mod stream_error;
+pub mod stream_event;
 #[cfg(feature = "http")]
 pub mod stream_reconnect;
 pub mod tool_schema_compat;

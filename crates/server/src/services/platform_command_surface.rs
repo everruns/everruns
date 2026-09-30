@@ -424,6 +424,7 @@ mod tests {
             webmcp: true,
             reports: true,
             machine_payments: true,
+            openai_agents_api: true,
         }
     }
 
@@ -448,6 +449,7 @@ mod tests {
                 webmcp: true,
                 reports: true,
                 machine_payments: true,
+                openai_agents_api: true,
             },
         )
     }

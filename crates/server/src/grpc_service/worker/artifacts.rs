@@ -6,6 +6,22 @@
 
 use crate::grpc_service::*;
 
+fn validate_file_resolution_limits(file_count: usize, total_bytes: usize) -> Result<(), Status> {
+    if file_count > crate::api::files::MAX_FILES_PER_RESOLUTION {
+        return Err(Status::resource_exhausted(format!(
+            "At most {} files can be resolved at once",
+            crate::api::files::MAX_FILES_PER_RESOLUTION
+        )));
+    }
+    if total_bytes > crate::api::files::MAX_FILE_SIZE_BYTES {
+        return Err(Status::resource_exhausted(format!(
+            "Combined file size exceeds {} bytes",
+            crate::api::files::MAX_FILE_SIZE_BYTES
+        )));
+    }
+    Ok(())
+}
+
 impl WorkerServiceImpl {
     pub(crate) async fn handle_resolve_image(
         &self,
@@ -136,13 +152,38 @@ impl WorkerServiceImpl {
         request: Request<ResolveFilesRequest>,
     ) -> Result<Response<ResolveFilesResponse>, Status> {
         let req = request.into_inner();
+        let file_ids = req
+            .file_ids
+            .iter()
+            .map(|proto_id| parse_uuid(Some(proto_id)))
+            .collect::<Result<std::collections::HashSet<_>, _>>()?;
+        validate_file_resolution_limits(file_ids.len(), 0)?;
+
+        // Preflight metadata before loading any blobs. This also protects
+        // deployments that contain files uploaded before the current limit.
+        let mut total_bytes = 0usize;
+        for file_id in &file_ids {
+            match self.db.get_file_info(req.org_id, *file_id).await {
+                Ok(Some(info)) => {
+                    let size = usize::try_from(info.size_bytes)
+                        .map_err(|_| Status::internal("Invalid stored file size"))?;
+                    total_bytes = total_bytes
+                        .checked_add(size)
+                        .ok_or_else(|| Status::resource_exhausted("File batch is too large"))?;
+                    validate_file_resolution_limits(file_ids.len(), total_bytes)?;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::error!(%file_id, error = %e, "Failed to get file metadata during batch resolution");
+                    return Err(Status::internal("Failed to resolve file metadata"));
+                }
+            }
+        }
 
         let mut files = std::collections::HashMap::new();
 
-        // Files are always returned inline as base64 (no presigned-URL
-        // variant): prompt-attached files are size-capped at upload.
-        for proto_id in req.file_ids {
-            let file_id = parse_uuid(Some(&proto_id))?;
+        // Files are returned inline as base64, bounded by the preflight above.
+        for file_id in file_ids {
             match self.db.get_file(req.org_id, file_id).await {
                 Ok(Some(row)) => {
                     let base64_data = base64::engine::general_purpose::STANDARD.encode(&row.data);
@@ -258,5 +299,38 @@ impl WorkerServiceImpl {
         Ok(Response::new(GetImageArtifactInfoResponse {
             image: row.map(Self::image_info_row_to_proto),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_resolution_limits_accept_boundaries() {
+        validate_file_resolution_limits(
+            crate::api::files::MAX_FILES_PER_RESOLUTION,
+            crate::api::files::MAX_FILE_SIZE_BYTES,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn file_resolution_limits_reject_oversized_batches() {
+        let too_many =
+            validate_file_resolution_limits(crate::api::files::MAX_FILES_PER_RESOLUTION + 1, 0)
+                .unwrap_err();
+        assert_eq!(too_many.code(), tonic::Code::ResourceExhausted);
+
+        let too_large =
+            validate_file_resolution_limits(1, crate::api::files::MAX_FILE_SIZE_BYTES + 1)
+                .unwrap_err();
+        assert_eq!(too_large.code(), tonic::Code::ResourceExhausted);
+    }
+
+    #[test]
+    fn maximum_file_fits_grpc_after_base64_expansion() {
+        let encoded_len = crate::api::files::MAX_FILE_SIZE_BYTES.div_ceil(3) * 4;
+        assert!(encoded_len < WorkerServiceImpl::MAX_GRPC_MESSAGE_SIZE);
     }
 }

@@ -96,7 +96,7 @@ CDP commands used:
 - `Input.dispatchTouchEvent`, Touch/tap simulation
 - `Browserless.reconnect`, Keep browser alive after disconnect (returns new WS endpoint)
 
-`Page.*`, `Runtime.*`, and `Input.*` must be sent with the attached target `sessionId` as a top-level CDP field. Browser-wide commands such as `Target.*` and `Browserless.*` stay on the root session.
+`Page.*`, `Runtime.*`, `Input.*`, and `Emulation.*` must be sent with the attached target `sessionId` as a top-level CDP field. Browser-wide commands such as `Target.*` and `Browserless.*` stay on the root session.
 
 ## Tools
 

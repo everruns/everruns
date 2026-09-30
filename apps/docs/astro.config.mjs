@@ -286,6 +286,7 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "Browserless", slug: "capabilities/browserless" },
+                        { label: "Computer Use", slug: "capabilities/computer-use" },
                       ],
                     },
                     {

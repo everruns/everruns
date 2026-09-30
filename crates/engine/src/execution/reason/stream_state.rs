@@ -36,6 +36,8 @@ impl StreamReplayState {
             LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
             LlmStreamEvent::NativeToolCall(_) => true,
             LlmStreamEvent::ProviderCompactionStarted => true,
+            // The provider already ran the hosted tool; reissuing repeats it.
+            LlmStreamEvent::HostedToolCall(_) => true,
             LlmStreamEvent::ReasoningDelta { .. }
             | LlmStreamEvent::ReasoningItem(_)
             | LlmStreamEvent::MessagePhase(_)
@@ -114,6 +116,8 @@ pub(super) fn advances_stall_deadline(event: &LlmStreamEvent) -> bool {
         LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
         LlmStreamEvent::NativeToolCall(_) => true,
         LlmStreamEvent::ProviderCompactionStarted => true,
+        // A hosted call (web search) is progress while the provider runs it.
+        LlmStreamEvent::HostedToolCall(_) => true,
         LlmStreamEvent::MessagePhase(_) | LlmStreamEvent::Done(_) | LlmStreamEvent::Error(_) => {
             false
         }

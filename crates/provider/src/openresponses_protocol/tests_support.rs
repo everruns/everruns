@@ -86,7 +86,7 @@ pub(crate) fn function_call_output(call_id: &str) -> ResponsesInputItem {
     ResponsesInputItem::FunctionCallOutput {
         r#type: "function_call_output".to_string(),
         call_id: call_id.to_string(),
-        output: "result".to_string(),
+        output: "result".to_string().into(),
     }
 }
 

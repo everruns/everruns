@@ -1,0 +1,44 @@
+# OpenAI Decisions integration
+# Decision: its own crate, not a module of `everruns-openai`. The decision
+#   driver needs `everruns-core` (DecisionDriver, DecisionRequest), and the chat
+#   driver crate deliberately depends only on `everruns-provider`.
+# Decision: unpublished while the Decisions API is in limited preview and its
+#   wire shape is unconfirmed (EVE-1118). The endpoint answered our account with
+#   "Decision API is not enabled for this user" on 2026-09-30, so the request and
+#   response types in `src/wire.rs` are inferred from the DevDay announcement,
+#   not a published reference. Publish once they are verified.
+
+[package]
+name = "everruns-integrations-openai-decisions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "OpenAI Decisions API as an Everruns decision driver (preview)"
+publish = false
+
+[dependencies]
+everruns-core.workspace = true
+everruns-provider.workspace = true
+
+async-trait.workspace = true
+futures.workspace = true
+reqwest = { workspace = true, features = ["json"] }
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["time"] }
+tracing.workspace = true
+
+[features]
+# Real-API smoke test; needs an account with Decisions API access.
+live-tests = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"
+
+[lints]
+workspace = true
