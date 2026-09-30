@@ -138,12 +138,12 @@ knowledge-indexes sync	--index-id!
 knowledge-indexes update	--description --embedding-model-id --index-id! --name --source-config
 login	--token
 logout	
-mcp-servers create	--api-key --auth-mode --description --headers --name! --protocol-mode --transport-type --url!
+mcp-servers create	--api-key --auth-mode --description --elicitation-policy --headers --name! --protocol-mode --transport-type --url!
 mcp-servers delete	--id <id>
 mcp-servers destroy	--id <id>
 mcp-servers get	--id <id>
 mcp-servers list	--include-archived --search
-mcp-servers update	--api-key --auth-mode --description --headers --id --name --protocol-mode --status --transport-type --url <id>
+mcp-servers update	--api-key --auth-mode --description --elicitation-policy --headers --id --name --protocol-mode --status --transport-type --url <id>
 memories create	--description --name! --source
 memories delete	--memory-id!
 memories get	--memory-id!
