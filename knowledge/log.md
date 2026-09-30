@@ -1,5 +1,18 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-30
+
+* **Decisions are now answered by pluggable decision drivers (EVE-1117).** The
+  service was hard-wired to TypeSafe; OpenAI's Decisions API made "there will
+  be other classifiers" concrete. A `DecisionDriver` declares capabilities and
+  calibration, a host registry routes by model id (`driver/model`, `jev-*`,
+  else the default), and the router is the `DecisionsService` callers already
+  hold. The first vendor-free driver, `llm`, answers through the utility model
+  and reports `calibrated: false` rather than inventing probabilities, which
+  needed a new `DecisionOutcome::calibrated` flag. `DECISIONS_DRIVER` and
+  `DECISIONS_MODEL` select the default; a TypeSafe-only deployment behaves as
+  before. Recorded in [Decisions Service](operations/decisions-service.md#decision-drivers).
+
 ## 2026-09-28
 
 * **Inbound MCP form mode elicitation now has a design, and the blocker that

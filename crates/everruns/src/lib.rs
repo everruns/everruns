@@ -97,8 +97,12 @@ pub use everruns_builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
 };
+pub use everruns_core::decision_driver::{
+    DecisionDriver, DecisionDriverCapabilities, NativePrimitives, SingleDriverService,
+};
 pub use everruns_core::decisions::{
-    DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionsService,
+    DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionUsage,
+    DecisionsService,
 };
 #[deprecated(note = "use WorkspaceBackend")]
 pub use everruns_host::WorkspaceBackend as WorkspaceProvider;
@@ -130,6 +134,9 @@ pub use everruns_host::{
     Compute, ComputeCapabilities, ComputeError, ComputeKind, ComputeSession, Containment,
     ContainmentLevel, Durability, EnvironmentError, ExecRequest, ExecResult, HostBackends,
     NetworkPolicy,
+};
+pub use everruns_host::{
+    DecisionDriverRegistry, DecisionRouter, DecisionRoutingError, LlmDecisionDriver,
 };
 #[cfg(feature = "host-compute")]
 pub use everruns_host::{HostCompute, HostComputeSession};

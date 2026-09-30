@@ -25,7 +25,10 @@ split and the marking convention so later changes stay deliberate.
   contract in `crates/everruns/src/ask_user.rs`.
 * **Alpha** may break without a major bump. Applies to the decisions
   surface: `crates/everruns/src/decisions.rs` and its `everruns-core`
-  re-exports in `crates/everruns/src/lib.rs`; and to the model-catalog
+  re-exports in `crates/everruns/src/lib.rs`, including the decision-driver
+  types (`DecisionDriver`, `DecisionDriverRegistry`, `DecisionRouter`). Adding
+  `DecisionOutcome::calibrated` (EVE-1117) was such a break: struct-literal
+  outcomes had to name it; and to the model-catalog
   surface: `crates/everruns/src/models.rs` and its profile re-exports; and to
   the host-integration hooks: per-tool approval (`crates/everruns/src/approval.rs`,
   `FunctionTool::needs_approval`, `AgentBuilder::approver`), the tool call

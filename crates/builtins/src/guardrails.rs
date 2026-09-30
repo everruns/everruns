@@ -2385,7 +2385,7 @@ mod tests {
             Ok(everruns_core::DecisionOutcome {
                 model: "stub".to_string(),
                 answers,
-                usage: Default::default(),
+                ..Default::default()
             })
         }
     }

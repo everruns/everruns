@@ -167,7 +167,7 @@ const MAX_TYPE_CHARS: usize = 64;
 pub struct AttestationRequirement {
     /// One entry per missing confirmation (e.g. `age_18plus`). Deliberately
     /// `String` rather than an enum: providers add gates without notice, and
-    /// an unknown type must still reach the reader verbatim.
+    /// an unknown safe identifier must still reach the reader verbatim.
     pub missing_types: Vec<String>,
     /// Page where the account holder completes the confirmations.
     pub confirm_url: String,
@@ -217,13 +217,17 @@ pub fn parse_attestation_requirement(message: &str) -> Option<AttestationRequire
     // `\/` intact. Undoing those two escapes first lets one parser cover both
     // shapes; text without escapes is unchanged by it.
     let message = message.replace("\\\"", "\"").replace("\\/", "/");
-    let missing_types = attestation_missing_types(&message).unwrap_or_default();
+    let missing_types = attestation_missing_types(&message);
     let lower = message.to_ascii_lowercase();
-    if missing_types.is_empty() && !lower.contains(ATTESTATION_GATE_SENTENCE) {
+    if !missing_types
+        .as_ref()
+        .is_some_and(|(_, has_declared_types)| *has_declared_types)
+        && !lower.contains(ATTESTATION_GATE_SENTENCE)
+    {
         return None;
     }
     Some(AttestationRequirement {
-        missing_types,
+        missing_types: missing_types.map(|(types, _)| types).unwrap_or_default(),
         confirm_url: attestation_confirm_url(&message, &lower)
             .unwrap_or_else(|| ATTESTATION_CONFIRM_URL_FALLBACK.to_string()),
     })
@@ -234,7 +238,7 @@ pub fn is_attestation_required_message(message: &str) -> bool {
     parse_attestation_requirement(message).is_some()
 }
 
-fn attestation_missing_types(message: &str) -> Option<Vec<String>> {
+fn attestation_missing_types(message: &str) -> Option<(Vec<String>, bool)> {
     static LIST: OnceLock<Regex> = OnceLock::new();
     static ITEM: OnceLock<Regex> = OnceLock::new();
     let list = LIST.get_or_init(|| {
@@ -244,18 +248,25 @@ fn attestation_missing_types(message: &str) -> Option<Vec<String>> {
     let item =
         ITEM.get_or_init(|| Regex::new(r#""([^"]*)""#).expect("valid attestation type regex"));
     let types = list.captures(message)?.name("types")?.as_str();
-    Some(
-        item.captures_iter(types)
-            .map(|captures| captures[1].to_string())
-            // THREAT[TM-WEB-018] These strings come from the provider and are
-            // rendered into every session viewer's transcript, so the payload
-            // decides neither how many arrive nor how long each one is.
-            .filter(|attestation_type| {
-                !attestation_type.is_empty() && attestation_type.chars().count() <= MAX_TYPE_CHARS
-            })
-            .take(MAX_ATTESTATION_TYPES)
-            .collect(),
-    )
+    let mut declared_types = item
+        .captures_iter(types)
+        .map(|captures| captures[1].to_string())
+        .filter(|attestation_type| !attestation_type.is_empty())
+        .peekable();
+    let has_declared_types = declared_types.peek().is_some();
+    let safe_types = declared_types
+        // THREAT[TM-WEB-018] These strings come from the provider and are
+        // rendered into every session viewer's transcript, so the payload
+        // decides neither their markup nor how much content arrives.
+        .filter(|attestation_type| {
+            attestation_type.chars().count() <= MAX_TYPE_CHARS
+                && attestation_type.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.' | ':')
+                })
+        })
+        .take(MAX_ATTESTATION_TYPES)
+        .collect();
+    Some((safe_types, has_declared_types))
 }
 
 /// The confirmation page URL, searched from the gate sentence onward so a URL
@@ -986,6 +997,37 @@ mod tests {
             assert_eq!(
                 error.fallback_message(),
                 "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again."
+            );
+        }
+    }
+
+    #[test]
+    fn attestation_types_only_expose_safe_identifiers() {
+        let message = r#"{"missing_attestation_types":["age_18plus","org-policy.v2:required","<https://evil.example|Verify account>"]}"#;
+        let requirement = parse_attestation_requirement(message).unwrap();
+
+        assert_eq!(
+            requirement.missing_types,
+            ["age_18plus", "org-policy.v2:required"]
+        );
+
+        // An otherwise valid attestation response remains classified even when
+        // every provider-supplied label is unsafe to display.
+        for unsafe_type in [
+            "<https://evil.example|Verify>",
+            "[verify](https://evil.example)",
+            "<!channel>",
+            "line\\nbreak",
+        ] {
+            let unsafe_only = format!(
+                r#"{{"message":"This model requires you to complete the following before use","missing_attestation_types":["{unsafe_type}"]}}"#
+            );
+            assert!(
+                parse_attestation_requirement(&unsafe_only)
+                    .unwrap()
+                    .missing_types
+                    .is_empty(),
+                "{unsafe_type}"
             );
         }
     }

@@ -223,6 +223,48 @@ impl DecisionAnswer {
     }
 }
 
+/// One-hot answers for drivers whose vendor returns a label, not a
+/// distribution. Pair them with `DecisionOutcome::calibrated = false`.
+impl DecisionAnswer {
+    /// A yes/no label: probability 1 for yes, 0 for no.
+    pub fn noul_label(yes: bool) -> Self {
+        Self::Noul {
+            probability: if yes { 1.0 } else { 0.0 },
+        }
+    }
+
+    /// A selected option out of `options`, with all mass on the selection.
+    pub fn choice_label<'a>(
+        selected: impl Into<String>,
+        options: impl IntoIterator<Item = &'a str>,
+    ) -> Self {
+        let selected = selected.into();
+        let probabilities = options
+            .into_iter()
+            .map(|option| {
+                let mass = if option == selected { 1.0 } else { 0.0 };
+                (option.to_string(), mass)
+            })
+            .collect();
+        Self::Choice {
+            selected,
+            probabilities,
+            confidence: 1.0,
+        }
+    }
+
+    /// A level index out of `level_count`, with all mass on that level.
+    pub fn score_label(level: usize, level_count: usize) -> Self {
+        Self::Score {
+            score: level as f64,
+            probabilities: (0..level_count)
+                .map(|index| (index, if index == level { 1.0 } else { 0.0 }))
+                .collect(),
+            confidence: 1.0,
+        }
+    }
+}
+
 /// Token usage for one request.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecisionUsage {
@@ -241,9 +283,24 @@ pub struct DecisionOutcome {
     pub answers: BTreeMap<String, DecisionAnswer>,
     /// Token usage for the request.
     pub usage: DecisionUsage,
+    /// Whether the numbers are a measured distribution.
+    ///
+    /// `true` when the answering vendor returned probabilities (TypeSafe's
+    /// System One models do). `false` when it returned only a label: the
+    /// driver then encodes that label as a one-hot distribution, so every
+    /// accessor still works and a threshold still reads as "did the model
+    /// pick this", but the numbers are not evidence of how sure it was.
+    /// Drivers never invent intermediate probabilities to fill the gap.
+    /// Defaults to `false`, the claim that cannot overstate.
+    pub calibrated: bool,
 }
 
 impl DecisionOutcome {
+    /// Whether the numbers are a measured distribution; see [`Self::calibrated`].
+    pub fn is_calibrated(&self) -> bool {
+        self.calibrated
+    }
+
     /// The answer under `id`, if present.
     pub fn get(&self, id: &str) -> Option<&DecisionAnswer> {
         self.answers.get(id)
@@ -277,7 +334,8 @@ impl DecisionsService for DisabledDecisionsService {
 
     async fn evaluate(&self, _request: DecisionRequest) -> Result<DecisionOutcome> {
         Err(AgentLoopError::llm(
-            "decisions is disabled (no UTILITY_TYPESAFE_API_KEY configured)",
+            "decisions is disabled (no decision driver configured: set \
+             UTILITY_TYPESAFE_API_KEY, or DECISIONS_DRIVER=llm with a utility LLM)",
         ))
     }
 
@@ -329,6 +387,44 @@ mod tests {
         assert_eq!(answer.probability_at_or_above(0), Some(1.0));
         assert_eq!(answer.probability_yes(), None);
         assert_eq!(answer.confidence(), Some(0.4));
+    }
+
+    #[test]
+    fn label_answers_put_all_mass_on_the_label() {
+        assert_eq!(
+            DecisionAnswer::noul_label(true).probability_yes(),
+            Some(1.0)
+        );
+        assert_eq!(
+            DecisionAnswer::noul_label(false).probability_yes(),
+            Some(0.0)
+        );
+
+        let DecisionAnswer::Choice {
+            selected,
+            probabilities,
+            ..
+        } = DecisionAnswer::choice_label("b", ["a", "b", "c"])
+        else {
+            panic!("expected a choice");
+        };
+        assert_eq!(selected, "b");
+        assert_eq!(probabilities.len(), 3);
+        assert_eq!(probabilities["b"], 1.0);
+        assert_eq!(probabilities["a"], 0.0);
+
+        let score = DecisionAnswer::score_label(2, 3);
+        assert_eq!(score.probability_at_or_above(2), Some(1.0));
+        assert_eq!(score.probability_at_or_above(0), Some(1.0));
+        let DecisionAnswer::Score { score, .. } = score else {
+            panic!("expected a score");
+        };
+        assert_eq!(score, 2.0);
+    }
+
+    #[test]
+    fn outcomes_default_to_uncalibrated() {
+        assert!(!DecisionOutcome::default().is_calibrated());
     }
 
     #[test]
