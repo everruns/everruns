@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_core::{
@@ -704,9 +705,30 @@ impl AskUserTool {
                 ));
             }
         };
-        let outcome = match &context {
-            Some(context) => self.responder.ask_in(context, &request.questions).await,
-            None => self.responder.ask(&request.questions).await,
+        let response = async {
+            match &context {
+                Some(context) => self.responder.ask_in(context, &request.questions).await,
+                None => self.responder.ask(&request.questions).await,
+            }
+        };
+        // THREAT[TM-DOS-043]: A host responder is untrusted to finish; the
+        // validated request deadline bounds the tool call and drops its future.
+        let outcome = match tokio::time::timeout(
+            Duration::from_secs(request.timeout_seconds),
+            response,
+        )
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(_) => AskUserResult {
+                status: AskUserStatus::TimedOut,
+                answered_by: AskUserAnsweredBy::Timeout,
+                answers: if questions_have_no_default_answer(&request.questions) {
+                    Vec::new()
+                } else {
+                    declared_defaults(&request.questions)
+                },
+            },
         };
         match serde_json::to_value(outcome) {
             Ok(outcome) => ToolExecutionResult::success(outcome),

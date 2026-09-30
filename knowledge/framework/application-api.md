@@ -261,6 +261,14 @@ role `Model::simulated` plays for completions. `everruns` re-exports the `TypeSa
 provider behind its `typesafe` feature, the way it re-exports `OpenAI`, so one
 import reaches both halves without the vendor entering the default build.
 
+`Decisions::from_registry` is the multi-vendor form: a
+`DecisionDriverRegistry` plus the driver that answers anything naming no
+driver, the Framework's view of the platform's decision router. Routing and
+the calibrated/uncalibrated distinction are recorded in
+[Decisions Service](../operations/decisions-service.md#decision-drivers);
+`Answers::is_calibrated` tells a caller when the numbers are one-hot labels
+rather than a measured distribution.
+
 The model is named, not fixed. `Model::new` takes a model id because a provider
 is transport and serves many; a decisions service has a default of its own, so
 `Decisions::model` and `Decision::model` are overrides — per decisions

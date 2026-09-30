@@ -518,6 +518,65 @@ async fn execute_with_context_routes_through_ask_in() {
     assert_eq!(outcome.answered_by, AskUserAnsweredBy::Unattended);
 }
 
+#[tokio::test(start_paused = true)]
+async fn in_process_responder_is_cancelled_at_the_request_deadline() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct PendingResponder {
+        cancelled: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl AskUser for PendingResponder {
+        async fn ask(&self, _questions: &[AskUserQuestion]) -> AskUserResult {
+            struct CancellationGuard(Arc<AtomicBool>);
+
+            impl Drop for CancellationGuard {
+                fn drop(&mut self) {
+                    self.0.store(true, Ordering::SeqCst);
+                }
+            }
+
+            let _guard = CancellationGuard(self.cancelled.clone());
+            std::future::pending().await
+        }
+    }
+
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let capability = AskUserCapability::new(PendingResponder {
+        cancelled: cancelled.clone(),
+    });
+    let mut tools = capability.tools();
+    let tool = tools
+        .pop()
+        .expect("in-process ask_user contributes one tool");
+    assert!(tools.is_empty());
+    let task = tokio::spawn(async move {
+        tool.execute(json!({
+            "questions": [{
+                "header": "Target",
+                "question": "Where should I deploy?",
+                "options": [option("Staging", true), option("Production", false)]
+            }],
+            "timeout_seconds": 1
+        }))
+        .await
+    });
+
+    tokio::task::yield_now().await;
+    assert!(!task.is_finished());
+    tokio::time::advance(Duration::from_secs(1)).await;
+
+    let ToolExecutionResult::Success(result) = task.await.unwrap() else {
+        panic!("a responder deadline returns a successful timeout result");
+    };
+    let outcome: AskUserResult = serde_json::from_value(result).unwrap();
+    assert_eq!(outcome.status, AskUserStatus::TimedOut);
+    assert_eq!(outcome.answered_by, AskUserAnsweredBy::Timeout);
+    assert_eq!(outcome.answers[0].selected, ["Staging"]);
+    assert!(cancelled.load(Ordering::SeqCst));
+}
+
 /// EVE-1058: a credential has no default, so nothing answers for the person.
 #[tokio::test]
 async fn a_secret_question_never_auto_resolves() {

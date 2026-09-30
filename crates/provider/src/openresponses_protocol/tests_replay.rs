@@ -239,6 +239,11 @@ async fn rejected_stateful_continuation_replays_repaired_transcript_once() {
         "stateful continuations must not request encrypted reasoning: {first}"
     );
     assert!(second.get("previous_response_id").is_none());
+    assert_eq!(
+        second["include"],
+        json!(["reasoning.encrypted_content"]),
+        "stateless recovery must request replayable reasoning: {second}"
+    );
     let replay = second["input"].as_array().expect("replay input");
     assert!(replay.iter().any(|item| item["type"] == "function_call"));
     assert!(

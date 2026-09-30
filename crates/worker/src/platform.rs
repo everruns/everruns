@@ -8,7 +8,6 @@
 use everruns_core::DeploymentGrade;
 use everruns_host::DirectEgressService;
 use everruns_host::{HostComposition, SystemUtilityLlmConfig};
-use everruns_integrations_typesafe::SystemDecisionsConfig;
 use std::sync::Arc;
 
 /// Build the default worker-side platform definition for the current deployment grade.
@@ -18,6 +17,12 @@ pub fn default_host_composition() -> HostComposition {
 
 /// Build the default worker-side platform definition for an explicit grade.
 pub fn default_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition {
+    let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
+    // Guardrail checks on the decisions need the same service in a
+    // distributed worker as in the in-process server path.
+    let decisions = crate::SystemDecisions::from_env()
+        .into_service(utility_llm_service.clone())
+        .unwrap_or_else(|error| panic!("invalid decisions configuration: {error}"));
     HostComposition::builder()
         .capability_registry(
             everruns_integrations_catalog::oss_capability_registry_for_grade(grade),
@@ -26,10 +31,8 @@ pub fn default_host_composition_for_grade(grade: DeploymentGrade) -> HostComposi
         // Honor EVERRUNS_SYSTEM_ALLOWLIST_ENABLED for tenant/agent runtime
         // egress (capabilities, MCP, integrations) in distributed workers too.
         .egress_service(Arc::new(DirectEgressService::for_runtime_traffic_from_env()))
-        .utility_llm_service(SystemUtilityLlmConfig::from_env().into_service())
-        // Guardrail checks on the decisions need the same service in a
-        // distributed worker as in the in-process server path.
-        .decisions(SystemDecisionsConfig::from_env().into_service())
+        .utility_llm_service(utility_llm_service)
+        .decisions(decisions)
         .build()
 }
 
@@ -59,7 +62,7 @@ mod tests {
         assert_eq!(
             service.name(),
             if configured {
-                "TypeSafeAI"
+                "DecisionRouter"
             } else {
                 "DisabledDecisionsService"
             }

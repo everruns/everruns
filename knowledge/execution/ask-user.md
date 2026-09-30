@@ -71,7 +71,9 @@ worker turn parks.
 
 `AskUserCapability::new(responder)` contributes a built-in tool. The tool
 awaits the host responder in-process and returns its outcome directly to the
-model without entering `waiting_for_tool_results`.
+model without entering `waiting_for_tool_results`. The validated request
+timeout bounds that await; expiry cancels the responder future and returns the
+declared defaults as a timed-out result.
 
 The default in-process capability uses `DefaultsResponder`. For choice
 questions, it selects marked defaults or the first option when no default is

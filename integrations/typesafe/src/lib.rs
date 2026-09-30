@@ -77,7 +77,8 @@ pub use client::{Error, Evaluation, Question, Result, RetryPolicy, TypeSafeAICli
 /// The decisions provider the platform wires into its host composition, and
 /// the deployment credential that enables it.
 pub use decisions::{
-    DECISIONS_MODEL, SystemDecisionsConfig, TypeSafeAI, UTILITY_TYPESAFE_API_KEY_ENV,
+    DECISIONS_MODEL, SystemDecisionsConfig, TYPESAFE_DECISION_DRIVER_ID, TypeSafeAI,
+    UTILITY_TYPESAFE_API_KEY_ENV,
 };
 
 /// Capability id.
