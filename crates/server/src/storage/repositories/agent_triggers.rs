@@ -183,4 +183,107 @@ impl Database {
 
         Ok(result.rows_affected() > 0)
     }
+
+    // ============================================
+    // Agent trigger deliveries
+    // ============================================
+
+    /// Insert a delivery. A dispatched or filtered row claims its `event_id`;
+    /// when another row already claimed it, nothing is inserted and `None` is
+    /// returned so the caller can record the event as a duplicate.
+    pub async fn record_agent_trigger_delivery(
+        &self,
+        input: CreateAgentTriggerDeliveryRow,
+    ) -> Result<Option<AgentTriggerDeliveryRow>> {
+        let row = sqlx::query_as::<_, AgentTriggerDeliveryRow>(
+            r#"
+            INSERT INTO agent_trigger_deliveries (org_id, trigger_id, source, event_id, event_type, subject, status, reason)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (trigger_id, event_id)
+                WHERE event_id IS NOT NULL AND status IN ('dispatched', 'filtered')
+                DO NOTHING
+            RETURNING id, org_id, trigger_id, source, event_id, event_type, subject, status, reason, session_id, created_at
+            "#,
+        )
+        .bind(input.org_id)
+        .bind(input.trigger_id)
+        .bind(&input.source)
+        .bind(&input.event_id)
+        .bind(&input.event_type)
+        .bind(&input.subject)
+        .bind(&input.status)
+        .bind(&input.reason)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn finish_agent_trigger_delivery(
+        &self,
+        id: Uuid,
+        status: &str,
+        reason: Option<&str>,
+        session_id: Option<Uuid>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE agent_trigger_deliveries
+            SET status = $2, reason = $3, session_id = COALESCE($4, session_id)
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .bind(status)
+        .bind(reason)
+        .bind(session_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn list_agent_trigger_deliveries(
+        &self,
+        org_id: i64,
+        trigger_id: TriggerId,
+        limit: i64,
+    ) -> Result<Vec<AgentTriggerDeliveryRow>> {
+        Ok(sqlx::query_as::<_, AgentTriggerDeliveryRow>(
+            r#"
+            SELECT id, org_id, trigger_id, source, event_id, event_type, subject, status, reason, session_id, created_at
+            FROM agent_trigger_deliveries
+            WHERE org_id = $1 AND trigger_id = $2
+            ORDER BY created_at DESC, id DESC
+            LIMIT $3
+            "#,
+        )
+        .bind(org_id)
+        .bind(trigger_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// Keep only the newest `keep` deliveries of a trigger.
+    pub async fn prune_agent_trigger_deliveries(
+        &self,
+        trigger_id: TriggerId,
+        keep: i64,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM agent_trigger_deliveries
+            WHERE trigger_id = $1 AND id IN (
+                SELECT id FROM agent_trigger_deliveries
+                WHERE trigger_id = $1
+                ORDER BY created_at DESC, id DESC
+                OFFSET $2
+            )
+            "#,
+        )
+        .bind(trigger_id)
+        .bind(keep)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
 }

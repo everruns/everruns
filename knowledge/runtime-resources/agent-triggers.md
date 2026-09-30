@@ -31,8 +31,8 @@ Field shapes, SQL, and route handlers live in code, see
 
 An agent trigger is an org-scoped row owned by one agent:
 
-- **trigger_type**: `schedule` is the only kind today; the enum leaves room for
-  event/webhook triggers later.
+- **trigger_type**: `schedule` or `webhook`; further event sources plug into
+  the same event pipeline (below).
 - **config** (JSONB), per-type configuration. For `schedule`
   (`ScheduleTriggerConfig`): `cron_expression`, `timezone` (IANA, default
   `UTC`), `session_mode`, and `message` (also the `{{…}}` template body).
@@ -89,6 +89,38 @@ When a schedule fires (or a caller hits the manual
 
 The manual endpoint fires exactly one invocation for testing without exposing
 the durable schedule id.
+
+## Event pipeline
+
+Every trigger fire is an event, and every event takes one path, owned by
+`crates/server/src/domains/agent_triggers/events.rs`. Sources only
+authenticate and normalize: the durable scheduler, webhook ingress, and later
+GitHub App deliveries and MCP events each hand the pipeline an event with an
+optional **event id**, **type** and **subject**, plus the template context. The
+pipeline then, for every source alike:
+
+1. **filters** on the trigger's conditions (a dotted path into the context must
+   equal one of a set of values); a miss starts nothing;
+2. **deduplicates** on the event id, so a redelivery is logged instead of run
+   twice;
+3. **routes** to a session: `shared_session`, `session_per_invocation`, or
+   `per_thread`, which on a trigger means one session per event subject (one
+   per pull request, ticket or thread). `per_thread` is only accepted when the
+   trigger can produce a subject;
+4. **dispatches** the rendered message as described below and records the
+   outcome.
+
+Each event is recorded as a delivery (`dispatched`, `filtered`, `duplicate`,
+`failed`, with the reason and session), readable at
+`/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries`, so a user can see why
+an event did or did not run. History is bounded per trigger.
+
+Webhook triggers expose the pipeline's knobs as optional templates
+(`event_id_template`, `subject_template`) and a `filter`, rendered against the
+same context as the message (for example `{{webhook.headers.x-github-delivery}}`
+and `{{payload.repository.full_name}}#{{payload.number}}`). Filtered and
+duplicate requests still get `202`, so senders do not retry them. Threats are
+tracked as TM-TRIGGER in `knowledge/security/threat-model.md`.
 
 ## Ownership and provenance
 

@@ -82,6 +82,117 @@ pub struct WebhookTriggerConfig {
     /// Optional per-ingress, per-IP request limit. `0` disables this limit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
+    /// Optional template for the delivery's idempotency key, e.g.
+    /// `{{webhook.headers.x-github-delivery}}`. A repeated key is recorded as a
+    /// duplicate and never starts a second run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_id_template: Option<String>,
+    /// Optional template for the event's subject, e.g.
+    /// `{{payload.repository.full_name}}#{{payload.number}}`. With
+    /// `session_mode: per_thread`, every event with the same subject continues
+    /// one session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_template: Option<String>,
+    /// Optional conditions an event must meet to start a run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<TriggerEventFilter>,
+}
+
+/// Conditions an incoming event must satisfy before a trigger runs.
+///
+/// Every condition must hold. A condition reads one dotted path of the event's
+/// template context (`payload.action`, `event.type`, ...) and passes when the
+/// value there equals any of `any_of`. Events that do not match are recorded as
+/// `filtered` deliveries and start no session.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TriggerEventFilter {
+    /// Conditions that must all hold.
+    #[serde(default)]
+    pub conditions: Vec<TriggerFilterCondition>,
+}
+
+/// One filter condition: the value at `path` must equal one of `any_of`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TriggerFilterCondition {
+    /// Dotted path into the event context, e.g. `payload.action`.
+    pub path: String,
+    /// Accepted values. Strings compare exactly; other JSON values compare by
+    /// equality.
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
+    pub any_of: Vec<serde_json::Value>,
+}
+
+/// What happened to one event delivered to a trigger.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum TriggerDeliveryStatus {
+    /// Accepted and handed to a session.
+    Dispatched,
+    /// Did not match the trigger's filter; no session started.
+    Filtered,
+    /// Same event id as an earlier delivery; no session started.
+    Duplicate,
+    /// Accepted but the run could not be started.
+    Failed,
+}
+
+impl TriggerDeliveryStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Dispatched => "dispatched",
+            Self::Filtered => "filtered",
+            Self::Duplicate => "duplicate",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+impl std::str::FromStr for TriggerDeliveryStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "dispatched" => Ok(Self::Dispatched),
+            "filtered" => Ok(Self::Filtered),
+            "duplicate" => Ok(Self::Duplicate),
+            "failed" => Ok(Self::Failed),
+            other => anyhow::bail!("unknown trigger delivery status {other}"),
+        }
+    }
+}
+
+/// One recorded event delivery for an agent trigger.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct AgentTriggerDelivery {
+    /// Delivery identifier.
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub id: uuid::Uuid,
+    /// Where the event came from (`schedule`, `webhook`, ...).
+    pub source: String,
+    /// Source event identifier used for deduplication, when the source has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<String>,
+    /// Source event type, when the source has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_type: Option<String>,
+    /// Subject the event is about (for example `owner/repo#12`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+    /// Outcome.
+    pub status: TriggerDeliveryStatus,
+    /// Why the event was filtered or failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Session that handled the event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub session_id: Option<everruns_provider::typed_id::SessionId>,
+    /// When the event was received.
+    pub created_at: DateTime<Utc>,
 }
 
 fn default_timezone() -> String {

@@ -11,8 +11,9 @@ use crate::domains::agent_triggers::types::{
     AgentTriggerRun, CreateAgentTriggerRequest, UpdateAgentTriggerRequest,
 };
 use crate::domains::agent_triggers::{
-    CreateAgentTrigger, DeleteAgentTrigger, GetAgentTrigger, ListAgentTriggerRuns,
-    ListAgentTriggers, TriggerAgentTriggerNow, TriggerAgentTriggerOutput, UpdateAgentTriggerCmd,
+    CreateAgentTrigger, DeleteAgentTrigger, GetAgentTrigger, ListAgentTriggerDeliveries,
+    ListAgentTriggerRuns, ListAgentTriggers, TriggerAgentTriggerNow, TriggerAgentTriggerOutput,
+    UpdateAgentTriggerCmd,
 };
 use crate::domains::common::Command;
 use crate::domains::messages::MessageService;
@@ -110,6 +111,10 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
             get(list_agent_trigger_runs),
+        )
+        .route(
+            "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries",
+            get(list_agent_trigger_deliveries),
         )
         .with_state(state)
 }
@@ -230,6 +235,44 @@ pub async fn list_agent_trigger_runs(
     .run(&state.ctx(&org))
     .await?;
     Ok(Json(runs))
+}
+
+/// Query for listing trigger deliveries.
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct DeliveriesQuery {
+    /// Maximum rows to return (1-200, default 50).
+    pub limit: Option<i64>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries",
+    description = "List recent events delivered to an agent trigger, newest first, with what happened to each: dispatched, filtered, duplicate or failed.",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
+        ("trigger_id" = String, Path, description = "Trigger ID (prefixed)"),
+        DeliveriesQuery
+    ),
+    responses(
+        (status = 200, description = "Recent deliveries", body = Vec<everruns_platform::AgentTriggerDelivery>),
+        (status = 404, description = "Trigger not found", body = ErrorResponse)
+    ),
+    tag = "agent-triggers"
+)]
+pub async fn list_agent_trigger_deliveries(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((agent_id, trigger_id)): Path<(String, String)>,
+    Query(query): Query<DeliveriesQuery>,
+) -> ApiResult<Vec<everruns_platform::AgentTriggerDelivery>> {
+    let deliveries = ListAgentTriggerDeliveries {
+        agent_id,
+        trigger_id,
+        limit: query.limit,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    Ok(Json(deliveries))
 }
 
 /// PATCH|PUT /v1/agents/{agent_id}/triggers/{trigger_id}

@@ -6,6 +6,7 @@
 // mutations and manual fires. See knowledge/foundations/domains.md for the command pattern.
 
 pub mod commands;
+pub mod events;
 pub mod queries;
 pub mod types;
 pub mod webhook;

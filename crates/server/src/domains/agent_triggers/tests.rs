@@ -149,6 +149,9 @@ fn webhook_req(enabled: bool) -> CreateAgentTriggerRequest {
         message: "Webhook: {{body}}".to_string(),
         token: Some("secret".to_string()),
         rate_limit_per_minute: None,
+        event_id_template: None,
+        subject_template: None,
+        filter: None,
         auth: None,
         enabled,
     }
@@ -218,6 +221,9 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
         message: message.to_string(),
         token: None,
         rate_limit_per_minute: None,
+        event_id_template: None,
+        subject_template: None,
+        filter: None,
         auth: None,
         enabled,
     }
@@ -954,4 +960,235 @@ async fn update_trigger_rejects_message_keyed_bindings() {
         err.message().contains("not valid for an agent trigger"),
         "got: {err}"
     );
+}
+
+// ---- event pipeline -------------------------------------------------------
+
+fn pr_event(
+    delivery: &str,
+    repo: &str,
+    number: u64,
+    action: &str,
+) -> WebhookTriggerInvocationRequest {
+    let payload = serde_json::json!({
+        "action": action,
+        "number": number,
+        "repository": {"full_name": repo},
+    });
+    WebhookTriggerInvocationRequest {
+        ingress_id: String::new(),
+        body: payload.to_string(),
+        json_payload: Some(payload),
+        headers: [("x-github-delivery".to_string(), delivery.to_string())]
+            .into_iter()
+            .collect(),
+    }
+}
+
+#[tokio::test]
+async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let (agent_id, _) = seed_agent(&db).await;
+    let ctx = role_ctx(db.clone(), OrgRole::Owner);
+    let trigger = CreateAgentTrigger {
+        agent_id: agent_id.clone(),
+        req: CreateAgentTriggerRequest {
+            session_mode: SessionBinding::Thread,
+            message: "PR {{payload.number}} {{payload.action}}".to_string(),
+            event_id_template: Some("{{webhook.headers.x-github-delivery}}".to_string()),
+            subject_template: Some(
+                "{{payload.repository.full_name}}#{{payload.number}}".to_string(),
+            ),
+            filter: Some(everruns_platform::TriggerEventFilter {
+                conditions: vec![everruns_platform::TriggerFilterCondition {
+                    path: "payload.action".to_string(),
+                    any_of: vec![
+                        serde_json::json!("opened"),
+                        serde_json::json!("synchronize"),
+                    ],
+                }],
+            }),
+            ..webhook_req(true)
+        },
+    }
+    .run(&ctx)
+    .await
+    .expect("create webhook trigger");
+    let ingress_id = trigger.ingress_id.expect("webhook ingress").to_string();
+
+    let runner = Arc::new(RecordingRunner::default());
+    let session_service = SessionService::new(db.clone());
+    let message_service = MessageService::new(
+        db.clone(),
+        runner.clone(),
+        false,
+        EventDelivery::in_memory(),
+    );
+    let encryption = ctx.encryption.clone();
+    let fire = async |event: WebhookTriggerInvocationRequest| {
+        invoke_webhook_agent_trigger(
+            &db,
+            encryption.as_ref(),
+            &session_service,
+            &message_service,
+            WebhookTriggerInvocationRequest {
+                ingress_id: ingress_id.clone(),
+                ..event
+            },
+            None,
+        )
+        .await
+        .expect("event handled")
+    };
+
+    let events::TriggerEventOutcome::Dispatched(first) =
+        fire(pr_event("d1", "acme/api", 7, "opened")).await
+    else {
+        panic!("opened PR must dispatch");
+    };
+    assert!(first.created_session);
+
+    let events::TriggerEventOutcome::Dispatched(push) =
+        fire(pr_event("d2", "acme/api", 7, "synchronize")).await
+    else {
+        panic!("push to the same PR must dispatch");
+    };
+    assert_eq!(
+        push.session_id, first.session_id,
+        "same PR continues one session"
+    );
+    assert!(!push.created_session);
+
+    assert!(matches!(
+        fire(pr_event("d2", "acme/api", 7, "synchronize")).await,
+        events::TriggerEventOutcome::Duplicate
+    ));
+    assert!(matches!(
+        fire(pr_event("d3", "acme/api", 7, "labeled")).await,
+        events::TriggerEventOutcome::Filtered
+    ));
+
+    let events::TriggerEventOutcome::Dispatched(other) =
+        fire(pr_event("d4", "acme/api", 8, "opened")).await
+    else {
+        panic!("another PR must dispatch");
+    };
+    assert_ne!(
+        other.session_id, first.session_id,
+        "another PR gets its own session"
+    );
+
+    let deliveries = ListAgentTriggerDeliveries {
+        agent_id,
+        trigger_id: trigger.id.to_string(),
+        limit: None,
+    }
+    .run(&ctx)
+    .await
+    .expect("list deliveries");
+    let summary: Vec<_> = deliveries
+        .iter()
+        .rev()
+        .map(|delivery| {
+            (
+                delivery.event_id.clone().unwrap_or_default(),
+                delivery.status,
+                delivery.subject.clone().unwrap_or_default(),
+            )
+        })
+        .collect();
+    use everruns_platform::TriggerDeliveryStatus::*;
+    assert_eq!(
+        summary,
+        vec![
+            ("d1".to_string(), Dispatched, "acme/api#7".to_string()),
+            ("d2".to_string(), Dispatched, "acme/api#7".to_string()),
+            ("d2".to_string(), Duplicate, "acme/api#7".to_string()),
+            ("d3".to_string(), Filtered, "acme/api#7".to_string()),
+            ("d4".to_string(), Dispatched, "acme/api#8".to_string()),
+        ]
+    );
+    assert_eq!(
+        deliveries
+            .iter()
+            .find(|d| d.status == Filtered)
+            .unwrap()
+            .reason
+            .as_deref(),
+        Some("payload.action is labeled")
+    );
+    assert_eq!(deliveries[0].session_id, Some(other.session_id));
+}
+
+#[tokio::test]
+async fn per_thread_requires_a_subject_template() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let (agent_id, _) = seed_agent(&db).await;
+    let ctx = role_ctx(db, OrgRole::Owner);
+    let error = CreateAgentTrigger {
+        agent_id,
+        req: CreateAgentTriggerRequest {
+            session_mode: SessionBinding::Thread,
+            ..webhook_req(true)
+        },
+    }
+    .run(&ctx)
+    .await
+    .expect_err("per_thread without a subject");
+    assert!(error.message().contains("subject_template"), "got: {error}");
+}
+
+#[tokio::test]
+async fn filter_conditions_need_a_path_and_values() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let (agent_id, _) = seed_agent(&db).await;
+    let ctx = role_ctx(db, OrgRole::Owner);
+    let error = CreateAgentTrigger {
+        agent_id,
+        req: CreateAgentTriggerRequest {
+            filter: Some(everruns_platform::TriggerEventFilter {
+                conditions: vec![everruns_platform::TriggerFilterCondition {
+                    path: "payload.action".to_string(),
+                    any_of: vec![],
+                }],
+            }),
+            ..webhook_req(true)
+        },
+    }
+    .run(&ctx)
+    .await
+    .expect_err("empty any_of");
+    assert_eq!(error.status(), axum::http::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn delivery_history_is_bounded_per_trigger() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let trigger_id = TriggerId::new();
+    for index in 0..5 {
+        db.record_agent_trigger_delivery(crate::storage::models::CreateAgentTriggerDeliveryRow {
+            org_id: DEFAULT_ORG_ID,
+            trigger_id,
+            source: "webhook".to_string(),
+            event_id: Some(format!("e{index}")),
+            event_type: None,
+            subject: None,
+            status: "dispatched".to_string(),
+            reason: None,
+        })
+        .await
+        .unwrap();
+    }
+    assert_eq!(
+        db.prune_agent_trigger_deliveries(trigger_id, 3)
+            .await
+            .unwrap(),
+        2
+    );
+    let kept = db
+        .list_agent_trigger_deliveries(DEFAULT_ORG_ID, trigger_id, 10)
+        .await
+        .unwrap();
+    let ids: Vec<_> = kept.iter().filter_map(|row| row.event_id.clone()).collect();
+    assert_eq!(ids, vec!["e4", "e3", "e2"]);
 }

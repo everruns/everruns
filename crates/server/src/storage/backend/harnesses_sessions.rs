@@ -230,6 +230,53 @@ impl StorageBackend {
         dispatch!(self, delete_agent_trigger, org_id, id)
     }
 
+    pub async fn record_agent_trigger_delivery(
+        &self,
+        input: CreateAgentTriggerDeliveryRow,
+    ) -> Result<Option<AgentTriggerDeliveryRow>> {
+        dispatch!(self, record_agent_trigger_delivery, input)
+    }
+
+    pub async fn finish_agent_trigger_delivery(
+        &self,
+        id: Uuid,
+        status: &str,
+        reason: Option<&str>,
+        session_id: Option<Uuid>,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            finish_agent_trigger_delivery,
+            id,
+            status,
+            reason,
+            session_id
+        )
+    }
+
+    pub async fn list_agent_trigger_deliveries(
+        &self,
+        org_id: i64,
+        trigger_id: TriggerId,
+        limit: i64,
+    ) -> Result<Vec<AgentTriggerDeliveryRow>> {
+        dispatch!(
+            self,
+            list_agent_trigger_deliveries,
+            org_id,
+            trigger_id,
+            limit
+        )
+    }
+
+    pub async fn prune_agent_trigger_deliveries(
+        &self,
+        trigger_id: TriggerId,
+        keep: i64,
+    ) -> Result<u64> {
+        dispatch!(self, prune_agent_trigger_deliveries, trigger_id, keep)
+    }
+
     // ============================================
     // Sessions
     // ============================================
