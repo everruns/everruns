@@ -41,17 +41,19 @@ The adapter projects provider events before they reach persistence, SSE, the UI,
 | Agents API event/item | Everruns event |
 |---|---|
 | Root `agent.session.turn.created` | `turn.started` |
-| `agent.session.turn.output_text.delta` | `output.message.started` once, then `output.message.delta` |
+| Assistant `message` item added / done | `output.message.started` / `output.message.completed`, one Everruns message per item, carrying its `commentary` or `final_answer` phase |
+| `agent.session.turn.output_text.delta` | `output.message.delta` on the open message |
 | `agent.session.turn.output_text.done` | `output.message.delta` for any text the deltas missed |
 | `error` | Nothing; its code and message fill the following `turn.failed` |
 | Function entry in `agent.session.requires_action` | `tool.call_requested` |
-| MCP call item | `tool.started` and, when settled, `tool.completed` |
-| Root `agent.session.turn.completed` | `output.message.completed`, `llm.generation`, `turn.completed` |
+| `function_call_output` item (the result Everruns submitted) | `tool.completed` for the client function |
+| `mcp_call` item added / done | `tool.started`, then `tool.completed`; a `failed` status becomes a failed `tool.completed` with the output text as the error |
+| Root `agent.session.turn.completed` | `llm.generation`, `turn.completed` whose final message is the last non-commentary message |
 | Root failed or cancelled turn, `agent.session.failed`, `agent.session.environment.failed` | `turn.failed` or `turn.cancelled` |
 | `agent.session.idle` after a terminal root turn | `session.idled` |
 | Any event whose turn has a non-null `subagent_id` | Nothing; subagents never end the root turn |
 
-The fixture-backed prototype demonstrates one client function, one HTTP MCP tool, and the resulting canonical session events. Provider event IDs, session IDs, and types remain metadata for reconciliation. Unknown progress events are ignored; an unknown `*.failed` or `*.cancelled` event fails closed, and a stream that closes before the root turn reaches a terminal state is an error, not success, because streams do not replay missed events.
+The prototype demonstrates one client function, one HTTP MCP tool, and the resulting canonical session events. Provider event IDs, session IDs, and types remain metadata for reconciliation. Unknown progress events are ignored; an unknown `*.failed` or `*.cancelled` event fails closed, and a stream that closes before the root turn reaches a terminal state is an error, not success, because streams do not replay missed events.
 
 OpenAI's `input_tokens` includes cached tokens. Everruns keeps disjoint buckets, so the adapter subtracts `input_tokens_details.cached_tokens`. Null usage stays unknown, never zero.
 
@@ -87,7 +89,9 @@ Version-sensitive: exact event and item payloads, usage field names, built-in to
 
 ## Live validation
 
-On 2026-09-30 the prototype called the live API with the dev OpenAI key. `POST /v1/agents/sessions` accepted the full config (one function tool, one HTTP MCP tool) and streamed `agent.session.created`, `turn.created`, `turn.item.added`, `in_progress`, then `error` (`usage_limit_exceeded`), `turn.failed`, and `idle`: the organization had no API credits left. The adapter projected that trace to `turn.started`, `turn.failed` with the provider's code, and `session.idled`; it is checked in as `agents_api_live_failed_turn.json`. So the request shape, auth, beta header, SSE framing, lifecycle events, and failure path are confirmed live. The function-result round trip, MCP call items, text output, and usage are confirmed only against the documentation and the mock. Rerun the live test once the account has credits, before any follow-up builds on those shapes.
+On 2026-09-30 the prototype ran end to end against the live API with the dev key (`EVERRUNS_OPENAI_AGENTS_API_LIVE=1`): one client function (`lookup_customer`, answered through the handler) and one HTTP MCP server (`https://developers.openai.com/mcp`). The turn produced a commentary preamble, the function round trip, an MCP search that succeeded and an MCP fetch that failed, and a final answer, all projected into canonical events. The recorded stream is `agents_api_live_round_trip.json` (MCP outputs trimmed). An earlier call that hit the organization's billing limit is recorded as `agents_api_live_failed_turn.json`.
+
+What the live run taught, beyond the documentation: the preamble and the final answer can share one item id with different phases, so each item-added opens a new message; MCP completion arrives on `item.done`, not `item.updated`; a failed MCP call has `status: failed`, `error: null`, and the cause in `output`; turn usage was still null at `turn.completed`, so cost needs a later read of the turn resource; and a transient `usage_limit_exceeded` can fail a turn while other OpenAI APIs still work.
 
 ## Go / no-go
 
@@ -95,7 +99,7 @@ Go for an opt-in, OpenAI-only backend behind the platform flag; no-go as a defau
 
 ## Follow-up issues
 
-* EVE-1123, durable orchestration: persist the provider session id, event cursor, and tool-result outbox; reconcile after a restart; select the backend per session behind the flag with a native-runtime fallback. Starts with the live rerun above.
+* EVE-1123, durable orchestration: persist the provider session id, event cursor, and tool-result outbox; reconcile after a restart; select the backend per session behind the flag with a native-runtime fallback.
 * EVE-1124, policy at tool boundaries: run approvals, `jev` guardrails, and durable tool claims in the function handler; block write-capable direct MCP and OpenAI built-ins for policy-bound agents.
 * EVE-1125, observability and cost: spans from projected events, subagent usage, delayed usage upserts, container and tool charges.
 * EVE-1126, lifecycle and portability: guarded import to a native agent, fork from the Everruns record, session deletion and retention.

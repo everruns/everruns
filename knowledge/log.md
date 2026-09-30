@@ -18,10 +18,10 @@
   MCP and OpenAI built-ins do not expose an equivalent interception point. The
   recommended first slice keeps the native runtime as default, maps provider
   events into the existing session protocol, and treats Everruns as the product
-  ledger while OpenAI owns live loop state. A feature-gated fixture-backed
+  ledger while OpenAI owns live loop state. A feature-gated
   prototype covers one function tool, one MCP tool, event projection, and config
-  import. A live call on 2026-09-30 confirmed the session request and failure
-  path; the full round trip waits on API credits. See [OpenAI Agents API Runtime Backend](execution/openai-agents-api-runtime.md).
+  import. It ran end to end against the live API on 2026-09-30 with one
+  function and one MCP tool; the recorded stream is the test fixture. See [OpenAI Agents API Runtime Backend](execution/openai-agents-api-runtime.md).
 
 ## 2026-09-28
 

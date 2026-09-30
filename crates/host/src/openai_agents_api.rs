@@ -344,13 +344,19 @@ pub struct AgentsApiEventMapper {
     output_message_id: MessageId,
     model: String,
     accumulated_output: String,
-    output_started: bool,
+    /// Provider message item the open Everruns output message mirrors.
+    open_item: Option<String>,
+    output_phase: Option<ExecutionPhase>,
+    message_open: bool,
+    /// Last non-commentary message: what the turn reports as its answer.
+    final_answer: Option<(MessageId, String)>,
     tool_call_count: u32,
     last_usage: Option<TokenUsage>,
     last_error: Option<(Option<String>, String)>,
     outcome: Option<RootTurnOutcome>,
     provider_session_id: Option<String>,
-    requested_tool_calls: HashSet<String>,
+    /// Client function calls by call id, with the tool name for the result.
+    requested_tool_calls: HashMap<String, String>,
     started_tool_calls: HashSet<String>,
     completed_tool_calls: HashSet<String>,
 }
@@ -369,13 +375,16 @@ impl AgentsApiEventMapper {
             output_message_id: MessageId::new(),
             model: model.into(),
             accumulated_output: String::new(),
-            output_started: false,
+            open_item: None,
+            output_phase: None,
+            message_open: false,
+            final_answer: None,
             tool_call_count: 0,
             last_usage: None,
             last_error: None,
             outcome: None,
             provider_session_id: None,
-            requested_tool_calls: HashSet::new(),
+            requested_tool_calls: HashMap::new(),
             started_tool_calls: HashSet::new(),
             completed_tool_calls: HashSet::new(),
         }
@@ -446,7 +455,7 @@ impl AgentsApiEventMapper {
             })],
             "agent.session.turn.output_text.delta" => {
                 let delta = string_field(provider_event, event_type, "delta")?;
-                let mut events = self.start_output_if_needed();
+                let mut events = self.open_message(item_id(provider_event), None);
                 self.accumulated_output.push_str(&delta);
                 events.push(self.delta(delta));
                 events
@@ -456,7 +465,7 @@ impl AgentsApiEventMapper {
             // with the final message.
             "agent.session.turn.output_text.done" => {
                 let text = string_field(provider_event, event_type, "text")?;
-                let mut events = self.start_output_if_needed();
+                let mut events = self.open_message(item_id(provider_event), None);
                 if let Some(missing) = text.strip_prefix(self.accumulated_output.as_str()) {
                     if !missing.is_empty() {
                         self.accumulated_output.push_str(missing);
@@ -470,7 +479,11 @@ impl AgentsApiEventMapper {
             "agent.session.requires_action" => {
                 let calls = FunctionCallAction::from_required_actions(provider_event)
                     .into_iter()
-                    .filter(|action| self.requested_tool_calls.insert(action.call_id.clone()))
+                    .filter(|action| {
+                        self.requested_tool_calls
+                            .insert(action.call_id.clone(), action.name.clone())
+                            .is_none()
+                    })
                     .map(|action| ToolCall {
                         id: action.call_id,
                         name: action.name,
@@ -491,9 +504,9 @@ impl AgentsApiEventMapper {
                     })]
                 }
             }
-            "agent.session.turn.item.added" | "agent.session.turn.item.updated" => {
-                self.map_item(provider_event, event_type)?
-            }
+            "agent.session.turn.item.added"
+            | "agent.session.turn.item.updated"
+            | "agent.session.turn.item.done" => self.map_item(provider_event, event_type)?,
             "error" => {
                 // The live API reports the cause (e.g. `usage_limit_exceeded`)
                 // on a standalone `error` event just before `turn.failed`.
@@ -586,8 +599,52 @@ impl AgentsApiEventMapper {
         let Some(item) = provider_event.get("item") else {
             return Ok(Vec::new());
         };
-        if item.get("type").and_then(Value::as_str) != Some("mcp_call") {
-            return Ok(Vec::new());
+        match item.get("type").and_then(Value::as_str) {
+            Some("mcp_call") => {}
+            // The result Everruns submitted, echoed back by the provider: the
+            // point where the session view shows the client function as done.
+            Some("function_call_output") => {
+                let call_id = string_field(item, event_type, "call_id")?;
+                let Some(tool_name) = self.requested_tool_calls.get(&call_id).cloned() else {
+                    return Ok(Vec::new());
+                };
+                if !self.completed_tool_calls.insert(call_id.clone()) {
+                    return Ok(Vec::new());
+                }
+                let output = provider_output_text(item);
+                return Ok(vec![self.request(
+                    if item.get("status").and_then(Value::as_str) == Some("failed") {
+                        ToolCompletedData::failure(call_id, tool_name, "error".into(), output, None)
+                    } else {
+                        ToolCompletedData::success(
+                            call_id,
+                            tool_name,
+                            vec![ContentPart::text(output)],
+                            None,
+                        )
+                    },
+                )]);
+            }
+            // Each assistant message item (commentary or final answer) is its
+            // own Everruns output message, as with the native runtime.
+            Some("message") if item.get("role").and_then(Value::as_str) == Some("assistant") => {
+                let id = item.get("id").and_then(Value::as_str);
+                return Ok(if event_type == "agent.session.turn.item.done" {
+                    if id.is_some() && id == self.open_item.as_deref() {
+                        self.close_message()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    let phase = match item.get("phase").and_then(Value::as_str) {
+                        Some("commentary") => Some(ExecutionPhase::Commentary),
+                        Some("final_answer") => Some(ExecutionPhase::FinalAnswer),
+                        _ => None,
+                    };
+                    self.open_message(id, phase)
+                });
+            }
+            _ => return Ok(Vec::new()),
         }
         let call_id = string_field(item, event_type, "id")?;
         let server_label = string_field(item, event_type, "server_label")?;
@@ -609,16 +666,34 @@ impl AgentsApiEventMapper {
                 narration: None,
             }));
         }
-        if item.get("status").and_then(Value::as_str) == Some("completed")
+        let status = item.get("status").and_then(Value::as_str);
+        let error = item.get("error").filter(|error| !error.is_null());
+        if (status == Some("failed") || error.is_some())
             && self.completed_tool_calls.insert(call_id.clone())
         {
-            let output = item.get("output").cloned().unwrap_or(Value::Null);
+            // A failed call reports its cause in `output`, with `error` null.
+            let message = error
+                .and_then(|e| e.get("message").and_then(Value::as_str).map(str::to_string))
+                .unwrap_or_else(|| provider_output_text(item));
+            events.push(
+                self.request(
+                    ToolCompletedData::failure(
+                        call_id,
+                        tool_name,
+                        "error".to_string(),
+                        message,
+                        item.get("duration_ms").and_then(Value::as_u64),
+                    )
+                    .with_display_name(Some(format!("{server_label}: {source_name}"))),
+                ),
+            );
+        } else if status == Some("completed") && self.completed_tool_calls.insert(call_id.clone()) {
             events.push(
                 self.request(
                     ToolCompletedData::success(
                         call_id,
                         tool_name,
-                        vec![ContentPart::tool_result_text(&output)],
+                        vec![ContentPart::text(provider_output_text(item))],
                         item.get("duration_ms").and_then(Value::as_u64),
                     )
                     .with_display_name(Some(format!("{server_label}: {source_name}"))),
@@ -630,28 +705,21 @@ impl AgentsApiEventMapper {
 
     fn map_completed(&mut self, provider_event: &Value) -> Vec<EventRequest> {
         self.outcome = Some(RootTurnOutcome::Completed);
-        let mut events = self.start_output_if_needed();
+        let mut events = self.close_message();
+        // Usage is best-effort and usually still null here; a production
+        // backend upserts it later from the turn resource (EVE-1125).
         let usage = usage_from(provider_event);
         self.last_usage = usage.clone();
         let duration_ms = turn_duration_ms(provider_event);
-        let message = RuntimeMessage::assistant(self.accumulated_output.clone())
-            .with_id(self.output_message_id);
-        events.push(
-            self.request(
-                OutputMessageCompletedData::new(message)
-                    .with_metadata(ModelMetadata {
-                        model: self.model.clone(),
-                        model_id: None,
-                        provider_id: None,
-                    })
-                    .with_usage(usage.clone().unwrap_or_default()),
-            ),
-        );
+        let (final_message_id, final_text) = self
+            .final_answer
+            .clone()
+            .map_or((None, String::new()), |(id, text)| (Some(id), text));
         events.push(
             self.request(LlmGenerationData::success_with_metadata(
                 Vec::new(),
                 Vec::new(),
-                Some(self.accumulated_output.clone()),
+                Some(final_text.clone()),
                 Vec::new(),
                 self.model.clone(),
                 Some("openai_agents_api".to_string()),
@@ -672,8 +740,8 @@ impl AgentsApiEventMapper {
             duration_ms,
             usage: usage.clone(),
             input_content: None,
-            final_message_id: Some(self.output_message_id),
-            final_answer_preview: Some(self.accumulated_output.chars().take(500).collect()),
+            final_message_id,
+            final_answer_preview: Some(final_text.chars().take(500).collect()),
             time_to_first_token_ms: None,
             tool_call_count: Some(self.tool_call_count),
             llm_call_count: None,
@@ -682,19 +750,57 @@ impl AgentsApiEventMapper {
         events
     }
 
-    fn start_output_if_needed(&mut self) -> Vec<EventRequest> {
-        if self.output_started {
+    /// Open an output message for provider item `item_id`, closing the
+    /// previous one when the item changes. Text without an item id continues
+    /// whatever message is open.
+    fn open_message(
+        &mut self,
+        item_id: Option<&str>,
+        phase: Option<ExecutionPhase>,
+    ) -> Vec<EventRequest> {
+        if self.message_open && (item_id.is_none() || item_id == self.open_item.as_deref()) {
+            if phase.is_some() {
+                self.output_phase = phase;
+            }
             return Vec::new();
         }
-        self.output_started = true;
-        vec![self.request(OutputMessageStartedData {
+        let mut events = self.close_message();
+        self.open_item = item_id.map(str::to_string);
+        self.output_message_id = MessageId::new();
+        self.accumulated_output.clear();
+        self.output_phase = phase;
+        self.message_open = true;
+        events.push(self.request(OutputMessageStartedData {
             reasoning_state: None,
             turn_id: self.turn_id,
             message_id: self.output_message_id,
             model: Some(self.model.clone()),
             iteration: Some(1),
-            phase: Some(ExecutionPhase::FinalAnswer),
-        })]
+            phase,
+        }));
+        events
+    }
+
+    fn close_message(&mut self) -> Vec<EventRequest> {
+        if !self.message_open {
+            return Vec::new();
+        }
+        self.message_open = false;
+        let mut message = RuntimeMessage::assistant(self.accumulated_output.clone())
+            .with_id(self.output_message_id);
+        if let Some(phase) = self.output_phase {
+            message = message.with_phase(phase);
+        }
+        if self.output_phase != Some(ExecutionPhase::Commentary) {
+            self.final_answer = Some((self.output_message_id, self.accumulated_output.clone()));
+        }
+        vec![self.request(
+            OutputMessageCompletedData::new(message).with_metadata(ModelMetadata {
+                model: self.model.clone(),
+                model_id: None,
+                provider_id: None,
+            }),
+        )]
     }
 
     fn delta(&self, delta: String) -> EventRequest {
@@ -703,7 +809,7 @@ impl AgentsApiEventMapper {
             message_id: self.output_message_id,
             delta,
             accumulated: self.accumulated_output.clone(),
-            phase: None,
+            phase: self.output_phase,
         })
     }
 
@@ -714,6 +820,33 @@ impl AgentsApiEventMapper {
             data,
         )
     }
+}
+
+/// The text of a provider tool output: MCP `{content: [{text}]}`, a function
+/// output `[{text}]`, or anything else serialized.
+fn provider_output_text(item: &Value) -> String {
+    let output = item.get("output").unwrap_or(&Value::Null);
+    let parts = output
+        .get("content")
+        .or(Some(output))
+        .and_then(Value::as_array)
+        .map(|parts| {
+            parts
+                .iter()
+                .filter_map(|part| part.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .filter(|text| !text.is_empty());
+    parts.unwrap_or_else(|| match output {
+        Value::String(text) => text.clone(),
+        Value::Null => String::new(),
+        other => other.to_string(),
+    })
+}
+
+fn item_id(provider_event: &Value) -> Option<&str> {
+    provider_event.get("item_id").and_then(Value::as_str)
 }
 
 fn is_subagent_event(provider_event: &Value) -> bool {
@@ -1098,6 +1231,84 @@ mod tests {
             completed.metadata.as_ref().unwrap()["provider_usage"]["total_tokens"],
             124
         );
+    }
+
+    #[test]
+    fn live_round_trip_projects_messages_tools_and_the_final_answer() {
+        // Recorded from the live API on 2026-09-30: one client function, one
+        // HTTP MCP server (a search that succeeded and a fetch that failed),
+        // a commentary preamble, and a final answer. MCP outputs are trimmed.
+        let fixture: Vec<Value> = serde_json::from_str(include_str!(
+            "../tests/fixtures/agents_api_live_round_trip.json"
+        ))
+        .unwrap();
+        let mut mapper = mapper();
+        let events = fixture
+            .iter()
+            .flat_map(|event| mapper.map(event).unwrap())
+            .collect::<Vec<_>>();
+        let data = |event: &EventRequest| serde_json::to_value(&event.data).unwrap();
+        let types = events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .filter(|kind| *kind != "output.message.delta")
+            .collect::<Vec<_>>();
+        assert_eq!(
+            types,
+            vec![
+                "turn.started",
+                "output.message.started",
+                "output.message.completed",
+                "tool.call_requested",
+                "tool.completed",
+                "tool.started",
+                "tool.completed",
+                "tool.started",
+                "tool.completed",
+                "output.message.started",
+                "output.message.completed",
+                "llm.generation",
+                "turn.completed",
+                "session.idled",
+            ]
+        );
+
+        let messages = events
+            .iter()
+            .filter(|event| event.event_type == "output.message.completed")
+            .map(data)
+            .collect::<Vec<_>>();
+        assert_eq!(messages[0]["message"]["phase"], "commentary");
+        assert_eq!(messages[1]["message"]["phase"], "final_answer");
+        assert_ne!(messages[0]["message"]["id"], messages[1]["message"]["id"]);
+
+        let tools = events
+            .iter()
+            .filter(|event| event.event_type == "tool.completed")
+            .map(data)
+            .collect::<Vec<_>>();
+        assert_eq!(tools[0]["tool_name"], "lookup_customer");
+        assert_eq!(tools[1]["tool_name"], "mcp_docs__search_openai_docs");
+        assert_eq!(tools[2]["tool_name"], "mcp_docs__fetch_openai_doc");
+        assert!(
+            tools[2]["error"]
+                .as_str()
+                .unwrap()
+                .contains("404 Not Found")
+        );
+
+        let completed = data(events.iter().rev().nth(1).unwrap());
+        assert_eq!(completed["final_message_id"], messages[1]["message"]["id"]);
+        assert!(
+            completed["final_answer_preview"]
+                .as_str()
+                .unwrap()
+                .starts_with("Customer 123 is Ada Lovelace")
+        );
+        assert_eq!(completed["tool_call_count"], 3);
+        // Usage had not arrived when the turn completed.
+        assert!(completed.get("usage").is_none());
+        assert_eq!(mapper.finish().unwrap(), RootTurnOutcome::Completed);
     }
 
     #[test]

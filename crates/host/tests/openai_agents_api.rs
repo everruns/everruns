@@ -72,8 +72,15 @@ fn sse(events: &[Value]) -> String {
 #[tokio::test]
 async fn one_function_and_one_mcp_tool_run_end_to_end() {
     let server = MockServer::start().await;
+    // Replays the stream recorded from the live API with this same agent.
     let fixture: Vec<Value> =
-        serde_json::from_str(include_str!("fixtures/agents_api_events.json")).unwrap();
+        serde_json::from_str(include_str!("fixtures/agents_api_live_round_trip.json")).unwrap();
+    let session_id = fixture[0]["session"]["id"].as_str().unwrap();
+    let action = fixture
+        .iter()
+        .find(|event| event["type"] == "agent.session.requires_action")
+        .unwrap()["session"]["required_actions"][0]
+        .clone();
     Mock::given(method("POST"))
         .and(path("/agents/sessions"))
         .and(header("OpenAI-Beta", "agents=v1"))
@@ -94,11 +101,11 @@ async fn one_function_and_one_mcp_tool_run_end_to_end() {
         .mount(&server)
         .await;
     Mock::given(method("POST"))
-        .and(path("/agents/sessions/sess_fixture/events"))
+        .and(path(format!("/agents/sessions/{session_id}/events")))
         .and(body_partial_json(json!({"events": [{
             "type": "agent.session.input.tool_result",
-            "turn_id": "turn_fixture",
-            "call_id": "call_customer",
+            "turn_id": action["turn_id"],
+            "call_id": action["call_id"],
             "success": true,
             "output": "{\"name\":\"Ada\"}"
         }]})))
