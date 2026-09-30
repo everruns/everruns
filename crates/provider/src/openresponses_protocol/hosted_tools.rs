@@ -41,6 +41,16 @@ impl OpenResponsesProtocolChatDriver {
                     .to_string(),
             ));
         }
+        if let Some(server) = requested
+            .mcp_servers
+            .iter()
+            .find(|s| s.server_url.is_empty())
+        {
+            return Err(AgentLoopError::Configuration(format!(
+                "MCP server {} needs a registered connection this host cannot resolve",
+                server.server_label
+            )));
+        }
         Ok(requested.wire_tools())
     }
 }

@@ -125,8 +125,21 @@ an `openai_mcp_approval` call and answer it through
 A server can skip approval with `"require_approval": "never"`, but only for an
 explicit `allowed_tools` list, so every unattended call is a tool you named.
 
-Only servers that need no credentials are supported for now: the URL must be
-`https` and must not carry a username or password.
+A `server_url` must be `https` and must not carry a username or password, so
+it suits public servers. A server that needs an API key or an OAuth
+connection is named by `mcp_server`, the name of an MCP server registered in
+Everruns, instead of a URL:
+
+```json
+{ "server_label": "linear", "mcp_server": "linear" }
+```
+
+Its URL and credentials come from the MCP server registration and the
+session's connections on every call, exactly as for the agent's own MCP tools,
+and never appear in agent config, events, or logs. If the connection is
+missing, the turn fails with a message naming where to connect it. Servers
+that bind secrets to tool parameters cannot be used this way, because OpenAI
+calls them directly.
 
 Config rules:
 
@@ -145,7 +158,8 @@ Config rules:
   OpenAI account as the provider's API key. Required when `file_search` is on.
 - `file_search_max_results`, 1 to 50 results per search.
 - `mcp_servers`, at least one server when `mcp` is on. Each has a unique
-  `server_label` (letters, digits, `-`, `_`), an `https` `server_url`, optional
+  `server_label` (letters, digits, `-`, `_`), either an `https` `server_url` or
+  a registered `mcp_server` name, optional
   `allowed_tools`, and `require_approval` (`always`, the default, or `never`).
 
 Each option only takes effect when its tool is in `tools`.

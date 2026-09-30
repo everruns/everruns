@@ -10,6 +10,7 @@
 use everruns_provider::driver_registry::{
     HostedToolCall, HostedToolCallStatus, LlmCallConfig, LlmStreamEvent, Message, MessageRole,
 };
+use everruns_provider::hosted_mcp::{HostedMcpDriver, HostedMcpResolver, ResolvedHostedMcp};
 use everruns_provider::openai_hosted_tools::{
     McpServerTool, OPENAI_MCP_APPROVAL_TOOL, OpenAiHostedTools, SearchContextSize, WebSearchTool,
 };
@@ -357,4 +358,73 @@ async fn approved_call_replays_as_approval_response() {
     assert!(items.iter().any(|item| item
         == &json!({ "type": "mcp_approval_response", "approval_request_id": "mcpr_1", "approve": true })));
     assert!(!items.iter().any(|item| item["type"] == "function_call"));
+}
+
+struct RegisteredServers;
+
+#[async_trait::async_trait]
+impl HostedMcpResolver for RegisteredServers {
+    async fn resolve(&self, server: &str) -> everruns_provider::error::Result<ResolvedHostedMcp> {
+        assert_eq!(server, "github");
+        Ok(ResolvedHostedMcp {
+            url: "https://mcp.github.example/mcp".into(),
+            headers: [("Authorization".to_string(), "Bearer gh-token".to_string())].into(),
+        })
+    }
+}
+
+fn registered_mcp_config() -> LlmCallConfig {
+    let mut config = LlmCallConfig::new("gpt-6.1-sol");
+    let tools = OpenAiHostedTools {
+        mcp_servers: vec![McpServerTool {
+            server_label: "gh".into(),
+            mcp_server: Some("github".into()),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let (key, value) = tools.to_driver_option().expect("mcp selected");
+    config.driver_options.insert(key, value);
+    config
+}
+
+#[tokio::test]
+async fn registered_mcp_server_sends_resolved_credentials() {
+    let server = MockServer::start().await;
+    mount(&server, completed_only()).await;
+    let inner = OpenResponsesProtocolChatDriver::new()
+        .with_native_features(true, true)
+        .with_hosted_tools(true);
+    let driver = HostedMcpDriver::new(
+        std::sync::Arc::new(inner),
+        std::sync::Arc::new(RegisteredServers),
+    );
+    let provider = Provider::new("openai", driver).base_url(format!("{}/v1", server.uri()));
+
+    drain(&provider, &registered_mcp_config()).await;
+
+    let body = sent_body(&server).await;
+    assert_eq!(
+        body["tools"],
+        json!([{ "type": "mcp", "server_label": "gh", "server_url": "https://mcp.github.example/mcp",
+                 "require_approval": "always", "headers": { "Authorization": "Bearer gh-token" } }])
+    );
+}
+
+#[tokio::test]
+async fn registered_mcp_server_without_a_resolver_is_refused() {
+    let server = MockServer::start().await;
+    mount(&server, completed_only()).await;
+
+    let Err(error) = hosted_driver(&server, true)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "news?")],
+            &registered_mcp_config(),
+        )
+        .await
+    else {
+        panic!("an unresolved registered server must not be sent");
+    };
+    assert!(error.to_string().contains("MCP server gh"), "{error}");
+    assert!(server.received_requests().await.unwrap().is_empty());
 }

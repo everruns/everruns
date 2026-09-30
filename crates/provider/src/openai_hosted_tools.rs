@@ -262,17 +262,38 @@ pub enum McpApproval {
 }
 
 /// A remote MCP server OpenAI connects to (`{"type": "mcp"}`).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpServerTool {
     /// Label OpenAI reports on every call, unique within the request.
     pub server_label: String,
-    /// `https` URL of the server.
+    /// `https` URL of the server. Empty until resolved when `mcp_server` is set.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub server_url: String,
+    /// A registered Everruns MCP server whose URL and credentials the host
+    /// resolves per call ([`crate::hosted_mcp`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_server: Option<String>,
+    /// Request headers from that resolution. Never configured by an agent.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
     /// Tools the model may call; empty means every tool the server lists.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allowed_tools: Vec<String>,
     #[serde(default)]
     pub require_approval: McpApproval,
+}
+
+impl std::fmt::Debug for McpServerTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("McpServerTool")
+            .field("server_label", &self.server_label)
+            .field("server_url", &self.server_url)
+            .field("mcp_server", &self.mcp_server)
+            .field("headers", &self.headers.keys().collect::<Vec<_>>())
+            .field("allowed_tools", &self.allowed_tools)
+            .field("require_approval", &self.require_approval)
+            .finish()
+    }
 }
 
 impl McpServerTool {
@@ -288,6 +309,9 @@ impl McpServerTool {
         });
         if !self.allowed_tools.is_empty() {
             tool["allowed_tools"] = serde_json::json!(self.allowed_tools);
+        }
+        if !self.headers.is_empty() {
+            tool["headers"] = serde_json::json!(self.headers);
         }
         tool
     }

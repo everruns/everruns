@@ -19,6 +19,7 @@ use everruns_core::runtime_context::{
 use everruns_core::session_files::SessionFileSystem;
 use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
 use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::hosted_mcp::{HostedMcpDriver, HostedMcpResolver};
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
 use everruns_provider::tool_types::ToolDefinition;
@@ -38,6 +39,7 @@ pub struct StoreTurnContextResolver {
     driver_registry: DriverRegistry,
     file_store: Option<Arc<dyn SessionFileSystem>>,
     session_storage: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
+    hosted_mcp: Option<Arc<dyn HostedMcpResolver>>,
 }
 
 impl StoreTurnContextResolver {
@@ -62,6 +64,7 @@ impl StoreTurnContextResolver {
             driver_registry,
             file_store: None,
             session_storage: None,
+            hosted_mcp: None,
         }
     }
 
@@ -81,6 +84,16 @@ impl StoreTurnContextResolver {
         self.session_storage = Some(session_storage);
         self
     }
+
+    /// Resolve registered MCP servers that OpenAI calls as a hosted tool
+    /// (EVE-1115). Without it such servers fail the turn with a clear error.
+    pub fn with_hosted_mcp_resolver(
+        mut self,
+        resolver: Option<Arc<dyn HostedMcpResolver>>,
+    ) -> Self {
+        self.hosted_mcp = resolver;
+        self
+    }
 }
 
 #[async_trait::async_trait]
@@ -97,7 +110,7 @@ impl TurnContextResolver for StoreTurnContextResolver {
         )
         .await?;
         validate_requested_topology(&snapshot, request.harness_id, request.agent_id)?;
-        assemble_from_snapshot(
+        let mut assembled = assemble_from_snapshot(
             snapshot,
             self.message_retriever.as_ref(),
             self.provider_store.as_ref(),
@@ -109,7 +122,14 @@ impl TurnContextResolver for StoreTurnContextResolver {
             request.allow_provider_managed_reduction,
             AssemblyMode::RequireMessages,
         )
-        .await
+        .await?;
+        // Credentials join the call inside the driver, below the engine, so
+        // they never reach events or the persisted config.
+        if let Some(resolver) = &self.hosted_mcp {
+            let driver = assembled.model.driver.clone();
+            assembled.model.driver = Arc::new(HostedMcpDriver::new(driver, resolver.clone()));
+        }
+        Ok(assembled)
     }
 }
 

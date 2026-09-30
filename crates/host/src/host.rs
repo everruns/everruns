@@ -344,6 +344,17 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         None
     }
+
+    /// Resolves registered MCP servers OpenAI calls as a hosted tool, with the
+    /// same scoping and credentials as `mcp_executor` (EVE-1115).
+    fn hosted_mcp_resolver(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+        _agent_id: Option<AgentId>,
+    ) -> Option<Arc<dyn everruns_provider::hosted_mcp::HostedMcpResolver>> {
+        None
+    }
 }
 
 /// What an adapter needs to build one turn's tool-context extensions.
@@ -1214,6 +1225,16 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     execute_reason_activity_with_prompt_messages(adapter, org_id, input, prompt_message_ids).await
 }
 
+/// A reason result for a turn that ends before the model runs.
+fn blocked_reason_result(text: String, error: &str) -> ReasonResult {
+    ReasonResult {
+        text,
+        max_iterations: everruns_core::runtime_agent::default_max_iterations(),
+        error: Some(error.to_string()),
+        ..Default::default()
+    }
+}
+
 /// Execute a reason activity while applying `user_prompt_submit` hooks to the
 /// supplied messages. Hosts that inject synthetic user messages between reason
 /// iterations must include their ids here so they cross the same policy
@@ -1234,26 +1255,10 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
                 blocker,
             )
             .await?;
-        return Ok(ReasonResult {
-            native_counts: None,
-            success: false,
-            text: blocker.message().to_string(),
-            tool_calls: vec![],
-            has_tool_calls: false,
-            tool_definitions: vec![],
-            max_iterations: everruns_core::runtime_agent::default_max_iterations(),
-            error: Some("dependency_unavailable".to_string()),
-            user_facing_error: None,
-            error_disclosure: None,
-            usage: None,
-            output_message_id: None,
-            time_to_first_token_ms: None,
-            response_id: None,
-            finish_reason: None,
-            locale: None,
-            network_access: None,
-            parallel_tool_calls: None,
-        });
+        return Ok(blocked_reason_result(
+            blocker.message().to_string(),
+            "dependency_unavailable",
+        ));
     }
 
     // A `Block` aborts the turn by reusing the same failure path as
@@ -1282,26 +1287,10 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
                         user_message.as_deref(),
                     )
                     .await?;
-                return Ok(ReasonResult {
-                    native_counts: None,
-                    success: false,
-                    text: user_message.unwrap_or_else(|| reason.clone()),
-                    tool_calls: vec![],
-                    has_tool_calls: false,
-                    tool_definitions: vec![],
-                    max_iterations: everruns_core::runtime_agent::default_max_iterations(),
-                    error: Some("blocked_by_user_prompt_hook".to_string()),
-                    user_facing_error: None,
-                    error_disclosure: None,
-                    usage: None,
-                    output_message_id: None,
-                    time_to_first_token_ms: None,
-                    response_id: None,
-                    finish_reason: None,
-                    locale: None,
-                    network_access: None,
-                    parallel_tool_calls: None,
-                });
+                return Ok(blocked_reason_result(
+                    user_message.unwrap_or_else(|| reason.clone()),
+                    "blocked_by_user_prompt_hook",
+                ));
             }
             everruns_core::lifecycle_hooks::UserPromptDecision::Continue { message } => {
                 if message != hook_result.original_message {
@@ -1398,7 +1387,12 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         reason_capability_registry.clone(),
         adapter.driver_registry(),
     )
-    .with_file_store(adapter.file_store(org_id));
+    .with_file_store(adapter.file_store(org_id))
+    .with_hosted_mcp_resolver(adapter.hosted_mcp_resolver(
+        org_id,
+        input.context.session_id,
+        input.agent_id,
+    ));
     let context_resolver = match adapter.storage_store(org_id) {
         Some(store) => context_resolver.with_session_storage(store),
         None => context_resolver,

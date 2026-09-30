@@ -768,7 +768,15 @@ server tools: model-decided, executed inside the response, never dispatched by t
   turn parks on `tool.call_requested` and resumes through `tool-results`. On replay the call and
   its result become `mcp_approval_request` / `mcp_approval_response` items
   (`replay_mcp_approvals`), and the delta window treats the request as prior output.
-- **Follow-ups**: remote MCP credentials from Everruns secret storage.
+- **MCP credentials**: config never holds one. An entry names a registered Everruns MCP server
+  (`mcp_server`) instead of a URL; `everruns_provider::hosted_mcp::HostedMcpDriver` wraps the
+  turn driver (`StoreTurnContextResolver::with_hosted_mcp_resolver`, fed by
+  `RuntimeHostAdapter::hosted_mcp_resolver`) and fills URL and headers per call from the same
+  lookup `mcp_*` execution uses, so OAuth refreshes land on the next request. The headers live
+  only in that call's cloned config below the engine, so they never reach events. A missing
+  grant or secret-bound parameters fail the turn: OpenAI calls the server itself, so there is no
+  tool call to answer `connection_required`. Hosts without the hook (the embedded runtime)
+  refuse registered entries.
 
 ### OpenRouter Capacity Strategy
 

@@ -30,6 +30,7 @@ pub mod driver_helpers;
 pub mod driver_registry;
 pub mod error;
 pub mod execution_phase;
+pub mod hosted_mcp;
 pub mod llm_error;
 pub mod llm_retry;
 pub mod message;

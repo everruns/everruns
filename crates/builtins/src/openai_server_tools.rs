@@ -17,6 +17,11 @@
 // turn pauses on a synthetic approval call until a person answers it through
 // the session's tool-results path. `never` is accepted only with an explicit
 // `allowed_tools` list, so skipping approval is a per-tool decision.
+//
+// A server that needs credentials is named by `mcp_server`, a registered
+// Everruns MCP server; the host resolves its URL, API key or OAuth token per
+// call (`everruns_provider::hosted_mcp`). Config never holds a credential:
+// headers are not an accepted field and URLs with userinfo are rejected.
 
 use async_trait::async_trait;
 use everruns_provider::openai_hosted_tools::{
@@ -41,9 +46,10 @@ const MEMORY_KEY: &str = "container_memory_limit";
 const VECTOR_STORES_KEY: &str = "file_search_vector_store_ids";
 const MAX_RESULTS_KEY: &str = "file_search_max_results";
 const MCP_SERVERS_KEY: &str = "mcp_servers";
-const MCP_FIELDS: [&str; 4] = [
+const MCP_FIELDS: [&str; 5] = [
     "server_label",
     "server_url",
+    "mcp_server",
     "allowed_tools",
     "require_approval",
 ];
@@ -155,7 +161,14 @@ fn mcp_servers_from_config(value: Option<&Value>) -> Vec<McpServerTool> {
                     .filter(|value| !value.is_empty())
             };
             let server_label = text("server_label")?.to_string();
-            let server_url = text("server_url").filter(|url| mcp_url_error(url).is_none())?;
+            // A registered server's URL and credentials are resolved per call
+            // by the host, so config names it and carries neither.
+            let mcp_server = text("mcp_server")
+                .filter(|name| everruns_core::mcp_server::is_valid_mcp_server_name(name));
+            let server_url = match mcp_server {
+                Some(_) => "",
+                None => text("server_url").filter(|url| mcp_url_error(url).is_none())?,
+            };
             let allowed_tools = string_list(server.get("allowed_tools"));
             let require_approval = match text("require_approval") {
                 Some("never") if !allowed_tools.is_empty() => McpApproval::Never,
@@ -164,8 +177,10 @@ fn mcp_servers_from_config(value: Option<&Value>) -> Vec<McpServerTool> {
             Some(McpServerTool {
                 server_label,
                 server_url: server_url.to_string(),
+                mcp_server: mcp_server.map(str::to_string),
                 allowed_tools,
                 require_approval,
+                ..Default::default()
             })
         })
         .collect()
@@ -236,12 +251,26 @@ fn validate_mcp_servers(servers: &Value) -> Result<(), String> {
         if !labels.insert(label) {
             return Err(format!("duplicate MCP server_label: {label}"));
         }
-        let url = server
-            .get("server_url")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        if let Some(error) = mcp_url_error(url.trim()) {
-            return Err(error);
+        match (server.get("server_url"), server.get("mcp_server")) {
+            (Some(_), Some(_)) => {
+                return Err(format!(
+                    "MCP server {label} takes `server_url` or `mcp_server`, not both"
+                ));
+            }
+            (_, Some(name)) => {
+                let name = name.as_str().unwrap_or_default();
+                if !everruns_core::mcp_server::is_valid_mcp_server_name(name) {
+                    return Err(format!(
+                        "MCP `mcp_server` must name a registered server, got {name:?}"
+                    ));
+                }
+            }
+            (url, None) => {
+                let url = url.and_then(Value::as_str).unwrap_or_default();
+                if let Some(error) = mcp_url_error(url.trim()) {
+                    return Err(error);
+                }
+            }
         }
         if let Some(tools) = server.get("allowed_tools")
             && !tools.as_array().is_some_and(|tools| {
@@ -443,11 +472,12 @@ impl Capability for OpenAiServerToolsCapability {
                         "type": "object",
                         "properties": {
                             "server_label": { "type": "string", "title": "Label", "description": "Letters, digits, - and _; unique." },
-                            "server_url": { "type": "string", "title": "URL", "description": "https URL of the MCP server, without credentials." },
+                            "server_url": { "type": "string", "title": "URL", "description": "https URL of a public MCP server, without credentials. Use this or mcp_server." },
+                            "mcp_server": { "type": "string", "title": "Registered server", "description": "Name of an MCP server registered in Everruns. Its URL and credentials are resolved for every call and never stored here." },
                             "allowed_tools": { "type": "array", "title": "Allowed tools", "items": { "type": "string" }, "uniqueItems": true },
                             "require_approval": { "type": "string", "title": "Approval", "enum": ["always", "never"], "default": "always" },
                         },
-                        "required": ["server_label", "server_url"],
+                        "required": ["server_label"],
                         "additionalProperties": false,
                     },
                 },
@@ -676,6 +706,30 @@ mod tests {
             MCP_SERVERS_KEY: [{ "server_label": "a", "server_url": "https://a.example" }],
         }));
         assert!(off.is_empty());
+    }
+
+    #[test]
+    fn registered_mcp_server_carries_no_url_or_credentials() {
+        let config = json!({ "tools": ["mcp"], MCP_SERVERS_KEY: [
+            { "server_label": "gh", "mcp_server": "github" },
+        ]});
+        assert!(OpenAiServerToolsCapability.validate_config(&config).is_ok());
+        let server = hosted_tools_from_config(&config).mcp_servers.remove(0);
+        assert_eq!(server.mcp_server.as_deref(), Some("github"));
+        assert!(server.server_url.is_empty() && server.headers.is_empty());
+        for bad in [
+            json!({ "server_label": "gh", "mcp_server": "github", "server_url": "https://a.example" }),
+            json!({ "server_label": "gh", "mcp_server": "" }),
+            json!({ "server_label": "gh", "mcp_server": "bad__name" }),
+        ] {
+            let config = json!({ "tools": ["mcp"], MCP_SERVERS_KEY: [bad.clone()] });
+            assert!(
+                OpenAiServerToolsCapability
+                    .validate_config(&config)
+                    .is_err(),
+                "accepted {bad}"
+            );
+        }
     }
 
     #[test]
