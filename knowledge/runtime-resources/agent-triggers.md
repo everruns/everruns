@@ -50,13 +50,14 @@ Ids use the `trg_` prefix (`knowledge/foundations/id-schema.md`).
 
 The cron expression is normalized to the durable 7-field form and validated to
 respect a **minimum interval** and a **per-org enabled-trigger cap**, mirroring
-the App schedule-channel limits (`SCHEDULE_CHANNEL_*`). These bound how often an
+the limits the App schedule channel used (`SCHEDULE_CHANNEL_*`, whose names
+outlived it). These bound how often an
 agent can wake itself and how many active triggers an org can accumulate.
 
 ## Durable binding
 
 Creating, enabling, disabling, or deleting a trigger keeps a backing durable
-schedule in sync, the same lifecycle the App schedule channel uses
+schedule in sync, the same lifecycle the App schedule channel had
 (`sync_schedule_binding_for_channel`), re-homed on the trigger:
 
 - an enabled schedule trigger creates/updates a `durable_schedules` row with

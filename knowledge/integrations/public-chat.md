@@ -94,7 +94,7 @@ platform navigation.
 ## Related specs
 
 - [Apps](apps.md), frozen archival compatibility contract
-- [App endpoint authentication](app-endpoint-auth.md), shared inbound authentication
+- [Endpoint authentication](endpoint-auth.md), shared inbound authentication
 - [App invocation compatibility](app-invocation-channels.md), retained ownership and tags
 - [Public endpoints](../execution/public-endpoints.md), ingress aliases and sanitized errors
 - [Agent exposure](agent-exposure.md), endpoint liveness and exposure suspension

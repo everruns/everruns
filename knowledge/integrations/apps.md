@@ -21,8 +21,15 @@ The following data remains in place and must not be rewritten as part of App ret
 - all endpoint rows in `agent_endpoints`
 - the `app_channels` compatibility view over `agent_endpoints`
 - `sessions.app_id`
-- App budget subject values
 - reserved session-tag prefixes such as `app:`, `app_channel:`, `slack:app:`, and `ag_ui:app:`
+
+App-shaped *budget* and *payment-policy* subjects are the exception, and are gone. The `app`
+budget level was converted onto the App's agent and dropped (EVE-1129, migration 151), and
+`app` payment policies were converted the same way (EVE-1130, migration 152). Both carried a
+live spend control rather than history, so freezing them in place would have meant leaving a
+ceiling bound to an entity nothing else resolves. The `app_channel` budget subject does
+survive: migration 138 moved App webhooks onto agent triggers and their budgets back off
+`agent_endpoint`, so for a webhook trigger it is the only attribution there is (EVE-1138).
 
 No new App or App-channel write surface exists. Internal compatibility code can read these records for archival responses and historical session behavior.
 ## Agent endpoint management
@@ -61,7 +68,7 @@ Alias lookups preserve endpoint-route tenant and error behavior. A mismatched Ap
 
 ## Legacy session behavior
 
-Ingress can continue to create sessions with `sessions.app_id` and the reserved App routing tags. Those values are compatibility attribution, not evidence that Apps remain a live management domain. Session ownership and budget attribution keep their existing semantics.
+Ingress can continue to create sessions with `sessions.app_id` and the reserved App routing tags. Those values are compatibility attribution, not evidence that Apps remain a live management domain. Session ownership keeps its existing semantics. Budget attribution no longer reads the `app:` tag — that level is retired — but still reads `app_channel:` for webhook triggers.
 
 Scheduled proactive execution belongs to Agent triggers. Any grandfathered schedule compatibility path remains endpoint-owned, supports its existing run-now control, and must satisfy the same no-App-read ingress rule.
 

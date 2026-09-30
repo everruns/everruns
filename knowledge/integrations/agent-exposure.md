@@ -80,7 +80,7 @@ each config variant:
 - `agent_identity_id`, nullable, defaults to the agent's lazy identity
 - `agent_version_policy` + `agent_version_id`
 - `owner_principal_id`, `resolved_owner_user_id`
-- `auth`, the shared inline config from [app-endpoint-auth.md](app-endpoint-auth.md)
+- `auth`, the shared inline config from [endpoint-auth.md](endpoint-auth.md)
 
 Everything above is currently either an App column (wrong grain — shared across channels
 that want different values) or duplicated inside several `channel_config` variants (wrong
@@ -345,9 +345,13 @@ rest proceeds.
    have come through. `app_channel` budgets convert 1:1 (the endpoint kept its `appchan_`
    id, so only the subject type's name moves). `app` budgets have no 1:1 successor and fan
    out to one budget per endpoint, **preserving** the cap rather than dividing it: dividing
-   would tighten every existing cap without consent, and the App budget stays enforced
-   alongside, so the original ceiling keeps binding. `sessions.app_id` and the
-   `app`/`app_channel` subject types remain permanent historical attribution.
+   would tighten every existing cap without consent. The App budget was kept enforced
+   alongside so the original aggregate ceiling kept binding until the subject type could be
+   dropped — which it now has been: migration 151 (EVE-1129) converted each `app` budget onto
+   the App's agent and removed the level. `app_channel` survives, because migration 138 moved
+   App webhooks onto agent triggers and their budgets back off `agent_endpoint`, leaving the
+   tag as a webhook trigger's only attribution (EVE-1138). `sessions.app_id` remains permanent
+   historical attribution.
 5. **Unify the binding enums** (EVE-1005); move webhook from endpoint to trigger type
    (EVE-1006).
 6. **Per-endpoint publish**, `agent.exposures_suspended`, stop reading `App.status`
@@ -397,7 +401,7 @@ rest proceeds.
 
 - [Apps](apps.md), the model this replaces
 - [App Invocation Channels](app-invocation-channels.md), webhook semantics and the session-ownership override
-- [App Endpoint Authentication](app-endpoint-auth.md), the auth config that moves to the endpoint
+- [App Endpoint Authentication](endpoint-auth.md), the auth config that moves to the endpoint
 - [App API Keys](app-api-keys.md), the exposure-as-boundary rule
 - [Agent Triggers](../runtime-resources/agent-triggers.md), the trigger model that absorbs webhook
 - [Messaging Integrations](messaging-integrations.md), adapter lifecycle and routing tags

@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC001: Agent Version History"
-description: "Verifies that a user can save agent versions, compare changes, set a default version, roll back, fork, and configure an App version policy from the UI."
+description: "Verifies that a user can save agent versions, compare changes, set a default version, roll back, and fork from the UI."
 tags:
   - everruns
   - test-case
@@ -12,7 +12,7 @@ tags:
 
 ## Description
 
-Verifies that a user can save agent versions, compare changes, set a default version, roll back, fork, and configure an App version policy from the UI.
+Verifies that a user can save agent versions, compare changes, set a default version, roll back, and fork from the UI.
 
 ## Preconditions
 
@@ -40,7 +40,6 @@ Verifies that a user can save agent versions, compare changes, set a default ver
 7. Set the second version as Default.
 8. Roll back to the first version and confirm the rollback dialog.
 9. Fork the second version into `version-ui-agent-fork`.
-10. Create or open an App using `version-ui-agent`, edit Configuration, and set Agent version to Pinned with the second version.
 
 ## Expected Result
 
@@ -50,4 +49,8 @@ Verifies that a user can save agent versions, compare changes, set a default ver
 - The selected default version displays a Default badge.
 - Rollback updates the editable agent draft and appends a rollback history entry.
 - Fork creates a new agent with lineage from the selected version.
-- The App configuration displays `pinned` with the selected version.
+
+Pinning a version is deliberately not covered. The step that set it went through the `/apps`
+configuration page, which was removed with the App UI, and nothing replaced it — the policy is
+still honoured wherever it is stored but cannot be set from any surface (EVE-1139). Re-add the
+coverage with the write path rather than leaving a step no tester can perform.

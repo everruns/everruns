@@ -43,7 +43,12 @@ The pilot is intentionally Agent-specific (`agent_versions`) instead of a generi
 - Agent detail exposes a version history tab behind `FEATURE_AGENT_VERSIONS`.
 - Users can save a version, set default, compare two versions, roll back a draft, and fork a version into a new Agent.
 - Each Agent update records an automatic draft snapshot so normal saves retain rollback history without requiring the user to publish a semantic version.
-- App configuration exposes the Agent version policy behind the same flag.
+- The Agent version policy has no management surface any more. It survives as data —
+  `agent_endpoints.agent_version_policy`, `agent_triggers.execution_agent_version_policy`, and
+  the frozen App records — and every read path honours a `pinned` value carried over from the
+  App era, but nothing writes one: endpoint creation hard-codes `default`, no API accepts the
+  field, and the `/apps` configuration page that used to set it was removed with the App UI.
+  Restoring a write path is EVE-1139.
 - Rollbacks create a new rollback version by default so history remains append-only.
 
 ### Feature Flag

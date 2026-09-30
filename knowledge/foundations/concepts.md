@@ -26,9 +26,8 @@ graph LR
 
     RuntimeAgent -.->|executes in| Session
 
-    App -->|uses| Harness
-    App -->|uses| Agent
-    App -.->|creates| Session
+    AgentEndpoint -->|exposes| Agent
+    AgentEndpoint -.->|creates| Session
 
     classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
     classDef assembly fill:#ffd6a5,stroke:#e07b39,color:#5a3000
@@ -38,12 +37,12 @@ graph LR
     class Harness,Agent,Capability config
     class RuntimeAgent assembly
     class Session runtime
-    class App deploy
+    class AgentEndpoint deploy
 ```
 
 - **Solid arrows**: configuration references: Agent uses a Harness, Harness has Capabilities, Agent has Capabilities
 - **Dashed arrows**: runtime assembly: each entity produces an `AgentConfigOverlay`, overlays fold into a single effective config, which resolves into a RuntimeAgent (see [AgentConfigOverlay](#agentconfigoverlay))
-- **Purple**: deployment: App binds Harness + Agent to an external channel and creates sessions from incoming messages
+- **Purple**: deployment: an Agent Endpoint exposes an Agent on an external channel and creates sessions from incoming messages. It replaced the App, which bound a Harness and an Agent to a channel and is now frozen compatibility data — see [Archived Apps](../integrations/apps.md)
 
 ### Harness
 
@@ -233,9 +232,8 @@ erDiagram
     McpServer ||--o{ Tool : "exposes"
     McpServer ||--|| Capability : "virtual capability"
 
-    App }o--|| Harness : "uses"
-    App }o--|| Agent : "uses"
-    App ||--o{ Session : "creates via channel"
+    AgentEndpoint }o--|| Agent : "exposes"
+    AgentEndpoint ||--o{ Session : "creates via channel"
 ```
 
 ### LLM Provider
