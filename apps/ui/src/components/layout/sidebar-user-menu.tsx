@@ -63,6 +63,7 @@ export function SidebarUserMenu({
 }) {
   const router = useRouter();
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
+  const [logoutFailed, setLogoutFailed] = useState(false);
   const navigate = (href: string) => router.push(href);
 
   const handleLogout = async () => {
@@ -70,15 +71,16 @@ export function SidebarUserMenu({
     // unhandled: nothing rendered, the user stayed on an authenticated page,
     // and Sentry recorded it as an unhandled promise rejection (EVERRUNS-1Z).
     //
-    // The navigation happens either way. The user asked to leave, and the
-    // logout mutation clears the client-side cache in `onSettled`, so a
-    // server-side failure does not strand them holding another user's data.
-    // `logout` may be a fork-supplied override, so the reason is whatever that
-    // implementation threw.
+    // Only show the logged-out screen after the server confirms termination.
+    // A rejected request can leave HttpOnly auth cookies active, so treating it
+    // as success would hide an authenticated session on a shared browser.
+    setLogoutFailed(false);
     try {
       await logout();
     } catch (error) {
       console.error("Logout failed", error);
+      setLogoutFailed(true);
+      return;
     }
     navigate("/login");
   };
@@ -145,6 +147,19 @@ export function SidebarUserMenu({
           </DropdownMenuContent>
         </DropdownMenuPositioner>
       </DropdownMenu>
+      {logoutFailed && (
+        <div role="alert" className="mt-2 text-xs text-destructive">
+          <p>Sign out failed. Your session may still be active. Try again.</p>
+          <button
+            type="button"
+            className="mt-1 font-medium underline underline-offset-2"
+            onClick={() => void handleLogout()}
+            disabled={logoutPending}
+          >
+            Try sign out again
+          </button>
+        </div>
+      )}
       <McpConnectDialog open={mcpDialogOpen} onOpenChange={setMcpDialogOpen} />
     </>
   );

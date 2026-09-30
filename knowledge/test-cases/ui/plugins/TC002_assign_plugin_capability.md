@@ -31,9 +31,9 @@ and that stale plugin assignments remain visible and removable.
 ## Steps
 
 1. Open `/plugins`, browse the default marketplace, and install Resend.
-2. Open the Dad Jokes agent edit page and add Resend from the capability selector.
+2. Open the Dad Jokes agent page, select **Edit**, and add Resend from the capability selector.
 3. Confirm Resend uses its manifest icon or the neutral plugin fallback, not a disabled symbol.
-4. Save the agent, reload the edit page, and confirm Resend remains attached.
+4. Save the agent, reload the page, and confirm Resend remains attached.
 5. Start a new session for Dad Jokes and confirm the Resend MCP tools are present after the required
    connection is configured.
 6. Disable or uninstall Resend, return to the open editor, and confirm the stale assignment is shown

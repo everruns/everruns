@@ -14068,6 +14068,9 @@
           "404": {
             "description": "Session not found"
           },
+          "429": {
+            "description": "Long-lived response concurrency limit reached"
+          },
           "500": {
             "description": "Internal server error"
           }

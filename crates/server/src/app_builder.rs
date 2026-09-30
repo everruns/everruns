@@ -9,6 +9,7 @@
 //   high SSE concurrency (50+ streams over single HTTP/2 connection). We set
 //   2MB stream windows, 16MB connection windows, and enable adaptive flow control.
 
+use crate::api::sse::{SseConnectionLimits, SseConnectionTracker};
 use crate::auth::{self, AuthBackend};
 use crate::direct_worker_adapters::DirectWorkerAdapters;
 use crate::event_delivery::EventDelivery;
@@ -804,9 +805,7 @@ impl ServerAppBuilder {
             event_listeners,
         ));
 
-        let sse_tracker = Arc::new(crate::api::sse::SseConnectionTracker::new(
-            crate::api::sse::SseConnectionLimits::from_env(),
-        ));
+        let sse_tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits::from_env()));
         let core_deps = CoreDeps::new(
             db.clone(),
             runner.clone(),
@@ -903,6 +902,7 @@ impl ServerAppBuilder {
             core_deps.auth.clone(),
             notifications_enabled,
             core_deps.event_delivery.clone(),
+            sse_tracker.clone(),
         );
         let tool_results_state = api::tool_results::AppState::new(
             core_deps.db.clone(),

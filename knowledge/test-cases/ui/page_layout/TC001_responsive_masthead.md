@@ -34,14 +34,12 @@ when the app content area narrows.
 
 1. Open the agent detail page at the wide desktop viewport.
 2. Confirm the action cluster is right-aligned beside the title, description, badges, and metadata.
-3. Resize to the compact desktop and tablet viewports. Confirm `New session` and `More actions`
-   appear above the identity while Edit, Create app, Copy, and Export move to a second row. Open
-   the overflow menu and confirm Observe this agent is available.
-4. Resize to the mobile viewport. Confirm only `New session` and `More actions` remain visible.
-   Confirm they share the icon row above the title. Click `More actions` at its visible center and
-   confirm Copy, Export, Edit, Create app, and Observe this agent are available. Close the menu,
-   focus `More actions`, open it with Enter, then close it with Escape and confirm focus returns to
-   the trigger. Open the mobile navigation drawer and close it with Escape.
+3. Resize to the compact desktop and tablet viewports. Confirm the agent header keeps `Edit`,
+   `More actions`, and `New session` visible and contained. Open the overflow menu and confirm
+   Copy, Export, Observe this agent, Version history, and Archive agent are available.
+4. Resize to the mobile viewport. Confirm the same three actions stay inside the masthead without
+   horizontal scroll. Open `More actions`, close it with Escape, and confirm focus returns to the
+   trigger. Open the mobile navigation drawer and close it with Escape.
 5. Repeat with a long title, a long description, expanded button labels, badges, and metadata.
 6. Inspect representative detail pages for agents, harnesses, apps, capabilities, skills, memory,
    knowledge indexes, agent identities, and sessions.
