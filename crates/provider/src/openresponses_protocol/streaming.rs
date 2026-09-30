@@ -529,6 +529,7 @@ pub(crate) fn handle_streaming_event(
                 cache_diagnostics: None,
                 provider_opaque_content: None,
                 provider_checkpoint_candidate: None,
+                hosted_tool_calls: Default::default(),
             }))
         }
 

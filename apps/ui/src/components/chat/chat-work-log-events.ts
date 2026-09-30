@@ -13,7 +13,8 @@ export function isStructuralWorkLogEvent(event: Event): boolean {
     event.type === "tool.started" ||
     event.type === "tool.progress" ||
     event.type === "tool.completed" ||
-    event.type === "tool.call_requested"
+    event.type === "tool.call_requested" ||
+    event.type === "tool.hosted_call"
   );
 }
 

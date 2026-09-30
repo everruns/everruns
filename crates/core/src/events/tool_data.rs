@@ -472,6 +472,32 @@ pub struct ToolCallRepairedData {
     pub outcome: String,
 }
 
+/// Data for the `tool.hosted_call` event (EVE-1115).
+///
+/// A provider-executed tool (OpenAI hosted `web_search`) changed state inside
+/// the model's response. Informational: nothing was dispatched, and there is
+/// no matching `tool.started` / `tool.completed` or tool-result message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct HostedToolCallData {
+    /// Turn this call belongs to.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// Provider item id; stable across the call's state changes.
+    pub call_id: String,
+
+    /// Hosted tool name, e.g. `web_search`.
+    pub tool_name: String,
+
+    /// `in_progress`, `completed`, or `failed`.
+    pub status: String,
+
+    /// Short detail once known, e.g. the search query.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+}
+
 /// Data for tool.call_requested event
 ///
 /// Emitted when the agent needs client-side tool calls executed.

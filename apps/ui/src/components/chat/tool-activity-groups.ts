@@ -1,5 +1,11 @@
-import type { Event, ToolCallSummary, ToolCompletedData } from "@/lib/api/types";
+import type {
+  Event,
+  HostedToolCallData,
+  ToolCallSummary,
+  ToolCompletedData,
+} from "@/lib/api/types";
 import { getEventData } from "@/lib/api/types";
+import { formatMessage, getSupportedLocale } from "@/lib/i18n";
 
 /**
  * Synthetic tool calls the backend emits to ask the user something directly.
@@ -43,8 +49,23 @@ function fallbackToolLabel(name: string | undefined): string {
     .join(" ");
 }
 
+/** Label for a provider-executed (hosted) tool call, e.g. OpenAI web search. */
+export function hostedToolLabel(data: HostedToolCallData, locale = "en"): string {
+  if (data.tool_name === "web_search") {
+    const uiLocale = getSupportedLocale(locale);
+    return data.summary
+      ? formatMessage(uiLocale, "search_web_for", { value: data.summary })
+      : formatMessage(uiLocale, "search_web");
+  }
+  return fallbackToolLabel(data.tool_name);
+}
+
 /** Fold durable activity lifecycle events into one stable group per exec/request batch. */
-export function buildToolActivityGroups(events: Event[], workingLabel: string): ToolActivityGroups {
+export function buildToolActivityGroups(
+  events: Event[],
+  workingLabel: string,
+  locale = "en",
+): ToolActivityGroups {
   const groupsByKey = new Map<string, ToolActivityEventGroup>();
   const groupKeyByToolCallId = new Map<string, string>();
   const groupedEventIds = new Set<string>();
@@ -201,6 +222,24 @@ export function buildToolActivityGroups(events: Event[], workingLabel: string): 
       row.result = toolCompleted;
       groupKeyByToolCallId.set(id, key);
       narratedToolCallIds.add(id);
+      groupedEventIds.add(event.id);
+      continue;
+    }
+
+    // Hosted calls ran inside the model's response: no act phase, no result.
+    if (event.type === "tool.hosted_call") {
+      const hosted = event.data as HostedToolCallData;
+      const key = `hosted:${hosted.turn_id}`;
+      const group = ensureGroup(key, event);
+      const state =
+        hosted.status === "failed"
+          ? "error"
+          : hosted.status === "completed"
+            ? "completed"
+            : "running";
+      const row = ensureRow(group, hosted.call_id, hostedToolLabel(hosted, locale), state);
+      row.label = hostedToolLabel(hosted, locale);
+      narratedToolCallIds.add(hosted.call_id);
       groupedEventIds.add(event.id);
       continue;
     }

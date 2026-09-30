@@ -95,12 +95,16 @@ egress controls do not apply, the same data-exfiltration class as client-side
 uses the admin-only assignment gate. Grant it only to agents you trust with
 outbound web access.
 
-## Limitations
+## Activity and cost
 
-- **Hosted calls are not Everruns tool calls**: a search does not appear in the
-  session as a tool call yet; the answer's citations show what was used.
-- **Billing**: OpenAI bills hosted tool calls per call on top of tokens. Everruns
-  logs the per-call counts but does not yet price them in session usage.
+Each search shows up in the session's activity as it happens, with its query,
+through the `tool.hosted_call` event. It is not an Everruns tool call: nothing
+is dispatched and no tool result is stored, and the answer's citations show which
+pages were used.
+
+OpenAI bills hosted tool calls per call on top of tokens. Session usage adds them
+to the estimated cost at OpenAI's list price: $10 per 1,000 web searches on GPT-5
+and newer reasoning models, $25 per 1,000 on GPT-4o and GPT-4.1.
 
 ## See Also
 

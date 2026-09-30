@@ -380,6 +380,11 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                             );
                         }
 
+                        // Hosted tool items are not in the typed enum either.
+                        if let Some(event) = super::hosted_tools::hosted_call_event(event_data) {
+                            return Ok(event);
+                        }
+
                         // Try to parse as typed StreamingEvent first for type safety
                         if let Ok(streaming_event) =
                             serde_json::from_str::<StreamingEvent>(event_data)
@@ -504,7 +509,6 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     | Some("response.done") => {
                                         // Response completed - extract usage
                                         let response_obj = json.get("response").unwrap_or(&json);
-                                        super::hosted_tools::record_hosted_tool_calls(response_obj);
 
                                         // Reconcile against the response's own output list before ending
                                         // the stream. Every incremental frame is best-effort: one that is
@@ -649,6 +653,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             cache_diagnostics: None,
                                             provider_opaque_content: None,
                                             provider_checkpoint_candidate: None,
+                                            hosted_tool_calls:
+                                                super::hosted_tools::hosted_tool_calls(response_obj),
                                         })))
                                     }
 

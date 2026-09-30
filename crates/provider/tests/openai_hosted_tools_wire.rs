@@ -4,10 +4,12 @@
 // next to (or instead of) function tools, and an endpoint without hosted
 // tools refuses the option rather than dropping it. Stream: a web search
 // response (`web_search_call` items, `response.web_search_call.*` events, url
-// citations) streams as plain answer text, never as an agent tool call or a
-// parse error.
+// citations) streams as answer text plus hosted-call progress events, never
+// as an agent tool call or a parse error.
 
-use everruns_provider::driver_registry::{LlmCallConfig, LlmStreamEvent, Message, MessageRole};
+use everruns_provider::driver_registry::{
+    HostedToolCall, HostedToolCallStatus, LlmCallConfig, LlmStreamEvent, Message, MessageRole,
+};
 use everruns_provider::openai_hosted_tools::{OpenAiHostedTools, SearchContextSize, WebSearchTool};
 use everruns_provider::{OpenResponsesProtocolChatDriver, Provider, ToolDefinition};
 use futures::StreamExt;
@@ -212,9 +214,11 @@ async fn web_search_response_streams_as_answer_text() {
 
     let mut text = String::new();
     let mut done = None;
+    let mut hosted = Vec::new();
     for event in events {
         match event {
             LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
+            LlmStreamEvent::HostedToolCall(call) => hosted.push(call),
             LlmStreamEvent::Done(meta) => done = Some(meta),
             LlmStreamEvent::ToolCalls(calls) => {
                 panic!("a hosted call is not an agent tool call: {calls:?}")
@@ -232,4 +236,22 @@ async fn web_search_response_streams_as_answer_text() {
     assert_eq!(done.response_id.as_deref(), Some("resp_ws"));
     assert_eq!(done.prompt_tokens, Some(120));
     assert_eq!(done.completion_tokens, Some(4));
+    assert_eq!(done.hosted_tool_calls.get("web_search_call"), Some(&1));
+    assert_eq!(
+        hosted,
+        vec![
+            HostedToolCall {
+                id: "ws_1".into(),
+                tool: "web_search".into(),
+                status: HostedToolCallStatus::InProgress,
+                summary: None,
+            },
+            HostedToolCall {
+                id: "ws_1".into(),
+                tool: "web_search".into(),
+                status: HostedToolCallStatus::Completed,
+                summary: Some("everruns release".into()),
+            },
+        ]
+    );
 }
