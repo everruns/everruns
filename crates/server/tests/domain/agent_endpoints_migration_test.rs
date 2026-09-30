@@ -166,7 +166,8 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
              sessions, workspaces, session_participants, events, images,
              event_sequences, memories, reporting_outbox, audit_logs
          TO {role};
-         GRANT UPDATE ON sessions, agent_endpoints, event_sequences TO {role};"
+         GRANT UPDATE ON sessions, agent_endpoints, event_sequences TO {role};
+         GRANT SELECT, INSERT, UPDATE, DELETE ON agent_trigger_deliveries TO {role};"
     );
     sqlx::raw_sql(sqlx::AssertSqlSafe(grants.as_str()))
         .execute(&pool)
