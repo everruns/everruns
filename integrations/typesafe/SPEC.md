@@ -53,8 +53,10 @@ This crate owns the whole TypeSafe surface: the vendor [`client`](src/client/),
 the `jev` capability and its tool, the connector catalog entry, and the
 deployment decisions that backs guardrail checks. The published
 `everruns-host` stays provider-neutral — it no longer depends on TypeSafe at
-all, because the platform composes the decisions from above.
-[`knowledge/operations/judgment-service.md`](../../knowledge/operations/judgment-service.md).
+all, because the platform composes the decisions from above. `TypeSafeAI` is
+the `typesafe` decision driver (owning `jev-*` model ids) that the platform
+registers with its decision router. See
+[`knowledge/operations/decisions-service.md`](../../knowledge/operations/decisions-service.md).
 
 ## Tests
 

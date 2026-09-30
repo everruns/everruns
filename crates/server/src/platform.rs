@@ -10,7 +10,6 @@ use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::deployment::DeploymentGrade;
 use everruns_host::DirectEgressService;
 use everruns_host::{HostComposition, SystemUtilityLlmConfig};
-use everruns_integrations_typesafe::SystemDecisionsConfig;
 use everruns_platform::BuiltInHarnessDefinition;
 use everruns_platform::connector::ConnectorRegistry;
 use everruns_platform::email::{EmailSender, SystemEmailConfig};
@@ -43,10 +42,14 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
     // paths.
     let egress_service = Arc::new(DirectEgressService::for_runtime_traffic_from_env());
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
-    // Deployment-owned typed-decisions (UTILITY_TYPESAFE_API_KEY).
-    // Absent key = disabled service; guardrail checks configured for it then
-    // fail open, the same contract as a missing utility model.
-    let decisions = SystemDecisionsConfig::from_env().into_service();
+    // Deployment-owned typed decisions, routed across the configured decision
+    // drivers (`DECISIONS_DRIVER`, `UTILITY_TYPESAFE_API_KEY`, the utility LLM).
+    // Nothing configured = disabled service; guardrail checks configured for
+    // it then fail open, the same contract as a missing utility model. A
+    // driver that is chosen but not configured stops startup here.
+    let decisions = everruns_worker::SystemDecisions::from_env()
+        .into_service(utility_llm_service.clone())
+        .unwrap_or_else(|error| panic!("invalid decisions configuration: {error}"));
 
     // EVE-879: the connector registry and system email sender are hosted
     // control-plane services, composed on `ServerAppBuilder` (see
@@ -169,7 +172,7 @@ mod tests {
         assert_eq!(
             service.name(),
             if configured {
-                "TypeSafeAI"
+                "DecisionRouter"
             } else {
                 "DisabledDecisionsService"
             }
