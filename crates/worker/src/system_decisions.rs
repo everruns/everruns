@@ -228,14 +228,16 @@ mod tests {
             .driver("llm")
             .typesafe(typesafe_key())
             .into_service(no_utility())
-            .err().expect("a configuration error");
+            .err()
+            .expect("a configuration error");
         assert!(error.contains("DECISIONS_DRIVER=llm"), "{error}");
         assert!(error.contains("configured drivers: typesafe"), "{error}");
 
         let error = SystemDecisions::default()
             .driver("nope")
             .into_service(no_utility())
-            .err().expect("a configuration error");
+            .err()
+            .expect("a configuration error");
         assert!(error.contains("'nope' is not configured"), "{error}");
     }
 
@@ -245,7 +247,8 @@ mod tests {
             .driver("llm")
             .model("gpt-6-astra")
             .into_service(Arc::new(YesModel))
-            .err().expect("a configuration error");
+            .err()
+            .expect("a configuration error");
         assert!(error.contains("UTILITY_LLM_MODEL"), "{error}");
     }
 }

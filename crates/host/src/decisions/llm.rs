@@ -50,7 +50,7 @@ Answer every question independently, over the same STATE.\n\
 Reply with one JSON object and nothing else: {\"answers\": {\"<key>\": <answer>, ...}} \
 with one entry per question key.\n\
 - yes/no question: the string \"yes\" or \"no\".\n\
-- choice question: exactly one of the listed option names, verbatim.\n\
+- choice question: exactly one quoted option name, without the quotes or its description.\n\
 - score question: the integer index of the level that fits best.";
 
 /// Answers `DecisionRequest`s with the deployment's utility LLM.
@@ -164,10 +164,12 @@ fn render_prompt(request: &DecisionRequest) -> String {
                 prompt.push_str(&format!("\n[{key}] choice: {instructions}\n  options:\n"));
                 for (option, description) in options {
                     match description {
+                        // Quoted, with the description set apart: an unquoted
+                        // `name: description` line is echoed back whole.
                         Some(description) => {
-                            prompt.push_str(&format!("  - {option}: {description}\n"))
+                            prompt.push_str(&format!("  - {option:?} ({description})\n"))
                         }
-                        None => prompt.push_str(&format!("  - {option}\n")),
+                        None => prompt.push_str(&format!("  - {option:?}\n")),
                     }
                 }
             }
@@ -222,12 +224,14 @@ fn parse_answers(
                 }
             }
             DecisionQuestion::Choice { options, .. } => {
-                let picked = raw.as_str().map(str::trim).unwrap_or_default();
-                if !options.iter().any(|(option, _)| option == picked) {
-                    return Err(invalid(format!(
-                        "answers {key} with {raw}, which is not an offered option"
-                    )));
-                }
+                let picked = raw
+                    .as_str()
+                    .and_then(|text| offered_option(text, options))
+                    .ok_or_else(|| {
+                        invalid(format!(
+                            "answers {key} with {raw}, which is not an offered option"
+                        ))
+                    })?;
                 DecisionAnswer::choice_label(
                     picked,
                     options.iter().map(|(option, _)| option.as_str()),
@@ -251,6 +255,28 @@ fn parse_answers(
         out.insert(id.clone(), answer);
     }
     Ok(out)
+}
+
+/// The option a reply names: exactly, or quoted, or as the `name` of an
+/// echoed `name: description` / `name (description)` line. Anything that does
+/// not name exactly one offered option is rejected, never guessed.
+fn offered_option<'a>(text: &str, options: &'a [(String, Option<String>)]) -> Option<&'a str> {
+    let text = text.trim().trim_matches('"').trim();
+    let exact = options.iter().find(|(option, _)| option == text);
+    exact
+        .or_else(|| {
+            let mut echoed = options.iter().filter(|(option, _)| {
+                text.strip_prefix(option.as_str()).is_some_and(|rest| {
+                    let rest = rest.trim_start_matches('"').trim_start();
+                    rest.starts_with(':') || rest.starts_with('(') || rest.starts_with('-')
+                })
+            });
+            match (echoed.next(), echoed.next()) {
+                (Some(only), None) => Some(only),
+                _ => None,
+            }
+        })
+        .map(|(option, _)| option.as_str())
 }
 
 #[cfg(test)]
@@ -364,7 +390,7 @@ mod tests {
             "state is framed as data"
         );
         assert!(prompt.contains("[q2] choice: Which team?"));
-        assert!(prompt.contains("- billing: Money"));
+        assert!(prompt.contains("- \"billing\" (Money)"));
         assert!(prompt.contains("2: Critical"));
         for id in ["injection", "queue", "severity"] {
             assert!(
@@ -401,6 +427,30 @@ mod tests {
                 .unwrap_err();
             assert!(error.to_string().contains(why), "{reply}: {error}");
         }
+    }
+
+    #[test]
+    fn echoed_descriptions_resolve_to_the_option_they_name() {
+        // Seen live: gpt-6-luna echoed the whole `name: description` line.
+        let options = vec![
+            ("sec".to_string(), None),
+            (
+                "security".to_string(),
+                Some("Dangerous actions".to_string()),
+            ),
+        ];
+        assert_eq!(offered_option("security", &options), Some("security"));
+        assert_eq!(offered_option("\"sec\"", &options), Some("sec"));
+        assert_eq!(
+            offered_option("security: Dangerous actions", &options),
+            Some("security")
+        );
+        assert_eq!(
+            offered_option("\"security\" (Dangerous actions)", &options),
+            Some("security")
+        );
+        assert_eq!(offered_option("securityish", &options), None);
+        assert_eq!(offered_option("billing", &options), None);
     }
 
     #[tokio::test]
