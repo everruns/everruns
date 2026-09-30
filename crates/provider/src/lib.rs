@@ -41,6 +41,7 @@ pub mod native_async;
 pub mod openai_compat;
 #[cfg(feature = "http")]
 pub mod openai_errors;
+pub mod openai_hosted_tools;
 #[cfg(feature = "http")]
 pub mod openai_protocol;
 #[cfg(feature = "http")]
