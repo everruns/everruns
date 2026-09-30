@@ -467,7 +467,7 @@ async fn test_mcp_tools_list() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("Expected tools array");
-    assert_eq!(tools.len(), 9, "Expected 9 MCP tools");
+    assert_eq!(tools.len(), 13, "9 MCP tools plus 4 MCP Apps view tools");
 
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"me"), "Missing me");
@@ -527,7 +527,10 @@ async fn test_mcp_tools_list() {
     assert_eq!(agent_run["title"], "Run Agent");
     assert_eq!(agent_run["outputSchema"]["type"], "object");
     assert_eq!(agent_run["annotations"]["openWorldHint"], true);
-    assert!(agent_run.as_object().unwrap().get("_meta").is_none());
+    assert_eq!(
+        agent_run["_meta"]["ui"]["resourceUri"],
+        "ui://everruns/app/session"
+    );
 
     let discover = tools
         .iter()

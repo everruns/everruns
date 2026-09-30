@@ -13,11 +13,56 @@ use everruns_core::DEFAULT_ORG_ID;
 use everruns_provider::typed_id::SessionId;
 use everruns_server::storage::models::{CreateEventRow, UpdateSession};
 use serde_json::{Value, json};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const LATEST: &str = "2026-07-28";
 const SESSION_VIEW_URI: &str = "ui://everruns/app/session";
 const HOME_VIEW_URI: &str = "ui://everruns/app/home";
 const APP_MIME: &str = "text/html;profile=mcp-app";
+
+/// Records resumes instead of running a model turn: what matters is that the
+/// answered question handed the parked turn back to the runner.
+#[derive(Default)]
+struct ResumeRecordingRunner {
+    resumes: AtomicUsize,
+}
+
+#[async_trait::async_trait]
+impl everruns_worker::AgentRunner for ResumeRecordingRunner {
+    async fn start_run(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+        _harness_id: everruns_provider::typed_id::HarnessId,
+        _agent_id: Option<everruns_provider::typed_id::AgentId>,
+        _input_message_id: everruns_provider::typed_id::MessageId,
+        _request_id: Option<String>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn resume_after_tool_results(
+        &self,
+        _session_id: SessionId,
+        _resolution_id: uuid::Uuid,
+    ) -> anyhow::Result<()> {
+        self.resumes.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self, _run_id: SessionId) -> bool {
+        false
+    }
+
+    async fn active_count(&self) -> usize {
+        0
+    }
+}
 
 static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -219,7 +264,12 @@ async fn tools_list_links_tools_to_views() {
         home["_meta"]["openai/ui"]["entrypoints"],
         json!([{ "type": "global" }, { "type": "thread" }])
     );
-    assert!(home["icons"][0]["src"].as_str().unwrap().starts_with("data:image/svg+xml"));
+    assert!(
+        home["icons"][0]["src"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/svg+xml")
+    );
     for app_only in [
         "session_view",
         "session_answer_question",
@@ -258,7 +308,12 @@ async fn templates_are_served_as_mcp_app_resources() {
     .await;
     let content = &read["result"]["contents"][0];
     assert_eq!(content["mimeType"], APP_MIME);
-    assert!(content["text"].as_str().unwrap().starts_with("<!doctype html>"));
+    assert!(
+        content["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("<!doctype html>")
+    );
     assert_eq!(content["_meta"]["ui"]["prefersBorder"], true);
 }
 
@@ -282,7 +337,8 @@ async fn home_and_session_view_show_the_run() {
         "home lists the agent: {home}"
     );
 
-    let view = structured(&call(&server, "session_view", json!({ "session_id": session_id })).await);
+    let view =
+        structured(&call(&server, "session_view", json!({ "session_id": session_id })).await);
     assert_eq!(view["session_id"], session_id.as_str());
     assert_eq!(view["agent_id"], agent_id.as_str());
     assert_eq!(view["messages"][0]["role"], "user");
@@ -297,7 +353,8 @@ async fn approval_is_decided_from_the_view_and_stale_clicks_are_refused() {
     let session_id = start_session(&server, &agent_id, "ship it").await;
     park_on_approval(&server, &session_id, "Deploy build 42 to production").await;
 
-    let view = structured(&call(&server, "session_view", json!({ "session_id": session_id })).await);
+    let view =
+        structured(&call(&server, "session_view", json!({ "session_id": session_id })).await);
     assert_eq!(view["pending"]["kind"], "approval");
     assert_eq!(view["pending"]["action"], "Deploy build 42 to production");
 
@@ -350,7 +407,8 @@ async fn approval_is_decided_from_the_view_and_stale_clicks_are_refused() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn question_is_rendered_and_answers_are_validated() {
-    let server = TestServer::in_memory().await;
+    let runner = Arc::new(ResumeRecordingRunner::default());
+    let server = TestServer::in_memory_with_runner(runner.clone()).await;
     let agent_id = create_agent(&server, &unique("apps-question")).await;
     let session_id = start_session(&server, &agent_id, "deploy somewhere").await;
     emit(
@@ -373,10 +431,14 @@ async fn question_is_rendered_and_answers_are_validated() {
     .await;
     set_status(&server, &session_id, "waiting_for_tool_results").await;
 
-    let view = structured(&call(&server, "session_view", json!({ "session_id": session_id })).await);
+    let view =
+        structured(&call(&server, "session_view", json!({ "session_id": session_id })).await);
     assert_eq!(view["pending"]["kind"], "question");
     assert_eq!(view["pending"]["tool_call_id"], "call_ask_apps");
-    assert_eq!(view["pending"]["questions"][0]["options"][1]["label"], "Production");
+    assert_eq!(
+        view["pending"]["questions"][0]["options"][1]["label"],
+        "Production"
+    );
 
     // A label that was never offered is refused and the question stays open.
     let invalid = call(
@@ -397,6 +459,7 @@ async fn question_is_rendered_and_answers_are_validated() {
     .await;
     let view = structured(&answered);
     assert_ne!(view["pending"]["kind"], "question", "still pending: {view}");
+    assert_eq!(runner.resumes.load(Ordering::SeqCst), 1, "turn not resumed");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -437,7 +500,12 @@ async fn view_tools_cannot_reach_another_org() {
     let org2_session = structured(&run)["session_id"].as_str().unwrap().to_string();
 
     // Default org caller.
-    let view = call(&server, "session_view", json!({ "session_id": org2_session })).await;
+    let view = call(
+        &server,
+        "session_view",
+        json!({ "session_id": org2_session }),
+    )
+    .await;
     assert!(is_error(&view), "cross-org view leaked: {view}");
     assert!(!view.to_string().contains("org2 secret work"));
 
