@@ -41,6 +41,7 @@ pub mod native_async;
 pub mod openai_compat;
 #[cfg(feature = "http")]
 pub mod openai_errors;
+pub mod openai_hosted_tools;
 #[cfg(feature = "http")]
 pub mod openai_protocol;
 #[cfg(feature = "http")]
@@ -50,9 +51,11 @@ pub mod openai_wire;
 pub mod openresponses_protocol;
 pub mod openresponses_types;
 pub mod provider;
+mod provider_managed;
 pub mod reasoning;
 pub mod runtime_provider;
 pub mod stream_accumulator;
+mod stream_error;
 #[cfg(feature = "http")]
 pub mod stream_reconnect;
 pub mod tool_schema_compat;
@@ -85,13 +88,17 @@ pub use driver_registry::{
     LlmStreamError, LlmStreamEvent, Message, MessageContent, MessageRole, ProviderConfig,
     ProviderMetadata, ProviderOpaqueContext, ServiceKind, fold_system_messages,
 };
+// Pre-0.31 names, kept as deprecated aliases.
 pub use error::{
     AgentLoopError, BillingPressureReason, FileSystemError, FileSystemErrorClass, LlmError,
     LlmErrorKind, Result, StoreResultExt, classify_fs_error, from_json, json_val,
 };
 pub use execution_phase::{ExecutionPhase, PhaseSource};
+pub use llm_error::RejectedProviderCapability;
 pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
 pub use message::ProviderOpaqueContent;
+#[allow(deprecated)]
+pub use message::{LlmMessage, LlmMessageContent, LlmMessageRole};
 pub use model::{
     CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,
     ModelVendor, ModelWithProvider, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
@@ -103,7 +110,11 @@ pub use model_discovery::{
     discover_provider_models, enrich_with_profiles, match_models, normalize_and_enrich,
     rank_discovered_models, search_provider_models,
 };
-pub use model_profiles::{get_model_profile, get_model_vendor};
+pub use model_profiles::{
+    ModelProfileEntry, all_profile_entries, all_profiles, get_model_profile, get_model_vendor,
+    profile_entries_for_provider, profiles_for_provider, selected_profiles,
+    selected_profiles_for_provider,
+};
 pub use model_spec::{ModelSpec, UnknownProvider};
 #[cfg(feature = "http")]
 pub use openai_protocol::OpenAIProtocolChatDriver;

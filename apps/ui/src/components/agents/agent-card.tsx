@@ -87,7 +87,7 @@ export function AgentCard({
                 size="icon"
                 className="h-8 w-8"
                 aria-label={`Edit ${getDisplayName(agent)}`}
-                href={`/agents/${agent.id}/edit`}
+                href={`/agents/${agent.id}?mode=edit`}
               >
                 <Pencil className="icon-sharp h-4 w-4" />
               </LinkButton>

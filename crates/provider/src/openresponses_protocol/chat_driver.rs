@@ -129,10 +129,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 input_items.extend(transcript_input_items);
                 coalesce_configuration_updates(input_items)
             }
-            None => finalize_input_for_request(transcript_input_items, &previous_response_id),
+            Some(_) | None => {
+                finalize_input_for_request(transcript_input_items, &previous_response_id)
+            }
         };
 
-        let tools = if config.tools.is_empty() {
+        let mut tools = if config.tools.is_empty() {
             None
         } else if let Some(ref ts_config) = config.tool_search {
             if ts_config.enabled && supports_tool_search {
@@ -146,6 +148,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         } else {
             Some(Self::convert_tools(&config.tools))
         };
+        let hosted_tools = self.hosted_tools_for(config)?;
+        if !hosted_tools.is_empty() {
+            tools
+                .get_or_insert_with(Vec::new)
+                .extend(hosted_tools.into_iter().map(ResponsesTool::Hosted));
+        }
 
         // Build reasoning config if specified.
         // Skip when effort is "none" — sending reasoning params to models that
@@ -496,6 +504,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     | Some("response.done") => {
                                         // Response completed - extract usage
                                         let response_obj = json.get("response").unwrap_or(&json);
+                                        super::hosted_tools::record_hosted_tool_calls(response_obj);
 
                                         // Reconcile against the response's own output list before ending
                                         // the stream. Every incremental frame is best-effort: one that is
@@ -636,6 +645,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             request_body: None,
                                             cache_diagnostics: None,
                                             provider_opaque_content: None,
+                                            provider_checkpoint_candidate: None,
                                         })))
                                     }
 

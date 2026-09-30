@@ -449,24 +449,14 @@ static DEFAULT_DRIVER_REGISTRY: LazyLock<Arc<DriverRegistry>> =
 
 #[cfg(test)]
 pub(crate) fn all_feature_flags_for_test() -> FeatureFlags {
-    FeatureFlags {
-        notifications: true,
-        platform_chat_v2: true,
-        evals: true,
-        skills: true,
-        memory: true,
-        knowledge: true,
-        plugins: true,
-        app_budgets: true,
-        agent_versions: true,
-        voice: true,
-        agent_delegation: true,
-        observers: true,
-        environments: true,
-        public_chat: true,
-        webmcp: true,
-        machine_payments: true,
-    }
+    // Built from the flag map so a new flag is covered without editing this helper.
+    let all_on: serde_json::Map<String, serde_json::Value> = FeatureFlags::default()
+        .to_map()
+        .0
+        .into_keys()
+        .map(|name| (name, true.into()))
+        .collect();
+    serde_json::from_value(all_on.into()).expect("every flag in the map deserializes")
 }
 
 #[derive(Clone)]

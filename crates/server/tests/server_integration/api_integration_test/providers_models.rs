@@ -671,6 +671,58 @@ async fn test_provider_crud() {
         .assert_status(StatusCode::NO_CONTENT);
 }
 
+/// Every provider mutation and credential probe uses the same HTTPS-only
+/// validation before credentials can be stored or sent upstream.
+#[tokio::test]
+async fn test_provider_endpoints_reject_public_http_base_urls() {
+    let server = TestServer::in_memory().await;
+
+    server
+        .post(
+            "/v1/providers",
+            json!({
+                "name": "Insecure OpenAI Provider",
+                "provider_type": "openai",
+                "base_url": "http://api.openai.com/v1"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+
+    let provider: Provider = server
+        .post(
+            "/v1/providers",
+            json!({
+                "name": "Secure OpenAI Provider",
+                "provider_type": "openai",
+                "base_url": "https://api.openai.com/v1"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .patch(
+            &format!("/v1/providers/{}", provider.id),
+            json!({"base_url": "http://api.openai.com/v1"}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+
+    server
+        .post(
+            "/v1/providers/check-credentials",
+            json!({
+                "provider_type": "openai",
+                "api_key": "sk-test",
+                "base_url": "http://api.openai.com/v1"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
 /// Credential checks must never persist anything and must reject unusable
 /// input before any outbound request is made.
 #[tokio::test]

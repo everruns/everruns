@@ -648,8 +648,23 @@ pub trait Capability: Send + Sync {
         &self,
         config: &serde_json::Value,
         _compaction_enabled: bool,
+        _provider_managed_reduction: bool,
     ) -> serde_json::Value {
         config.clone()
+    }
+
+    /// Token budget contributed to a provider-managed history reducer.
+    fn provider_managed_reduction_budget(&self, _config: &serde_json::Value) -> Option<usize> {
+        None
+    }
+
+    /// Whether this capability can rewrite user input before provider
+    /// serialization. Provider-managed replay is disabled in that case because
+    /// rebuilding from raw audit history could resend removed content.
+    fn requires_provider_history_rewrite(&self, config: &serde_json::Value) -> bool {
+        self.user_hooks_with_config(config)
+            .iter()
+            .any(|hook| hook.event == crate::user_hook_types::HookEvent::UserPromptSubmit)
     }
 
     /// Returns a provider that can build a prompt-facing model view from

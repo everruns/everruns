@@ -371,6 +371,16 @@ pub struct EncryptedColumn {
 /// - `reencrypt-secrets` CLI tool for key rotation
 /// - Tests to ensure all encrypted columns are properly registered
 pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
+    EncryptedColumn {
+        table: "org_slack_connections",
+        column: "access_token_encrypted",
+        id_column: "id",
+    },
+    EncryptedColumn {
+        table: "org_slack_connections",
+        column: "refresh_token_encrypted",
+        id_column: "id",
+    },
     // Pending native calls contain private arguments and tool results.
     EncryptedColumn {
         table: "native_async_checkpoints",

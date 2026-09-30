@@ -308,6 +308,7 @@ export default defineConfig({
                       label: "Tools",
                       collapsed: true,
                       items: [
+                        { label: "OpenAI Server Tools", slug: "capabilities/openai-server-tools" },
                         { label: "OpenRouter Server Tools", slug: "capabilities/openrouter-server-tools" },
                       ],
                     },

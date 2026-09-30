@@ -156,7 +156,7 @@ pub async fn prepare_login(
         .unwrap_or_else(|| server_url.to_string());
     // THREAT[TM-MCP-008]: protected-resource metadata is attacker-controlled;
     // bind its audience to the endpoint before involving the authorization server.
-    validate_resource(&resource, server_url)?;
+    validate_oauth_resource(&resource, server_url)?;
     let issuer = protected
         .as_ref()
         .and_then(|metadata| metadata.authorization_servers.first().cloned())
@@ -339,9 +339,9 @@ fn origin_of(url: &str) -> String {
     }
 }
 
-/// Validate that an authorization server cannot mint a token for a resource
+/// Validates that an authorization server cannot mint a token for a resource
 /// controlled by a different origin than the configured MCP endpoint.
-fn validate_resource(resource: &str, server_url: &str) -> Result<()> {
+pub fn validate_oauth_resource(resource: &str, server_url: &str) -> Result<()> {
     let resource = url::Url::parse(resource).context("MCP OAuth resource is not a valid URL")?;
     let server = url::Url::parse(server_url).context("MCP server URL is not a valid URL")?;
 

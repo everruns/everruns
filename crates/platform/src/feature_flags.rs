@@ -68,6 +68,11 @@ pub struct FeatureFlags {
     /// Experimental remote-control surface; requires deployment enablement and
     /// per-org opt-in. See `knowledge/ui/webmcp.md`.
     pub webmcp: bool,
+    /// Reports: the usage and cost reporting page, its sidebar entry, and
+    /// saved-report search results in the UI. Experimental and org-opt-in, so
+    /// it is off for every organization until an admin turns it on. The
+    /// reporting API and background aggregation are not gated.
+    pub reports: bool,
     /// Session environments: where a session's commands run and what they may
     /// touch. Deployment-controlled and not org-configurable, like
     /// `machine_payments`: it describes the sandbox surface, so turning it on is
@@ -277,6 +282,14 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         experimental: true,
         platform_managed: false,
     },
+    FeatureFlagDefinition {
+        name: "reports",
+        label: "Reports",
+        description: "Shows the Reports page for exploring usage and cost across sessions, agents, \
+             and models, and for saving and exporting report queries.",
+        experimental: true,
+        platform_managed: false,
+    },
 ];
 
 /// Whether a flag may only be enabled for an org by a platform user.
@@ -314,6 +327,7 @@ impl FeatureFlags {
             platform_chat_v2: opt_in("platform_chat_v2", system.platform_chat_v2),
             public_chat: opt_in("public_chat", system.public_chat),
             webmcp: opt_in("webmcp", system.webmcp),
+            reports: opt_in("reports", system.reports),
             environments: opt_in("environments", system.environments),
             machine_payments: system.machine_payments,
         }
@@ -336,6 +350,7 @@ impl FeatureFlags {
             platform_chat_v2: experimental_flag("FEATURE_PLATFORM_CHAT_V2", grade),
             public_chat: experimental_flag("FEATURE_PUBLIC_CHAT", grade),
             webmcp: experimental_flag("FEATURE_WEBMCP", grade),
+            reports: experimental_flag("FEATURE_REPORTS", grade),
             // Environments describe the sandbox surface, so a deployment that
             // has already turned sandboxes on gets them without a second
             // switch. Dev keeps the experimental convenience of being on by
@@ -376,6 +391,7 @@ impl FeatureFlags {
             ("environments".to_string(), self.environments),
             ("public_chat".to_string(), self.public_chat),
             ("webmcp".to_string(), self.webmcp),
+            ("reports".to_string(), self.reports),
             ("platform_chat_v2".to_string(), self.platform_chat_v2),
             ("machine_payments".to_string(), self.machine_payments),
         ]))
@@ -399,6 +415,7 @@ impl FeatureFlags {
             "environments" => self.environments,
             "public_chat" => self.public_chat,
             "webmcp" => self.webmcp,
+            "reports" => self.reports,
             "machine_payments" => self.machine_payments,
             _ => false,
         }
@@ -441,6 +458,7 @@ impl FeatureFlags {
             environments: true,
             public_chat: true,
             webmcp: true,
+            reports: true,
             machine_payments: true,
         }
     }
@@ -581,6 +599,7 @@ mod tests {
             environments: true,
             public_chat: true,
             webmcp: true,
+            reports: true,
             machine_payments: true,
         };
         assert!(flags.is_enabled("notifications"));
@@ -600,6 +619,7 @@ mod tests {
             "MCP is a product surface, not a feature flag"
         );
         assert!(flags.is_enabled("webmcp"));
+        assert!(flags.is_enabled("reports"));
         assert!(flags.is_enabled("machine_payments"));
         assert!(!flags.is_enabled("nonexistent"));
     }
@@ -653,6 +673,7 @@ mod tests {
             environments: true,
             public_chat: true,
             webmcp: true,
+            reports: true,
             machine_payments: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
@@ -828,5 +849,33 @@ mod tests {
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
         assert!(flags.machine_payments);
         restore_env("FEATURE_MACHINE_PAYMENTS", prev);
+    }
+
+    #[test]
+    fn reports_is_off_until_an_org_opts_in() {
+        let _lock = lock_env();
+        let prev = std::env::var("FEATURE_REPORTS").ok();
+        unsafe { std::env::remove_var("FEATURE_REPORTS") };
+
+        assert!(!FeatureFlags::from_env(&DeploymentGrade::Prod).reports);
+
+        // Even where the deployment allows it, an org without an opt-in row
+        // does not see Reports.
+        let system = FeatureFlags::from_env(&DeploymentGrade::Dev);
+        assert!(system.reports);
+        let no_opt_in = std::collections::HashMap::new();
+        assert!(!FeatureFlags::for_org(&system, &no_opt_in).reports);
+
+        let opted_in = std::collections::HashMap::from([("reports".to_string(), true)]);
+        assert!(FeatureFlags::for_org(&system, &opted_in).reports);
+
+        let definition = API_FEATURE_FLAG_DEFINITIONS
+            .iter()
+            .find(|definition| definition.name == "reports")
+            .expect("reports is in the org opt-in catalog");
+        assert!(definition.experimental);
+        assert!(!definition.platform_managed);
+
+        restore_env("FEATURE_REPORTS", prev);
     }
 }

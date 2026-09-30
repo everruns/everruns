@@ -704,9 +704,22 @@ async fn assert_clear_at_tool_loop_wire(model: &str) {
     let _ = drain_golden(stream).await;
 
     let requests = server.received_requests().await.expect("recorded requests");
-    assert_eq!(requests.len(), 2);
-    let first: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
-    let second: serde_json::Value = serde_json::from_slice(&requests[1].body).unwrap();
+    // Two deliberate calls, and a reconnect may add more: the transport
+    // reissues the request on a transport error, so under CI load this
+    // legitimately sees three (EVE-1106; #3753 did this for Gemini).
+    // The property under test is about content, not about how many times the
+    // transport connected, so take the first and last recorded requests: a
+    // replay of either turn carries that turn's body, so whichever one is
+    // retried, the pair still spans turn one and turn two.
+    assert!(
+        requests.len() >= 2,
+        "expected at least the two deliberate calls, saw {}",
+        requests.len()
+    );
+    let first_request = requests.first().expect("the first turn's request");
+    let second_request = requests.last().expect("the second turn's request");
+    let first: serde_json::Value = serde_json::from_slice(&first_request.body).unwrap();
+    let second: serde_json::Value = serde_json::from_slice(&second_request.body).unwrap();
     let first_messages = first["messages"].as_array().unwrap();
     let second_messages = second["messages"].as_array().unwrap();
     assert_eq!(
@@ -721,7 +734,7 @@ async fn assert_clear_at_tool_loop_wire(model: &str) {
         second_messages.last().unwrap()["clear_at"],
         serde_json::json!("next_user_message")
     );
-    for (request, payload) in requests.iter().zip([&first, &second]) {
+    for (request, payload) in [(first_request, &first), (second_request, &second)] {
         let beta = request
             .headers
             .get("anthropic-beta")
