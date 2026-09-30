@@ -9,6 +9,25 @@ use crate::driver_registry::ServiceKind;
 use crate::model::{ModelProfile, ModelVendor};
 use crate::provider::DriverId;
 
+pub use everruns_model_profiles::{
+    ModelProfileEntry, all_profile_entries, all_profiles, selected_profiles,
+};
+
+/// Enumerate profiles for a driver with the same capability masks as lookup.
+pub fn profiles_for_provider(provider_type: &DriverId) -> Vec<ModelProfile> {
+    everruns_model_profiles::profiles_for_provider(provider_type.as_str())
+}
+
+/// Enumerate the curated selection for a driver (currently the full registry).
+pub fn selected_profiles_for_provider(provider_type: &DriverId) -> Vec<ModelProfile> {
+    everruns_model_profiles::selected_profiles_for_provider(provider_type.as_str())
+}
+
+/// Enumerate canonical model identities and masked profiles for a driver.
+pub fn profile_entries_for_provider(provider_type: &DriverId) -> Vec<ModelProfileEntry> {
+    everruns_model_profiles::profile_entries_for_provider(provider_type.as_str())
+}
+
 /// Get a model profile by matching provider_type and model_id.
 /// Returns None if the id is not in the registry or is not offered under the
 /// given provider type.

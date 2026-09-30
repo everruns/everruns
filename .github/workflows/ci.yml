@@ -907,7 +907,7 @@ jobs:
           # no credentials) and one of them was failing against committed code
           # while CI stayed green, because nothing executed it. Run the whole
           # suite, not --lib: the point is the integration tests.
-          cargo test -p everruns-provider --all-features
+          cargo test -p everruns-provider -p everruns-model-profiles --all-features
           cargo test -p everruns-engine -p everruns-builtins --all-features
           cargo test -p everruns-integrations-docker --all-features
           # The integration catalog is the one list naming every plugin-publishing
