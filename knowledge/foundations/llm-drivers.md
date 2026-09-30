@@ -740,6 +740,25 @@ loop therefore never dispatches them; the only client-visible artifact is
   `LlmCompletionMetadata`; capturing it for cost tracking requires extending that shared
   cross-provider struct and is tracked separately.
 
+### OpenAI Hosted Tools
+
+OpenAI hosted tools (EVE-1115, `web_search` first) are the OpenAI counterpart of OpenRouter
+server tools: model-decided, executed inside the response, never dispatched by the agent loop.
+
+- **Contract**: `everruns_provider::openai_hosted_tools` owns the typed selection and the
+  `openai/hosted_tools` driver option; the `openai_server_tools` capability contributes it.
+- **Rendering**: the Open Responses driver appends the wire entries only when built
+  `with_hosted_tools(true)` (the OpenAI and Azure OpenAI driver). Any other Responses endpoint
+  returns a configuration error instead of sending a request without them.
+- **Loud off-provider**: unlike OpenRouter's no-op, the reason step fails the turn when the
+  option reaches a provider outside `HOSTED_TOOLS_DRIVER_IDS`. An agent configured to search
+  must not quietly answer from memory.
+- **Stream**: `web_search_call` items and `response.web_search_call.*` events are skipped;
+  citations stay in the answer text. The engine counts the option as provider-executed, so a
+  mid-stream failure is not reissued (same rule as OpenRouter server tools).
+- **Follow-ups**: surfacing hosted calls as session tool events, pricing per-call usage
+  (counts are logged today), and code interpreter, file search, and remote MCP.
+
 ### OpenRouter Capacity Strategy
 
 `OpenRouterRoutingConfig.capacity_strategy` lets callers express an organization-level
