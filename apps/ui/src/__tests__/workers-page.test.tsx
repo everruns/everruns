@@ -228,58 +228,26 @@ describe("WorkersPage", () => {
   // ============================================
 
   describe("Summary Stats Cards", () => {
-    it("displays total workers count", () => {
+    it("computes all summary stat cards from a single load", () => {
       render(<WorkersPage />, { wrapper });
 
-      expect(screen.getByText("Total Workers")).toBeInTheDocument();
       // total = 3 (from mockWorkersResponse.total)
+      expect(screen.getByText("Total Workers")).toBeInTheDocument();
       expect(screen.getByText("3")).toBeInTheDocument();
-    });
-
-    it("displays active workers count in description", () => {
-      render(<WorkersPage />, { wrapper });
-
       expect(screen.getByText("1 active")).toBeInTheDocument();
-    });
-
-    it("displays total capacity from summary", () => {
-      render(<WorkersPage />, { wrapper });
 
       expect(screen.getByText("Total Capacity")).toBeInTheDocument();
       expect(screen.getByText("10")).toBeInTheDocument();
-    });
-
-    it("displays total load in capacity description", () => {
-      render(<WorkersPage />, { wrapper });
-
       expect(screen.getByText("3 in use")).toBeInTheDocument();
-    });
-
-    it("displays load percentage", () => {
-      render(<WorkersPage />, { wrapper });
 
       // "Load" appears as both a card title and table header; verify via card title selector
       const loadCards = screen.getAllByText("Load");
       expect(loadCards.length).toBeGreaterThanOrEqual(1);
       // 3/10 * 100 = 30.0%
       expect(screen.getByText("30.0%")).toBeInTheDocument();
-    });
-
-    it("displays load slots description", () => {
-      render(<WorkersPage />, { wrapper });
-
       expect(screen.getByText("3/10 slots")).toBeInTheDocument();
-    });
-
-    it("displays draining count", () => {
-      render(<WorkersPage />, { wrapper });
 
       expect(screen.getByText("Draining")).toBeInTheDocument();
-    });
-
-    it("displays stopped count in draining description", () => {
-      render(<WorkersPage />, { wrapper });
-
       expect(screen.getByText("1 stopped")).toBeInTheDocument();
     });
 
@@ -321,7 +289,7 @@ describe("WorkersPage", () => {
   // ============================================
 
   describe("Worker Table Rendering", () => {
-    it("renders worker table with correct headers", () => {
+    it("renders the worker table headers, per-row badges, and counts", () => {
       render(<WorkersPage />, { wrapper });
 
       // Some header names overlap with card titles (e.g. "Load"), so use getAllByText
@@ -335,45 +303,16 @@ describe("WorkersPage", () => {
       expect(screen.getByText("Avg Duration")).toBeInTheDocument();
       expect(screen.getByText("Last Heartbeat")).toBeInTheDocument();
       expect(screen.getByText("Actions")).toBeInTheDocument();
-    });
 
-    it("renders worker hostnames", () => {
-      render(<WorkersPage />, { wrapper });
-
-      // All 3 workers share hostname "host-1"
-      const hostnames = screen.getAllByText("host-1");
-      expect(hostnames.length).toBe(3);
-    });
-
-    it("renders status badges for each worker", () => {
-      render(<WorkersPage />, { wrapper });
-
+      // All 3 workers share hostname "host-1", group "default", and activity
+      // "run_session"; each has status and 100 tasks_completed.
+      expect(screen.getAllByText("host-1").length).toBe(3);
       expect(screen.getByText("active")).toBeInTheDocument();
       expect(screen.getByText("draining")).toBeInTheDocument();
       expect(screen.getByText("stopped")).toBeInTheDocument();
-    });
-
-    it("renders worker group badges", () => {
-      render(<WorkersPage />, { wrapper });
-
-      // All workers have "default" group
-      const defaultBadges = screen.getAllByText("default");
-      expect(defaultBadges.length).toBe(3);
-    });
-
-    it("renders activity type badges", () => {
-      render(<WorkersPage />, { wrapper });
-
-      const activityBadges = screen.getAllByText("run_session");
-      expect(activityBadges.length).toBe(3);
-    });
-
-    it("renders task completed counts", () => {
-      render(<WorkersPage />, { wrapper });
-
-      // All workers have 100 tasks_completed
-      const completedCounts = screen.getAllByText("100");
-      expect(completedCounts.length).toBe(3);
+      expect(screen.getAllByText("default").length).toBe(3);
+      expect(screen.getAllByText("run_session").length).toBe(3);
+      expect(screen.getAllByText("100").length).toBe(3);
     });
   });
 

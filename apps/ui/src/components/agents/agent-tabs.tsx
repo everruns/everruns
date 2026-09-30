@@ -1,52 +1,49 @@
-import {
-  BarChart3,
-  Edit2,
-  Eye,
-  GitBranch,
-  LayoutDashboard,
-  LockKeyhole,
-  Network,
-  Plug,
-} from "lucide-react";
+import { BarChart3, Boxes, Eye, MessageSquare, Plug } from "lucide-react";
 import type { SectionTabItem } from "@/components/layout";
 
-const agentTabItems = {
-  overview: {
-    value: "overview",
-    label: "Overview",
-    icon: <LayoutDashboard className="size-4" />,
-  },
-  preview: { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
-  credentials: {
-    value: "credentials",
-    label: "Credentials",
-    icon: <LockKeyhole className="size-4" />,
-  },
-  mcp: { value: "mcp", label: "MCP", icon: <Network className="size-4" /> },
-  // One tab, not three (EVE-1009). "Triggers" and "Integrate" both described a
-  // slice of the same question — how is this agent reached, and when does it
-  // run — and the second could only ever show generic snippets, because an
-  // agent with two endpoints has no single URL. Both fold in here.
-  integrations: {
-    value: "integrations",
-    label: "Integrations",
-    icon: <Plug className="size-4" />,
-  },
-  versions: { value: "versions", label: "Versions", icon: <GitBranch className="size-4" /> },
-  stats: { value: "stats", label: "Stats", icon: <BarChart3 className="size-4" /> },
-  edit: { value: "edit", label: "Edit", icon: <Edit2 className="size-4" /> },
-} satisfies Record<string, SectionTabItem>;
+// One tab row for the agent page. MCP and Credentials are configuration, so
+// they moved into the Agent tab's config column; Sessions got its own tab
+// instead of a card on the overview; Versions lives in the header overflow.
+// "Triggers" and "Integrate" folded into Integrations in EVE-1009: both
+// described how an agent is reached and when it runs.
+export type AgentTab = "agent" | "preview" | "integrations" | "stats" | "sessions";
 
-export function getAgentDetailTabItems(versionsEnabled: boolean): SectionTabItem[] {
+export function getAgentTabItems(sessionCount?: number): SectionTabItem[] {
   return [
-    agentTabItems.overview,
-    agentTabItems.preview,
-    agentTabItems.credentials,
-    agentTabItems.mcp,
-    agentTabItems.integrations,
-    ...(versionsEnabled ? [agentTabItems.versions] : []),
-    agentTabItems.stats,
+    { value: "agent", label: "Agent", icon: <Boxes className="size-4" /> },
+    { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
+    { value: "integrations", label: "Integrations", icon: <Plug className="size-4" /> },
+    { value: "stats", label: "Stats", icon: <BarChart3 className="size-4" /> },
+    {
+      value: "sessions",
+      label:
+        sessionCount === undefined ? (
+          "Sessions"
+        ) : (
+          <>
+            Sessions
+            <span className="bg-muted px-1 text-[11px] font-medium">{sessionCount}</span>
+          </>
+        ),
+      icon: <MessageSquare className="size-4" />,
+    },
   ];
 }
 
-export const agentEditTabItems: SectionTabItem[] = [agentTabItems.edit, agentTabItems.preview];
+const TABS = new Set<string>(["agent", "preview", "integrations", "stats", "sessions"]);
+
+/**
+ * Resolves a `?tab=` deep link. Tabs that became config-column sheets (MCP,
+ * Credentials, Versions) still resolve, so existing return URLs keep working:
+ * they land on the Agent tab with that sheet open.
+ */
+export function resolveAgentTab(param: string | null): {
+  tab: AgentTab;
+  section: "mcp" | "credentials" | "versions" | null;
+} {
+  if (param === "mcp" || param === "credentials" || param === "versions") {
+    return { tab: "agent", section: param };
+  }
+  if (param && TABS.has(param)) return { tab: param as AgentTab, section: null };
+  return { tab: "agent", section: null };
+}

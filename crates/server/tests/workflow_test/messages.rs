@@ -351,8 +351,7 @@ async fn test_post_message_wait_returns_completed_turn() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "provider_id": provider.id,
-            "model_id": model_id,
+            "default_model_id": model.id,
             "name": agent_name,
             "system_prompt": "You are a helpful test assistant."
         }))
@@ -361,6 +360,7 @@ async fn test_post_message_wait_returns_completed_turn() {
         .expect("Failed to create agent");
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    assert_eq!(agent.default_model_id, Some(model.id));
 
     // Step 2: Create a session for the agent.
     let session_response = client
@@ -399,24 +399,10 @@ async fn test_post_message_wait_returns_completed_turn() {
         .json()
         .await
         .expect("Failed to parse wait response");
-    // A turn the provider *account* blocked (no credits, usage limit) says
-    // nothing about whether `wait=true` returns a completed turn, so it skips
-    // and reports — the rule the other live tests in this file already follow
-    // via `skip_on_provider_account_block!`.
-    //
-    // Not that macro, though: it returns early, and this test must still tear
-    // down the provider, model, agent and session it created or the next run
-    // fails on a 409 for a name it already took (EVE-955). So the block is
-    // checked inline and cleanup below runs either way.
-    let account_block = session_provider_account_block(&client, &session.id).await;
-    if let Some(ref code) = account_block {
-        report_provider_account_skip(code);
-    } else {
-        assert_eq!(body["status"], "completed");
-        let messages = body["messages"].as_array().expect("messages array");
-        assert!(!messages.is_empty(), "waited turn returns assistant output");
-        println!("✓ POST /messages?wait=true returns completed turn");
-    }
+    assert_eq!(body["status"], "completed");
+    let messages = body["messages"].as_array().expect("messages array");
+    assert!(!messages.is_empty(), "waited turn returns assistant output");
+    println!("✓ POST /messages?wait=true returns completed turn");
 
     // Cleanup: this test created a provider, a model, an agent and a session,
     // and cleaned up none of them — so a second run against the same database

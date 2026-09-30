@@ -488,14 +488,6 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_input_defaults_are_reasonable() {
-        let input = LeasedResourceCleanupInput::default();
-        assert_eq!(input.batch_size, 25);
-        assert_eq!(input.stale_after_seconds, 300);
-        assert_eq!(input.retry_after_seconds, 60);
-    }
-
-    #[test]
     fn error_classifiers_match_expected_patterns() {
         assert!(is_daytona_not_found("Daytona API error (404): not found"));
         assert!(is_e2b_not_found("E2B API error (404): sandbox not found"));

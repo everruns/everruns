@@ -35,6 +35,7 @@ impl StreamReplayState {
             LlmStreamEvent::TextDelta(delta) => !delta.is_empty(),
             LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
             LlmStreamEvent::NativeToolCall(_) => true,
+            LlmStreamEvent::ProviderCompactionStarted => true,
             LlmStreamEvent::ReasoningDelta { .. }
             | LlmStreamEvent::ReasoningItem(_)
             | LlmStreamEvent::MessagePhase(_)
@@ -112,6 +113,7 @@ pub(super) fn advances_stall_deadline(event: &LlmStreamEvent) -> bool {
         }
         LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
         LlmStreamEvent::NativeToolCall(_) => true,
+        LlmStreamEvent::ProviderCompactionStarted => true,
         LlmStreamEvent::MessagePhase(_) | LlmStreamEvent::Done(_) | LlmStreamEvent::Error(_) => {
             false
         }

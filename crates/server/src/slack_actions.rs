@@ -85,8 +85,8 @@ impl DbSlackActionInvoker {
         self
     }
 
-    /// Resolve the Slack endpoint that created this session, and its bot token.
-    async fn resolve_bot_token(&self) -> Result<String, SlackActionError> {
+    /// Resolve the Slack endpoint and trusted conversation that created this session.
+    async fn resolve_context(&self) -> Result<SlackActionContext, SlackActionError> {
         let org = self.org_id;
         let session_id = self.session_id;
         let session = self
@@ -140,7 +140,70 @@ impl DbSlackActionInvoker {
         if config.bot_token.trim().is_empty() {
             return Err(SlackActionError::NotConfigured);
         }
-        Ok(config.bot_token)
+
+        let thread_context = self
+            .db
+            .get_session_key_value(
+                session_id.uuid(),
+                everruns_core::channel::THREAD_CONTEXT_KV_KEY,
+            )
+            .await
+            .map_err(|e| SlackActionError::Transient(e.to_string()))?
+            .and_then(|row| everruns_core::channel::decode_thread_context(&row.value))
+            .filter(|context| context.platform == "slack")
+            .ok_or_else(|| {
+                SlackActionError::InvalidArgument(
+                    "the Slack conversation for this session is unavailable".to_string(),
+                )
+            })?;
+        let channel = thread_context
+            .platform_metadata
+            .get("channel_id")
+            .filter(|channel| !channel.trim().is_empty())
+            .cloned()
+            .ok_or_else(|| {
+                SlackActionError::InvalidArgument(
+                    "the Slack channel for this session is unavailable".to_string(),
+                )
+            })?;
+
+        // THREAT[TM-SLACK-005]: action arguments are model-controlled. Bind them to
+        // both trusted ingress metadata and any administrator-configured scope.
+        if config.channel_id.as_deref().is_some_and(|id| id != channel) {
+            return Err(SlackActionError::EndpointUnavailable);
+        }
+
+        Ok(SlackActionContext {
+            bot_token: config.bot_token,
+            channel,
+            thread_ts: thread_context.thread_ref,
+        })
+    }
+}
+
+struct SlackActionContext {
+    bot_token: String,
+    channel: String,
+    thread_ts: String,
+}
+
+impl SlackActionContext {
+    fn authorize_channel(&self, channel: &str) -> Result<(), SlackActionError> {
+        if channel != self.channel {
+            return Err(SlackActionError::InvalidArgument(
+                "Slack actions may only target this session's channel".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn authorize_thread(&self, thread_ts: Option<&str>) -> Result<(), SlackActionError> {
+        if thread_ts != Some(self.thread_ts.as_str()) {
+            return Err(SlackActionError::InvalidArgument(
+                "Slack file uploads must target this session's thread".to_string(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -182,21 +245,28 @@ impl From<SlackApiError> for SlackActionError {
 impl SlackActionInvoker for DbSlackActionInvoker {
     async fn invoke(&self, action: SlackAction) -> Result<SlackActionOutcome, SlackActionError> {
         let kind = action.kind();
-        let bot_token = self.resolve_bot_token().await?;
+        let context = self.resolve_context().await?;
+        let bot_token = &context.bot_token;
 
         let outcome = match action {
             SlackAction::AddReaction {
                 channel,
                 timestamp,
                 name,
-            } => add_reaction(&self.api_base, &bot_token, &channel, &timestamp, &name).await?,
+            } => {
+                context.authorize_channel(&channel)?;
+                add_reaction(&self.api_base, bot_token, &channel, &timestamp, &name).await?
+            }
             SlackAction::UpdateMessage {
                 channel,
                 timestamp,
                 text,
-            } => update_message(&self.api_base, &bot_token, &channel, &timestamp, &text).await?,
+            } => {
+                context.authorize_channel(&channel)?;
+                update_message(&self.api_base, bot_token, &channel, &timestamp, &text).await?
+            }
             SlackAction::LookupUser { user_id } => {
-                lookup_user(&self.api_base, &bot_token, &user_id).await?
+                lookup_user(&self.api_base, bot_token, &user_id).await?
             }
             SlackAction::UploadFile {
                 channel,
@@ -205,9 +275,11 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                 content,
                 initial_comment,
             } => {
+                context.authorize_channel(&channel)?;
+                context.authorize_thread(thread_ts.as_deref())?;
                 upload_file(
                     &self.api_base,
-                    &bot_token,
+                    bot_token,
                     &channel,
                     thread_ts.as_deref(),
                     &filename,
@@ -685,7 +757,8 @@ mod tests {
             tags: Vec<String>,
         ) -> SessionId {
             let harness_id = self.seed_harness().await;
-            self.db
+            let session = self
+                .db
                 .create_session(CreateSessionRow {
                     source: everruns_platform::SessionSource::Api,
                     workspace_id: None,
@@ -718,8 +791,21 @@ mod tests {
                     budget_root_session_id: None,
                 })
                 .await
-                .expect("create session")
-                .id
+                .expect("create session");
+            let mut context = everruns_core::channel::ThreadContext::new("1.2", "slack");
+            context
+                .platform_metadata
+                .insert("channel_id".to_string(), "C1".to_string());
+            self.db
+                .upsert_session_key_value(crate::storage::models::UpsertSessionKeyValue {
+                    session_id: session.id,
+                    key: everruns_core::channel::THREAD_CONTEXT_KV_KEY.to_string(),
+                    value: everruns_core::channel::encode_thread_context(&context)
+                        .expect("encode context"),
+                })
+                .await
+                .expect("store thread context");
+            session.id
         }
 
         fn invoker(&self, org_id: i64, session_id: SessionId) -> DbSlackActionInvoker {
@@ -853,6 +939,43 @@ mod tests {
         assert!(matches!(error, SlackActionError::EndpointUnavailable));
     }
 
+    #[tokio::test]
+    async fn endpoint_channel_scope_must_match_the_ingress_channel() {
+        let server = MockServer::start().await;
+        let fixture = Fixture::new();
+        let (app_id, endpoint_id, _) = fixture
+            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+            .await;
+        fixture
+            .db
+            .update_app_channel(
+                endpoint_id,
+                UpdateAppChannel {
+                    channel_config: Some(json!({
+                        "signing_secret": "s",
+                        "bot_token": "xoxb-secret",
+                        "channel_id": "C_CONFIGURED",
+                    })),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("scope endpoint");
+        let session_id = fixture
+            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .await;
+
+        let error = fixture
+            .invoker(ORG, session_id)
+            .with_api_base(server.uri())
+            .invoke(add_reaction_action())
+            .await
+            .expect_err("a stale or inconsistent ingress channel must fail closed");
+
+        assert!(matches!(error, SlackActionError::EndpointUnavailable));
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
     /// Pre-backfill sessions carry no `endpoint_id`, so the routing tag is the
     /// fallback (EVE-1004).
     #[tokio::test]
@@ -951,6 +1074,32 @@ mod tests {
                 already_reacted: false
             }
         ));
+    }
+
+    #[tokio::test]
+    async fn an_alternate_channel_is_rejected_without_a_slack_request() {
+        let server = MockServer::start().await;
+        let fixture = Fixture::new();
+        let (app_id, endpoint_id, _) = fixture
+            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+            .await;
+        let session_id = fixture
+            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .await;
+
+        let error = fixture
+            .invoker(ORG, session_id)
+            .with_api_base(server.uri())
+            .invoke(SlackAction::AddReaction {
+                channel: "C_PRIVILEGED".to_string(),
+                timestamp: "9.9".to_string(),
+                name: "eyes".to_string(),
+            })
+            .await
+            .expect_err("a model-chosen alternate channel must be rejected");
+
+        assert!(matches!(error, SlackActionError::InvalidArgument(_)));
+        assert!(server.received_requests().await.unwrap().is_empty());
     }
 
     /// A duplicate reaction satisfies the agent's intent, so it is reported as
@@ -1143,7 +1292,7 @@ mod tests {
             .with_api_base("http://127.0.0.1:1".to_string())
             .invoke(SlackAction::UploadFile {
                 channel: "C1".to_string(),
-                thread_ts: None,
+                thread_ts: Some("1.2".to_string()),
                 filename: "empty.txt".to_string(),
                 content: Vec::new(),
                 initial_comment: None,
@@ -1208,6 +1357,34 @@ mod tests {
         assert_eq!(permalink.as_deref(), Some("https://slack.example/F1"));
     }
 
+    #[tokio::test]
+    async fn an_upload_without_the_session_thread_is_rejected_before_slack() {
+        let server = MockServer::start().await;
+        let fixture = Fixture::new();
+        let (app_id, endpoint_id, _) = fixture
+            .seed_app_with_endpoint(ORG, "slack", "xoxb-secret")
+            .await;
+        let session_id = fixture
+            .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+            .await;
+
+        let error = fixture
+            .invoker(ORG, session_id)
+            .with_api_base(server.uri())
+            .invoke(SlackAction::UploadFile {
+                channel: "C1".to_string(),
+                thread_ts: None,
+                filename: "report.md".to_string(),
+                content: b"hello".to_vec(),
+                initial_comment: Some("post me".to_string()),
+            })
+            .await
+            .expect_err("a channel-level upload must be rejected");
+
+        assert!(matches!(error, SlackActionError::InvalidArgument(_)));
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
     /// A 4xx on the one-time upload URL cannot be retried, so it must not be
     /// classified as backpressure.
     #[tokio::test]
@@ -1241,7 +1418,7 @@ mod tests {
             .with_api_base(server.uri())
             .invoke(SlackAction::UploadFile {
                 channel: "C1".to_string(),
-                thread_ts: None,
+                thread_ts: Some("1.2".to_string()),
                 filename: "report.md".to_string(),
                 content: b"hello".to_vec(),
                 initial_comment: None,

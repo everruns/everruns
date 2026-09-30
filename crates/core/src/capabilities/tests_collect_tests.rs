@@ -177,6 +177,71 @@ fn test_collect_message_filters_only_skips_unknown_capabilities() {
 }
 
 #[test]
+fn provider_managed_reduction_uses_the_smallest_budget_and_fails_closed_on_rewrites() {
+    struct BudgetCapability {
+        id: &'static str,
+        budget: usize,
+        rewrites: bool,
+    }
+
+    impl Capability for BudgetCapability {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        fn name(&self) -> &str {
+            self.id
+        }
+
+        fn description(&self) -> &str {
+            "test provider-managed reduction capability"
+        }
+
+        fn provider_managed_reduction_budget(&self, _config: &serde_json::Value) -> Option<usize> {
+            Some(self.budget)
+        }
+
+        fn requires_provider_history_rewrite(&self, _config: &serde_json::Value) -> bool {
+            self.rewrites
+        }
+    }
+
+    let mut registry = CapabilityRegistry::new();
+    registry.register(BudgetCapability {
+        id: "large_budget",
+        budget: 120_000,
+        rewrites: false,
+    });
+    registry.register(BudgetCapability {
+        id: "small_budget",
+        budget: 80_000,
+        rewrites: false,
+    });
+    registry.register(BudgetCapability {
+        id: "rewrite_unsafe",
+        budget: 60_000,
+        rewrites: true,
+    });
+    let config =
+        |id| AgentCapabilityConfig::with_config(CapabilityId::new(id), serde_json::json!({}));
+
+    assert_eq!(
+        provider_managed_reduction_budget(
+            &[config("large_budget"), config("small_budget")],
+            &registry,
+        ),
+        Some(80_000)
+    );
+    assert_eq!(
+        provider_managed_reduction_budget(
+            &[config("large_budget"), config("rewrite_unsafe")],
+            &registry,
+        ),
+        None
+    );
+}
+
+#[test]
 fn test_collect_message_filters_only_preserves_priority_order() {
     struct PriorityFilterCap {
         id: &'static str,
@@ -374,6 +439,7 @@ fn test_collect_model_view_providers_honors_resolve_for_model_delegation() {
         &ModelViewContext {
             session_id,
             prior_usage: None,
+            provider_managed_reduction: false,
         },
     );
     assert_eq!(

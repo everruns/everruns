@@ -45,6 +45,25 @@ impl WorkerServiceImpl {
         Ok(Response::new(SessionStorageGetValueResponse { value }))
     }
 
+    pub(crate) async fn handle_session_storage_take_value(
+        &self,
+        request: Request<SessionStorageTakeValueRequest>,
+    ) -> Result<Response<SessionStorageTakeValueResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let store = self.storage_store()?;
+
+        let value = store
+            .take_value(session_id.into(), &req.key)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to take storage value");
+                Status::internal("Failed to take storage value")
+            })?;
+
+        Ok(Response::new(SessionStorageTakeValueResponse { value }))
+    }
+
     pub(crate) async fn handle_session_storage_delete_value(
         &self,
         request: Request<SessionStorageDeleteValueRequest>,

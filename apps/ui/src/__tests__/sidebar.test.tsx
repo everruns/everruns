@@ -118,6 +118,7 @@ const mockFeatureFlags = {
   observers: true,
   public_chat: true,
   webmcp: true,
+  reports: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => mockFeatureFlags,
@@ -162,6 +163,7 @@ describe("Sidebar", () => {
       observers: true,
       public_chat: true,
       webmcp: true,
+      reports: true,
     });
     mockPush.mockClear();
     mockPrefetch.mockClear();
@@ -354,11 +356,13 @@ describe("Sidebar", () => {
       knowledge: false,
       plugins: false,
       observers: false,
+      reports: false,
     });
 
     render(<Sidebar />);
 
     expect(screen.queryByText("Evals")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reports")).not.toBeInTheDocument();
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
     expect(screen.queryByText("Memory")).not.toBeInTheDocument();
     expect(screen.queryByText("Knowledge indexes")).not.toBeInTheDocument();
@@ -480,11 +484,8 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: "Settings" })).toHaveClass("border-l-primary");
   });
 
-  it("renders version in footer", () => {
-    render(<Sidebar />);
-
-    expect(screen.getByText(/^Everruns v\d+\.\d+\.\d+$/)).toBeInTheDocument();
-  });
+  // Duplicate of "renders only the version when no current user is available"
+  // removed here (same default render, same version-text assertion).
 
   // Pure-styling and hardcoded-count change-detectors removed (compact-shell
   // utility classes, exact nav-item count, nav overflow classes): they broke on
@@ -858,29 +859,60 @@ describe("Create Organization dialog", () => {
       return logout;
     };
 
-    it("navigates to /login and reports the failure instead of rejecting unhandled", async () => {
+    it("keeps the user in the app and reports a retryable failure", async () => {
       const unhandled = jest.fn();
       window.addEventListener("unhandledrejection", unhandled);
       const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
 
       const logout = renderMenuWithFailingLogout(new Error("Logout failed"));
 
-      await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Sign out failed. Your session may still be active. Try again.",
+      );
       expect(logout).toHaveBeenCalled();
       expect(consoleError).toHaveBeenCalledWith("Logout failed", expect.any(Error));
       expect(unhandled).not.toHaveBeenCalled();
+      expect(mockPush).not.toHaveBeenCalledWith("/login");
 
       consoleError.mockRestore();
       window.removeEventListener("unhandledrejection", unhandled);
     });
 
-    it("still navigates when the rejection is not an Error", async () => {
+    it("handles a non-Error rejection without presenting logout as successful", async () => {
       const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
 
       renderMenuWithFailingLogout("boom");
 
-      await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(mockPush).not.toHaveBeenCalledWith("/login");
 
+      consoleError.mockRestore();
+    });
+
+    it("retries logout and navigates only after it succeeds", async () => {
+      const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+      const logout = jest
+        .fn()
+        .mockRejectedValueOnce(new Error("Network unavailable"))
+        .mockResolvedValueOnce(undefined);
+      mockUseAuth.mockReturnValue({
+        user: { email: "test@example.com", name: "Test User" },
+        requiresAuth: true,
+        isAuthenticated: true,
+        config: { mode: "builtin" },
+        isLoading: false,
+        logout,
+        logoutPending: false,
+        createOrganization: undefined,
+      });
+      render(<Sidebar />);
+      fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+      fireEvent.click(screen.getByText("Sign out"));
+
+      fireEvent.click(await screen.findByRole("button", { name: "Try sign out again" }));
+
+      await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
+      expect(logout).toHaveBeenCalledTimes(2);
       consoleError.mockRestore();
     });
   });

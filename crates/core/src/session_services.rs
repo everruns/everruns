@@ -43,6 +43,19 @@ pub trait SessionStorageStore: Send + Sync {
     /// Get a value by key
     async fn get_value(&self, session_id: SessionId, key: &str) -> Result<Option<String>>;
 
+    /// Atomically remove and return a value by key.
+    ///
+    /// Implementations that can be shared between callers must override this
+    /// operation atomically. The default preserves compatibility for stores
+    /// that are only used by a single caller.
+    async fn take_value(&self, session_id: SessionId, key: &str) -> Result<Option<String>> {
+        let value = self.get_value(session_id, key).await?;
+        if value.is_some() && !self.delete_value(session_id, key).await? {
+            return Ok(None);
+        }
+        Ok(value)
+    }
+
     /// Delete a key/value pair
     async fn delete_value(&self, session_id: SessionId, key: &str) -> Result<bool>;
 

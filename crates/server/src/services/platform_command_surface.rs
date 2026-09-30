@@ -422,6 +422,7 @@ mod tests {
             environments: true,
             public_chat: true,
             webmcp: true,
+            reports: true,
             machine_payments: true,
         }
     }
@@ -445,6 +446,7 @@ mod tests {
                 environments: true,
                 public_chat: true,
                 webmcp: true,
+                reports: true,
                 machine_payments: true,
             },
         )

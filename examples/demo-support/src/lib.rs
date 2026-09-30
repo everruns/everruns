@@ -31,7 +31,7 @@ pub async fn run(session: &Session, question: &str) -> Result<Turn, Box<dyn std:
         let terminal = event.kind.is_terminal();
         match &event.kind {
             SessionEventKind::ToolStarted { tool_name, .. } => {
-                println!("\n> {tool_name}");
+                println!("\n> {}", safe_label(tool_name));
                 let data = event.canonical_json();
                 if let Some(arguments) = data["data"]["tool_call"]["arguments"].as_object() {
                     for (key, value) in arguments {
@@ -66,7 +66,8 @@ pub async fn run(session: &Session, question: &str) -> Result<Turn, Box<dyn std:
                             .to_string()
                     });
                 println!(
-                    "\n< {tool_name}: {}",
+                    "\n< {}: {}",
+                    safe_label(tool_name),
                     if *success { "OK" } else { "FAILED" }
                 );
                 text(&preview(&result_text));
@@ -95,8 +96,15 @@ pub async fn run(session: &Session, question: &str) -> Result<Turn, Box<dyn std:
 
 /// Print a labeled block without changing indentation or code layout.
 pub fn show(label: &str, text: &str) {
-    println!("\n{label}");
+    println!("\n{}", safe_label(label));
     self::text(text);
+}
+
+fn safe_label(label: &str) -> String {
+    label
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect()
 }
 
 fn preview(body: &str) -> String {
@@ -156,7 +164,16 @@ fn text(body: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::preview;
+    use super::{preview, safe_label};
+
+    #[test]
+    fn labels_strip_terminal_control_characters() {
+        let label = "tool\r\n\x1b[2J\x1b]52;c;clipboard\x07\tname";
+        let rendered = safe_label(label);
+
+        assert_eq!(rendered, "tool[2J]52;c;clipboardname");
+        assert!(!rendered.chars().any(char::is_control));
+    }
 
     #[test]
     fn fetch_preview_displays_content_instead_of_transport_json() {
