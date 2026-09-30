@@ -819,7 +819,13 @@ mod tests {
             .execute(&ctx)
             .await
             .expect("historical App budget remains readable");
-            assert_eq!(fetched.subject_type.to_string(), subject_type);
+            // The stored string has no variant left, so the DTO renders it as
+            // the narrowest subject rather than inventing one — mislabelling a
+            // retired row as a session budget binds it more tightly than
+            // mislabelling it as an org budget (EVE-1129). Reads and listing
+            // still key off the stored string, which is what an operator needs
+            // to find the row at all.
+            assert_eq!(fetched.subject_type.to_string(), "session");
 
             let listed = ListBudgets {
                 subject_type: Some(subject_type.to_string()),
