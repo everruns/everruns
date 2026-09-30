@@ -19,6 +19,7 @@
 mod test_harness;
 
 mod ag_ui_integration_test;
+mod agent_budget_subject_test;
 mod agent_endpoints_migration_test;
 mod agent_trigger_invocation_integration_test;
 mod app_a2a_ask_user_test;

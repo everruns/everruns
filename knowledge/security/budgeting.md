@@ -77,6 +77,8 @@ A spending cap bound to a **subject** (who) in a **currency** (what unit). Multi
 
 **Subject types**: `session`, `agent_endpoint`, `app_channel`, `app`, `agent`, `user`, `org`, budgets cascade through the hierarchy from most specific (session) to most general (org). A session's effective budgets include all matching levels.
 
+**Subject identifiers**: a `subject_id` is always the identifier the API exposes for that subject, because that is the only identifier a caller can put in a budget — `session_…`, `agent_…` (`agents.public_id`), `usr_…`, `org_…`, and the endpoint's `appchan_…` public id. Internal primary keys never appear in a budget subject. The hierarchy resolver therefore has to translate the internal ids it holds — it takes `sessions.agent_id` and `sessions.endpoint_id`, both FKs to internal `id` columns, and looks up the corresponding public id before matching. Rendering a typed id directly would spell the internal uuid and match nothing, which is what made agent-scoped budgets silently never bind until EVE-1136.
+
 `agent_endpoint` budgets resolve from the session's structural endpoint reference. Slack and FCP routing tags do not determine budget identity. `app` and `app_channel` are legacy compatibility levels gated behind the experimental `app_budgets` feature flag (`FEATURE_APP_BUDGETS`, auto-enabled in `DeploymentGrade::Dev`). Sessions opt into those legacy levels via the standard tags emitted by the apps domain (`app:<app_id>`, `app_channel:<channel_id>`). The legacy `slack:app:<id>` tag is also recognised for backwards compatibility.
 
 **Currencies**: Strings (not enum), new currencies added without migrations. Built-in: `usd` (via ModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).

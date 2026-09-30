@@ -1251,14 +1251,14 @@ async fn test_check_budgets_most_restrictive_wins() {
 async fn test_list_budgets_for_session_hierarchy_resolves_user_and_org_from_session() {
     let (svc, db) = make_service();
     let user_id = Uuid::now_v7();
-    let agent_id = AgentId::new();
-    let session = create_session_with_owner(&db, 1, Some(agent_id), Some(user_id)).await;
+    let agent = super::agent_subject_tests::seed_agent(&db, "hierarchy-subject").await;
+    let session = create_session_with_owner(&db, 1, Some(agent.id), Some(user_id)).await;
     let session_public_id = session.id.to_string();
     let org_public_id = org_public_id_from_internal(session.org_id);
 
     for (subject_type, subject_id) in [
         ("session", session_public_id.clone()),
-        ("agent", agent_id.to_string()),
+        ("agent", agent.public_id.clone()),
         ("user", user_id.to_string()),
         ("org", org_public_id.clone()),
     ] {
@@ -1285,7 +1285,7 @@ async fn test_list_budgets_for_session_hierarchy_resolves_user_and_org_from_sess
         .map(|budget| (budget.subject_type.as_str(), budget.subject_id.as_str()))
         .collect();
     assert!(subjects.contains(&("session", session_public_id.as_str())));
-    assert!(subjects.contains(&("agent", agent_id.to_string().as_str())));
+    assert!(subjects.contains(&("agent", agent.public_id.as_str())));
     assert!(subjects.contains(&("user", user_id.to_string().as_str())));
     assert!(subjects.contains(&("org", org_public_id.as_str())));
 }
