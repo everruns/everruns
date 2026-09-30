@@ -743,10 +743,15 @@ mod tests {
         .expect("agent endpoint budget remains writable");
         assert_eq!(updated.limit, 20.0);
     }
+    /// `app_channel` only. Migration 151 (EVE-1129) deleted every `app` budget
+    /// row and dropped the subject type from the CHECK constraint, so there is
+    /// no historical `app` budget left to read — this covered a row that can no
+    /// longer exist. `app_channel` survives and is still live for webhook
+    /// triggers (EVE-1138), so its archival reads still need pinning.
     #[tokio::test]
-    async fn historical_app_budget_reads_remain_available() {
+    async fn historical_app_channel_budget_reads_remain_available() {
         let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app", "app_channel"] {
+        for subject_type in ["app_channel"] {
             let budget_id = seed_historical_budget(&ctx, subject_type).await;
             ctx.db
                 .create_budget_ledger_entry(CreateBudgetLedgerRow {
@@ -791,10 +796,11 @@ mod tests {
         }
     }
 
+    /// Same narrowing as the read test above: `app` rows are gone.
     #[tokio::test]
-    async fn update_budget_rejects_historical_app_subjects() {
+    async fn update_budget_rejects_historical_app_channel_subjects() {
         let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app", "app_channel"] {
+        for subject_type in ["app_channel"] {
             let budget_id = seed_historical_budget(&ctx, subject_type).await;
             let err = UpdateBudgetCmd {
                 budget_id: budget_id.to_string(),
