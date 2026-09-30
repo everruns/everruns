@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC001: Agent MCP Attachments - Add, authorize, invoke, and remove"
-description: "Verify that the Agent detail MCP tab can add, authorize, invoke, and remove preset attachments for service and user identity modes without revoking grants during removal."
+description: "Verify that the agent page MCP servers sheet can add, authorize, invoke, and remove preset attachments for service and user identity modes without revoking grants during removal."
 tags:
   - everruns
   - test-case
@@ -12,7 +12,7 @@ tags:
 
 ## Description
 
-Verify that the Agent detail MCP tab can add, authorize, invoke, and remove preset attachments for
+Verify that the agent page MCP servers sheet can add, authorize, invoke, and remove preset attachments for
 service and user identity modes without revoking grants during removal.
 
 ## Preconditions
@@ -34,15 +34,15 @@ service and user identity modes without revoking grants during removal.
 
 ## Steps
 
-1. As the admin, open the Agent detail page and select the **MCP** tab.
+1. As the admin, open the agent page and select **MCP servers** under **More** in the config column.
 2. Select **Add MCP server**, search for the preset, select it, choose **Service identity**, and add
    it.
-3. Select **Authorize**, complete OAuth with the service account, and return to the Agent MCP tab.
+3. Select **Authorize**, complete OAuth with the service account, and return to the agent MCP servers sheet.
 4. Start a session as each user and invoke one tool from the attachment.
 5. Remove the attachment and confirm the warning about new sessions and retained grants.
 6. Add the same preset again with **Service identity**.
 7. Remove it, add it with **Invoking user**, and sign in as the second user.
-8. Select **Connect**, complete OAuth with that user's account, and return to the Agent MCP tab.
+8. Select **Connect**, complete OAuth with that user's account, and return to the agent MCP servers sheet.
 9. Start a session as the second user and invoke one tool from the attachment.
 10. Remove the attachment and confirm the warning.
 
@@ -54,6 +54,6 @@ service and user identity modes without revoking grants during removal.
 - Step 5 removes the attachment but does not revoke the service grant.
 - Step 6 restores the connected state without another OAuth flow.
 - Step 7 adds one explicit Agent attachment whose **Invoking user** mode is visible.
-- Step 8 returns to the MCP tab and shows the second user's connected account.
+- Step 8 returns to the MCP servers sheet and shows the second user's connected account.
 - Step 9 succeeds through that user's account and does not use the service grant.
 - Step 10 removes the attachment but does not revoke the user's grant.

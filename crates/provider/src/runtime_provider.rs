@@ -375,10 +375,13 @@ impl RuntimeProvider {
         // The call's limits bind whoever consumes the stream, not just the
         // collected path: a caller rendering events itself is exactly the one
         // with no other way to bound a provider that stops sending.
-        Ok(crate::turn_collector::limit_stream(
-            stream,
-            limits.after(spent),
-        ))
+        let stream = crate::turn_collector::limit_stream(stream, limits.after(spent));
+        // Drivers use an empty `TextDelta` as filler for wire frames that carry
+        // nothing (usage, role, keep-alive). The limits above still see those
+        // frames; the caller never does, so every delta it gets has content.
+        Ok(Box::pin(stream.filter(|event| {
+            std::future::ready(!matches!(event, Ok(crate::driver_registry::LlmStreamEvent::TextDelta(delta)) if delta.is_empty()))
+        })))
     }
 
     pub async fn chat_completion(
@@ -562,6 +565,34 @@ impl ChatDriver for ProviderBoundDriver {
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
         self.0.driver.supports_parallel_tool_calls(model)
+    }
+
+    fn provider_managed_reduction_option(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        model: &str,
+        budget_tokens: usize,
+    ) -> Option<(String, serde_json::Value)> {
+        self.0
+            .driver
+            .provider_managed_reduction_option(self.0.endpoint(), model, budget_tokens)
+    }
+
+    fn provider_managed_reduction_fallback_reason(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        config: &crate::driver_registry::LlmCallConfig,
+    ) -> Option<&'static str> {
+        self.0
+            .driver
+            .provider_managed_reduction_fallback_reason(self.0.endpoint(), config)
+    }
+
+    fn validate_provider_opaque_context(
+        &self,
+        context: &crate::driver_registry::ProviderOpaqueContext,
+    ) -> bool {
+        self.0.driver.validate_provider_opaque_context(context)
     }
 
     async fn compact(

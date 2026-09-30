@@ -1,3 +1,4 @@
+mod anthropic_profiles;
 // Hardcoded LLM Model Profiles
 //
 // This module provides model profiles based on models.dev structure.
@@ -7,15 +8,15 @@
 // and cross-reference with official provider documentation. If a model is not
 // yet listed on models.dev, wait until the data is available before adding it.
 //
-// NOTE: Currently only includes profiles for selected models.
-// Additional model profiles can be added as needed by extending the match arms.
-//
+// The registry itself is the curated selection; there is no separate preset list.
 // Data source: https://github.com/sst/models.dev/tree/dev/providers
 // Cross-referenced with official Anthropic and OpenAI documentation
 
 mod anthropic_capabilities;
+mod enumeration;
 mod gpt6;
 mod model_id_match;
+pub use enumeration::*;
 
 use crate::types::{
     CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
@@ -388,6 +389,12 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-opus-4-8[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-6[1m]"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-sonnet-5-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(
+        &["claude-sonnet-5-5[1m]"],
+        ModelVendor::Anthropic,
+        ANTHROPIC,
+    ),
     md(&["claude-sonnet-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-6"], ModelVendor::Anthropic, ANTHROPIC),
@@ -534,6 +541,9 @@ pub fn get_model_profile(provider_type: &str, model_id: &str) -> Option<ModelPro
     // So mask the flag except on the first-party surfaces that implement it.
     if provider_type != "openai" && provider_type != "anthropic" && provider_type != "meta" {
         profile.tool_search = false;
+    }
+    if provider_type != "anthropic" {
+        profile.supports_server_compaction = false;
     }
     // Speed (service tier) is an OpenAI-platform billing feature. Azure has
     // its own capacity model and gateways (OpenRouter) do their own routing,
@@ -744,6 +754,7 @@ fn meta_profile_data(model_id: &str) -> Option<ModelProfile> {
         tool_search: true,
         supported_parameters: Vec::new(),
         supports_phases: true,
+        supports_server_compaction: false,
     })
 }
 
@@ -784,6 +795,7 @@ fn openai_embedding_profile(name: &str, family: &str, input_cost: f64) -> ModelP
         tool_search: false,
         supported_parameters: Vec::new(),
         supports_phases: false,
+        supports_server_compaction: false,
     }
 }
 
@@ -825,6 +837,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            supports_server_compaction: false,
         }),
 
         "o3" => Some(ModelProfile {
@@ -863,6 +876,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "o3-pro" => Some(ModelProfile {
@@ -901,6 +915,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "o4-mini" => Some(ModelProfile {
@@ -939,6 +954,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // GPT-4.1 family models
@@ -978,6 +994,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-4.1-mini" => Some(ModelProfile {
@@ -1016,6 +1033,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-4.1-nano" => Some(ModelProfile {
@@ -1054,6 +1072,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // GPT-5 family models
@@ -1094,6 +1113,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-5-mini" => Some(ModelProfile {
@@ -1132,6 +1152,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-5-nano" => Some(ModelProfile {
@@ -1170,6 +1191,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-5-pro" => Some(ModelProfile {
@@ -1208,6 +1230,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-5-codex" => Some(ModelProfile {
@@ -1246,6 +1269,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // GPT-5.1 models: default none, supports none/low/medium/high
@@ -1285,6 +1309,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.1-codex" => Some(ModelProfile {
@@ -1323,6 +1348,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.1-codex-mini" => Some(ModelProfile {
@@ -1361,6 +1387,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // GPT-5.1-codex-max and after: supports xhigh
@@ -1400,6 +1427,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // GPT-5.2 models: supports xhigh, 400K context
@@ -1439,6 +1467,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.2-pro" => Some(ModelProfile {
@@ -1477,6 +1506,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.2-codex" => Some(ModelProfile {
@@ -1515,6 +1545,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // GPT-5.3 Codex: same pricing as 5.2, 25% faster inference
@@ -1554,6 +1585,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // GPT-5.6 series: current flagship family, publicly released 2026-07-09.
@@ -1608,6 +1640,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.6-terra" => Some(ModelProfile {
@@ -1652,6 +1685,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.6-luna" => Some(ModelProfile {
@@ -1696,6 +1730,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            supports_server_compaction: false,
         }),
 
         // GPT-5.5 family: flagship reasoning models. Released 2026-04-23.
@@ -1739,6 +1774,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.5-pro" => Some(ModelProfile {
@@ -1777,6 +1813,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            supports_server_compaction: false,
         }),
 
         // GPT-5.4 family: reasoning models with 1.05M context, tool_search, native phases.
@@ -1824,6 +1861,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.4-mini" => Some(ModelProfile {
@@ -1862,6 +1900,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.4-nano" => Some(ModelProfile {
@@ -1900,6 +1939,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.4-pro" => Some(ModelProfile {
@@ -1944,6 +1984,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
+            supports_server_compaction: false,
         }),
 
         // GPT-5 chat-latest models (point to latest chat-optimized versions)
@@ -1983,6 +2024,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.1-chat-latest" => Some(ModelProfile {
@@ -2021,6 +2063,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gpt-5.2-chat-latest" => Some(ModelProfile {
@@ -2059,6 +2102,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // Deep research models
@@ -2098,6 +2142,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "o4-mini-deep-research" => Some(ModelProfile {
@@ -2136,6 +2181,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         _ => None,
@@ -2194,6 +2240,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // Alibaba Qwen3.7 Max — flagship Qwen model.
@@ -2234,6 +2281,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // Microsoft MAI-1-preview — Microsoft's first end-to-end in-house
@@ -2267,6 +2315,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // Microsoft MAI-Code-1-Flash — Microsoft's in-house, latency-optimized
@@ -2302,6 +2351,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // MiniMax-M3 — flagship MiniMax model. Source: models.dev (minimax
@@ -2342,6 +2392,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // Moonshot Kimi K2 Thinking — flagship Kimi reasoning model.
@@ -2382,6 +2433,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // Moonshot Kimi K3 — flagship multimodal Kimi model with a 1M-token
@@ -2426,6 +2478,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // xAI Grok 4.3 — flagship Grok model. Source: models.dev (xai provider).
@@ -2472,6 +2525,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         _ => None,
@@ -2496,632 +2550,13 @@ fn anthropic_1m_variant(mut profile: ModelProfile) -> ModelProfile {
     profile
 }
 
-/// Whether a Claude model `family` supports Anthropic's hosted tool_search
-/// (the `tool_search_tool_*_20251119` server tools). Per docs.claude.com, this
-/// is Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, and Fable 5.x — the 3.x families do not
-/// support it. Centralized here (rather than per-literal) because the rule is a
-/// clean family cutoff; contrast the OpenAI profiles, which set `tool_search`
-/// per model literal.
-///
-/// Only families with a corresponding profile in `anthropic_profile_data_inner`
-/// belong here — Anthropic docs also list Mythos 5, but this registry has no
-/// `claude-mythos-5` descriptor, so including it would be a dead branch. Add the
-/// family here when (and if) its profile lands.
-fn anthropic_family_supports_tool_search(family: &str) -> bool {
-    matches!(
-        family,
-        "claude-fable-5-1"
-            | "claude-fable-5"
-            | "claude-opus-5-5"
-            | "claude-opus-5"
-            | "claude-opus-4-8"
-            | "claude-opus-4-7"
-            | "claude-opus-4-6"
-            | "claude-opus-4-5"
-            | "claude-opus-4"
-            | "claude-sonnet-5"
-            | "claude-sonnet-4-6"
-            | "claude-sonnet-4-5"
-            | "claude-haiku-4-5"
-    )
-}
-
 fn anthropic_profile_data(model_id: &str) -> Option<ModelProfile> {
     // Assign family capabilities centrally; match arms hold model-specific data.
-    anthropic_profile_data_inner(model_id).map(|mut profile| {
-        profile.tool_search = anthropic_family_supports_tool_search(&profile.family);
+    anthropic_profiles::anthropic_profile_data_inner(model_id).map(|mut profile| {
+        profile.tool_search = anthropic_capabilities::supports_tool_search(&profile.family);
         anthropic_capabilities::apply(&mut profile);
         profile
     })
-}
-
-fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
-    match model_id {
-        // Claude Fable 5.1 (newest — top tier above Opus; successor to Fable 5)
-        // Source: Anthropic model card (claude-api skill `shared/models.md`) and
-        // docs.claude.com — Fable 5.1 is not yet in models.dev. Same tier, limits
-        // and per-token price as Fable 5 ($10/$50); cache reads drop to $0.25/MTok
-        // (a quarter of Fable 5's $1.00). Same request surface as Fable 5:
-        // adaptive thinking only (an explicit `thinking: {type: "disabled"}`
-        // returns 400, so the param is omitted when no effort is set), sampling
-        // parameters removed (`temperature: false`). Fable 5.1 additionally
-        // rejects forced tool use (`tool_choice` `any`/`tool` return 400); the
-        // Anthropic driver only ever sends `auto`, so no driver change is needed.
-        // Release/knowledge dates are not published in the model card; the
-        // Models API exposes them at runtime.
-        "claude-fable-5-1" => Some(ModelProfile {
-            name: "Claude Fable 5.1".into(),
-            family: "claude-fable-5-1".into(),
-            description: None,
-            release_date: None,
-            last_updated: None,
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: None,
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 10.00,
-                output: 50.00,
-                cache_read: Some(0.25),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                // Bare id is the 200K profile; `claude-fable-5-1[1m]` is the 1M twin.
-                context: 200_000,
-                input: None,
-                output: 128_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        // Claude Fable 5 (previous Fable release; still served, below Fable 5.1)
-        // Source: Anthropic model card (claude-api skill `shared/models.md`) and
-        // docs.claude.com — Fable 5 is not yet in models.dev. Same API surface as
-        // Opus 4.8: adaptive thinking only, sampling parameters removed (temperature
-        // returns 400, hence `temperature: false`). One extra restriction vs Opus
-        // 4.8: an explicit `thinking: {type: "disabled"}` also returns 400 — the
-        // param must be omitted entirely (our driver already omits it when no
-        // reasoning effort is set). Release/knowledge dates are not published in
-        // the model card; the Models API exposes them at runtime.
-        "claude-fable-5" => Some(ModelProfile {
-            name: "Claude Fable 5".into(),
-            family: "claude-fable-5".into(),
-            description: None,
-            release_date: None,
-            last_updated: None,
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: None,
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 10.00,
-                output: 50.00,
-                cache_read: Some(1.00),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                // Bare id is the 200K profile; `claude-fable-5[1m]` is the 1M twin.
-                context: 200_000,
-                input: None,
-                output: 128_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        // Claude Opus 5.5 (current Opus; successor to Opus 5 at a lower price)
-        // Source: Anthropic model card (claude-api skill). Same 200K/1M-twin context,
-        // 128K output, and tokenizer as Opus 5 at $4/$20 (cache-read $0.20).
-        // Thinking cannot be disabled (adaptive only; omitting `thinking` still
-        // runs adaptive), sampling parameters are removed (`temperature: false`),
-        // and forced `tool_choice` any/tool returns 400 — the driver only sends
-        // `auto`. The API's default effort is `medium`, one below Opus 5's `high`;
-        // the driver sends this profile's `high` when the caller picks no effort.
-        "claude-opus-5-5" => Some(ModelProfile {
-            name: "Claude Opus 5.5".into(),
-            family: "claude-opus-5-5".into(),
-            description: None,
-            release_date: None,
-            last_updated: None,
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: None,
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 4.00,
-                output: 20.00,
-                cache_read: Some(0.20),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                // Bare id is the 200K profile; `claude-opus-5-5[1m]` is the 1M twin.
-                context: 200_000,
-                input: None,
-                output: 128_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        // Claude Opus 5 (previous Opus; below Opus 5.5, above Opus 4.8)
-        // Source: Anthropic model card (claude-api skill `shared/models.md`) and
-        // docs.claude.com — Opus 5 is not yet in models.dev. A drop-in upgrade at
-        // Opus 4.8's pricing ($5/$25, cache-read $0.50) with the same 200K/1M-twin
-        // context and 128K output. Adaptive thinking is on by default and sampling
-        // parameters are removed (temperature returns 400, hence `temperature:
-        // false`), matching the Opus 4.8/4.7 surface. Release/knowledge dates are
-        // not published in the model card; the Models API exposes them at runtime.
-        "claude-opus-5" => Some(ModelProfile {
-            name: "Claude Opus 5".into(),
-            family: "claude-opus-5".into(),
-            description: None,
-            release_date: None,
-            last_updated: None,
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: None,
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 5.00,
-                output: 25.00,
-                cache_read: Some(0.50),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                // Bare id is the 200K profile; `claude-opus-5[1m]` is the 1M twin.
-                context: 200_000,
-                input: None,
-                output: 128_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        // Claude 4.8 series
-        // Source: Anthropic model card (claude-api skill `shared/models.md`) and
-        // docs.claude.com — Opus 4.8 is not yet in models.dev. Same API surface as
-        // Opus 4.7: adaptive thinking only, sampling parameters removed (temperature
-        // returns 400, hence `temperature: false`). Release/knowledge dates are not
-        // published in the model card; the Models API exposes them at runtime.
-        "claude-opus-4-8" => Some(ModelProfile {
-            name: "Claude Opus 4.8".into(),
-            family: "claude-opus-4-8".into(),
-            description: None,
-            release_date: None,
-            last_updated: None,
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: None,
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 5.00,
-                output: 25.00,
-                cache_read: Some(0.50),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                // Bare id is the 200K profile; `claude-opus-4-8[1m]` is the 1M twin.
-                context: 200_000,
-                input: None,
-                output: 128_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        // Claude 4.7 series
-        // Sampling parameters were removed starting with Opus 4.7: the API
-        // rejects `temperature` with "`temperature` is deprecated for this
-        // model" (verified live), hence `temperature: false`.
-        "claude-opus-4-7" => Some(ModelProfile {
-            name: "Claude Opus 4.7".into(),
-            family: "claude-opus-4-7".into(),
-            description: None,
-            release_date: Some("2026-04-16".into()),
-            last_updated: Some("2026-04-16".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: Some("2026-01-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 5.00,
-                output: 25.00,
-                cache_read: Some(0.50),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                // Bare id is the 200K profile; `claude-opus-4-7[1m]` is the 1M twin.
-                context: 200_000,
-                input: None,
-                output: 128_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        // Claude 4.6 series
-        "claude-opus-4-6" => Some(ModelProfile {
-            name: "Claude Opus 4.6".into(),
-            family: "claude-opus-4-6".into(),
-            description: None,
-            release_date: Some("2026-02-05".into()),
-            last_updated: Some("2026-02-05".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: true,
-            knowledge: Some("2025-05-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 5.00,
-                output: 25.00,
-                cache_read: Some(0.50),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                // Bare id is the 200K profile; `claude-opus-4-6[1m]` is the 1M twin.
-                context: 200_000,
-                input: None,
-                output: 128_000,
-                max_media: Some(600),
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        // 1M-context twins of the base profiles above. Same pricing and
-        // capabilities; only the context limit and display name differ.
-        "claude-fable-5-1[1m]" => {
-            anthropic_profile_data("claude-fable-5-1").map(anthropic_1m_variant)
-        }
-        "claude-fable-5[1m]" => anthropic_profile_data("claude-fable-5").map(anthropic_1m_variant),
-        "claude-opus-5-5[1m]" => {
-            anthropic_profile_data("claude-opus-5-5").map(anthropic_1m_variant)
-        }
-        "claude-opus-5[1m]" => anthropic_profile_data("claude-opus-5").map(anthropic_1m_variant),
-        "claude-opus-4-8[1m]" => {
-            anthropic_profile_data("claude-opus-4-8").map(anthropic_1m_variant)
-        }
-        "claude-opus-4-7[1m]" => {
-            anthropic_profile_data("claude-opus-4-7").map(anthropic_1m_variant)
-        }
-        "claude-opus-4-6[1m]" => {
-            anthropic_profile_data("claude-opus-4-6").map(anthropic_1m_variant)
-        }
-        "claude-sonnet-5[1m]" => {
-            anthropic_profile_data("claude-sonnet-5").map(anthropic_1m_variant)
-        }
-
-        // Claude Sonnet 5
-        // Source: Anthropic model card and docs.claude.com — Sonnet 5 is not yet
-        // in models.dev. Same API surface as Opus 4.8: adaptive thinking only
-        // (budget-based thinking returns 400) and non-default sampling parameters
-        // rejected, hence `temperature: false`. Pricing is the $3/$15 sticker; the
-        // introductory $2/$10 through 2026-08-31 is deliberately not encoded so
-        // the profile stays correct after it lapses. Release/knowledge dates are
-        // not published in the model card; the Models API exposes them at runtime.
-        "claude-sonnet-5" => Some(ModelProfile {
-            name: "Claude Sonnet 5".into(),
-            family: "claude-sonnet-5".into(),
-            description: None,
-            release_date: None,
-            last_updated: None,
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: None,
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 3.00,
-                output: 15.00,
-                cache_read: Some(0.30),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                // Bare id is the 200K profile; `claude-sonnet-5[1m]` is the 1M twin.
-                context: 200_000,
-                input: None,
-                output: 128_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        "claude-sonnet-4-6" => Some(ModelProfile {
-            name: "Claude Sonnet 4.6".into(),
-            family: "claude-sonnet-4-6".into(),
-            description: None,
-            release_date: Some("2026-02-17".into()),
-            last_updated: Some("2026-02-17".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: true,
-            knowledge: Some("2025-08-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 3.00,
-                output: 15.00,
-                cache_read: Some(0.30),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 64_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        // Claude 4.5 series
-        "claude-opus-4-5" => Some(ModelProfile {
-            name: "Claude Opus 4.5".into(),
-            family: "claude-opus-4-5".into(),
-            description: None,
-            release_date: Some("2025-11-24".into()),
-            last_updated: Some("2025-11-24".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: true,
-            knowledge: Some("2025-04-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 5.00,
-                output: 25.00,
-                cache_read: Some(0.50),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 64_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        "claude-sonnet-4-5" => Some(ModelProfile {
-            name: "Claude Sonnet 4.5".into(),
-            family: "claude-sonnet-4-5".into(),
-            description: None,
-            release_date: Some("2025-09-29".into()),
-            last_updated: Some("2025-09-29".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: true,
-            knowledge: Some("2025-04-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 3.00,
-                output: 15.00,
-                cache_read: Some(0.30),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 64_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        "claude-haiku-4-5" => Some(ModelProfile {
-            name: "Claude Haiku 4.5".into(),
-            family: "claude-haiku-4-5".into(),
-            description: None,
-            release_date: Some("2025-10-15".into()),
-            last_updated: Some("2025-10-15".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: true,
-            knowledge: Some("2025-04-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 1.00,
-                output: 5.00,
-                cache_read: Some(0.10),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 16_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        // Claude 4 series
-        "claude-opus-4" => Some(ModelProfile {
-            name: "Claude Opus 4".into(),
-            family: "claude-opus-4".into(),
-            description: None,
-            release_date: Some("2025-05-14".into()),
-            last_updated: Some("2025-05-14".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: true,
-            knowledge: Some("2025-03-01".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(ModelCost {
-                input: 15.00,
-                output: 75.00,
-                cache_read: Some(1.50),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 200_000,
-                input: None,
-                output: 32_000,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-        }),
-
-        _ => None,
-    }
 }
 
 fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
@@ -3179,6 +2614,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // Gemini 3.5 Flash — current-gen Flash. Source: models.dev (google
@@ -3227,6 +2663,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         // Gemini 3.1 Flash Lite — low-latency, high-volume tier. Source:
@@ -3274,6 +2711,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gemini-2.5-pro" => Some(ModelProfile {
@@ -3317,6 +2755,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gemini-2.5-flash" => Some(ModelProfile {
@@ -3360,6 +2799,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         "gemini-2.0-flash" => Some(ModelProfile {
@@ -3403,6 +2843,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
 
         _ => None,
@@ -3449,6 +2890,7 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
+            supports_server_compaction: false,
         }),
         _ => None,
     }
@@ -3484,6 +2926,8 @@ mod tests {
             ),
             ("anthropic", "claude-sonnet-5", "claude-sonnet-5"),
             ("anthropic", "claude-sonnet-5-latest", "claude-sonnet-5"),
+            ("anthropic", "claude-sonnet-5-5", "claude-sonnet-5-5"),
+            ("anthropic", "claude-sonnet-5-5-latest", "claude-sonnet-5-5"),
             ("gemini", "gemini-2.0-flash", "gemini-2.0-flash"),
             (
                 "gemini",
@@ -4453,6 +3897,7 @@ mod tests {
             "claude-opus-4-6",
             "claude-opus-4-5",
             "claude-opus-4",
+            "claude-sonnet-5-5",
             "claude-sonnet-4-6",
             "claude-sonnet-4-5",
             "claude-haiku-4-5",

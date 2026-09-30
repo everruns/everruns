@@ -9,6 +9,7 @@
 //   high SSE concurrency (50+ streams over single HTTP/2 connection). We set
 //   2MB stream windows, 16MB connection windows, and enable adaptive flow control.
 
+use crate::api::sse::{SseConnectionLimits, SseConnectionTracker};
 use crate::auth::{self, AuthBackend};
 use crate::direct_worker_adapters::DirectWorkerAdapters;
 use crate::event_delivery::EventDelivery;
@@ -344,11 +345,7 @@ impl ServerAppBuilder {
         self
     }
 
-    /// Supply the Slack app provisioner that backs one-click install (EVE-1069).
-    ///
-    /// The app configuration token it needs is a company credential, not
-    /// something a self-hosted deployment holds; unset, the install route
-    /// answers 501 and the copy-paste flow is unchanged.
+    /// Supply a deployment-owned Slack app provisioner.
     pub fn slack_app_provisioner(
         mut self,
         provisioner: Arc<dyn everruns_platform::slack_provisioning::SlackAppProvisioner>,
@@ -534,6 +531,12 @@ impl ServerAppBuilder {
                 None
             }
         };
+        let slack_provisioning = crate::slack_provisioning::configure(
+            &mut supervisor,
+            db.clone(),
+            encryption.clone(),
+            self.slack_app_provisioner.clone(),
+        )?;
 
         // Seed must run after encryption is resolved: single-tenant/dev seeding
         // materializes DEFAULT_*_API_KEY env vars into the default org's
@@ -802,9 +805,7 @@ impl ServerAppBuilder {
             event_listeners,
         ));
 
-        let sse_tracker = Arc::new(crate::api::sse::SseConnectionTracker::new(
-            crate::api::sse::SseConnectionLimits::from_env(),
-        ));
+        let sse_tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits::from_env()));
         let core_deps = CoreDeps::new(
             db.clone(),
             runner.clone(),
@@ -901,6 +902,7 @@ impl ServerAppBuilder {
             core_deps.auth.clone(),
             notifications_enabled,
             core_deps.event_delivery.clone(),
+            sse_tracker.clone(),
         );
         let tool_results_state = api::tool_results::AppState::new(
             core_deps.db.clone(),
@@ -1578,14 +1580,12 @@ impl ServerAppBuilder {
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))
             .merge(api::slack_events::routes(slack_state.clone()))
-            // One-click Slack install (EVE-1069); without a provisioner the
-            // route answers 501 and the copy-paste flow is unchanged.
             .merge(api::slack_install::routes(
                 api::slack_install::SlackInstallState::new(
                     slack_state,
                     auth_state.clone(),
                     auth_config.frontend_url.clone(),
-                    self.slack_app_provisioner.clone(),
+                    slack_provisioning,
                 ),
             ))
             .merge(api::app_webhooks::routes(app_webhooks_state))

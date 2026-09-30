@@ -524,10 +524,19 @@ pub(crate) fn validate_provider_base_url(
     base_url: Option<&str>,
 ) -> Result<()> {
     let parsed = match base_url {
-        Some(url) => Some(
-            validate_safe_url(url)
-                .map_err(|e| BadRequestError::new(format!("Invalid base URL: {e}")))?,
-        ),
+        Some(url) => {
+            let parsed = validate_safe_url(url)
+                .map_err(|e| BadRequestError::new(format!("Invalid base URL: {e}")))?;
+            // THREAT[TM-LLM-036]: Provider requests carry credentials, so a
+            // public HTTP URL is unsafe even when it passes SSRF validation.
+            if parsed.scheme() != "https" {
+                return Err(BadRequestError::new(
+                    "Invalid base URL: provider base URLs must use HTTPS",
+                )
+                .into());
+            }
+            Some(parsed)
+        }
         None => None,
     };
 
@@ -867,6 +876,13 @@ mod tests {
         assert!(validate_safe_url("https://api.openai.com/v1").is_ok());
         assert!(validate_safe_url("https://api.anthropic.com/v1").is_ok());
         assert!(validate_safe_url("https://resource.openai.azure.com/openai/v1").is_ok());
+    }
+
+    #[test]
+    fn provider_base_url_rejects_public_http() {
+        let err = validate_provider_base_url(DriverId::OpenAI, Some("http://api.openai.com/v1"))
+            .unwrap_err();
+        assert!(err.to_string().contains("must use HTTPS"));
     }
 
     #[test]

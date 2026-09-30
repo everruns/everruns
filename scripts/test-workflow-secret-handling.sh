@@ -31,6 +31,13 @@ WRITE = re.compile(r">>\s*\"?\$\{?(GITHUB_ENV|GITHUB_OUTPUT)\}?\"?")
 ASSIGN = re.compile(r"(\$\{\{[^}]*\}\}|[A-Za-z_][A-Za-z0-9_]*)=")
 # Ways a credential enters a run block at runtime, invisible to the log masker.
 RUNTIME_SECRET = re.compile(r"doppler\s+secrets\s+(get|download)|\$\{\{\s*secrets\.")
+# A deliberately narrow match for an executable mask command. Keeping this
+# anchored prevents comments or unrelated shell fragments from granting an
+# exemption to later writes.
+ADD_MASK = re.compile(
+    r'^\s*(?:echo|printf\s+[^ ]+)\s+["\']?::add-mask::\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?'
+)
+VALUE_VAR = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
 
 CREDENTIAL_WORDS = {
     "KEY", "KEYS", "APIKEY", "TOKEN", "TOKENS", "SECRET", "SECRETS",
@@ -81,11 +88,13 @@ def scan(path, text):
     """Report every unmasked credential write to a log-visible surface."""
     errors = []
     for body in run_blocks(text.splitlines()):
-        masked = any("::add-mask::" in line for _, line in body)
-        if masked:
-            continue
+        masked_vars = set()
         for number, line in body:
             if line.lstrip().startswith("#"):
+                continue
+            mask = ADD_MASK.match(line)
+            if mask:
+                masked_vars.add(mask.group(1))
                 continue
             write = WRITE.search(line)
             if not write:
@@ -99,7 +108,11 @@ def scan(path, text):
                 reason = "writes an expression-named value to"
             elif any(credential_like(name) for name in names):
                 reason = "writes a credential-named value to"
-            if reason:
+            value_vars = VALUE_VAR.findall(line[line.find("=") + 1 : write.start()])
+            value_is_masked = bool(value_vars) and all(
+                name in masked_vars for name in value_vars
+            )
+            if reason and not value_is_masked:
                 errors.append(
                     f"{path}:{number}: {reason} {surface}, "
                     f"where the runner prints it unmasked -- "
@@ -143,6 +156,34 @@ FIXTURES = [
           echo "::add-mask::$KEY"
           echo "TYPESAFE_API_KEY=$KEY" >> "$GITHUB_ENV"
 """, False),
+    ("comment-does-not-mask", """
+    steps:
+      - run: |
+          KEY="$(doppler secrets get TYPESAFE_API_KEY --plain)"
+          # use ::add-mask:: when needed
+          echo "TYPESAFE_API_KEY=$KEY" >> "$GITHUB_ENV"
+""", True),
+    ("unrelated-mask-does-not-mask", """
+    steps:
+      - run: |
+          KEY="$(doppler secrets get TYPESAFE_API_KEY --plain)"
+          echo "::add-mask::not-the-secret"
+          echo "TYPESAFE_API_KEY=$KEY" >> "$GITHUB_ENV"
+""", True),
+    ("different-variable-does-not-mask", """
+    steps:
+      - run: |
+          KEY="$(doppler secrets get TYPESAFE_API_KEY --plain)"
+          echo "::add-mask::$OTHER"
+          echo "TYPESAFE_API_KEY=$KEY" >> "$GITHUB_ENV"
+""", True),
+    ("mask-after-write-is-too-late", """
+    steps:
+      - run: |
+          KEY="$(doppler secrets get TYPESAFE_API_KEY --plain)"
+          echo "TYPESAFE_API_KEY=$KEY" >> "$GITHUB_ENV"
+          echo "::add-mask::$KEY"
+""", True),
     ("doppler-run-scoped-to-one-command", """
     steps:
       - run: doppler run -- cargo test -p everruns-integrations-brave-search --features integration

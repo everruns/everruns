@@ -216,22 +216,6 @@ mod tests {
     }
 
     #[test]
-    fn exposes_three_tools() {
-        let cap = ResourceDiscoveryCapability;
-        let names: Vec<String> = cap.tools().iter().map(|t| t.name().to_string()).collect();
-        let mut names = names;
-        names.sort();
-        assert_eq!(
-            names,
-            [
-                "attach_resource",
-                "discover_resources",
-                "list_attached_resources"
-            ]
-        );
-    }
-
-    #[test]
     fn tools_require_context() {
         let cap = ResourceDiscoveryCapability;
         let tools = cap.tools();

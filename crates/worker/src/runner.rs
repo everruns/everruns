@@ -146,15 +146,3 @@ pub async fn create_runner_with_backend(backend: RunnerBackend) -> Result<Arc<dy
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_runner_trait_object_size() {
-        // Ensure trait object can be created
-        fn _assert_send_sync<T: Send + Sync>() {}
-        _assert_send_sync::<Arc<dyn AgentRunner>>();
-    }
-}

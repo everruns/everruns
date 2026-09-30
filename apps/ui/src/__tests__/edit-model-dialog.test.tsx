@@ -71,7 +71,7 @@ const model: ModelWithProvider = {
 
 describe("EditModelDialog", () => {
   it("submits provider changes with the model update", async () => {
-    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    const onSubmit = jest.fn().mockResolvedValue(true);
 
     render(
       <EditModelDialog
@@ -97,5 +97,30 @@ describe("EditModelDialog", () => {
         enabled: true,
       });
     });
+  });
+
+  it("stays open with the edited values when submission fails", async () => {
+    const onSubmit = jest.fn().mockResolvedValue(false);
+    const onOpenChange = jest.fn();
+
+    render(
+      <EditModelDialog
+        model={model}
+        providers={providers}
+        open
+        onOpenChange={onOpenChange}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Display Name"), {
+      target: { value: "Unsaved model name" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Display Name")).toHaveValue("Unsaved model name");
+    expect(screen.getByRole("button", { name: "Save Changes" })).toBeEnabled();
   });
 });

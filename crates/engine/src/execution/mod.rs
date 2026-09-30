@@ -3,6 +3,7 @@
 mod act;
 mod act_hooks;
 mod input;
+mod provider_checkpoint;
 mod reason;
 mod tool_scheduler;
 pub use tool_scheduler::configured_max_tool_concurrency;
