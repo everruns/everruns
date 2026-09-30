@@ -641,21 +641,20 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 4: Event listeners & domain/infra helpers
         // =====================================================================
-        let otel_listener: Arc<dyn EventListener> = Arc::new(OtelEventListener::new());
-        let usage_listener: Arc<dyn EventListener> =
-            Arc::new(services::UsageTrackingListener::new(db.clone()));
         let budget_service = Arc::new(crate::domains::budgets::BudgetService::new(db.clone()));
-        let budget_listener: Arc<dyn EventListener> = budget_service.clone();
         // Approvals are org-level accountability, not session trivia: a granted
         // approval outlives the session it was spoken in and has to be
         // answerable to by actor. See knowledge/execution/soft-approval.md.
         let approval_audit_listener: Arc<dyn EventListener> =
             Arc::new(services::ApprovalAuditListener::new(db.clone()));
+        let mcp_events =
+            services::McpEventsService::shared(&db, &encryption, &host_composition, &auth_state);
         let mut event_listeners: Vec<Arc<dyn EventListener>> = vec![
-            otel_listener,
-            usage_listener,
-            budget_listener,
+            Arc::new(OtelEventListener::new()),
+            Arc::new(services::UsageTrackingListener::new(db.clone())),
+            budget_service.clone(),
             approval_audit_listener,
+            mcp_events.listener(),
         ];
         // Run summaries (EVE-867). Registered only when a utility LLM is
         // configured, so the OSS default adds no listener at all rather than one
@@ -1448,7 +1447,8 @@ impl ServerAppBuilder {
         .with_mcp_resource(mcp_resource)
         // URL mode elicitation pages hang off the same root `/mcp` is served
         // under, so a client that can reach the endpoint can reach the page.
-        .with_elicitation_base_url(mcp_root_url.clone());
+        .with_elicitation_base_url(mcp_root_url.clone())
+        .with_mcp_events(mcp_events);
         let mcp_endpoint_state = if let Some(service) = &session_sandbox_service {
             mcp_endpoint_state.with_session_sandbox_service(service.clone())
         } else {

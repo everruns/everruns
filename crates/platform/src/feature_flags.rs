@@ -68,6 +68,10 @@ pub struct FeatureFlags {
     /// Experimental remote-control surface; requires deployment enablement and
     /// per-org opt-in. See `knowledge/ui/webmcp.md`.
     pub webmcp: bool,
+    /// Outbound MCP Events: `/mcp` clients subscribe to session completion,
+    /// failure and input-required webhooks. Experimental and org-opt-in,
+    /// because the spec is a draft. See `knowledge/integrations/mcp-events.md`.
+    pub mcp_events: bool,
     /// Reports: the usage and cost reporting page, its sidebar entry, and
     /// saved-report search results in the UI. Experimental and org-opt-in, so
     /// it is off for every organization until an admin turns it on. The
@@ -287,6 +291,14 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         platform_managed: false,
     },
     FeatureFlagDefinition {
+        name: "mcp_events",
+        label: "MCP Events",
+        description: "Lets MCP clients such as ChatGPT subscribe to webhooks when a session \
+             completes, fails, or needs your input.",
+        experimental: true,
+        platform_managed: false,
+    },
+    FeatureFlagDefinition {
         name: "reports",
         label: "Reports",
         description: "Shows the Reports page for exploring usage and cost across sessions, agents, \
@@ -338,6 +350,7 @@ impl FeatureFlags {
             platform_chat_v2: opt_in("platform_chat_v2", system.platform_chat_v2),
             public_chat: opt_in("public_chat", system.public_chat),
             webmcp: opt_in("webmcp", system.webmcp),
+            mcp_events: opt_in("mcp_events", system.mcp_events),
             reports: opt_in("reports", system.reports),
             environments: opt_in("environments", system.environments),
             machine_payments: system.machine_payments,
@@ -362,6 +375,7 @@ impl FeatureFlags {
             platform_chat_v2: experimental_flag("FEATURE_PLATFORM_CHAT_V2", grade),
             public_chat: experimental_flag("FEATURE_PUBLIC_CHAT", grade),
             webmcp: experimental_flag("FEATURE_WEBMCP", grade),
+            mcp_events: experimental_flag("FEATURE_MCP_EVENTS", grade),
             reports: experimental_flag("FEATURE_REPORTS", grade),
             // Environments describe the sandbox surface, so a deployment that
             // has already turned sandboxes on gets them without a second
@@ -404,6 +418,7 @@ impl FeatureFlags {
             ("environments".to_string(), self.environments),
             ("public_chat".to_string(), self.public_chat),
             ("webmcp".to_string(), self.webmcp),
+            ("mcp_events".to_string(), self.mcp_events),
             ("reports".to_string(), self.reports),
             ("platform_chat_v2".to_string(), self.platform_chat_v2),
             ("machine_payments".to_string(), self.machine_payments),
@@ -429,6 +444,7 @@ impl FeatureFlags {
             "environments" => self.environments,
             "public_chat" => self.public_chat,
             "webmcp" => self.webmcp,
+            "mcp_events" => self.mcp_events,
             "reports" => self.reports,
             "machine_payments" => self.machine_payments,
             "openai_agents_api" => self.openai_agents_api,
@@ -473,6 +489,7 @@ impl FeatureFlags {
             environments: true,
             public_chat: true,
             webmcp: true,
+            mcp_events: true,
             reports: true,
             machine_payments: true,
             openai_agents_api: true,
@@ -615,6 +632,7 @@ mod tests {
             environments: true,
             public_chat: true,
             webmcp: true,
+            mcp_events: true,
             reports: true,
             machine_payments: true,
             openai_agents_api: true,
@@ -691,6 +709,7 @@ mod tests {
             environments: true,
             public_chat: true,
             webmcp: true,
+            mcp_events: true,
             reports: true,
             machine_payments: true,
             openai_agents_api: true,

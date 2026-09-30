@@ -129,6 +129,7 @@ impl StorageBackend {
 mod harnesses_sessions;
 mod identity;
 mod knowledge;
+mod mcp_event_subscriptions;
 mod models_files;
 mod observers_billing;
 mod orgs_images;

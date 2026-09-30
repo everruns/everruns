@@ -381,6 +381,12 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "refresh_token_encrypted",
         id_column: "id",
     },
+    // The MCP Events client's webhook signing secret.
+    EncryptedColumn {
+        table: "mcp_event_subscriptions",
+        column: "secret_encrypted",
+        id_column: "id",
+    },
     // Pending native calls contain private arguments and tool results.
     EncryptedColumn {
         table: "native_async_checkpoints",
