@@ -141,6 +141,10 @@ impl ToolCallStream {
             return;
         };
         for item in output {
+            if let Some((id, arguments)) = super::hosted_tools::mcp_approval_call(item) {
+                self.observe_approval(&id, &arguments);
+                continue;
+            }
             if item.get("type").and_then(|t| t.as_str()) != Some("function_call") {
                 continue;
             }
@@ -156,6 +160,13 @@ impl ToolCallStream {
             );
             self.mark_complete(field("id"), field("call_id"));
         }
+    }
+
+    /// Fold in a remote MCP approval request as a finished synthetic call.
+    pub(crate) fn observe_approval(&mut self, id: &str, arguments: &str) {
+        let name = crate::openai_hosted_tools::OPENAI_MCP_APPROVAL_TOOL;
+        self.observe_item(id, id, name, arguments);
+        self.mark_complete(id, id);
     }
 
     pub(crate) fn mark_complete(&mut self, id: &str, call_id: &str) {

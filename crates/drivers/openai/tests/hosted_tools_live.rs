@@ -17,8 +17,10 @@ use everruns_provider::driver_registry::{
 };
 use everruns_provider::model::ReasoningEffort;
 use everruns_provider::openai_hosted_tools::{
-    ContainerTool, FileSearchTool, OpenAiHostedTools, SearchContextSize, WebSearchTool,
+    ContainerTool, FileSearchTool, McpServerTool, OPENAI_MCP_APPROVAL_TOOL, OpenAiHostedTools,
+    SearchContextSize, WebSearchTool,
 };
+use everruns_provider::tool_types::ToolCall;
 use futures::StreamExt;
 
 const LIVE_MODEL: &str = "gpt-5.6-luna";
@@ -117,4 +119,91 @@ async fn openai_runs_hosted_file_search() {
     };
     let prompt = "Search the files: what does the document say? Answer in one line.";
     assert_hosted_call(tools, prompt, "file_search", "file_search_call").await;
+}
+
+/// Stream one request and return its text, tool calls, finish reason and
+/// response id.
+async fn run(
+    config: &LlmCallConfig,
+    messages: Vec<Message>,
+) -> (String, Vec<ToolCall>, String, Option<String>) {
+    let api_key =
+        std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for the live test");
+    let mut stream = provider("openai", api_key)
+        .chat_completion_stream(messages, config)
+        .await
+        .expect("OpenAI should accept the request");
+    let (mut text, mut calls, mut finish, mut id) =
+        (String::new(), Vec::new(), String::new(), None);
+    while let Some(event) = stream.next().await {
+        match event.expect("stream should not fail") {
+            LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
+            LlmStreamEvent::ToolCalls(tool_calls) => calls = tool_calls,
+            LlmStreamEvent::Error(error) => panic!("stream error: {error:?}"),
+            LlmStreamEvent::Done(meta) => {
+                finish = meta.finish_reason.unwrap_or_default();
+                id = meta.response_id;
+            }
+            _ => {}
+        }
+    }
+    (text, calls, finish, id)
+}
+
+/// Remote MCP with approval: the first response stops at an approval request,
+/// surfaced as a synthetic call; replaying the approval runs the MCP tool.
+#[tokio::test]
+#[ignore = "live network + OPENAI_API_KEY"]
+async fn openai_remote_mcp_pauses_for_approval_and_resumes() {
+    let mut config = LlmCallConfig::new(LIVE_MODEL);
+    config.reasoning_effort = Some(ReasoningEffort::Low);
+    let (key, value) = OpenAiHostedTools {
+        mcp_servers: vec![McpServerTool {
+            server_label: "deepwiki".into(),
+            server_url: "https://mcp.deepwiki.com/mcp".into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+    .to_driver_option()
+    .unwrap();
+    config.driver_options.insert(key, value);
+
+    let user = Message::text(
+        MessageRole::User,
+        "Use deepwiki to ask about repo facebook/react: what language is it written in? One line.",
+    );
+    let (_, calls, finish, response_id) = run(&config, vec![user.clone()]).await;
+    eprintln!("approval calls: {calls:?}");
+    assert_eq!(finish, "tool_calls");
+    let approval = calls
+        .iter()
+        .find(|call| call.name == OPENAI_MCP_APPROVAL_TOOL)
+        .expect("an approval request")
+        .clone();
+
+    // Stateless replay (approve, deny), then a `previous_response_id`
+    // continuation, which sends only the approval response.
+    for (answer, previous) in [
+        (r#"{"approve":true}"#, None),
+        ("denied", None),
+        (r#"{"approve":true}"#, response_id),
+    ] {
+        let mut assistant = Message::text(MessageRole::Assistant, "");
+        assistant.tool_calls = Some(vec![approval.clone()]);
+        let mut result = Message::text(MessageRole::Tool, answer);
+        result.tool_call_id = Some(approval.id.clone());
+        let mut config = config.clone();
+        config.previous_response_id = previous.clone();
+        let messages = vec![user.clone(), assistant, result];
+        let (text, calls, finish, _) = run(&config, messages).await;
+        eprintln!(
+            "{answer} stateful={}: {finish} {text} {calls:?}",
+            previous.is_some()
+        );
+        assert!(
+            !text.trim().is_empty() || !calls.is_empty(),
+            "turn continues"
+        );
+    }
 }

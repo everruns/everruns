@@ -84,6 +84,12 @@ pub(crate) fn compute_delta_input_items(items: Vec<ResponsesInputItem>) -> Vec<R
             ResponsesInputItem::Message { role, .. } if role == "assistant" => Some(i),
             ResponsesInputItem::Reasoning { .. } => Some(i),
             ResponsesInputItem::FunctionCall { .. } => Some(i),
+            // A replayed MCP approval request is the prior response's output.
+            ResponsesInputItem::ProviderItem(item)
+                if item.get("type").and_then(Value::as_str) == Some("mcp_approval_request") =>
+            {
+                Some(i)
+            }
             _ => None,
         });
 
