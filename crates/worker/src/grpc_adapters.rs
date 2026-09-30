@@ -963,38 +963,11 @@ fn proto_uuid_to_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<Uuid> {
 fn proto_mcp_server_to_info(
     proto_server: proto::McpServerInfo,
 ) -> Result<crate::mcp_executor::McpServerInfo> {
-    let auth_mode = if proto_server.auth_mode.is_empty() && proto_server.api_key.is_some() {
-        everruns_core::McpServerAuthMode::ApiKey
-    } else {
-        everruns_core::McpServerAuthMode::from(proto_server.auth_mode.as_str())
-    };
-
-    Ok(crate::mcp_executor::McpServerInfo {
-        id: proto_uuid_to_uuid(proto_server.id.as_ref())?,
-        name: proto_server.name,
-        url: proto_server.url,
-        api_key: proto_server.api_key,
-        headers: proto_server.headers,
-        auth_mode,
-        protocol_mode: everruns_core::McpProtocolMode::from(proto_server.protocol_mode.as_str()),
-        oauth_provider_id: proto_server.oauth_provider_id,
-        acts_as: everruns_core::McpServerActsAs::from(proto_server.acts_as.as_str()),
-        secret_bindings: proto_server.secret_bindings.into_iter().fold(
-            std::collections::HashMap::new(),
-            |mut bindings, binding| {
-                bindings
-                    .entry(binding.tool_name)
-                    .or_insert_with(Vec::new)
-                    .push(everruns_mcp::McpSecretBinding {
-                        parameter_name: binding.parameter_name,
-                        value: binding.value,
-                        setup_url: binding.setup_url,
-                        label: binding.label,
-                    });
-                bindings
-            },
-        ),
-    })
+    let id = proto_uuid_to_uuid(proto_server.id.as_ref())?;
+    Ok(crate::mcp_executor::McpServerInfo::from_proto(
+        id,
+        proto_server,
+    ))
 }
 
 fn proto_timestamp_to_datetime(ts: &proto::Timestamp) -> chrono::DateTime<chrono::Utc> {

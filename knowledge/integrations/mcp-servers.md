@@ -102,11 +102,12 @@ shapes (`crates/mcp/src/http.rs::resolve_input_required`):
   *different* JSON-RPC id, since MRTR treats the retry as an independent request.
 - **A URL mode `elicitation/create`**: handled, see [URL mode
   elicitation](#url-mode-elicitation) below.
-- **Anything else** (form mode elicitation, sampling, roots): the client
-  declares none of these. Fail with an error naming the requested keys rather
-  than returning the empty result a caller would misread as success. Form mode
-  has a design for being answered: [inbound form mode
-  elicitation](mcp-form-elicitation.md).
+- **A form mode `elicitation/create`**: handled for servers whose
+  `elicitation_policy` is `url_and_form`, see [form mode
+  elicitation](#form-mode-elicitation) below.
+- **Anything else** (sampling, roots): the client declares none of these. Fail
+  with an error naming the requested keys rather than returning the empty result
+  a caller would misread as success.
 
 Bounded at two rounds (`MAX_INPUT_REQUIRED_ROUNDS`): a server may keep asking,
 but each round costs a human interaction and holds the turn open, so looping
@@ -202,23 +203,33 @@ user through the tool result, and they re-run the tool themselves. The
 in-process runtime host still injects `RelayUrlElicitations` for the same
 reason.
 
-Not yet built: a per-server opt-in policy — today any server the operator
-configured may elicit, gated only by the host's handler.
-[Inbound form mode elicitation](mcp-form-elicitation.md) specifies that policy
-(`elicitation_policy`), because form mode needs it more than URL mode does.
+Each server's `elicitation_policy` gates this too: `none` stops a configured
+server eliciting at all (see below).
 
 #### Form mode elicitation
 
-Not answered. The client declares no `form` capability, so a compliant server
-cannot ask, and a server that asks anyway is reported by
-`gather_input_responses` rather than answered.
+Answered through `ask_user` for servers that opt in. The design, decisions and
+threat model (TM-TOOL-043 through TM-TOOL-047) are in [inbound form mode
+elicitation](mcp-form-elicitation.md); the mechanics mirror URL mode: the call
+stands down with `form_elicitation_required`, the turn pauses on a question card
+attributed to the server, the answer is parked in session storage, and the retry
+sends it.
 
-This is a deliberate gap, not an oversight: a form answer is carried by a tool
-result, so it would land in the event log and permanently in model context — the
-thing URL mode exists to avoid — and the question text would be third-party
-authored while rendering in Everruns' own chrome.
-[Inbound form mode elicitation](mcp-form-elicitation.md) is the design and threat
-model for closing it (TM-TOOL-043 through TM-TOOL-047).
+#### `elicitation_policy`
+
+Each server (org-managed `McpServer` and scoped `ScopedMcpServer`) carries an
+`elicitation_policy` that decides which elicitation modes the client declares to
+it. It is operator configuration; the model cannot widen it.
+
+| Policy | Behavior |
+|--------|----------|
+| `url` (default) | URL mode only. Omitted from serialized config, so existing configuration is byte-identical. |
+| `url_and_form` | URL mode and form mode. |
+| `none` | Nothing declared; the server cannot elicit. |
+
+It persists and propagates exactly like `protocol_mode` below (`settings` JSONB,
+the embedded `mcpServers` object, `McpServerInfo.elicitation_policy`), and the
+same catalog-reference conflict rule applies.
 
 #### `protocol_mode`
 

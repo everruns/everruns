@@ -153,7 +153,7 @@ export const mcpServerFormSchema = z
 
 /**
  * Edit schema for an existing MCP server. Covers the mutable identity fields
- * (name, description, url) plus protocol compatibility. Auth mode and the API
+ * (name, description, url) plus protocol compatibility and elicitation policy. Auth mode and the API
  * key are managed via their own dedicated flows and are intentionally omitted.
  */
 export const mcpServerEditFormSchema = z.object({
@@ -164,6 +164,7 @@ export const mcpServerEditFormSchema = z.object({
     "URL must be a valid absolute URL",
   ),
   protocol_mode: z.enum(["auto", "2025-03-26", "2025-06-18", "2026-07-28"]),
+  elicitation_policy: z.enum(["url", "url_and_form", "none"]),
 });
 
 export const apiKeySecretSchema = z.object({

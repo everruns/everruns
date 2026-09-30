@@ -429,6 +429,7 @@ describe("McpServersPage", () => {
         description: "Updated description",
         url: "https://new.mcp.com/v1/mcp",
         protocol_mode: "auto",
+        elicitation_policy: "url",
       }),
     );
   });

@@ -128,6 +128,10 @@ pub(super) fn pending_ask_user_from_request(
         .map(|value| value.with_timezone(&chrono::Utc));
     Some(crate::api::question_answers::PendingQuestions {
         tool_call_id: call.id.clone(),
+        elicitation: crate::api::question_answers::PendingFormElicitation::from_call(
+            &call.id,
+            &call.arguments,
+        ),
         questions,
         expires_at,
     })
@@ -624,6 +628,7 @@ mod tests {
             tool_call_id: "call_1".to_string(),
             questions,
             expires_at: None,
+            elicitation: None,
         }
     }
 

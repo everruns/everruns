@@ -34,6 +34,15 @@ to paste, a consent screen to click. Under protocol `2026-07-28` the server hand
 back a URL instead of asking for the value, and Everruns holds the turn until
 someone answers. See [URL mode elicitation](/features/mcp-url-elicitation/).
 
+A server can also ask the person a few structured questions (form mode
+elicitation), such as which environment to deploy to. This is off by default:
+set the server's **Elicitation** setting (`elicitation_policy`) to
+`url_and_form` to allow it. The questions appear in the conversation marked as
+coming from that server, and the answer goes back to the server when the tool
+runs again. Everruns refuses questions that ask for a password or key, and
+declines on the person's behalf if nobody answers in time. `none` stops a server
+eliciting at all.
+
 ## Use Everruns from your AI tools
 
 To connect Claude Code, Codex, or Cursor to a deployment via the `everruns` plugin, see [Use in AI tools](/getting-started/use-in-ai-tools/).

@@ -5271,6 +5271,8 @@ export interface components {
         auth_mode?: components["schemas"]["McpServerAuthMode"];
         /** @description Executable to spawn for a stdio transport server. */
         command?: string | null;
+        /** @description Which elicitation modes this server may use (`url` by default). */
+        elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
         /** @description Environment variables set for the stdio `command`. */
         env?: {
           [key: string]: string;
@@ -6844,6 +6846,7 @@ export interface components {
        * @example Atlassian MCP Server for Jira and Confluence
        */
       description?: string | null;
+      elicitation_policy?: null | components["schemas"]["McpElicitationPolicy"];
       /**
        * @description Additional HTTP headers for authentication.
        * @example {
@@ -10683,6 +10686,8 @@ export interface components {
          * @example Atlassian MCP Server for Jira and Confluence
          */
         description?: string | null;
+        /** @description Which elicitation modes this server may use (`url` by default). */
+        elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
         /**
          * @description Additional HTTP headers for authentication.
          *     Keys are header names, values are header values.
@@ -11312,6 +11317,8 @@ export interface components {
          * @example Atlassian MCP Server for Jira and Confluence
          */
         description?: string | null;
+        /** @description Which elicitation modes this server may use (`url` by default). */
+        elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
         /**
          * @description Additional HTTP headers for authentication.
          *     Keys are header names, values are header values.
@@ -12116,6 +12123,21 @@ export interface components {
     /** @description Response body for manual memory source. */
     ManualMemorySourceResponse: Record<string, unknown>;
     /**
+     * @description Which MCP elicitation modes the client declares to one server.
+     *
+     *     An operator decision on the server record, never a per-call negotiation and
+     *     never something the model can widen. Under MRTR a server must not ask for an
+     *     input type the client did not declare, so this is what stops a configured
+     *     server from putting questions in front of a person.
+     *
+     *     THREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the
+     *     behaviour every existing deployment already had, and it is omitted from
+     *     serialized config so stored records stay byte-identical.
+     * @example url
+     * @enum {string}
+     */
+    McpElicitationPolicy: "url" | "url_and_form" | "none";
+    /**
      * @description Broad-strokes routing hint sitting alongside the precise [`McpErrorCode`].
      *     The categories are stable enough that an LLM can pick a recovery
      *     strategy from this field alone (e.g. retry transients with backoff,
@@ -12232,6 +12254,8 @@ export interface components {
        * @example Atlassian MCP Server for Jira and Confluence
        */
       description?: string | null;
+      /** @description Which elicitation modes this server may use (`url` by default). */
+      elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
       /**
        * @description Additional HTTP headers for authentication.
        *     Keys are header names, values are header values.
@@ -17835,6 +17859,7 @@ export interface components {
        * @example Updated description
        */
       description?: string | null;
+      elicitation_policy?: null | components["schemas"]["McpElicitationPolicy"];
       /**
        * @description Additional HTTP headers for authentication.
        * @example {
@@ -19317,6 +19342,8 @@ export interface components {
        * @example Atlassian MCP Server for Jira and Confluence
        */
       description?: string | null;
+      /** @description Which elicitation modes this server may use (`url` by default). */
+      elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
       /**
        * @description Additional HTTP headers for authentication.
        *     Keys are header names, values are header values.

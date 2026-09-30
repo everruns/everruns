@@ -1178,6 +1178,9 @@ message McpServerInfo {
     repeated McpSecretBinding secret_bindings = 9;
     // Requested scoped attachment identity: "none", "service", or "user".
     string acts_as = 10;
+    // Elicitation modes the client may declare: "url" (default, also what an
+    // empty string means), "url_and_form", or "none".
+    string elicitation_policy = 11;
 }
 
 message McpSecretBinding {

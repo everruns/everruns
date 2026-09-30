@@ -17,6 +17,9 @@ use crate::elicitation::{
     ElicitationAction, UrlElicitation, UrlElicitationHandler, UrlElicitationPending,
     validate_elicitation_url,
 };
+use crate::form_elicitation::{
+    FormElicitation, FormElicitationHandler, FormOutcome, parse_requested_schema,
+};
 use crate::protocol::{self, ClientCapabilities, Negotiated};
 use crate::result::extract_json_from_response;
 use crate::transport::{McpConnection, McpEndpoint, McpTransport};
@@ -448,6 +451,7 @@ pub async fn http_call_tool(
 ) -> Result<McpToolCallResult> {
     let capabilities = ClientCapabilities {
         url_elicitation: elicitation.is_some(),
+        form_elicitation: false,
     };
     let (text, negotiated) = negotiate_and_send(
         egress,
@@ -472,11 +476,23 @@ pub async fn http_call_tool(
         server_name,
         tool_name,
         &arguments,
-        elicitation,
+        InputHandlers {
+            url: elicitation,
+            form: None,
+        },
         text,
     )
     .await?;
     parse_tool_call(&text)
+}
+
+/// The machinery that answers each kind of `inputRequests` entry, already
+/// narrowed to what was declared to this server. A `None` here means the
+/// capability was not declared, so a server asking for it is in error.
+#[derive(Clone, Copy)]
+struct InputHandlers<'a> {
+    url: Option<&'a dyn UrlElicitationHandler>,
+    form: Option<&'a dyn FormElicitationHandler>,
 }
 
 /// Complete a multi round-trip `tools/call` (MRTR).
@@ -493,10 +509,14 @@ pub async fn http_call_tool(
 ///   so the server can check whether the interaction completed. A decline or a
 ///   cancel ends the call: the client has nothing to send that would let the
 ///   server proceed, and retrying would only ask the same human again.
-/// - **Anything else** — form mode elicitation, sampling, or roots. The client
-///   declares none of those in `_meta`, and a server MUST NOT request an input
-///   type the client did not declare. Fail naming the culprit rather than
-///   handing back an empty result the caller would read as success.
+/// - **A form mode `elicitation/create`**, to a server whose policy opted in —
+///   the server wants structured answers. The host's handler sends a recorded
+///   answer, or stands the call down so a person can be asked
+///   ([`crate::form_elicitation`]).
+/// - **Anything else** — undeclared elicitation modes, sampling, or roots. A
+///   server MUST NOT request an input type the client did not declare. Fail
+///   naming the culprit rather than handing back an empty result the caller
+///   would read as success.
 ///
 /// Bounded by [`MAX_INPUT_REQUIRED_ROUNDS`]; a server that keeps asking gets a
 /// clear error instead of an unbounded loop against the call timeout.
@@ -511,7 +531,7 @@ async fn resolve_input_required(
     server_name: &str,
     tool_name: &str,
     arguments: &Value,
-    elicitation: Option<&dyn UrlElicitationHandler>,
+    handlers: InputHandlers<'_>,
     text: String,
 ) -> Result<String> {
     let mut text = text;
@@ -524,8 +544,7 @@ async fn resolve_input_required(
         };
 
         let input_responses =
-            gather_input_responses(&input_required, server_name, tool_name, elicitation, url)
-                .await?;
+            gather_input_responses(&input_required, server_name, tool_name, handlers, url).await?;
 
         tracing::debug!(
             url = %url,
@@ -582,27 +601,56 @@ async fn resolve_input_required(
 
 /// Build the `inputResponses` map for one `input_required` round.
 ///
-/// Every request must be a URL mode elicitation the host can put in front of a
-/// human; anything else is a server sending an input type this client never
+/// Every request must be an elicitation mode this client declared to this
+/// server; anything else is a server sending an input type this client never
 /// declared, and is reported rather than answered.
 async fn gather_input_responses(
     input_required: &protocol::InputRequired,
     server_name: &str,
     tool_name: &str,
-    elicitation: Option<&dyn UrlElicitationHandler>,
+    handlers: InputHandlers<'_>,
     url: &str,
 ) -> Result<BTreeMap<String, Value>> {
+    // One person answers one question set per pause. Two forms in one round
+    // would need two cards resolved together, which no surface offers.
+    let forms = input_required
+        .requests
+        .iter()
+        .filter(|request| request.form_elicitation().is_some())
+        .count();
+    if forms > 1 {
+        return Err(anyhow!(
+            "MCP server '{server_name}' sent {forms} form elicitations in one round for tool \
+             '{tool_name}'; Everruns answers at most one at a time"
+        ));
+    }
+
     let mut responses = BTreeMap::new();
     for request in &input_required.requests {
+        if let Some((message, requested_schema)) = request.form_elicitation() {
+            let response = answer_form_elicitation(
+                request.key.clone(),
+                message,
+                &requested_schema,
+                server_name,
+                tool_name,
+                handlers.form,
+                url,
+            )
+            .await?;
+            responses.insert(request.key.clone(), response);
+            continue;
+        }
         let Some((message, elicitation_url)) = request.url_elicitation() else {
             return Err(anyhow!(
                 "MCP server '{server_name}' requested input '{}' ({}) for tool '{tool_name}' \
-                 that this client does not support; everruns declares only URL mode elicitation",
+                 that this client does not support; everruns answers only URL and form mode \
+                 elicitation",
                 request.key,
                 request.method
             ));
         };
-        let Some(handler) = elicitation else {
+        let Some(handler) = handlers.url else {
             return Err(anyhow!(
                 "MCP server '{server_name}' sent a URL elicitation for tool '{tool_name}', \
                  but this host declared no elicitation capability and has no way to ask a user"
@@ -656,6 +704,72 @@ async fn gather_input_responses(
         }
     }
     Ok(responses)
+}
+
+/// Answer one form mode elicitation, or stand the call down so a person can.
+///
+/// The response is `accept` with content only when every property has an
+/// answer that fits it, and `decline` for every other finished outcome — never
+/// an empty `accept` (TM-TOOL-047).
+async fn answer_form_elicitation(
+    key: String,
+    message: String,
+    requested_schema: &Value,
+    server_name: &str,
+    tool_name: &str,
+    handler: Option<&dyn FormElicitationHandler>,
+    url: &str,
+) -> Result<Value> {
+    let Some(handler) = handler else {
+        return Err(anyhow!(
+            "MCP server '{server_name}' sent a form elicitation for tool '{tool_name}', but \
+             this client did not declare form mode to it; everruns declares form mode only to \
+             servers whose elicitation_policy is url_and_form"
+        ));
+    };
+    // THREAT[TM-TOOL-044][TM-TOOL-046]: refused before anyone sees it. Nothing
+    // is sent back: under MRTR the server holds no state waiting on us, and a
+    // refusal is ours to report, not a person's decline.
+    let schema = parse_requested_schema(requested_schema).map_err(|refusal| {
+        anyhow!(
+            "MCP server '{server_name}' asked questions for tool '{tool_name}' that Everruns \
+             will not put to a person: {refusal}"
+        )
+    })?;
+    if message.chars().count() > crate::form_elicitation::MAX_FORM_TEXT_CHARS {
+        return Err(anyhow!(
+            "MCP server '{server_name}' sent a form elicitation message longer than {} \
+             characters for tool '{tool_name}'",
+            crate::form_elicitation::MAX_FORM_TEXT_CHARS
+        ));
+    }
+    let elicitation = FormElicitation {
+        server_name: server_name.to_string(),
+        tool_name: tool_name.to_string(),
+        key,
+        message,
+        schema,
+    };
+    let outcome = handler.answer_form(&elicitation).await?;
+    tracing::info!(
+        url = %url,
+        server = %server_name,
+        tool = %tool_name,
+        outcome = match &outcome {
+            FormOutcome::Accept(_) => "accept",
+            FormOutcome::Decline => "decline",
+            FormOutcome::Ask => "ask",
+        },
+        "MCP form elicitation resolved"
+    );
+    match outcome {
+        FormOutcome::Accept(content) => Ok(serde_json::json!({
+            "action": "accept",
+            "content": content,
+        })),
+        FormOutcome::Decline => Ok(serde_json::json!({ "action": "decline" })),
+        FormOutcome::Ask => Err(anyhow!(elicitation.pending())),
+    }
 }
 
 /// MCP transport over the platform [`EgressService`] boundary.
@@ -786,6 +900,10 @@ pub struct HttpTransport {
     /// (the default) declares no elicitation capability, which under MRTR
     /// forbids servers from asking.
     elicitation: Option<Arc<dyn UrlElicitationHandler>>,
+    /// Host surface that puts a form elicitation in front of a human. `None`
+    /// (the default) declares no form mode to any server; with one, form mode
+    /// is still declared only to servers whose policy opts in.
+    form_elicitation: Option<Arc<dyn FormElicitationHandler>>,
 }
 
 impl HttpTransport {
@@ -795,6 +913,7 @@ impl HttpTransport {
             negotiations: Mutex::new(HashMap::new()),
             tools: Mutex::new(HashMap::new()),
             elicitation: None,
+            form_elicitation: None,
         }
     }
 
@@ -804,11 +923,38 @@ impl HttpTransport {
         self
     }
 
-    /// Capabilities to declare on every request, derived from what this
-    /// transport can actually answer.
-    fn capabilities(&self) -> ClientCapabilities {
+    /// Enable form mode elicitation, routing answers through `handler`, for
+    /// servers whose `elicitation_policy` opts in.
+    pub fn with_form_elicitation_handler(
+        mut self,
+        handler: Arc<dyn FormElicitationHandler>,
+    ) -> Self {
+        self.form_elicitation = Some(handler);
+        self
+    }
+
+    /// What may be declared to, and answered for, one server: what this
+    /// transport can answer, narrowed by that server's policy.
+    ///
+    /// THREAT[TM-TOOL-045]: the policy is read from the operator's server
+    /// record here and nowhere else, so nothing a call carries can widen it.
+    fn handlers<'a>(&'a self, connection: &McpConnection) -> InputHandlers<'a> {
+        let policy = connection.elicitation_policy;
+        InputHandlers {
+            url: self.elicitation.as_deref().filter(|_| policy.allows_url()),
+            form: self
+                .form_elicitation
+                .as_deref()
+                .filter(|_| policy.allows_form()),
+        }
+    }
+
+    /// Capabilities to declare on every request to one server.
+    fn capabilities(&self, connection: &McpConnection) -> ClientCapabilities {
+        let handlers = self.handlers(connection);
         ClientCapabilities {
-            url_elicitation: self.elicitation.is_some(),
+            url_elicitation: handlers.url.is_some(),
+            form_elicitation: handlers.form.is_some(),
         }
     }
 
@@ -900,7 +1046,7 @@ impl McpTransport for HttpTransport {
         if let Some(tools) = self.cached_tools(&cache_key) {
             return Ok(tools);
         }
-        let capabilities = self.capabilities();
+        let capabilities = self.capabilities(connection);
         let cached = self.cached_negotiation(&cache_key);
         let (text, negotiated) = negotiate_and_send(
             self.egress.as_ref(),
@@ -933,7 +1079,7 @@ impl McpTransport for HttpTransport {
     ) -> Result<McpToolCallResult> {
         let (url, headers) = Self::http_parts(connection)?;
         let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
-        let capabilities = self.capabilities();
+        let capabilities = self.capabilities(connection);
         let cached = self.cached_negotiation(&cache_key);
         let (text, negotiated) = negotiate_and_send(
             self.egress.as_ref(),
@@ -958,7 +1104,7 @@ impl McpTransport for HttpTransport {
             &connection.name,
             tool_name,
             &arguments,
-            self.elicitation.as_deref(),
+            self.handlers(connection),
             text,
         )
         .await?;

@@ -9,6 +9,7 @@
 
 use crate::client::McpClient;
 use crate::elicitation::{ElicitationAction, UrlElicitationPending};
+use crate::form_elicitation::FormElicitationPending;
 use crate::http::McpHttpStatusError;
 use crate::transport::McpConnection;
 use anyhow::{Result, anyhow};
@@ -17,7 +18,8 @@ use everruns_core::mcp_server::sanitize_mcp_server_name;
 use everruns_core::{McpToolInvoker, parse_mcp_tool_name};
 use everruns_provider::error::{AgentLoopError, Result as CoreResult};
 use everruns_provider::tool_types::{
-    ToolCall, ToolResult, URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired,
+    FORM_ELICITATION_REQUIRED_CODE, FormElicitationRequired, ToolCall, ToolResult,
+    URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -291,6 +293,19 @@ impl McpExecutor {
                     pending,
                 ))
             }
+            // A server's questions nobody has answered yet. The same kind of
+            // expected, user-actionable state: the engine parks the turn on an
+            // `ask_user` card and the retry sends the recorded answer.
+            Err(error) if error.downcast_ref::<FormElicitationPending>().is_some() => {
+                let Some(pending) = error.downcast_ref::<FormElicitationPending>() else {
+                    return Err(error);
+                };
+                Ok(form_elicitation_result(
+                    tool_call.id.clone(),
+                    &tool_call.name,
+                    pending,
+                ))
+            }
             // Redacting an error flattens it to a string, so keep the original
             // chain intact whenever there is nothing to scrub.
             Err(error) if injected_secrets.is_empty() => Err(error),
@@ -362,6 +377,39 @@ fn url_elicitation_result(
         result: Some(serde_json::to_value(&payload).unwrap_or(serde_json::Value::Null)),
         images: None,
         // Structured, expected state — not a transport failure.
+        error: None,
+        connection_required: None,
+        raw_output: None,
+    }
+}
+
+/// Turn a pending form elicitation into the tool result the engine parks on.
+fn form_elicitation_result(
+    tool_call_id: String,
+    retry_tool: &str,
+    pending: &FormElicitationPending,
+) -> ToolResult {
+    let payload = FormElicitationRequired {
+        code: FORM_ELICITATION_REQUIRED_CODE.to_string(),
+        // Read by the model only when no surface can show the questions, so it
+        // says why the tool did not run without repeating the server's text.
+        error: format!(
+            "MCP server '{}' has {} question(s) that a person must answer before '{}' can run.",
+            pending.server_name,
+            pending.questions.len(),
+            pending.tool_name
+        ),
+        server: pending.server_name.clone(),
+        tool: pending.tool_name.clone(),
+        retry_tool: retry_tool.to_string(),
+        message: pending.message.clone(),
+        questions: pending.questions.clone(),
+        fingerprint: pending.fingerprint.clone(),
+    };
+    ToolResult {
+        tool_call_id,
+        result: Some(serde_json::to_value(&payload).unwrap_or(serde_json::Value::Null)),
+        images: None,
         error: None,
         connection_required: None,
         raw_output: None,

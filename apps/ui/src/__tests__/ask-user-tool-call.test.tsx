@@ -88,6 +88,19 @@ describe("AskUserToolCall", () => {
     expect(screen.getByText("Continuing with Staging in 0:47")).toBeInTheDocument();
   });
 
+  it("attributes an MCP server's questions to the server and declines on timeout", () => {
+    renderCard({ mcp_elicitation: { server: "deploys", message: "Pick a target." } });
+
+    expect(screen.getByText("Questions from MCP server deploys")).toBeInTheDocument();
+    expect(screen.getByText(/Everruns is not asking these/)).toBeInTheDocument();
+    expect(screen.getByText("Pick a target.")).toBeInTheDocument();
+    // The server's default is neither endorsed nor preselected.
+    expect(screen.queryByText("Recommended")).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Staging/ })).not.toBeChecked();
+    expect(screen.getByText("Declining deploys's questions in 0:47")).toBeInTheDocument();
+    expect(screen.queryByText(/Continuing with/)).not.toBeInTheDocument();
+  });
+
   it("keeps the timeout choice hidden before the nudge deadline", () => {
     jest.mocked(Date.now).mockReturnValue(Date.parse("2026-09-20T05:03:59Z"));
     renderCard();

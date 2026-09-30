@@ -3,7 +3,10 @@
 // Storage row types are re-exported from `storage::models` so domain code
 // has a single import path.
 
-use everruns_core::{McpProtocolMode, McpServerAuthMode, McpServerStatus, McpServerTransportType};
+use everruns_core::{
+    McpElicitationPolicy, McpProtocolMode, McpServerAuthMode, McpServerStatus,
+    McpServerTransportType,
+};
 use serde::Deserialize;
 use std::collections::HashMap;
 use utoipa::ToSchema;
@@ -34,6 +37,10 @@ pub struct CreateMcpServerRequest {
     /// Protocol-era policy. Defaults to `auto` (negotiates every protocol era).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protocol_mode: Option<McpProtocolMode>,
+    /// Elicitation modes the server may use. Defaults to `url`; `url_and_form`
+    /// lets it ask structured questions, `none` stops it eliciting at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elicitation_policy: Option<McpElicitationPolicy>,
     /// API key for authentication (optional). Sent with each request; never echoed in responses.
     #[serde(skip_serializing_if = "Option::is_none")]
     // The example carries no provider key prefix on purpose: a failing contract
@@ -76,6 +83,9 @@ pub struct UpdateMcpServerRequest {
     /// Protocol-era policy (`auto`, `legacy`, `stable`, `rc`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protocol_mode: Option<McpProtocolMode>,
+    /// Elicitation modes the server may use (`url`, `url_and_form`, `none`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elicitation_policy: Option<McpElicitationPolicy>,
     /// The status of the MCP server. Set to "disabled" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<McpServerStatus>,

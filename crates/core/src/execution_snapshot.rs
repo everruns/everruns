@@ -19,7 +19,8 @@ use crate::config_layer::AgentConfigOverlay;
 use crate::error::{AgentLoopError, Result};
 use crate::harness_definition::HarnessDefinition;
 use crate::mcp_server::{
-    McpProtocolMode, McpServerAuthMode, McpServerTransportType, ScopedMcpServer,
+    McpElicitationPolicy, McpProtocolMode, McpServerAuthMode, McpServerTransportType,
+    ScopedMcpServer,
 };
 use crate::network_access::NetworkAccessList;
 use crate::session::ExecutionSession;
@@ -43,6 +44,10 @@ pub struct SnapshotMcpServer {
     pub env_names: Vec<String>,
     pub auth_mode: McpServerAuthMode,
     pub protocol_mode: McpProtocolMode,
+    /// Omitted when default so snapshots taken before the policy existed
+    /// serialize identically.
+    #[serde(default, skip_serializing_if = "McpElicitationPolicy::is_default")]
+    pub elicitation_policy: McpElicitationPolicy,
     pub oauth_provider_id: Option<String>,
     pub tool_discovery: bool,
 }
@@ -59,6 +64,7 @@ impl From<&ScopedMcpServer> for SnapshotMcpServer {
             env_names,
             auth_mode: server.auth_mode.clone(),
             protocol_mode: server.protocol_mode,
+            elicitation_policy: server.elicitation_policy,
             oauth_provider_id: server.oauth_provider_id.clone(),
             tool_discovery: server.tool_discovery,
         }
@@ -443,6 +449,7 @@ mod tests {
                 env: [("Z_ENV".into(), "z".into()), ("A_ENV".into(), "a".into())].into(),
                 auth_mode: McpServerAuthMode::OAuth,
                 protocol_mode: McpProtocolMode::V2025June,
+                elicitation_policy: McpElicitationPolicy::UrlAndForm,
                 oauth_provider_id: Some("session-provider".into()),
                 tool_discovery: false,
                 ..Default::default()
@@ -462,6 +469,7 @@ mod tests {
                         env_names: vec!["A_ENV".into(), "Z_ENV".into()],
                         auth_mode: McpServerAuthMode::OAuth,
                         protocol_mode: McpProtocolMode::V2025June,
+                        elicitation_policy: McpElicitationPolicy::UrlAndForm,
                         oauth_provider_id: Some("session-provider".into()),
                         tool_discovery: false,
                     }
@@ -474,6 +482,7 @@ mod tests {
                         env_names: vec![],
                         auth_mode: McpServerAuthMode::None,
                         protocol_mode: McpProtocolMode::Auto,
+                        elicitation_policy: McpElicitationPolicy::Url,
                         oauth_provider_id: None,
                         tool_discovery: true,
                     }

@@ -169,6 +169,7 @@ async fn seed_catalog_server(
             McpServerAuthMode::None
         },
         protocol_mode: McpProtocolMode::V2025June,
+        elicitation_policy: Default::default(),
         oauth: oauth
             .then_some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
     };
@@ -786,6 +787,7 @@ async fn user_attachment_discards_preset_api_key_and_authorization_header() {
     let settings = crate::domains::mcp_servers::service::McpServerSettings {
         auth_mode: McpServerAuthMode::OAuth,
         protocol_mode: McpProtocolMode::V2025June,
+        elicitation_policy: Default::default(),
         oauth: Some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
     };
     db.create_mcp_server(

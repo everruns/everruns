@@ -30,6 +30,7 @@ pub mod driver_helpers;
 pub mod driver_registry;
 pub mod error;
 pub mod execution_phase;
+pub mod form_elicitation_types;
 pub mod llm_error;
 pub mod llm_retry;
 pub mod message;
@@ -130,9 +131,11 @@ pub use runtime_provider::{
 };
 pub use tool_types::{
     ASK_USER_TOOL_NAME, BuiltinTool, CONFIRM_URL_ELICITATION_TOOL, ClientSideTool,
-    ConnectionRequired, ConnectionRequiredSubject, DeferrablePolicy, SideEffectClass, ToolCall,
-    ToolDefinition, ToolHints, ToolPolicy, ToolResult, ToolResultImage,
-    URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired, unattended_ask_user_result,
+    ConnectionRequired, ConnectionRequiredSubject, DeferrablePolicy,
+    FORM_ELICITATION_CALL_ID_PREFIX, FORM_ELICITATION_REQUIRED_CODE, FormElicitationRequired,
+    MCP_ELICITATION_ARGUMENT, SideEffectClass, ToolCall, ToolDefinition, ToolHints, ToolPolicy,
+    ToolResult, ToolResultImage, URL_ELICITATION_REQUIRED_CODE, UrlElicitationRequired,
+    unattended_ask_user_result,
 };
 pub use turn_collector::{CollectedTurn, TurnLimits, TurnTiming, collect_turn, limit_stream};
 pub use url_validation::{

@@ -7,7 +7,9 @@
 
 use crate::auth::McpCredential;
 use async_trait::async_trait;
-use everruns_core::{McpProtocolMode, McpServerAuthMode, McpToolCallResult, McpToolDefinition};
+use everruns_core::{
+    McpElicitationPolicy, McpProtocolMode, McpServerAuthMode, McpToolCallResult, McpToolDefinition,
+};
 use everruns_provider::ConnectionRequired;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -39,6 +41,9 @@ pub struct McpConnection {
     pub auth_mode: McpServerAuthMode,
     /// Protocol-era policy. `Auto` (default) negotiates every protocol era.
     pub protocol_mode: McpProtocolMode,
+    /// Which elicitation modes may be declared to this server. `Url` (default)
+    /// is the behaviour every server had before the policy existed.
+    pub elicitation_policy: McpElicitationPolicy,
     pub oauth_provider_id: Option<String>,
     /// Set by the connection resolver when this server requires an OAuth grant.
     /// The executor short-circuits into a structured `connection_required`
@@ -80,6 +85,7 @@ impl McpConnection {
             },
             auth_mode: McpServerAuthMode::None,
             protocol_mode: McpProtocolMode::Auto,
+            elicitation_policy: McpElicitationPolicy::Url,
             oauth_provider_id: None,
             pending_oauth_provider: None,
             secret_bindings: HashMap::new(),
@@ -89,6 +95,12 @@ impl McpConnection {
     /// Pin the protocol-era policy for this connection (builder-style).
     pub fn with_protocol_mode(mut self, mode: McpProtocolMode) -> Self {
         self.protocol_mode = mode;
+        self
+    }
+
+    /// Set which elicitation modes this server may use (builder-style).
+    pub fn with_elicitation_policy(mut self, policy: McpElicitationPolicy) -> Self {
+        self.elicitation_policy = policy;
         self
     }
 }

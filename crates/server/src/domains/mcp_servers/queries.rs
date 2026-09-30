@@ -37,6 +37,7 @@ pub fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
         status: McpServerStatus::from(row.status.as_str()),
         auth_mode: settings.auth_mode,
         protocol_mode: settings.protocol_mode,
+        elicitation_policy: settings.elicitation_policy,
         oauth_provider_id,
         api_key_set: row.api_key_set,
         headers,

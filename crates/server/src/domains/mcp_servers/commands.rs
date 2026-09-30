@@ -141,6 +141,7 @@ impl Command for CreateMcpServer {
         let settings = McpServerSettings {
             auth_mode,
             protocol_mode: req.protocol_mode.unwrap_or_default(),
+            elicitation_policy: req.elicitation_policy.unwrap_or_default(),
             oauth: None,
         };
 
@@ -405,6 +406,9 @@ impl Command for UpdateMcpServerCmd {
         }
         if let Some(protocol_mode) = req.protocol_mode {
             settings.protocol_mode = protocol_mode;
+        }
+        if let Some(elicitation_policy) = req.elicitation_policy {
+            settings.elicitation_policy = elicitation_policy;
         }
         if req.api_key.is_some() && settings.auth_mode != McpServerAuthMode::ApiKey {
             return Err(CommandError::bad_request(

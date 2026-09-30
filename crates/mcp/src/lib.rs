@@ -34,6 +34,7 @@ pub mod capability;
 pub mod client;
 pub mod elicitation;
 pub mod executor;
+pub mod form_elicitation;
 pub mod http;
 pub mod oauth;
 pub mod protocol;
@@ -57,6 +58,11 @@ pub use elicitation::{
     UrlElicitationHandler, UrlElicitationPending, consent_storage_key, validate_elicitation_url,
 };
 pub use executor::{McpConnectionResolver, McpExecutor, StaticConnectionResolver};
+pub use form_elicitation::{
+    FORM_ANSWER_TTL, FormAnswer, FormAnswerAction, FormAnswerStore, FormElicitation,
+    FormElicitationHandler, FormElicitationPending, FormOutcome, FormRefusal, FormSchema,
+    StoredFormAnswer, StoredFormAnswers, form_answer_storage_key, parse_requested_schema,
+};
 pub use http::{
     HttpToolsList, HttpTransport, McpHttpStatusError, http_call_tool, http_list_tools,
     http_list_tools_with_cache_hints, http_send_rpc,

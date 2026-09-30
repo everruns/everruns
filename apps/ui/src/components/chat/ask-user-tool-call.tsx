@@ -56,8 +56,18 @@ function secretQuestion(request: AskUserArguments): AskUserSecretQuestion | null
   };
 }
 
+/**
+ * Present when an MCP server asked these questions (form mode elicitation),
+ * not the agent. Written by the engine, never by the model.
+ */
+export interface McpElicitationSource {
+  server: string;
+  message?: string;
+}
+
 export interface AskUserArguments {
   questions: AskUserQuestion[];
+  mcp_elicitation?: McpElicitationSource;
   timeout_seconds?: number;
   asked_at?: string;
   nudge_at?: string;
@@ -105,13 +115,18 @@ function deadlines(request: AskUserArguments, requestedAt: string) {
   return { nudgeAt, expiresAt };
 }
 
-function initialSelections(questions: AskUserQuestion[]): Record<string, QuestionSelection> {
+function initialSelections(
+  questions: AskUserQuestion[],
+  fromServer: boolean,
+): Record<string, QuestionSelection> {
   return Object.fromEntries(
     questions.map((question) => [
       question.id,
       {
+        // A server's default is not preselected: answering it must be the
+        // person's choice, not a click-through of what the server wanted.
         selected: (question.options ?? [])
-          .filter((option) => option.default)
+          .filter((option) => option.default && !fromServer)
           .map((option) => option.label),
         otherSelected: false,
         otherText: "",
@@ -200,7 +215,10 @@ export function AskUserToolCall({
   requestedAt,
   toolResultsMap,
 }: AskUserToolCallProps) {
-  const [selections, setSelections] = useState(() => initialSelections(request.questions));
+  const elicitation = request.mcp_elicitation;
+  const [selections, setSelections] = useState(() =>
+    initialSelections(request.questions, elicitation != null),
+  );
   const [status, setStatus] = useState<"idle" | "submitting">("idle");
   const [submittedResult, setSubmittedResult] = useState<AskUserResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -331,12 +349,29 @@ export function AskUserToolCall({
     >
       <div className="flex items-start gap-3 border-b border-border px-4 py-3">
         <CircleQuestionMark className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-        <div>
-          <p className="text-sm font-medium text-foreground">The agent needs your input</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Answer each question to continue the conversation.
-          </p>
-        </div>
+        {elicitation ? (
+          <div>
+            <p className="text-sm font-medium text-foreground">
+              Questions from MCP server {elicitation.server}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Everruns is not asking these. Your answers are sent to {elicitation.server} only.
+            </p>
+            {elicitation.message && (
+              <p className="mt-2 text-sm text-foreground">
+                <span className="text-muted-foreground">{elicitation.server} says: </span>
+                {elicitation.message}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm font-medium text-foreground">The agent needs your input</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Answer each question to continue the conversation.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="divide-y divide-border">
@@ -393,7 +428,7 @@ export function AskUserToolCall({
                         <span className="min-w-0 flex-1">
                           <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
                             {option.label}
-                            {option.default && (
+                            {option.default && !elicitation && (
                               <Badge variant="accent" className="py-0">
                                 Recommended
                               </Badge>
@@ -452,13 +487,17 @@ export function AskUserToolCall({
         {showCountdown && (
           <p className="mb-3 flex items-center gap-1.5 text-xs text-warning">
             <Clock3 className="h-3.5 w-3.5" />
-            {request.questions.some((question) => question.kind === "text")
+            {elicitation
               ? now >= expiresAt
-                ? "Skipping unanswered questions now"
-                : `Skipping unanswered questions in ${formatCountdown(expiresAt - now)}`
-              : now >= expiresAt
-                ? `Continuing with ${defaults} now`
-                : `Continuing with ${defaults} in ${formatCountdown(expiresAt - now)}`}
+                ? `Declining ${elicitation.server}'s questions now`
+                : `Declining ${elicitation.server}'s questions in ${formatCountdown(expiresAt - now)}`
+              : request.questions.some((question) => question.kind === "text")
+                ? now >= expiresAt
+                  ? "Skipping unanswered questions now"
+                  : `Skipping unanswered questions in ${formatCountdown(expiresAt - now)}`
+                : now >= expiresAt
+                  ? `Continuing with ${defaults} now`
+                  : `Continuing with ${defaults} in ${formatCountdown(expiresAt - now)}`}
           </p>
         )}
         {error && <p className="mb-3 text-xs text-destructive">{error}</p>}

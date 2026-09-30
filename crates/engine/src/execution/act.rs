@@ -316,13 +316,13 @@ where
         self
     }
 
-    /// Default hooks: ConnectionSetup (synthetic setup_connection calls),
-    /// UrlElicitation (synthetic confirm_url_elicitation calls) and
-    /// ClientSideTool (emit tool.call_requested for client-side tools).
+    /// Default hooks, in order. FormElicitation appends synthetic `ask_user` calls, so it must
+    /// precede ClientSideTool, which emits `tool.call_requested` for client-side calls.
     fn default_hooks() -> Vec<Box<dyn PostActHook>> {
         vec![
             Box::new(act_hooks::ConnectionSetupHook),
             Box::new(act_hooks::UrlElicitationHook),
+            Box::new(act_hooks::FormElicitationHook),
             Box::new(act_hooks::ClientSideToolHook),
         ]
     }
