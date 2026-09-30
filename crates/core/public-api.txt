@@ -1300,6 +1300,9 @@ everruns_core::session_task::new_session_task	function
 everruns_core::session_task::task_message_text	function
 everruns_core::session_task::task_result_path	function
 everruns_core::session_task::task_vfs_dir	function
+everruns_core::session_task::turn_correlation::TurnCorrelatedSessionTaskRegistry	struct
+everruns_core::session_task::turn_correlation::set_task_origin_event_context	function
+everruns_core::session_task::turn_correlation::task_origin_event_context	function
 everruns_core::skill	module
 everruns_core::skill::CommandExecutor	trait
 everruns_core::skill::CommandResult	struct

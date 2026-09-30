@@ -19,6 +19,7 @@ Verify that reports query only the current organization, support saved reports a
 - The full stack is running with full authentication.
 - Two organizations have distinct recent session or LLM-generation data markers.
 - Owner, admin, and member users are available in the first organization.
+- The first organization has opted into **Reports** in Settings > Features (off by default).
 
 ## Test Data
 

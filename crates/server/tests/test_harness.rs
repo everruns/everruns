@@ -661,12 +661,16 @@ impl TestServer {
             &built_in_harnesses,
             event_delivery.clone(),
         );
+        let sse_tracker = Arc::new(everruns_server::api::sse::SseConnectionTracker::new(
+            everruns_server::api::sse::SseConnectionLimits::default(),
+        ));
         let mut messages_state = api::messages::AppState::new(
             db.clone(),
             runner.clone(),
             auth_state.clone(),
             feature_flags.notifications,
             event_delivery.clone(),
+            sse_tracker.clone(),
         );
         if let Some(max_bytes) = atif_export_max_bytes {
             messages_state = messages_state.with_atif_export_max_bytes(max_bytes);
@@ -677,9 +681,6 @@ impl TestServer {
             auth_state.clone(),
             event_delivery.clone(),
         );
-        let sse_tracker = Arc::new(everruns_server::api::sse::SseConnectionTracker::new(
-            everruns_server::api::sse::SseConnectionLimits::default(),
-        ));
         let events_state = api::events::AppState {
             db: db.clone(),
             session_service: Arc::new(
