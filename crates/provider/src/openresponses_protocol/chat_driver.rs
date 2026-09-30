@@ -240,6 +240,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             extension.decorate(&mut request_body, config)?;
         }
         apply_cache_options(&mut request_body, config, self.native_prompt_cache_options);
+        let mut background = self.background_mode && super::background::wants_background(config);
+        super::background::mark(&mut request_body, background);
         crate::openai_compat::validate_body(&request_body, endpoint, true)?;
         let mut extension_headers = HeaderMap::new();
         if let Some(extension) = &self.request_extension {
@@ -265,6 +267,29 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             },
         )
         .await;
+        let first_connect = match first_connect {
+            Err(error) if background && super::background::is_rejection(&error) => {
+                tracing::warn!(model = %request.model, %error, "background mode rejected; retrying in foreground");
+                background = false;
+                super::background::mark(&mut request_body, false);
+                connect_sse_with_reconnect(
+                    &self.retry_config,
+                    "OpenResponsesProtocolDriver",
+                    |attempts| {
+                        self.send_responses_request(
+                            endpoint,
+                            &api_url,
+                            &request_body,
+                            &extension_headers,
+                            config,
+                            attempts,
+                        )
+                    },
+                )
+                .await
+            }
+            other => other,
+        };
         let (event_stream, retry_metadata) = match first_connect {
             Ok(connected) => connected,
             Err(error)
@@ -304,6 +329,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                     extension.decorate(&mut request_body, config)?;
                 }
                 apply_cache_options(&mut request_body, config, self.native_prompt_cache_options);
+                super::background::mark(&mut request_body, background);
                 crate::openai_compat::validate_body(&request_body, endpoint, true)?;
                 connect_sse_with_reconnect(
                     &self.retry_config,
@@ -322,6 +348,30 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 .await?
             }
             Err(error) => return Err(error),
+        };
+        let event_stream = if background {
+            let mut headers = extension_headers.clone();
+            for (name, value) in
+                crate::driver_helpers::merge_request_headers(Vec::new(), &config.extra_headers)
+            {
+                if let (Ok(name), Ok(value)) = (
+                    reqwest::header::HeaderName::from_bytes(name.as_bytes()),
+                    reqwest::header::HeaderValue::from_str(&value),
+                ) {
+                    headers.insert(name, value);
+                }
+            }
+            super::background::resumable(
+                event_stream,
+                super::background::BackgroundResponses {
+                    client: self.client(),
+                    endpoint: endpoint.clone(),
+                    api_url: api_url.clone(),
+                    headers,
+                },
+            )
+        } else {
+            event_stream
         };
 
         let model = config.model.clone();

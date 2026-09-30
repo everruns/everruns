@@ -108,7 +108,8 @@ impl OpenAIChatDriver {
                 .with_stateful_responses(true)
                 .with_native_features(true, true)
                 .with_hosted_tools(true)
-                .with_prompt_cache_options(true),
+                .with_prompt_cache_options(true)
+                .with_background_mode(true),
         }
     }
 
@@ -184,6 +185,17 @@ impl ChatDriver for OpenAIChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        // Background mode needs OpenAI's resume and cancel endpoints; a custom
+        // gateway on this driver may reject or ignore them.
+        let official = endpoint
+            .url("responses")
+            .is_some_and(|url| is_openai_api_url(&url) || is_azure_openai_api_url(&url));
+        if !official {
+            let foreground = self.inner.clone().with_background_mode(false);
+            return foreground
+                .chat_completion_stream(endpoint, messages, config)
+                .await;
+        }
         self.inner
             .chat_completion_stream(endpoint, messages, config)
             .await
@@ -687,6 +699,42 @@ mod tests {
                     assert!(result.unwrap().is_none(), "{base:?}");
                 }
             }
+        }
+    }
+
+    /// Background mode needs OpenAI's resume and cancel endpoints, so only the
+    /// official hosts get it; a custom gateway on this driver stays foreground.
+    #[tokio::test]
+    async fn background_mode_is_limited_to_openai_and_azure_hosts() {
+        struct Capture(std::sync::Mutex<Option<serde_json::Value>>);
+        #[async_trait]
+        impl ProviderAuth for Capture {
+            async fn headers(
+                &self,
+                request: ProviderAuthRequest<'_>,
+            ) -> Result<Vec<(String, String)>> {
+                *self.0.lock().unwrap() = serde_json::from_slice(request.body).ok();
+                Err(AgentLoopError::config("captured before network"))
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+        for (base, background) in [
+            ("https://api.openai.com/v1", true),
+            ("https://resource.openai.azure.com/openai/v1", true),
+            ("https://gateway.example/v1", false),
+        ] {
+            let capture = std::sync::Arc::new(Capture(std::sync::Mutex::new(None)));
+            let mut config = LlmCallConfig::new("gpt-6-astra");
+            config.reasoning_effort = Some(everruns_provider::model::ReasoningEffort::Max);
+            let _ = Provider::new("openai", OpenAIChatDriver::new())
+                .base_url(base)
+                .auth_arc(capture.clone())
+                .chat_completion_stream(vec![], &config)
+                .await;
+            let body = capture.0.lock().unwrap().take().expect("request body");
+            assert_eq!(body.get("background").is_some(), background, "{base}");
         }
     }
 

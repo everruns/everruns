@@ -124,7 +124,9 @@ pub use model_spec::{ModelSpec, UnknownProvider};
 pub use openai_protocol::OpenAIProtocolChatDriver;
 pub use openai_wire::OpenAiWireError;
 #[cfg(feature = "http")]
-pub use openresponses_protocol::{OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension};
+pub use openresponses_protocol::{
+    OPENAI_BACKGROUND_OPTION, OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension,
+};
 pub use provider::{Provider as ProviderRecord, ProviderStatus, ProviderTraceConfig};
 pub use reasoning::{ReasoningContentPart, ReasoningText};
 pub use runtime_provider::{
