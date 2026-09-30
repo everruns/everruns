@@ -55,9 +55,10 @@ jobs:
   live-test:
     name: Sprites Live API Tests
     runs-on: ubuntu-latest
-    # Keep PRs fast, but allow manual dispatch so secret wiring can be verified
-    # immediately after Doppler changes without waiting for the weekly sweep.
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # Sprites is experimental: the live job runs only on manual dispatch, so a
+    # vendor control-plane outage no longer turns pushes to main red. The unit
+    # job above still gates every change.
+    if: github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
     env:
       DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}

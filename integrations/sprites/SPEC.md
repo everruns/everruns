@@ -4,7 +4,7 @@
 
 The Sprites capability integrates [Sprites](https://sprites.dev/) (Fly.io) persistent, hardware-isolated Linux microVMs as an agent execution environment. Agents can create, manage, and interact with multiple Firecracker VMs per session via the Sprites REST API. Sprites differ from ephemeral sandboxes, they persist filesystems across idle periods, support instant checkpoint/restore, and expose public HTTP endpoints.
 
-**Status**: Available (All environments)
+**Status**: Experimental (Dev only). Not part of the supported sandbox set; live tests run only on manual dispatch.
 
 ## Architecture
 
@@ -91,5 +91,4 @@ Default working directory inside a sprite is `/home/sprite`.
 
 - `tests/live_api_test.rs` is feature-gated behind `sprites-live-tests`.
 - Missing-credential behavior is **fail-closed**: with the feature flag on but `SPRITES_API_TOKEN` unset, the test panics. See `knowledge/integrations/integrations.md`.
-- `.github/workflows/sprites-integration.yml` keeps the live job off `pull_request`, fetches `SPRITES_API_TOKEN` from Doppler before running the live tests, and runs on pushes to `main` when `integrations/sprites/**` changes. It also supports `workflow_dispatch` so credential wiring can be verified immediately after Doppler changes.
-- `.github/workflows/integration-live-sweep.yml` reruns the same live path weekly and on demand so shared regressions do not hide behind that path filter. The Sprites row explicitly preflights `SPRITES_API_TOKEN` from Doppler before invoking the live test command.
+- `.github/workflows/sprites-integration.yml` runs the mock-backed unit tests on every change under `integrations/sprites/**`. Because the integration is experimental, the live job runs only on `workflow_dispatch`, where it fetches `SPRITES_API_TOKEN` from Doppler; it is not part of pushes to `main` or of `integration-live-sweep.yml`.

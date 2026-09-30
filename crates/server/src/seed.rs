@@ -917,7 +917,7 @@ Always delete sprites when done to avoid storage charges."#,
             SeedCapability::new("session_storage"),
             SeedCapability::new("session_file_system"),
         ],
-        dev_only: false,
+        dev_only: true, // Experimental: the sprites capability is dev-grade only
     },
     SeedAgent {
         id: seed_ids::GUARDED_BASH_AGENT,
