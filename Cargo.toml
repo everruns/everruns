@@ -182,7 +182,7 @@ opentelemetry-otlp = { version = "0.33", features = ["http-proto", "reqwest-clie
 tracing-opentelemetry = "0.34"
 
 # OpenAPI documentation (used by export-openapi binary for spec generation)
-utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
+utoipa = { version = "6.0", features = ["axum_extras", "chrono", "uuid"] }
 
 # Encryption
 aes-gcm = "0.11"

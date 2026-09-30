@@ -361,6 +361,17 @@ impl PostActHook for UrlElicitationHook {
     }
 }
 
+/// Whether ActAtom executes `call` itself. Client-side tools wait for the
+/// client. So does a provider's remote MCP approval request: it has no tool
+/// definition, and a person answers it through the same tool-results path.
+/// Any other unknown tool goes to the server, which reports it.
+pub(super) fn runs_on_server(call: &ToolCall, tool_definitions: &[ToolDefinition]) -> bool {
+    match tool_definitions.iter().find(|td| td.name() == call.name) {
+        Some(td) => !matches!(td, ToolDefinition::ClientSide(_)),
+        None => call.name != everruns_provider::openai_hosted_tools::OPENAI_MCP_APPROVAL_TOOL,
+    }
+}
+
 // ============================================================================
 // FormElicitationHook
 // ============================================================================
@@ -517,6 +528,19 @@ pub(super) async fn run_post_act_hooks<E: EventEmitter>(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn provider_approval_waits_for_the_client_but_other_unknown_tools_do_not() {
+        let call = |name: &str| ToolCall {
+            id: "c".into(),
+            name: name.into(),
+            arguments: json!({}),
+        };
+        let approval = everruns_provider::openai_hosted_tools::OPENAI_MCP_APPROVAL_TOOL;
+        assert!(!runs_on_server(&call(approval), &[]));
+        assert!(runs_on_server(&call("missing_tool"), &[]));
+    }
+
     use super::*;
     use crate::execution::act::ToolCallResult;
     use crate::tool_types::{ConnectionRequired, ConnectionRequiredSubject, ToolResult};

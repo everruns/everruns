@@ -6,6 +6,7 @@
 * [A2UI, Google Generative UI Integration](a2ui.md) - A2UI generative-UI capability.
 * [MCP Entity Cards](mcp-cards.md) - MCP Apps entity cards and sandboxed HTML resources.
 * [Agent Page](agent-page.md) - Why the agent page reads and edits in one layout, with the system prompt as the page.
+* [MCP Apps: Everruns in ChatGPT, Codex and Claude](mcp-apps.md) - Interactive session, question, approval and home views on /mcp.
 * [Navigation Information Architecture](information-architecture.md) - How navigation is grouped by what you do with a thing, and the dismissed alternatives.
 * [Brand Specification](brand.md) - Brand identity, colors, typography.
 * [Demo Screenshot Set](demo-screenshots.md) - Maintained light and dark demo scenes, data, framing, and refresh contract.

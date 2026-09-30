@@ -599,14 +599,9 @@ where
 
         // Partition tool calls: server-side tools get executed, client-side tools
         // are stored on ActResult for the ClientSideToolHook to emit.
-        let (server_tool_calls, client_tool_calls): (Vec<_>, Vec<_>) =
-            tool_calls.into_iter().partition(|tc| {
-                tool_definitions
-                    .iter()
-                    .find(|td| td.name() == tc.name)
-                    .map(|td| !matches!(td, ToolDefinition::ClientSide(_)))
-                    .unwrap_or(true) // unknown tools go to server (will error there)
-            });
+        let (server_tool_calls, client_tool_calls): (Vec<_>, Vec<_>) = tool_calls
+            .into_iter()
+            .partition(|tc| act_hooks::runs_on_server(tc, &tool_definitions));
 
         let client_tool_calls: Vec<_> = client_tool_calls
             .into_iter()

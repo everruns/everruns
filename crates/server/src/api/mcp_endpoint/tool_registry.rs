@@ -26,6 +26,12 @@ pub struct McpEndpointToolDefinition {
     pub output_schema: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub annotations: Option<McpToolAnnotations>,
+    /// MCP `Icon[]`; entrypoint tools only (MCP Apps, see `apps`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icons: Option<Value>,
+    /// MCP Apps linkage (`_meta.ui`) and host extensions (`_meta["openai/ui"]`).
+    #[serde(skip_serializing_if = "Option::is_none", rename = "_meta")]
+    pub meta: Option<Value>,
     #[serde(skip_serializing)]
     timeout_ms: u64,
 }
@@ -60,6 +66,14 @@ pub fn tool_definitions(
     // don't see card tools.
     if supports_rich_tool_shape(protocol_version) {
         tools.push(agent_get_card_tool(protocol_version, org_id_description));
+        // MCP Apps views (knowledge/ui/mcp-apps.md). Listed for every
+        // rich-shape client: a host without MCP Apps shows the text result,
+        // and a 2025-era host declared its capabilities only at `initialize`,
+        // which a stateless server never sees again.
+        tools.push(home_tool(protocol_version, org_id_description));
+        tools.push(session_view_tool(protocol_version, org_id_description));
+        tools.push(answer_question_tool(protocol_version, org_id_description));
+        tools.push(decide_approval_tool(protocol_version, org_id_description));
     }
     // Credential-collecting tools answer with a URL mode elicitation, which is
     // delivered as an MRTR `input_required` result. MRTR exists only in
@@ -532,6 +546,134 @@ fn agent_get_card_tool(
     )
 }
 
+fn home_tool(protocol_version: &str, org_id_description: &str) -> McpEndpointToolDefinition {
+    tool(
+        protocol_version,
+        super::apps::HOME_TOOL,
+        "Everruns",
+        "Open the Everruns home panel: the user's agents, their recent sessions, and every question or approval waiting on them. Takes no arguments. In hosts that render MCP Apps this is an interactive panel where the user can start an agent, answer a question, or approve a tool call.",
+        with_organization_id(object_schema(vec![], vec![]), org_id_description),
+        None,
+        Some(read_only_annotations()),
+        15_000,
+    )
+}
+
+fn session_view_tool(
+    protocol_version: &str,
+    org_id_description: &str,
+) -> McpEndpointToolDefinition {
+    tool(
+        protocol_version,
+        super::apps::SESSION_VIEW_TOOL,
+        "Session View",
+        "App-only: the state the Everruns session view renders (status, recent messages, and any question or approval waiting on the user). Models should use session_get_status.",
+        with_organization_id(
+            object_schema(
+                vec![id_property(
+                    "session_id",
+                    "Session ID (format: session_{32-hex}).",
+                )],
+                vec!["session_id"],
+            ),
+            org_id_description,
+        ),
+        None,
+        Some(read_only_annotations()),
+        10_000,
+    )
+}
+
+fn answer_question_tool(
+    protocol_version: &str,
+    org_id_description: &str,
+) -> McpEndpointToolDefinition {
+    tool(
+        protocol_version,
+        super::apps::ANSWER_TOOL,
+        "Answer Agent Question",
+        "App-only: answer or decline the ask_user question set a session is waiting on, from the Everruns session view. Answers are checked against what the agent actually asked.",
+        with_organization_id(
+            object_schema(
+                vec![
+                    id_property("session_id", "Session ID (format: session_{32-hex})."),
+                    (
+                        "tool_call_id",
+                        json!({ "type": "string", "description": "The ask_user call being answered." }),
+                    ),
+                    (
+                        "status",
+                        json!({ "type": "string", "enum": ["answered", "declined"] }),
+                    ),
+                    (
+                        "answers",
+                        json!({
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "selected": { "type": "array", "items": { "type": "string" } },
+                                    "other_text": { "type": ["string", "null"] }
+                                },
+                                "required": ["id"],
+                                "additionalProperties": false
+                            }
+                        }),
+                    ),
+                ],
+                vec!["session_id", "status"],
+            ),
+            org_id_description,
+        ),
+        None,
+        Some(McpToolAnnotations {
+            read_only_hint: Some(false),
+            destructive_hint: Some(false),
+            idempotent_hint: Some(false),
+            open_world_hint: Some(false),
+        }),
+        15_000,
+    )
+}
+
+fn decide_approval_tool(
+    protocol_version: &str,
+    org_id_description: &str,
+) -> McpEndpointToolDefinition {
+    tool(
+        protocol_version,
+        super::apps::APPROVAL_TOOL,
+        "Decide Approval",
+        "App-only: approve or decline the action a session paused on with request_approval, from the Everruns session view. `action` must be the action shown to the user; a stale decision is refused.",
+        with_organization_id(
+            object_schema(
+                vec![
+                    id_property("session_id", "Session ID (format: session_{32-hex})."),
+                    (
+                        "decision",
+                        json!({ "type": "string", "enum": ["approve", "decline"] }),
+                    ),
+                    (
+                        "action",
+                        json!({ "type": "string", "description": "The action text the user saw.", "minLength": 1 }),
+                    ),
+                ],
+                vec!["session_id", "decision", "action"],
+            ),
+            org_id_description,
+        ),
+        None,
+        Some(McpToolAnnotations {
+            read_only_hint: Some(false),
+            destructive_hint: Some(false),
+            idempotent_hint: Some(false),
+            open_world_hint: Some(false),
+        }),
+        15_000,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn tool(
     protocol_version: &str,
@@ -551,6 +693,12 @@ fn tool(
         input_schema,
         output_schema: supports_2025_06.then_some(output_schema).flatten(),
         annotations,
+        icons: supports_2025_06
+            .then(|| super::apps::tool_icons(name))
+            .flatten(),
+        meta: supports_2025_06
+            .then(|| super::apps::tool_meta(name))
+            .flatten(),
         timeout_ms,
     }
 }

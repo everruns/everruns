@@ -11,13 +11,22 @@
 // reason step fails the turn with a message naming the provider, because an
 // agent configured to search the web must not quietly answer without it.
 //
-// Web search, code interpreter, hosted shell and file search. Remote MCP is a
-// follow-up under the same capability.
+// Web search, code interpreter, hosted shell, file search and remote MCP.
+//
+// Remote MCP approvals default to `always`: OpenAI stops at each call and the
+// turn pauses on a synthetic approval call until a person answers it through
+// the session's tool-results path. `never` is accepted only with an explicit
+// `allowed_tools` list, so skipping approval is a per-tool decision.
+//
+// A server that needs credentials is named by `mcp_server`, a registered
+// Everruns MCP server; the host resolves its URL, API key or OAuth token per
+// call (`everruns_provider::hosted_mcp`). Config never holds a credential:
+// headers are not an accepted field and URLs with userinfo are rejected.
 
 use async_trait::async_trait;
 use everruns_provider::openai_hosted_tools::{
-    ContainerMemory, ContainerTool, FileSearchTool, OpenAiHostedTools, SearchContextSize,
-    WebSearchTool, WebSearchUserLocation,
+    ContainerMemory, ContainerTool, FileSearchTool, McpApproval, McpServerTool, OpenAiHostedTools,
+    SearchContextSize, WebSearchTool, WebSearchUserLocation,
 };
 use serde_json::{Value, json};
 
@@ -36,7 +45,15 @@ const LOCATION_FIELDS: [&str; 4] = ["country", "region", "city", "timezone"];
 const MEMORY_KEY: &str = "container_memory_limit";
 const VECTOR_STORES_KEY: &str = "file_search_vector_store_ids";
 const MAX_RESULTS_KEY: &str = "file_search_max_results";
-const CONFIG_KEYS: [&str; 7] = [
+const MCP_SERVERS_KEY: &str = "mcp_servers";
+const MCP_FIELDS: [&str; 5] = [
+    "server_label",
+    "server_url",
+    "mcp_server",
+    "allowed_tools",
+    "require_approval",
+];
+const CONFIG_KEYS: [&str; 8] = [
     TOOLS_KEY,
     CONTEXT_SIZE_KEY,
     ALLOWED_DOMAINS_KEY,
@@ -44,18 +61,21 @@ const CONFIG_KEYS: [&str; 7] = [
     MEMORY_KEY,
     VECTOR_STORES_KEY,
     MAX_RESULTS_KEY,
+    MCP_SERVERS_KEY,
 ];
 const WEB_SEARCH: &str = "web_search";
 const CODE_INTERPRETER: &str = "code_interpreter";
 const SHELL: &str = "shell";
 const FILE_SEARCH: &str = "file_search";
+const MCP: &str = "mcp";
 
 /// Hosted tool names this capability accepts, in UI order.
-const TOOL_NAMES: [(&str, &str); 4] = [
+const TOOL_NAMES: [(&str, &str); 5] = [
     (WEB_SEARCH, "Web search"),
     (CODE_INTERPRETER, "Code interpreter"),
     (SHELL, "Hosted shell"),
     (FILE_SEARCH, "File search"),
+    (MCP, "Remote MCP"),
 ];
 
 /// OpenAI server tools capability.
@@ -116,7 +136,72 @@ pub fn hosted_tools_from_config(config: &Value) -> OpenAiHostedTools {
                     .map(|max| max as u32),
             }
         }),
+        mcp_servers: if enabled(MCP) {
+            mcp_servers_from_config(config.get(MCP_SERVERS_KEY))
+        } else {
+            Vec::new()
+        },
     }
+}
+
+/// Servers from the read path. A server without a label or an https URL is
+/// dropped, and `never` without an allow-list falls back to `always`.
+fn mcp_servers_from_config(value: Option<&Value>) -> Vec<McpServerTool> {
+    let Some(servers) = value.and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    servers
+        .iter()
+        .filter_map(|server| {
+            let text = |key: &str| {
+                server
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+            };
+            let server_label = text("server_label")?.to_string();
+            // A registered server's URL and credentials are resolved per call
+            // by the host, so config names it and carries neither.
+            let mcp_server = text("mcp_server")
+                .filter(|name| everruns_core::mcp_server::is_valid_mcp_server_name(name));
+            let server_url = match mcp_server {
+                Some(_) => "",
+                None => text("server_url").filter(|url| mcp_url_error(url).is_none())?,
+            };
+            let allowed_tools = string_list(server.get("allowed_tools"));
+            let require_approval = match text("require_approval") {
+                Some("never") if !allowed_tools.is_empty() => McpApproval::Never,
+                _ => McpApproval::Always,
+            };
+            Some(McpServerTool {
+                server_label,
+                server_url: server_url.to_string(),
+                mcp_server: mcp_server.map(str::to_string),
+                allowed_tools,
+                require_approval,
+                ..Default::default()
+            })
+        })
+        .collect()
+}
+
+/// Why `url` is not an acceptable remote MCP server URL.
+///
+/// Credentials never ride in the URL: userinfo is rejected because it would be
+/// stored in agent config and echoed to OpenAI (THREAT TM-AGENT-029).
+fn mcp_url_error(url: &str) -> Option<String> {
+    let Some(rest) = url.strip_prefix("https://") else {
+        return Some(format!("MCP server URL must use https: {url}"));
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.is_empty() {
+        return Some(format!("MCP server URL has no host: {url}"));
+    }
+    if authority.contains('@') {
+        return Some("MCP server URL must not contain credentials".to_string());
+    }
+    None
 }
 
 /// Trimmed, non-empty strings from a JSON array; anything else is dropped.
@@ -135,6 +220,81 @@ fn string_list(value: Option<&Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn validate_mcp_servers(servers: &Value) -> Result<(), String> {
+    let servers = servers
+        .as_array()
+        .ok_or_else(|| format!("`{MCP_SERVERS_KEY}` must be an array of servers"))?;
+    let mut labels = std::collections::HashSet::new();
+    for server in servers {
+        let server = server
+            .as_object()
+            .ok_or_else(|| format!("`{MCP_SERVERS_KEY}` entries must be objects"))?;
+        if let Some(key) = server
+            .keys()
+            .find(|key| !MCP_FIELDS.contains(&key.as_str()))
+        {
+            return Err(format!("unknown MCP server field: {key}"));
+        }
+        let label = server
+            .get("server_label")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if label.is_empty()
+            || !label
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(format!(
+                "MCP `server_label` must be letters, digits, - or _, got {label:?}"
+            ));
+        }
+        if !labels.insert(label) {
+            return Err(format!("duplicate MCP server_label: {label}"));
+        }
+        match (server.get("server_url"), server.get("mcp_server")) {
+            (Some(_), Some(_)) => {
+                return Err(format!(
+                    "MCP server {label} takes `server_url` or `mcp_server`, not both"
+                ));
+            }
+            (_, Some(name)) => {
+                let name = name.as_str().unwrap_or_default();
+                if !everruns_core::mcp_server::is_valid_mcp_server_name(name) {
+                    return Err(format!(
+                        "MCP `mcp_server` must name a registered server, got {name:?}"
+                    ));
+                }
+            }
+            (url, None) => {
+                let url = url.and_then(Value::as_str).unwrap_or_default();
+                if let Some(error) = mcp_url_error(url.trim()) {
+                    return Err(error);
+                }
+            }
+        }
+        if let Some(tools) = server.get("allowed_tools")
+            && !tools.as_array().is_some_and(|tools| {
+                tools
+                    .iter()
+                    .all(|t| t.as_str().is_some_and(|t| !t.trim().is_empty()))
+            })
+        {
+            return Err("MCP `allowed_tools` must be an array of tool names".to_string());
+        }
+        match server.get("require_approval").map(|v| v.as_str()) {
+            None | Some(Some("always")) => {}
+            Some(Some("never")) if !string_list(server.get("allowed_tools")).is_empty() => {}
+            Some(Some("never")) => {
+                return Err(format!(
+                    "MCP server {label} can skip approval only for an explicit `allowed_tools` list"
+                ));
+            }
+            _ => return Err("MCP `require_approval` must be always or never".to_string()),
+        }
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl Capability for OpenAiServerToolsCapability {
     fn id(&self) -> &str {
@@ -147,9 +307,9 @@ impl Capability for OpenAiServerToolsCapability {
 
     fn description(&self) -> &str {
         "Enables OpenAI's hosted tools (web search, code interpreter, hosted shell, \
-         file search) on agents that run on the OpenAI or Azure OpenAI Responses API. \
-         OpenAI runs these tools in its own infrastructure and sends conversation \
-         content to them. Agents on other providers fail with an explanation instead \
+         file search, remote MCP) on agents that run on the OpenAI or Azure OpenAI \
+         Responses API. OpenAI runs these tools in its own infrastructure and sends \
+         conversation content to them and to the remote MCP servers you list. Agents on other providers fail with an explanation instead \
          of running without the tools."
     }
 
@@ -168,7 +328,7 @@ impl Capability for OpenAiServerToolsCapability {
                 locale: "uk",
                 name: Some("Серверні інструменти OpenAI"),
                 description: Some(
-                    "Вмикає розміщені інструменти OpenAI (веб-пошук, інтерпретатор коду, розміщений командний рядок, пошук у файлах) для агентів на OpenAI або Azure OpenAI Responses API. Інструменти виконує OpenAI у власній інфраструктурі, і вони отримують вміст розмови. Агенти на інших провайдерах завершуються з поясненням, а не працюють без інструментів.",
+                    "Вмикає розміщені інструменти OpenAI (веб-пошук, інтерпретатор коду, розміщений командний рядок, пошук у файлах, віддалений MCP) для агентів на OpenAI або Azure OpenAI Responses API. Інструменти виконує OpenAI у власній інфраструктурі, і вони та вказані віддалені MCP-сервери отримують вміст розмови. Агенти на інших провайдерах завершуються з поясненням, а не працюють без інструментів.",
                 ),
                 config_description: Some(
                     "Визначає, які розміщені інструменти OpenAI може викликати модель і як вони працюють.",
@@ -185,6 +345,7 @@ impl Capability for OpenAiServerToolsCapability {
                                     CODE_INTERPRETER: "Інтерпретатор коду",
                                     SHELL: "Розміщений командний рядок",
                                     FILE_SEARCH: "Пошук у файлах",
+                                    MCP: "Віддалений MCP",
                                 },
                             },
                         },
@@ -211,6 +372,10 @@ impl Capability for OpenAiServerToolsCapability {
                         MAX_RESULTS_KEY: {
                             "title": "Максимум результатів",
                             "description": "Скільки результатів пошуку у файлах повертати, від 1 до 50.",
+                        },
+                        MCP_SERVERS_KEY: {
+                            "title": "Віддалені MCP-сервери",
+                            "description": "Сервери, до яких OpenAI підключається від імені моделі. Кожен виклик чекає на схвалення, якщо не вказано дозволені інструменти й require_approval: never.",
                         },
                     },
                 })),
@@ -298,6 +463,23 @@ impl Capability for OpenAiServerToolsCapability {
                     "description": "OpenAI vector store ids (vs_...) that file search reads. Required for file search.",
                     "items": { "type": "string" },
                     "uniqueItems": true,
+                },
+                MCP_SERVERS_KEY: {
+                    "type": "array",
+                    "title": "Remote MCP servers",
+                    "description": "Servers OpenAI connects to for the model. Each call waits for approval unless the server lists allowed tools and sets require_approval to never.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "server_label": { "type": "string", "title": "Label", "description": "Letters, digits, - and _; unique." },
+                            "server_url": { "type": "string", "title": "URL", "description": "https URL of a public MCP server, without credentials. Use this or mcp_server." },
+                            "mcp_server": { "type": "string", "title": "Registered server", "description": "Name of an MCP server registered in Everruns. Its URL and credentials are resolved for every call and never stored here." },
+                            "allowed_tools": { "type": "array", "title": "Allowed tools", "items": { "type": "string" }, "uniqueItems": true },
+                            "require_approval": { "type": "string", "title": "Approval", "enum": ["always", "never"], "default": "always" },
+                        },
+                        "required": ["server_label"],
+                        "additionalProperties": false,
+                    },
                 },
                 MAX_RESULTS_KEY: {
                     "type": "integer",
@@ -399,6 +581,23 @@ impl Capability for OpenAiServerToolsCapability {
                 "file search needs at least one vector store id in `{VECTOR_STORES_KEY}`"
             ));
         }
+        if let Some(servers) = obj.get(MCP_SERVERS_KEY) {
+            validate_mcp_servers(servers)?;
+        }
+        let mcp_on = obj
+            .get(TOOLS_KEY)
+            .and_then(Value::as_array)
+            .is_some_and(|tools| tools.iter().any(|tool| tool.as_str() == Some(MCP)));
+        if mcp_on
+            && obj
+                .get(MCP_SERVERS_KEY)
+                .and_then(Value::as_array)
+                .is_none_or(Vec::is_empty)
+        {
+            return Err(format!(
+                "remote MCP needs at least one server in `{MCP_SERVERS_KEY}`"
+            ));
+        }
         if let Some(location) = obj.get(LOCATION_KEY) {
             let location = location
                 .as_object()
@@ -476,6 +675,95 @@ mod tests {
     }
 
     #[test]
+    fn mcp_servers_default_to_approval() {
+        let tools = hosted_tools_from_config(&json!({
+            "tools": ["mcp"],
+            MCP_SERVERS_KEY: [
+                { "server_label": "deepwiki", "server_url": "https://mcp.deepwiki.com/mcp" },
+                { "server_label": "docs", "server_url": "https://docs.example/mcp",
+                  "allowed_tools": ["search"], "require_approval": "never" },
+                // Read path: `never` without an allow-list still asks.
+                { "server_label": "loose", "server_url": "https://loose.example/mcp",
+                  "require_approval": "never" },
+                { "server_label": "plain", "server_url": "http://plain.example/mcp" },
+            ],
+        }));
+        let approvals: Vec<_> = tools
+            .mcp_servers
+            .iter()
+            .map(|s| (s.server_label.as_str(), s.require_approval))
+            .collect();
+        assert_eq!(
+            approvals,
+            [
+                ("deepwiki", McpApproval::Always),
+                ("docs", McpApproval::Never),
+                ("loose", McpApproval::Always),
+            ]
+        );
+        // Listing servers without enabling the tool contributes nothing.
+        let off = hosted_tools_from_config(&json!({
+            MCP_SERVERS_KEY: [{ "server_label": "a", "server_url": "https://a.example" }],
+        }));
+        assert!(off.is_empty());
+    }
+
+    #[test]
+    fn registered_mcp_server_carries_no_url_or_credentials() {
+        let config = json!({ "tools": ["mcp"], MCP_SERVERS_KEY: [
+            { "server_label": "gh", "mcp_server": "github" },
+        ]});
+        assert!(OpenAiServerToolsCapability.validate_config(&config).is_ok());
+        let server = hosted_tools_from_config(&config).mcp_servers.remove(0);
+        assert_eq!(server.mcp_server.as_deref(), Some("github"));
+        assert!(server.server_url.is_empty() && server.headers.is_empty());
+        for bad in [
+            json!({ "server_label": "gh", "mcp_server": "github", "server_url": "https://a.example" }),
+            json!({ "server_label": "gh", "mcp_server": "" }),
+            json!({ "server_label": "gh", "mcp_server": "bad__name" }),
+        ] {
+            let config = json!({ "tools": ["mcp"], MCP_SERVERS_KEY: [bad.clone()] });
+            assert!(
+                OpenAiServerToolsCapability
+                    .validate_config(&config)
+                    .is_err(),
+                "accepted {bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn mcp_validation_rejects_unsafe_servers() {
+        let cap = OpenAiServerToolsCapability;
+        let with = |server: Value| json!({ "tools": ["mcp"], MCP_SERVERS_KEY: [server] });
+        assert!(
+            cap.validate_config(&with(json!({
+                "server_label": "docs", "server_url": "https://docs.example/mcp",
+                "allowed_tools": ["search"], "require_approval": "never",
+            })))
+            .is_ok()
+        );
+        for bad in [
+            json!({ "server_label": "docs", "server_url": "http://docs.example/mcp" }),
+            json!({ "server_label": "docs", "server_url": "https://user:pw@docs.example/mcp" }),
+            json!({ "server_label": "has space", "server_url": "https://docs.example" }),
+            json!({ "server_label": "docs", "server_url": "https://docs.example", "require_approval": "never" }),
+            json!({ "server_label": "docs", "server_url": "https://docs.example", "require_approval": "sometimes" }),
+            json!({ "server_label": "docs", "server_url": "https://docs.example", "headers": {} }),
+        ] {
+            assert!(
+                cap.validate_config(&with(bad.clone())).is_err(),
+                "accepted {bad}"
+            );
+        }
+        let duplicate = json!({ "tools": ["mcp"], MCP_SERVERS_KEY: [
+            { "server_label": "a", "server_url": "https://a.example" },
+            { "server_label": "a", "server_url": "https://b.example" },
+        ]});
+        assert!(cap.validate_config(&duplicate).is_err());
+    }
+
+    #[test]
     fn container_and_file_tools_contribute_their_options() {
         let tools = hosted_tools_from_config(&json!({
             "tools": ["code_interpreter", "shell", "file_search"],
@@ -523,6 +811,7 @@ mod tests {
         for bad in [
             json!({ "tools": ["image_generation"] }),
             json!({ "tools": ["file_search"] }),
+            json!({ "tools": ["mcp"] }),
             json!({ "tools": ["file_search"], VECTOR_STORES_KEY: [" "] }),
             json!({ MEMORY_KEY: "2g" }),
             json!({ MAX_RESULTS_KEY: 0 }),

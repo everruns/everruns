@@ -617,6 +617,71 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         });
         Some(Arc::new(McpExecutor::new(client, resolver)))
     }
+
+    fn hosted_mcp_resolver(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        agent_id: Option<AgentId>,
+    ) -> Option<Arc<dyn everruns_provider::hosted_mcp::HostedMcpResolver>> {
+        Some(Arc::new(WorkerMcpResolver {
+            adapters: self.adapters.clone(),
+            org_id,
+            session_id: session_id.uuid(),
+            agent_id,
+        }))
+    }
+}
+
+/// Registered MCP servers that OpenAI calls as a hosted tool (EVE-1115).
+///
+/// Same lookup as `mcp_*` execution, so scoping, API keys and OAuth tokens
+/// match what the agent's own MCP tools get. OpenAI calls the server itself,
+/// so there is no tool call to answer `connection_required`: a missing grant
+/// fails the turn with a message naming where to connect it, and a server with
+/// secret-bound tool parameters is refused because OpenAI cannot inject them.
+#[async_trait]
+impl<A: WorkerAdapters> everruns_provider::hosted_mcp::HostedMcpResolver for WorkerMcpResolver<A> {
+    async fn resolve(
+        &self,
+        server: &str,
+    ) -> Result<everruns_provider::hosted_mcp::ResolvedHostedMcp> {
+        let configuration = everruns_provider::error::AgentLoopError::Configuration;
+        let prefix = everruns_core::mcp_server::sanitize_mcp_server_name(server);
+        let connection = McpConnectionResolver::resolve(self, &prefix)
+            .await
+            .map_err(|error| configuration(format!("MCP server {server}: {error}")))?
+            .ok_or_else(|| {
+                configuration(format!(
+                    "MCP server {server} is not available to this session"
+                ))
+            })?;
+        if let Some(pending) = connection.pending_oauth_provider {
+            let setup = pending
+                .setup_url
+                .as_deref()
+                .unwrap_or("/settings/connections");
+            return Err(configuration(format!(
+                "MCP server {server} needs a {} connection; connect it at {setup}",
+                pending.provider
+            )));
+        }
+        if !connection.secret_bindings.is_empty() {
+            return Err(configuration(format!(
+                "MCP server {server} binds secrets to tool parameters, which OpenAI cannot supply"
+            )));
+        }
+        #[allow(unreachable_patterns)]
+        let (url, headers) = match connection.endpoint {
+            McpEndpoint::Http { url, headers } => (url, headers.into_iter().collect()),
+            _ => {
+                return Err(configuration(format!(
+                    "MCP server {server} is not a remote server"
+                )));
+            }
+        };
+        Ok(everruns_provider::hosted_mcp::ResolvedHostedMcp { url, headers })
+    }
 }
 
 #[cfg(test)]
@@ -739,6 +804,52 @@ mod mcp_credential_tests {
             .expect("resolve")
             .expect("connection");
         (connection, resolver)
+    }
+
+    fn hosted_resolver(
+        info: crate::mcp_executor::McpServerInfo,
+        resolver: RecordingResolver,
+    ) -> WorkerMcpResolver<StubAdapters> {
+        WorkerMcpResolver {
+            adapters: StubAdapters {
+                info,
+                resolver: Arc::new(resolver),
+            },
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            session_id: Uuid::new_v4(),
+            agent_id: Some(AgentId::from_seed(7)),
+        }
+    }
+
+    /// EVE-1115: a registered server OpenAI calls gets the same credential
+    /// the agent's own MCP tools would, and a missing grant fails the turn.
+    #[tokio::test]
+    async fn hosted_mcp_resolution_uses_the_same_credentials() {
+        use everruns_provider::hosted_mcp::HostedMcpResolver;
+        let oauth = everruns_core::McpServerAuthMode::OAuth;
+        let connected = hosted_resolver(
+            server_info(McpServerActsAs::User, oauth.clone(), None, &[]),
+            RecordingResolver {
+                acts_as_token: Some("scoped-token".to_string()),
+                ..Default::default()
+            },
+        );
+        let resolved = HostedMcpResolver::resolve(&connected, "linear")
+            .await
+            .unwrap();
+        assert_eq!(resolved.url, "https://mcp.linear.app/mcp");
+        assert_eq!(resolved.headers["Authorization"], "Bearer scoped-token");
+        assert!(!format!("{resolved:?}").contains("scoped-token"));
+
+        let unconnected = hosted_resolver(
+            server_info(McpServerActsAs::User, oauth, None, &[]),
+            RecordingResolver::default(),
+        );
+        let error = HostedMcpResolver::resolve(&unconnected, "linear")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("/settings/connections"), "{error}");
     }
 
     #[tokio::test]

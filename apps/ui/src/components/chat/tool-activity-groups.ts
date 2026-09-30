@@ -16,6 +16,7 @@ export const INTERACTIVE_TOOL_CALLS = new Set([
   "setup_connection",
   "confirm_url_elicitation",
   "ask_user",
+  "openai_mcp_approval",
 ]);
 
 export interface TimelineToolRow {

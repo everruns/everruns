@@ -60,8 +60,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let supports_phases = self.native_phases;
         let supports_tool_search = self.hosted_tool_search;
 
-        let (instructions, mut transcript_input_items) =
-            Self::build_input(&messages, supports_phases);
+        let (instructions, transcript_input_items) = Self::build_input(&messages, supports_phases);
+        let mut transcript_input_items =
+            super::hosted_tools::replay_mcp_approvals(transcript_input_items);
         let update_state = config.reasoning_state.as_ref().filter(|_| {
             supports_phases
                 && crate::reasoning_updates::supports_configuration_updates(&config.model)
@@ -477,6 +478,18 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     Some("response.output_item.done") => {
                                         // Output item completed - check if it's a function call
                                         if let Some(item) = json.get("item")
+                                            && let Some((id, arguments)) =
+                                                super::hosted_tools::mcp_approval_call(item)
+                                        {
+                                            // An MCP approval pauses like a tool call.
+                                            let mut acc = accumulated_tool_calls.lock().unwrap();
+                                            acc.observe_approval(&id, &arguments);
+                                            if let Some(tool_calls) = acc.take_unemitted() {
+                                                *finish_reason.lock().unwrap() =
+                                                    Some("tool_calls".to_string());
+                                                return Ok(LlmStreamEvent::ToolCalls(tool_calls));
+                                            }
+                                        } else if let Some(item) = json.get("item")
                                             && item.get("type").and_then(|t| t.as_str())
                                                 == Some("function_call")
                                         {

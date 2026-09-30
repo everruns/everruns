@@ -37,6 +37,7 @@ mod fcp_integration_test;
 mod guardrails_integration_test;
 mod llm_model_default_test;
 mod mcp_acts_as_grpc_test;
+mod mcp_apps_test;
 mod mcp_endpoint_test;
 mod mcp_oauth_user_switch_test;
 mod migration_history_test;

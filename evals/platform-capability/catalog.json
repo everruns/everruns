@@ -23,11 +23,11 @@
             "role": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SessionParticipantRole",
                   "description": "Participant role. Omit for ordinary members. Host assignment is managed by session creation."
+                },
+                {
+                  "type": "null"
                 }
               ]
             }
@@ -178,11 +178,11 @@
               "use": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/$defs/McpServerPresetRef",
                     "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -509,11 +509,11 @@
             "side_effect_class": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SideEffectClass",
                   "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -674,11 +674,11 @@
             "status": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/ExternalScoreStatus",
                   "description": "Current lifecycle status."
+                },
+                {
+                  "type": "null"
                 }
               ]
             }
@@ -1188,11 +1188,11 @@
               "use": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/$defs/McpServerPresetRef",
                     "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -1596,11 +1596,11 @@
             "side_effect_class": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SideEffectClass",
                   "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -1733,11 +1733,11 @@
         "network_access": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/NetworkAccessList",
               "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nIf set, merged with harness and session layers (allowed: intersect, blocked: union).\nExample shape is defined on `NetworkAccessList`."
+            },
+            {
+              "type": "null"
             }
           ]
         },
@@ -2130,11 +2130,11 @@
             "change_kind": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/AgentVersionChangeKind",
                   "description": "Reason this version was created. See `AgentVersionChangeKind` for the allowed values.\nDefaults to `manual` when omitted."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -2265,11 +2265,11 @@
         "period": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/BudgetPeriod",
               "description": "Optional recurring reset period for the budget balance."
+            },
+            {
+              "type": "null"
             }
           ]
         },
@@ -2477,11 +2477,11 @@
         "target": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/EvalTarget",
               "description": "Session setup target (harness+agent, app, or full session params)."
+            },
+            {
+              "type": "null"
             }
           ]
         }
@@ -2596,11 +2596,11 @@
             "target": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/EvalTarget",
                   "description": "Optional per-case target override."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -3010,11 +3010,11 @@
                 "model_id": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/$defs/modelId",
                       "description": "Judge model; the org's default is used when absent."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -3101,11 +3101,11 @@
             "target": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/EvalTarget",
                   "description": "Optional per-run target override."
+                },
+                {
+                  "type": "null"
                 }
               ]
             }
@@ -3367,11 +3367,11 @@
               "use": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/$defs/McpServerPresetRef",
                     "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -3596,11 +3596,11 @@
         "network_access": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/NetworkAccessList",
               "description": "Network access list controlling which hosts/URLs sessions can reach."
+            },
+            {
+              "type": "null"
             }
           ]
         },
@@ -3857,11 +3857,11 @@
         "auth_mode": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/McpServerAuthMode",
               "description": "Authentication mode. Defaults to `api_key` when `api_key` is provided, otherwise `none`.\nExample shape is defined on `McpServerAuthMode`."
+            },
+            {
+              "type": "null"
             }
           ]
         },
@@ -3908,11 +3908,11 @@
         "protocol_mode": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/McpProtocolMode",
               "description": "Protocol-era policy. Defaults to `auto` (negotiates every protocol era)."
+            },
+            {
+              "type": "null"
             }
           ]
         },
@@ -4096,10 +4096,10 @@
         "source": {
           "oneOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/CreateMemorySourceRequest"
             },
             {
-              "$ref": "#/$defs/CreateMemorySourceRequest"
+              "type": "null"
             }
           ]
         }
@@ -4190,11 +4190,11 @@
             "reasoning": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/ReasoningConfig",
                   "description": "Reasoning configuration"
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -4459,11 +4459,11 @@
             "effort": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/ReasoningEffort",
                   "description": "Effort level for reasoning.\n\nTyped rather than free-form: the effort taxonomy is closed, and each\ndriver previously re-parsed the string with its own case handling, which\nlet `minimal` silently mean \"no reasoning\" on budget-based models."
+                },
+                {
+                  "type": "null"
                 }
               ]
             }
@@ -4518,11 +4518,11 @@
             "verified": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/VerificationVerdict",
                   "description": "Verification verdict, filled by the `citation_verification` capability.\nAbsent means unverified (not \"unsupported\")."
+                },
+                {
+                  "type": "null"
                 }
               ]
             }
@@ -4597,30 +4597,30 @@
         "addressed_participant_id": {
           "oneOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/partId"
             },
             {
-              "$ref": "#/$defs/partId"
+              "type": "null"
             }
           ]
         },
         "controls": {
           "oneOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/Controls"
             },
             {
-              "$ref": "#/$defs/Controls"
+              "type": "null"
             }
           ]
         },
         "external_actor": {
           "oneOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/ExternalActor"
             },
             {
-              "$ref": "#/$defs/ExternalActor"
+              "type": "null"
             }
           ]
         },
@@ -5088,11 +5088,11 @@
                 "model_id": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/$defs/modelId",
                       "description": "Judge model; the org's default is used when absent."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -5196,11 +5196,11 @@
         "match": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/ObserverMatch",
               "description": "Which production sessions to score. Empty matches all org traffic."
+            },
+            {
+              "type": "null"
             }
           ]
         },
@@ -5541,21 +5541,21 @@
         "request_options": {
           "oneOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/ProviderRequestOptions"
             },
             {
-              "$ref": "#/$defs/ProviderRequestOptions"
+              "type": "null"
             }
           ]
         },
         "trace": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/ProviderTraceConfig",
               "description": "Trace/observability link configuration override (driver defaults apply\nwhen omitted)."
+            },
+            {
+              "type": "null"
             }
           ]
         }
@@ -5585,11 +5585,11 @@
             "dashboard": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SavedReportDashboardMetadata",
                   "description": "Optional dashboard placement metadata. Omit to create a library-only\nreport that isn't pinned to any dashboard layout."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -6027,11 +6027,11 @@
               "use": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/$defs/McpServerPresetRef",
                     "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -6413,11 +6413,11 @@
             "side_effect_class": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SideEffectClass",
                   "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -6570,11 +6570,11 @@
         "network_access": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/NetworkAccessList",
               "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union).\nExample shape is defined on `NetworkAccessList`."
+            },
+            {
+              "type": "null"
             }
           ]
         },
@@ -9463,11 +9463,11 @@
             "agent_id": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/agentId",
                   "description": "Agent's prefixed public identifier."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -9899,11 +9899,11 @@
               "use": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/$defs/McpServerPresetRef",
                     "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -10307,11 +10307,11 @@
             "side_effect_class": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SideEffectClass",
                   "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -10444,11 +10444,11 @@
         "network_access": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/NetworkAccessList",
               "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nIf set, merged with harness and session layers (allowed: intersect, blocked: union).\nExample shape is defined on `NetworkAccessList`."
+            },
+            {
+              "type": "null"
             }
           ]
         },
@@ -11453,11 +11453,11 @@
         "around": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/eventId",
               "description": "Anchor event id: returns up to `window` events on each side\n(default 50, max 500). Mutually exclusive with `since_id`,\n`after_sequence`, and `before_sequence` — combining returns 400."
+            },
+            {
+              "type": "null"
             }
           ]
         },
@@ -11515,10 +11515,10 @@
         "since_id": {
           "oneOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/eventId"
             },
             {
-              "$ref": "#/$defs/eventId"
+              "type": "null"
             }
           ]
         },
@@ -11887,10 +11887,10 @@
         "source": {
           "oneOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/ModelSource"
             },
             {
-              "$ref": "#/$defs/ModelSource"
+              "type": "null"
             }
           ]
         }
@@ -12540,11 +12540,11 @@
             "agent_id": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/agentId",
                   "description": "Agent's prefixed public identifier."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -13239,11 +13239,11 @@
               "use": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/$defs/McpServerPresetRef",
                     "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -13570,11 +13570,11 @@
             "side_effect_class": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SideEffectClass",
                   "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -13729,11 +13729,11 @@
               "use": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/$defs/McpServerPresetRef",
                     "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -13821,10 +13821,10 @@
         "parent_harness_id": {
           "oneOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/harnessId"
             },
             {
-              "$ref": "#/$defs/harnessId"
+              "type": "null"
             }
           ]
         },
@@ -14999,11 +14999,11 @@
               "use": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/$defs/McpServerPresetRef",
                     "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -15407,11 +15407,11 @@
             "side_effect_class": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SideEffectClass",
                   "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -15533,11 +15533,11 @@
             "mcpServers": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/BTreeMap",
                   "description": "Remote MCP servers scoped to this agent."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -15552,11 +15552,11 @@
             "network_access": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/NetworkAccessList",
                   "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nSend `{}` (empty object) to clear restrictions. Omit to leave unchanged.\nExample shape is defined on `NetworkAccessList`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -15589,11 +15589,11 @@
             "status": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/AgentStatus",
                   "description": "The status of the agent. Set to \"archived\" to soft-delete."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -15773,11 +15773,11 @@
             "status": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/AgentIdentityStatus",
                   "description": "Current lifecycle status."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -15874,11 +15874,11 @@
             "session_mode": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SessionBinding",
                   "description": "Replacement session reuse strategy."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -16174,11 +16174,11 @@
             "target": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/EvalTarget",
                   "description": "Session setup target (harness+agent, app, or full session params)."
+                },
+                {
+                  "type": "null"
                 }
               ]
             }
@@ -16624,11 +16624,11 @@
                 "model_id": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/$defs/modelId",
                       "description": "Judge model; the org's default is used when absent."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -16749,11 +16749,11 @@
             "target": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/EvalTarget",
                   "description": "Optional per-case target override."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -16855,11 +16855,11 @@
             "status": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/ExternalScoreStatus",
                   "description": "Current lifecycle status."
+                },
+                {
+                  "type": "null"
                 }
               ]
             }
@@ -17000,11 +17000,11 @@
               "use": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/$defs/McpServerPresetRef",
                     "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -17245,11 +17245,11 @@
             "mcpServers": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/BTreeMap",
                   "description": "Replace the scoped MCP server set entirely; omit to leave unchanged."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -17264,11 +17264,11 @@
             "network_access": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/NetworkAccessList",
                   "description": "Network access list. Send `{}` (empty object) to clear. Omit to leave unchanged.\nExample shape is defined on `NetworkAccessList`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -17300,11 +17300,11 @@
             "status": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/HarnessStatus",
                   "description": "Current lifecycle status. Example shape is defined on `HarnessStatus`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -17643,11 +17643,11 @@
             "auth_mode": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/McpServerAuthMode",
                   "description": "Authentication mode."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -17697,33 +17697,33 @@
             "protocol_mode": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/McpProtocolMode",
                   "description": "Protocol-era policy (`auto`, `legacy`, `stable`, `rc`)."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
             "status": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/McpServerStatus",
                   "description": "The status of the MCP server. Set to \"disabled\" to disable."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
             "transport_type": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/McpServerTransportType",
                   "description": "Transport type."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -17927,11 +17927,11 @@
             "source": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/CreateMemorySourceRequest",
                   "description": "Source configuration. Example shape is defined on `CreateMemorySourceRequest`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             }
@@ -18410,11 +18410,11 @@
                 "model_id": {
                   "oneOf": [
                     {
-                      "type": "null"
-                    },
-                    {
                       "$ref": "#/$defs/modelId",
                       "description": "Judge model; the org's default is used when absent."
+                    },
+                    {
+                      "type": "null"
                     }
                   ]
                 },
@@ -18512,10 +18512,10 @@
             "match": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/$defs/ObserverMatch"
                 },
                 {
-                  "$ref": "#/$defs/ObserverMatch"
+                  "type": "null"
                 }
               ]
             },
@@ -18545,11 +18545,11 @@
             "status": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/ObserverStatus",
                   "description": "New lifecycle status (`active`, `paused`, or `archived`)."
+                },
+                {
+                  "type": "null"
                 }
               ]
             }
@@ -18907,42 +18907,42 @@
         "provider_type": {
           "oneOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/DriverId"
             },
             {
-              "$ref": "#/$defs/DriverId"
+              "type": "null"
             }
           ]
         },
         "request_options": {
           "oneOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/ProviderRequestOptions"
             },
             {
-              "$ref": "#/$defs/ProviderRequestOptions"
+              "type": "null"
             }
           ]
         },
         "status": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/ProviderStatus",
               "description": "Current lifecycle status."
+            },
+            {
+              "type": "null"
             }
           ]
         },
         "trace": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/ProviderTraceConfig",
               "description": "Trace/observability link configuration override (merged into stored\nsettings, preserving other keys)."
+            },
+            {
+              "type": "null"
             }
           ]
         }
@@ -19159,11 +19159,11 @@
             "dashboard": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SavedReportDashboardMetadata",
                   "description": "Replace dashboard placement metadata. Omit to keep current placement;\nsend `null` to detach the report from its dashboard; send an object\nto overwrite the placement."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -19311,11 +19311,11 @@
             "target": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/ScheduleTarget",
                   "description": "New target. Variant shape is defined on `ScheduleTarget`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -19469,11 +19469,11 @@
             "status": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SkillStatus",
                   "description": "Update status"
+                },
+                {
+                  "type": "null"
                 }
               ]
             }
@@ -19740,11 +19740,11 @@
               "use": {
                 "oneOf": [
                   {
-                    "type": "null"
-                  },
-                  {
                     "$ref": "#/$defs/McpServerPresetRef",
                     "description": "Organization catalog preset that supplies transport and authentication policy."
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               }
@@ -19986,11 +19986,11 @@
             "network_access": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/NetworkAccessList",
                   "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nIf set, merged with harness and session layers (allowed: intersect, blocked: union).\nExample shape is defined on `NetworkAccessList`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -20337,11 +20337,11 @@
             "side_effect_class": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/SideEffectClass",
                   "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },

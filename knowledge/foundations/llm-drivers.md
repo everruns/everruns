@@ -742,7 +742,7 @@ loop therefore never dispatches them; the only client-visible artifact is
 
 ### OpenAI Hosted Tools
 
-OpenAI hosted tools (EVE-1115: `web_search`, `code_interpreter`, `shell`, `file_search`) are the OpenAI counterpart of OpenRouter
+OpenAI hosted tools (EVE-1115: `web_search`, `code_interpreter`, `shell`, `file_search`, `mcp`) are the OpenAI counterpart of OpenRouter
 server tools: model-decided, executed inside the response, never dispatched by the agent loop.
 
 - **Contract**: `everruns_provider::openai_hosted_tools` owns the typed selection and the
@@ -762,7 +762,21 @@ server tools: model-decided, executed inside the response, never dispatched by t
 - **Containers**: `code_interpreter` and `shell` use OpenAI's auto container, which is not the
   session sandbox. They stay unpriced in the estimate because OpenAI bills per container
   session, and one container serves calls across turns.
-- **Follow-ups**: remote MCP.
+- **MCP approvals**: an `mcp_approval_request` item is the one hosted interaction that needs a
+  person. The driver surfaces it as a synthetic `openai_mcp_approval` tool call with no tool
+  definition; ActAtom routes it down the client-side path (`act_hooks::runs_on_server`), so the
+  turn parks on `tool.call_requested` and resumes through `tool-results`. On replay the call and
+  its result become `mcp_approval_request` / `mcp_approval_response` items
+  (`replay_mcp_approvals`), and the delta window treats the request as prior output.
+- **MCP credentials**: config never holds one. An entry names a registered Everruns MCP server
+  (`mcp_server`) instead of a URL; `everruns_provider::hosted_mcp::HostedMcpDriver` wraps the
+  turn driver (`StoreTurnContextResolver::with_hosted_mcp_resolver`, fed by
+  `RuntimeHostAdapter::hosted_mcp_resolver`) and fills URL and headers per call from the same
+  lookup `mcp_*` execution uses, so OAuth refreshes land on the next request. The headers live
+  only in that call's cloned config below the engine, so they never reach events. A missing
+  grant or secret-bound parameters fail the turn: OpenAI calls the server itself, so there is no
+  tool call to answer `connection_required`. Hosts without the hook (the embedded runtime)
+  refuse registered entries.
 
 ### OpenRouter Capacity Strategy
 
