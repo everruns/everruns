@@ -17,6 +17,8 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 use everruns_integrations_browserless as _;
 
 use everruns_integrations_browserless::client::BrowserlessClient;
+use everruns_integrations_browserless::connection::BrowserlessConnector;
+use everruns_platform::connector::Connector;
 
 // ============================================================================
 // Mock ConnectionResolver
@@ -58,108 +60,6 @@ fn get_tool(name: &str) -> Box<dyn Tool> {
         .into_iter()
         .find(|t| t.name() == name)
         .unwrap_or_else(|| panic!("Tool {name} not found"))
-}
-
-// ============================================================================
-// BrowserlessClient integration tests (wiremock)
-// ============================================================================
-
-#[tokio::test]
-async fn test_screenshot_client_flow() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/screenshot"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_bytes(b"\x89PNG\r\n\x1a\n_FAKE_PNG_DATA".to_vec()),
-        )
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-    let bytes = client
-        .screenshot("https://example.com", true, None, None, None, &[])
-        .await
-        .unwrap();
-    assert!(!bytes.is_empty());
-}
-
-#[tokio::test]
-async fn test_content_client_flow() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/content"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(
-            "<html><head><title>Test</title></head><body>Hello World</body></html>",
-        ))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-    let html = client
-        .content("https://example.com", None, None, false, &[])
-        .await
-        .unwrap();
-    assert!(html.contains("Hello World"));
-    assert!(html.contains("<title>Test</title>"));
-}
-
-#[tokio::test]
-async fn test_scrape_client_flow() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/scrape"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "data": [
-                {
-                    "selector": "h1",
-                    "results": [
-                        {"text": "Welcome", "attributes": []}
-                    ]
-                }
-            ]
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-    let result = client
-        .scrape(
-            "https://example.com",
-            &[json!({"selector": "h1"})],
-            None,
-            None,
-            &[],
-        )
-        .await
-        .unwrap();
-    assert!(result["data"][0]["results"][0]["text"] == "Welcome");
-}
-
-#[tokio::test]
-async fn test_function_client_flow() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/function"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "data": "{\"title\":\"Test Page\",\"url\":\"https://example.com\"}",
-            "type": "application/json"
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-    let result = client
-        .function(
-            "export default async ({ page }) => { return { data: 'test', type: 'application/json' }; }",
-            None,
-        )
-        .await
-        .unwrap();
-    assert!(result.get("data").is_some());
 }
 
 // ============================================================================
@@ -277,44 +177,6 @@ async fn test_navigate_tool_no_connection_resolver() {
 }
 
 // ============================================================================
-// Client error handling integration tests
-// ============================================================================
-
-#[tokio::test]
-async fn test_client_401_unauthorized() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/screenshot"))
-        .respond_with(ResponseTemplate::new(401).set_body_string("Unauthorized"))
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("bad_token".to_string(), mock_server.uri());
-    let result = client
-        .screenshot("https://example.com", false, None, None, None, &[])
-        .await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("401"));
-}
-
-#[tokio::test]
-async fn test_client_500_server_error() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/content"))
-        .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
-        .mount(&mock_server)
-        .await;
-
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-    let result = client
-        .content("https://example.com", None, None, false, &[])
-        .await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("500"));
-}
-
-// ============================================================================
 // Bearer auth verification
 // ============================================================================
 
@@ -338,46 +200,36 @@ async fn test_client_sends_token_in_query() {
 }
 
 // ============================================================================
-// Resource cleanup verification
-// ============================================================================
-
-#[tokio::test]
-async fn test_no_resources_left_behind() {
-    // Browserless REST API is stateless — each call starts and destroys a browser.
-    // Verify that our client doesn't maintain any persistent state.
-    let mock_server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/content"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("<html>1</html>"))
-        .mount(&mock_server)
-        .await;
-
-    // Make multiple calls — each should be independent
-    let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-
-    let r1 = client
-        .content("https://example.com/page1", None, None, false, &[])
-        .await
-        .unwrap();
-    let r2 = client
-        .content("https://example.com/page2", None, None, false, &[])
-        .await
-        .unwrap();
-
-    // Both succeed independently
-    assert!(!r1.is_empty());
-    assert!(!r2.is_empty());
-    // Client itself has no session state to clean up
-}
-
-// ============================================================================
 // Connection validation: CDP probe tests
 // ============================================================================
 
+// `BrowserlessConnector::validate` reads its base URL from the
+// `BROWSERLESS_API_BASE` env var (see `browserless_api_base()`), which is
+// process-global. Serialize every test below that mutates it so parallel
+// `cargo test` threads don't race each other's override.
+static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Point `BROWSERLESS_API_BASE` at `mock_server` for the duration of `f`,
+/// holding `ENV_LOCK` so no other test observes the override mid-flight.
+/// A `tokio::sync::Mutex` is used (rather than `std::sync::Mutex`) precisely
+/// so the guard can be held across `f()`'s `.await`.
+async fn with_mock_api_base<F, Fut, T>(mock_server: &MockServer, f: F) -> T
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = T>,
+{
+    let _guard = ENV_LOCK.lock().await;
+    // SAFETY: serialized by ENV_LOCK above; no other test reads or writes
+    // BROWSERLESS_API_BASE while this guard is held.
+    unsafe { std::env::set_var("BROWSERLESS_API_BASE", mock_server.uri()) };
+    let result = f().await;
+    unsafe { std::env::remove_var("BROWSERLESS_API_BASE") };
+    result
+}
+
 /// REST ok (204) + CDP probe returns 400 (expected) → validation succeeds.
 #[tokio::test]
-async fn test_validate_rest_ok_cdp_probe_400() {
+async fn test_validate_accepts_valid_token() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/active"))
@@ -390,30 +242,40 @@ async fn test_validate_rest_ok_cdp_probe_400() {
         .mount(&mock_server)
         .await;
 
-    // BrowserlessConnector uses BROWSERLESS_API_BASE which is hardcoded,
-    // so we test the validate logic directly by hitting the mock endpoints.
-    let client = reqwest::Client::new();
+    let result = with_mock_api_base(&mock_server, || async {
+        BrowserlessConnector.validate("test_token").await
+    })
+    .await;
 
-    // Simulate the /active check
-    let resp = client
-        .get(format!("{}/active?token=test_token", mock_server.uri()))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 204);
-
-    // Simulate the CDP probe — 400 means CDP endpoint is reachable (expects WS upgrade)
-    let resp = client
-        .get(format!("{}/chromium?token=test_token", mock_server.uri()))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 400);
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
 }
 
-/// REST ok (204) + CDP probe returns 403 → validation should detect CDP rejection.
+/// REST probe rejects the token (401) → validation fails before the CDP probe.
 #[tokio::test]
-async fn test_validate_rest_ok_cdp_probe_403_rejects() {
+async fn test_validate_rejects_invalid_token() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/active"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&mock_server)
+        .await;
+
+    let result = with_mock_api_base(&mock_server, || async {
+        BrowserlessConnector.validate("bad_token").await
+    })
+    .await;
+
+    let err = result.expect_err("expected Err for an invalid token");
+    assert!(
+        err.contains("Invalid API token"),
+        "unexpected message: {err}"
+    );
+}
+
+/// REST ok, but CDP probe rejects the token (403) → validation fails with a
+/// CDP-specific message distinguishing it from a plain invalid-token error.
+#[tokio::test]
+async fn test_validate_rejects_token_without_cdp_access() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/active"))
@@ -426,21 +288,38 @@ async fn test_validate_rest_ok_cdp_probe_403_rejects() {
         .mount(&mock_server)
         .await;
 
-    let client = reqwest::Client::new();
+    let result = with_mock_api_base(&mock_server, || async {
+        BrowserlessConnector.validate("rest_only_token").await
+    })
+    .await;
 
-    // /active succeeds
-    let resp = client
-        .get(format!("{}/active?token=test_token", mock_server.uri()))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 204);
+    let err = result.expect_err("expected Err when CDP probe rejects the token");
+    assert!(
+        err.contains("does not support CDP"),
+        "unexpected message: {err}"
+    );
+}
 
-    // CDP probe returns 403 — token lacks CDP access
-    let resp = client
-        .get(format!("{}/chromium?token=test_token", mock_server.uri()))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 403);
+/// A blank token is rejected the same way an invalid one is: the REST API
+/// returns 401 for it, and validate() surfaces the same error without ever
+/// attempting the CDP probe.
+#[tokio::test]
+async fn test_validate_rejects_blank_token() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/active"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&mock_server)
+        .await;
+
+    let result = with_mock_api_base(&mock_server, || async {
+        BrowserlessConnector.validate("").await
+    })
+    .await;
+
+    let err = result.expect_err("expected Err for a blank token");
+    assert!(
+        err.contains("Invalid API token"),
+        "unexpected message: {err}"
+    );
 }

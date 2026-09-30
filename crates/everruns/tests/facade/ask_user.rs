@@ -175,3 +175,45 @@ async fn an_unattended_secret_question_is_declined_not_defaulted() {
     assert!(turn.success);
     assert_eq!(turn.tool_calls, 1);
 }
+
+/// A multi-session host overrides `ask_in` to learn which session and tool
+/// call are asking, so it can route the questions to the right person.
+#[tokio::test]
+async fn ask_in_receives_the_session_and_tool_call() {
+    use everruns::ask_user::AskContext;
+
+    #[derive(Clone, Default)]
+    struct Routing {
+        seen: Arc<Mutex<Option<AskContext>>>,
+    }
+
+    #[async_trait]
+    impl AskUser for Routing {
+        async fn ask(&self, _questions: &[Question]) -> Outcome {
+            panic!("the capability routes through ask_in");
+        }
+
+        async fn ask_in(&self, context: &AskContext, questions: &[Question]) -> Outcome {
+            *self.seen.lock().unwrap() = Some(context.clone());
+            RecordingResponder::default().ask(questions).await
+        }
+    }
+
+    let responder = Routing::default();
+    let seen = responder.seen.clone();
+    let agent = Agent::builder()
+        .instructions("Ask before choosing a deployment target.")
+        .model(asking_model())
+        .ask_user(responder)
+        .build()
+        .expect("valid agent");
+    let session = InMemoryEngine::new().create(agent);
+
+    let turn = session.run("Deploy the service.").await.expect("turn runs");
+
+    assert!(turn.success, "{:?}", turn.error);
+    let context = seen.lock().unwrap().clone().expect("ask_in ran");
+    assert_eq!(context.session_id(), session.session_id());
+    assert_eq!(context.tool_call_id(), "call_target");
+    assert!(context.turn_id().is_some(), "the engine reports the turn");
+}

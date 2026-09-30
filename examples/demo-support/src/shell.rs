@@ -8,6 +8,7 @@
 
 use everruns::{Session, SessionEventKind, Turn};
 
+use crate::safe_label;
 use crate::style::{BLUE, BOLD, CYAN, GREEN, MAGENTA, RED, WIDTH, YELLOW, clip, paint};
 
 pub use crate::style::{DIM, PLAIN};
@@ -117,7 +118,7 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
                     .as_str()
                     .map(str::to_string)
                     .unwrap_or_else(|| arguments.to_string());
-                section(&format!("❯ {tool_name}"));
+                section(&format!("❯ {}", safe_label(tool_name)));
                 body_capped(&script, BLUE, "", MAX_SCRIPT_LINES);
             }
             SessionEventKind::ToolCompleted {
@@ -144,7 +145,10 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
                 if *success {
                     shell_result(&text);
                 } else {
-                    println!("  {}", paint(RED, &format!("{tool_name} failed")));
+                    println!(
+                        "  {}",
+                        paint(RED, &format!("{} failed", safe_label(tool_name)))
+                    );
                     body_capped(&text, RED, "", MAX_OUTPUT_LINES);
                 }
             }
@@ -178,7 +182,7 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
 
 #[cfg(test)]
 mod tests {
-    use super::{PLAIN, WIDTH, clip, paint};
+    use super::{WIDTH, clip};
 
     #[test]
     fn clip_keeps_short_lines_and_truncates_long_ones_on_char_boundaries() {
@@ -188,10 +192,5 @@ mod tests {
         let clipped = clip(&wide);
         assert_eq!(clipped.chars().count(), WIDTH);
         assert!(clipped.ends_with('…'));
-    }
-
-    #[test]
-    fn plain_style_adds_no_escapes() {
-        assert_eq!(paint(PLAIN, "text"), "text");
     }
 }

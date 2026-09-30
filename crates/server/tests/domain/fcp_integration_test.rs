@@ -105,6 +105,33 @@ async fn create_published_fcp_app(server: &TestServer, channel_config: Value) ->
     .expect("published fixture App")
 }
 
+async fn create_published_native_fcp_endpoint(
+    server: &TestServer,
+    channel_config: Value,
+) -> String {
+    let agent_id = create_llmsim_agent(server).await;
+    let endpoint: Value = server
+        .post(
+            &format!("/v1/agents/{agent_id}/endpoints"),
+            json!({
+                "channel_type": "fcp",
+                "channel_config": channel_config
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let endpoint_id = endpoint["id"].as_str().unwrap();
+    server
+        .post(
+            &format!("/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish"),
+            json!({}),
+        )
+        .await
+        .assert_success();
+    endpoint_id.to_string()
+}
+
 async fn get_handshake(
     server: &TestServer,
     app_id: impl std::fmt::Display,
@@ -370,11 +397,12 @@ async fn fcp_post_json_body_is_parsed_via_message_field() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_session_cookie_reuses_same_session() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, fast_timeout_config()).await;
+    let endpoint_id = create_published_native_fcp_endpoint(&server, fast_timeout_config()).await;
+    let path = format!("/v1/e/{endpoint_id}/fcp");
 
-    let first = send_fcp_post(
+    let first = send_fcp_post_to_path(
         &server,
-        &app.public_id,
+        &path,
         "first turn",
         vec![("content-type", "text/plain")],
     )
@@ -383,13 +411,13 @@ async fn fcp_post_session_cookie_reuses_same_session() {
     let cookie = test_harness::extract_cookie(first.headers(), "fcp_session");
 
     // Inspect sessions by tag — first POST must have created exactly one.
-    let expected_tag = format!("fcp:app:{}", app.public_id);
+    let expected_tag = format!("fcp:endpoint:{endpoint_id}");
     let first_count = count_sessions_with_tag(&server, &expected_tag).await;
     assert_eq!(first_count, 1);
 
-    let second = send_fcp_post(
+    let second = send_fcp_post_to_path(
         &server,
-        &app.public_id,
+        &path,
         "second turn",
         vec![("content-type", "text/plain"), ("cookie", &cookie)],
     )

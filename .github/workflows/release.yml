@@ -21,20 +21,22 @@ jobs:
     outputs:
       is_release: ${{ steps.check.outputs.is_release }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+
       - name: Check if release commit
         id: check
         env:
-          # A boolean, not the message. The runner prints every `env:` entry
-          # verbatim, so handing this step the commit body published each merged
-          # PR description into a public log -- and a credential *shape* quoted
-          # in one (a placeholder, a key under discussion) then trips the hourly
-          # Actions log secret scan, as commit d6f65f8 did. The subject is a
-          # prefix of the message, so `startsWith` reads it for free.
-          # Quoted because the expression contains a colon, which bare YAML
-          # would read as a mapping.
-          IS_RELEASE: "${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore(release): prepare v') }}"
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [[ "$IS_RELEASE" == "true" ]]; then
+          # Read the subject from Git so an event-controlled commit body never
+          # appears in the log-visible step environment. Bash matching is
+          # deliberately case-sensitive; Actions string functions are not.
+          SUBJECT=$(git log -1 --format=%s HEAD)
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]] ||
+             [[ "$SUBJECT" == chore\(release\):\ prepare\ v* ]]; then
             echo "is_release=true" >> $GITHUB_OUTPUT
             echo "This is a release commit, proceeding with release"
           else
