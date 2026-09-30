@@ -20,15 +20,15 @@ use reqwest::{Client, Url};
 use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmResponse,
-    LlmResponseStream, LlmStreamEvent, Message, MessageContent, MessageRole,
-    disjoint_prompt_tokens,
+    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmResponse, LlmResponseStream,
+    LlmStreamEvent, Message, MessageRole, disjoint_prompt_tokens,
 };
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
+use crate::openai_message_convert::convert_message_seq;
 use crate::openai_types::*;
 use crate::runtime_provider::ProviderEndpoint;
 use crate::stream_accumulator::StreamToolCallAccumulator;
@@ -336,78 +336,6 @@ impl OpenAIProtocolChatDriver {
         .await
     }
 
-    fn convert_role(role: &MessageRole) -> &'static str {
-        match role {
-            MessageRole::System => "system",
-            MessageRole::User => "user",
-            MessageRole::Assistant => "assistant",
-            MessageRole::Tool => "tool",
-        }
-    }
-
-    fn convert_message(msg: &Message) -> OpenAiMessage {
-        let content = match &msg.content {
-            MessageContent::Text(text) => OpenAiContent::Text(text.clone()),
-            MessageContent::Parts(parts) => {
-                let openai_parts: Vec<OpenAiContentPart> = parts
-                    .iter()
-                    .filter_map(|part| match part {
-                        LlmContentPart::Text { text } => Some(OpenAiContentPart::Text {
-                            r#type: "text".to_string(),
-                            text: text.clone(),
-                        }),
-                        LlmContentPart::Image { url } => Some(OpenAiContentPart::ImageUrl {
-                            r#type: "image_url".to_string(),
-                            image_url: OpenAiImageUrl { url: url.clone() },
-                        }),
-                        LlmContentPart::Audio { url } => Some(OpenAiContentPart::InputAudio {
-                            r#type: "input_audio".to_string(),
-                            input_audio: OpenAiInputAudio {
-                                data: url.clone(),
-                                format: "wav".to_string(),
-                            },
-                        }),
-                        LlmContentPart::File { url, filename } => Some(OpenAiContentPart::File {
-                            r#type: "file".to_string(),
-                            file: OpenAiFile {
-                                filename: filename.clone(),
-                                file_data: url.clone(),
-                            },
-                        }),
-                        LlmContentPart::ProviderOpaque(_) => None,
-                    })
-                    .collect();
-                OpenAiContent::Parts(openai_parts)
-            }
-        };
-
-        // OpenAI only accepts tool_calls on assistant messages
-        let tool_calls = if msg.role == MessageRole::Assistant {
-            msg.tool_calls.as_ref().map(|calls| {
-                calls
-                    .iter()
-                    .map(|tc| OpenAiToolCall {
-                        id: tc.id.clone(),
-                        r#type: "function".to_string(),
-                        function: OpenAiFunctionCall {
-                            name: tc.name.clone(),
-                            arguments: serde_json::to_string(&tc.arguments).unwrap_or_default(),
-                        },
-                    })
-                    .collect()
-            })
-        } else {
-            None
-        };
-
-        OpenAiMessage {
-            role: Self::convert_role(&msg.role).to_string(),
-            content: Some(content),
-            tool_calls,
-            tool_call_id: msg.tool_call_id.clone(),
-        }
-    }
-
     fn convert_tools(tools: &[ToolDefinition]) -> Vec<OpenAiTool> {
         tools
             .iter()
@@ -498,7 +426,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         // Same request as the streaming path, but with streaming disabled so
         // the provider answers with one JSON body instead of SSE.
         let openai_messages: Vec<OpenAiMessage> =
-            messages.iter().map(Self::convert_message).collect();
+            messages.iter().flat_map(convert_message_seq).collect();
         let tools = if config.tools.is_empty() {
             None
         } else {
@@ -652,7 +580,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         // creates gen-ai spans from those events.
         let messages = drop_orphaned_tool_messages(&messages);
         let openai_messages: Vec<OpenAiMessage> =
-            messages.iter().map(Self::convert_message).collect();
+            messages.iter().flat_map(convert_message_seq).collect();
 
         let tools = if config.tools.is_empty() {
             None
@@ -1764,7 +1692,7 @@ mod tests {
         let filtered = drop_orphaned_tool_messages(&messages);
         let wire: Vec<_> = filtered
             .iter()
-            .map(OpenAIProtocolChatDriver::convert_message)
+            .map(crate::openai_message_convert::convert_message)
             .collect();
         assert_eq!(
             serde_json::to_value(wire).unwrap(),
@@ -1783,7 +1711,7 @@ mod tests {
             serde_json::to_value(
                 only_user
                     .iter()
-                    .map(OpenAIProtocolChatDriver::convert_message)
+                    .map(crate::openai_message_convert::convert_message)
                     .collect::<Vec<_>>()
             )
             .unwrap(),

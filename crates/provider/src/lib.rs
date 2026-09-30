@@ -46,6 +46,8 @@ pub mod openai_compat;
 pub mod openai_errors;
 pub mod openai_hosted_tools;
 #[cfg(feature = "http")]
+mod openai_message_convert;
+#[cfg(feature = "http")]
 pub mod openai_protocol;
 #[cfg(feature = "http")]
 mod openai_types;
