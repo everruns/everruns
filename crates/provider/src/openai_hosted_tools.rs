@@ -9,14 +9,25 @@
 //! Only endpoints that implement OpenAI's hosted tools render them (the OpenAI
 //! and Azure OpenAI drivers). Every other driver must reject the option rather
 //! than drop it, so an agent never silently loses a tool it was configured
-//! with. Web search, code interpreter, hosted shell and file search are
-//! supported; remote MCP is a follow-up (EVE-1115).
+//! with. Web search, code interpreter, hosted shell, file search and remote
+//! MCP are supported (EVE-1115).
+//!
+//! Remote MCP approvals are the one hosted interaction that needs a person:
+//! OpenAI stops the response at an `mcp_approval_request` and continues only
+//! when the next request carries an `mcp_approval_response`. The driver
+//! surfaces the request as a synthetic [`OPENAI_MCP_APPROVAL_TOOL`] call so the
+//! engine pauses the turn through its client-side tool path, and turns the
+//! answer back into the approval response on replay.
 //!
 //! Wire shapes: <https://platform.openai.com/docs/guides/tools>.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
+
+/// Synthetic tool call name for a remote MCP approval request. Never offered
+/// to the model; only the driver produces it.
+pub const OPENAI_MCP_APPROVAL_TOOL: &str = "openai_mcp_approval";
 
 /// `driver_options` key carrying [`OpenAiHostedTools`].
 pub const OPENAI_HOSTED_TOOLS_OPTION: &str = "openai/hosted_tools";
@@ -37,6 +48,9 @@ pub struct OpenAiHostedTools {
     pub shell: Option<ContainerTool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_search: Option<FileSearchTool>,
+    /// Remote MCP servers OpenAI calls on the model's behalf.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mcp_servers: Vec<McpServerTool>,
 }
 
 impl OpenAiHostedTools {
@@ -45,6 +59,7 @@ impl OpenAiHostedTools {
             && self.code_interpreter.is_none()
             && self.shell.is_none()
             && self.file_search.is_none()
+            && self.mcp_servers.is_empty()
     }
 
     /// Read the option from a call's `driver_options`. A malformed payload is
@@ -78,6 +93,7 @@ impl OpenAiHostedTools {
             serde_json::json!({ "type": "shell", "environment": tool.container("container_auto") })
         }));
         tools.extend(self.file_search.as_ref().map(FileSearchTool::wire));
+        tools.extend(self.mcp_servers.iter().map(McpServerTool::wire));
         tools
     }
 }
@@ -234,6 +250,70 @@ impl FileSearchTool {
     }
 }
 
+/// Whether OpenAI asks a person before each remote MCP tool call.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum McpApproval {
+    /// Every call pauses the turn for approval (the default).
+    #[default]
+    Always,
+    /// Calls run without asking. Only for an explicit `allowed_tools` list.
+    Never,
+}
+
+/// A remote MCP server OpenAI connects to (`{"type": "mcp"}`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpServerTool {
+    /// Label OpenAI reports on every call, unique within the request.
+    pub server_label: String,
+    /// `https` URL of the server.
+    pub server_url: String,
+    /// Tools the model may call; empty means every tool the server lists.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_tools: Vec<String>,
+    #[serde(default)]
+    pub require_approval: McpApproval,
+}
+
+impl McpServerTool {
+    pub fn wire(&self) -> Value {
+        let mut tool = serde_json::json!({
+            "type": "mcp",
+            "server_label": self.server_label,
+            "server_url": self.server_url,
+            "require_approval": match self.require_approval {
+                McpApproval::Always => "always",
+                McpApproval::Never => "never",
+            },
+        });
+        if !self.allowed_tools.is_empty() {
+            tool["allowed_tools"] = serde_json::json!(self.allowed_tools);
+        }
+        tool
+    }
+}
+
+/// The synthetic call arguments for an `mcp_approval_request` output item, or
+/// `None` for any other item. Returns `(approval_request_id, arguments)`.
+pub fn mcp_approval_call(item: &Value) -> Option<(String, Value)> {
+    if item.get("type").and_then(Value::as_str) != Some("mcp_approval_request") {
+        return None;
+    }
+    let field = |key: &str| item.get(key).and_then(Value::as_str).unwrap_or_default();
+    let id = field("id");
+    if id.is_empty() {
+        return None;
+    }
+    // The tool's own arguments stay a JSON string, exactly as OpenAI sent
+    // them, so replay hands back the same request it approved.
+    let arguments = serde_json::json!({
+        "server_label": field("server_label"),
+        "name": field("name"),
+        "arguments": field("arguments"),
+    });
+    Some((id.to_string(), arguments))
+}
+
 /// Count hosted tool calls in a terminal Responses `output` array, keyed by
 /// item type (`web_search_call`, ...). Hosted calls bill per call on top of
 /// tokens, so this is what cost accounting prices.
@@ -257,6 +337,7 @@ pub fn hosted_call_tool(item_type: &str) -> Option<&'static str> {
         "code_interpreter_call" => Some("code_interpreter"),
         "shell_call" => Some("shell"),
         "file_search_call" => Some("file_search"),
+        "mcp_call" => Some("mcp"),
         _ => None,
     }
 }
@@ -302,6 +383,42 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(tools.wire_tools(), vec![json!({ "type": "web_search" })]);
+    }
+
+    #[test]
+    fn mcp_server_renders_in_openai_shape() {
+        let open = McpServerTool {
+            server_label: "deepwiki".into(),
+            server_url: "https://mcp.deepwiki.com/mcp".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            open.wire(),
+            json!({ "type": "mcp", "server_label": "deepwiki",
+                    "server_url": "https://mcp.deepwiki.com/mcp", "require_approval": "always" })
+        );
+        let trusted = McpServerTool {
+            allowed_tools: vec!["ask_question".into()],
+            require_approval: McpApproval::Never,
+            ..open
+        };
+        assert_eq!(trusted.wire()["require_approval"], "never");
+        assert_eq!(trusted.wire()["allowed_tools"], json!(["ask_question"]));
+    }
+
+    #[test]
+    fn approval_request_becomes_a_synthetic_call() {
+        let (id, arguments) = mcp_approval_call(&json!({
+            "type": "mcp_approval_request", "id": "mcpr_1", "server_label": "deepwiki",
+            "name": "ask_question", "arguments": "{\"q\":\"x\"}"
+        }))
+        .unwrap();
+        assert_eq!(id, "mcpr_1");
+        assert_eq!(
+            arguments,
+            json!({ "server_label": "deepwiki", "name": "ask_question", "arguments": "{\"q\":\"x\"}" })
+        );
+        assert!(mcp_approval_call(&json!({ "type": "mcp_call", "id": "mcp_1" })).is_none());
     }
 
     #[test]

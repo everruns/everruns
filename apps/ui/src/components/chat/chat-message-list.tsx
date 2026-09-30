@@ -45,6 +45,11 @@ import {
   UrlElicitationToolCall,
   type UrlElicitationArguments,
 } from "@/components/chat/url-elicitation-tool-call";
+import {
+  MCP_APPROVAL_TOOL,
+  McpApprovalToolCall,
+  type McpApprovalArguments,
+} from "@/components/chat/mcp-approval-tool-call";
 import { AskUserToolCall, isAskUserArguments } from "@/components/chat/ask-user-tool-call";
 import { ToolActivityTimelineGroup } from "@/components/chat/tool-activity-timeline-group";
 import { buildToolActivityGroups } from "@/components/chat/tool-activity-groups";
@@ -405,6 +410,8 @@ export const ChatMessageList = memo(function ChatMessageList({
         [];
       const askUserCalls =
         requested?.tool_calls.filter((toolCall) => toolCall.name === "ask_user") ?? [];
+      const approvalCalls =
+        requested?.tool_calls.filter((toolCall) => toolCall.name === MCP_APPROVAL_TOOL) ?? [];
       return (
         <div key={event.id} className="space-y-1">
           <ToolActivityTimelineGroup
@@ -429,6 +436,15 @@ export const ChatMessageList = memo(function ChatMessageList({
               sessionId={sessionId}
               toolCallId={toolCall.id}
               elicitation={(toolCall.arguments ?? {}) as UrlElicitationArguments}
+              toolResultsMap={toolResultsMap}
+            />
+          ))}
+          {approvalCalls.map((toolCall) => (
+            <McpApprovalToolCall
+              key={toolCall.id}
+              sessionId={sessionId}
+              toolCallId={toolCall.id}
+              approval={(toolCall.arguments ?? {}) as McpApprovalArguments}
               toolResultsMap={toolResultsMap}
             />
           ))}
@@ -462,6 +478,9 @@ export const ChatMessageList = memo(function ChatMessageList({
       (toolCall) => toolCall.name === "confirm_url_elicitation",
     );
     const askUserCalls = reqData.tool_calls.filter((toolCall) => toolCall.name === "ask_user");
+    const approvalCalls = reqData.tool_calls.filter(
+      (toolCall) => toolCall.name === MCP_APPROVAL_TOOL,
+    );
 
     return (
       <div key={event.id} className="space-y-1">
@@ -482,6 +501,15 @@ export const ChatMessageList = memo(function ChatMessageList({
             sessionId={sessionId}
             toolCallId={toolCall.id}
             elicitation={(toolCall.arguments ?? {}) as UrlElicitationArguments}
+            toolResultsMap={toolResultsMap}
+          />
+        ))}
+        {approvalCalls.map((toolCall) => (
+          <McpApprovalToolCall
+            key={toolCall.id}
+            sessionId={sessionId}
+            toolCallId={toolCall.id}
+            approval={(toolCall.arguments ?? {}) as McpApprovalArguments}
             toolResultsMap={toolResultsMap}
           />
         ))}

@@ -742,7 +742,7 @@ loop therefore never dispatches them; the only client-visible artifact is
 
 ### OpenAI Hosted Tools
 
-OpenAI hosted tools (EVE-1115: `web_search`, `code_interpreter`, `shell`, `file_search`) are the OpenAI counterpart of OpenRouter
+OpenAI hosted tools (EVE-1115: `web_search`, `code_interpreter`, `shell`, `file_search`, `mcp`) are the OpenAI counterpart of OpenRouter
 server tools: model-decided, executed inside the response, never dispatched by the agent loop.
 
 - **Contract**: `everruns_provider::openai_hosted_tools` owns the typed selection and the
@@ -762,7 +762,13 @@ server tools: model-decided, executed inside the response, never dispatched by t
 - **Containers**: `code_interpreter` and `shell` use OpenAI's auto container, which is not the
   session sandbox. They stay unpriced in the estimate because OpenAI bills per container
   session, and one container serves calls across turns.
-- **Follow-ups**: remote MCP.
+- **MCP approvals**: an `mcp_approval_request` item is the one hosted interaction that needs a
+  person. The driver surfaces it as a synthetic `openai_mcp_approval` tool call with no tool
+  definition; ActAtom routes it down the client-side path (`act_hooks::runs_on_server`), so the
+  turn parks on `tool.call_requested` and resumes through `tool-results`. On replay the call and
+  its result become `mcp_approval_request` / `mcp_approval_response` items
+  (`replay_mcp_approvals`), and the delta window treats the request as prior output.
+- **Follow-ups**: remote MCP credentials from Everruns secret storage.
 
 ### OpenRouter Capacity Strategy
 

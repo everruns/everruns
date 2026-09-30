@@ -14,9 +14,12 @@ use crate::error::{AgentLoopError, Result};
 use std::collections::BTreeMap;
 
 use crate::driver_registry::{HostedToolCall, HostedToolCallStatus, LlmStreamEvent};
-use crate::openai_hosted_tools::{OpenAiHostedTools, count_hosted_tool_calls, hosted_call_tool};
+use crate::openai_hosted_tools::{
+    OPENAI_MCP_APPROVAL_TOOL, OpenAiHostedTools, count_hosted_tool_calls, hosted_call_tool,
+};
 
 use super::OpenResponsesProtocolChatDriver;
+use super::wire::ResponsesInputItem;
 
 impl OpenResponsesProtocolChatDriver {
     /// Wire entries for the hosted tools this call asked for.
@@ -89,6 +92,57 @@ pub(crate) fn hosted_call_event(event_data: &str) -> Option<LlmStreamEvent> {
     }))
 }
 
+/// `(approval_request_id, arguments JSON)` for an `mcp_approval_request`
+/// output item, surfaced as a synthetic [`OPENAI_MCP_APPROVAL_TOOL`] call.
+pub(crate) fn mcp_approval_call(item: &Value) -> Option<(String, String)> {
+    crate::openai_hosted_tools::mcp_approval_call(item).map(|(id, args)| (id, args.to_string()))
+}
+
+/// Turn replayed approval calls back into OpenAI's items: the synthetic call
+/// becomes the `mcp_approval_request` it came from, and its result becomes an
+/// `mcp_approval_response`. Only a result of exactly `{"approve": true}`
+/// approves; anything else, an error included, denies.
+pub(crate) fn replay_mcp_approvals(items: Vec<ResponsesInputItem>) -> Vec<ResponsesInputItem> {
+    let mut approval_ids = std::collections::HashSet::new();
+    items
+        .into_iter()
+        .map(|item| match item {
+            ResponsesInputItem::FunctionCall {
+                call_id,
+                name,
+                arguments,
+                ..
+            } if name == OPENAI_MCP_APPROVAL_TOOL => {
+                let args: Value = serde_json::from_str(&arguments).unwrap_or_default();
+                let field = |key: &str| args.get(key).and_then(Value::as_str).unwrap_or_default();
+                let request = serde_json::json!({
+                    "type": "mcp_approval_request",
+                    "id": call_id,
+                    "server_label": field("server_label"),
+                    "name": field("name"),
+                    "arguments": field("arguments"),
+                });
+                approval_ids.insert(call_id);
+                ResponsesInputItem::ProviderItem(request)
+            }
+            ResponsesInputItem::FunctionCallOutput {
+                call_id, output, ..
+            } if approval_ids.contains(&call_id) => {
+                let approve = serde_json::from_str::<Value>(&output)
+                    .ok()
+                    .and_then(|result| result.get("approve").and_then(Value::as_bool))
+                    .unwrap_or(false);
+                ResponsesInputItem::ProviderItem(serde_json::json!({
+                    "type": "mcp_approval_response",
+                    "approval_request_id": call_id,
+                    "approve": approve,
+                }))
+            }
+            other => other,
+        })
+        .collect()
+}
+
 /// A one-line detail for a hosted call item, once the provider reports it.
 fn call_summary(item: &Value) -> Option<String> {
     let action = item.get("action");
@@ -117,6 +171,13 @@ fn call_summary(item: &Value) -> Option<String> {
                     .join("; ")
             })
             .filter(|commands| !commands.is_empty()),
+        "mcp_call" => Some(format!(
+            "{}: {}",
+            item.get("server_label")
+                .and_then(Value::as_str)
+                .unwrap_or("mcp"),
+            item.get("name").and_then(Value::as_str)?
+        )),
         "file_search_call" => item
             .get("queries")
             .and_then(Value::as_array)
@@ -201,6 +262,62 @@ mod tests {
                               "item": { "type": "shell_call_output", "id": "sho_1" } }))
             .is_none()
         );
+    }
+
+    #[test]
+    fn mcp_calls_are_hosted_calls_and_approvals_are_not() {
+        let call = event(json!({ "type": "response.output_item.done", "item": {
+            "type": "mcp_call", "id": "mcp_1", "status": "completed",
+            "server_label": "deepwiki", "name": "ask_question" } }))
+        .unwrap();
+        assert_eq!(
+            (call.tool.as_str(), call.summary.as_deref()),
+            ("mcp", Some("deepwiki: ask_question"))
+        );
+        assert!(
+            event(json!({ "type": "response.output_item.done", "item": {
+            "type": "mcp_approval_request", "id": "mcpr_1" } }))
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn approval_replays_as_request_and_response() {
+        let args = json!({ "server_label": "deepwiki", "name": "ask", "arguments": "{}" });
+        let call = |id: &str| ResponsesInputItem::FunctionCall {
+            r#type: "function_call".into(),
+            call_id: id.into(),
+            name: OPENAI_MCP_APPROVAL_TOOL.into(),
+            arguments: args.to_string(),
+        };
+        let output = |id: &str, output: &str| ResponsesInputItem::FunctionCallOutput {
+            r#type: "function_call_output".into(),
+            call_id: id.into(),
+            output: output.into(),
+        };
+        let items = replay_mcp_approvals(vec![
+            call("mcpr_1"),
+            output("mcpr_1", r#"{"approve":true}"#),
+            call("mcpr_2"),
+            output("mcpr_2", "denied by user"),
+            output("fc_1", r#"{"approve":true}"#),
+        ]);
+        let wire: Vec<Value> = items
+            .iter()
+            .map(|i| serde_json::to_value(i).unwrap())
+            .collect();
+        assert_eq!(
+            wire[0],
+            json!({ "type": "mcp_approval_request", "id": "mcpr_1", "server_label": "deepwiki",
+                    "name": "ask", "arguments": "{}" })
+        );
+        assert_eq!(
+            wire[1],
+            json!({ "type": "mcp_approval_response", "approval_request_id": "mcpr_1", "approve": true })
+        );
+        assert_eq!(wire[3]["approve"], false);
+        // An ordinary function output is untouched.
+        assert_eq!(wire[4]["type"], "function_call_output");
     }
 
     #[test]

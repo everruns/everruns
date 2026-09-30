@@ -10,7 +10,10 @@
 use everruns_provider::driver_registry::{
     HostedToolCall, HostedToolCallStatus, LlmCallConfig, LlmStreamEvent, Message, MessageRole,
 };
-use everruns_provider::openai_hosted_tools::{OpenAiHostedTools, SearchContextSize, WebSearchTool};
+use everruns_provider::openai_hosted_tools::{
+    McpServerTool, OPENAI_MCP_APPROVAL_TOOL, OpenAiHostedTools, SearchContextSize, WebSearchTool,
+};
+use everruns_provider::tool_types::ToolCall;
 use everruns_provider::{OpenResponsesProtocolChatDriver, Provider, ToolDefinition};
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -255,4 +258,103 @@ async fn web_search_response_streams_as_answer_text() {
             },
         ]
     );
+}
+
+fn mcp_config() -> LlmCallConfig {
+    let mut config = LlmCallConfig::new("gpt-6.1-sol");
+    let tools = OpenAiHostedTools {
+        mcp_servers: vec![McpServerTool {
+            server_label: "deepwiki".into(),
+            server_url: "https://mcp.deepwiki.com/mcp".into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let (key, value) = tools.to_driver_option().expect("mcp selected");
+    config.driver_options.insert(key, value);
+    config
+}
+
+#[tokio::test]
+async fn mcp_approval_request_pauses_as_a_synthetic_call() {
+    let server = MockServer::start().await;
+    let approval = json!({
+        "type": "mcp_approval_request", "id": "mcpr_1", "server_label": "deepwiki",
+        "name": "ask_question", "arguments": "{\"repoName\":\"everruns/everruns\"}"
+    });
+    let list = json!({ "type": "mcp_list_tools", "id": "mcpl_1", "server_label": "deepwiki", "tools": [] });
+    mount(
+        &server,
+        sse(&[
+            json!({ "type": "response.output_item.done", "sequence_number": 1, "output_index": 0, "item": list }),
+            json!({ "type": "response.output_item.done", "sequence_number": 2, "output_index": 1, "item": approval }),
+            json!({ "type": "response.completed", "sequence_number": 3, "response": {
+                "id": "resp_mcp", "object": "response", "created_at": 1, "status": "completed",
+                "model": "gpt-6.1-sol", "output": [list, approval],
+                "usage": { "input_tokens": 50, "output_tokens": 9, "total_tokens": 59 } } }),
+        ]),
+    )
+    .await;
+
+    let events = drain(&hosted_driver(&server, true), &mcp_config()).await;
+
+    let body = sent_body(&server).await;
+    assert_eq!(
+        body["tools"],
+        json!([{ "type": "mcp", "server_label": "deepwiki",
+                 "server_url": "https://mcp.deepwiki.com/mcp", "require_approval": "always" }])
+    );
+    let calls: Vec<ToolCall> = events
+        .iter()
+        .rev()
+        .find_map(|event| match event {
+            LlmStreamEvent::ToolCalls(calls) => Some(calls.clone()),
+            _ => None,
+        })
+        .expect("approval surfaces as a tool call");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].id, "mcpr_1");
+    assert_eq!(calls[0].name, OPENAI_MCP_APPROVAL_TOOL);
+    assert_eq!(calls[0].arguments["name"], "ask_question");
+    let done = events.iter().find_map(|event| match event {
+        LlmStreamEvent::Done(meta) => Some(meta),
+        _ => None,
+    });
+    assert_eq!(done.unwrap().finish_reason.as_deref(), Some("tool_calls"));
+}
+
+#[tokio::test]
+async fn approved_call_replays_as_approval_response() {
+    let server = MockServer::start().await;
+    mount(&server, completed_only()).await;
+    let arguments =
+        json!({ "server_label": "deepwiki", "name": "ask_question", "arguments": "{}" });
+    let mut assistant = Message::text(MessageRole::Assistant, "");
+    assistant.tool_calls = Some(vec![ToolCall {
+        id: "mcpr_1".into(),
+        name: OPENAI_MCP_APPROVAL_TOOL.into(),
+        arguments,
+    }]);
+    let mut answer = Message::text(MessageRole::Tool, r#"{"approve":true}"#);
+    answer.tool_call_id = Some("mcpr_1".into());
+
+    let mut stream = hosted_driver(&server, true)
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "ask"), assistant, answer],
+            &mcp_config(),
+        )
+        .await
+        .expect("request accepted");
+    while stream.next().await.is_some() {}
+
+    let input = sent_body(&server).await["input"].clone();
+    let items = input.as_array().unwrap();
+    assert!(
+        items
+            .iter()
+            .any(|item| item["type"] == "mcp_approval_request" && item["id"] == "mcpr_1")
+    );
+    assert!(items.iter().any(|item| item
+        == &json!({ "type": "mcp_approval_response", "approval_request_id": "mcpr_1", "approve": true })));
+    assert!(!items.iter().any(|item| item["type"] == "function_call"));
 }
