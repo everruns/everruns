@@ -25,6 +25,14 @@ tags:
   - Batching is the contract, not an optimization: every question for a stage
     rides one request, because per-check round trips are what forced the
     utility-LLM path's per-invocation call caps.
+  - Vendors are decision drivers behind one router (EVE-1117), the way LLM
+    vendors are chat drivers behind a provider. Call sites never learn which
+    driver answered; a deployment switches vendors with `DECISIONS_DRIVER`.
+  - Calibration is reported, never faked. A label-only driver answers one-hot
+    and says `calibrated: false`; it does not invent the numbers in between.
+  - The `llm` fallback is opt-in. It spends utility-model tokens on every
+    check and answers uncalibrated, so a deployment that never chose it keeps
+    today's behavior (TypeSafe with a key, disabled without).
 -->
 
 ## Intent
@@ -78,14 +86,80 @@ model cannot give cheaply:
   `PostGenerationOutputContext` thread it to capability hooks, alongside the
   utility LLM service.
 
+- `DecisionOutcome::calibrated` says whether the numbers are a measured
+  distribution. When false, the answering driver returned only a label and
+  encoded it one-hot, so thresholds read as "did it pick this" and the value
+  carries no certainty.
+
 A noul near 0.5 means yes and no are near-equally likely. It does not mean
 "medium intensity", and it is not a confidence value; noul answers have no
 separate confidence because the probability already is one.
 
-## Implementation
+## Decision drivers
+
+A decision driver is one vendor's transport for the contract above, the
+decisions equivalent of an LLM chat driver. The trait lives in core
+([`crates/core/src/decision_driver.rs`](../../crates/core/src/decision_driver.rs));
+the registry and router live in host
+([`crates/host/src/decisions/`](../../crates/host/src/decisions/)); vendor drivers
+live with their vendor, so host still names none.
+
+- **Capabilities are declared.** A driver states which primitives it answers
+  natively, whether its answers are calibrated, whether it takes image state,
+  and its limits (questions per request, options per question, state bytes).
+  The router rejects a request over a declared limit before any round trip.
+  A driver whose vendor lacks a primitive translates it (a noul as a two-way
+  choice, a score as a choice over the levels); callers never see a primitive
+  refused.
+- **Routing by model id.** `driver/model` reaches that driver with the prefix
+  stripped; a prefix a driver declares (`jev-` for TypeSafe) reaches it
+  untouched; anything else, and a request naming no model, reaches the
+  deployment default. An unregistered `x/...` goes to the default unchanged,
+  because some vendor ids carry a slash.
+- **One service to callers.** The router implements `DecisionsService`, so
+  guardrails, the `Decisions` facade, and capability internals are unchanged.
+- **Observed per call.** Each evaluation runs in a `decisions.evaluate` span
+  carrying the driver id, requested and resolved model, primitive kinds,
+  question count, calibration, token usage, and latency. It reaches OTel
+  through the tracing bridge, which is how vendors are compared on the
+  guardrail path.
+
+Drivers today:
+
+| Driver | Where | Answers | Calibrated |
+|---|---|---|---|
+| `typesafe` | [`integrations/typesafe`](../../integrations/typesafe/src/decisions.rs) | all three primitives, owns `jev-*` | yes |
+| `llm` | [`crates/host/src/decisions/llm.rs`](../../crates/host/src/decisions/llm.rs) | all three, via the utility LLM and a validated JSON reply | no |
+
+The `llm` driver answers with the utility model the deployment pinned and
+refuses a request naming another model. It sends questions under positional
+keys, so caller ids still never reach a model, and rejects any reply that
+names an option the question did not offer or a level out of range; callers
+fail open on that error exactly as on an outage. It asks for JSON in the
+prompt today; once the utility request can carry a structured-output schema
+(EVE-1116) it should send one as well.
+
+### Deployment configuration
+
+Composed in [`crates/worker/src/system_decisions.rs`](../../crates/worker/src/system_decisions.rs),
+which both the server and the worker platform call, so the two never drift:
+
+- `UTILITY_TYPESAFE_API_KEY` registers `typesafe`.
+- A configured utility LLM registers `llm`.
+- `DECISIONS_DRIVER` picks the default driver. Unset: `typesafe` when its key
+  is present, otherwise the disabled service.
+- `DECISIONS_MODEL` is what the default driver is asked for when a request
+  names no model. Refused with `DECISIONS_DRIVER=llm`, whose model is
+  `UTILITY_LLM_MODEL`.
+
+A `DECISIONS_DRIVER` naming a driver that is not configured stops startup with
+the list of configured drivers and the variables each one needs, rather than
+failing open on the first guardrail check.
+
+## TypeSafe driver
 
 [`integrations/typesafe`](../../integrations/typesafe/README.md) owns the
-concrete service ([`src/decisions.rs`](../../integrations/typesafe/src/decisions.rs))
+TypeSafe driver ([`src/decisions.rs`](../../integrations/typesafe/src/decisions.rs))
 and the vendor client it calls ([`src/client`](../../integrations/typesafe/src/client/)).
 Nothing above core learns the vendor.
 
@@ -142,11 +216,13 @@ guardrail engine.
   vendor does not know, so a value copied out of our docs into the vendor's own
   API would fail, and an answer would report a version for an id never sent.
 - Two credentials, two audiences: `SystemDecisionsConfig::from_env` reads the
-  platform's `UTILITY_TYPESAFE_API_KEY`, while `TypeSafeAI::from_env`
+  platform's `UTILITY_TYPESAFE_API_KEY` (and `into_driver` turns it into the
+  registered driver), while `TypeSafeAI::from_env`
   reads an embedding application's own `TYPESAFE_API_KEY` — the latter is what
   [`Decisions`](../framework/application-api.md#direct-decision-boundary) uses outside the platform.
 - Configured from process environment: `UTILITY_TYPESAFE_API_KEY`. Unset or
-  empty means the service is disabled and `is_configured()` is false. The name
+  empty means the driver is not registered; with no other driver chosen the
+  service is disabled and `is_configured()` is false. The name
   mirrors `UTILITY_OPENAI_API_KEY`: both are platform-owned credentials for
   internal model work, distinct from the `TYPESAFE_API_KEY` session secret the
   agent-facing capability falls back to.
@@ -171,7 +247,7 @@ fail open, and it is why `is_configured()` exists.
 ## Data Egress
 
 The state a caller sends is the content being judged: tool arguments, tool
-results, or finalized assistant text. It leaves the platform for the judgment
-provider, exactly as the moderation path already does for the utility model
-provider. Callers bound what they send; guardrails caps stage content at 2 KiB
+results, or finalized assistant text. It leaves the platform for the answering
+driver's vendor (TypeSafe, or the utility model's provider under `llm`),
+exactly as the moderation path already does for the utility model provider. Callers bound what they send; guardrails caps stage content at 2 KiB
 (tool seams) and 4 KiB (output).

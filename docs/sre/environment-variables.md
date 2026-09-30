@@ -378,7 +378,9 @@ platform uses for its own internal work.
 | `UTILITY_OPENAI_API_KEY` | Agent Analyze/Health checks, and guardrail checks with `engine: "utility_llm"` (the default), called directly against OpenAI | Those checks are skipped; Analyze and Health are unavailable |
 | `UTILITY_OPENROUTER_API_KEY` | The same work, routed through OpenRouter instead. Setting it selects OpenRouter; it wins when both keys are set, and the startup log says so | The utility LLM falls back to `UTILITY_OPENAI_API_KEY` |
 | `UTILITY_LLM_MODEL` | The model the utility LLM calls on whichever backend was selected | Defaults to `gpt-6-luna` on OpenAI, `openai/gpt-6-luna` on OpenRouter |
-| `UTILITY_TYPESAFE_API_KEY` | Guardrail checks with `engine: "jev"` | Those checks are skipped with a warning and the turn proceeds |
+| `UTILITY_TYPESAFE_API_KEY` | Guardrail checks with `engine: "jev"`, answered by TypeSafe | Those checks are skipped with a warning and the turn proceeds, unless `DECISIONS_DRIVER` picks another driver |
+| `DECISIONS_DRIVER` | Which decision driver answers `jev` checks: `typesafe`, or `llm` to answer them with the utility LLM when you have no TypeSafe key. `llm` answers are labels, not calibrated probabilities | `typesafe` when its key is set, otherwise disabled. A driver that is not configured stops startup |
+| `DECISIONS_MODEL` | The model the chosen decision driver is asked for | The driver's own default. Not allowed with `DECISIONS_DRIVER=llm`, which uses `UTILITY_LLM_MODEL` |
 
 The keys are read from the process environment at startup. Missing keys **fail
 open**: a guardrail whose engine is not configured never blocks, so a missing
