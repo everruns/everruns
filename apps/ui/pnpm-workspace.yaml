@@ -1,5 +1,11 @@
 packages: []
 overrides:
+  # Held on 0.0.x deliberately: @ag-ui/core 1.0 is an AG-UI protocol major
+  # (THINKING_* -> REASONING_*, zod schemas moved to the /schemas subpath),
+  # and the server still emits the pre-1.0 vocabulary from the Rust
+  # ag-ui-core 0.1.0 crate. This override also wins over the
+  # devDependencies range in package.json, so bumping that range alone is a
+  # no-op — move both, plus the Rust side, together. See EVE-1135.
   '@ag-ui/core': 0.0.59
   '@babel/core': 7.29.6
   brace-expansion@1: 1.1.18
