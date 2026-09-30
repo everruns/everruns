@@ -16,7 +16,7 @@ use crate::{GITHUB_API_BASE, GITHUB_CONNECTION_PROVIDER, GITHUB_TOKEN_SECRET};
 const DEFAULT_LIMIT: u32 = 10;
 const MAX_LIMIT: u32 = 30;
 
-async fn get_github_token(context: &ToolContext) -> Result<String, ToolExecutionResult> {
+pub(crate) async fn get_github_token(context: &ToolContext) -> Result<String, ToolExecutionResult> {
     if let Some(resolver) = context.connection_resolver.as_ref() {
         match resolver
             .get_connection_token(context.session_id, GITHUB_CONNECTION_PROVIDER)
@@ -52,11 +52,13 @@ async fn get_github_token(context: &ToolContext) -> Result<String, ToolExecution
     ))
 }
 
-fn github_client(token: String) -> GitHubClient {
+pub(crate) fn github_client(token: String) -> GitHubClient {
     GitHubClient::new(token)
 }
 
-fn enforce_github_network_access(context: &ToolContext) -> Result<(), ToolExecutionResult> {
+pub(crate) fn enforce_github_network_access(
+    context: &ToolContext,
+) -> Result<(), ToolExecutionResult> {
     if let Some(acl) = context.network_access.as_ref()
         && !acl.is_url_allowed(GITHUB_API_BASE)
     {
@@ -67,7 +69,10 @@ fn enforce_github_network_access(context: &ToolContext) -> Result<(), ToolExecut
     Ok(())
 }
 
-fn required_str<'a>(arguments: &'a Value, name: &str) -> Result<&'a str, ToolExecutionResult> {
+pub(crate) fn required_str<'a>(
+    arguments: &'a Value,
+    name: &str,
+) -> Result<&'a str, ToolExecutionResult> {
     arguments
         .get(name)
         .and_then(|v| v.as_str())

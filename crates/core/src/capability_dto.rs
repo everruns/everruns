@@ -190,6 +190,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "fake_aws" => Some("fake-aws"),
         "fake_crm" => Some("fake-crm"),
         "fake_warehouse" => Some("fake-warehouse"),
+        "github" => Some("github"),
         "github_scout" => Some("github-scout"),
         "session_file_system" => Some("file-system"),
         "infinity_context" => Some("infinity-context"),
