@@ -495,12 +495,13 @@ impl DirectWorkerAdapters {
         pattern: &str,
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
-        crate::domains::session_files::service::grep_session_files_with_options(
+        crate::domains::session_files::grep::grep_session_files_with_options(
             &self.db,
             self.virtual_registry.as_deref(),
             session_id,
             pattern,
             options,
+            None,
         )
         .await
         .map_err(|error| store_error(format!("Failed to grep files: {error}")))

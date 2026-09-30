@@ -2,6 +2,7 @@
 // (virtual read-only trees, and live Memory routing).
 
 pub mod commands;
+pub mod grep;
 pub mod limits;
 pub mod memory_mounts;
 pub mod queries;
@@ -10,6 +11,7 @@ pub mod types;
 pub mod virtual_mount_registry;
 
 pub use commands::*;
+pub use grep::*;
 pub use memory_mounts::{MemoryMount, MemoryMountRouter};
 pub use service::*;
 pub use virtual_mount_registry::VirtualMountRegistry;

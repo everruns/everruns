@@ -612,8 +612,6 @@ impl Command for SearchWorkspaceFiles {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<everruns_core::GrepSearchResult, CommandError> {
-        use everruns_core::session_files::SessionFileSystem;
-
         let session_id = q::parse_session_id(&self.session_id)?;
         let access = q::verify_session(ctx, session_id).await?;
 
@@ -627,11 +625,12 @@ impl Command for SearchWorkspaceFiles {
             max_bytes: self.req.max_bytes.unwrap_or(defaults.max_bytes),
         };
 
-        let mut result = q::service(ctx)
-            .grep_files_with_options(
-                everruns_provider::typed_id::SessionId::from_uuid(access.workspace_key),
+        let result = q::service(ctx)
+            .grep_with_options_excluding(
+                access.workspace_key,
                 &self.req.pattern,
                 &options,
+                (!access.user_memory_allowed).then_some(q::USER_MEMORY_MOUNT_PATH),
             )
             .await
             .map_err(|error| {
@@ -643,14 +642,6 @@ impl Command for SearchWorkspaceFiles {
                     CommandError::internal(anyhow::anyhow!("{error}"))
                 }
             })?;
-
-        // The private memory mount is redacted from both projections; the
-        // counts stay as the search reported them, so paging is unaffected by
-        // what this caller may not see.
-        if !access.user_memory_allowed {
-            result.matches = q::redact_user_memory_files(result.matches, |m| &m.path);
-            result.blocks = q::redact_user_memory_files(result.blocks, |b| &b.path);
-        }
 
         Ok(result)
     }
@@ -1149,6 +1140,57 @@ mod tests {
         assert!(
             block.lines.iter().any(|l| l.line == "needle" && l.is_match),
             "the matching line must be flagged: {block:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn search_excludes_private_memory_before_result_accounting() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let mut row = session_row(None);
+        row.resolved_owner_user_id = Some(Uuid::new_v4());
+        let session = db.create_session(row).await.expect("create session");
+        crate::domains::session_files::WorkspaceFileService::new(db.clone())
+            .create_file(
+                session.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: "/memory/user/secret.md".to_string(),
+                    content: Some("TOPSECRET_walrus".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed persisted private memory");
+
+        let mut caller = owner_caller();
+        caller.user_id = Some(Uuid::new_v4());
+        let ctx = Ctx::minimal_for_test(caller, db, None);
+
+        let search = |pattern: &str| SearchWorkspaceFiles {
+            session_id: session.id.to_string(),
+            req: SearchRequest {
+                pattern: pattern.to_string(),
+                path_pattern: Some("/memory/user/**".to_string()),
+                before_context: 1,
+                after_context: 1,
+                offset: 0,
+                limit: Some(1),
+                max_bytes: Some(32),
+            },
+        };
+        let private_hit = search("^TOPSECRET_w")
+            .run(&ctx)
+            .await
+            .expect("private-only search must succeed");
+        let no_hit = search("^does-not-match$")
+            .run(&ctx)
+            .await
+            .expect("empty search must succeed");
+
+        assert_eq!(
+            serde_json::to_value(private_hit).expect("serialize hit result"),
+            serde_json::to_value(no_hit).expect("serialize empty result"),
+            "private matches must not affect any observable result field"
         );
     }
 
