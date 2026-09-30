@@ -30,7 +30,9 @@ Give each one a narrow prompt and only the capabilities it needs. "Reviews Rust
 diffs for correctness bugs" routes better than "helps with code", because the
 foreman picks targets from their descriptions.
 
-Note their agent ids (`agent_...`).
+Note each worker's agent id (`agent_...`) and harness id (`harness_...`). Both
+are required for a handoff target: the harness determines the capabilities and
+mounts available to the worker's child session.
 
 ## Step 2 — Give the foreman the `agent_handoff` capability
 
@@ -45,6 +47,7 @@ Delegation targets are an explicit allowlist on the foreman. Configure the
       "name": "Code Reviewer",
       "description": "Reviews diffs and pull requests for correctness bugs",
       "agent_id": "agent_...",
+      "harness_id": "harness_...",
       "required_connections": [],
       "required_scopes": []
     },
@@ -52,7 +55,8 @@ Delegation targets are an explicit allowlist on the foreman. Configure the
       "id": "incident_responder",
       "name": "Incident Responder",
       "description": "Investigates alerts and production incidents",
-      "agent_id": "agent_..."
+      "agent_id": "agent_...",
+      "harness_id": "harness_..."
     }
   ]
 }

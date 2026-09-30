@@ -23,13 +23,27 @@
 //! let profile = get_model_profile("anthropic", "claude-sonnet-5").expect("known model");
 //! assert_eq!(profile.family, "claude-sonnet-5");
 //! ```
+//!
+//! Registry enumeration can also build offline menus without confusing model
+//! families with request identities:
+//!
+//! ```
+//! use everruns_model_profiles::{profile_entries_for_provider, ServiceKind};
+//! let chat_models: Vec<_> = profile_entries_for_provider("openai")
+//!     .into_iter()
+//!     .filter(|entry| entry.service == ServiceKind::Chat)
+//!     .collect();
+//! assert!(chat_models.iter().any(|entry| entry.model_id == "gpt-6-astra"));
+//! ```
 
 pub mod profiles;
 mod types;
 
 pub use profiles::{
-    estimate_cost_usd, get_model_profile, get_model_profile_by_key, get_model_profile_key,
-    get_model_service_kind, get_model_vendor,
+    ModelProfileEntry, all_profile_entries, all_profiles, estimate_cost_usd, get_model_profile,
+    get_model_profile_by_key, get_model_profile_key, get_model_service_kind, get_model_vendor,
+    profile_entries_for_provider, profiles_for_provider, selected_profiles,
+    selected_profiles_for_provider,
 };
 pub use types::{
     CLEAR_AT_PARAMETER, CostTier, MID_CONVERSATION_SYSTEM_PARAMETER, Modality, ModelCost,

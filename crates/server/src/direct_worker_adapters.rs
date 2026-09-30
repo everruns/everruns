@@ -391,8 +391,7 @@ impl DirectWorkerAdapters {
                 org_id,
                 capabilities,
             )
-            .await
-            .unwrap_or_default();
+            .await?;
 
         Ok(Some({
             // Parse capabilities from JSON
@@ -686,10 +685,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     .get_agent_capabilities(r.id.uuid())
                     .await
                     .unwrap_or_default();
-                let capabilities = self
-                    .hydrate_capability_rows(org_id, capabilities)
-                    .await
-                    .unwrap_or_default();
+                let capabilities = self.hydrate_capability_rows(org_id, capabilities).await?;
                 Ok(Some(Self::row_to_agent(r, capabilities)))
             }
             None => Ok(None),
@@ -1155,8 +1151,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
                 let hydrated_capabilities = self
                     .hydrate_capability_rows(org_id, capability_rows)
-                    .await
-                    .unwrap_or_default();
+                    .await?;
                 let mut agent = Self::row_to_agent(row, hydrated_capabilities);
                 if let Some(version_id) = session.agent_version_id
                     && let Some(version_row) = self
