@@ -169,6 +169,12 @@ foreman run --repo . --job "…" --worker-command "mycli --cd {repo} --task {mis
 either: a mission carrying quotes, newlines, or a semicolon is still one argv
 entry.
 
+External workers start with a clean environment. Foreman restores ordinary
+process settings such as `PATH` and `HOME`, plus `OPENAI_API_KEY` for Codex or
+`ANTHROPIC_API_KEY` for yolop. Custom commands receive no environment
+credentials; use the command's own credential store when authentication is
+required. The supervisor's `TYPESAFE_API_KEY` is never forwarded to a worker.
+
 A session is observed through its own canonical event stream, which arrives
 already typed — tool calls separated from model steps from output. A CLI offers
 none of that, so an external worker is observed through stdout and stderr, and

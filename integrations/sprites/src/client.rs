@@ -317,7 +317,18 @@ impl SpritesClient {
                 None,
             )
             .await?;
-        ensure_ndjson_success(&stream)?;
+        if let Err(error) = ensure_ndjson_success(&stream) {
+            // EVE-1013: Sprites occasionally fails a restore inside its own
+            // pre-restore backup (`BackupActiveCheckpoint`) because the version
+            // it picks for the backup already exists. Nothing in this request
+            // chooses that version, so the only useful thing the client can
+            // add is what the sprite held at the moment it failed.
+            let held = match self.list_checkpoints(name).await {
+                Ok(checkpoints) => describe_checkpoints(&checkpoints),
+                Err(list_error) => format!("unavailable ({list_error})"),
+            };
+            return Err(format!("{error} [checkpoints on sprite: {held}]"));
+        }
         Ok(())
     }
 
@@ -403,9 +414,38 @@ fn checkpoint_from_stream(stream: &str) -> Option<CheckpointInfo> {
                 .and_then(|v| v.as_str())
                 .map(ToOwned::to_owned),
             comment: None,
+            is_auto: false,
         });
     }
     None
+}
+
+/// One line naming every checkpoint a sprite holds, for failure reports.
+fn describe_checkpoints(checkpoints: &[CheckpointInfo]) -> String {
+    if checkpoints.is_empty() {
+        return "none".to_string();
+    }
+    checkpoints
+        .iter()
+        .map(|checkpoint| {
+            let mut notes = Vec::new();
+            if checkpoint.is_auto {
+                notes.push("auto".to_string());
+            }
+            if let Some(created_at) = &checkpoint.created_at {
+                notes.push(created_at.clone());
+            }
+            if let Some(comment) = checkpoint.comment.as_deref().filter(|c| !c.is_empty()) {
+                notes.push(format!("{comment:?}"));
+            }
+            if notes.is_empty() {
+                checkpoint.id.clone()
+            } else {
+                format!("{} ({})", checkpoint.id, notes.join(", "))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 fn latest_non_current_checkpoint(checkpoints: Vec<CheckpointInfo>) -> Option<CheckpointInfo> {
@@ -614,6 +654,78 @@ mod tests {
         let client = SpritesClient::with_base_url("test_token".to_string(), mock_server.uri());
         let result = client.restore_checkpoint("my-sprite", "cp_abc123").await;
         assert!(result.is_ok());
+    }
+
+    /// EVE-1013: the vendor's own pre-restore backup collided with an existing
+    /// checkpoint version. The error names what the sprite held so the next
+    /// occurrence carries the evidence a vendor report needs.
+    #[tokio::test]
+    async fn test_client_restore_failure_reports_checkpoints_on_sprite() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sprites/my-sprite/checkpoints/v1/restore"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                "{\"type\":\"info\",\"data\":\"Restoring from checkpoint v1...\"}\n{\"type\":\"error\",\"error\":\"Failed to restore checkpoint: BackupActiveCheckpoint failed: JuiceFS rename clone: rename /dev/fly_vol/juicefs/data/checkpoints/v2.in-progress /dev/fly_vol/juicefs/data/checkpoints/v2: file exists\"}\n",
+            ))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/sprites/my-sprite/checkpoints"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {"id": "Current", "create_time": "2026-09-14T14:06:52Z", "is_auto": false},
+                {"id": "v2", "create_time": "2026-09-14T14:06:51Z", "is_auto": true},
+                {"id": "v1", "create_time": "2026-09-14T14:06:50Z", "is_auto": false, "comment": ""}
+            ])))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = SpritesClient::with_base_url("test_token".to_string(), mock_server.uri());
+        let error = client
+            .restore_checkpoint("my-sprite", "v1")
+            .await
+            .expect_err("vendor error must fail the restore");
+        assert!(
+            error.starts_with(
+                "Sprites stream error: Failed to restore checkpoint: BackupActiveCheckpoint"
+            ),
+            "vendor error must lead: {error}"
+        );
+        assert!(
+            error.ends_with(
+                "[checkpoints on sprite: Current (2026-09-14T14:06:52Z); \
+                 v2 (auto, 2026-09-14T14:06:51Z); v1 (2026-09-14T14:06:50Z)]"
+            ),
+            "listing must follow: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_client_restore_failure_survives_an_unreadable_listing() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sprites/my-sprite/checkpoints/v1/restore"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("{\"type\":\"error\",\"error\":\"boom\"}\n"),
+            )
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/sprites/my-sprite/checkpoints"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("down"))
+            .mount(&mock_server)
+            .await;
+
+        let client = SpritesClient::with_base_url("test_token".to_string(), mock_server.uri());
+        let error = client
+            .restore_checkpoint("my-sprite", "v1")
+            .await
+            .expect_err("vendor error must fail the restore");
+        assert!(
+            error.starts_with("Sprites stream error: boom [checkpoints on sprite: unavailable")
+        );
     }
 
     #[tokio::test]
@@ -842,16 +954,19 @@ mod tests {
                 id: "Current".to_string(),
                 created_at: Some("2026-03-23T10:05:03Z".to_string()),
                 comment: None,
+                is_auto: false,
             },
             CheckpointInfo {
                 id: "cp_old".to_string(),
                 created_at: Some("2026-03-23T10:05:01Z".to_string()),
                 comment: None,
+                is_auto: false,
             },
             CheckpointInfo {
                 id: "cp_new".to_string(),
                 created_at: Some("2026-03-23T10:05:02Z".to_string()),
                 comment: None,
+                is_auto: false,
             },
         ])
         .unwrap();

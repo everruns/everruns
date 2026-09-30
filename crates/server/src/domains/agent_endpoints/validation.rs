@@ -45,9 +45,11 @@ pub(crate) fn normalize_and_validate_channel_config(
         ChannelType::Slack => {
             // The channel must exist before its manifest can be generated, while
             // Slack provides credentials only after the app is created.
-            serde_json::from_value::<SlackChannelConfig>(channel_config.clone()).map_err(|e| {
-                CommandError::bad_request(format!("Invalid Slack channel config: {e}"))
-            })?;
+            let config = serde_json::from_value::<SlackChannelConfig>(channel_config.clone())
+                .map_err(|e| {
+                    CommandError::bad_request(format!("Invalid Slack channel config: {e}"))
+                })?;
+            validate_session_binding(&channel_type, config.session_strategy)?;
         }
         ChannelType::AgUi => {
             let config: AgUiChannelConfig = serde_json::from_value(channel_config.clone())
@@ -94,6 +96,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 .map_err(|e| {
                     CommandError::bad_request(format!("Invalid schedule channel config: {e}"))
                 })?;
+            validate_session_binding(&channel_type, config.session_mode)?;
             if config.message.trim().is_empty() {
                 return Err(CommandError::bad_request(
                     "Schedule channel config requires a non-empty message",
@@ -120,6 +123,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 .map_err(|e| {
                     CommandError::bad_request(format!("Invalid webhook channel config: {e}"))
                 })?;
+            validate_session_binding(&channel_type, config.session_mode)?;
             if config.token.trim().is_empty() {
                 return Err(CommandError::bad_request(
                     "Webhook channel config requires a non-empty token",
@@ -136,6 +140,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 serde_json::from_value(channel_config.clone()).map_err(|e| {
                     CommandError::bad_request(format!("Invalid A2A channel config: {e}"))
                 })?;
+            validate_session_binding(&channel_type, config.session_mode)?;
             if config.api_key_hash.trim().is_empty() {
                 return Err(CommandError::bad_request(
                     "A2A channel config requires a non-empty api_key_hash",
@@ -186,6 +191,7 @@ pub(crate) fn normalize_and_validate_channel_config(
                 .map_err(|e| {
                 CommandError::bad_request(format!("Invalid api_endpoint channel config: {e}"))
             })?;
+            validate_session_binding(&channel_type, config.session_mode)?;
             if config.api_key_hash.trim().is_empty() {
                 return Err(CommandError::bad_request(
                     "api_endpoint channel config requires a non-empty api_key_hash",
@@ -326,6 +332,19 @@ pub(crate) fn normalize_and_validate_channel_config(
     }
 
     Ok(channel_config)
+}
+
+fn validate_session_binding(
+    channel_type: &ChannelType,
+    binding: everruns_platform::SessionBinding,
+) -> Result<(), CommandError> {
+    if channel_type.allows_binding(binding) {
+        Ok(())
+    } else {
+        Err(CommandError::bad_request(format!(
+            "Session binding {binding:?} is not supported for {channel_type} channels"
+        )))
+    }
 }
 
 fn hash_endpoint_basic_password(password: &str) -> Result<String, CommandError> {
@@ -652,6 +671,57 @@ fn merge_preserved_endpoint_auth_secrets(
             .is_none_or(str::is_empty);
         if should_preserve && let Some(existing_value) = existing_provider.get(key) {
             out_provider.insert(key.to_string(), existing_value.clone());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn rejects_bindings_unsupported_by_the_channel_transport() {
+        for binding in [
+            "shared_session",
+            "session_per_invocation",
+            "endpoint",
+            "ephemeral",
+        ] {
+            let config = json!({ "session_strategy": binding });
+            assert!(
+                normalize_and_validate_channel_config(ChannelType::Slack, config).is_err(),
+                "Slack accepted unsupported binding {binding}"
+            );
+        }
+
+        let invocation_configs = [
+            (
+                ChannelType::Schedule,
+                json!({ "cron_expression": "0 0 * * * *", "message": "run" }),
+            ),
+            (
+                ChannelType::Webhook,
+                json!({ "token": "secret", "message": "run" }),
+            ),
+            (
+                ChannelType::A2a,
+                json!({ "api_key_hash": "hash", "api_key_prefix": "prefix", "message": "run" }),
+            ),
+            (
+                ChannelType::ApiEndpoint,
+                json!({ "api_key_hash": "hash", "api_key_prefix": "prefix" }),
+            ),
+        ];
+        for (channel_type, base_config) in invocation_configs {
+            for binding in ["per_thread", "per_channel", "per_user"] {
+                let mut config = base_config.clone();
+                config["session_mode"] = json!(binding);
+                assert!(
+                    normalize_and_validate_channel_config(channel_type.clone(), config).is_err(),
+                    "{channel_type} accepted unsupported binding {binding}"
+                );
+            }
         }
     }
 }

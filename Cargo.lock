@@ -3258,6 +3258,7 @@ dependencies = [
  "everruns-example-demo",
  "everruns-integrations-brave-search",
  "everruns-openrouter",
+ "serde_json",
  "tokio",
 ]
 
