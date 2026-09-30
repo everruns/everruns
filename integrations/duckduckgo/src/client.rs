@@ -205,7 +205,7 @@ pub(crate) mod urlencoding {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn sample_response() -> serde_json::Value {
@@ -296,13 +296,17 @@ mod tests {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/"))
+            .and(query_param("no_html", "1"))
             .respond_with(ResponseTemplate::new(200).set_body_json(sample_response()))
             .mount(&mock_server)
             .await;
 
         let client = DuckDuckGoClient::with_base_url(mock_server.uri());
         let result = client.instant_answer("rust", true).await;
-        assert!(result.is_ok());
+        assert!(
+            result.is_ok(),
+            "no_html=1 should have been sent: {result:?}"
+        );
     }
 
     #[tokio::test]

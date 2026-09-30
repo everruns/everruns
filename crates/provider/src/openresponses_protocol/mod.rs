@@ -44,6 +44,7 @@ use crate::user_facing_error::is_provider_quota_message;
 // Split out of one 6000-line file. Every item keeps its visibility, so the
 // module's public surface is unchanged.
 mod chat_driver;
+mod hosted_tools;
 mod input;
 mod streaming;
 mod wire;
@@ -149,6 +150,7 @@ pub struct OpenResponsesProtocolChatDriver {
     stateful_responses: Option<bool>,
     native_phases: bool,
     hosted_tool_search: bool,
+    hosted_tools: bool,
     native_prompt_cache_options: bool,
 }
 
@@ -166,6 +168,7 @@ impl OpenResponsesProtocolChatDriver {
             stateful_responses: None,
             native_phases: false,
             hosted_tool_search: false,
+            hosted_tools: false,
             native_prompt_cache_options: false,
         }
     }
@@ -174,6 +177,14 @@ impl OpenResponsesProtocolChatDriver {
     pub fn with_native_features(mut self, phases: bool, hosted_tool_search: bool) -> Self {
         self.native_phases = phases;
         self.hosted_tool_search = hosted_tool_search;
+        self
+    }
+
+    /// Render OpenAI hosted tools (`web_search`, ...) requested through
+    /// [`crate::openai_hosted_tools::OPENAI_HOSTED_TOOLS_OPTION`]. Endpoints
+    /// without them reject the option instead of dropping it.
+    pub fn with_hosted_tools(mut self, enabled: bool) -> Self {
+        self.hosted_tools = enabled;
         self
     }
 
@@ -1021,6 +1032,7 @@ impl std::fmt::Debug for OpenResponsesProtocolChatDriver {
             .field("stateful_responses", &self.stateful_responses)
             .field("native_phases", &self.native_phases)
             .field("hosted_tool_search", &self.hosted_tool_search)
+            .field("hosted_tools", &self.hosted_tools)
             .finish_non_exhaustive()
     }
 }

@@ -529,6 +529,65 @@ async fn test_update_agent() {
 }
 
 #[tokio::test]
+async fn test_name_upsert_updates_and_clears_platform_chat_content() {
+    let server = TestServer::in_memory().await;
+    let name = "name-upsert-platform-chat";
+
+    server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": name,
+                "system_prompt": "Original prompt",
+                "intro_markdown": "Original intro",
+                "short_description": "Original short description",
+                "starters": [{"text": "Original starter", "icon": "sparkles"}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let updated: Value = server
+        .put(
+            &format!("/v1/agents/{name}"),
+            json!({
+                "name": name,
+                "system_prompt": "Updated prompt",
+                "intro_markdown": "Updated intro",
+                "short_description": "Updated short description",
+                "starters": [{"text": "Updated starter", "icon": "message-circle"}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(updated["intro_markdown"], "Updated intro");
+    assert_eq!(updated["short_description"], "Updated short description");
+    assert_eq!(
+        updated["starters"],
+        json!([{"text": "Updated starter", "icon": "message-circle"}])
+    );
+
+    let cleared: Value = server
+        .put(
+            &format!("/v1/agents/{name}"),
+            json!({
+                "name": name,
+                "system_prompt": "Updated prompt",
+                "intro_markdown": null,
+                "short_description": null,
+                "starters": []
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(cleared["intro_markdown"], Value::Null);
+    assert_eq!(cleared["short_description"], Value::Null);
+    assert!(cleared.get("starters").is_none());
+}
+
+#[tokio::test]
 async fn test_create_agent_missing_default_model_returns_not_found() {
     let server = TestServer::in_memory().await;
 

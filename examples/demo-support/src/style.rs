@@ -53,10 +53,27 @@ pub fn paint(code: &str, text: &str) -> String {
     format!("{}{text}{}", sgr(code), sgr(RESET))
 }
 
+/// Make untrusted text safe to write to a terminal.
+///
+/// Control characters are rendered as visible Rust escapes so they cannot be
+/// interpreted as terminal commands while their presence remains apparent.
+fn sanitize_terminal_text(text: &str) -> String {
+    let mut sanitized = String::with_capacity(text.len());
+    for character in text.chars() {
+        if character.is_control() {
+            sanitized.extend(character.escape_default());
+        } else {
+            sanitized.push(character);
+        }
+    }
+    sanitized
+}
+
 /// Clip one line to `width`, marking that something was cut.
 pub fn clip_to(line: &str, width: usize) -> String {
+    let line = sanitize_terminal_text(line);
     if line.chars().count() <= width {
-        return line.to_owned();
+        return line;
     }
     let kept: String = line.chars().take(width.saturating_sub(1)).collect();
     format!("{kept}…")
@@ -82,5 +99,18 @@ mod tests {
     #[test]
     fn plain_text_is_never_wrapped_in_escapes() {
         assert_eq!(paint(PLAIN, "hello"), "hello");
+    }
+
+    #[test]
+    fn clipping_visibly_escapes_terminal_control_sequences() {
+        let unsafe_text = "start\x1b[2J\x1b]52;c;clipboard\x07bell\rreturn\u{009b}31mend";
+
+        let sanitized = clip_to(unsafe_text, 200);
+
+        assert_eq!(
+            sanitized,
+            r"start\u{1b}[2J\u{1b}]52;c;clipboard\u{7}bell\rreturn\u{9b}31mend"
+        );
+        assert!(!sanitized.chars().any(char::is_control));
     }
 }

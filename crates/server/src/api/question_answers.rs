@@ -177,11 +177,24 @@ pub(crate) fn validate_answers(
 /// "a human answered this" would answer nothing. Only an outcome a person
 /// actually produced is attributed to `User`.
 pub(crate) fn build_result(status: AskUserStatus, answers: Vec<AskUserAnswer>) -> AskUserResult {
-    let answered_by = match status {
+    build_result_with_source(status, default_answered_by(status), answers)
+}
+
+fn default_answered_by(status: AskUserStatus) -> AskUserAnsweredBy {
+    match status {
         AskUserStatus::Answered | AskUserStatus::Declined => AskUserAnsweredBy::User,
         AskUserStatus::TimedOut => AskUserAnsweredBy::Timeout,
         AskUserStatus::Cancelled => AskUserAnsweredBy::Unattended,
-    };
+    }
+}
+
+/// Build a result for a trusted resolution surface whose source cannot be
+/// inferred from the status, such as a timeout that declines a secret.
+pub(crate) fn build_result_with_source(
+    status: AskUserStatus,
+    answered_by: AskUserAnsweredBy,
+    answers: Vec<AskUserAnswer>,
+) -> AskUserResult {
     AskUserResult {
         status,
         answered_by,
@@ -282,12 +295,41 @@ pub async fn resolve_question_answers(
     status: AskUserStatus,
     submitted: &[AskUserAnswer],
 ) -> Result<AskUserResult, ResolveError> {
-    state
+    resolve_question_answers_with_source(
+        state,
+        caller,
+        session_id,
+        tool_call_id,
+        status,
+        default_answered_by(status),
+        submitted,
+    )
+    .await
+}
+
+pub(crate) async fn resolve_question_answers_with_source(
+    state: &QuestionResolver<'_>,
+    caller: &everruns_core::Caller,
+    session_id: everruns_provider::typed_id::SessionId,
+    tool_call_id: Option<&str>,
+    status: AskUserStatus,
+    answered_by: AskUserAnsweredBy,
+    submitted: &[AskUserAnswer],
+) -> Result<AskUserResult, ResolveError> {
+    let session = state
         .session_service
         .get(caller, session_id.uuid(), None)
         .await
         .map_err(|error| ResolveError::Internal(error.to_string()))?
         .ok_or(ResolveError::NoPendingQuestions)?;
+    if !crate::domains::sessions::platform_chat_owner_matches_session(state.db, caller, &session)
+        .await
+        .map_err(|error| ResolveError::Internal(error.to_string()))?
+    {
+        // THREAT[TM-AGENT-017]: do not expose whether another user's Platform
+        // Chat session is currently waiting, let alone mutate or resume it.
+        return Err(ResolveError::NoPendingQuestions);
+    }
 
     let requested = state
         .db
@@ -341,7 +383,7 @@ pub async fn resolve_question_answers(
         }
     }
 
-    let result = build_result(status, answers);
+    let result = build_result_with_source(status, answered_by, answers);
 
     let turn_id = everruns_provider::typed_id::TurnId::from_uuid(session_id.uuid());
     let event_message_id = everruns_provider::typed_id::MessageId::from_uuid(session_id.uuid());
@@ -1021,6 +1063,21 @@ mod tests {
             build_result(AskUserStatus::TimedOut, answers).answered_by,
             AskUserAnsweredBy::Timeout
         );
+    }
+
+    /// A secret expires as a decline because no credential can be defaulted,
+    /// but the complete model-facing result must not claim a person declined.
+    #[test]
+    fn expired_secret_decline_is_attributed_to_timeout() {
+        let result = build_result_with_source(
+            AskUserStatus::Declined,
+            AskUserAnsweredBy::Timeout,
+            Vec::new(),
+        );
+
+        assert_eq!(result.status, AskUserStatus::Declined);
+        assert_eq!(result.answered_by, AskUserAnsweredBy::Timeout);
+        assert!(result.answers.is_empty());
     }
 
     #[test]

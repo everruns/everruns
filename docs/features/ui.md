@@ -56,29 +56,25 @@ Each card shows:
 
 Click a card to view the agent details, or click the edit icon to modify the agent.
 
-### Agent Detail
+### Agent Page
 
-The agent detail page shows:
+The agent page reads and edits an agent in one layout. The system prompt fills the wide left pane;
+a narrow column on the right holds the settings:
 
-- **System Prompt**: Full system prompt with markdown rendering
-- **Sessions List**: All sessions for this agent with status indicators
-- **Capabilities**: Enabled capabilities with descriptions
-- **Configuration**: Default model, description, tags, timestamps
+- **Harness**, **Capabilities** (in precedence order), **Default model**, and **Tags**
+- **Updated**, read-only
+- **More**: one row each for Branding, MCP servers, Credentials, Starter files, Network access,
+  Token usage, and Health check. Each row shows its current value and opens a side sheet.
 
-Actions available:
-- **Edit**: Modify agent configuration
-- **New Session**: Create a new conversation session
+Tabs: **Agent**, **Preview**, **Integrations** (endpoints and triggers), **Stats**, and
+**Sessions**.
 
-### Create/Edit Agent
-
-The agent form allows you to configure:
-
-- **Name**: Display name for the agent
-- **Description**: Optional description
-- **System Prompt**: Instructions for the agent (supports markdown)
-- **Default Model**: LLM model to use for conversations
-- **Capabilities**: Enable/disable available capabilities
-- **Tags**: Organizational tags
+Header actions:
+- **Edit**: switch the page into edit mode. The prompt becomes an editor and the settings take
+  input; **Save changes** sends everything at once and **Discard** drops the draft. Changes apply
+  to new sessions only.
+- **More actions**: Copy, Export, Version history, and Archive (or Delete, for an archived agent)
+- **New session**: start a conversation with this agent
 
 ## Sessions
 

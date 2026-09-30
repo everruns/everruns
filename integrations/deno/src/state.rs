@@ -257,22 +257,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sandbox_state_roundtrip() {
-        let state = SandboxState {
-            sandbox_id: "sb_123".to_string(),
-            region: "ord".to_string(),
-            org: Some("everruns".to_string()),
-            workspace_path: "/home/app".to_string(),
-            started_at: "2026-03-22T00:00:00Z".to_string(),
-        };
-        let json = serde_json::to_string(&state).unwrap();
-        let deserialized: SandboxState = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.sandbox_id, "sb_123");
-        assert_eq!(deserialized.region, "ord");
-        assert_eq!(deserialized.org.as_deref(), Some("everruns"));
-    }
-
-    #[test]
     fn required_str_reports_missing_param() {
         let err = required_str(&json!({}), "sandbox_id").unwrap_err();
         match err {

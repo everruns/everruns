@@ -292,7 +292,7 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                             "description": "The skill directory name (e.g., 'pdf-processing')"
                         },
                         "arguments": {
-                            "type": "string",
+                            "type": ["string", "null"],
                             "description": "Optional arguments to pass to the skill for $ARGUMENTS substitution"
                         }
                     },
@@ -484,7 +484,7 @@ impl Tool for ActivateSkillFromVfsTool {
                     "description": "The skill directory name (e.g., 'pdf-processing')"
                 },
                 "arguments": {
-                    "type": "string",
+                    "type": ["string", "null"],
                     "description": "Optional arguments to pass to the skill for $ARGUMENTS substitution"
                 }
             },

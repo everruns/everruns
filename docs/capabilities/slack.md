@@ -79,7 +79,7 @@ message.
 | `channel` | string | yes | Channel ID to share into |
 | `filename` | string | yes | Filename shown in Slack, including its extension |
 | `content` | string | yes | The file's text content |
-| `thread_ts` | string | no | Thread to share into; omit to post at channel level |
+| `thread_ts` | string | yes | Thread timestamp of the current conversation |
 | `initial_comment` | string | no | Message posted alongside the file |
 
 Content is capped at 8 MiB.
@@ -87,7 +87,8 @@ Content is capped at 8 MiB.
 ## Notes
 
 - Posting to an arbitrary channel is deliberately not offered. The blast radius of "anywhere the bot
-  is" is wider than "the thread that asked", and the reply path already answers in the thread.
+  is" is wider than "the thread that asked". The control plane verifies the channel and thread
+  against trusted session metadata before sending an action to Slack.
 - A retired or disabled endpoint stops acting immediately, even for a session it created earlier.
 - Slack rate limits reach the agent with Slack's own retry advice rather than as a generic failure.
 - The [Slack MCP server](/features/mcp/) stays supported for anything this does not cover. This

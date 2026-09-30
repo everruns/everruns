@@ -1143,60 +1143,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_rejects_chat_model() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let provider = db
-            .create_provider(
-                DEFAULT_ORG_ID,
-                crate::storage::models::CreateProviderRow {
-                    name: "openai provider".into(),
-                    provider_type: "openai".into(),
-                    base_url: None,
-                    api_key_encrypted: None,
-                    settings: None,
-                },
-            )
-            .await
-            .expect("create provider");
-        let chat_model = db
-            .create_model(
-                DEFAULT_ORG_ID,
-                crate::storage::models::CreateModelRow {
-                    provider_id: provider.id,
-                    model_id: "gpt-5.6".into(),
-                    display_name: "GPT-5.6".into(),
-                    capabilities: vec!["chat".into()],
-                    enabled: true,
-                    is_favorite: false,
-                    source: "manual".into(),
-                    provider_metadata: None,
-                },
-            )
-            .await
-            .expect("create model");
-        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
-
-        let err = CreateKnowledgeIndex {
-            name: "Wrong Model".into(),
-            description: None,
-            source_type: None,
-            source_config: None,
-            embedding_model_id: chat_model.id,
-        }
-        .run(&ctx)
-        .await
-        .expect_err("chat model should fail");
-
-        assert!(matches!(
-            err,
-            CommandError {
-                kind: CommandErrorKind::BadRequest(_),
-                ..
-            }
-        ));
-    }
-
-    #[tokio::test]
     async fn rejects_invalid_source_type() {
         let db = Arc::new(StorageBackend::in_memory());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;

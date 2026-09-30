@@ -102,6 +102,10 @@ pub enum SlackProvisioningError {
     /// at the manual flow rather than report an error.
     #[error("Slack app provisioning is not configured on this deployment")]
     Unavailable,
+    #[error("This organization has not connected Slack app provisioning")]
+    OrgNotConnected,
+    #[error("This organization must reconnect Slack app provisioning")]
+    ReconnectRequired,
     /// Slack refused the call. The message is Slack's `error` code, which is a
     /// closed vocabulary (`ratelimited`, `invalid_manifest`, …) and safe to
     /// surface; it never carries our token.
@@ -113,13 +117,21 @@ pub enum SlackProvisioningError {
 }
 
 pub type SlackProvisioningResult<T> = Result<T, SlackProvisioningError>;
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SlackProvisioningConnectionStatus {
+    pub connected: bool,
+    pub reconnect_required: bool,
+}
 
 /// Creates and reaps per-endpoint Slack apps on behalf of the deployment.
 #[async_trait]
 pub trait SlackAppProvisioner: Send + Sync {
     /// Create a Slack app from a manifest this server generated.
-    async fn create_app(&self, manifest_yaml: &str)
-    -> SlackProvisioningResult<SlackAppCredentials>;
+    async fn create_app(
+        &self,
+        org_id: i64,
+        manifest_yaml: &str,
+    ) -> SlackProvisioningResult<SlackAppCredentials>;
 
     /// Delete an app created by `create_app`.
     ///
@@ -128,12 +140,17 @@ pub trait SlackAppProvisioner: Send + Sync {
     /// account that nothing references. Best-effort by contract: the caller
     /// logs a failure and moves on rather than trapping the endpoint in a
     /// state the UI cannot explain.
-    async fn delete_app(&self, app_id: &str) -> SlackProvisioningResult<()>;
+    async fn delete_app(&self, org_id: i64, app_id: &str) -> SlackProvisioningResult<()>;
 
-    /// Whether the deployment can offer one-click install before an endpoint exists.
-    fn is_available(&self) -> bool {
+    /// Whether this deployment can ever offer managed Slack app provisioning.
+    fn deployment_supported(&self) -> bool {
         true
     }
+    /// Whether one-click provisioning is connected for this organization.
+    async fn connection_status(
+        &self,
+        org_id: i64,
+    ) -> SlackProvisioningResult<SlackProvisioningConnectionStatus>;
 
     fn name(&self) -> &'static str {
         "SlackAppProvisioner"
@@ -152,16 +169,24 @@ pub struct UnavailableSlackAppProvisioner;
 impl SlackAppProvisioner for UnavailableSlackAppProvisioner {
     async fn create_app(
         &self,
+        _org_id: i64,
         _manifest_yaml: &str,
     ) -> SlackProvisioningResult<SlackAppCredentials> {
         Err(SlackProvisioningError::Unavailable)
     }
 
-    async fn delete_app(&self, _app_id: &str) -> SlackProvisioningResult<()> {
+    async fn delete_app(&self, _org_id: i64, _app_id: &str) -> SlackProvisioningResult<()> {
         Err(SlackProvisioningError::Unavailable)
     }
-    fn is_available(&self) -> bool {
+
+    fn deployment_supported(&self) -> bool {
         false
+    }
+    async fn connection_status(
+        &self,
+        _org_id: i64,
+    ) -> SlackProvisioningResult<SlackProvisioningConnectionStatus> {
+        Ok(SlackProvisioningConnectionStatus::default())
     }
 
     fn name(&self) -> &'static str {
@@ -193,9 +218,13 @@ mod tests {
     #[tokio::test]
     async fn absent_provisioner_reports_unavailable_rather_than_failing() {
         let provisioner = UnavailableSlackAppProvisioner;
-        assert!(!provisioner.is_available());
+        assert!(!provisioner.deployment_supported());
+        assert_eq!(
+            provisioner.connection_status(1).await.expect("status"),
+            SlackProvisioningConnectionStatus::default()
+        );
         assert!(matches!(
-            provisioner.create_app("_meta: {}").await,
+            provisioner.create_app(1, "_meta: {}").await,
             Err(SlackProvisioningError::Unavailable)
         ));
     }

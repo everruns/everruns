@@ -71,3 +71,4 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Custom backends](/framework/custom-backends/), cross into low-level host composition deliberately.
 - [Testing and simulation](/framework/testing-and-simulation/), deterministic tests without credentials.
 - [Runnable examples](/framework/examples/), complete programs maintained with the crate.
+- [Serve](/framework/serve/) (experimental), attribute macros, file-layout discovery and a manifest, served over the Everruns server `/v1` API.

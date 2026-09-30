@@ -70,7 +70,7 @@ export function ModelRow({
   model: ModelWithProvider;
   providers: Provider[];
   onDelete: (id: string) => void;
-  onUpdate: (id: string, data: UpdateModelRequest) => Promise<void>;
+  onUpdate: (id: string, data: UpdateModelRequest) => Promise<boolean>;
   onToggleEnabled: (id: string, enabled: boolean) => void;
   isTogglingEnabled: boolean;
 }) {
