@@ -18,12 +18,14 @@ pub struct BudgetSubjectLookup<'a> {
     pub agent_id: Option<&'a str>,
     pub user_id: Option<&'a str>,
     pub org_public_id: Option<&'a str>,
-    pub app_id: Option<&'a str>,
+    /// Public id of the App channel a webhook trigger's session carries. Still
+    /// live — migration 138 moved these budgets back off `agent_endpoint` and
+    /// deleted the endpoint rows (EVE-1129, EVE-1138).
     pub app_channel_id: Option<&'a str>,
-    /// Public id of the endpoint the session arrived through. During the
-    /// transition this is the same `appchan_` id as `app_channel_id` — the
-    /// endpoint kept its identifier when it was re-parented — but the subject
-    /// type it resolves under is the new one (EVE-1004).
+    /// Public id of the endpoint the session arrived through. It is the same
+    /// `appchan_` id the App channel carried — the endpoint kept its identifier
+    /// when it was re-parented (EVE-1004) — under the subject type that
+    /// replaced it.
     pub endpoint_id: Option<&'a str>,
 }
 
@@ -40,9 +42,6 @@ impl<'a> BudgetSubjectLookup<'a> {
         }
         if let Some(id) = self.app_channel_id {
             pairs.push(("app_channel", id));
-        }
-        if let Some(id) = self.app_id {
-            pairs.push(("app", id));
         }
         if let Some(id) = self.agent_id {
             pairs.push(("agent", id));
@@ -148,12 +147,11 @@ impl Database {
         self.get_active_budgets_for_subjects(
             org_id,
             BudgetSubjectLookup {
+                app_channel_id: None,
                 session_id: Some(session_id),
                 agent_id,
                 user_id,
                 org_public_id,
-                app_id: None,
-                app_channel_id: None,
                 endpoint_id: None,
             },
         )

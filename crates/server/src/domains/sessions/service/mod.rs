@@ -62,9 +62,12 @@ use uuid::Uuid;
 
 use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
 
-// THREAT[TM-AUTHZ-009][TM-A2A-007]: Session reuse and budget attribution match these routing
-// namespaces. This list is append-only: removing a retired prefix would let external callers forge
-// tags that older routing paths can still match.
+// THREAT[TM-AUTHZ-009][TM-A2A-007]: Session reuse matches these routing namespaces. This list is
+// append-only: removing a retired prefix would let external callers forge tags that older routing
+// paths can still match. `app:`, `app_channel:`, `slack:app:` and `ag_ui:app:` stay reserved even
+// though budget attribution stopped reading them when the `app`/`app_channel` subject types were
+// retired (EVE-1129) — nothing reading a prefix today is the reason to keep reserving it, not a
+// reason to release it.
 const RESERVED_SESSION_TAG_PREFIXES: &[&str] = &[
     "__internal:",
     "app:",

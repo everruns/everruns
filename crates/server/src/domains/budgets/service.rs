@@ -39,12 +39,13 @@ struct BudgetScope {
     agent_subject_id: Option<String>,
     user_subject_id: Option<String>,
     org_subject_id: String,
-    /// Public ID of the owning app, extracted from session tags (`app:<app_id>`)
-    /// when the session was created via an app channel. `None` for ad-hoc
-    /// sessions that don't belong to an app.
-    app_subject_id: Option<String>,
-    /// Public ID of the originating app channel, extracted from session tags
-    /// (`app_channel:<channel_id>`). `None` for ad-hoc sessions.
+    /// Public ID of the originating app channel, from the `app_channel:<id>`
+    /// session tag. Still live: migration 138 moved App webhooks onto
+    /// `agent_triggers`, moved their budgets back from `agent_endpoint` to
+    /// `app_channel`, and deleted the endpoint rows, so for a webhook trigger
+    /// this is the only attribution there is. The `app` level above it was
+    /// retired onto the agent; this one has no structural successor to retire
+    /// onto yet (EVE-1129, EVE-1138).
     app_channel_subject_id: Option<String>,
     /// Public ID of the endpoint referenced by `sessions.endpoint_id`.
     endpoint_subject_id: Option<String>,
@@ -62,7 +63,6 @@ impl BudgetScope {
             agent_id: self.agent_subject_id.as_deref(),
             user_id: self.user_subject_id.as_deref(),
             org_public_id: Some(self.org_subject_id.as_str()),
-            app_id: self.app_subject_id.as_deref(),
             app_channel_id: self.app_channel_subject_id.as_deref(),
             endpoint_id: self.endpoint_subject_id.as_deref(),
         }
@@ -133,7 +133,6 @@ impl BudgetService {
             agent_subject_id: self.agent_subject_id(org_id, agent_id, None).await,
             user_subject_id: None,
             org_subject_id: everruns_core::org_public_id_from_internal(org_id),
-            app_subject_id: None,
             app_channel_subject_id: None,
             endpoint_subject_id: None,
             session_id: SessionId::parse(session_id).ok().map(|id| id.uuid()),
@@ -201,7 +200,7 @@ impl BudgetService {
         _session_subject_id: &str,
         agent_id_override: Option<&str>,
     ) -> Result<BudgetScope, anyhow::Error> {
-        let (app_subject_id, app_channel_subject_id) = extract_app_subjects(&session.tags);
+        let app_channel_subject_id = extract_app_channel_subject(&session.tags);
         let endpoint_subject_id = match session.endpoint_id {
             Some(endpoint_id) => {
                 self.db
@@ -220,9 +219,8 @@ impl BudgetService {
                 .await,
             user_subject_id: session.resolved_owner_user_id.map(|id| id.to_string()),
             org_subject_id: everruns_core::org_public_id_from_internal(session.org_id),
-            app_subject_id,
-            endpoint_subject_id,
             app_channel_subject_id,
+            endpoint_subject_id,
             session_id: Some(session.id.uuid()),
             user_id: session.resolved_owner_user_id,
             principal_id: Some(session.owner_principal_id.uuid()),
@@ -255,7 +253,6 @@ impl BudgetService {
             ("session", Some(scope.session_subject_id.as_str())),
             ("agent_endpoint", scope.endpoint_subject_id.as_deref()),
             ("app_channel", scope.app_channel_subject_id.as_deref()),
-            ("app", scope.app_subject_id.as_deref()),
             ("agent", scope.agent_subject_id.as_deref()),
             ("user", scope.user_subject_id.as_deref()),
             ("org", Some(scope.org_subject_id.as_str())),
@@ -830,24 +827,16 @@ impl EventListener for BudgetService {
 // Helpers
 // ============================================================================
 
-/// Pull `(app_id, app_channel_id)` from session tags. Both legacy
-/// `slack:app:<id>`, `ag_ui:app:<id>`, and the canonical
-/// `app:<id>` / `app_channel:<id>` forms are recognised.
-fn extract_app_subjects(tags: &[String]) -> (Option<String>, Option<String>) {
-    let mut app_id: Option<String> = None;
-    let mut channel_id: Option<String> = None;
-    for tag in tags {
-        if let Some(rest) = tag.strip_prefix("app:") {
-            app_id.get_or_insert_with(|| rest.to_string());
-        } else if let Some(rest) = tag.strip_prefix("app_channel:") {
-            channel_id.get_or_insert_with(|| rest.to_string());
-        } else if let Some(rest) = tag.strip_prefix("slack:app:") {
-            app_id.get_or_insert_with(|| rest.to_string());
-        } else if let Some(rest) = tag.strip_prefix("ag_ui:app:") {
-            app_id.get_or_insert_with(|| rest.to_string());
-        }
-    }
-    (app_id, channel_id)
+/// Pull the app channel id from session tags.
+///
+/// The `app:` half of this is gone: the `app` budget level was retired onto the
+/// agent, which is a column rather than a tag (EVE-1129). `app_channel` still
+/// resolves this way because a webhook trigger has no endpoint row to resolve
+/// from — migration 138 deleted it — so the tag is the only identifier left.
+/// The prefix stays reserved, so an org member cannot forge it.
+fn extract_app_channel_subject(tags: &[String]) -> Option<String> {
+    tags.iter()
+        .find_map(|tag| tag.strip_prefix("app_channel:").map(str::to_string))
 }
 
 /// Decide whether a budget's period has elapsed and the balance should reset.
@@ -921,24 +910,5 @@ mod period_tests {
         };
         let started = at(2025, 1, 1, 0, 0);
         assert!(!period_elapsed(&period, started, at(2030, 1, 1, 0, 0)));
-    }
-
-    #[test]
-    fn extract_subjects_handles_supported_tag_styles() {
-        let tags = vec![
-            "app:app_abc".to_string(),
-            "app_channel:appchan_xyz".to_string(),
-        ];
-        let (app, ch) = extract_app_subjects(&tags);
-        assert_eq!(app.as_deref(), Some("app_abc"));
-        assert_eq!(ch.as_deref(), Some("appchan_xyz"));
-
-        let slack_legacy = vec!["slack:app:app_legacy".to_string()];
-        let (app, _) = extract_app_subjects(&slack_legacy);
-        assert_eq!(app.as_deref(), Some("app_legacy"));
-
-        let ag_ui_legacy = vec!["ag_ui:app:app_ag_ui".to_string()];
-        let (app, _) = extract_app_subjects(&ag_ui_legacy);
-        assert_eq!(app.as_deref(), Some("app_ag_ui"));
     }
 }

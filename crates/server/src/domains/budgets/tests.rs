@@ -41,24 +41,6 @@ async fn create_session_with_owner(
     .await
 }
 
-async fn create_session_with_owner_and_tags(
-    db: &Arc<StorageBackend>,
-    org_id: i64,
-    agent_id: Option<AgentId>,
-    resolved_owner_user_id: Option<Uuid>,
-    tags: Vec<String>,
-) -> SessionRow {
-    create_session_with_owner_tags_and_endpoint(
-        db,
-        org_id,
-        agent_id,
-        resolved_owner_user_id,
-        tags,
-        None,
-    )
-    .await
-}
-
 async fn create_session_with_owner_tags_and_endpoint(
     db: &Arc<StorageBackend>,
     org_id: i64,
@@ -1288,55 +1270,6 @@ async fn test_list_budgets_for_session_hierarchy_resolves_user_and_org_from_sess
     assert!(subjects.contains(&("agent", agent.public_id.as_str())));
     assert!(subjects.contains(&("user", user_id.to_string().as_str())));
     assert!(subjects.contains(&("org", org_public_id.as_str())));
-}
-
-#[tokio::test]
-async fn test_list_budgets_for_session_hierarchy_includes_app_and_channel_from_tags() {
-    let (svc, db) = make_service();
-    let session = create_session_with_owner_and_tags(
-        &db,
-        1,
-        None,
-        None,
-        vec![
-            "app:app_for_budget_test".to_string(),
-            "app_channel:appchan_for_budget_test".to_string(),
-        ],
-    )
-    .await;
-    let session_public_id = session.id.to_string();
-
-    db.create_budget(CreateBudgetRow {
-        org_id: session.org_id,
-        subject_type: "app".into(),
-        subject_id: "app_for_budget_test".into(),
-        currency: "usd".into(),
-        limit: 50.0,
-        soft_limit: None,
-        period: None,
-        metadata: None,
-    })
-    .await
-    .unwrap();
-    db.create_budget(CreateBudgetRow {
-        org_id: session.org_id,
-        subject_type: "app_channel".into(),
-        subject_id: "appchan_for_budget_test".into(),
-        currency: "usd".into(),
-        limit: 5.0,
-        soft_limit: None,
-        period: None,
-        metadata: None,
-    })
-    .await
-    .unwrap();
-
-    let budgets = svc
-        .list_budgets_for_session_hierarchy(session.org_id, &session_public_id, None)
-        .await;
-    let subjects: Vec<&str> = budgets.iter().map(|b| b.subject_type.as_str()).collect();
-    assert!(subjects.contains(&"app"), "subjects: {subjects:?}");
-    assert!(subjects.contains(&"app_channel"), "subjects: {subjects:?}");
 }
 
 #[tokio::test]

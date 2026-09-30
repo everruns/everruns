@@ -11,6 +11,15 @@
 //! resets an in-flight budget window, or loses a cap an operator configured.
 //! These tests pin each of those.
 //!
+//! The `app` budget fan-out this migration performed is no longer exercised
+//! here. Migration 151 (EVE-1129) removed `app` from the subject-type CHECK
+//! once the ceiling had been converted onto the agent, so the pre-migration row
+//! those tests seeded can no longer be inserted — there is no input shape left
+//! to run 137's fan-out against. The properties they pinned (limit and recorded
+//! spend carried over, in-flight window not reset, an existing tighter cap
+//! never loosened) are pinned on the successor conversion in
+//! `app_budget_retirement_test.rs`.
+//!
 //! The backfill statements are re-executed here against freshly seeded rows
 //! rather than asserted over whatever the migration already processed: the test
 //! database is migrated before the test runs, so the only way to observe the
@@ -53,33 +62,6 @@ const BACKFILL_FROM_SOLE_ENDPOINT: &str = r#"
     ) AS single
     WHERE s.endpoint_id IS NULL
       AND s.app_id = single.app_id
-"#;
-
-/// Mirrors the `app` budget fan-out in 137.
-const FANOUT_APP_BUDGETS: &str = r#"
-    INSERT INTO budgets (
-        org_id, subject_type, subject_id, currency, "limit", soft_limit,
-        balance, period, metadata, status, period_started_at
-    )
-    SELECT
-        b.org_id, 'agent_endpoint', ae.public_id, b.currency, b."limit",
-        b.soft_limit, b.balance, b.period,
-        COALESCE(b.metadata, '{}'::jsonb) || jsonb_build_object(
-            'converted_from', 'app',
-            'converted_from_subject_id', b.subject_id
-        ),
-        b.status, b.period_started_at
-    FROM budgets AS b
-    JOIN apps AS app ON app.public_id = b.subject_id AND app.org_id = b.org_id
-    JOIN agent_endpoints AS ae ON ae.app_id = app.id
-    WHERE b.subject_type = 'app'
-      AND b.org_id = $1
-      AND NOT EXISTS (
-          SELECT 1 FROM budgets AS existing
-          WHERE existing.org_id = b.org_id
-            AND existing.subject_type = 'agent_endpoint'
-            AND existing.subject_id = ae.public_id
-      )
 "#;
 
 async fn pool() -> PgPool {
@@ -370,171 +352,50 @@ async fn deleting_an_endpoint_clears_the_session_pointer() {
     assert_eq!(endpoint_of(&pool, session_id).await, None);
 }
 
-/// `agent_endpoint` joins the subject types; the App-shaped ones stay until the
-/// deletion phase (EVE-1011), because budgets still reference them.
+/// The subject types are a closed set, and after EVE-1129 `app` is no longer in
+/// it — migration 151 removed it once the ceiling it carried had been converted
+/// onto the agent. `app_channel` stays: migration 138 moved App webhooks onto
+/// `agent_triggers` and their budgets back onto `app_channel`, deleting the
+/// endpoint rows, so it is a webhook trigger's only attribution (EVE-1138).
 #[tokio::test]
-async fn subject_type_check_accepts_agent_endpoint_alongside_the_legacy_types() {
+async fn subject_type_check_rejects_the_retired_app_level() {
     let pool = pool().await;
     let org = seed_org(&pool, "attribution-subjects").await;
 
-    for subject_type in ["session", "agent", "user", "org", "app", "agent_endpoint"] {
+    async fn insert(pool: &PgPool, org_id: i64, subject_type: &str) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"INSERT INTO budgets (org_id, subject_type, subject_id, currency, "limit", balance,
                                     period, status)
                VALUES ($1, $2, $3, 'USD', 10.0, 10.0, '{"kind":"calendar","unit":"month"}'::jsonb,
                        'active')"#,
         )
-        .bind(org.org_id)
+        .bind(org_id)
         .bind(subject_type)
         .bind(format!("subject_{}", hex32()))
-        .execute(&pool)
+        .execute(pool)
         .await
-        .unwrap_or_else(|err| panic!("subject_type {subject_type} must be accepted: {err}"));
+        .map(|_| ())
     }
 
-    let rejected = sqlx::query(
-        r#"INSERT INTO budgets (org_id, subject_type, subject_id, currency, "limit", balance,
-                                period, status)
-           VALUES ($1, 'endpoint', 'whatever', 'USD', 10.0, 10.0,
-                   '{"kind":"calendar","unit":"month"}'::jsonb, 'active')"#,
-    )
-    .bind(org.org_id)
-    .execute(&pool)
-    .await;
-    assert!(
-        rejected.is_err(),
-        "the check constraint must still be closed over the known subject types"
-    );
-}
+    for subject_type in [
+        "session",
+        "agent",
+        "user",
+        "org",
+        "app_channel",
+        "agent_endpoint",
+    ] {
+        insert(&pool, org.org_id, subject_type)
+            .await
+            .unwrap_or_else(|err| panic!("subject_type {subject_type} must be accepted: {err}"));
+    }
 
-/// The conversion is the whole point of the migration: an operator who capped
-/// an App's spend has not consented to an uncapped agent. Each endpoint keeps
-/// the App's limit rather than a share of it — dividing would tighten every
-/// existing cap without asking — and the in-flight window is carried over so
-/// the conversion does not hand back a fresh allowance.
-#[tokio::test]
-async fn app_budget_fans_out_per_endpoint_preserving_limit_and_window() {
-    let pool = pool().await;
-    let org = seed_org(&pool, "attribution-fanout").await;
-    let (app_id, app_public_id) = seed_app(&pool, &org).await;
-    let (_, first_public_id) = seed_endpoint(&pool, &org, app_id, "slack").await;
-    let (_, second_public_id) = seed_endpoint(&pool, &org, app_id, "a2a").await;
-
-    let window_start = chrono::Utc::now() - chrono::Duration::days(9);
-    sqlx::query(
-        r#"INSERT INTO budgets (org_id, subject_type, subject_id, currency, "limit", balance,
-                                period, status, period_started_at)
-           VALUES ($1, 'app', $2, 'USD', 100.0, 40.0,
-                   '{"kind":"calendar","unit":"month"}'::jsonb, 'active', $3)"#,
-    )
-    .bind(org.org_id)
-    .bind(&app_public_id)
-    .bind(window_start)
-    .execute(&pool)
-    .await
-    .expect("seed app budget");
-
-    sqlx::query(FANOUT_APP_BUDGETS)
-        .bind(org.org_id)
-        .execute(&pool)
-        .await
-        .expect("fan out app budgets");
-
-    for endpoint_public_id in [&first_public_id, &second_public_id] {
-        let (limit, balance, started, converted_from): (
-            f64,
-            f64,
-            chrono::DateTime<chrono::Utc>,
-            Option<String>,
-        ) = sqlx::query_as(
-            r#"SELECT "limit", balance, period_started_at, metadata->>'converted_from'
-               FROM budgets
-               WHERE org_id = $1 AND subject_type = 'agent_endpoint' AND subject_id = $2"#,
-        )
-        .bind(org.org_id)
-        .bind(endpoint_public_id)
-        .fetch_one(&pool)
-        .await
-        .expect("every endpoint of the App gets a budget");
-
-        assert_eq!(limit, 100.0, "the cap is preserved, not divided");
-        assert_eq!(balance, 40.0, "spend already recorded is carried over");
-        assert_eq!(
-            started.timestamp(),
-            window_start.timestamp(),
-            "an in-flight window must not reset to now"
+    for subject_type in ["app", "endpoint"] {
+        assert!(
+            insert(&pool, org.org_id, subject_type).await.is_err(),
+            "subject_type {subject_type} must be rejected"
         );
-        assert_eq!(converted_from.as_deref(), Some("app"));
     }
-
-    // The App budget stays enforced until the subject type is dropped, so the
-    // original ceiling keeps binding across the endpoints in the meantime.
-    let app_budgets: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM budgets WHERE org_id = $1 AND subject_type = 'app'",
-    )
-    .bind(org.org_id)
-    .fetch_one(&pool)
-    .await
-    .expect("count app budgets");
-    assert_eq!(app_budgets, 1);
-}
-
-/// Running the fan-out twice must not double the endpoint's allowance. The
-/// migration's `NOT EXISTS` guard is what makes it safe to re-apply.
-#[tokio::test]
-async fn app_budget_fanout_does_not_overwrite_an_existing_endpoint_budget() {
-    let pool = pool().await;
-    let org = seed_org(&pool, "attribution-idempotent").await;
-    let (app_id, app_public_id) = seed_app(&pool, &org).await;
-    let (_, endpoint_public_id) = seed_endpoint(&pool, &org, app_id, "slack").await;
-
-    // An endpoint-scoped cap the operator set directly. It is tighter than the
-    // App's, and the fan-out must not loosen it.
-    sqlx::query(
-        r#"INSERT INTO budgets (org_id, subject_type, subject_id, currency, "limit", balance,
-                                period, status)
-           VALUES ($1, 'agent_endpoint', $2, 'USD', 5.0, 5.0,
-                   '{"kind":"calendar","unit":"month"}'::jsonb, 'active')"#,
-    )
-    .bind(org.org_id)
-    .bind(&endpoint_public_id)
-    .execute(&pool)
-    .await
-    .expect("seed endpoint budget");
-
-    sqlx::query(
-        r#"INSERT INTO budgets (org_id, subject_type, subject_id, currency, "limit", balance,
-                                period, status)
-           VALUES ($1, 'app', $2, 'USD', 100.0, 100.0,
-                   '{"kind":"calendar","unit":"month"}'::jsonb, 'active')"#,
-    )
-    .bind(org.org_id)
-    .bind(&app_public_id)
-    .execute(&pool)
-    .await
-    .expect("seed app budget");
-
-    sqlx::query(FANOUT_APP_BUDGETS)
-        .bind(org.org_id)
-        .execute(&pool)
-        .await
-        .expect("fan out app budgets");
-
-    let limits: Vec<f64> = sqlx::query_scalar(
-        r#"SELECT "limit" FROM budgets
-           WHERE org_id = $1 AND subject_type = 'agent_endpoint' AND subject_id = $2"#,
-    )
-    .bind(org.org_id)
-    .bind(&endpoint_public_id)
-    .fetch_all(&pool)
-    .await
-    .expect("read endpoint budgets");
-
-    assert_eq!(limits.len(), 1, "the fan-out must not add a second cap");
-    assert_eq!(
-        limits[0], 5.0,
-        "the operator's tighter endpoint cap must survive the conversion"
-    );
 }
 
 #[tokio::test]

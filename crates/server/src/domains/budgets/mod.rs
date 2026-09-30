@@ -10,6 +10,8 @@ pub mod commands;
 pub mod queries;
 #[cfg(test)]
 mod refusal_traceability_tests;
+#[cfg(test)]
+mod retired_levels_tests;
 pub mod service;
 #[cfg(test)]
 mod tests;
