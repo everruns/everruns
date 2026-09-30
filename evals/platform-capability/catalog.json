@@ -3876,11 +3876,11 @@
         "elicitation_policy": {
           "oneOf": [
             {
-              "type": "null"
-            },
-            {
               "$ref": "#/$defs/McpElicitationPolicy",
               "description": "Elicitation modes the server may use. Defaults to `url`; `url_and_form`\nlets it ask structured questions, `none` stops it eliciting at all."
+            },
+            {
+              "type": "null"
             }
           ]
         },
@@ -17662,11 +17662,11 @@
             "elicitation_policy": {
               "oneOf": [
                 {
-                  "type": "null"
-                },
-                {
                   "$ref": "#/$defs/McpElicitationPolicy",
                   "description": "Elicitation modes the server may use (`url`, `url_and_form`, `none`)."
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
