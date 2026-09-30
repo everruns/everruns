@@ -5492,7 +5492,7 @@ export interface components {
       | "agent"
       | "user"
       | "organization"
-      | "app_channel"
+      | "agent_trigger"
       | "agent_endpoint";
     /**
      * @description Built-in tool configuration

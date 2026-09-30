@@ -281,6 +281,7 @@ impl ActsAsArrangement {
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 endpoint_id: None,
+                trigger_id: None,
                 harness_id: Some(self.harness_id),
                 agent_id: Some(self.agent_id),
                 agent_version_id: None,

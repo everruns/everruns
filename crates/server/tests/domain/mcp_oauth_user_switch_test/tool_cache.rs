@@ -250,6 +250,7 @@ async fn create_persisted_session(
         workspace_id: None,
         app_id: None,
         endpoint_id: None,
+        trigger_id: None,
         harness_id: None,
         agent_id: Some(AgentId::from_uuid(agent_id)),
         agent_version_id: None,

@@ -351,6 +351,28 @@ async fn migrated_webhook_trigger_preserves_routes_auth_templates_and_shared_ses
     assert!(first["created_session"].as_bool().unwrap());
     assert!(!second["created_session"].as_bool().unwrap());
     assert_eq!(first["session_id"], second["session_id"]);
+
+    // A session the trigger ingress creates today records the trigger
+    // structurally, not only in the `app_channel:` tag. That column is the
+    // budget subject now, so a NULL here means a webhook cap would silently
+    // stop binding (EVE-1138).
+    let trigger = server
+        .db
+        .get_agent_trigger_by_ingress_id_unscoped(&ingress_id)
+        .await
+        .expect("look up the migrated trigger")
+        .expect("the migrated trigger exists");
+    let created = server
+        .db
+        .get_session(
+            DEFAULT_ORG_ID,
+            first["session_id"].as_str().unwrap().parse().unwrap(),
+        )
+        .await
+        .expect("get the created webhook session")
+        .expect("the created webhook session exists");
+    assert_eq!(created.trigger_id, Some(trigger.id.uuid()));
+
     let texts = list_user_message_texts(&server, first["session_id"].as_str().unwrap()).await;
     assert!(texts.iter().any(|text| {
         text.contains(&format!(
@@ -462,10 +484,21 @@ async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
         .assert_status(StatusCode::CREATED)
         .json();
     let legacy_session_id: SessionId = legacy_session["id"].as_str().unwrap().parse().unwrap();
+    // The trigger migration 138 produced: the endpoint row is gone, so
+    // `endpoint_id` is NULL and `trigger_id` is the only structural attribution
+    // the session has. The App-era tags stay — they are frozen compatibility
+    // attribution — but nothing reads them for a budget any more (EVE-1138).
+    let trigger = server
+        .db
+        .get_agent_trigger_by_ingress_id_unscoped(&ingress_id)
+        .await
+        .expect("look up the migrated trigger")
+        .expect("the migrated trigger exists");
     sqlx::query(
         "UPDATE sessions
          SET app_id = $2,
              endpoint_id = NULL,
+             trigger_id = $6,
              owner_principal_id = $3,
              resolved_owner_user_id = $4,
              tags = $5,
@@ -483,6 +516,7 @@ async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
         "__internal:app_invocation".to_string(),
         "legacy-tag".to_string(),
     ])
+    .bind(trigger.id.uuid())
     .execute(&server.pool)
     .await
     .expect("model the migrated legacy webhook session");
@@ -490,8 +524,8 @@ async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
         .db
         .create_budget(CreateBudgetRow {
             org_id: DEFAULT_ORG_ID,
-            subject_type: "app_channel".into(),
-            subject_id: ingress_id.clone(),
+            subject_type: "agent_trigger".into(),
+            subject_id: trigger.id.to_string(),
             currency: "tokens".into(),
             limit: 100.0,
             soft_limit: Some(25.0),
@@ -545,8 +579,8 @@ async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
         .await;
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].id, budget.id);
-    assert_eq!(selected[0].subject_type, "app_channel");
-    assert_eq!(selected[0].subject_id, ingress_id);
+    assert_eq!(selected[0].subject_type, "agent_trigger");
+    assert_eq!(selected[0].subject_id, trigger.id.to_string());
     assert_eq!(selected[0].soft_limit, Some(25.0));
     assert_eq!(
         selected[0].metadata,

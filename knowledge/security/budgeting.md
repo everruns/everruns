@@ -75,15 +75,19 @@ See source files for full definitions:
 
 A spending cap bound to a **subject** (who) in a **currency** (what unit). Multiple budgets per subject allowed; the most restrictive one wins.
 
-**Subject types**: `session`, `agent_endpoint`, `app_channel`, `agent`, `user`, `org`, budgets cascade through the hierarchy from most specific (session) to most general (org). A session's effective budgets include all matching levels.
+**Subject types**: `session`, `agent_endpoint`, `agent_trigger`, `agent`, `user`, `org`, budgets cascade through the hierarchy from most specific (session) to most general (org). A session's effective budgets include all matching levels.
 
-**Subject identifiers**: a `subject_id` is always the identifier the API exposes for that subject, because that is the only identifier a caller can put in a budget — `session_…`, `agent_…` (`agents.public_id`), `usr_…`, `org_…`, and the endpoint's `appchan_…` public id. Internal primary keys never appear in a budget subject. The hierarchy resolver therefore has to translate the internal ids it holds — it takes `sessions.agent_id` and `sessions.endpoint_id`, both FKs to internal `id` columns, and looks up the corresponding public id before matching. Rendering a typed id directly would spell the internal uuid and match nothing, which is what made agent-scoped budgets silently never bind until EVE-1136.
+**Subject identifiers**: a `subject_id` is always the identifier the API exposes for that subject, because that is the only identifier a caller can put in a budget — `session_…`, `agent_…` (`agents.public_id`), `usr_…`, `org_…`, the endpoint's `appchan_…` public id, and the trigger's `trg_…` id. Internal primary keys never appear in a budget subject. The hierarchy resolver therefore has to translate the internal ids it holds — it takes `sessions.agent_id` and `sessions.endpoint_id`, both FKs to internal `id` columns, and looks up the corresponding public id before matching. `sessions.trigger_id` is the exception that proves the rule: a trigger has no separate `public_id`, so its API id is rendered straight from the primary key and no lookup is needed. Rendering a typed id directly would spell the internal uuid and match nothing, which is what made agent-scoped budgets silently never bind until EVE-1136.
 
 `agent_endpoint` budgets resolve from the session's structural endpoint reference. Slack and FCP routing tags do not determine budget identity.
 
 The `app` level is retired (EVE-1129, migration 151). Each `app` budget was converted onto its App's agent, preserving limit, recorded spend and the in-flight window, before the rows and the subject type were dropped. Conversion inserted alongside any cap the agent already had rather than skipping, because every matching budget binds and the most restrictive wins — skipping would have left a looser existing cap as the only one binding, raising the ceiling.
 
-`app_channel` remains, and is the one subject still resolved from a session tag (`app_channel:<channel_id>`). Migration 138 moved App webhooks onto `agent_triggers`, moved their budgets back from `agent_endpoint` to `app_channel`, and deleted the endpoint rows, so for a webhook trigger the tag is the only attribution there is and there is nothing structural to convert onto. EVE-1138 tracks giving trigger ingress a structural subject so this last tag read can go. The four App-era prefixes stay in `RESERVED_SESSION_TAG_PREFIXES` regardless of what reads them — that list is append-only, and here it is what stops an org member forging the tag that selects a cap.
+`app_channel` is retired too (EVE-1138, migration 153), and with it the last budget subject resolved from a session tag. Migration 138 had moved App webhooks onto `agent_triggers`, moved their budgets back from `agent_endpoint` to `app_channel`, and deleted the endpoint rows, leaving those caps keyed on the `app_channel:<channel_id>` tag because nothing structural survived to key them on. Migration 153 adds `sessions.trigger_id` and re-keys them onto the `agent_trigger` subject.
+
+The new subject is keyed on the trigger's API id (`trg_…`), not on `agent_triggers.ingress_id`. `ingress_id` would have made the conversion a pure rename, since it is exactly what the surviving rows are keyed by, but it is a nullable compatibility column carried only by the webhooks migration 138 moved — a trigger created today has none and could never be given a budget. An `app_channel` budget with no matching trigger fails the migration rather than being dropped: deleting an enforced ceiling is the harm the conversion exists to avoid.
+
+The four App-era prefixes stay in `RESERVED_SESSION_TAG_PREFIXES` regardless of what reads them — that list is append-only.
 
 **Currencies**: Strings (not enum), new currencies added without migrations. Built-in: `usd` (via ModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).
 
@@ -133,7 +137,7 @@ INSERT usage_journal row
   │
   ▼
 Look up session → find active budgets in hierarchy
-  (root session → agent endpoint → app_channel → app → agent → user → org)
+  (root session → agent endpoint → agent trigger → agent → user → org)
   │
   ▼ (for each matching budget)
 compute_debit(currency, tokens, cache tokens, model, provider, provider_cost_usd)
@@ -177,7 +181,7 @@ cross-org linkage. Ordinary user forks carry lineage only and remain independent
 budget roots. Detached count caps (`max_active_detached_tasks` /
 `max_total_detached_tasks`) remain an independent admission bound (TM-DOS-030).
 
-**Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom. Current implementation resolves the full hierarchy (`root session`, `agent endpoint`, legacy `app_channel`, legacy `app`, `agent`, `user`, `org`) from the session owner and org context before checking.
+**Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom. Current implementation resolves the full hierarchy (`root session`, `agent endpoint`, `agent trigger`, `agent`, `user`, `org`) from the session owner and org context before checking.
 
 ## Soft Enforcement: Pause
 
@@ -319,11 +323,11 @@ File: `crates/builtins/src/self_budget.rs`.
 
 | Subject | When it applies |
 |---------|-----------------|
-| `app_channel` | sessions from a webhook trigger's ingress, matched on the `app_channel:<id>` session tag |
+| `agent_trigger` | sessions a trigger's ingress started, matched on `sessions.trigger_id` |
 
-`app` is retired — see **Budget** above for what its ceiling was converted onto. `app_channel` is the last subject the hierarchy resolver reads from a tag rather than a column, because migration 138 left a webhook trigger with no endpoint row to resolve from; EVE-1138 tracks replacing it.
+`app` and `app_channel` are both retired — see **Budget** above for what their ceilings were converted onto. No budget subject is resolved from a session tag any more.
 
-Neither can be created through the API: `validate_subject_type` in `crates/server/src/domains/budgets/commands.rs` accepts only the live set, so the surviving `app_channel` rows are the ones migration 138 moved there. The `FEATURE_APP_BUDGETS` flag (experimental, auto-on in dev) still gates the App-era listing surfaces; the check pipeline always honours existing rows, so the flag can flip without a backfill.
+Neither can be created through the API: `validate_subject_type` in `crates/server/src/domains/budgets/commands.rs` accepts only the live set, and never accepted either of them, which is why migration 153 could assume every `app_channel` row came from migration 138. The `FEATURE_APP_BUDGETS` flag (experimental, auto-on in dev) still gates the App-era listing surfaces; the check pipeline always honours existing rows, so the flag can flip without a backfill.
 
 UI: the App detail page surfaces a "Budgets" card (gated by `app_budgets`) that lists every budget attached to the app or any of its channels, and exposes a form for the common period presets (sliding 1h / 5h / 24h / 7d / 30d, calendar month) plus a "Custom JSON" escape hatch that accepts the raw `BudgetPeriod` payload, the in-product DSL, so advanced rules ship without waiting for first-class form fields.
 

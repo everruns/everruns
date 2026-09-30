@@ -107,6 +107,7 @@ impl InMemoryDatabase {
             workspace_id,
             app_id: input.app_id,
             endpoint_id: input.endpoint_id,
+            trigger_id: input.trigger_id,
             harness_id: input.harness_id,
             agent_id: input.agent_id,
             agent_version_id: input.agent_version_id,

@@ -248,6 +248,7 @@ async fn create_agent_and_session(
             source: everruns_platform::SessionSource::Api,
             app_id: None,
             endpoint_id: None,
+            trigger_id: None,
             harness_id: Some(harness_id),
             agent_id: Some(agent.id),
             agent_version_id: None,

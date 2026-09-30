@@ -19379,7 +19379,7 @@
           "agent",
           "user",
           "organization",
-          "app_channel",
+          "agent_trigger",
           "agent_endpoint"
         ]
       },

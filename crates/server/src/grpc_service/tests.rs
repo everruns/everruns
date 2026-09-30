@@ -624,6 +624,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
             org_id: everruns_core::DEFAULT_ORG_ID,
             app_id: None,
             endpoint_id: None,
+            trigger_id: None,
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,

@@ -23,6 +23,7 @@ fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
         org_id: DEFAULT_ORG_ID,
         app_id: None,
         endpoint_id: None,
+        trigger_id: None,
         harness_id: None,
         agent_id,
         agent_version_id: None,
@@ -182,35 +183,11 @@ async fn test_create_and_list_sessions() {
 
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
             title: Some("Test Session".to_string()),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -237,35 +214,9 @@ async fn test_set_session_fork_lineage_roundtrip() {
     let db = InMemoryDatabase::new();
 
     let new_session = || CreateSessionRow {
-        source: everruns_platform::SessionSource::Api,
-        workspace_id: None,
         org_id: DEFAULT_ORG_ID,
-        app_id: None,
-        endpoint_id: None,
-        harness_id: None,
-        agent_id: None,
-        agent_version_id: None,
-        agent_config_hash: None,
-        agent_identity_id: None,
         owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
-        title: None,
-        locale: None,
-        tags: vec![],
-        model_id: None,
-        capabilities: serde_json::json!([]),
-        tools: serde_json::json!([]),
-        mcp_servers: serde_json::json!({}),
-        system_prompt: None,
-        initial_files: serde_json::Value::Array(vec![]),
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
-        parent_session_id: None,
-        budget_root_session_id: None,
+        ..Default::default()
     };
 
     let parent = db.create_session(new_session()).await.unwrap();
@@ -643,35 +594,12 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
 
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
             harness_id: Some(harness.id),
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
             title: Some("Stats Session".to_string()),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -754,35 +682,11 @@ async fn test_session_updated_at() {
     // Create session - updated_at should equal created_at
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
             title: Some("Test Session".to_string()),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -847,35 +751,10 @@ async fn test_events_sequence() {
 
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -941,35 +820,10 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
 
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -1026,35 +880,9 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
     let db = InMemoryDatabase::new();
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -1133,35 +961,11 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
 
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(42),
             resolved_owner_user_id: Some(owner.id),
             title: Some("connection-owner-scope".to_string()),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -1286,35 +1090,11 @@ async fn test_unpin_session_is_scoped_by_org() {
 
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: Some(user_id),
             title: Some("Pinned Session".to_string()),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -1374,35 +1154,10 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
 
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -2097,35 +1852,10 @@ async fn test_list_events_empty_session_with_limit() {
 
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -2173,35 +1903,11 @@ async fn test_sessions_pagination() {
     // Create 15 sessions
     for i in 0..15 {
         db.create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
             title: Some(format!("Session {}", i)),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -2323,35 +2029,11 @@ async fn test_sessions_pagination_ordering() {
     // Create sessions with sequential titles
     for i in 1..=5 {
         db.create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
             title: Some(format!("Session {}", i)),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -3074,69 +2756,21 @@ async fn test_search_sessions_by_title() {
     let agent = create_test_agent(&db, "Agent", None).await;
 
     db.create_session(CreateSessionRow {
-        source: everruns_platform::SessionSource::Api,
-        workspace_id: None,
         org_id: DEFAULT_ORG_ID,
-        app_id: None,
-        endpoint_id: None,
-        harness_id: None,
         agent_id: Some(agent.id),
-        agent_version_id: None,
-        agent_config_hash: None,
-        agent_identity_id: None,
         owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
         title: Some("Debug production memory leak".to_string()),
-        locale: None,
-        tags: vec![],
-        model_id: None,
-        capabilities: serde_json::json!([]),
-        tools: serde_json::json!([]),
-        mcp_servers: serde_json::json!({}),
-        system_prompt: None,
-        initial_files: serde_json::Value::Array(vec![]),
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
-        parent_session_id: None,
-        budget_root_session_id: None,
+        ..Default::default()
     })
     .await
     .unwrap();
 
     db.create_session(CreateSessionRow {
-        source: everruns_platform::SessionSource::Api,
-        workspace_id: None,
         org_id: DEFAULT_ORG_ID,
-        app_id: None,
-        endpoint_id: None,
-        harness_id: None,
         agent_id: Some(agent.id),
-        agent_version_id: None,
-        agent_config_hash: None,
-        agent_identity_id: None,
         owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
         title: Some("Refactor auth module".to_string()),
-        locale: None,
-        tags: vec![],
-        model_id: None,
-        capabilities: serde_json::json!([]),
-        tools: serde_json::json!([]),
-        mcp_servers: serde_json::json!({}),
-        system_prompt: None,
-        initial_files: serde_json::Value::Array(vec![]),
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
-        parent_session_id: None,
-        budget_root_session_id: None,
+        ..Default::default()
     })
     .await
     .unwrap();
@@ -3165,69 +2799,21 @@ async fn test_search_sessions_with_agent_filter() {
     let agent2 = create_test_agent(&db, "Agent2", None).await;
 
     db.create_session(CreateSessionRow {
-        source: everruns_platform::SessionSource::Api,
-        workspace_id: None,
         org_id: DEFAULT_ORG_ID,
-        app_id: None,
-        endpoint_id: None,
-        harness_id: None,
         agent_id: Some(agent1.id),
-        agent_version_id: None,
-        agent_config_hash: None,
-        agent_identity_id: None,
         owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
         title: Some("Shared keyword session".to_string()),
-        locale: None,
-        tags: vec![],
-        model_id: None,
-        capabilities: serde_json::json!([]),
-        tools: serde_json::json!([]),
-        mcp_servers: serde_json::json!({}),
-        system_prompt: None,
-        initial_files: serde_json::Value::Array(vec![]),
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
-        parent_session_id: None,
-        budget_root_session_id: None,
+        ..Default::default()
     })
     .await
     .unwrap();
 
     db.create_session(CreateSessionRow {
-        source: everruns_platform::SessionSource::Api,
-        workspace_id: None,
         org_id: DEFAULT_ORG_ID,
-        app_id: None,
-        endpoint_id: None,
-        harness_id: None,
         agent_id: Some(agent2.id),
-        agent_version_id: None,
-        agent_config_hash: None,
-        agent_identity_id: None,
         owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
         title: Some("Shared keyword session".to_string()),
-        locale: None,
-        tags: vec![],
-        model_id: None,
-        capabilities: serde_json::json!([]),
-        tools: serde_json::json!([]),
-        mcp_servers: serde_json::json!({}),
-        system_prompt: None,
-        initial_files: serde_json::Value::Array(vec![]),
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
-        parent_session_id: None,
-        budget_root_session_id: None,
+        ..Default::default()
     })
     .await
     .unwrap();
@@ -3451,35 +3037,10 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
 
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -3649,103 +3210,28 @@ async fn test_list_sessions_waiting_tool_results_before() {
     // Create 3 sessions: one waiting+old, one waiting+recent, one active+old
     let s1 = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
             capabilities: serde_json::json!({}),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
     let s2 = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
             capabilities: serde_json::json!({}),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
     let s3 = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
             capabilities: serde_json::json!({}),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -3817,35 +3303,12 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
 
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
             title: Some("Override Test".to_string()),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
             system_prompt: Some("You are a session-level override".to_string()),
             initial_files: initial_files.clone(),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -3875,35 +3338,9 @@ async fn test_session_system_prompt_defaults_to_none() {
 
     let session = db
         .create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
-            endpoint_id: None,
-            harness_id: None,
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            title: None,
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .unwrap();

@@ -18,10 +18,11 @@ pub struct BudgetSubjectLookup<'a> {
     pub agent_id: Option<&'a str>,
     pub user_id: Option<&'a str>,
     pub org_public_id: Option<&'a str>,
-    /// Public id of the App channel a webhook trigger's session carries. Still
-    /// live — migration 138 moved these budgets back off `agent_endpoint` and
-    /// deleted the endpoint rows (EVE-1129, EVE-1138).
-    pub app_channel_id: Option<&'a str>,
+    /// Public id (`trg_`) of the agent trigger whose ingress started the
+    /// session, from `sessions.trigger_id`. Successor to the `app_channel`
+    /// subject, which was the last one resolved from a session tag
+    /// (EVE-1138, migration 153).
+    pub trigger_id: Option<&'a str>,
     /// Public id of the endpoint the session arrived through. It is the same
     /// `appchan_` id the App channel carried — the endpoint kept its identifier
     /// when it was re-parented (EVE-1004) — under the subject type that
@@ -40,8 +41,8 @@ impl<'a> BudgetSubjectLookup<'a> {
         if let Some(id) = self.endpoint_id {
             pairs.push(("agent_endpoint", id));
         }
-        if let Some(id) = self.app_channel_id {
-            pairs.push(("app_channel", id));
+        if let Some(id) = self.trigger_id {
+            pairs.push(("agent_trigger", id));
         }
         if let Some(id) = self.agent_id {
             pairs.push(("agent", id));
@@ -147,7 +148,7 @@ impl Database {
         self.get_active_budgets_for_subjects(
             org_id,
             BudgetSubjectLookup {
-                app_channel_id: None,
+                trigger_id: None,
                 session_id: Some(session_id),
                 agent_id,
                 user_id,
@@ -158,8 +159,8 @@ impl Database {
         .await
     }
 
-    /// Generalised hierarchy lookup — supports app and app_channel subjects in
-    /// addition to the legacy session/agent/user/org levels.
+    /// Generalised hierarchy lookup — supports the trigger and endpoint
+    /// ingress subjects in addition to the session/agent/user/org levels.
     pub async fn get_active_budgets_for_subjects(
         &self,
         org_id: i64,

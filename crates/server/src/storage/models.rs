@@ -859,6 +859,12 @@ pub struct SessionRow {
     /// routing tag the backfill reads.
     #[sqlx(default)]
     pub endpoint_id: Option<Uuid>,
+    /// Agent trigger whose ingress created this session (EVE-1138). The
+    /// structural successor to the `app_channel:` tag for budget attribution:
+    /// migration 138 deleted the endpoint rows a webhook trigger's budgets had
+    /// been keyed on, leaving the tag as the only identifier until 153.
+    #[sqlx(default)]
+    pub trigger_id: Option<Uuid>,
     #[sqlx(default)]
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
@@ -1074,61 +1080,7 @@ pub struct SessionAggregateStatsRow {
     pub last_execution_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone)]
-pub struct CreateSessionRow {
-    pub org_id: i64,
-    /// How this session was started. Set by the creating ingress path, never
-    /// taken from untrusted client input except for the two client-declarable
-    /// variants (see `SessionSource::is_client_declarable`).
-    pub source: everruns_platform::SessionSource,
-    pub app_id: Option<Uuid>,
-    /// Endpoint whose ingress created this session (EVE-1004). Set by the
-    /// app-channel ingress paths, which all know their endpoint; `None`
-    /// everywhere else.
-    pub endpoint_id: Option<Uuid>,
-    pub harness_id: Option<HarnessId>,
-    pub agent_id: Option<AgentId>,
-    pub agent_version_id: Option<everruns_provider::typed_id::AgentVersionId>,
-    pub agent_config_hash: Option<String>,
-    pub agent_identity_id: Option<AgentIdentityId>,
-    pub owner_principal_id: PrincipalId,
-    pub resolved_owner_user_id: Option<Uuid>,
-    pub title: Option<String>,
-    pub locale: Option<String>,
-    pub tags: Vec<String>,
-    pub model_id: Option<ModelId>,
-    /// Session-level capabilities (additive to agent capabilities)
-    pub capabilities: serde_json::Value,
-    /// Client-side tools (additive to agent tools, JSONB in DB)
-    pub tools: serde_json::Value,
-    /// Scoped MCP server configs (JSONB in DB)
-    pub mcp_servers: serde_json::Value,
-    /// Session-level system prompt override (prepended to agent prompt)
-    pub system_prompt: Option<String>,
-    /// Session-level initial files (JSONB in DB, additive to agent files)
-    pub initial_files: serde_json::Value,
-    /// Session-level client hints (JSONB in DB)
-    pub hints: Option<serde_json::Value>,
-    /// Network access list (JSONB in DB)
-    pub network_access: Option<serde_json::Value>,
-    /// Maximum iterations per turn
-    pub max_iterations: Option<i32>,
-    /// Request-level parallel tool calling preference (EVE-598)
-    pub parallel_tool_calls: Option<bool>,
-    /// Blueprint ID for blueprint-backed sessions.
-    pub blueprint_id: Option<String>,
-    /// Validated blueprint config (JSONB in DB).
-    pub blueprint_config: Option<serde_json::Value>,
-    /// Parent session ID for governed subagent depth tracking.
-    pub parent_session_id: Option<everruns_provider::typed_id::SessionId>,
-    /// Explicit internal-only budget/delegation root for detached peers.
-    pub budget_root_session_id: Option<everruns_provider::typed_id::SessionId>,
-    /// Internal id of an existing workspace to attach this session to. When
-    /// `None`, `create_session` auto-creates a default 1:1 workspace whose id
-    /// equals the new session id (the equality invariant). When `Some`, the
-    /// session attaches to that workspace and no new workspace is created.
-    pub workspace_id: Option<Uuid>,
-}
+pub use super::session_rows::CreateSessionRow;
 
 #[derive(Debug, Clone, FromRow)]
 pub struct SessionParticipantRow {

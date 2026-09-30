@@ -1,7 +1,7 @@
 //! Evidence for attributing sessions and budgets to endpoints (EVE-1004,
 //! migration 137).
 //!
-//! `sessions.app_id` and the `app`/`app_channel` budget subjects record "which
+//! `sessions.app_id` and the `app`/`app_channel` budget subjects recorded "which
 //! bundle" when the useful grain is "which exposure". Migration 137 adds
 //! `sessions.endpoint_id` and the `agent_endpoint` budget subject, and converts
 //! the existing rows.
@@ -352,13 +352,12 @@ async fn deleting_an_endpoint_clears_the_session_pointer() {
     assert_eq!(endpoint_of(&pool, session_id).await, None);
 }
 
-/// The subject types are a closed set, and after EVE-1129 `app` is no longer in
-/// it — migration 151 removed it once the ceiling it carried had been converted
-/// onto the agent. `app_channel` stays: migration 138 moved App webhooks onto
-/// `agent_triggers` and their budgets back onto `app_channel`, deleting the
-/// endpoint rows, so it is a webhook trigger's only attribution (EVE-1138).
+/// The subject types are a closed set, and neither App-shaped level is in it
+/// any more. Migration 151 removed `app` once its ceiling had been converted
+/// onto the agent (EVE-1129); migration 153 removed `app_channel` once trigger
+/// ingress had a structural subject to carry it (EVE-1138).
 #[tokio::test]
-async fn subject_type_check_rejects_the_retired_app_level() {
+async fn subject_type_check_rejects_the_retired_app_levels() {
     let pool = pool().await;
     let org = seed_org(&pool, "attribution-subjects").await;
 
@@ -382,7 +381,7 @@ async fn subject_type_check_rejects_the_retired_app_level() {
         "agent",
         "user",
         "org",
-        "app_channel",
+        "agent_trigger",
         "agent_endpoint",
     ] {
         insert(&pool, org.org_id, subject_type)
@@ -390,7 +389,7 @@ async fn subject_type_check_rejects_the_retired_app_level() {
             .unwrap_or_else(|err| panic!("subject_type {subject_type} must be accepted: {err}"));
     }
 
-    for subject_type in ["app", "endpoint"] {
+    for subject_type in ["app", "app_channel", "endpoint"] {
         assert!(
             insert(&pool, org.org_id, subject_type).await.is_err(),
             "subject_type {subject_type} must be rejected"
@@ -398,23 +397,17 @@ async fn subject_type_check_rejects_the_retired_app_level() {
     }
 }
 
+/// Nothing is left on either retired level. Migration 153 re-keys every
+/// `app_channel` row onto `agent_trigger` and raises if one cannot be matched,
+/// so a surviving row would mean the migration ran and silently lost a cap.
 #[tokio::test]
-async fn app_channel_budgets_only_survive_for_webhook_triggers() {
+async fn no_budget_remains_on_a_retired_app_level() {
     let pool = pool().await;
-    let unsupported: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*)
-         FROM budgets AS budget
-         WHERE budget.subject_type = 'app_channel'
-           AND NOT EXISTS (
-               SELECT 1
-               FROM agent_triggers AS trigger
-               WHERE trigger.org_id = budget.org_id
-                 AND trigger.trigger_type = 'webhook'
-                 AND trigger.ingress_id = budget.subject_id
-           )",
+    let remaining: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM budgets WHERE subject_type IN ('app', 'app_channel')",
     )
     .fetch_one(&pool)
     .await
-    .expect("count unsupported app_channel budgets");
-    assert_eq!(unsupported, 0);
+    .expect("count budgets on retired levels");
+    assert_eq!(remaining, 0);
 }

@@ -39,6 +39,7 @@ pub mod repository;
 pub mod sandbox_checkpoint_store;
 pub mod session_file_store;
 pub mod session_resource_store;
+pub mod session_rows;
 pub mod session_schedule_store;
 pub mod session_storage_store;
 pub mod session_store;

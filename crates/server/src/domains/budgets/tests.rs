@@ -50,35 +50,17 @@ async fn create_session_with_owner_tags_and_endpoint(
     endpoint_id: Option<Uuid>,
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
-        source: everruns_platform::SessionSource::Api,
-        workspace_id: None,
         org_id,
-        app_id: None,
         endpoint_id,
-        harness_id: None,
         agent_id,
-        agent_version_id: None,
-        agent_config_hash: None,
-        agent_identity_id: None,
         owner_principal_id: PrincipalId::new(),
         resolved_owner_user_id,
         title: Some("Budget test session".into()),
-        locale: None,
         tags,
-        model_id: None,
         capabilities: serde_json::json!({}),
-        tools: serde_json::json!([]),
         mcp_servers: serde_json::json!([]),
-        system_prompt: None,
         initial_files: serde_json::json!({}),
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
-        parent_session_id: None,
-        budget_root_session_id: None,
+        ..Default::default()
     })
     .await
     .unwrap()
@@ -90,15 +72,10 @@ async fn create_child_session(
     agent_id: Option<AgentId>,
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
-        source: everruns_platform::SessionSource::Api,
-        workspace_id: None,
         org_id: parent.org_id,
         app_id: parent.app_id,
-        endpoint_id: None,
         harness_id: parent.harness_id,
         agent_id,
-        agent_version_id: None,
-        agent_config_hash: None,
         agent_identity_id: parent.agent_identity_id,
         owner_principal_id: parent.owner_principal_id,
         resolved_owner_user_id: parent.resolved_owner_user_id,
@@ -107,18 +84,10 @@ async fn create_child_session(
         tags: parent.tags.clone(),
         model_id: parent.model_id,
         capabilities: serde_json::json!({}),
-        tools: serde_json::json!([]),
         mcp_servers: serde_json::json!([]),
-        system_prompt: None,
         initial_files: serde_json::json!({}),
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
         parent_session_id: Some(parent.id),
-        budget_root_session_id: None,
+        ..Default::default()
     })
     .await
     .unwrap()
@@ -126,16 +95,11 @@ async fn create_child_session(
 
 async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) -> SessionRow {
     let input = CreateSessionRow {
-        source: everruns_platform::SessionSource::Api,
-        workspace_id: None,
         org_id: origin.org_id,
         app_id: origin.app_id,
-        endpoint_id: None,
         harness_id: origin.harness_id,
         agent_id: origin.agent_id,
         agent_identity_id: origin.agent_identity_id,
-        agent_version_id: None,
-        agent_config_hash: None,
         owner_principal_id: origin.owner_principal_id,
         resolved_owner_user_id: origin.resolved_owner_user_id,
         title: Some("Detached budget peer".into()),
@@ -143,18 +107,10 @@ async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) 
         tags: origin.tags.clone(),
         model_id: origin.model_id,
         capabilities: serde_json::json!({}),
-        tools: serde_json::json!([]),
         mcp_servers: serde_json::json!([]),
-        system_prompt: None,
         initial_files: serde_json::json!({}),
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        blueprint_id: None,
-        blueprint_config: None,
-        parent_session_id: None,
         budget_root_session_id: Some(origin.id),
+        ..Default::default()
     };
     db.create_session(input).await.unwrap()
 }

@@ -2995,35 +2995,12 @@ mod tests {
         let session = adapters
             .db
             .create_session(CreateSessionRow {
-                source: everruns_platform::SessionSource::Api,
-                workspace_id: None,
                 org_id,
-                app_id: None,
-                endpoint_id: None,
                 harness_id: Some(harness_id),
                 agent_id: Some(agent_id),
                 agent_version_id: Some(version_id),
-                agent_config_hash: None,
-                agent_identity_id: None,
                 owner_principal_id: PrincipalId::from_seed(1),
-                resolved_owner_user_id: None,
-                title: None,
-                locale: None,
-                tags: vec![],
-                model_id: None,
-                capabilities: serde_json::json!([]),
-                tools: serde_json::json!([]),
-                mcp_servers: serde_json::json!({}),
-                system_prompt: None,
-                initial_files: serde_json::json!([]),
-                hints: None,
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                blueprint_id: None,
-                blueprint_config: None,
-                parent_session_id: None,
-                budget_root_session_id: None,
+                ..Default::default()
             })
             .await
             .expect("create pinned session");
@@ -3170,35 +3147,12 @@ mod tests {
         use crate::storage::models::CreateSessionRow;
 
         db.create_session(CreateSessionRow {
-            source: everruns_platform::SessionSource::Api,
-            workspace_id: None,
             org_id,
-            app_id: None,
-            endpoint_id: None,
             harness_id: Some(harness_id),
-            agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
-            agent_identity_id: None,
             owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id,
             title: Some("platform-store-test".to_string()),
-            locale: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: serde_json::json!([]),
-            tools: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::json!([]),
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            blueprint_id: None,
-            blueprint_config: None,
-            parent_session_id: None,
-            budget_root_session_id: None,
+            ..Default::default()
         })
         .await
         .expect("seed session")
@@ -4017,35 +3971,11 @@ mod tests {
         let row = adapters
             .db
             .create_session(CreateSessionRow {
-                source: everruns_platform::SessionSource::Api,
-                workspace_id: None,
                 org_id: everruns_core::DEFAULT_ORG_ID,
-                app_id: None,
-                endpoint_id: None,
                 agent_id: Some(AgentId::from_uuid(agent_id)),
-                agent_version_id: None,
-                agent_config_hash: None,
-                agent_identity_id: None,
                 harness_id: Some(HarnessId::from_seed(1)),
                 owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
-                resolved_owner_user_id: None,
-                title: None,
-                locale: None,
-                tags: vec![],
-                model_id: None,
-                capabilities: serde_json::Value::Array(vec![]),
-                tools: serde_json::Value::Array(vec![]),
-                mcp_servers: serde_json::json!({}),
-                system_prompt: None,
-                initial_files: serde_json::Value::Array(vec![]),
-                hints: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                blueprint_id: None,
-                blueprint_config: None,
-                network_access: None,
-                parent_session_id: None,
-                budget_root_session_id: None,
+                ..Default::default()
             })
             .await
             .expect("create session");

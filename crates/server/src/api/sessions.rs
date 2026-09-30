@@ -44,7 +44,7 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 /// Request to create a session
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
     /// How this session was started. Clients may declare only `chat` (an
     /// interactive thread) or `api` (the default); every other source is

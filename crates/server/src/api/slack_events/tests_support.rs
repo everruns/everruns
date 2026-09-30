@@ -115,6 +115,7 @@ pub(crate) async fn setup_test_session(
         org_id: 1,
         app_id: None,
         endpoint_id: None,
+        trigger_id: None,
         harness_id: Some(everruns_provider::typed_id::HarnessId::from_uuid(
             uuid::Uuid::nil(),
         )),

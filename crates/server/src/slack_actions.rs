@@ -765,6 +765,7 @@ mod tests {
                     org_id,
                     app_id,
                     endpoint_id,
+                    trigger_id: None,
                     harness_id: Some(harness_id),
                     agent_id: None,
                     agent_version_id: None,
