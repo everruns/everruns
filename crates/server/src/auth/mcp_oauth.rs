@@ -232,6 +232,8 @@ pub struct OAuthProtectedResourceMetadata {
     pub resource: String,
     pub authorization_servers: Vec<String>,
     pub bearer_methods_supported: Vec<String>,
+    /// ChatGPT's connector setup reads the scopes to request from here.
+    pub scopes_supported: Vec<String>,
 }
 
 /// Authorization server metadata (RFC 8414)
@@ -391,6 +393,7 @@ async fn oauth_protected_resource_metadata(
         resource: format!("{issuer}/mcp"),
         authorization_servers: vec![issuer.to_string()],
         bearer_methods_supported: vec!["header".to_string()],
+        scopes_supported: vec!["mcp".to_string()],
     })
 }
 

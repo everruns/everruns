@@ -23,6 +23,10 @@ the card without protocol changes, actions flow back to the host via
 `window.postMessage` and are dispatched as ordinary MCP `tools/call`
 invocations on the same Everruns server.
 
+Interactive views (session, question, approval, home panel) are MCP Apps
+templates served through `resources/read`; see
+[MCP Apps](mcp-apps.md). Entity cards stay embedded resources.
+
 This spec is **scoped to the Everruns MCP server endpoint**. It does not apply
 to the REST/UI APIs and does not change how Everruns acts as an MCP *client*
 to remote MCP servers (covered in [`knowledge/integrations/mcp-servers.md`](../integrations/mcp-servers.md)).

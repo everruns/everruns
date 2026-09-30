@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Everruns</title>
+<style>
+:root { color-scheme: light dark; --fg: #171717; --muted: rgba(23,23,23,0.62); --line: rgba(127,127,127,0.28); --chip: rgba(127,127,127,0.16); --accent: #1d4ed8; --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e; }
+:root[data-theme="dark"] { --fg: #ededed; --muted: rgba(237,237,237,0.62); --accent: #7aa2ff; --ok: #4ac26b; --warn: #d4a72c; --bad: #ff7b72; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fg: #ededed; --muted: rgba(237,237,237,0.62); --accent: #7aa2ff; --ok: #4ac26b; --warn: #d4a72c; --bad: #ff7b72; } }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 14px; font: 13px/1.45 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif); color: var(--fg); background: transparent; }
+h1 { font-size: 15px; font-weight: 600; margin: 0; }
+h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 16px 0 6px; }
+.row { display: flex; align-items: center; gap: 8px; }
+.spread { justify-content: space-between; }
+.muted { color: var(--muted); }
+.small { font-size: 11px; }
+.badge { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.s-active, .s-started { color: var(--accent); }
+.s-idle { color: var(--ok); }
+.s-waiting_for_tool_results, .s-input { color: var(--warn); }
+.s-paused, .s-error { color: var(--bad); }
+.list { display: grid; gap: 6px; }
+.item { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.item.link { cursor: pointer; }
+.item.link:hover { border-color: var(--accent); }
+.msg { border-radius: 10px; padding: 8px 10px; white-space: pre-wrap; word-break: break-word; }
+.msg.user { background: var(--chip); }
+.msg.agent { border: 1px solid var(--line); }
+.panel { border: 1px solid var(--warn); border-radius: 10px; padding: 10px; margin-top: 10px; }
+.question { margin-top: 8px; }
+.question label { display: flex; gap: 6px; align-items: flex-start; margin: 4px 0; }
+.opt-desc { color: var(--muted); font-size: 11px; }
+textarea, input[type="text"] { width: 100%; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+textarea { min-height: 56px; resize: vertical; }
+button { font: inherit; color: inherit; background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { color: var(--bad); border-color: var(--bad); background: transparent; }
+button:disabled { opacity: 0.5; cursor: default; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.error { color: var(--bad); margin-top: 8px; white-space: pre-wrap; }
+.empty { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<main id="root"><p class="muted">Loading…</p></main>
+<script>
+// Everruns MCP App (SEP-1865). See knowledge/ui/mcp-apps.md.
+//
+// Trust model: this document never talks to Everruns directly. Every action is
+// a JSON-RPC request to the host over postMessage (`tools/call`), which the
+// host forwards to /mcp under the user's own MCP credentials. All server data
+// is written with textContent, never parsed as HTML.
+(function () {
+  "use strict";
+  var root = document.getElementById("root");
+  var nextId = 1;
+  var pending = {};
+  var handlers = {};
+  var host = { caps: {}, ctx: {} };
+  var state = { view: null, sessionId: null, pollTimer: null, polls: 0, busy: false, error: null };
+
+  function send(message) { window.parent.postMessage(message, "*"); }
+  function request(method, params) {
+    var id = nextId++;
+    send({ jsonrpc: "2.0", id: id, method: method, params: params || {} });
+    return new Promise(function (resolve, reject) { pending[id] = { resolve: resolve, reject: reject }; });
+  }
+  function notify(method, params) { send({ jsonrpc: "2.0", method: method, params: params || {} }); }
+  function on(method, fn) { handlers[method] = fn; }
+
+  window.addEventListener("message", function (event) {
+    if (event.source !== window.parent) return;
+    var m = event.data;
+    if (!m || m.jsonrpc !== "2.0") return;
+    if (m.method) {
+      var handler = handlers[m.method];
+      if (m.id !== undefined && m.id !== null) {
+        if (!handler) { send({ jsonrpc: "2.0", id: m.id, error: { code: -32601, message: "Method not found" } }); return; }
+        Promise.resolve(handler(m.params || {})).then(function (result) {
+          send({ jsonrpc: "2.0", id: m.id, result: result || {} });
+        });
+      } else if (handler) {
+        handler(m.params || {});
+      }
+      return;
+    }
+    var waiter = pending[m.id];
+    if (!waiter) return;
+    delete pending[m.id];
+    if (m.error) waiter.reject(new Error(m.error.message || "Request failed"));
+    else waiter.resolve(m.result);
+  });
+
+  function canCallTools() { return !!(host.caps && host.caps.serverTools); }
+  function canOpenLinks() { return !!(host.caps && host.caps.openLinks); }
+  function canFullscreen() {
+    var modes = (host.ctx && host.ctx.availableDisplayModes) || [];
+    return modes.indexOf("fullscreen") >= 0 && host.ctx.displayMode !== "fullscreen";
+  }
+
+  function applyTheme(ctx) {
+    if (!ctx) return;
+    if (ctx.theme) document.documentElement.setAttribute("data-theme", ctx.theme);
+    var vars = ctx.styles && ctx.styles.variables;
+    if (vars) Object.keys(vars).forEach(function (key) { if (vars[key]) document.documentElement.style.setProperty(key, vars[key]); });
+  }
+
+  function structured(result) {
+    if (!result) return null;
+    if (result.structuredContent) return result.structuredContent;
+    var text = (result.content || []).filter(function (c) { return c.type === "text"; })[0];
+    if (!text) return null;
+    try { return JSON.parse(text.text); } catch (e) { return null; }
+  }
+
+  function callTool(name, args) {
+    return request("tools/call", { name: name, arguments: args }).then(function (result) {
+      if (result && result.isError) {
+        var text = (result.content || []).map(function (c) { return c.text || ""; }).join("\n");
+        throw new Error(text || "Tool call failed");
+      }
+      return structured(result);
+    });
+  }
+
+  // DOM helpers. Everything user- or agent-authored goes through text nodes.
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (key) {
+      if (key === "text") node.textContent = attrs[key];
+      else if (key === "class") node.className = attrs[key];
+      else if (key.indexOf("on") === 0) node.addEventListener(key.slice(2), attrs[key]);
+      else node.setAttribute(key, attrs[key]);
+    });
+    (children || []).forEach(function (child) { if (child) node.appendChild(child); });
+    return node;
+  }
+  function badge(text, cls) { return el("span", { class: "badge " + cls, text: text }); }
+  function statusBadge(session) {
+    if (session.pending) return badge(session.pending.kind === "approval" ? "needs approval" : "needs input", "s-input");
+    var label = { started: "starting", active: "running", idle: "done", waiting_for_tool_results: "waiting", paused: "paused" }[session.status] || session.status || "unknown";
+    return badge(label, "s-" + (session.status || "unknown"));
+  }
+
+  function render(children) {
+    root.textContent = "";
+    children.forEach(function (child) { if (child) root.appendChild(child); });
+    if (state.error) root.appendChild(el("div", { class: "error", text: state.error }));
+  }
+
+  function guarded(fn) {
+    return function () {
+      if (state.busy) return;
+      state.busy = true; state.error = null;
+      var args = arguments;
+      Promise.resolve().then(function () { return fn.apply(null, args); }).catch(function (err) {
+        state.error = err && err.message ? err.message : String(err);
+        rerender();
+      }).then(function () { state.busy = false; });
+    };
+  }
+
+  function header(title, extra) {
+    var right = el("div", { class: "row" }, extra || []);
+    if (canFullscreen()) right.appendChild(el("button", { text: "Expand", onclick: function () { request("ui/request-display-mode", { mode: "fullscreen" }).catch(function () {}); } }));
+    return el("div", { class: "row spread" }, [el("h1", { text: title }), right]);
+  }
+
+  // ----- Home: agents, sessions, pending input -----
+  var home = null;
+  function renderHome() {
+    if (!home) return;
+    var agents = home.agents || [];
+    var sessions = home.sessions || [];
+    var waiting = sessions.filter(function (s) { return !!s.pending; });
+    var kids = [header("Everruns", [el("button", { text: "Refresh", onclick: guarded(refreshHome) })])];
+    if (home.organization && home.organization.name) kids.push(el("div", { class: "muted small", text: home.organization.name }));
+
+    kids.push(el("h2", { text: "Waiting on you" }));
+    kids.push(waiting.length ? el("div", { class: "list" }, waiting.map(sessionItem)) : el("div", { class: "empty", text: "Nothing needs an answer." }));
+
+    kids.push(el("h2", { text: "Agents" }));
+    kids.push(agents.length ? el("div", { class: "list" }, agents.map(agentItem)) : el("div", { class: "empty", text: "No agents yet." }));
+
+    kids.push(el("h2", { text: "Recent sessions" }));
+    kids.push(sessions.length ? el("div", { class: "list" }, sessions.map(sessionItem)) : el("div", { class: "empty", text: "No sessions yet." }));
+    render(kids);
+  }
+
+  function sessionItem(session) {
+    return el("div", { class: "item link", onclick: function () { openSession(session.session_id); } }, [
+      el("div", { class: "row spread" }, [el("strong", { text: session.title || "Untitled session" }), statusBadge(session)]),
+      session.agent_name ? el("div", { class: "muted small", text: session.agent_name }) : null
+    ]);
+  }
+
+  function agentItem(agent) {
+    var box = el("div", { class: "item" }, [
+      el("div", { class: "row spread" }, [el("strong", { text: agent.display_name || agent.name }), null]),
+      agent.description ? el("div", { class: "muted small", text: agent.description }) : null
+    ]);
+    if (canCallTools()) {
+      var input = el("input", { type: "text", placeholder: "Ask " + (agent.display_name || agent.name) + "…" });
+      var run = guarded(function () {
+        var message = input.value.trim();
+        if (!message) return;
+        return callTool("agent_run", { agent_id: agent.id, message: message }).then(function (out) {
+          if (out && out.session_id) openSession(out.session_id);
+        });
+      });
+      input.addEventListener("keydown", function (e) { if (e.key === "Enter") run(); });
+      box.appendChild(el("div", { class: "actions" }, [input, el("button", { class: "primary", text: "Run", onclick: run })]));
+    }
+    return box;
+  }
+
+  function refreshHome() {
+    return callTool("everruns_home", {}).then(function (out) { home = out; state.view = "home"; renderHome(); });
+  }
+
+  // ----- Session: status, transcript tail, question, approval, reply -----
+  var session = null;
+  function openSession(sessionId) {
+    state.view = "session"; state.sessionId = sessionId; state.polls = 0; session = null;
+    render([el("p", { class: "muted", text: "Loading session…" })]);
+    return refreshSession();
+  }
+
+  function refreshSession() {
+    if (!canCallTools()) return Promise.resolve();
+    return callTool("session_view", { session_id: state.sessionId }).then(function (out) {
+      session = out; renderSession(); schedulePoll();
+    });
+  }
+
+  function isRunning(s) { return s && !s.pending && (s.status === "active" || s.status === "started" || s.status === "waiting_for_tool_results"); }
+  function schedulePoll() {
+    clearTimeout(state.pollTimer);
+    if (!isRunning(session) || state.polls > 240) return;
+    state.polls += 1;
+    state.pollTimer = setTimeout(function () { refreshSession().catch(function (err) { state.error = err.message; rerender(); }); }, state.polls < 20 ? 1500 : 5000);
+  }
+
+  function renderSession() {
+    if (!session) return;
+    var kids = [];
+    var headerExtra = [statusBadge(session)];
+    if (home) headerExtra.unshift(el("button", { text: "Back", onclick: function () { clearTimeout(state.pollTimer); state.view = "home"; renderHome(); } }));
+    kids.push(header(session.title || "Session", headerExtra));
+    if (session.agent_name) kids.push(el("div", { class: "muted small", text: session.agent_name }));
+
+    var messages = session.messages || [];
+    if (messages.length) {
+      kids.push(el("h2", { text: "Conversation" }));
+      kids.push(el("div", { class: "list" }, messages.map(function (m) { return el("div", { class: "msg " + (m.role === "user" ? "user" : "agent"), text: m.text }); })));
+    }
+    if (isRunning(session)) kids.push(el("p", { class: "muted", text: "The agent is working…" }));
+
+    if (session.pending && session.pending.kind === "question") kids.push(questionPanel(session.pending));
+    if (session.pending && session.pending.kind === "approval") kids.push(approvalPanel(session.pending));
+    if (session.pending && session.pending.kind === "unsupported") kids.push(el("div", { class: "panel", text: session.pending.message }));
+
+    if (canCallTools() && session.status === "idle" && !session.pending) kids.push(replyBox());
+
+    var footer = el("div", { class: "actions" }, []);
+    if (canCallTools()) footer.appendChild(el("button", { text: "Refresh", onclick: guarded(refreshSession) }));
+    if (session.ui_link && canOpenLinks()) footer.appendChild(el("button", { text: "Open in Everruns", onclick: function () { request("ui/open-link", { url: session.ui_link }).catch(function () {}); } }));
+    kids.push(footer);
+    render(kids);
+  }
+
+  function questionPanel(p) {
+    var inputs = [];
+    var panel = el("div", { class: "panel" }, [el("strong", { text: "The agent has a question" })]);
+    (p.questions || []).forEach(function (q) {
+      var box = el("div", { class: "question" }, [el("div", {}, [el("strong", { text: q.header ? q.header + ": " : "" }), document.createTextNode(q.question || "")])]);
+      var entry = { q: q, controls: [], other: null, text: null };
+      if (q.kind === "text") {
+        entry.text = el("textarea", {});
+        box.appendChild(entry.text);
+      } else {
+        var name = "q_" + q.id;
+        (q.options || []).forEach(function (opt) {
+          var control = el("input", { type: q.multi_select ? "checkbox" : "radio", name: name });
+          if (opt.is_default && !q.multi_select) control.checked = true;
+          entry.controls.push({ control: control, label: opt.label });
+          box.appendChild(el("label", {}, [control, el("span", {}, [el("span", { text: opt.label }), opt.description ? el("div", { class: "opt-desc", text: opt.description }) : null])]));
+        });
+        if (q.allow_other) { entry.other = el("input", { type: "text", placeholder: "Other…" }); box.appendChild(entry.other); }
+      }
+      inputs.push(entry);
+      panel.appendChild(box);
+    });
+    if (!canCallTools()) return panel;
+    var submit = guarded(function (status) {
+      var answers = status === "declined" ? [] : inputs.map(function (entry) {
+        if (entry.text) return { id: entry.q.id, selected: [], other_text: entry.text.value };
+        var selected = entry.controls.filter(function (c) { return c.control.checked; }).map(function (c) { return c.label; });
+        var other = entry.other && entry.other.value.trim() ? entry.other.value.trim() : null;
+        return { id: entry.q.id, selected: selected, other_text: other };
+      });
+      return callTool("session_answer_question", { session_id: state.sessionId, tool_call_id: p.tool_call_id, status: status, answers: answers }).then(function () { state.polls = 0; return refreshSession(); });
+    });
+    panel.appendChild(el("div", { class: "actions" }, [
+      el("button", { class: "primary", text: "Send answer", onclick: function () { submit("answered"); } }),
+      el("button", { text: "Decline", onclick: function () { submit("declined"); } })
+    ]));
+    return panel;
+  }
+
+  function approvalPanel(p) {
+    var panel = el("div", { class: "panel" }, [el("strong", { text: "Approval needed" }), el("div", { text: p.action })]);
+    if (p.question) panel.appendChild(el("div", { class: "muted", text: p.question }));
+    if (!canCallTools()) return panel;
+    var decide = guarded(function (decision) {
+      return callTool("session_decide_approval", { session_id: state.sessionId, decision: decision, action: p.action }).then(function () { state.polls = 0; return refreshSession(); });
+    });
+    panel.appendChild(el("div", { class: "actions" }, [
+      el("button", { class: "primary", text: "Approve", onclick: function () { decide("approve"); } }),
+      el("button", { class: "danger", text: "Decline", onclick: function () { decide("decline"); } })
+    ]));
+    return panel;
+  }
+
+  function replyBox() {
+    var input = el("textarea", { placeholder: "Reply to the agent…" });
+    var sendReply = guarded(function () {
+      var message = input.value.trim();
+      if (!message) return;
+      return callTool("session_send_message", { session_id: state.sessionId, message: message }).then(function () { state.polls = 0; return refreshSession(); });
+    });
+    return el("div", {}, [el("h2", { text: "Reply" }), input, el("div", { class: "actions" }, [el("button", { class: "primary", text: "Send", onclick: sendReply })])]);
+  }
+
+  function rerender() { if (state.view === "session") renderSession(); else if (state.view === "home") renderHome(); else render([]); }
+
+  // A tool result is the first render: never re-call the tool that produced it.
+  function show(result) {
+    var data = structured(result);
+    if (!data) { render([el("p", { class: "muted", text: "Nothing to show." })]); return; }
+    if (Array.isArray(data.agents)) { home = data; state.view = "home"; renderHome(); return; }
+    if (data.session_id) {
+      if (data.messages) { state.view = "session"; state.sessionId = data.session_id; session = data; renderSession(); schedulePoll(); }
+      else openSession(data.session_id).catch(function (err) { state.error = err.message; rerender(); });
+      return;
+    }
+    render([el("p", { class: "muted", text: "Nothing to show." })]);
+  }
+
+  on("ui/notifications/tool-result", show);
+  on("ui/notifications/tool-cancelled", function (p) { state.error = "Cancelled" + (p.reason ? ": " + p.reason : ""); rerender(); });
+  on("ui/notifications/host-context-changed", function (p) { host.ctx = Object.assign({}, host.ctx, p); applyTheme(p); rerender(); });
+  on("ui/resource-teardown", function () { clearTimeout(state.pollTimer); return {}; });
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () {
+      notify("ui/notifications/size-changed", { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight });
+    }).observe(document.body);
+  }
+
+  request("ui/initialize", {
+    protocolVersion: "2026-01-26",
+    appInfo: { name: "everruns", version: "1" },
+    appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] }
+  }).then(function (result) {
+    host.caps = (result && result.hostCapabilities) || {};
+    host.ctx = (result && result.hostContext) || {};
+    applyTheme(host.ctx);
+    notify("ui/notifications/initialized", {});
+  }).catch(function () {
+    notify("ui/notifications/initialized", {});
+  });
+})();
+</script>
+</body>
+</html>
