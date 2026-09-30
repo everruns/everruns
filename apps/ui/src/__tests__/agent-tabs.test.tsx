@@ -1,38 +1,36 @@
-import { agentEditTabItems, getAgentDetailTabItems } from "@/components/agents/agent-tabs";
+import { getAgentTabItems, resolveAgentTab } from "@/components/agents/agent-tabs";
+import { render } from "@testing-library/react";
 
-function labels(items: ReturnType<typeof getAgentDetailTabItems>): React.ReactNode[] {
-  return items.map((item) => item.label);
+function labels(items: ReturnType<typeof getAgentTabItems>): string[] {
+  return items.map((item) => render(<>{item.label}</>).container.textContent ?? "");
 }
 
-// "Triggers" and "Integrate" collapsed into one "Integrations" tab in
-// EVE-1009: both described how an agent is reached and when it runs, and the
-// snippet tab could only show generic URLs because a multi-endpoint agent has
-// no single address.
+// One tab row: MCP and Credentials became config-column sheets, Sessions got
+// its own tab, and Versions moved to the header overflow menu.
 describe("agent tab definitions", () => {
-  it("keeps the detail workflow order when versions are enabled", () => {
-    expect(labels(getAgentDetailTabItems(true))).toEqual([
-      "Overview",
+  it("renders the single tab row in order", () => {
+    expect(labels(getAgentTabItems())).toEqual([
+      "Agent",
       "Preview",
-      "Credentials",
-      "MCP",
       "Integrations",
-      "Versions",
       "Stats",
+      "Sessions",
     ]);
   });
 
-  it("removes only versions when its feature is disabled", () => {
-    expect(labels(getAgentDetailTabItems(false))).toEqual([
-      "Overview",
-      "Preview",
-      "Credentials",
-      "MCP",
-      "Integrations",
-      "Stats",
-    ]);
+  it("shows the session count on the Sessions tab", () => {
+    expect(labels(getAgentTabItems(12)).at(-1)).toBe("Sessions12");
   });
 
-  it("reuses the shared preview definition in edit navigation", () => {
-    expect(agentEditTabItems.map((item) => item.label)).toEqual(["Edit", "Preview"]);
+  it.each([
+    ["mcp", "agent", "mcp"],
+    ["credentials", "agent", "credentials"],
+    ["versions", "agent", "versions"],
+    ["overview", "agent", null],
+    ["integrations", "integrations", null],
+    ["sessions", "sessions", null],
+    [null, "agent", null],
+  ])("resolves ?tab=%s to the %s tab with sheet %s", (param, tab, section) => {
+    expect(resolveAgentTab(param)).toEqual({ tab, section });
   });
 });

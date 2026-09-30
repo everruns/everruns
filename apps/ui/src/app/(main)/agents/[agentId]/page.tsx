@@ -1,115 +1,205 @@
 "use client";
 
-import { use, useMemo, useCallback, useRef, useState } from "react";
+// Agent page: one layout for reading and editing an agent.
+//
+// The system prompt is the page (wide left pane); a narrow config column holds
+// the primary settings and a quiet "More" list whose rows open side sheets.
+// Edit mode is page-level and in place: the same panes turn writable, the
+// header swaps New session for Save changes / Discard, and one Save sends the
+// whole draft so a prompt edit and the capability change that goes with it
+// land together. The old /edit route redirects here with `?mode=edit`.
+//
+// One tab row only: Agent · Preview · Integrations · Stats · Sessions. MCP and
+// Credentials are configuration (config column sheets); Versions and the old
+// danger zone live in the header overflow menu.
+
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Archive,
+  Boxes,
+  Check,
+  Copy,
+  Download,
+  GitBranch,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Telescope,
+  Trash2,
+} from "lucide-react";
 import {
   useAgent,
-  useSessions,
-  useCreateSession,
-  useCapabilities,
-  useModels,
-  useExportAgent,
-  useCopyAgent,
+  useAgentCredentials,
+  useAgentMcpAttachments,
   useAgentStats,
+  useCapabilities,
+  useCopyAgent,
+  useCreateSession,
+  useDeleteAgent,
+  useDestroyAgent,
+  useExportAgent,
+  useLatestHealthCheckRun,
+  useModels,
   usePageTitle,
+  useUpdateAgent,
 } from "@/hooks";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
-import { ResourceNotFound } from "@/components/resource-not-found";
-import { Button, LinkButton, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { MarkdownDisplay } from "@/components/ui/prompt-editor";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-import { ProviderIcon } from "@/components/providers/provider-icon";
-import { SessionCard } from "@/components/session/session-card";
-import { AgentPreview } from "@/components/agents/agent-preview";
-import { AgentVersionHistory } from "@/components/agents/agent-version-history";
-import { Plus, Pencil, Download, Copy, Zap, Telescope, Boxes, MoreHorizontal } from "lucide-react";
-import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
-import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
-import { AgentMcpPanel } from "@/components/agents/agent-mcp-panel";
-import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
-import {
-  PageContainer,
-  PageBreadcrumb,
-  PageMasthead,
-  PageControlStrip,
-  SectionTabs,
-  PageColumns,
-  PageMain,
-  PageRail,
-  PageFooter,
-  BackLink,
-} from "@/components/layout";
-import { getAgentDetailTabItems } from "@/components/agents/agent-tabs";
-import type { Capability, ModelWithProvider, TokenUsage } from "@/lib/api/types";
-import { CapabilityIcon } from "@/lib/capability-icons";
-import {
-  localizedCapabilityDescription,
-  localizedCapabilityName,
-} from "@/lib/capability-localization";
-import { useLocale } from "@/providers/locale-provider";
-import {
-  getDisplayName,
-  getEntityNameClassName,
-  getEntityStatusBadgeVariant,
-} from "@/lib/entity-lifecycle";
-import { formatTokens, pluralize } from "@/lib/formatting";
-import { normalizeTags } from "@/lib/tags";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
+import { usePolicies } from "@/hooks/use-policies";
 import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
-import { useWebMcp } from "@/providers/webmcp-context";
-import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
+import { ResourceNotFound } from "@/components/resource-not-found";
+import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuPositioner,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  BackLink,
+  PageBreadcrumb,
+  PageContainer,
+  PageControlStrip,
+  PageFooter,
+  PageMasthead,
+  SectionTabs,
+} from "@/components/layout";
+import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent-checks";
+import { AgentConfigColumn, type AgentMoreRow } from "@/components/agents/agent-config-column";
+import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
+import { AgentPreview } from "@/components/agents/agent-preview";
+import { AgentPromptPane } from "@/components/agents/agent-prompt-pane";
+import { AgentSessionsPanel } from "@/components/agents/agent-sessions-panel";
+import {
+  AgentSettingsSheet,
+  type AgentSettingsSection,
+} from "@/components/agents/agent-settings-sheet";
+import { getAgentTabItems, resolveAgentTab, type AgentTab } from "@/components/agents/agent-tabs";
+import { BRANDING_FIELDS, useAgentDraft } from "@/components/agents/use-agent-draft";
+import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
+import { normalizeNetworkAccess } from "@/components/network-access-editor";
+import type { LatestHealthCheckRun, ModelWithProvider } from "@/lib/api/types";
+import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
+import {
+  getDisplayName,
+  getEntityNameClassName,
+  getEntityStatusBadgeVariant,
+  isReadOnlyStatus,
+} from "@/lib/entity-lifecycle";
+import { formatTokens, pluralize } from "@/lib/formatting";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
+import { useWebMcp } from "@/providers/webmcp-context";
 
-// Helper function to calculate total tokens
-function totalTokens(usage: TokenUsage): number {
-  return usage.input_tokens + usage.output_tokens;
+const count = (n: number, singular: string, plural?: string) =>
+  `${n} ${pluralize(n, singular, plural)}`;
+
+function healthSummary(latest: LatestHealthCheckRun | undefined): string {
+  const run = latest?.run;
+  if (!run) return "Not run";
+  if (run.status === "pending" || run.status === "running") return "Running";
+  if (run.status === "failed") return "Failed";
+  const result = run.summary ? `${run.summary.passed}/${run.summary.total} passed` : "Completed";
+  return latest.config_changed ? `${result} · outdated` : result;
 }
 
 export default function AgentDetailPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params);
-  const { locale } = useLocale();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState(() => searchParams.get("tab") ?? "overview");
+  const deepLink = resolveAgentTab(searchParams.get("tab"));
+  const [activeTab, setActiveTab] = useState<AgentTab>(deepLink.tab);
+  const [openSection, setOpenSection] = useState<AgentSettingsSection | null>(deepLink.section);
+  const [editRequested, setEditRequested] = useState(() => searchParams.get("mode") === "edit");
+  const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
+
   const agentVersionsEnabled = useFeatureFlag("agent_versions");
   const observersEnabled = useFeatureFlag("observers");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   usePageTitle(agent ? getDisplayName(agent) : null, "Agent");
-  // Fetch only top 10 sessions for the overview
-  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(agentId, {
-    limit: 10,
-  });
-  const sessions = sessionsResponse?.data ?? [];
-  const totalSessions = sessionsResponse?.total ?? 0;
-  const hasMoreSessions = totalSessions > 10;
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: models } = useModels();
   const { data: stats, isLoading: statsLoading, error: statsError } = useAgentStats(agentId);
+  const { data: mcpAttachments } = useAgentMcpAttachments(agentId);
+  const { data: credentials } = useAgentCredentials(agentId);
+  const { data: latestHealth } = useLatestHealthCheckRun(agentId);
   const createSession = useCreateSession();
+  const updateAgent = useUpdateAgent();
+  const deleteAgent = useDeleteAgent();
+  const destroyAgent = useDestroyAgent();
+  const exportAgent = useExportAgent();
+  const copyAgent = useCopyAgent();
+  const { can } = usePolicies("agents");
   const webmcp = useWebMcp();
   // THREAT[TM-WEB-017]: reject concurrent non-idempotent browser-agent mutations.
   const webMcpSessionPendingRef = useRef(false);
-  const exportAgent = useExportAgent();
-  const copyAgent = useCopyAgent();
 
-  // Create a map of model_id -> model for quick lookups
-  const modelMap = useMemo(() => {
-    if (!models) return new Map<string, ModelWithProvider>();
-    return new Map(models.map((m) => [m.id, m]));
-  }, [models]);
+  const draft = useAgentDraft(agent);
+  const readOnly = isReadOnlyStatus(agent?.status);
+  const editing = editRequested && !!agent && !readOnly;
 
-  // Get the agent's default model
+  const modelMap = useMemo(
+    () => new Map<string, ModelWithProvider>((models ?? []).map((m) => [m.id, m])),
+    [models],
+  );
   const defaultModel = agent?.default_model_id ? modelMap.get(agent.default_model_id) : undefined;
-  const agentTags = normalizeTags(agent?.tags);
+
+  // Leaving the page with unsaved edits asks first.
+  useEffect(() => {
+    if (!editing || !draft.isDirty) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [editing, draft.isDirty]);
+
+  const startEdit = useCallback(() => setEditRequested(true), []);
+  const onDraftChange = useCallback(
+    <T,>(apply: (value: T) => void) =>
+      (value: T) => {
+        apply(value);
+        setEditRequested(true);
+      },
+    [],
+  );
+
+  const exitEdit = () => {
+    setEditRequested(false);
+    if (searchParams.get("mode") === "edit") router.replace(`/agents/${agentId}`);
+  };
+
+  const handleDiscard = () => {
+    draft.reset();
+    updateAgent.reset();
+    exitEdit();
+  };
+
+  const handleSave = async () => {
+    const result = draft.buildRequest();
+    if (!result.ok) {
+      setActiveTab("agent");
+      if (BRANDING_FIELDS.some((field) => result.errors[field])) setOpenSection("branding");
+      return;
+    }
+    try {
+      await updateAgent.mutateAsync({ agentId, request: result.request });
+      draft.reset();
+      exitEdit();
+    } catch (error) {
+      console.error("Failed to update agent:", error);
+    }
+  };
 
   const createAgentSession = useCallback(
     async (title?: string) => {
@@ -188,7 +278,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     if (!agent) return;
     try {
       const markdown = await exportAgent.mutateAsync(agentId);
-      // Create downloadable file
       const blob = new Blob([markdown], { type: "text/markdown" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -212,19 +301,25 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     }
   }, [agentId, copyAgent, router]);
 
-  const getCapabilityInfo = (capabilityId: string): Capability | undefined =>
-    allCapabilities?.find((c) => c.id === capabilityId);
-
-  // Capabilities are now part of the agent resource
-  const agentCapabilities = agent?.capabilities ?? [];
-  const agentSessionCount = agent?.session_count ?? totalSessions;
-  const agentAppCount = agent?.app_count ?? 0;
+  const handleConfirm = async () => {
+    try {
+      if (confirmAction === "archive") {
+        await deleteAgent.mutateAsync(agentId);
+        setConfirmAction(null);
+      } else if (confirmAction === "delete") {
+        await destroyAgent.mutateAsync(agentId);
+        router.push("/agents");
+      }
+    } catch (error) {
+      console.error(`Failed to ${confirmAction} agent:`, error);
+    }
+  };
 
   if (agentLoading) {
     return (
       <div className="container mx-auto p-6">
-        <Skeleton className="h-8 w-1/3 mb-4" />
-        <Skeleton className="h-4 w-2/3 mb-8" />
+        <Skeleton className="mb-4 h-8 w-1/3" />
+        <Skeleton className="mb-8 h-4 w-2/3" />
         <Skeleton className="h-64 w-full" />
       </div>
     );
@@ -242,415 +337,308 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     );
   }
 
-  const defaultModelName = defaultModel?.display_name ?? defaultModel?.id;
+  const isActive = agent.status === "active";
+  const sessionCount = agent.session_count;
+  const displayName = getDisplayName(agent);
+  const network = normalizeNetworkAccess(draft.networkAccess);
+  const brandingParts = [
+    draft.fields.description.trim() ? "Description" : "No description",
+    ...(draft.starters.length > 0 ? [count(draft.starters.length, "starter")] : []),
+  ];
+  const moreRows: AgentMoreRow[] = [
+    { id: "branding", label: "Branding", summary: brandingParts.join(" · ") },
+    {
+      id: "mcp",
+      label: "MCP servers",
+      summary: mcpAttachments?.length ? `${mcpAttachments.length} attached` : "None",
+    },
+    {
+      id: "credentials",
+      label: "Credentials",
+      summary: credentials?.length ? `${credentials.length} bound` : "None",
+    },
+    {
+      id: "files",
+      label: "Starter files",
+      summary: draft.files.length ? count(draft.files.length, "file") : "None",
+    },
+    {
+      id: "network",
+      label: "Network access",
+      summary:
+        network.allowed.length || network.blocked.length
+          ? [
+              ...(network.allowed.length ? [`${network.allowed.length} allowed`] : []),
+              ...(network.blocked.length ? [`${network.blocked.length} blocked`] : []),
+            ].join(" · ")
+          : "Inherited",
+    },
+    {
+      id: "usage",
+      label: "Token usage",
+      summary: agent.usage
+        ? formatTokens(agent.usage.input_tokens + agent.usage.output_tokens)
+        : "None",
+    },
+    { id: "health", label: "Health check", summary: healthSummary(latestHealth) },
+  ];
 
-  const tabItems = getAgentDetailTabItems(agentVersionsEnabled);
+  const canArchive = isActive;
+  const canDelete = agent.status === "archived" && can("agent.dangerous");
+  const sheetSection = openSection === "versions" && !agentVersionsEnabled ? null : openSection;
+  const confirmError = confirmAction === "delete" ? destroyAgent.error : deleteAgent.error;
+  const confirmPending = deleteAgent.isPending || destroyAgent.isPending;
+
+  const overflowMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={buttonVariants({ variant: "outline", size: "icon" })}
+        aria-label="More actions"
+      >
+        <MoreHorizontal className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuPositioner align="end">
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={handleCopy} disabled={copyAgent.isPending}>
+            <Copy className="size-4" />
+            {copyAgent.isPending ? "Copying..." : "Copy"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleExport} disabled={exportAgent.isPending}>
+            <Download className="size-4" />
+            {exportAgent.isPending ? "Exporting..." : "Export"}
+          </DropdownMenuItem>
+          {observersEnabled && isActive && (
+            <DropdownMenuItem
+              render={<Link href={{ pathname: "/observers/new", query: { agent_id: agentId } }} />}
+            >
+              <Telescope className="size-4" />
+              Observe this agent
+            </DropdownMenuItem>
+          )}
+          {agentVersionsEnabled && (
+            <DropdownMenuItem onClick={() => setOpenSection("versions")}>
+              <GitBranch className="size-4" />
+              Version history
+            </DropdownMenuItem>
+          )}
+          {(canArchive || canDelete) && <DropdownMenuSeparator />}
+          {canArchive && (
+            <DropdownMenuItem onClick={() => setConfirmAction("archive")}>
+              <Archive className="size-4" />
+              Archive agent
+            </DropdownMenuItem>
+          )}
+          {canDelete && (
+            <DropdownMenuItem
+              onClick={() => setConfirmAction("delete")}
+              className="text-destructive"
+            >
+              <Trash2 className="size-4" />
+              Delete agent
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenuPositioner>
+    </DropdownMenu>
+  );
+
+  const actions = editing ? (
+    <>
+      <Button onClick={handleSave} disabled={updateAgent.isPending}>
+        <Check className="size-4" />
+        {updateAgent.isPending ? "Saving..." : "Save changes"}
+      </Button>
+      <Button variant="outline" onClick={handleDiscard} disabled={updateAgent.isPending}>
+        Discard
+      </Button>
+    </>
+  ) : (
+    <>
+      {isActive && (
+        <Button variant="outline" onClick={startEdit}>
+          <Pencil className="size-4" />
+          Edit
+        </Button>
+      )}
+      {overflowMenu}
+      <Button
+        variant="accent"
+        onClick={handleNewSession}
+        disabled={createSession.isPending || !isActive}
+      >
+        <Plus className="size-4" />
+        {createSession.isPending ? "Creating..." : "New session"}
+      </Button>
+    </>
+  );
 
   return (
-    <PageContainer>
-      <PageBreadcrumb
-        items={[{ label: "Agents", href: "/agents" }, { label: getDisplayName(agent) }]}
-      />
+    <div className="min-h-full bg-brand-dots">
+      <PageContainer>
+        <PageBreadcrumb items={[{ label: "Agents", href: "/agents" }, { label: displayName }]} />
 
-      <PageMasthead
-        icon={<Boxes />}
-        entityId={agent.id}
-        title={
-          <span className={getEntityNameClassName(agent.status)}>{getDisplayName(agent)}</span>
-        }
-        badges={<Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>}
-        description={agent.description || undefined}
-        meta={
-          <>
-            <span>
-              Identity <span className="font-mono text-primary">{agent.name}</span>
-            </span>
-            {defaultModelName && (
-              <span>
-                Model <span className="text-primary">{defaultModelName}</span>
-              </span>
-            )}
-            <span>
-              Created{" "}
-              <span className="text-foreground">
-                {new Date(agent.created_at).toLocaleDateString()}
-              </span>
-            </span>
-            <span>
-              <span className="text-foreground">{agentSessionCount}</span>{" "}
-              {pluralize(agentSessionCount, "session")}
-            </span>
-          </>
-        }
-        actions={
-          <>
-            <Button variant="outline" onClick={handleCopy} disabled={copyAgent.isPending}>
-              <Copy className="size-4" />
-              {copyAgent.isPending ? "Copying..." : "Copy"}
-            </Button>
-            <Button variant="outline" onClick={handleExport} disabled={exportAgent.isPending}>
-              <Download className="size-4" />
-              {exportAgent.isPending ? "Exporting..." : "Export"}
-            </Button>
-            {agent.status === "active" && (
-              <LinkButton variant="outline" href={`/agents/${agentId}/edit`}>
-                <Pencil className="size-4" />
-                Edit
-              </LinkButton>
-            )}
-            {observersEnabled && agent.status === "active" && (
-              <LinkButton
-                variant="outline"
-                href={{ pathname: "/observers/new", query: { agent_id: agentId } }}
-              >
-                <Telescope className="size-4" />
-                Observe this agent
-              </LinkButton>
-            )}
-            <Button
-              variant="accent"
-              onClick={handleNewSession}
-              disabled={createSession.isPending || agent.status !== "active"}
-            >
-              <Plus className="size-4" />
-              {createSession.isPending ? "Creating..." : "New session"}
-            </Button>
-          </>
-        }
-        compactActions={
-          <>
-            <Button
-              variant="accent"
-              onClick={handleNewSession}
-              disabled={createSession.isPending || agent.status !== "active"}
-            >
-              <Plus className="size-4" />
-              {createSession.isPending ? "Creating..." : "New session"}
-            </Button>
-            {observersEnabled && agent.status === "active" && (
-              <div className="hidden @sm/masthead:block">
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    className={buttonVariants({ variant: "outline", size: "icon" })}
-                    aria-label="More actions"
-                  >
-                    <MoreHorizontal className="size-4" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuPositioner align="end">
-                    <DropdownMenuContent>
-                      <DropdownMenuItem
-                        render={
-                          <Link
-                            href={{ pathname: "/observers/new", query: { agent_id: agentId } }}
-                          />
-                        }
-                      >
-                        <Telescope className="size-4" />
-                        Observe this agent
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenuPositioner>
-                </DropdownMenu>
-              </div>
-            )}
-            <div className="@sm/masthead:hidden">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  className={buttonVariants({ variant: "outline", size: "icon" })}
-                  aria-label="More actions"
-                >
-                  <MoreHorizontal className="size-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuPositioner align="end">
-                  <DropdownMenuContent>
-                    <DropdownMenuItem onClick={handleCopy} disabled={copyAgent.isPending}>
-                      <Copy className="size-4" />
-                      {copyAgent.isPending ? "Copying..." : "Copy"}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleExport} disabled={exportAgent.isPending}>
-                      <Download className="size-4" />
-                      {exportAgent.isPending ? "Exporting..." : "Export"}
-                    </DropdownMenuItem>
-                    {agent.status === "active" && (
-                      <DropdownMenuItem render={<Link href={`/agents/${agentId}/edit`} />}>
-                        <Pencil className="size-4" />
-                        Edit
-                      </DropdownMenuItem>
-                    )}
-                    {observersEnabled && agent.status === "active" && (
-                      <DropdownMenuItem
-                        render={
-                          <Link
-                            href={{ pathname: "/observers/new", query: { agent_id: agentId } }}
-                          />
-                        }
-                      >
-                        <Telescope className="size-4" />
-                        Observe this agent
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenuPositioner>
-              </DropdownMenu>
-            </div>
-          </>
-        }
-        compactActionStrip={
-          <>
-            {agent.status === "active" && (
-              <LinkButton variant="outline" href={`/agents/${agentId}/edit`}>
-                <Pencil className="size-4" />
-                Edit
-              </LinkButton>
-            )}
-            <Button variant="outline" onClick={handleCopy} disabled={copyAgent.isPending}>
-              <Copy className="size-4" />
-              {copyAgent.isPending ? "Copying..." : "Copy"}
-            </Button>
-            <Button variant="outline" onClick={handleExport} disabled={exportAgent.isPending}>
-              <Download className="size-4" />
-              {exportAgent.isPending ? "Exporting..." : "Export"}
-            </Button>
-          </>
-        }
-      />
-
-      <PageControlStrip>
-        <SectionTabs value={activeTab} onValueChange={setActiveTab} items={tabItems} />
-      </PageControlStrip>
-
-      {activeTab === "overview" && (
-        <PageColumns>
-          <PageMain>
-            <Card>
-              <CardHeader>
-                <CardTitle>System Prompt</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <MarkdownDisplay content={agent.system_prompt} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Sessions</CardTitle>
-                {hasMoreSessions && (
-                  <Link
-                    href={`/agents/${agentId}/sessions`}
-                    className="text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    View all {totalSessions} sessions →
-                  </Link>
-                )}
-              </CardHeader>
-              <CardContent>
-                {sessionsLoading ? (
-                  <div className="space-y-2">
-                    <Skeleton className="h-12 w-full" />
-                    <Skeleton className="h-12 w-full" />
-                  </div>
-                ) : sessions.length === 0 ? (
-                  <p className="text-center py-8 text-muted-foreground">
-                    No sessions yet. Start a new session to begin chatting.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {sessions.map((session) => (
-                      <SessionCard
-                        key={session.id}
-                        session={session}
-                        model={session.model_id ? modelMap.get(session.model_id) : undefined}
-                      />
-                    ))}
-                    {hasMoreSessions && (
-                      <Link
-                        href={`/agents/${agentId}/sessions`}
-                        className="flex items-center justify-center p-3 border border-dashed hover:bg-muted transition-colors text-muted-foreground"
-                      >
-                        View all {totalSessions} sessions
-                      </Link>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </PageMain>
-
-          <PageRail>
-            <Card>
-              <CardHeader>
-                <CardTitle>Capabilities</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {agentCapabilities.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No capabilities enabled.{" "}
-                    <Link href={`/agents/${agentId}/edit`} className="text-primary hover:underline">
-                      Add some
-                    </Link>
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {agentCapabilities.map((capConfig) => {
-                      const cap = getCapabilityInfo(capConfig.ref);
-                      if (!cap) return null;
-                      return (
-                        <div
-                          key={capConfig.ref}
-                          className="flex items-center gap-2 p-2 border bg-muted/50"
-                        >
-                          <CapabilityIcon icon={cap.icon} className="w-4 h-4" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">
-                              {localizedCapabilityName(cap, locale)}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {localizedCapabilityDescription(cap, locale)}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuration</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {defaultModel && (
-                  <div>
-                    <p className="text-sm font-medium mb-2">Default Model</p>
-                    <div className="flex items-center gap-2">
-                      <ProviderIcon providerType={defaultModel.provider_type} size="sm" />
-                      <span className="text-sm">{defaultModel.display_name}</span>
-                    </div>
-                  </div>
-                )}
-
-                {agent.description && (
-                  <div>
-                    <p className="text-sm font-medium">Description</p>
-                    <div className="text-sm text-muted-foreground">
-                      <InlineStreamdownMessage>{agent.description}</InlineStreamdownMessage>
-                    </div>
-                  </div>
-                )}
-
-                {agentTags.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium mb-2">Tags</p>
-                    <div className="flex flex-wrap gap-1">
-                      {agentTags.map((tag) => (
-                        <Badge key={tag} variant="outline">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <p className="text-sm font-medium mb-2">Usage</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Link
-                      href={`/agents/${agentId}/sessions`}
-                      className="border bg-muted/50 p-2 hover:bg-muted"
-                    >
-                      <p className="text-sm font-medium">{agentSessionCount}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {pluralize(agentSessionCount, "session")}
-                      </p>
-                    </Link>
-                    <div className="border bg-muted/50 p-2">
-                      <p className="text-sm font-medium">{agentAppCount}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {pluralize(agentAppCount, "app")}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {agent.usage && (
-                  <div>
-                    <p className="text-sm font-medium mb-2">Token Usage</p>
-                    <div className="flex items-center gap-2 p-2 border bg-muted/50">
-                      <Zap className="w-4 h-4 text-accent-foreground" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">
-                          {formatTokens(totalTokens(agent.usage))} total
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatTokens(agent.usage.input_tokens)} input /{" "}
-                          {formatTokens(agent.usage.output_tokens)} output
-                          {agent.usage.cache_read_tokens &&
-                            ` / ${formatTokens(agent.usage.cache_read_tokens)} cached`}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <p className="text-sm font-medium">Created</p>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(agent.created_at).toLocaleString()}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium">Updated</p>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(agent.updated_at).toLocaleString()}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </PageRail>
-        </PageColumns>
-      )}
-
-      {activeTab === "integrations" && <AgentIntegrationsPanel agent={agent} />}
-
-      {activeTab === "credentials" && (
-        <PageColumns>
-          <PageMain>
-            <AgentCredentialsPanel agentId={agentId} />
-          </PageMain>
-        </PageColumns>
-      )}
-      {activeTab === "mcp" && (
-        <PageColumns>
-          <PageMain>
-            <AgentMcpPanel agent={agent} />
-          </PageMain>
-        </PageColumns>
-      )}
-
-      {activeTab === "preview" && (
-        <AgentPreview
-          systemPrompt={agent.system_prompt}
-          capabilities={agentCapabilities.map((cap) => ({
-            ref: cap.ref,
-            config: cap.config,
-          }))}
-          initialFiles={agent.initial_files}
-          tools={agent.tools ?? []}
+        <PageMasthead
+          icon={<Boxes />}
+          entityId={agent.id}
+          title={<span className={getEntityNameClassName(agent.status)}>{displayName}</span>}
+          badges={
+            <>
+              <span className="font-mono text-xs text-muted-foreground">{agent.name}</span>
+              {editing ? (
+                <Badge variant="accent">
+                  <Pencil />
+                  Editing
+                </Badge>
+              ) : (
+                <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
+              )}
+            </>
+          }
+          description={
+            editing
+              ? "Changes apply to new sessions only. Running sessions keep the current definition."
+              : undefined
+          }
+          actions={actions}
         />
-      )}
 
-      {activeTab === "stats" && (
-        <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
-      )}
+        {updateAgent.error && (
+          <p role="alert" className="-mt-2 text-sm text-destructive">
+            Could not save: {updateAgent.error.message}
+          </p>
+        )}
 
-      {agentVersionsEnabled && activeTab === "versions" && <AgentVersionHistory agent={agent} />}
+        <PageControlStrip>
+          <SectionTabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as AgentTab)}
+            items={getAgentTabItems(sessionCount)}
+          />
+        </PageControlStrip>
 
-      <PageFooter>
-        <BackLink href="/agents">Back to Agents</BackLink>
-      </PageFooter>
-    </PageContainer>
+        {activeTab === "agent" && (
+          <div className="grid min-w-0 border bg-background lg:grid-cols-[minmax(0,1fr)_340px]">
+            <AgentPromptPane
+              className="lg:border-r"
+              value={draft.fields.system_prompt}
+              editing={editing}
+              onEdit={isActive ? startEdit : undefined}
+              onChange={(value) => draft.setField("system_prompt", value)}
+              error={draft.errors.system_prompt}
+              checks={
+                editing ? (
+                  <AgentChecks
+                    systemPrompt={draft.fields.system_prompt}
+                    capabilities={draft.capabilities}
+                    tools={agent.tools ?? []}
+                    onApplyFix={(start, end, replacement) =>
+                      draft.setField(
+                        "system_prompt",
+                        applyByteSpanReplacement(
+                          draft.fields.system_prompt,
+                          start,
+                          end,
+                          replacement,
+                        ),
+                      )
+                    }
+                  />
+                ) : undefined
+              }
+            />
+            <AgentConfigColumn
+              className="border-t lg:border-t-0"
+              agent={agent}
+              draft={draft}
+              editing={editing}
+              readOnly={readOnly}
+              allCapabilities={allCapabilities ?? []}
+              defaultModel={defaultModel}
+              onStartEdit={startEdit}
+              moreRows={moreRows}
+              onOpenRow={(id) => setOpenSection(id as AgentSettingsSection)}
+            />
+          </div>
+        )}
+
+        {activeTab === "preview" && (
+          <AgentPreview
+            systemPrompt={draft.fields.system_prompt}
+            capabilities={draft.capabilities}
+            initialFiles={draft.files}
+            tools={agent.tools ?? []}
+          />
+        )}
+
+        {activeTab === "integrations" && <AgentIntegrationsPanel agent={agent} />}
+
+        {activeTab === "stats" && (
+          <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
+        )}
+
+        {activeTab === "sessions" && <AgentSessionsPanel agentId={agentId} />}
+
+        <PageFooter>
+          <BackLink href="/agents">Back to Agents</BackLink>
+        </PageFooter>
+      </PageContainer>
+
+      <AgentSettingsSheet
+        section={sheetSection}
+        onOpenChange={(open) => {
+          if (!open) setOpenSection(null);
+        }}
+        agent={agent}
+        draft={draft}
+        readOnly={readOnly}
+        onDraftChange={onDraftChange}
+      />
+
+      <Dialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirmAction === "delete" ? "Delete agent" : "Archive agent"}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmAction === "delete"
+                ? `Permanently delete the archived agent “${displayName}”? Existing references will render as deleted tombstones.`
+                : `Archive “${displayName}”? It stays visible when archived items are shown, becomes read-only, and stops being assignable.`}
+            </DialogDescription>
+            {confirmError && confirmAction && (
+              <EntityDeleteErrorNotice
+                entityKind="agent"
+                action={confirmAction}
+                message={confirmError.message}
+                className="mt-4"
+              />
+            )}
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmAction(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant={confirmAction === "delete" ? "destructive" : "default"}
+              onClick={handleConfirm}
+              disabled={confirmPending}
+            >
+              {confirmAction === "delete"
+                ? destroyAgent.isPending
+                  ? "Deleting..."
+                  : "Delete agent"
+                : deleteAgent.isPending
+                  ? "Archiving..."
+                  : "Archive agent"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
