@@ -6,7 +6,7 @@ use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
-use everruns_provider::typed_id::{EventId, SessionId};
+use everruns_provider::typed_id::{EventId, MessageId, SessionId};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -324,6 +324,28 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
         Ok(row.0)
+    }
+
+    /// Find the input event that contains an exact, session-scoped message ID.
+    pub async fn find_input_message_event(
+        &self,
+        session_id: SessionId,
+        message_id: MessageId,
+    ) -> Result<Option<EventRow>> {
+        Ok(sqlx::query_as::<_, EventRow>(
+            r#"
+            SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
+            FROM events
+            WHERE session_id = $1
+              AND event_type = 'input.message'
+              AND data->'message'->>'id' = $2
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(message_id.to_string())
+        .fetch_optional(&self.pool)
+        .await?)
     }
 
     #[allow(clippy::too_many_arguments)]

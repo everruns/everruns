@@ -71,17 +71,50 @@ use syn::{
 ///   function's doc comment is used. A description is required.
 /// - `#[tool(rename = "…")]` on a parameter renames that argument in the schema
 ///   and the accepted JSON.
+/// - `#[everruns::tool(needs_approval)]` asks the agent's approver before every
+///   call (`FunctionTool::always_needs_approval`).
+/// - `#[everruns::tool(needs_approval = <rule>)]` asks only when `rule` returns
+///   `true`. `rule` is a closure or function taking `&<Name>Args` (see below)
+///   and returning `bool`; arguments that do not parse are treated as needing
+///   approval. An agent with a gated tool and no approver fails to build.
+///
+/// # Generated items
+///
+/// Besides the constructor, the macro emits the arguments struct next to it,
+/// named after the function in PascalCase with an `Args` suffix
+/// (`run_sql` → `RunSqlArgs`) and the function's visibility. Its public fields
+/// are the model arguments (derives `Deserialize` and `JsonSchema`), so an
+/// approval rule or a host can read a call's arguments with their real types.
+///
+/// # Call context
+///
+/// A first parameter of type `ToolCallContext` (by value or `&ToolCallContext`,
+/// matched by its last path segment) receives the call's context instead of a
+/// model argument, and the tool is built with `FunctionTool::with_context`:
+///
+/// ```text
+/// use everruns::ToolCallContext;
+///
+/// /// Export a report.
+/// #[everruns::tool(needs_approval = |args: &ExportArgs| args.pages > 10)]
+/// async fn export(ctx: &ToolCallContext, pages: u32) -> String {
+///     ctx.progress("rendering").await;
+///     format!("{pages} pages")
+/// }
+/// ```
 ///
 /// # Supported signatures
 ///
-/// Required arguments, `Option<T>` (optional), renamed arguments, a unit
-/// return, a plain `T` return, and `Result<T, E>` (where `E: Display` becomes a
-/// model-visible tool error). Argument types must implement `Deserialize` and
-/// `JsonSchema`; return values must implement `Serialize`.
+/// Required arguments, `Option<T>` (optional), renamed arguments, a leading
+/// `ToolCallContext`, a unit return, a plain `T` return, and `Result<T, E>`
+/// (where `E: Display` becomes a model-visible tool error). Argument types must
+/// implement `Deserialize` and `JsonSchema`; return values must implement
+/// `Serialize`.
 ///
 /// The macro rejects, with a compile error: non-`async` functions, a `self`
-/// receiver, generic parameters, a missing description, and non-identifier
-/// parameter patterns.
+/// receiver, generic parameters, a missing description, non-identifier
+/// parameter patterns, and a `ToolCallContext` that is not the first
+/// parameter.
 #[proc_macro_attribute]
 pub fn tool(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as ToolArgs);
@@ -97,31 +130,55 @@ pub fn tool(attr: TokenStream, item: TokenStream) -> TokenStream {
 struct ToolArgs {
     name: Option<String>,
     description: Option<String>,
+    approval: Option<Approval>,
+}
+
+/// The `needs_approval` option: every call, or calls a rule selects.
+enum Approval {
+    Always,
+    When(Box<Expr>),
 }
 
 impl syn::parse::Parse for ToolArgs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut args = ToolArgs::default();
         let metas =
-            syn::punctuated::Punctuated::<syn::MetaNameValue, syn::Token![,]>::parse_terminated(
-                input,
-            )?;
+            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated(input)?;
         for meta in metas {
-            let key = meta
-                .path
-                .get_ident()
-                .map(Ident::to_string)
-                .unwrap_or_default();
-            let value = lit_str(&meta.value)
-                .ok_or_else(|| syn::Error::new(meta.value.span(), "expected a string literal"))?;
-            match key.as_str() {
-                "name" => args.name = Some(value),
-                "description" => args.description = Some(value),
-                other => {
+            let path = meta.path().clone();
+            let key = path.get_ident().map(Ident::to_string).unwrap_or_default();
+            match (key.as_str(), meta) {
+                ("needs_approval", syn::Meta::Path(_)) => args.approval = Some(Approval::Always),
+                ("needs_approval", syn::Meta::NameValue(nv)) => {
+                    args.approval = Some(Approval::When(Box::new(nv.value)));
+                }
+                ("name" | "description", syn::Meta::NameValue(nv)) => {
+                    let value = lit_str(&nv.value).ok_or_else(|| {
+                        syn::Error::new(nv.value.span(), "expected a string literal")
+                    })?;
+                    if key == "name" {
+                        args.name = Some(value);
+                    } else {
+                        args.description = Some(value);
+                    }
+                }
+                ("name" | "description", other) => {
                     return Err(syn::Error::new(
-                        meta.path.span(),
+                        other.span(),
+                        format!("expected `{key} = \"…\"`"),
+                    ));
+                }
+                ("needs_approval", other) => {
+                    return Err(syn::Error::new(
+                        other.span(),
+                        "expected `needs_approval` or `needs_approval = <rule>`",
+                    ));
+                }
+                (other, _) => {
+                    return Err(syn::Error::new(
+                        path.span(),
                         format!(
-                            "unknown `everruns::tool` option `{other}`; expected `name` or `description`"
+                            "unknown `everruns::tool` option `{other}`; expected `name`, `description`, or `needs_approval`"
                         ),
                     ));
                 }
@@ -176,9 +233,12 @@ fn expand(args: ToolArgs, func: ItemFn) -> syn::Result<TokenStream2> {
         ));
     }
 
-    // Collect parameters, rejecting receivers and non-identifier patterns.
+    // Collect parameters, rejecting receivers and non-identifier patterns. A
+    // leading `ToolCallContext` (by value or reference) is the call context,
+    // not a model argument.
     let mut fields: Vec<Field> = Vec::new();
-    for input in &sig.inputs {
+    let mut context: Option<ContextParam> = None;
+    for (index, input) in sig.inputs.iter().enumerate() {
         match input {
             FnArg::Receiver(receiver) => {
                 return Err(syn::Error::new_spanned(
@@ -186,7 +246,16 @@ fn expand(args: ToolArgs, func: ItemFn) -> syn::Result<TokenStream2> {
                     "`#[everruns::tool]` does not support a `self` receiver",
                 ));
             }
-            FnArg::Typed(pat_type) => fields.push(lower_param(pat_type)?),
+            FnArg::Typed(pat_type) => match context_param(&pat_type.ty) {
+                Some(kind) if index == 0 => context = Some(kind),
+                Some(_) => {
+                    return Err(syn::Error::new_spanned(
+                        &pat_type.ty,
+                        "`ToolCallContext` must be the first parameter of an `#[everruns::tool]` function",
+                    ));
+                }
+                None => fields.push(lower_param(pat_type)?),
+            },
         }
     }
 
@@ -224,7 +293,11 @@ fn expand(args: ToolArgs, func: ItemFn) -> syn::Result<TokenStream2> {
     let orig_output = &sig.output;
     let orig_body = &func.block;
 
-    // Generated arguments struct.
+    // Generated arguments struct, nameable so hosts and approval rules can
+    // read typed arguments: `run_sql` -> `RunSqlArgs`. The `Args` suffix keeps
+    // it clear of the common `fn weather() -> Weather` naming. No doc comment:
+    // schemars would copy it into the model-facing schema.
+    let args_ident = format_ident!("{}Args", pascal_case(&fn_ident.to_string()));
     let field_decls = fields.iter().map(|f| {
         let ident = &f.ident;
         let ty = &f.ty;
@@ -238,33 +311,84 @@ fn expand(args: ToolArgs, func: ItemFn) -> syn::Result<TokenStream2> {
 
     let dispatch = result_dispatch(orig_output, &tool_name);
 
+    let (constructor, handler_params, context_arg) = match context {
+        None => (
+            quote!(::everruns::FunctionTool::new),
+            quote!(__args: ::everruns::__macro_support::Value),
+            quote!(),
+        ),
+        Some(kind) => {
+            let pass = match kind {
+                ContextParam::Value => quote!(__ctx,),
+                ContextParam::Ref => quote!(&__ctx,),
+            };
+            (
+                quote!(::everruns::FunctionTool::with_context),
+                quote!(
+                    __ctx: ::everruns::ToolCallContext,
+                    __args: ::everruns::__macro_support::Value
+                ),
+                pass,
+            )
+        }
+    };
+
+    let approval = match args.approval {
+        None => quote!(),
+        Some(Approval::Always) => quote!(.always_needs_approval()),
+        Some(Approval::When(rule)) => quote! {
+            .needs_approval({
+                // Pin the rule's argument type so a bare closure infers it.
+                fn __everruns_approval_rule<
+                    __F: ::core::ops::Fn(&#args_ident) -> bool
+                        + ::core::marker::Send
+                        + ::core::marker::Sync
+                        + 'static,
+                >(rule: __F) -> __F {
+                    rule
+                }
+                let __rule = __everruns_approval_rule(#rule);
+                move |__args: &::everruns::__macro_support::Value| {
+                    match ::everruns::__macro_support::from_value::<#args_ident>(
+                        ::core::clone::Clone::clone(__args),
+                    ) {
+                        ::core::result::Result::Ok(__parsed) => __rule(&__parsed),
+                        // Fail closed: arguments the rule cannot read are
+                        // asked about rather than waved through.
+                        ::core::result::Result::Err(_) => true,
+                    }
+                }
+            })
+        },
+    };
+
     let expanded = quote! {
+        #[derive(
+            ::everruns::__macro_support::serde::Deserialize,
+            ::everruns::__macro_support::schemars::JsonSchema,
+        )]
+        #[serde(crate = "::everruns::__macro_support::serde")]
+        #[schemars(crate = "::everruns::__macro_support::schemars", rename = "__Args")]
+        #[allow(missing_docs, non_camel_case_types, dead_code)]
+        #vis struct #args_ident {
+            #(#field_decls,)*
+        }
+
         // `let __out = …await` binds `()` for unit-returning tools, which the
         // `let_unit_value` lint flags; the binding is intentional here.
         #[allow(clippy::let_unit_value)]
         #vis fn #fn_ident() -> ::everruns::FunctionTool {
-            #[derive(
-                ::everruns::__macro_support::serde::Deserialize,
-                ::everruns::__macro_support::schemars::JsonSchema,
-            )]
-            #[serde(crate = "::everruns::__macro_support::serde")]
-            #[schemars(crate = "::everruns::__macro_support::schemars")]
-            #[allow(non_camel_case_types, dead_code)]
-            struct __Args {
-                #(#field_decls,)*
-            }
-
             #[allow(clippy::used_underscore_items)]
             async fn #impl_ident(#inner_inputs) #orig_output #orig_body
 
-            let __schema = ::everruns::__macro_support::schema_for::<__Args>();
+            let __schema = ::everruns::__macro_support::schema_for::<#args_ident>();
 
-            ::everruns::FunctionTool::new(
+            #constructor(
                 #tool_name,
                 #description,
                 __schema,
-                move |__args: ::everruns::__macro_support::Value| async move {
-                    let __parsed: __Args = match ::everruns::__macro_support::from_value(__args) {
+                move |#handler_params| async move {
+                    let __parsed: #args_ident = match ::everruns::__macro_support::from_value(__args) {
                         ::core::result::Result::Ok(__v) => __v,
                         ::core::result::Result::Err(__e) => {
                             // Model-visible on purpose, unlike the `Err` channel
@@ -280,14 +404,57 @@ fn expand(args: ToolArgs, func: ItemFn) -> syn::Result<TokenStream2> {
                             );
                         }
                     };
-                    let __out = #impl_ident(#(__parsed.#field_idents),*).await;
+                    let __out = #impl_ident(#context_arg #(__parsed.#field_idents),*).await;
                     #dispatch
                 },
             )
+            #approval
         }
     };
 
     Ok(expanded)
+}
+
+/// How the function takes its call context.
+#[derive(Clone, Copy)]
+enum ContextParam {
+    Value,
+    Ref,
+}
+
+/// Whether `ty` is `ToolCallContext` or `&ToolCallContext`, matched by the
+/// last path segment so any import path works.
+fn context_param(ty: &Type) -> Option<ContextParam> {
+    let (ty, kind) = match ty {
+        Type::Reference(reference) if reference.mutability.is_none() => {
+            (reference.elem.as_ref(), ContextParam::Ref)
+        }
+        other => (other, ContextParam::Value),
+    };
+    let Type::Path(type_path) = ty else {
+        return None;
+    };
+    type_path
+        .path
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == "ToolCallContext" && segment.arguments.is_empty())
+        .then_some(kind)
+}
+
+/// `run_sql` -> `RunSql`; a raw identifier's `r#` prefix is dropped.
+fn pascal_case(name: &str) -> String {
+    name.trim_start_matches("r#")
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().chain(chars).collect::<String>(),
+                None => String::new(),
+            }
+        })
+        .collect()
 }
 
 /// Lower one typed parameter to a generated-struct field, rejecting patterns the

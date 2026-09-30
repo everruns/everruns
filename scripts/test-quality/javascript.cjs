@@ -16,7 +16,10 @@ for (const path of files) {
       const expression = node.expression.getText(source).replace(/\s+/g, '');
       const callback = [...node.arguments].reverse().find(arg => ts.isArrowFunction(arg) || ts.isFunctionExpression(arg));
       const isSuite = /^(?:(?:describe|fdescribe|xdescribe)|test\.describe)(?:\.|\(|$)/.test(expression);
-      const isTest = !isSuite && /^(?:test|it|fit|xit|xtest)(?:\.|\(|$)/.test(expression);
+      // Playwright's test.beforeEach/afterEach/beforeAll/afterAll are setup/teardown
+      // hooks, not tests, even though their call expression starts with "test.".
+      const isHook = /^test\.(?:beforeEach|afterEach|beforeAll|afterAll)\b/.test(expression);
+      const isTest = !isSuite && !isHook && /^(?:test|it|fit|xit|xtest)(?:\.|\(|$)/.test(expression);
       if ((isSuite || isTest) && (callback || expression.endsWith('.todo'))) {
         const title = node.arguments.length ? label(node.arguments[0]) : '(unnamed)';
         if (isTest) {

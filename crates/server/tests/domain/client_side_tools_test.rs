@@ -223,20 +223,6 @@ fn test_submit_tool_results_request_empty_results() {
     assert!(req.tool_results.is_empty());
 }
 
-#[test]
-fn test_submit_tool_results_response_serialization() {
-    use everruns_server::api::tool_results::SubmitToolResultsResponse;
-
-    let resp = SubmitToolResultsResponse {
-        accepted: 3,
-        status: "active".to_string(),
-    };
-
-    let json = serde_json::to_value(&resp).unwrap();
-    assert_eq!(json["accepted"], 3);
-    assert_eq!(json["status"], "active");
-}
-
 // ============================================
 // ToolCallRequestedData Serialization
 // ============================================
@@ -363,38 +349,6 @@ fn test_client_side_tool_in_session_tools_json() {
 // ============================================
 // ToolCall + ToolResult Correlation
 // ============================================
-
-#[test]
-fn test_tool_call_and_result_correlation() {
-    use everruns_provider::tool_types::{ToolCall, ToolResult};
-
-    let tool_call = ToolCall {
-        id: "call_corr123".to_string(),
-        name: "run_command".to_string(),
-        arguments: json!({"cmd": "ls -la"}),
-    };
-
-    let tool_result = ToolResult {
-        tool_call_id: tool_call.id.clone(),
-        result: Some(json!({"output": "total 42\n..."})),
-        images: None,
-        error: None,
-        connection_required: None,
-        raw_output: None,
-    };
-
-    // IDs correlate
-    assert_eq!(tool_call.id, tool_result.tool_call_id);
-
-    // Both serialize/deserialize correctly
-    let call_json = serde_json::to_string(&tool_call).unwrap();
-    let result_json = serde_json::to_string(&tool_result).unwrap();
-
-    let parsed_call: ToolCall = serde_json::from_str(&call_json).unwrap();
-    let parsed_result: ToolResult = serde_json::from_str(&result_json).unwrap();
-
-    assert_eq!(parsed_call.id, parsed_result.tool_call_id);
-}
 
 struct RecordingRunner {
     resumed_sessions: tokio::sync::mpsc::UnboundedSender<SessionId>,

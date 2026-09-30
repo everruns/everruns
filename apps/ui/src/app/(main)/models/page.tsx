@@ -143,9 +143,11 @@ export default function ModelsPage() {
     setActionError(null);
     try {
       await action();
+      return true;
     } catch (error) {
       console.error(`${summary}:`, error);
       setActionError(`${summary}: ${errorDetail(error)}`);
+      return false;
     }
   };
 
@@ -171,7 +173,7 @@ export default function ModelsPage() {
   };
 
   const handleUpdateModel = async (modelId: string, data: Parameters<typeof updateModel>[1]) => {
-    await runAction("Failed to update model", async () => {
+    return runAction("Failed to update model", async () => {
       await updateModel(modelId, data);
       await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
       await queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });

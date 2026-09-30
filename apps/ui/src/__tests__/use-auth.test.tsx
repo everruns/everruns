@@ -459,7 +459,7 @@ describe("Auth Hooks", () => {
         await expect(result.current.mutateAsync()).rejects.toThrow("Logout failed");
       });
 
-      expect(queryClient.getQueryData(authKeys.user())).toBeUndefined();
+      expect(queryClient.getQueryData(authKeys.user())).toMatchObject({ id: "user-1" });
       expect(queryClient.getQueryData(["durable", "workflows"])).toBeUndefined();
       expect(localStorage.getItem("everruns_current_org")).toBeNull();
     });

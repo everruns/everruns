@@ -82,7 +82,7 @@ agent property.
 | `actsAs` | Reads | Never reads | Missing grant |
 |---|---|---|---|
 | `none` | literal headers | any connection store | n/a |
-| `service` | `agent_identity_connections` for the agent's identity | `user_connections`, org `api_key_encrypted` of a user-bound preset | `connection_required` naming the **agent**, setup URL = agent MCP tab (admin action) |
+| `service` | `agent_identity_connections` for the agent's identity | `user_connections`, org `api_key_encrypted` of a user-bound preset | `connection_required` naming the **agent**, setup URL = agent MCP servers sheet (admin action) |
 | `user` | `user_connections` for the invoking user | `agent_identity_connections`, org API keys, catalog `Authorization` headers | `connection_required` naming the **user**, setup URL = their connections page |
 
 The existing identity→user fallback in `DbConnectionResolver` is removed for MCP
@@ -224,9 +224,10 @@ product decision here.
 
 One rule: **an attachment is a row, not a screen.**
 
-### Agent → MCP tab
+### Agent → MCP servers
 
-A new `SectionTabs` entry on the agent detail page, beside Overview/Sessions. One
+A **More** row in the agent page's config column that opens a side sheet (it was a
+tab until the agent page redesign, see [Agent page](../ui/agent-page.md)). One
 list, one row per effective attachment, in merge order:
 
 ```

@@ -75,6 +75,86 @@ if not guards_run_ci:
         "run_ci != 'true'. A run where every job skipped would report success, "
         "turning 'nothing ran' into a green required check (EVE-939)."
     )
+
+# --- 2b. ...but it must fail closed by deferring, not by blanket refusal -----
+# Refusing unconditionally is the other half of the trap: GitHub resolves a
+# required check by the newest run of that name, so a label applied after CI
+# finished supersedes the real green and blocks a PR nobody touched
+# (EVE-1077). The gated-off run must look for a verdict a real run already
+# published on the same head SHA, and inherit only a pass.
+defers_to_head_sha = (
+    "check-runs" in verify
+    and "check_name=Build+Check" in verify
+    and "HEAD_SHA" in verify
+)
+if not defers_to_head_sha:
+    errors.append(
+        f"{workflow}: the 'Build Check' verify step does not consult the Checks "
+        "API for a 'Build Check' that already passed on the pull request head "
+        "SHA. Without that, a label event landing after CI finished turns a "
+        "green PR red and blocks it (EVE-1077)."
+    )
+
+# Inheriting anything other than a pass would let a gated-off run launder a
+# real failure into a green required check.
+if 'select(.conclusion == "success")' not in verify:
+    errors.append(
+        f"{workflow}: the 'Build Check' verify step does not restrict the "
+        "verdict it inherits to a successful run, so a gated-off run could "
+        "report a pass the real run never gave (EVE-939)."
+    )
+
+# Reading those check runs needs the scope; without it the query 404s and the
+# deferral silently becomes the blanket refusal it replaced.
+permissions = doc.get("permissions") or {}
+if permissions.get("checks") != "read":
+    errors.append(
+        f"{workflow}: workflow permissions do not grant 'checks: read', so "
+        "'Build Check' cannot read the verdict it is meant to defer to "
+        "(EVE-1077). Current permissions:\n"
+        f"  {permissions}"
+    )
+
+# --- 2c. ...and it must wait when the verdict is not in yet ------------------
+# Deferring only to a verdict that has *already* landed still fails closed on
+# the common case: label-on-open tooling resolves the gated-off run in ~30s,
+# while the code run posts its own `Build Check` last, 15-30 minutes later. The
+# gated-off run must distinguish "no real run will ever report" from "the real
+# run has not reported yet", and outwait the second (EVE-1110). All 40 open
+# aardvark PRs opened blocked this way.
+waits_for_sibling_runs = (
+    "actions/runs?head_sha=" in verify
+    and "GITHUB_RUN_ID" in verify
+    and "sleep" in verify
+)
+if not waits_for_sibling_runs:
+    errors.append(
+        f"{workflow}: the 'Build Check' verify step answers without checking "
+        "whether another ci.yml run for the same head SHA is still in flight. "
+        "A label applied while CI is running then fails closed on a commit "
+        "whose real run is still going, and no later green supersedes that "
+        "red (EVE-1110)."
+    )
+
+# Listing those runs needs its own scope — `checks: read` does not cover the
+# Actions API, and without it the query 404s and every gated-off run fails
+# closed again.
+if permissions.get("actions") != "read":
+    errors.append(
+        f"{workflow}: workflow permissions do not grant 'actions: read', so "
+        "'Build Check' cannot tell an in-flight sibling run from no run at "
+        "all (EVE-1110). Current permissions:\n"
+        f"  {permissions}"
+    )
+
+# Waiting is only safe if the wait is bounded: an unbounded poll is a job the
+# runner kills at its own ceiling, with no line saying what it was waiting for.
+if "deadline" not in verify:
+    errors.append(
+        f"{workflow}: the 'Build Check' wait for in-flight sibling runs is "
+        "unbounded, so a stuck sibling turns into a job the runner kills "
+        "rather than a legible red (EVE-1110)."
+    )
 # --- 3. the UI opt-out must guard every UI E2E path --------------------------
 opt_out_policy = None
 for job in doc["jobs"].values():
@@ -108,7 +188,9 @@ else:
 if errors:
     sys.exit("\n\n".join(errors))
 
-print("ci.yml: label-event runs cannot cancel real runs, and Build Check "
-      "refuses to pass a run that executed nothing; UI E2E opt-outs cannot "
-      "suppress affected smoke or endpoint-budget coverage")
+print("ci.yml: label-event runs cannot cancel real runs, Build Check refuses "
+      "to pass a run that executed nothing unless a real run passed on the "
+      "same head SHA — waiting, bounded, for one still in flight rather than "
+      "failing closed on it — and UI E2E opt-outs cannot suppress affected "
+      "smoke or endpoint-budget coverage")
 PY

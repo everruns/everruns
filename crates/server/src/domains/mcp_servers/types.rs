@@ -161,10 +161,9 @@ mod tests {
         assert_eq!(req.transport_type, McpServerTransportType::Http);
     }
 
-    #[test]
-    fn test_default_transport_type() {
-        assert_eq!(default_transport_type(), McpServerTransportType::Http);
-    }
+    // test_default_transport_type removed: it only asserted the trivial
+    // default-fn's constant return; the default path is already exercised by
+    // test_create_request_deserialization via real serde deserialization.
 
     // --- SSRF validation tests (URL safety) ---
 

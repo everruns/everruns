@@ -9,7 +9,7 @@ use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::StorageBackend;
 use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
 use chrono::Utc;
-use everruns_builtins::ask_user::AskUserStatus;
+use everruns_builtins::ask_user::{AskUserAnsweredBy, AskUserStatus};
 use everruns_core::events::{
     EventContext, EventData, EventRequest, ToolCompletedData, deserialize_event_data,
 };
@@ -191,12 +191,13 @@ async fn resolve_expired_question(
         runner: runner.clone(),
     };
     let caller = everruns_core::Caller::internal(org_id);
-    match crate::api::question_answers::resolve_question_answers(
+    match crate::api::question_answers::resolve_question_answers_with_source(
         &resolver,
         &caller,
         session_id,
         Some(&pending.tool_call_id),
         status,
+        AskUserAnsweredBy::Timeout,
         &answers,
     )
     .await

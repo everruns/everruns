@@ -63,6 +63,26 @@ impl CompactionCheckpointStore for InMemoryCompactionCheckpointStore {
             .cloned())
     }
 
+    async fn get_latest_format(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        format_version: u32,
+    ) -> Result<Option<CompactionCheckpoint>> {
+        Ok(self
+            .checkpoints
+            .read()
+            .await
+            .get(&(
+                session_id,
+                provider_type.to_string(),
+                model.to_string(),
+                format_version,
+            ))
+            .cloned())
+    }
+
     async fn install(&self, checkpoint: CompactionCheckpoint) -> Result<bool> {
         let key = (
             checkpoint.session_id,
