@@ -20,6 +20,13 @@
 //! is the right default for an attribution or ingress pointer, which is what
 //! these columns are; a column that must be set deliberately should be added
 //! to the *request* types instead, where the compiler still demands it.
+//!
+//! `CreateSessionRequest` in `api/sessions.rs` carries a `Default` for the same
+//! reason, and it is sound there for a stronger one: every field already has
+//! `#[serde(default)]`, so `Default` is exactly what a `{}` body deserializes
+//! to. That rationale lives here rather than on the struct because utoipa
+//! publishes a doc comment as the schema `description`, and Rust's `Default`
+//! means nothing to an API caller reading the OpenAPI spec.
 
 use crate::kernel_imports::{
     everruns_provider::typed_id::AgentId, everruns_provider::typed_id::AgentIdentityId,
