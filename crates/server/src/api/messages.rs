@@ -8,6 +8,7 @@
 // ContentPart and InputContentPart are defined in everruns-core.
 // We re-export them here with ToSchema for OpenAPI documentation.
 
+use crate::api::sse::SseConnectionTracker;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::messages::{
@@ -263,6 +264,9 @@ pub struct AppState {
     /// emitted on — otherwise the UI never sees it close (EVE-1054).
     pub event_service: Arc<crate::services::EventService>,
     pub auth: AuthState,
+    /// Shared with streaming endpoints so every long-lived HTTP response is
+    /// covered by the same global, organization, and session limits.
+    pub sse_tracker: Arc<SseConnectionTracker>,
     /// Response-size cap for the ATIF session export, in bytes. Production
     /// always uses `crate::atif::ATIF_EXPORT_MAX_BYTES`; tests shrink it via
     /// `with_atif_export_max_bytes` to exercise the 413 path cheaply.
@@ -276,6 +280,7 @@ impl AppState {
         auth: AuthState,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
+        sse_tracker: Arc<SseConnectionTracker>,
     ) -> Self {
         Self {
             db: db.clone(),
@@ -291,6 +296,7 @@ impl AppState {
                 event_delivery,
             )),
             auth,
+            sse_tracker,
             atif_export_max_bytes: crate::atif::ATIF_EXPORT_MAX_BYTES,
         }
     }
@@ -402,6 +408,7 @@ async fn wait_for_turn(
         (status = 202, description = "Wait deadline expired; turn still running (?wait=true)", body = CreateMessageResult),
         (status = 400, description = "Invalid ID format"),
         (status = 404, description = "Session not found"),
+        (status = 429, description = "Long-lived response concurrency limit reached"),
         (status = 500, description = "Internal server error")
     ),
     tag = "messages"
@@ -449,6 +456,24 @@ pub async fn create_message(
             Json(CreateMessageResult::Accepted(message)),
         ));
     }
+    // CreateMessage performs the session authorization before we acquire a
+    // permit. Keep the RAII guard in this request future so completion,
+    // timeout, errors, and client cancellation all release it.
+    let _wait_guard = state
+        .sse_tracker
+        .try_acquire(org.org_id, parsed.expect("parsed when query.wait").uuid())
+        .map_err(|rejection| {
+            tracing::warn!(
+                org_id = org.org_id,
+                session_id = %parsed.expect("parsed when query.wait").uuid(),
+                reason = %rejection,
+                "message wait rejected"
+            );
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(ErrorResponse::new(rejection.to_string())),
+            )
+        })?;
     // Session runs one turn at a time, so `parsed` is still valid: no other
     // turn can interleave between the baseline above and this wait.
     let parsed = parsed.expect("parsed when query.wait");
