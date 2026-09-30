@@ -96,7 +96,8 @@ pub fn routes(state: AppWebhookState) -> Router {
             post(invoke_webhook_legacy),
         )
         .route("/v1/e/{channel_id}/webhook", post(invoke_webhook_endpoint))
-        .with_state(state)
+        .with_state(state.clone())
+        .merge(super::github_webhooks::routes(state))
 }
 
 #[utoipa::path(

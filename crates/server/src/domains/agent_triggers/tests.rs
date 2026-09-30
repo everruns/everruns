@@ -6,6 +6,9 @@
 use super::*;
 use crate::domains::agent_triggers::deliveries::ListAgentTriggerDeliveries;
 use crate::domains::agent_triggers::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
+use crate::domains::agent_triggers::webhook_invocation::{
+    WebhookTriggerInvocationRequest, invoke_webhook_agent_trigger,
+};
 use crate::domains::common::Ctx;
 use crate::event_delivery::EventDelivery;
 use crate::storage::StorageBackend;
@@ -153,6 +156,8 @@ fn webhook_req(enabled: bool) -> CreateAgentTriggerRequest {
         event_id_template: None,
         subject_template: None,
         filter: None,
+        github_events: None,
+        repositories: None,
         auth: None,
         enabled,
     }
@@ -225,6 +230,8 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
         event_id_template: None,
         subject_template: None,
         filter: None,
+        github_events: None,
+        repositories: None,
         auth: None,
         enabled,
     }

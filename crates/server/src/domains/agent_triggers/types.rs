@@ -66,6 +66,13 @@ pub struct CreateAgentTriggerRequest {
     /// Webhook only: conditions an event must meet to start a run.
     #[serde(default)]
     pub filter: Option<TriggerEventFilter>,
+    /// GitHub only: subscribed events (`pull_request` or
+    /// `pull_request.opened`). Defaults to pull request open/update events.
+    #[serde(default)]
+    pub github_events: Option<Vec<String>>,
+    /// GitHub only: repositories (`owner/name`) to accept; empty accepts all.
+    #[serde(default)]
+    pub repositories: Option<Vec<String>>,
     /// Shared endpoint auth is not supported by webhook triggers.
     #[serde(default)]
     pub auth: Option<Value>,
@@ -105,6 +112,12 @@ pub struct UpdateAgentTriggerRequest {
     /// Replacement filter. A filter with no conditions removes it.
     #[serde(default)]
     pub filter: Option<TriggerEventFilter>,
+    /// Replacement GitHub event subscriptions.
+    #[serde(default)]
+    pub github_events: Option<Vec<String>>,
+    /// Replacement GitHub repository scope. An empty list accepts all.
+    #[serde(default)]
+    pub repositories: Option<Vec<String>>,
     /// Shared endpoint auth is not supported by webhook triggers.
     #[serde(default)]
     pub auth: Option<Value>,

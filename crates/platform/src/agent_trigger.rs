@@ -29,6 +29,8 @@ pub enum AgentTriggerType {
     Schedule,
     /// Token-authenticated HTTP webhook trigger.
     Webhook,
+    /// GitHub events delivered to the agent identity's GitHub App.
+    GitHub,
 }
 
 impl std::fmt::Display for AgentTriggerType {
@@ -36,6 +38,7 @@ impl std::fmt::Display for AgentTriggerType {
         match self {
             AgentTriggerType::Schedule => write!(f, "schedule"),
             AgentTriggerType::Webhook => write!(f, "webhook"),
+            AgentTriggerType::GitHub => write!(f, "github"),
         }
     }
 }
@@ -44,6 +47,7 @@ impl From<&str> for AgentTriggerType {
     fn from(value: &str) -> Self {
         match value {
             "webhook" => Self::Webhook,
+            "github" => Self::GitHub,
             _ => Self::Schedule,
         }
     }
@@ -96,6 +100,38 @@ pub struct WebhookTriggerConfig {
     /// Optional conditions an event must meet to start a run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter: Option<TriggerEventFilter>,
+}
+
+/// Typed configuration for a `GitHub` trigger.
+///
+/// Events arrive through the webhook of the GitHub App the agent's identity
+/// created ("Connect GitHub"), signed with that App's secret, so the trigger
+/// holds no token of its own. The event context carries `github.*` fields
+/// (`event`, `action`, `repository`, `number`, `title`, `url`, `sender`) and
+/// the raw `payload`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct GitHubTriggerConfig {
+    /// Subscribed events: an event name (`pull_request`) or an event and
+    /// action (`pull_request.opened`).
+    pub events: Vec<String>,
+    /// Repositories (`owner/name`) to accept. Empty accepts every repository
+    /// the installation can see.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub repositories: Vec<String>,
+    /// Session strategy. `per_thread` keeps one session per pull request or
+    /// issue.
+    #[serde(default = "default_github_binding")]
+    pub session_mode: SessionBinding,
+    /// Message template rendered with the event context.
+    pub message: String,
+    /// Optional extra conditions an event must meet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<TriggerEventFilter>,
+}
+
+fn default_github_binding() -> SessionBinding {
+    SessionBinding::Thread
 }
 
 /// Conditions an incoming event must satisfy before a trigger runs.
@@ -239,6 +275,14 @@ impl AgentTrigger {
     pub fn schedule_config(&self) -> anyhow::Result<ScheduleTriggerConfig> {
         if self.trigger_type != AgentTriggerType::Schedule {
             anyhow::bail!("agent trigger {} is not a schedule trigger", self.id);
+        }
+        Ok(serde_json::from_value(self.config.clone())?)
+    }
+
+    /// Parse `config` as [`GitHubTriggerConfig`].
+    pub fn github_config(&self) -> anyhow::Result<GitHubTriggerConfig> {
+        if self.trigger_type != AgentTriggerType::GitHub {
+            anyhow::bail!("agent trigger {} is not a GitHub trigger", self.id);
         }
         Ok(serde_json::from_value(self.config.clone())?)
     }
