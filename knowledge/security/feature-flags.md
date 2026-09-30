@@ -85,6 +85,7 @@ Current API-visible experimental flags include:
   platform-user action, reached from the super-admin console. See
   `knowledge/harnesses/execution-environments.md`.
 - `webmcp`: gates browser-native tools exposed by the authenticated UI. The deployment gate also controls the `tools` Permissions Policy; org opt-in controls registration. Env var: `FEATURE_WEBMCP`. See `knowledge/ui/webmcp.md`.
+- `reports`: gates the Reports page, its sidebar entry, and saved-report global-search results. Off for every org until an admin opts in, so the page is hidden by default while it matures. UI-only: the reporting API, Platform/MCP reporting commands, and background aggregation stay available. Env var: `FEATURE_REPORTS`.
 
 ## Architecture
 

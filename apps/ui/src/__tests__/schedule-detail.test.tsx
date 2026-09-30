@@ -215,7 +215,7 @@ describe("ScheduleDetailPage", () => {
   // ============================================
 
   describe("Error State", () => {
-    it("shows error message when schedule fails to load", () => {
+    it("shows the not-found message, a back link, and a Retry button when the schedule fails to load", () => {
       mockUseSchedule.mockReturnValue({
         data: undefined,
         isLoading: false,
@@ -226,31 +226,7 @@ describe("ScheduleDetailPage", () => {
       render(<ScheduleDetailPage />, { wrapper });
 
       expect(screen.getByText(/Schedule Not Found/i)).toBeInTheDocument();
-    });
-
-    it("shows Back to Schedules link on error", () => {
-      mockUseSchedule.mockReturnValue({
-        data: undefined,
-        isLoading: false,
-        error: new Error("Not found"),
-        refetch: jest.fn(),
-      });
-
-      render(<ScheduleDetailPage />, { wrapper });
-
       expect(screen.getByText(/Back to Schedules/i)).toBeInTheDocument();
-    });
-
-    it("shows Retry button on error", () => {
-      mockUseSchedule.mockReturnValue({
-        data: undefined,
-        isLoading: false,
-        error: new Error("Network error"),
-        refetch: jest.fn(),
-      });
-
-      render(<ScheduleDetailPage />, { wrapper });
-
       expect(screen.getByRole("button", { name: /Retry/i })).toBeInTheDocument();
     });
   });
@@ -260,24 +236,20 @@ describe("ScheduleDetailPage", () => {
   // ============================================
 
   describe("Schedule Details", () => {
-    it("renders schedule name as page title", () => {
+    it("renders the schedule's name, description, cron, timezone, target, and input", () => {
       render(<ScheduleDetailPage />, { wrapper });
 
-      // "Daily Backup" may appear multiple times (header and card title)
-      const nameElements = screen.getAllByText("Daily Backup");
-      expect(nameElements.length).toBeGreaterThan(0);
-    });
-
-    it("renders schedule description", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
+      // "Daily Backup" may appear multiple times (header and card title).
+      expect(screen.getAllByText("Daily Backup").length).toBeGreaterThan(0);
       expect(screen.getByText("Runs daily backup workflow for all services")).toBeInTheDocument();
-    });
-
-    it("renders Active badge for enabled schedule", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
       expect(screen.getByText("Active")).toBeInTheDocument();
+      expect(screen.getByText("0 0 0 * * * *")).toBeInTheDocument();
+      expect(screen.getByText("UTC")).toBeInTheDocument();
+      expect(screen.getByText("workflow")).toBeInTheDocument();
+      expect(screen.getByText("backup-workflow")).toBeInTheDocument();
+      // "2" appears multiple times (max_concurrent and skipped_executions).
+      expect(screen.getAllByText(/2/).length).toBeGreaterThan(0);
+      expect(screen.getByText(/"bucket"/)).toBeInTheDocument();
     });
 
     it("renders Paused badge for disabled schedule", () => {
@@ -292,40 +264,6 @@ describe("ScheduleDetailPage", () => {
 
       expect(screen.getByText("Paused")).toBeInTheDocument();
     });
-
-    it("displays cron expression", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      expect(screen.getByText("0 0 0 * * * *")).toBeInTheDocument();
-    });
-
-    it("displays timezone", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      expect(screen.getByText("UTC")).toBeInTheDocument();
-    });
-
-    it("displays target type and name", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      expect(screen.getByText("workflow")).toBeInTheDocument();
-      expect(screen.getByText("backup-workflow")).toBeInTheDocument();
-    });
-
-    it("displays max concurrent setting", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      // "2" appears multiple times (max_concurrent and skipped_executions)
-      const twoElements = screen.getAllByText(/2/);
-      expect(twoElements.length).toBeGreaterThan(0);
-    });
-
-    it("displays target input JSON when present", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      // Should display the JSON input
-      expect(screen.getByText(/"bucket"/)).toBeInTheDocument();
-    });
   });
 
   // ============================================
@@ -333,47 +271,15 @@ describe("ScheduleDetailPage", () => {
   // ============================================
 
   describe("Statistics", () => {
-    it("renders total executions count", () => {
+    it("renders total, successful, failed, and skipped execution counts", () => {
       render(<ScheduleDetailPage />, { wrapper });
 
       expect(screen.getByText("100")).toBeInTheDocument();
-    });
-
-    it("renders successful executions count", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
       expect(screen.getByText("95")).toBeInTheDocument();
-    });
-
-    it("renders failed executions count", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      // "3" may appear multiple times, just check it exists
-      const threeElements = screen.getAllByText("3");
-      expect(threeElements.length).toBeGreaterThan(0);
-    });
-
-    it("renders skipped executions count", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      // "2" appears in both stats (skipped) and schedule details (max_concurrent)
-      const twoElements = screen.getAllByText("2");
-      expect(twoElements.length).toBeGreaterThan(0);
-    });
-
-    it("shows skeleton while stats are loading", () => {
-      mockUseScheduleStats.mockReturnValue({
-        data: undefined,
-        isLoading: true,
-        error: null,
-      });
-
-      render(<ScheduleDetailPage />, { wrapper });
-
-      // When stats are loading, check for any skeletons on the page
-      const skeletons = document.querySelectorAll('[class*="animate-pulse"]');
-      // The page may show skeletons in stats section or have other loading indicators
-      expect(skeletons.length).toBeGreaterThanOrEqual(0);
+      // "3" and "2" may also appear elsewhere (e.g. max_concurrent), so just
+      // check they exist.
+      expect(screen.getAllByText("3").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("2").length).toBeGreaterThan(0);
     });
   });
 
@@ -388,41 +294,14 @@ describe("ScheduleDetailPage", () => {
       expect(screen.getByText(/Execution History/i)).toBeInTheDocument();
     });
 
-    it("renders execution rows", () => {
-      render(<ScheduleDetailPage />, { wrapper });
+    it.each(["completed", "failed", "running", "skipped"])(
+      "renders a %s execution row",
+      (status) => {
+        render(<ScheduleDetailPage />, { wrapper });
 
-      // Should show executions - check for status text (may appear multiple times)
-      const completedElements = screen.getAllByText(/completed/i);
-      expect(completedElements.length).toBeGreaterThan(0);
-    });
-
-    it("shows completed status with appropriate styling", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      const completedBadges = screen.getAllByText(/completed/i);
-      expect(completedBadges.length).toBeGreaterThan(0);
-    });
-
-    it("shows failed status with error information", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      const failedElements = screen.getAllByText(/failed/i);
-      expect(failedElements.length).toBeGreaterThan(0);
-    });
-
-    it("shows running status", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      const runningElements = screen.getAllByText(/running/i);
-      expect(runningElements.length).toBeGreaterThan(0);
-    });
-
-    it("shows skipped status", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      const skippedElements = screen.getAllByText(/skipped/i);
-      expect(skippedElements.length).toBeGreaterThan(0);
-    });
+        expect(screen.getAllByText(new RegExp(status, "i")).length).toBeGreaterThan(0);
+      },
+    );
 
     it("displays error message for failed executions", () => {
       render(<ScheduleDetailPage />, { wrapper });
@@ -461,16 +340,13 @@ describe("ScheduleDetailPage", () => {
   // ============================================
 
   describe("Action Buttons", () => {
-    it("renders Trigger button", () => {
+    it("renders the Trigger, Pause, Edit, and Delete buttons for an enabled schedule", () => {
       render(<ScheduleDetailPage />, { wrapper });
 
       expect(screen.getByRole("button", { name: /Trigger/i })).toBeInTheDocument();
-    });
-
-    it("renders Pause button for enabled schedule", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
       expect(screen.getByRole("button", { name: /Pause/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Edit/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Delete/i })).toBeInTheDocument();
     });
 
     it("renders Resume button for disabled schedule", () => {
@@ -484,18 +360,6 @@ describe("ScheduleDetailPage", () => {
       render(<ScheduleDetailPage />, { wrapper });
 
       expect(screen.getByRole("button", { name: /Resume/i })).toBeInTheDocument();
-    });
-
-    it("renders Edit button", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      expect(screen.getByRole("button", { name: /Edit/i })).toBeInTheDocument();
-    });
-
-    it("renders Delete button", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      expect(screen.getByRole("button", { name: /Delete/i })).toBeInTheDocument();
     });
 
     it("calls pauseMutation when Pause is clicked", async () => {
@@ -646,13 +510,6 @@ describe("ScheduleDetailPage", () => {
   // ============================================
 
   describe("Navigation", () => {
-    it("renders Back to Schedules link", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      const backLink = screen.getByText(/Back to Schedules/i);
-      expect(backLink).toBeInTheDocument();
-    });
-
     it("Back link has correct href", () => {
       render(<ScheduleDetailPage />, { wrapper });
 

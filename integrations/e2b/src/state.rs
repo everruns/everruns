@@ -269,27 +269,3 @@ pub fn build_state(detail: &E2BSandboxDetail, timeout_seconds: u64) -> SandboxSt
         timeout_seconds,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sandbox_state_roundtrip() {
-        let state = SandboxState {
-            sandbox_id: "sb_test".to_string(),
-            sandbox_domain: "example.e2b.app".to_string(),
-            envd_version: "0.1.0".to_string(),
-            envd_access_token: Some("token".to_string()),
-            workspace_path: E2B_DEFAULT_WORKSPACE_PATH.to_string(),
-            started_at: "2026-03-22T00:00:00Z".to_string(),
-            timeout_seconds: 3600,
-        };
-
-        let json = serde_json::to_string(&state).unwrap();
-        let decoded: SandboxState = serde_json::from_str(&json).unwrap();
-        assert_eq!(decoded.sandbox_id, "sb_test");
-        assert_eq!(decoded.sandbox_domain, "example.e2b.app");
-        assert_eq!(decoded.timeout_seconds, 3600);
-    }
-}

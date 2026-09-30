@@ -10,7 +10,7 @@ use crate::event_delivery::EventDelivery;
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
 use async_trait::async_trait;
-use everruns_core::{Caller, DEFAULT_ORG_ID};
+use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 use everruns_durable::InMemoryWorkflowEventStore;
 use everruns_platform::SessionBinding;
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
@@ -118,6 +118,95 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_provider::typ
 fn test_ctx(db: Arc<StorageBackend>, store: Arc<InMemoryWorkflowEventStore>) -> Ctx {
     Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db, None)
         .with_workflow_store(Some(store))
+}
+
+fn role_ctx(db: Arc<StorageBackend>, role: OrgRole) -> Ctx {
+    let encryption = crate::storage::encryption::EncryptionService::new(
+        &crate::storage::encryption::generate_encryption_key("test"),
+        &[],
+    )
+    .expect("test encryption service");
+    Ctx::minimal_for_test(
+        Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            user_id: Some(uuid::Uuid::nil()),
+            role,
+            is_platform_user: false,
+            is_internal: false,
+        },
+        db,
+        Some(Arc::new(encryption)),
+    )
+}
+
+fn webhook_req(enabled: bool) -> CreateAgentTriggerRequest {
+    CreateAgentTriggerRequest {
+        trigger_type: AgentTriggerType::Webhook,
+        cron_expression: None,
+        timezone: "UTC".to_string(),
+        session_mode: SessionBinding::Endpoint,
+        message: "Webhook: {{body}}".to_string(),
+        token: Some("secret".to_string()),
+        rate_limit_per_minute: None,
+        auth: None,
+        enabled,
+    }
+}
+
+#[tokio::test]
+async fn webhook_publication_requires_dangerous_permission() {
+    for role in [OrgRole::Member, OrgRole::Admin] {
+        let db = Arc::new(StorageBackend::in_memory());
+        let (agent_id, _) = seed_agent(&db).await;
+        let ctx = role_ctx(db, role);
+
+        let error = CreateAgentTrigger {
+            agent_id,
+            req: webhook_req(true),
+        }
+        .run(&ctx)
+        .await
+        .expect_err("non-owner must not publish a webhook");
+        assert_eq!(error.status(), axum::http::StatusCode::FORBIDDEN);
+    }
+
+    let db = Arc::new(StorageBackend::in_memory());
+    let (agent_id, _) = seed_agent(&db).await;
+    let member_ctx = role_ctx(db.clone(), OrgRole::Member);
+    let disabled = CreateAgentTrigger {
+        agent_id: agent_id.clone(),
+        req: webhook_req(false),
+    }
+    .run(&member_ctx)
+    .await
+    .expect("member may configure a disabled webhook");
+    let error = UpdateAgentTriggerCmd {
+        agent_id: agent_id.clone(),
+        trigger_id: disabled.id.to_string(),
+        req: UpdateAgentTriggerRequest {
+            enabled: Some(true),
+            ..Default::default()
+        },
+    }
+    .run(&member_ctx)
+    .await
+    .expect_err("member must not enable a webhook");
+    assert_eq!(error.status(), axum::http::StatusCode::FORBIDDEN);
+
+    let mut owner_ctx = member_ctx.clone();
+    owner_ctx.caller.role = OrgRole::Owner;
+    UpdateAgentTriggerCmd {
+        agent_id,
+        trigger_id: disabled.id.to_string(),
+        req: UpdateAgentTriggerRequest {
+            enabled: Some(true),
+            ..Default::default()
+        },
+    }
+    .run(&owner_ctx)
+    .await
+    .expect("owner may publish a webhook");
 }
 
 fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerRequest {

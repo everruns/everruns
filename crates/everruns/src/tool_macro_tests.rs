@@ -184,3 +184,107 @@ async fn invalid_arguments_surface_as_a_tool_error() {
         other => panic!("expected a tool error, got {other:?}"),
     }
 }
+
+// --- Call context, typed arguments, and approval -------------------------
+
+/// Report progress, then echo the call id.
+#[everruns::tool]
+async fn traced(ctx: &crate::ToolCallContext, label: String) -> Value {
+    ctx.progress(format!("tracing {label}")).await;
+    json!({ "call": ctx.tool_call_id(), "label": label })
+}
+
+/// Run a statement; destructive ones need approval.
+#[everruns::tool(needs_approval = |args: &GuardedSqlArgs| args.sql.contains("drop"))]
+async fn guarded_sql(sql: String) -> String {
+    sql
+}
+
+/// Always gated.
+#[everruns::tool(needs_approval)]
+async fn gated(ctx: crate::ToolCallContext) -> String {
+    ctx.tool_name().to_string()
+}
+
+#[test]
+fn generated_args_struct_is_nameable_and_keeps_the_schema_shape() {
+    let args = WeatherArgs {
+        city: "Kyiv".to_string(),
+        temperature_unit: None,
+    };
+    assert_eq!(args.city, "Kyiv");
+    // The context parameter is not a model argument.
+    let schema = traced().schema().clone();
+    let properties = schema["properties"].as_object().expect("properties");
+    assert_eq!(
+        properties.keys().collect::<Vec<_>>(),
+        vec!["label"],
+        "{schema}"
+    );
+    assert_eq!(schema["title"], json!("__Args"), "schema title unchanged");
+    assert!(schema.get("description").is_none(), "{schema}");
+}
+
+#[test]
+fn approval_options_mark_the_tool() {
+    let rule = guarded_sql();
+    let predicate = rule.approval().expect("rule-gated");
+    assert!(predicate(&json!({ "sql": "drop table t" })));
+    assert!(!predicate(&json!({ "sql": "select 1" })));
+    assert!(predicate(&json!({ "nope": 1 })), "unparseable fails closed");
+
+    let always = gated();
+    assert!(always.approval().expect("always gated")(&json!({})));
+    assert!(weather().approval().is_none(), "ungated by default");
+}
+
+#[tokio::test]
+async fn context_tool_executes_through_agent_builder() {
+    let agent = Agent::builder()
+        .instructions("Call traced.")
+        .model(Model::simulated_scripted(
+            "Done.",
+            vec![
+                vec![ToolCall {
+                    id: "call_trace".into(),
+                    name: "traced".into(),
+                    arguments: json!({ "label": "a" }),
+                }],
+                vec![],
+            ],
+        ))
+        .tool(traced())
+        .build()
+        .expect("valid agent");
+
+    let session = InMemoryEngine::new().create(agent);
+    let mut events = session.events();
+    let turn = session.run("trace").await.expect("turn runs");
+    assert!(turn.success, "{:?}", turn.error);
+
+    let mut progress = None;
+    while let Some(event) = events.try_recv().expect("lossless") {
+        if let crate::SessionEventKind::ToolProgress {
+            tool_call_id,
+            message,
+            ..
+        } = event.kind
+        {
+            progress = Some((tool_call_id, message));
+        }
+    }
+    assert_eq!(
+        progress,
+        Some(("call_trace".to_string(), "tracing a".to_string()))
+    );
+}
+
+#[tokio::test]
+async fn context_tool_runs_detached_outside_a_turn() {
+    match CoreTool::execute(&traced(), json!({ "label": "x" })).await {
+        everruns_core::tools::ToolExecutionResult::Success(value) => {
+            assert_eq!(value, json!({ "call": "", "label": "x" }));
+        }
+        other => panic!("expected success, got {other:?}"),
+    }
+}

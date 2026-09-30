@@ -101,6 +101,7 @@ const mockFeatureFlags = {
   plugins: true,
   observers: true,
   machine_payments: true,
+  reports: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => mockFeatureFlags,
@@ -148,6 +149,7 @@ describe("useGlobalSearch", () => {
       plugins: true,
       observers: true,
       machine_payments: true,
+      reports: true,
     });
   });
 
@@ -280,6 +282,15 @@ describe("useGlobalSearch", () => {
     const { result } = renderHook(() => useGlobalSearch("payments"));
 
     expect(result.current.some((item) => item.href === "/settings/payments")).toBe(false);
+  });
+
+  it("hides Reports and saved reports when the reports flag is off", () => {
+    mockFeatureFlags.reports = false;
+
+    const { result } = renderHook(() => useGlobalSearch("report"));
+
+    expect(mockUseSavedReports).toHaveBeenCalledWith(false);
+    expect(result.current.some((item) => item.href === "/reports")).toBe(false);
   });
 
   it.each([

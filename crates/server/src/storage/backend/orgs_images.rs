@@ -3,6 +3,63 @@
 use super::*;
 
 impl StorageBackend {
+    pub async fn upsert_org_slack_connection(
+        &self,
+        input: UpsertOrgSlackConnection,
+    ) -> Result<OrgSlackConnectionRow> {
+        dispatch!(self, upsert_org_slack_connection, input)
+    }
+
+    pub async fn get_org_slack_connection(
+        &self,
+        org_id: i64,
+    ) -> Result<Option<OrgSlackConnectionRow>> {
+        dispatch!(self, get_org_slack_connection, org_id)
+    }
+
+    pub async fn claim_org_slack_connection_rotation(
+        &self,
+        org_id: i64,
+        expected_generation: i64,
+    ) -> Result<Option<OrgSlackConnectionRow>> {
+        dispatch!(
+            self,
+            claim_org_slack_connection_rotation,
+            org_id,
+            expected_generation
+        )
+    }
+
+    pub async fn rotate_org_slack_connection(
+        &self,
+        input: RotateOrgSlackConnection,
+    ) -> Result<Option<OrgSlackConnectionRow>> {
+        dispatch!(self, rotate_org_slack_connection, input)
+    }
+
+    pub async fn mark_org_slack_reconnect_required(
+        &self,
+        org_id: i64,
+        expected_generation: i64,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            mark_org_slack_reconnect_required,
+            org_id,
+            expected_generation
+        )
+    }
+
+    pub async fn list_due_org_slack_connections(
+        &self,
+        rotate_before: DateTime<Utc>,
+    ) -> Result<Vec<OrgSlackConnectionRow>> {
+        dispatch!(self, list_due_org_slack_connections, rotate_before)
+    }
+
+    pub async fn delete_org_slack_connection(&self, org_id: i64) -> Result<bool> {
+        dispatch!(self, delete_org_slack_connection, org_id)
+    }
     pub async fn delete_plugin_install(&self, org_id: i64, id: Uuid) -> Result<bool> {
         dispatch!(self, delete_plugin_install, org_id, id)
     }

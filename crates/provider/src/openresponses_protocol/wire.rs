@@ -264,6 +264,9 @@ pub(crate) enum ResponsesTool {
     },
     /// Activates tool_search on the request
     ToolSearch { r#type: String },
+    /// Provider-executed hosted tool (`web_search`, ...), already in wire
+    /// shape. See [`crate::openai_hosted_tools`].
+    Hosted(Value),
 }
 
 // ============================================================================

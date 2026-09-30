@@ -250,7 +250,7 @@ impl WorkerServiceImpl {
         let ui_base = std::env::var("PUBLIC_APP_URL")
             .or_else(|_| std::env::var("FRONTEND_URL"))
             .unwrap_or_else(|_| api_base.clone());
-        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags_cached(
+        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             req.org_id,
             &everruns_platform::FeatureFlags::current(),
