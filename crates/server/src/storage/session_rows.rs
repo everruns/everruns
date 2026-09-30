@@ -21,8 +21,11 @@
 //! these columns are; a column that must be set deliberately should be added
 //! to the *request* types instead, where the compiler still demands it.
 
-use super::models::{AgentId, AgentIdentityId, HarnessId, ModelId};
-use everruns_provider::typed_id::PrincipalId;
+use crate::kernel_imports::{
+    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::AgentIdentityId,
+    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::ModelId,
+    everruns_provider::typed_id::PrincipalId,
+};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
