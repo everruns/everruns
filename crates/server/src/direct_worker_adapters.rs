@@ -43,12 +43,12 @@ use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::domains::budgets::BudgetService;
+use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::scoped_mcp::{
     build_materialized_scoped_mcp_tool_definitions,
     merge_effective_scoped_mcp_servers_with_capabilities,
     resolve_scoped_mcp_server_with_capabilities, validate_effective_mcp_servers,
 };
-use crate::domains::mcp_servers::{McpServerResolved, McpServerService};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::max_iterations;
@@ -60,24 +60,6 @@ use everruns_durable::WorkflowEventStore;
 // Helper to create store errors
 pub(crate) fn store_error(msg: impl Into<String>) -> AgentLoopError {
     AgentLoopError::store(msg)
-}
-
-fn resolved_mcp_server_to_worker_info(
-    resolved: McpServerResolved,
-    secret_bindings: HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
-) -> McpServerInfo {
-    McpServerInfo {
-        id: resolved.id,
-        name: resolved.name,
-        url: resolved.url,
-        api_key: resolved.api_key,
-        headers: resolved.headers,
-        auth_mode: resolved.auth_mode,
-        protocol_mode: resolved.protocol_mode,
-        oauth_provider_id: resolved.oauth_provider_id,
-        acts_as: resolved.acts_as,
-        secret_bindings,
-    }
 }
 
 /// Extract file name from path
@@ -1082,10 +1064,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     )
                     .await
                     .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
-                return Ok(resolved_mcp_server_to_worker_info(
-                    resolved,
-                    secret_bindings,
-                ));
+                return Ok(
+                    crate::direct_worker_adapters_mcp::resolved_mcp_server_to_worker_info(
+                        resolved,
+                        secret_bindings,
+                    ),
+                );
             }
         }
 
@@ -1110,10 +1094,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
         .await
         .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
 
-        Ok(resolved_mcp_server_to_worker_info(
-            resolved,
-            secret_bindings,
-        ))
+        Ok(
+            crate::direct_worker_adapters_mcp::resolved_mcp_server_to_worker_info(
+                resolved,
+                secret_bindings,
+            ),
+        )
     }
 
     // =========================================================================
@@ -2818,34 +2804,6 @@ mod tests {
             string_to_provider_type("custom-provider").to_string(),
             "custom-provider"
         );
-    }
-
-    #[test]
-    fn direct_mcp_adapter_preserves_neutral_catalog_descriptors() {
-        for acts_as in [
-            everruns_core::McpServerActsAs::None,
-            everruns_core::McpServerActsAs::Service,
-            everruns_core::McpServerActsAs::User,
-        ] {
-            let resolved = McpServerResolved {
-                id: Uuid::new_v4(),
-                name: "linear".to_string(),
-                url: "https://mcp.linear.app/mcp".to_string(),
-                auth_mode: everruns_core::McpServerAuthMode::None,
-                protocol_mode: everruns_core::McpProtocolMode::Auto,
-                oauth_provider_id: None,
-                acts_as,
-                api_key: None,
-                headers: HashMap::new(),
-            };
-
-            let info = resolved_mcp_server_to_worker_info(resolved, HashMap::new());
-
-            assert_eq!(info.acts_as, acts_as);
-            assert_eq!(info.auth_mode, everruns_core::McpServerAuthMode::None);
-            assert!(info.oauth_provider_id.is_none());
-            assert!(info.api_key.is_none());
-        }
     }
 
     // =========================================================================

@@ -13,7 +13,9 @@
 
 use crate::events::{EventContext, EventRequest, ToolCallRequestedData};
 use crate::tool_types::{
-    CONFIRM_URL_ELICITATION_TOOL, ToolCall, ToolDefinition, ToolResult, UrlElicitationRequired,
+    ASK_USER_TOOL_NAME, CONFIRM_URL_ELICITATION_TOOL, FORM_ELICITATION_CALL_ID_PREFIX,
+    FormElicitationRequired, MCP_ELICITATION_ARGUMENT, ToolCall, ToolDefinition, ToolResult,
+    UrlElicitationRequired,
 };
 use crate::{event_emitter::EventEmitter, tool_context::ToolContext};
 use async_trait::async_trait;
@@ -371,6 +373,76 @@ pub(super) fn runs_on_server(call: &ToolCall, tool_definitions: &[ToolDefinition
 }
 
 // ============================================================================
+// FormElicitationHook
+// ============================================================================
+
+/// Seconds a person gets to answer an MCP server's form questions before the
+/// sweep declines on their behalf. Matches the `ask_user` default.
+const FORM_ELICITATION_TIMEOUT_SECONDS: i64 = 300;
+/// How long before the deadline the card starts warning. Matches `ask_user`.
+const FORM_ELICITATION_NUDGE_LEAD_SECONDS: i64 = 60;
+
+/// Hook that turns an MCP server's form mode elicitation into an `ask_user`
+/// question set the person answers in the usual card.
+///
+/// Spec: knowledge/integrations/mcp-form-elicitation.md.
+///
+/// Decision: the call is appended to `client_tool_calls` instead of being
+/// emitted here, so it rides the `ask_user` pause exactly: `ClientSideToolHook`
+/// emits it, the planner gates the pause on the `ask_user` hint, and a client
+/// that cannot draw a question gets the unattended resolution, which declines
+/// an elicitation rather than applying defaults (D5). Must run before
+/// `ClientSideToolHook`.
+///
+/// The call id carries [`FORM_ELICITATION_CALL_ID_PREFIX`] and the arguments
+/// carry [`MCP_ELICITATION_ARGUMENT`], which is how the answer path knows the
+/// questions are a server's and not the model's.
+pub struct FormElicitationHook;
+
+impl PostActHook for FormElicitationHook {
+    fn on_completed(
+        &self,
+        result: &mut ActResult,
+        _tool_definitions: &[ToolDefinition],
+    ) -> Vec<PostActAction> {
+        let pending: Vec<FormElicitationRequired> = result
+            .results
+            .iter()
+            .filter_map(|r| FormElicitationRequired::from_tool_result(&r.result))
+            .collect();
+        if pending.is_empty() {
+            return vec![];
+        }
+
+        let asked_at = chrono::Utc::now();
+        let expires_at = asked_at + chrono::Duration::seconds(FORM_ELICITATION_TIMEOUT_SECONDS);
+        let nudge_at = expires_at - chrono::Duration::seconds(FORM_ELICITATION_NUDGE_LEAD_SECONDS);
+
+        for elicitation in pending {
+            result.client_tool_calls.push(ToolCall {
+                id: format!("{FORM_ELICITATION_CALL_ID_PREFIX}{}", Uuid::now_v7()),
+                name: ASK_USER_TOOL_NAME.to_string(),
+                arguments: json!({
+                    "questions": elicitation.questions,
+                    "timeout_seconds": FORM_ELICITATION_TIMEOUT_SECONDS,
+                    "asked_at": asked_at.to_rfc3339(),
+                    "nudge_at": nudge_at.to_rfc3339(),
+                    "expires_at": expires_at.to_rfc3339(),
+                    MCP_ELICITATION_ARGUMENT: {
+                        "server": elicitation.server,
+                        "tool": elicitation.tool,
+                        "retry_tool": elicitation.retry_tool,
+                        "message": elicitation.message,
+                        "fingerprint": elicitation.fingerprint,
+                    },
+                }),
+            });
+        }
+        vec![]
+    }
+}
+
+// ============================================================================
 // ClientSideToolHook
 // ============================================================================
 
@@ -679,6 +751,55 @@ mod tests {
 
         assert!(actions.is_empty());
         assert!(!result.waiting_for_tool_results);
+    }
+
+    fn make_form_elicitation_result() -> ToolCallResult {
+        let payload = FormElicitationRequired {
+            code: crate::tool_types::FORM_ELICITATION_REQUIRED_CODE.to_string(),
+            error: "The server needs answers".to_string(),
+            server: "deploys".to_string(),
+            tool: "release".to_string(),
+            retry_tool: "mcp_deploys_release".to_string(),
+            message: "Which environment?".to_string(),
+            questions: vec![json!({"kind": "choice", "id": "environment"})],
+            fingerprint: "abc123".to_string(),
+        };
+        let mut result = make_tool_call_result(None);
+        result.result.result = Some(serde_json::to_value(&payload).expect("serialize"));
+        result
+    }
+
+    #[test]
+    fn form_elicitation_hook_asks_through_the_ask_user_pause() {
+        let mut result = act_result(vec![make_form_elicitation_result()]);
+
+        let actions = FormElicitationHook.on_completed(&mut result, &[]);
+        assert!(actions.is_empty(), "ClientSideToolHook emits the call");
+        assert_eq!(result.client_tool_calls.len(), 1);
+        let call = &result.client_tool_calls[0];
+        assert_eq!(call.name, ASK_USER_TOOL_NAME);
+        assert!(call.id.starts_with(FORM_ELICITATION_CALL_ID_PREFIX));
+        let elicitation = &call.arguments[MCP_ELICITATION_ARGUMENT];
+        assert_eq!(elicitation["server"], "deploys");
+        assert_eq!(elicitation["tool"], "release");
+        assert_eq!(elicitation["retry_tool"], "mcp_deploys_release");
+        assert_eq!(elicitation["fingerprint"], "abc123");
+        assert_eq!(call.arguments["questions"][0]["id"], "environment");
+        assert!(call.arguments["expires_at"].is_string());
+
+        // The follow-on hook is what pauses the turn and emits the card.
+        let actions = ClientSideToolHook.on_completed(&mut result, &[]);
+        assert_eq!(actions.len(), 1);
+        assert!(result.waiting_for_tool_results);
+    }
+
+    #[test]
+    fn form_elicitation_hook_ignores_ordinary_results() {
+        let mut result = act_result(vec![make_tool_call_result(None)]);
+
+        FormElicitationHook.on_completed(&mut result, &[]);
+
+        assert!(result.client_tool_calls.is_empty());
     }
 
     #[test]

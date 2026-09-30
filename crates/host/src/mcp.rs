@@ -63,6 +63,7 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
                     endpoint,
                     auth_mode: server.auth_mode.clone(),
                     protocol_mode: server.protocol_mode,
+                    elicitation_policy: server.elicitation_policy,
                     oauth_provider_id: server.oauth_provider_id.clone(),
                     pending_oauth_provider: None,
                     secret_bindings: HashMap::new(),

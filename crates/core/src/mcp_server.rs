@@ -179,120 +179,12 @@ impl<'de> Deserialize<'de> for McpServerPresetRef {
     }
 }
 
-// ============================================================================
-// MCP protocol versions and per-server adoption policy
-// ============================================================================
-//
-// Everruns' MCP *client* speaks three protocol eras. They differ in how the
-// connection is established and what metadata travels with each request:
-//
-// - `2025-03-26` / `2025-06-18`: *stateful*. The client must run the
-//   `initialize` handshake, may receive an `Mcp-Session-Id` it has to echo on
-//   every subsequent request, and sends `notifications/initialized`.
-// - `2026-07-28`: *stateless*. No handshake and no session id; protocol version
-//   + client info ride in `_meta` on every request, and routable headers
-//   (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`) let edge infrastructure
-//   route without parsing the body.
-//
-// Eras are named by their version date, not by a moving label like "stable" or
-// "rc" — `2026-07-28` shipped as a final spec on 2026-07-28, and the previous
-// naming outlived its meaning within one release.
-//
-// See knowledge/integrations/mcp-servers.md (Multi-era protocol support) and the negotiation
-// engine in `everruns-mcp` (`protocol.rs`).
-
-/// MCP `2025-03-26` (stateful handshake). Oldest era the client speaks.
-pub const MCP_PROTOCOL_VERSION_2025_03: &str = "2025-03-26";
-/// MCP `2025-06-18` (stateful handshake).
-pub const MCP_PROTOCOL_VERSION_2025_06: &str = "2025-06-18";
-/// MCP `2026-07-28` (stateless). Current era.
-pub const MCP_PROTOCOL_VERSION_2026_07: &str = "2026-07-28";
-
-/// Per-server policy for which MCP protocol era the client uses.
-///
-/// `Auto` (the default) probes the server and adapts — it tries the stateless
-/// `2026-07-28` path first and transparently falls back to the stateful
-/// handshake when a server demands it, so a single configuration speaks to
-/// every era without operator action. The pinned variants skip negotiation when
-/// an operator knows a server's era (or to work around a server that
-/// mis-signals it).
-///
-/// Wire values are the version dates. The pre-release names (`legacy`,
-/// `stable`, `rc`) stay accepted as deserialization aliases so stored config
-/// keeps loading, but they are no longer emitted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-#[cfg_attr(feature = "openapi", schema(example = "auto"))]
-#[serde(rename_all = "snake_case")]
-pub enum McpProtocolMode {
-    /// Probe once, detect the server's era, adapt, and cache the verdict.
-    #[default]
-    Auto,
-    /// Pin to `2025-03-26` stateful behavior (handshake + session id).
-    #[serde(rename = "2025-03-26", alias = "legacy")]
-    V2025March,
-    /// Pin to `2025-06-18` stateful behavior (handshake + session id).
-    #[serde(rename = "2025-06-18", alias = "stable")]
-    V2025June,
-    /// Pin to `2026-07-28` stateless behavior (`_meta` per request, routable
-    /// headers, no handshake).
-    #[serde(rename = "2026-07-28", alias = "rc")]
-    V2026July,
-}
-
-impl McpProtocolMode {
-    /// Whether this is the default `Auto` policy. Used to keep the field out of
-    /// serialized config when it carries no information.
-    pub fn is_auto(&self) -> bool {
-        matches!(self, McpProtocolMode::Auto)
-    }
-
-    /// The protocol version string a *pinned* mode advertises. `Auto` returns
-    /// `None` because its version is decided by negotiation at runtime.
-    pub fn pinned_version(&self) -> Option<&'static str> {
-        match self {
-            McpProtocolMode::Auto => None,
-            McpProtocolMode::V2025March => Some(MCP_PROTOCOL_VERSION_2025_03),
-            McpProtocolMode::V2025June => Some(MCP_PROTOCOL_VERSION_2025_06),
-            McpProtocolMode::V2026July => Some(MCP_PROTOCOL_VERSION_2026_07),
-        }
-    }
-
-    /// Whether a pinned mode requires the stateful `initialize` handshake.
-    /// `Auto` returns `None` (decided by negotiation).
-    pub fn pinned_stateful(&self) -> Option<bool> {
-        match self {
-            McpProtocolMode::Auto => None,
-            McpProtocolMode::V2025March | McpProtocolMode::V2025June => Some(true),
-            McpProtocolMode::V2026July => Some(false),
-        }
-    }
-}
-
-impl std::fmt::Display for McpProtocolMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            McpProtocolMode::Auto => write!(f, "auto"),
-            McpProtocolMode::V2025March => write!(f, "{MCP_PROTOCOL_VERSION_2025_03}"),
-            McpProtocolMode::V2025June => write!(f, "{MCP_PROTOCOL_VERSION_2025_06}"),
-            McpProtocolMode::V2026July => write!(f, "{MCP_PROTOCOL_VERSION_2026_07}"),
-        }
-    }
-}
-
-impl From<&str> for McpProtocolMode {
-    /// Parses the canonical version-date values and the pre-release aliases
-    /// (`legacy`/`stable`/`rc`) that stored config and older workers still send.
-    /// Anything unrecognized falls back to `Auto`, which negotiates anyway.
-    fn from(s: &str) -> Self {
-        match s {
-            MCP_PROTOCOL_VERSION_2025_03 | "legacy" => McpProtocolMode::V2025March,
-            MCP_PROTOCOL_VERSION_2025_06 | "stable" => McpProtocolMode::V2025June,
-            MCP_PROTOCOL_VERSION_2026_07 | "rc" => McpProtocolMode::V2026July,
-            _ => McpProtocolMode::Auto,
-        }
-    }
-}
+// Protocol-era and elicitation policies live in `mcp_server/policy.rs`.
+mod policy;
+pub use policy::{
+    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
+    McpElicitationPolicy, McpProtocolMode,
+};
 
 /// Normalize a JSON-RPC error code across MCP eras.
 ///
@@ -402,6 +294,9 @@ pub struct McpServer {
     /// Protocol-era adoption policy for the MCP client (`auto` negotiates).
     #[serde(default, skip_serializing_if = "McpProtocolMode::is_auto")]
     pub protocol_mode: McpProtocolMode,
+    /// Which elicitation modes this server may use (`url` by default).
+    #[serde(default, skip_serializing_if = "McpElicitationPolicy::is_default")]
+    pub elicitation_policy: McpElicitationPolicy,
     /// Stable provider id used for user-scoped OAuth connections.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_provider_id: Option<String>,
@@ -462,6 +357,9 @@ pub struct ScopedMcpServer {
     /// Protocol-era adoption policy for the MCP client (`auto` negotiates).
     #[serde(default, skip_serializing_if = "McpProtocolMode::is_auto")]
     pub protocol_mode: McpProtocolMode,
+    /// Which elicitation modes this server may use (`url` by default).
+    #[serde(default, skip_serializing_if = "McpElicitationPolicy::is_default")]
+    pub elicitation_policy: McpElicitationPolicy,
     /// Provider id used to resolve a user-scoped bearer token.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_provider_id: Option<String>,
@@ -508,6 +406,8 @@ struct ScopedMcpServerWire {
     auth_mode: McpServerAuthMode,
     #[serde(default, skip_serializing_if = "McpProtocolMode::is_auto")]
     protocol_mode: McpProtocolMode,
+    #[serde(default, skip_serializing_if = "McpElicitationPolicy::is_default")]
+    elicitation_policy: McpElicitationPolicy,
     #[serde(skip_serializing_if = "Option::is_none")]
     oauth_provider_id: Option<String>,
     #[serde(
@@ -547,6 +447,7 @@ impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
             env: wire.env,
             auth_mode: wire.auth_mode,
             protocol_mode: wire.protocol_mode,
+            elicitation_policy: wire.elicitation_policy,
             oauth_provider_id: wire.oauth_provider_id,
             tool_discovery: wire.tool_discovery,
             preset: wire.preset,
@@ -566,6 +467,7 @@ impl From<ScopedMcpServer> for ScopedMcpServerWire {
             env: server.env,
             auth_mode: server.auth_mode,
             protocol_mode: server.protocol_mode,
+            elicitation_policy: server.elicitation_policy,
             oauth_provider_id: server.oauth_provider_id,
             tool_discovery: server.tool_discovery,
             preset: server.preset,
@@ -582,6 +484,7 @@ impl Default for ScopedMcpServer {
             headers: HashMap::new(),
             auth_mode: McpServerAuthMode::None,
             protocol_mode: McpProtocolMode::Auto,
+            elicitation_policy: McpElicitationPolicy::Url,
             oauth_provider_id: None,
             tool_discovery: true,
             command: None,

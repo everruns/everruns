@@ -434,6 +434,7 @@ async fn create_rejects_api_key_when_auth_mode_is_not_api_key() {
                 transport_type: McpServerTransportType::Http,
                 auth_mode: Some(McpServerAuthMode::None),
                 protocol_mode: None,
+                elicitation_policy: None,
                 api_key: Some("secret".into()),
                 headers: None,
             },

@@ -20,6 +20,7 @@ fn fixture_connection() -> McpConnection {
         },
         auth_mode: McpServerAuthMode::None,
         protocol_mode: McpProtocolMode::Auto,
+        elicitation_policy: Default::default(),
         oauth_provider_id: None,
         pending_oauth_provider: None,
         secret_bindings: HashMap::new(),

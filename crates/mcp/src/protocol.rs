@@ -63,6 +63,11 @@ pub struct ClientCapabilities {
     /// The host can show a URL to a human, take their consent, and open it out
     /// of band ([`crate::elicitation::UrlElicitationHandler`]).
     pub url_elicitation: bool,
+    /// The host can put a server's structured questions in front of a human
+    /// and send back their answer
+    /// ([`crate::form_elicitation::FormElicitationHandler`]). Declared per
+    /// server, and only when that server's policy opts in.
+    pub form_elicitation: bool,
 }
 
 impl ClientCapabilities {
@@ -76,15 +81,23 @@ impl ClientCapabilities {
 ///
 /// `sampling` and `roots` are always absent: both require a model or a
 /// filesystem view to answer a request mid-call, which this transport has no
-/// way to reach. `elicitation` is declared only in `url` mode and only when the
-/// host supplied a consent handler; form mode stays undeclared because a form
-/// answer would have to flow back through the model, which is exactly what URL
-/// mode exists to avoid.
+/// way to reach. Each `elicitation` mode is declared only when the host
+/// supplied the machinery that answers it *and* the server's
+/// `elicitation_policy` allows it. Form mode is opt-in per server because its
+/// answer is data a person types into a question a third party wrote
+/// (`knowledge/integrations/mcp-form-elicitation.md`).
 pub fn client_capabilities(capabilities: ClientCapabilities) -> Value {
+    let mut modes = Map::new();
     if capabilities.url_elicitation {
-        json!({ "elicitation": { "url": {} } })
-    } else {
+        modes.insert("url".to_string(), json!({}));
+    }
+    if capabilities.form_elicitation {
+        modes.insert("form".to_string(), json!({}));
+    }
+    if modes.is_empty() {
         json!({})
+    } else {
+        json!({ "elicitation": modes })
     }
 }
 
@@ -247,6 +260,30 @@ impl InputRequest {
             .unwrap_or("The server needs you to complete an interaction in your browser.")
             .to_string();
         Some((message, url))
+    }
+}
+
+impl InputRequest {
+    /// The form mode elicitation this request carries, if that is what it is.
+    ///
+    /// Returns `(message, requestedSchema)`. An absent `mode` means form, as
+    /// the specification defines it.
+    pub fn form_elicitation(&self) -> Option<(String, Value)> {
+        if self.method != "elicitation/create" {
+            return None;
+        }
+        match self.params.get("mode").and_then(Value::as_str) {
+            None | Some("form") => {}
+            Some(_) => return None,
+        }
+        let schema = self.params.get("requestedSchema")?.clone();
+        let message = self
+            .params
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        Some((message, schema))
     }
 }
 
@@ -543,19 +580,58 @@ mod tests {
         // client answers no server-initiated input requests.
         assert_eq!(meta.get(CLIENT_CAPABILITIES_META_KEY), Some(&json!({})));
 
-        // A host that can reach a human declares URL mode elicitation — and
-        // only URL mode: form mode would route the answer back through the
-        // model, which is what URL mode exists to avoid.
+        // A host that can reach a human declares URL mode elicitation. Form
+        // mode is declared only on top of that, for a server that opted in.
         let with_elicitation = request_meta(
             MCP_PROTOCOL_VERSION_2026_07,
             ClientCapabilities {
                 url_elicitation: true,
+                form_elicitation: false,
             },
         );
         assert_eq!(
             with_elicitation.get(CLIENT_CAPABILITIES_META_KEY),
             Some(&json!({ "elicitation": { "url": {} } }))
         );
+        let with_form = request_meta(
+            MCP_PROTOCOL_VERSION_2026_07,
+            ClientCapabilities {
+                url_elicitation: true,
+                form_elicitation: true,
+            },
+        );
+        assert_eq!(
+            with_form.get(CLIENT_CAPABILITIES_META_KEY),
+            Some(&json!({ "elicitation": { "url": {}, "form": {} } }))
+        );
+    }
+
+    #[test]
+    fn form_elicitation_requests_are_recognized() {
+        let body = r#"{"jsonrpc":"2.0","id":1,"result":{"resultType":"input_required",
+            "inputRequests":{
+              "explicit":{"method":"elicitation/create","params":{"mode":"form",
+                "message":"Pick","requestedSchema":{"type":"object","properties":{}}}},
+              "implicit":{"method":"elicitation/create","params":{
+                "message":"Pick","requestedSchema":{"type":"object","properties":{}}}},
+              "link":{"method":"elicitation/create","params":{"mode":"url",
+                "url":"https://x.example","message":"Go"}},
+              "noschema":{"method":"elicitation/create","params":{"mode":"form"}}
+            }}}"#;
+        let parsed = input_required_from_result(body).expect("input_required");
+        let by_key = |key: &str| {
+            parsed
+                .requests
+                .iter()
+                .find(|r| r.key == key)
+                .expect("request present")
+                .form_elicitation()
+        };
+        assert!(by_key("explicit").is_some());
+        // An absent mode means form.
+        assert!(by_key("implicit").is_some());
+        assert!(by_key("link").is_none());
+        assert!(by_key("noschema").is_none());
     }
 
     #[test]
@@ -619,6 +695,7 @@ mod tests {
             MCP_PROTOCOL_VERSION_2026_07,
             ClientCapabilities {
                 url_elicitation: true,
+                form_elicitation: false,
             },
             Some("AEAD-blob=="),
             &responses,

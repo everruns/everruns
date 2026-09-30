@@ -9,12 +9,19 @@
 // session-scoped: the retry may well execute in a different worker process than
 // the one that asked, so an in-memory record would silently degrade into asking
 // the user again every time.
+//
+// Form mode answers (knowledge/integrations/mcp-form-elicitation.md) travel the
+// same way: the server's question-answer API parks them here, and the retried
+// tool call takes them, once, to answer the server.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_core::session_services::SessionStorageStore;
-use everruns_mcp::{ElicitationConsentStore, GrantedConsent, StoredConsent, consent_storage_key};
+use everruns_mcp::{
+    ElicitationConsentStore, FormAnswerStore, GrantedConsent, StoredConsent, StoredFormAnswer,
+    consent_storage_key, form_answer_storage_key,
+};
 use everruns_provider::typed_id::SessionId;
 
 /// Session-storage-backed [`ElicitationConsentStore`] for one session.
@@ -58,6 +65,33 @@ impl ElicitationConsentStore for SessionElicitationConsents {
             }
         };
         Ok(record.grant_for(server, tool, chrono::Utc::now()))
+    }
+}
+
+#[async_trait]
+impl FormAnswerStore for SessionElicitationConsents {
+    async fn take_form_answer(
+        &self,
+        server: &str,
+        tool: &str,
+    ) -> anyhow::Result<Option<StoredFormAnswer>> {
+        let key = form_answer_storage_key(server, tool);
+        // Destructive read: one answer is sent to the server at most once, even
+        // when retries race.
+        let Some(raw) = self.storage.take_value(self.session_id, &key).await? else {
+            return Ok(None);
+        };
+        match serde_json::from_str(&raw) {
+            Ok(record) => Ok(Some(record)),
+            Err(error) => {
+                tracing::warn!(
+                    session_id = %self.session_id,
+                    %error,
+                    "Discarding an unreadable form elicitation answer"
+                );
+                Ok(None)
+            }
+        }
     }
 }
 
@@ -220,6 +254,46 @@ mod tests {
                 .await
                 .expect("read"),
             None
+        );
+    }
+
+    #[tokio::test]
+    async fn reads_a_recorded_form_answer_once() {
+        let session_id = SessionId::new();
+        let storage = Arc::new(MemoryStorage::default());
+        let record = StoredFormAnswer::new(
+            "deploys",
+            "release",
+            "fingerprint",
+            everruns_mcp::FormAnswerAction::Decline,
+            Default::default(),
+            chrono::Utc::now(),
+        );
+        storage
+            .set_value(
+                session_id,
+                &form_answer_storage_key("deploys", "release"),
+                &serde_json::to_string(&record).expect("serialize"),
+            )
+            .await
+            .expect("store");
+        let answers = SessionElicitationConsents::new(storage, session_id);
+
+        let first = answers
+            .take_form_answer("deploys", "release")
+            .await
+            .expect("read");
+        assert_eq!(
+            first.map(|record| record.fingerprint).as_deref(),
+            Some("fingerprint")
+        );
+        assert!(
+            answers
+                .take_form_answer("deploys", "release")
+                .await
+                .expect("read")
+                .is_none(),
+            "an answer is sent at most once"
         );
     }
 }

@@ -4955,6 +4955,12 @@
         "help": "A human-readable description of what the MCP server provides."
       },
       {
+        "field": "elicitation_policy",
+        "long": "elicitation-policy",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "headers",
         "long": "headers",
         "kind": "json",
@@ -5145,6 +5151,12 @@
         "kind": "string",
         "required": false,
         "help": "A human-readable description of what the MCP server provides."
+      },
+      {
+        "field": "elicitation_policy",
+        "long": "elicitation-policy",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "headers",

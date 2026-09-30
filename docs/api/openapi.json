@@ -18846,6 +18846,10 @@
               ],
               "description": "Executable to spawn for a stdio transport server."
             },
+            "elicitation_policy": {
+              "$ref": "#/components/schemas/McpElicitationPolicy",
+              "description": "Which elicitation modes this server may use (`url` by default)."
+            },
             "env": {
               "type": "object",
               "description": "Environment variables set for the stdio `command`.",
@@ -21622,6 +21626,17 @@
             ],
             "description": "A human-readable description of what the MCP server provides.",
             "example": "Atlassian MCP Server for Jira and Confluence"
+          },
+          "elicitation_policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpElicitationPolicy",
+                "description": "Elicitation modes the server may use. Defaults to `url`; `url_and_form`\nlets it ask structured questions, `none` stops it eliciting at all."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "headers": {
             "type": [
@@ -28311,6 +28326,10 @@
                   "description": "Human-readable description of the MCP server.",
                   "example": "Atlassian MCP Server for Jira and Confluence"
                 },
+                "elicitation_policy": {
+                  "$ref": "#/components/schemas/McpElicitationPolicy",
+                  "description": "Which elicitation modes this server may use (`url` by default)."
+                },
                 "headers": {
                   "type": "object",
                   "description": "Additional HTTP headers for authentication.\nKeys are header names, values are header values.",
@@ -29530,6 +29549,10 @@
                       ],
                       "description": "Human-readable description of the MCP server.",
                       "example": "Atlassian MCP Server for Jira and Confluence"
+                    },
+                    "elicitation_policy": {
+                      "$ref": "#/components/schemas/McpElicitationPolicy",
+                      "description": "Which elicitation modes this server may use (`url` by default)."
                     },
                     "headers": {
                       "type": "object",
@@ -31059,6 +31082,16 @@
         "type": "object",
         "description": "Response body for manual memory source."
       },
+      "McpElicitationPolicy": {
+        "type": "string",
+        "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+        "enum": [
+          "url",
+          "url_and_form",
+          "none"
+        ],
+        "example": "url"
+      },
       "McpErrorCategory": {
         "type": "string",
         "description": "Broad-strokes routing hint sitting alongside the precise [`McpErrorCode`].\nThe categories are stable enough that an LLM can pick a recovery\nstrategy from this field alone (e.g. retry transients with backoff,\nsurface validation errors to the user, escalate auth failures).",
@@ -31198,6 +31231,10 @@
             ],
             "description": "Human-readable description of the MCP server.",
             "example": "Atlassian MCP Server for Jira and Confluence"
+          },
+          "elicitation_policy": {
+            "$ref": "#/components/schemas/McpElicitationPolicy",
+            "description": "Which elicitation modes this server may use (`url` by default)."
           },
           "headers": {
             "type": "object",
@@ -40926,6 +40963,17 @@
             "description": "A human-readable description of what the MCP server provides.",
             "example": "Updated description"
           },
+          "elicitation_policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpElicitationPolicy",
+                "description": "Elicitation modes the server may use (`url`, `url_and_form`, `none`)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "headers": {
             "type": [
               "object",
@@ -43505,6 +43553,10 @@
                 ],
                 "description": "Human-readable description of the MCP server.",
                 "example": "Atlassian MCP Server for Jira and Confluence"
+              },
+              "elicitation_policy": {
+                "$ref": "#/components/schemas/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
               },
               "headers": {
                 "type": "object",

@@ -12,13 +12,22 @@
 // URL elicitation needs an extra synthetic user message precisely because its
 // call is engine-authored; adding one here would put words in the user's mouth
 // that they never said.
+//
+// The exception is a question set an MCP server asked (form mode elicitation,
+// knowledge/integrations/mcp-form-elicitation.md). The engine authored that
+// call, so, as with URL consent, the person's decision also goes in as a user
+// turn, and the answer is parked in session storage for the retried tool call
+// to send back to the server. Anything but an answer declines (D5).
 
 use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
-use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
+use crate::storage::models::{
+    ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
+};
 use everruns_builtins::ask_user::{
     ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserQuestionKind,
     AskUserResult, AskUserStatus, session_secret_ref,
 };
+use everruns_provider::tool_types::{FORM_ELICITATION_CALL_ID_PREFIX, MCP_ELICITATION_ARGUMENT};
 
 /// How far back to look for the question set being answered. The card is emitted
 /// by the act that just paused, so it is within the last handful of events.
@@ -41,6 +50,43 @@ pub(crate) struct PendingQuestions {
     /// the sweep falls back to the generic timeout for those rather than
     /// resolving them on a deadline nobody wrote down.
     pub(crate) expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Set when an MCP server asked these questions rather than the model.
+    pub(crate) elicitation: Option<PendingFormElicitation>,
+}
+
+/// The MCP server and tool whose form elicitation a question set stands in for,
+/// read from the engine-authored call, never from the answer request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingFormElicitation {
+    pub(crate) server: String,
+    pub(crate) tool: String,
+    pub(crate) retry_tool: String,
+    pub(crate) fingerprint: String,
+}
+
+impl PendingFormElicitation {
+    /// Only a call the engine emitted for an elicitation carries both the id
+    /// prefix and the argument; a model-authored `ask_user` carries neither.
+    pub(crate) fn from_call(id: &str, arguments: &serde_json::Value) -> Option<Self> {
+        if !id.starts_with(FORM_ELICITATION_CALL_ID_PREFIX) {
+            return None;
+        }
+        let elicitation = arguments.get(MCP_ELICITATION_ARGUMENT)?;
+        let field = |name: &str| {
+            elicitation
+                .get(name)
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        };
+        let server = field("server")?;
+        let tool = field("tool")?;
+        Some(Self {
+            retry_tool: field("retry_tool").unwrap_or_else(|| tool.clone()),
+            fingerprint: field("fingerprint")?,
+            server,
+            tool,
+        })
+    }
 }
 
 /// Check a submitted answer set against what was asked.
@@ -248,6 +294,7 @@ pub(crate) fn pending_from_events(
             .map(|value| value.with_timezone(&chrono::Utc));
         return Some(PendingQuestions {
             tool_call_id: id.to_string(),
+            elicitation: PendingFormElicitation::from_call(id, arguments),
             questions,
             expires_at,
         });
@@ -354,6 +401,14 @@ pub(crate) async fn resolve_question_answers_with_source(
     // They are generated from the question's own options, so they must pass —
     // and if they ever do not, the sweep has produced something the model
     // would have read as a legal choice.
+    //
+    // An MCP server's questions have no defaults worth sending: silence
+    // declines rather than accepting whatever the schema defaulted (D5).
+    let status = if pending.elicitation.is_some() && status == AskUserStatus::TimedOut {
+        AskUserStatus::Declined
+    } else {
+        status
+    };
     let answers = if matches!(status, AskUserStatus::Answered | AskUserStatus::TimedOut) {
         validate_answers(&pending.questions, submitted).map_err(ResolveError::Invalid)?
     } else {
@@ -400,14 +455,35 @@ pub(crate) async fn resolve_question_answers_with_source(
         )],
         None,
     );
+    let mut events = Vec::new();
+    let mut session_values = Vec::new();
+    if let Some(elicitation) = &pending.elicitation {
+        let (record, spoken) =
+            form_elicitation_resolution(elicitation, &result, chrono::Utc::now());
+        session_values.push(WaitingTurnSessionValue {
+            key: everruns_mcp::form_answer_storage_key(&elicitation.server, &elicitation.tool),
+            value: serde_json::to_string(&record)
+                .map_err(|error| ResolveError::Internal(error.to_string()))?,
+        });
+        // Inherit the run's controls so the resumed turn stays on the model
+        // the person was talking to (same reasoning as `mcp_url_consent`).
+        let mut message = everruns_core::message::RuntimeMessage::user(spoken);
+        message.controls = latest_user_controls(state.db, session_id).await;
+        events.push(everruns_core::events::EventRequest::new(
+            session_id,
+            everruns_core::events::EventContext::empty(),
+            everruns_core::events::InputMessageData::new(message),
+        ));
+    }
+    events.push(everruns_core::events::EventRequest::new(
+        session_id,
+        everruns_core::events::EventContext::turn(turn_id, event_message_id),
+        completed_event,
+    ));
     let plan = WaitingTurnResolutionPlan {
         kind: "question_answers".to_string(),
-        events: vec![everruns_core::events::EventRequest::new(
-            session_id,
-            everruns_core::events::EventContext::turn(turn_id, event_message_id),
-            completed_event,
-        )],
-        session_values: Vec::new(),
+        events,
+        session_values,
         response: serde_json::to_value(&result)
             .map_err(|error| ResolveError::Internal(error.to_string()))?,
     };
@@ -467,6 +543,88 @@ pub(crate) async fn resolve_question_answers_with_source(
     );
 
     Ok(result)
+}
+
+/// What an answered MCP form elicitation leaves behind: the record the retried
+/// tool call sends to the server, and the line that tells the model about it.
+///
+/// Only a person's answer accepts. A decline or an expired deadline records a
+/// decline (D5), so a retry tells the server no instead of asking again.
+pub(crate) fn form_elicitation_resolution(
+    elicitation: &PendingFormElicitation,
+    result: &AskUserResult,
+    now: chrono::DateTime<chrono::Utc>,
+) -> (everruns_mcp::StoredFormAnswer, String) {
+    let accepted = result.status == AskUserStatus::Answered;
+    let answers = if accepted {
+        result
+            .answers
+            .iter()
+            .map(|answer| {
+                (
+                    answer.id.clone(),
+                    everruns_mcp::FormAnswer {
+                        selected: answer.selected.clone(),
+                        other_text: answer.other_text.clone(),
+                    },
+                )
+            })
+            .collect()
+    } else {
+        Default::default()
+    };
+    let action = if accepted {
+        everruns_mcp::FormAnswerAction::Accept
+    } else {
+        everruns_mcp::FormAnswerAction::Decline
+    };
+    let record = everruns_mcp::StoredFormAnswer::new(
+        &elicitation.server,
+        &elicitation.tool,
+        &elicitation.fingerprint,
+        action,
+        answers,
+        now,
+    );
+    // Written the way the person would say it, like the URL consent line: the
+    // call is engine-authored, so this turn is what reaches the model.
+    let spoken = if accepted {
+        format!(
+            "I answered {}'s questions. Call '{}' again now to send them.",
+            elicitation.server, elicitation.retry_tool
+        )
+    } else {
+        format!(
+            "I'm not answering {}'s questions. Carry on without '{}', and don't ask again.",
+            elicitation.server, elicitation.retry_tool
+        )
+    };
+    (record, spoken)
+}
+
+/// Controls from the most recent user message in this session, if any.
+async fn latest_user_controls(
+    db: &std::sync::Arc<crate::storage::StorageBackend>,
+    session_id: everruns_provider::typed_id::SessionId,
+) -> Option<everruns_core::message::Controls> {
+    let events = db
+        .list_events(
+            session_id,
+            None,
+            None,
+            &["input.message".to_string()],
+            &[],
+            None,
+            Some(QUESTION_LOOKBACK_EVENTS),
+        )
+        .await
+        .ok()?;
+    events.iter().rev().find_map(|event| {
+        serde_json::from_value::<everruns_core::message::Controls>(
+            event.data.get("message")?.get("controls")?.clone(),
+        )
+        .ok()
+    })
 }
 
 /// Request to answer a pending `ask_user` question set.
@@ -680,6 +838,128 @@ mod tests {
             metadata: None,
             tags: None,
             created_at: now,
+        }
+    }
+
+    fn elicitation_arguments(schema: &everruns_mcp::FormSchema) -> serde_json::Value {
+        serde_json::json!({
+            "questions": schema.questions("deploys"),
+            "mcp_elicitation": {
+                "server": "deploys",
+                "tool": "release",
+                "retry_tool": "mcp_deploys_release",
+                "message": "Where to?",
+                "fingerprint": schema.fingerprint(),
+            },
+        })
+    }
+
+    fn release_schema() -> everruns_mcp::FormSchema {
+        everruns_mcp::parse_requested_schema(&serde_json::json!({
+            "type": "object",
+            "properties": {
+                "environment": {"type": "string", "enum": ["staging", "production"]},
+                "notify": {"type": "boolean"},
+                "note": {"type": "string"},
+            },
+        }))
+        .expect("an in-profile schema")
+    }
+
+    fn with_call_id(
+        mut event: crate::storage::models::EventRow,
+        id: &str,
+    ) -> crate::storage::models::EventRow {
+        event.data["tool_calls"][0]["id"] = serde_json::json!(id);
+        event
+    }
+
+    #[test]
+    fn only_an_engine_authored_call_is_read_as_a_server_elicitation() {
+        let schema = release_schema();
+        let engine_id = format!("{FORM_ELICITATION_CALL_ID_PREFIX}1");
+
+        let engine = pending_from_events(
+            &[with_call_id(
+                event_with_ask_user_arguments(elicitation_arguments(&schema)),
+                &engine_id,
+            )],
+            None,
+        )
+        .expect("the question set is pending");
+        let elicitation = engine.elicitation.expect("recognized as an elicitation");
+        assert_eq!(elicitation.server, "deploys");
+        assert_eq!(elicitation.tool, "release");
+        assert_eq!(elicitation.fingerprint, schema.fingerprint());
+
+        // The model cannot mint one by adding the argument to its own call.
+        let model = pending_from_events(
+            &[event_with_ask_user_arguments(elicitation_arguments(
+                &schema,
+            ))],
+            None,
+        )
+        .expect("the question set is pending");
+        assert!(model.elicitation.is_none());
+    }
+
+    #[test]
+    fn a_projected_form_round_trips_through_ask_user_answers() {
+        let schema = release_schema();
+        let questions: Vec<AskUserQuestion> =
+            serde_json::from_value(serde_json::json!(schema.questions("deploys")))
+                .expect("projected questions are ask_user questions");
+        let answers = validate_answers(
+            &questions,
+            &[
+                answer("environment", &["production"], None),
+                answer("note", &[], Some("ship it")),
+                answer("notify", &["Yes"], None),
+            ],
+        )
+        .expect("answers to the questions asked");
+        let elicitation = PendingFormElicitation {
+            server: "deploys".to_string(),
+            tool: "release".to_string(),
+            retry_tool: "mcp_deploys_release".to_string(),
+            fingerprint: schema.fingerprint(),
+        };
+
+        let result = build_result(AskUserStatus::Answered, answers);
+        let (record, spoken) =
+            form_elicitation_resolution(&elicitation, &result, chrono::Utc::now());
+
+        assert_eq!(record.action, everruns_mcp::FormAnswerAction::Accept);
+        let content = schema
+            .content_from_answers(&record.answers)
+            .expect("the answers fit the schema");
+        assert_eq!(content["environment"], "production");
+        assert_eq!(content["notify"], true);
+        assert_eq!(content["note"], "ship it");
+        assert!(spoken.contains("mcp_deploys_release"));
+    }
+
+    #[test]
+    fn anything_but_an_answer_declines_the_elicitation() {
+        let elicitation = PendingFormElicitation {
+            server: "deploys".to_string(),
+            tool: "release".to_string(),
+            retry_tool: "mcp_deploys_release".to_string(),
+            fingerprint: "f".to_string(),
+        };
+        for status in [
+            AskUserStatus::Declined,
+            AskUserStatus::TimedOut,
+            AskUserStatus::Cancelled,
+        ] {
+            let result = build_result(status, vec![answer("environment", &["staging"], None)]);
+            let (record, _) =
+                form_elicitation_resolution(&elicitation, &result, chrono::Utc::now());
+            assert_eq!(record.action, everruns_mcp::FormAnswerAction::Decline);
+            assert!(
+                record.answers.is_empty(),
+                "{status:?} must not carry answers"
+            );
         }
     }
 

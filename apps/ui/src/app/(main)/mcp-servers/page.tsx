@@ -50,6 +50,7 @@ import type {
   CreateMcpServerRequest,
   McpServerAuthMode,
   McpProtocolMode,
+  McpElicitationPolicy,
 } from "@/lib/api/types";
 import {
   apiKeySecretSchema,
@@ -93,6 +94,40 @@ function protocolModeLabel(mode?: McpProtocolMode): string {
     default:
       return "Auto";
   }
+}
+
+/**
+ * Elicitation policy select, shared by the create and edit dialogs.
+ * Spec: knowledge/integrations/mcp-form-elicitation.md (D1).
+ */
+function ElicitationPolicyField({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: McpElicitationPolicy;
+  onChange: (value: McpElicitationPolicy) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>Elicitation</Label>
+      <Select value={value} onValueChange={(next) => onChange(next as McpElicitationPolicy)}>
+        <SelectTrigger id={id}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="url">Links only</SelectItem>
+          <SelectItem value="url_and_form">Links and questions</SelectItem>
+          <SelectItem value="none">Off</SelectItem>
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">
+        Whether this server may ask the user to open a link or answer questions mid-call. Questions
+        are shown as coming from the server and never ask for passwords or keys.
+      </p>
+    </div>
+  );
 }
 
 function McpServerRow({
@@ -267,6 +302,7 @@ function AddMcpServerDialog({
   const [apiKey, setApiKey] = useState("");
   const [authMode, setAuthMode] = useState<McpServerAuthMode>("none");
   const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
+  const [elicitationPolicy, setElicitationPolicy] = useState<McpElicitationPolicy>("url");
   const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>([]);
   const [headerErrors, setHeaderErrors] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -282,6 +318,7 @@ function AddMcpServerDialog({
     setApiKey("");
     setAuthMode("none");
     setProtocolMode("auto");
+    setElicitationPolicy("url");
     setHeaders([]);
     setHeaderErrors(null);
     setFormError(null);
@@ -322,6 +359,7 @@ function AddMcpServerDialog({
       transport_type: "http",
       auth_mode: parsed.data.auth_mode,
       protocol_mode: protocolMode === "auto" ? undefined : protocolMode,
+      elicitation_policy: elicitationPolicy === "url" ? undefined : elicitationPolicy,
       api_key: parsed.data.auth_mode === "api_key" ? parsed.data.api_key : undefined,
       headers: headersRecord,
     };
@@ -338,6 +376,7 @@ function AddMcpServerDialog({
     setApiKey("");
     setAuthMode("none");
     setProtocolMode("auto");
+    setElicitationPolicy("url");
     setHeaders([]);
     setHeaderErrors(null);
     setFieldErrors({});
@@ -441,6 +480,11 @@ function AddMcpServerDialog({
               work around a server that mis-signals its era.
             </p>
           </div>
+          <ElicitationPolicyField
+            id="elicitation-policy"
+            value={elicitationPolicy}
+            onChange={setElicitationPolicy}
+          />
           {authMode === "api_key" && (
             <div className="space-y-2">
               <Label htmlFor="api-key">API Key</Label>
@@ -552,6 +596,7 @@ function EditMcpServerDialog({
   const [description, setDescription] = useState("");
   const [url, setUrl] = useState("");
   const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
+  const [elicitationPolicy, setElicitationPolicy] = useState<McpElicitationPolicy>("url");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const updateServer = useUpdateMcpServer(server?.id ?? "");
@@ -563,6 +608,7 @@ function EditMcpServerDialog({
     setDescription(server.description ?? "");
     setUrl(server.url);
     setProtocolMode(server.protocol_mode ?? "auto");
+    setElicitationPolicy(server.elicitation_policy ?? "url");
     setFieldErrors({});
     updateServer.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -577,6 +623,7 @@ function EditMcpServerDialog({
       description,
       url,
       protocol_mode: protocolMode,
+      elicitation_policy: elicitationPolicy,
     });
     if (!parsed.success) {
       setFieldErrors(getFieldErrors(parsed.error));
@@ -592,6 +639,7 @@ function EditMcpServerDialog({
         description: description.trim(),
         url: parsed.data.url,
         protocol_mode: parsed.data.protocol_mode,
+        elicitation_policy: parsed.data.elicitation_policy,
       });
       onOpenChange(false);
     } catch {
@@ -605,7 +653,8 @@ function EditMcpServerDialog({
         <DialogHeader>
           <DialogTitle>Edit MCP Server</DialogTitle>
           <DialogDescription>
-            Update the name, description, URL, and protocol compatibility for this MCP server.
+            Update the name, description, URL, protocol compatibility, and elicitation for this MCP
+            server.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -673,6 +722,11 @@ function EditMcpServerDialog({
               </SelectContent>
             </Select>
           </div>
+          <ElicitationPolicyField
+            id="edit-elicitation-policy"
+            value={elicitationPolicy}
+            onChange={setElicitationPolicy}
+          />
           <p className="text-xs text-muted-foreground">
             Authentication ({server?.auth_mode ?? "none"}) is managed separately. Use the Set Key
             action to update an API key.

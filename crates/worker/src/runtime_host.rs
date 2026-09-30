@@ -169,6 +169,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             },
             auth_mode: info.auth_mode,
             protocol_mode: info.protocol_mode,
+            elicitation_policy: info.elicitation_policy,
             oauth_provider_id: info.oauth_provider_id,
             pending_oauth_provider,
             secret_bindings: info.secret_bindings,
@@ -590,15 +591,23 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         // the turn pauses on a consent card (`UrlElicitationHook`); the run that
         // follows the user's consent finds it recorded here and answers the
         // server `accept`.
-        let client = Arc::new(McpClient::with_url_elicitation(
+        //
+        // Form mode rides the same store: the turn pauses on an `ask_user` card
+        // (`FormElicitationHook`), and the retry sends the recorded answer. Only
+        // servers whose policy allows it are told this client does forms.
+        let answers = Arc::new(
+            crate::mcp_elicitation_consent::SessionElicitationConsents::new(
+                self.adapters.storage_store(org_id),
+                session_id,
+            ),
+        );
+        let client = Arc::new(McpClient::with_url_and_form_elicitation(
             egress,
             Arc::new(NoAuthProvider),
-            Arc::new(everruns_mcp::ConsentingUrlElicitations::new(Arc::new(
-                crate::mcp_elicitation_consent::SessionElicitationConsents::new(
-                    self.adapters.storage_store(org_id),
-                    session_id,
-                ),
-            ))),
+            Arc::new(everruns_mcp::ConsentingUrlElicitations::new(
+                answers.clone(),
+            )),
+            Arc::new(everruns_mcp::StoredFormAnswers::new(answers)),
         ));
         let resolver = Arc::new(WorkerMcpResolver {
             adapters: self.adapters.clone(),
@@ -745,6 +754,7 @@ mod mcp_credential_tests {
             url: "https://mcp.linear.app/mcp".to_string(),
             auth_mode,
             protocol_mode: everruns_core::McpProtocolMode::Auto,
+            elicitation_policy: Default::default(),
             oauth_provider_id: Some(format!("mcp_oauth_{}", Uuid::new_v4())),
             acts_as,
             api_key: api_key.map(str::to_string),

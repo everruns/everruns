@@ -18,8 +18,8 @@ use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    Caller, EgressService, McpProtocolMode, McpServer, McpServerActsAs, McpServerAuthMode,
-    McpServerStatus, McpToolDefinition, mcp_oauth_provider_id_for_uuid,
+    Caller, EgressService, McpElicitationPolicy, McpProtocolMode, McpServer, McpServerActsAs,
+    McpServerAuthMode, McpServerStatus, McpToolDefinition, mcp_oauth_provider_id_for_uuid,
 };
 use everruns_host::DirectEgressService;
 use serde::{Deserialize, Serialize};
@@ -92,6 +92,10 @@ pub struct McpServerSettings {
     /// schema migration is needed; absent (legacy rows) deserializes to `auto`.
     #[serde(default, skip_serializing_if = "McpProtocolMode::is_auto")]
     pub protocol_mode: McpProtocolMode,
+    /// Elicitation modes this server may use. Persisted in the same `settings`
+    /// JSON and omitted when default, so existing rows are unchanged.
+    #[serde(default, skip_serializing_if = "McpElicitationPolicy::is_default")]
+    pub elicitation_policy: McpElicitationPolicy,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth: Option<McpServerOAuthSettings>,
 }
@@ -162,6 +166,7 @@ impl McpServerService {
             serde_json::from_value(row.settings.clone()).unwrap_or(McpServerSettings {
                 auth_mode: McpServerAuthMode::None,
                 protocol_mode: McpProtocolMode::Auto,
+                elicitation_policy: McpElicitationPolicy::Url,
                 oauth: None,
             });
 
@@ -239,6 +244,7 @@ impl McpServerService {
         let settings = McpServerSettings {
             auth_mode,
             protocol_mode: req.protocol_mode.unwrap_or_default(),
+            elicitation_policy: req.elicitation_policy.unwrap_or_default(),
             oauth: None,
         };
 
@@ -349,6 +355,9 @@ impl McpServerService {
         }
         if let Some(protocol_mode) = req.protocol_mode {
             settings.protocol_mode = protocol_mode;
+        }
+        if let Some(elicitation_policy) = req.elicitation_policy {
+            settings.elicitation_policy = elicitation_policy;
         }
         if req.api_key.is_some() && settings.auth_mode != McpServerAuthMode::ApiKey {
             anyhow::bail!("Only API key MCP servers can store an API key");
@@ -786,6 +795,7 @@ impl McpServerService {
             url: server.url,
             auth_mode: server.auth_mode,
             protocol_mode: server.protocol_mode,
+            elicitation_policy: server.elicitation_policy,
             oauth_provider_id: server.oauth_provider_id,
             acts_as: McpServerActsAs::None,
             api_key,
@@ -817,6 +827,7 @@ impl McpServerService {
             url: row.url,
             auth_mode: McpServerAuthMode::None,
             protocol_mode: settings.protocol_mode,
+            elicitation_policy: settings.elicitation_policy,
             oauth_provider_id: None,
             acts_as: McpServerActsAs::None,
             api_key: None,
@@ -860,6 +871,8 @@ pub struct McpServerResolved {
     pub auth_mode: McpServerAuthMode,
     /// Protocol-era adoption policy (`auto` negotiates every protocol era).
     pub protocol_mode: McpProtocolMode,
+    /// Elicitation modes the operator allows this server to use.
+    pub elicitation_policy: McpElicitationPolicy,
     pub oauth_provider_id: Option<String>,
     pub acts_as: McpServerActsAs,
     pub api_key: Option<String>,

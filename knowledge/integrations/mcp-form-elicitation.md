@@ -11,8 +11,8 @@ tags:
 
 ## Summary
 
-Everruns' MCP client declines form mode `elicitation/create` outright. Only URL
-mode is handled ([MCP Server Specification](mcp-servers.md) § URL mode
+Everruns' MCP client used to decline form mode `elicitation/create` outright,
+handling only URL mode ([MCP Server Specification](mcp-servers.md) § URL mode
 elicitation). This specification defines the inbound half: an attached server's
 `requestedSchema` becomes an `ask_user` question set, the session's own surface
 collects the answer, and the answer returns to the server as an `ElicitResult`.
@@ -22,9 +22,10 @@ It is the inverse of the outbound projection Everruns already ships as an MCP
 an `ask_user` question set onto MCP's restricted schema. That direction trusts
 the question, because Everruns wrote it. This direction does not.
 
-Nothing in this document is implemented yet. It exists because EVE-1068's
-remaining blocker was a security decision, not a mapping problem, and the
-decision has to be reviewable before the code is written.
+Implemented in EVE-1068. The decisions below were written first because the
+remaining blocker was a security decision, not a mapping problem;
+[§ How it landed](#how-it-landed) records where the implementation settled the
+details they left open.
 
 ## Why this needed its own pass
 
@@ -165,9 +166,8 @@ This is 2026-07-28 only, for the same reason URL mode is.
 ## Threat model
 
 Recorded as TM-TOOL-043 through TM-TOOL-047 in
-[threat-model.md](../security/threat-model.md). All five are **OPEN** until the
-implementation lands, because the current decline is not a mitigation of these
-threats — it is the absence of the feature that creates them.
+[threat-model.md](../security/threat-model.md), mitigated by the decisions above
+as implemented.
 
 ## How the session hosts answer
 
@@ -182,6 +182,38 @@ retry carries `inputResponses: {<key>: {action, content}}` rather than a bare
 Because the retry may run in a different worker process than the call that asked,
 the collected answer is session-scoped durable state, as URL mode's consent
 record is.
+
+## How it landed
+
+- **Projection and bounds**: `crates/mcp/src/form_elicitation.rs`. Bounds are
+  refusals, never trims (16 properties, 32 enum members, and limits on names,
+  titles and text). `ask_user`'s own caps for model-authored calls (four
+  questions, six options) do not apply here; the form bounds replace them.
+- **The pause**: `FormElicitationHook` (`crates/engine/src/execution/act_hooks.rs`)
+  turns `form_elicitation_required` into an engine-authored `ask_user` call whose
+  id carries `mcp_form_elicitation_` and whose arguments carry `mcp_elicitation`
+  (server, tool, retry tool, message, schema fingerprint). It rides the existing
+  `ask_user` pause and hint; the answer path trusts those fields only from the
+  emitted event, and only when both markers are present.
+- **The answer**: `resolve_question_answers`
+  (`crates/server/src/api/question_answers.rs`) parks a `StoredFormAnswer` under
+  `mcp/elicitation-form/{server}/{tool}` and, because the call is
+  engine-authored, adds the person's decision as a user turn, as URL consent
+  does. The retry takes the record once (`StoredFormAnswers`), and sends it only
+  if the server asks the same questions again (fingerprint match) and every
+  answer still fits the schema; anything else asks again.
+- **D5**: a decline or the deadline records `decline`, which the retry sends.
+  An unattended run gets no pause: the `ask_user` stand-in is resolved
+  unattended as a decline, the tool is not retried, and the model reads a tool
+  result saying which server's questions went unanswered. No `accept` is sent.
+- **D6**: a credential-shaped free-text answer is refused at submission, like
+  any `ask_user` answer, so the person can revise or decline. It is never
+  stored or sent.
+- **D7**: only the worker host injects a form handler. The in-process host
+  relays URL mode and declares no form mode.
+- **Attribution**: the card (`ask-user-tool-call.tsx`) heads the questions with
+  the server's configured name and says Everruns is not asking; a server's
+  `default` is neither preselected nor marked recommended.
 
 ## Acceptance
 

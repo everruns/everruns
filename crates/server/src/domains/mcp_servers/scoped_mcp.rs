@@ -444,6 +444,7 @@ async fn resolve_matched_scoped_mcp_server(
         url: server.url,
         auth_mode: server.auth_mode,
         protocol_mode: server.protocol_mode,
+        elicitation_policy: server.elicitation_policy,
         oauth_provider_id: server.oauth_provider_id,
         acts_as: server.acts_as,
         api_key: None,
@@ -478,6 +479,9 @@ pub async fn materialize_scoped_mcp_servers(
                 url: row.url,
                 headers: serde_json::from_value(row.headers).unwrap_or_default(),
                 protocol_mode: settings.protocol_mode,
+                // The catalog record is the operator's decision; an attachment
+                // that references it cannot widen it (TM-TOOL-045).
+                elicitation_policy: settings.elicitation_policy,
                 acts_as: server.acts_as,
                 ..Default::default()
             },
@@ -1067,6 +1071,8 @@ fn validate_catalog_reference_shape(name: &str, server: &ScopedMcpServer) -> Res
         Some("auth_mode")
     } else if server.protocol_mode != McpProtocolMode::Auto {
         Some("protocol_mode")
+    } else if !server.elicitation_policy.is_default() {
+        Some("elicitation_policy")
     } else if server.oauth_provider_id.is_some() {
         Some("oauth_provider_id")
     } else if !server.tool_discovery {

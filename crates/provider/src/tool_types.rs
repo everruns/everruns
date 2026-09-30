@@ -878,6 +878,11 @@ pub const URL_ELICITATION_REQUIRED_CODE: &str = "url_elicitation_required";
 /// surface for it, and the API that collects the decision recognises it.
 pub const CONFIRM_URL_ELICITATION_TOOL: &str = "confirm_url_elicitation";
 
+pub use crate::form_elicitation_types::{
+    FORM_ELICITATION_CALL_ID_PREFIX, FORM_ELICITATION_REQUIRED_CODE, FormElicitationRequired,
+    MCP_ELICITATION_ARGUMENT,
+};
+
 /// Name of the client-side tool an agent uses to ask a structured question.
 ///
 /// Lives here rather than in `everruns-builtins` because the engine has to
@@ -905,6 +910,16 @@ pub fn unattended_ask_user_result(arguments: &serde_json::Value) -> serde_json::
     let questions = arguments
         .get("questions")
         .and_then(|value| value.as_array());
+
+    // Questions an MCP server asked have no unattended answer either: a
+    // server's default is not a person's consent (TM-TOOL-047).
+    if arguments.get(MCP_ELICITATION_ARGUMENT).is_some() {
+        return serde_json::json!({
+            "status": "declined",
+            "answered_by": "unattended",
+            "answers": [],
+        });
+    }
 
     // Free-form text and credentials have no unattended answer. Declining
     // leaves proceeding without one as the model's explicit decision.
@@ -1365,6 +1380,19 @@ mod tests {
             assert_eq!(strip_human_intent_argument(&value), value);
             assert_eq!(human_intent(&value), None);
         }
+    }
+
+    #[test]
+    fn unattended_never_answers_a_servers_questions() {
+        let arguments = json!({
+            "questions": [{"id": "plan", "header": "billing", "question": "Plan?",
+                "options": [{"label": "Pro", "description": "", "default": true},
+                            {"label": "Team", "description": ""}]}],
+            "mcp_elicitation": {"server": "billing", "tool": "buy"}
+        });
+        let result = unattended_ask_user_result(&arguments);
+        assert_eq!(result["status"], "declined");
+        assert_eq!(result["answers"], json!([]));
     }
 
     #[test]

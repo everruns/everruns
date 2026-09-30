@@ -3,6 +3,7 @@
 
 use crate::auth::{McpAuthProvider, McpAuthRequest, McpCredential};
 use crate::elicitation::UrlElicitationHandler;
+use crate::form_elicitation::FormElicitationHandler;
 use crate::http::HttpTransport;
 use crate::result::map_tool_call_result;
 use crate::transport::{McpConnection, McpEndpoint, McpTransport};
@@ -39,6 +40,25 @@ impl McpClient {
     ) -> Self {
         Self::with_http(
             Arc::new(HttpTransport::new(egress).with_elicitation_handler(elicitation)),
+            auth,
+        )
+    }
+
+    /// Build a client that also answers form mode elicitations through
+    /// `form`, for servers whose `elicitation_policy` opts in. Form mode is
+    /// never declared to any other server.
+    pub fn with_url_and_form_elicitation(
+        egress: Arc<dyn EgressService>,
+        auth: Arc<dyn McpAuthProvider>,
+        url: Arc<dyn UrlElicitationHandler>,
+        form: Arc<dyn FormElicitationHandler>,
+    ) -> Self {
+        Self::with_http(
+            Arc::new(
+                HttpTransport::new(egress)
+                    .with_elicitation_handler(url)
+                    .with_form_elicitation_handler(form),
+            ),
             auth,
         )
     }
