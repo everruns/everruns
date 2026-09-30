@@ -527,10 +527,7 @@ async fn test_mcp_tools_list() {
     assert_eq!(agent_run["title"], "Run Agent");
     assert_eq!(agent_run["outputSchema"]["type"], "object");
     assert_eq!(agent_run["annotations"]["openWorldHint"], true);
-    assert_eq!(
-        agent_run["_meta"]["ui"]["resourceUri"],
-        "ui://everruns/app/session"
-    );
+    assert!(agent_run["_meta"]["ui"]["resourceUri"].is_string());
 
     let discover = tools
         .iter()

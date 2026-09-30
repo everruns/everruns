@@ -232,7 +232,6 @@ pub struct OAuthProtectedResourceMetadata {
     pub resource: String,
     pub authorization_servers: Vec<String>,
     pub bearer_methods_supported: Vec<String>,
-    /// ChatGPT's connector setup reads the scopes to request from here.
     pub scopes_supported: Vec<String>,
 }
 
@@ -380,14 +379,11 @@ async fn try_resolve_user(state: &McpOAuthState, jar: &CookieJar) -> Option<Auth
 // Handlers
 // ============================================
 
-/// GET /.well-known/oauth-protected-resource/mcp — Protected resource metadata (RFC 9728)
-///
-/// MCP clients fetch this first to discover which authorization server protects
-/// the resource. Path-derived per RFC 9728 §3.1 for the `/mcp` resource.
+/// GET /.well-known/oauth-protected-resource/mcp, path-derived per RFC 9728 §3.1.
+/// Clients find the authorization server here; ChatGPT also reads `scopes_supported`.
 async fn oauth_protected_resource_metadata(
     State(state): State<McpOAuthState>,
 ) -> Json<OAuthProtectedResourceMetadata> {
-    tracing::debug!("MCP OAuth: protected resource metadata requested");
     let issuer = state.issuer_url.trim_end_matches('/');
     Json(OAuthProtectedResourceMetadata {
         resource: format!("{issuer}/mcp"),
