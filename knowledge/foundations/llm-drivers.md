@@ -742,7 +742,7 @@ loop therefore never dispatches them; the only client-visible artifact is
 
 ### OpenAI Hosted Tools
 
-OpenAI hosted tools (EVE-1115, `web_search` first) are the OpenAI counterpart of OpenRouter
+OpenAI hosted tools (EVE-1115: `web_search`, `code_interpreter`, `shell`, `file_search`) are the OpenAI counterpart of OpenRouter
 server tools: model-decided, executed inside the response, never dispatched by the agent loop.
 
 - **Contract**: `everruns_provider::openai_hosted_tools` owns the typed selection and the
@@ -753,13 +753,16 @@ server tools: model-decided, executed inside the response, never dispatched by t
 - **Loud off-provider**: unlike OpenRouter's no-op, the reason step fails the turn when the
   option reaches a provider outside `HOSTED_TOOLS_DRIVER_IDS`. An agent configured to search
   must not quietly answer from memory.
-- **Stream**: `web_search_call` item frames become `LlmStreamEvent::HostedToolCall` progress
+- **Stream**: hosted call item frames (`*_call`, see `hosted_call_tool`) become `LlmStreamEvent::HostedToolCall` progress
   (never `ToolCalls`), which the engine persists as `tool.hosted_call` for the activity UI;
   no `tool.completed` is emitted because that event carries tool results into replay. `Done`
   counts calls in `hosted_tool_calls`, and the engine adds their list price
   (`hosted_call_price_usd`) to the estimated cost. The engine counts the option as
   provider-executed, so a mid-stream failure is not reissued.
-- **Follow-ups**: code interpreter, file search, and remote MCP.
+- **Containers**: `code_interpreter` and `shell` use OpenAI's auto container, which is not the
+  session sandbox. They stay unpriced in the estimate because OpenAI bills per container
+  session, and one container serves calls across turns.
+- **Follow-ups**: remote MCP.
 
 ### OpenRouter Capacity Strategy
 

@@ -76,13 +76,7 @@ pub(crate) fn hosted_call_event(event_data: &str) -> Option<LlmStreamEvent> {
         (true, false) => HostedToolCallStatus::Completed,
         (false, false) => HostedToolCallStatus::InProgress,
     };
-    // `web_search_call.action`: `search` carries `query`, `open_page` a `url`,
-    // `find` a `pattern` within a `url`.
-    let action = item.get("action");
-    let field = |key: &str| action.and_then(|a| a.get(key)).and_then(Value::as_str);
-    let summary = field("query")
-        .or_else(|| field("url"))
-        .map(|detail| detail.chars().take(200).collect());
+    let summary = call_summary(item).map(|detail| detail.chars().take(200).collect());
     Some(LlmStreamEvent::HostedToolCall(HostedToolCall {
         id: item
             .get("id")
@@ -93,6 +87,44 @@ pub(crate) fn hosted_call_event(event_data: &str) -> Option<LlmStreamEvent> {
         status,
         summary,
     }))
+}
+
+/// A one-line detail for a hosted call item, once the provider reports it.
+fn call_summary(item: &Value) -> Option<String> {
+    let action = item.get("action");
+    let field = |key: &str| action.and_then(|a| a.get(key)).and_then(Value::as_str);
+    let first_line = |text: &str| {
+        text.lines()
+            .find(|line| !line.trim().is_empty())
+            .map(str::trim)
+            .map(str::to_string)
+    };
+    match item.get("type").and_then(Value::as_str)? {
+        // `search` carries `query`, `open_page` a `url`, `find` a `pattern` in a `url`.
+        "web_search_call" => field("query").or_else(|| field("url")).map(str::to_string),
+        "code_interpreter_call" => item
+            .get("code")
+            .and_then(Value::as_str)
+            .and_then(first_line),
+        "shell_call" => action
+            .and_then(|a| a.get("commands"))
+            .and_then(Value::as_array)
+            .map(|commands| {
+                commands
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            })
+            .filter(|commands| !commands.is_empty()),
+        "file_search_call" => item
+            .get("queries")
+            .and_then(Value::as_array)
+            .and_then(|queries| queries.first())
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -134,6 +166,41 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(failed.status, HostedToolCallStatus::Failed);
+    }
+
+    #[test]
+    fn container_and_file_calls_carry_their_detail() {
+        let done = |item: Value| {
+            event(json!({ "type": "response.output_item.done", "item": item })).unwrap()
+        };
+        let code = done(json!({ "type": "code_interpreter_call", "id": "ci_1",
+                                "status": "completed", "code": "\nimport math\nmath.pi\n" }));
+        assert_eq!(
+            (code.tool.as_str(), code.summary.as_deref()),
+            ("code_interpreter", Some("import math"))
+        );
+        let shell = done(
+            json!({ "type": "shell_call", "id": "sh_1", "status": "completed",
+                                 "action": { "commands": ["ls", "uname -s"] } }),
+        );
+        assert_eq!(
+            (shell.tool.as_str(), shell.summary.as_deref()),
+            ("shell", Some("ls; uname -s"))
+        );
+        let files = done(
+            json!({ "type": "file_search_call", "id": "fs_1", "status": "completed",
+                                 "queries": ["refund policy"] }),
+        );
+        assert_eq!(
+            (files.tool.as_str(), files.summary.as_deref()),
+            ("file_search", Some("refund policy"))
+        );
+        // The shell's output item is part of the same call, not another call.
+        assert!(
+            event(json!({ "type": "response.output_item.done",
+                              "item": { "type": "shell_call_output", "id": "sho_1" } }))
+            .is_none()
+        );
     }
 
     #[test]

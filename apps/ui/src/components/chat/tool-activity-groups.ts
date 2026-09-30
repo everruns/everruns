@@ -51,13 +51,26 @@ function fallbackToolLabel(name: string | undefined): string {
 
 /** Label for a provider-executed (hosted) tool call, e.g. OpenAI web search. */
 export function hostedToolLabel(data: HostedToolCallData, locale = "en"): string {
-  if (data.tool_name === "web_search") {
-    const uiLocale = getSupportedLocale(locale);
-    return data.summary
-      ? formatMessage(uiLocale, "search_web_for", { value: data.summary })
-      : formatMessage(uiLocale, "search_web");
+  const uiLocale = getSupportedLocale(locale);
+  const detail = data.summary ?? undefined;
+  switch (data.tool_name) {
+    case "web_search":
+      return detail
+        ? formatMessage(uiLocale, "search_web_for", { value: detail })
+        : formatMessage(uiLocale, "search_web");
+    case "code_interpreter":
+      return detail
+        ? formatMessage(uiLocale, "run_code_for", { value: detail })
+        : formatMessage(uiLocale, "run_code");
+    case "shell":
+      return detail ? `$ ${detail}` : formatMessage(uiLocale, "shell");
+    case "file_search":
+      return detail
+        ? formatMessage(uiLocale, "find_value", { value: detail })
+        : formatMessage(uiLocale, "search_files");
+    default:
+      return fallbackToolLabel(data.tool_name);
   }
-  return fallbackToolLabel(data.tool_name);
 }
 
 /** Fold durable activity lifecycle events into one stable group per exec/request batch. */
