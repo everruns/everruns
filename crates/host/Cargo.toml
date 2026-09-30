@@ -26,6 +26,7 @@ futures.workspace = true
 fs2.workspace = true
 ignore.workspace = true
 reqwest = { workspace = true, optional = true, features = ["json", "stream", "rustls", "blocking"] }
+eventsource-stream = { workspace = true, optional = true }
 regex.workspace = true
 rand = { workspace = true, optional = true }
 serde.workspace = true
@@ -66,7 +67,7 @@ libc = "0.2"
 
 [features]
 default = []
-openai-agents-api-prototype = []
+openai-agents-api-prototype = ["direct-egress", "dep:eventsource-stream"]
 direct-egress = ["dep:reqwest"]
 builtins = ["dep:everruns-builtins"]
 mcp = ["dep:everruns-mcp", "direct-egress"]

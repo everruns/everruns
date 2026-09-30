@@ -13,8 +13,6 @@
   `DECISIONS_MODEL` select the default; a TypeSafe-only deployment behaves as
   before. Recorded in [Decisions Service](operations/decisions-service.md#decision-drivers).
 
-## 2026-09-29
-
 * **OpenAI's Agents API can be wrapped only behind a constrained runtime boundary.**
   Function required actions preserve Everruns approvals and guardrails, but direct
   MCP and OpenAI built-ins do not expose an equivalent interception point. The
@@ -22,7 +20,8 @@
   events into the existing session protocol, and treats Everruns as the product
   ledger while OpenAI owns live loop state. A feature-gated fixture-backed
   prototype covers one function tool, one MCP tool, event projection, and config
-  import. See [OpenAI Agents API Runtime Backend](execution/openai-agents-api-runtime.md).
+  import. A live call on 2026-09-30 confirmed the session request and failure
+  path; the full round trip waits on API credits. See [OpenAI Agents API Runtime Backend](execution/openai-agents-api-runtime.md).
 
 ## 2026-09-28
 

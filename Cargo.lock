@@ -2558,6 +2558,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "eventsource-stream",
  "everruns-builtins",
  "everruns-capability",
  "everruns-core",

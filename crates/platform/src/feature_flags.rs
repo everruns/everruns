@@ -897,8 +897,9 @@ mod tests {
         assert!(!definition.platform_managed);
 
         restore_env("FEATURE_REPORTS", prev);
-    },
-    FeatureFlagDefinition {
+    }
+
+    #[test]
     fn openai_agents_api_is_platform_managed_and_off_by_default() {
         let _lock = lock_env();
         let previous = std::env::var("FEATURE_OPENAI_AGENTS_API").ok();
@@ -910,11 +911,9 @@ mod tests {
         let system = FeatureFlags::from_env(&DeploymentGrade::Prod);
         assert!(system.openai_agents_api);
         assert!(
-            !FeatureFlags::for_org(&system, &std::collections::HashMap::new())
-                .openai_agents_api
+            !FeatureFlags::for_org(&system, &std::collections::HashMap::new()).openai_agents_api
         );
-        let enrolled =
-            std::collections::HashMap::from([("openai_agents_api".to_string(), true)]);
+        let enrolled = std::collections::HashMap::from([("openai_agents_api".to_string(), true)]);
         assert!(FeatureFlags::for_org(&system, &enrolled).openai_agents_api);
         restore_env("FEATURE_OPENAI_AGENTS_API", previous);
     }
