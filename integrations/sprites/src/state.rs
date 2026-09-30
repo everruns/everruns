@@ -42,6 +42,9 @@ pub struct CheckpointInfo {
     pub created_at: Option<String>,
     #[serde(default)]
     pub comment: Option<String>,
+    /// Taken by Sprites itself rather than requested through the API.
+    #[serde(default)]
+    pub is_auto: bool,
 }
 
 // ============================================================================
