@@ -159,6 +159,8 @@ async fn test_live_sprite_lifecycle() {
         .create_checkpoint(name)
         .await
         .expect("checkpoint failed");
+    // Printed so a failed restore names the version it was restoring (EVE-1013).
+    println!("[test] Created checkpoint {}", cp.id);
     assert!(!cp.id.is_empty(), "Checkpoint ID should not be empty");
 
     // Verify sprite info

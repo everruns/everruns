@@ -59,6 +59,7 @@ use std::sync::Arc;
 use everruns_core::decisions::{
     DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionsService,
 };
+use everruns_host::{DecisionDriverRegistry, DecisionRoutingError};
 use everruns_provider::error::AgentLoopError;
 
 /// Why a decision could not be made.
@@ -175,6 +176,31 @@ impl Decisions {
             service: Some(service),
             model: Some(model.into()),
         }
+    }
+
+    /// Route across several decision drivers, with `default_driver` answering
+    /// whatever names no driver of its own.
+    ///
+    /// The model is left to routing: a call naming `jev-latest` reaches the
+    /// driver that owns `jev-*`, `openai/<model>` reaches the `openai` driver,
+    /// and a call naming none reaches `default_driver` with its own default.
+    /// [`Decision::model`] still picks one per call. A default that is not
+    /// registered is an error here rather than on the first call.
+    ///
+    /// ```
+    /// # use everruns::{DecisionDriverRegistry, Decisions};
+    /// let error = Decisions::from_registry(DecisionDriverRegistry::new(), "typesafe")
+    ///     .unwrap_err();
+    /// assert!(error.to_string().contains("'typesafe' is not configured"));
+    /// ```
+    pub fn from_registry(
+        registry: DecisionDriverRegistry,
+        default_driver: &str,
+    ) -> Result<Self, DecisionRoutingError> {
+        Ok(Self {
+            service: Some(Arc::new(registry.router(default_driver, None)?)),
+            model: None,
+        })
     }
 
     /// A deterministic in-process decisions that answers every question the same
@@ -547,6 +573,16 @@ impl Answers {
     /// ```
     pub fn model(&self) -> &str {
         &self.0.model
+    }
+
+    /// Whether the numbers are a measured distribution.
+    ///
+    /// False when the answering driver returned only labels (an LLM-backed or
+    /// label-only vendor): accessors then read `1.0` for the picked answer and
+    /// `0.0` elsewhere, so a threshold still works as "did it pick this", but
+    /// the value says nothing about how sure the model was.
+    pub fn is_calibrated(&self) -> bool {
+        self.0.calibrated
     }
 
     /// The probability of yes for a `noul` question.

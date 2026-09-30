@@ -17,6 +17,8 @@ use opentelemetry::trace::{SpanId, TracerProvider as _};
 use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider, SpanData};
 use serde_json::json;
 
+const SENSITIVE_TOOL_DESCRIPTION: &str = "VALIDATION_SECRET_tenant_tool_instruction_7f4c";
+
 struct Harness {
     listener: OtelEventListener,
     exporter: InMemorySpanExporter,
@@ -138,7 +140,7 @@ fn generation(success: bool) -> LlmGenerationData {
             category: None,
             capability_id: None,
             capability_name: None,
-            description: "Look up current weather".to_string(),
+            description: SENSITIVE_TOOL_DESCRIPTION.to_string(),
         }],
         output: LlmGenerationOutput {
             text: if success {
@@ -500,11 +502,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
         Some(&Value::I64(40))
     );
     assert_eq!(attr(chat, "llm.cost.total"), Some(&Value::F64(0.0125)));
-    assert!(
-        attr_str(chat, "llm.tools.0.tool.json_schema")
-            .unwrap()
-            .contains("get_weather")
-    );
+    assert!(attr(chat, "llm.tools.0.tool.json_schema").is_none());
     assert!(
         attr_str(chat, "llm.invocation_parameters")
             .unwrap()
@@ -528,8 +526,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
     );
     assert_eq!(attr_str(act, "everruns.phase").as_deref(), Some("act"));
 
-    // execute_tool attributes, with the description learned from the
-    // generation record.
+    // execute_tool attributes retain non-sensitive correlation metadata.
     assert_eq!(
         attr_str(tool, "gen_ai.operation.name").as_deref(),
         Some("execute_tool")
@@ -546,10 +543,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
         attr_str(tool, "gen_ai.tool.call.id").as_deref(),
         Some("call_1")
     );
-    assert_eq!(
-        attr_str(tool, "gen_ai.tool.description").as_deref(),
-        Some("Look up current weather")
-    );
+    assert!(attr(tool, "gen_ai.tool.description").is_none());
     assert_eq!(
         attr_str(tool, "gen_ai.agent.name").as_deref(),
         Some("Weather Helper")
@@ -559,6 +553,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
         Some("TOOL")
     );
     assert_eq!(attr_str(tool, "tool.name").as_deref(), Some("get_weather"));
+    assert!(attr(tool, "tool.description").is_none());
     assert_eq!(
         attr_str(tool, "everruns.tool.status").as_deref(),
         Some("success")
@@ -581,9 +576,18 @@ async fn content_stays_out_of_spans_by_default() {
             "input.value",
             "output.value",
             "llm.input_messages.0.message.content",
+            "gen_ai.tool.description",
+            "tool.description",
         ] {
             assert!(attr(&span, key).is_none(), "{} leaked {key}", span.name);
         }
+        assert!(
+            span.attributes
+                .iter()
+                .all(|kv| !kv.key.as_str().starts_with("llm.tools.")),
+            "{} leaked an OpenInference tool definition",
+            span.name
+        );
     }
 }
 
@@ -623,6 +627,19 @@ async fn content_capture_records_spec_shaped_messages() {
     let tools: serde_json::Value =
         serde_json::from_str(&attr_str(chat, "gen_ai.tool.definitions").unwrap()).unwrap();
     assert_eq!(tools[0]["name"], "get_weather");
+    assert!(
+        attr_str(chat, "llm.tools.0.tool.json_schema")
+            .unwrap()
+            .contains(SENSITIVE_TOOL_DESCRIPTION)
+    );
+    assert_eq!(
+        attr_str(tool, "gen_ai.tool.description").as_deref(),
+        Some(SENSITIVE_TOOL_DESCRIPTION)
+    );
+    assert_eq!(
+        attr_str(tool, "tool.description").as_deref(),
+        Some(SENSITIVE_TOOL_DESCRIPTION)
+    );
 
     assert_eq!(
         attr_str(chat, "input.mime_type").as_deref(),

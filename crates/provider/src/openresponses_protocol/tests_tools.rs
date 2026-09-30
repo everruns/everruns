@@ -177,6 +177,23 @@ fn test_completed_event_normalizes_cache_inclusive_prompt_tokens() {
 }
 
 #[test]
+fn test_json_fallback_does_not_recover_incomplete_function_call() {
+    let response = json!({
+        "output": [{
+            "type": "function_call",
+            "id": "fc_partial",
+            "call_id": "call_partial",
+            "name": "bash",
+            "arguments": "{}",
+            "status": "incomplete"
+        }]
+    });
+    let mut calls = ToolCallStream::default();
+    calls.observe_response_json(&response);
+    assert!(calls.take_unemitted().is_none());
+}
+
+#[test]
 fn test_incomplete_event_maps_output_limit_to_length() {
     let event_json = r#"{
         "type": "response.incomplete",
@@ -188,7 +205,14 @@ fn test_incomplete_event_maps_output_limit_to_length() {
             "status": "incomplete",
             "incomplete_details": { "reason": "max_output_tokens" },
             "model": "gpt-5.5",
-            "output": [],
+            "output": [{
+                "type": "function_call",
+                "id": "fc_partial",
+                "call_id": "call_partial",
+                "name": "bash",
+                "arguments": "{\"command\":\"rm -rf",
+                "status": "incomplete"
+            }],
             "usage": {
                 "input_tokens": 10,
                 "output_tokens": 5,
@@ -198,6 +222,7 @@ fn test_incomplete_event_maps_output_limit_to_length() {
     }"#;
 
     let event: StreamingEvent = serde_json::from_str(event_json).unwrap();
+    let deferred = Mutex::new(Vec::new());
     let stream_event = handle_streaming_event(
         event,
         &Mutex::new(0),
@@ -205,7 +230,7 @@ fn test_incomplete_event_maps_output_limit_to_length() {
         &Mutex::new(None),
         &Mutex::new(ToolCallStream::default()),
         &Mutex::new(None),
-        &Mutex::new(Vec::new()),
+        &deferred,
         "gpt-5.5".to_string(),
         None,
     );
@@ -216,6 +241,7 @@ fn test_incomplete_event_maps_output_limit_to_length() {
         }
         other => panic!("expected Done event, got {other:?}"),
     }
+    assert!(deferred.lock().unwrap().is_empty());
 }
 
 #[test]

@@ -42,7 +42,8 @@ let agent = Agent::builder()
     .instructions(include_str!("instructions.md"))
     .provider(everruns_openrouter::provider("openrouter", api_key))
     .model(MODEL)
-    .max_iterations(12)
+    .max_iterations(6)
+    .parallel_tool_calls(false)
     .capability(BraveSearch::from_env()?)
     .capability(everruns::WebFetch::new())
     .build()?;
@@ -97,7 +98,7 @@ Narrow the research question and source policy, add an evidence store if results
 
 ## Boundaries
 
-Requires both OpenRouter and Brave Search credentials plus outbound HTTPS. Search and fetch can fail; twelve agent iterations cap the loop, not the bill. Word limits are instructions, not a hard output validator. This is a small research workflow, not an exhaustive literature review.
+Requires both OpenRouter and Brave Search credentials plus outbound HTTPS. Search and fetch can fail; six agent iterations and sequential tool calls bound outbound-request amplification, but provider requests remain billable. Word limits are instructions, not a hard output validator. This is a small research workflow, not an exhaustive literature review.
 
 ## Source map
 
