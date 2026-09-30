@@ -39,6 +39,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-CLIENT | Client-Side Tools | Tool ID spoofing, timeout abuse |
 | TM-MCP | MCP Server | First-party `/mcp` endpoint, MCP OAuth, external MCP clients, MCP server tool discovery/execution |
 | TM-SLACK | Slack Integration | Webhook forgery, signing secret leak, bot loops |
+| TM-GHAPP | Per-agent GitHub Apps | Callback forgery, installation hijack, App key leak |
 | TM-A2A | A2A Channel | API key forgery, replay, method abuse, card disclosure |
 
 ### Managing Threat IDs
@@ -1351,6 +1352,18 @@ GitHub Scout is a blueprint-only integration. It gives the child agent private r
 | TM-GITHUB-002 | Over-scoped repository read access | Medium | Access is bounded by the user's GitHub App installation/token scope. `github_scout` is read-only, but Everruns does not enforce per-repository policy beyond optional `repos` config and GitHub's own authorization. | **CALLER RISK** |
 | TM-GITHUB-003 | Outbound request bypasses session network policy | Medium | Tool execution checks the session network access list before calling `https://api.github.com/`. | MITIGATED |
 | TM-GITHUB-004 | Repository path confusion in file reads | Low | `read_github_file` validates `owner/repo` segments and rejects leading slash, empty, dot, and dot-dot file path segments before constructing the GitHub contents API URL. Remaining file path bytes are percent-encoded. | MITIGATED |
+
+## 17D. Per-agent GitHub Apps (TM-GHAPP)
+
+"Connect GitHub" on an agent identity creates a GitHub App for that agent through GitHub's manifest flow and installs it. See `knowledge/integrations/github-apps.md`.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-GHAPP-001 | Forged manifest callback binds an App to another org's identity | High | The callback is a browser redirect and cannot carry our auth. It requires a state sealed with the server encryption key (AEAD, so unforgeable and unalterable) naming the org, identity and App row, expiring after one hour. The manifest code is single-use at GitHub. A victim lured through an attacker's state creates an App bound to the attacker's identity only after GitHub's own create and install confirmation screens, and the App reaches no repository until the victim installs it. | MITIGATED |
+| TM-GHAPP-002 | Setup callback binds a foreign installation | High | The App row id is in the setup URL; the presented `installation_id` is fetched with that App's own JWT, which GitHub only answers for installations of that App, and its `app_id` is compared. The App belongs to exactly one identity, so the binding needs no user input. | MITIGATED |
+| TM-GHAPP-003 | App private key, client secret or webhook secret leak | High | Encrypted at rest with the server encryption key; never returned by any API or written to logs; GitHub error bodies are not echoed. Installation tokens are minted per use (1h TTL) and never stored. | MITIGATED |
+| TM-GHAPP-004 | Open redirect through `return_to` | Medium | Only same-origin UI paths are accepted (leading `/`, no `//`, backslash or control characters), and the value travels inside the sealed state. | MITIGATED |
+| TM-GHAPP-005 | Over-broad App permissions | Medium | The manifest requests contents and metadata read, pull requests and issues write. The installing user picks repositories on GitHub. | **CALLER RISK** |
 
 ## 18. E2B Cloud Sandbox (TM-E2B)
 

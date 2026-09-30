@@ -1,16 +1,20 @@
 # everruns-integrations-github
 
-> GitHub-backed agent blueprints for Everruns.
+> GitHub pull request tools and agent blueprints for Everruns.
 
 [![Crates.io](https://img.shields.io/crates/v/everruns-integrations-github.svg)](https://crates.io/crates/everruns-integrations-github)
 [![Documentation](https://docs.rs/everruns-integrations-github/badge.svg)](https://docs.rs/everruns-integrations-github)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-integrations-github` registers the `github_scout` capability through
-the Everruns integration plugin system. The capability is blueprint-only: it does
-not expose GitHub tools to the host agent. Instead, it contributes the
-`github_scout` blueprint, a read-only repository-exploration scout whose private
-tools run only inside blueprint-backed child sessions.
+`everruns-integrations-github` registers two capabilities through the Everruns
+integration plugin system:
+
+- `github`: host-facing tools for one pull request at a time (read it, read its
+  size-capped diff, keep one managed comment on it up to date). This is what a
+  pull request summarizer or reviewer agent uses.
+- `github_scout`: blueprint-only. It contributes the `github_scout` blueprint, a
+  read-only repository-exploration scout whose private tools run only inside
+  blueprint-backed child sessions.
 
 Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with
@@ -21,14 +25,28 @@ integration plugin system.
 
 ```rust
 use everruns_core::capabilities::Capability;
-use everruns_integrations_github::GitHubScoutCapability;
+use everruns_integrations_github::{GitHubCapability, GitHubScoutCapability};
 
-let capability = GitHubScoutCapability;
-
-assert_eq!(capability.id(), "github_scout");
+assert_eq!(GitHubCapability.id(), "github");
+assert_eq!(GitHubCapability.tools().len(), 3);
+assert_eq!(GitHubScoutCapability.id(), "github_scout");
 ```
 
 ## What It Provides
+
+### The `github` Capability
+
+- `get_github_pull_request`: title, description, author, state, branches,
+  size, and up to 100 changed files.
+- `get_github_pull_request_diff`: the unified diff, cut to a byte budget
+  (default 60,000, at most 200,000) with a `truncated` flag.
+- `upsert_github_comment`: posts a comment, or edits the one this tool posted
+  earlier under the same hidden marker, so an agent run on every push keeps a
+  single summary comment current.
+
+All three authenticate as the session's `github` connection. For an agent with
+its own GitHub App, that is the App's installation, so comments appear as the
+agent's bot.
 
 ### The `github_scout` Blueprint
 

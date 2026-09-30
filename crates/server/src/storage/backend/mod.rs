@@ -24,6 +24,7 @@ pub(crate) const FORCED_STORAGE_FAILURE: &str = "error returned from database: r
      \"agents\" does not exist at sqlx-postgres-0.8.6/src/connection/mod.rs:666";
 
 use super::agent_trigger_deliveries::*;
+use super::github_app_rows::*;
 use super::mcp_catalog::*;
 use super::mcp_tool_cache::*;
 use super::memory::InMemoryDatabase;

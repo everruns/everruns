@@ -31,3 +31,14 @@ fn registry_includes_github_capability_and_blueprint() {
         .expect("github_scout blueprint should be registered");
     assert_eq!(blueprint.name, "GitHub Scout");
 }
+
+#[test]
+fn registry_includes_github_pull_request_tools() {
+    let mut registry = CapabilityRegistry::new();
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |_| true);
+
+    let cap = registry
+        .get("github")
+        .expect("github capability should be registered");
+    assert_eq!(cap.tools().len(), 3);
+}

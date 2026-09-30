@@ -1,9 +1,14 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! GitHub-backed blueprints for Everruns.
+//! GitHub capabilities for Everruns.
 //!
-//! This crate registers the `github_scout` capability through Everruns' inventory
-//! plugin system. The capability is blueprint-only: it does not add tools to a
-//! host agent, and instead contributes the `github_scout` agent blueprint.
+//! This crate registers two capabilities through Everruns' inventory plugin
+//! system:
+//!
+//! - `github` gives the host agent tools for one pull request at a time: read
+//!   it, read its size-capped diff, and keep one managed comment on it up to
+//!   date. This is what a pull request summarizer or reviewer agent uses.
+//! - `github_scout` is blueprint-only: it adds no host tools and contributes the
+//!   `github_scout` agent blueprint.
 //!
 //! `github_scout` runs as a read-only child agent with private GitHub REST API
 //! tools for code search, file reads, and issue or pull request search. Tool
@@ -14,13 +19,19 @@
 //! # Example
 //!
 //! ```
-//! use everruns_integrations_github::GitHubScoutCapability;
+//! use everruns_core::capabilities::Capability;
+//! use everruns_integrations_github::GitHubCapability;
 //!
-//! let capability = GitHubScoutCapability;
-//! # let _ = capability;
+//! let names: Vec<String> = GitHubCapability
+//!     .tools()
+//!     .iter()
+//!     .map(|tool| tool.name().to_string())
+//!     .collect();
+//! assert!(names.contains(&"upsert_github_comment".to_string()));
 //! ```
 
 mod client;
+mod pull_requests;
 mod tools;
 
 use everruns_capability::json_schema_for;
@@ -32,17 +43,74 @@ use everruns_core::capabilities::{
 use everruns_core::tools::Tool;
 use serde::{Deserialize, Serialize};
 
+use pull_requests::{
+    GetGitHubPullRequestDiffTool, GetGitHubPullRequestTool, UpsertGitHubCommentTool,
+};
 use tools::{ReadGitHubFileTool, SearchGitHubCodeTool, SearchGitHubIssuesTool};
 
 /// Capability plugins this crate contributes to a hosted catalog.
-pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    experimental_only: false,
-    feature_flag: None,
-    factory: || Box::new(GitHubScoutCapability),
-}];
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
+    IntegrationPlugin {
+        experimental_only: false,
+        feature_flag: None,
+        factory: || Box::new(GitHubCapability),
+    },
+    IntegrationPlugin {
+        experimental_only: false,
+        feature_flag: None,
+        factory: || Box::new(GitHubScoutCapability),
+    },
+];
 pub const GITHUB_API_BASE: &str = "https://api.github.com";
 pub const GITHUB_CONNECTION_PROVIDER: &str = "github";
 pub const GITHUB_TOKEN_SECRET: &str = "GITHUB_TOKEN";
+
+/// Pull request tools authenticated as the session's `github` connection,
+/// which for an agent with its own GitHub App is that App's installation.
+pub struct GitHubCapability;
+
+impl Capability for GitHubCapability {
+    fn id(&self) -> &str {
+        "github"
+    }
+
+    fn name(&self) -> &str {
+        "GitHub"
+    }
+
+    fn description(&self) -> &str {
+        "Read GitHub pull requests and their diffs, and keep one comment per pull request up to date."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn icon(&self) -> Option<&str> {
+        Some("github")
+    }
+
+    fn category(&self) -> Option<&str> {
+        Some("Integrations")
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![
+            Box::new(GetGitHubPullRequestTool),
+            Box::new(GetGitHubPullRequestDiffTool),
+            Box::new(UpsertGitHubCommentTool),
+        ]
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "GitHub",
+            "Читає pull request-и GitHub та їхні зміни й підтримує актуальним один коментар \
+             на кожному pull request-і.",
+        )]
+    }
+}
 
 pub struct GitHubScoutCapability;
 
@@ -144,6 +212,23 @@ Return a concise summary with:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn github_capability_offers_pull_request_tools() {
+        let cap = GitHubCapability;
+        assert_eq!(cap.id(), "github");
+        let names: Vec<String> = cap.tools().iter().map(|t| t.name().to_string()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "get_github_pull_request",
+                "get_github_pull_request_diff",
+                "upsert_github_comment"
+            ]
+        );
+        assert!(cap.dependencies().is_empty());
+        assert_ne!(cap.localized_description(Some("uk")), cap.description());
+    }
 
     #[test]
     fn capability_is_blueprint_only() {

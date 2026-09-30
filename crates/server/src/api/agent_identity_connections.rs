@@ -97,7 +97,10 @@ pub fn routes(state: AppState) -> Router {
             "/v1/agent-identities/{identity_id}/connections/{provider}/verify",
             post(verify_connection),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        .merge(super::github_apps::routes(
+            super::github_apps::AppState::from_connections(&state),
+        ))
 }
 
 // ============================================================================

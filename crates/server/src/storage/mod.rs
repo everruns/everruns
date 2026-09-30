@@ -17,6 +17,7 @@ pub mod compaction_checkpoint_store;
 pub mod connection_resolver;
 pub mod durable_tool_results;
 pub mod encryption;
+pub mod github_app_rows;
 pub mod harness_store;
 mod ingress;
 pub mod leased_resource_store;

@@ -317,6 +317,7 @@ export default defineConfig({
                       label: "Integrations",
                       collapsed: true,
                       items: [
+                        { label: "GitHub", slug: "capabilities/github" },
                         { label: "GitHub Scout", slug: "capabilities/github-scout" },
                         { label: "Slack", slug: "capabilities/slack" },
                       ],

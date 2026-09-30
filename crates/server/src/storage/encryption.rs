@@ -473,6 +473,22 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "credential_encrypted",
         id_column: "id",
     },
+    // Per-agent GitHub App credentials returned by the manifest flow
+    EncryptedColumn {
+        table: "github_apps",
+        column: "client_secret_encrypted",
+        id_column: "id",
+    },
+    EncryptedColumn {
+        table: "github_apps",
+        column: "private_key_encrypted",
+        id_column: "id",
+    },
+    EncryptedColumn {
+        table: "github_apps",
+        column: "webhook_secret_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]
