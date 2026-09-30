@@ -128,6 +128,10 @@
                   "null"
                 ]
               },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
               "env": {
                 "additionalProperties": {
                   "type": "string"
@@ -295,6 +299,16 @@
             "automatic",
             "always"
           ],
+          "type": "string"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
           "type": "string"
         },
         "McpProtocolMode": {
@@ -1124,6 +1138,10 @@
                   "null"
                 ]
               },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
               "env": {
                 "additionalProperties": {
                   "type": "string"
@@ -1340,6 +1358,16 @@
             "content"
           ],
           "type": "object"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
         },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
@@ -3289,6 +3317,10 @@
                   "null"
                 ]
               },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
               "env": {
                 "additionalProperties": {
                   "type": "string"
@@ -3398,6 +3430,16 @@
             "content"
           ],
           "type": "object"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
         },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
@@ -3761,6 +3803,16 @@
     "description": "Create a new MCP server with a name, URL, and optional authentication.",
     "input_schema": {
       "$defs": {
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
+        },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
           "enum": [
@@ -3819,6 +3871,17 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "elicitation_policy": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/McpElicitationPolicy",
+              "description": "Elicitation modes the server may use. Defaults to `url`; `url_and_form`\nlets it ask structured questions, `none` stops it eliciting at all."
+            }
           ]
         },
         "headers": {
@@ -5914,6 +5977,10 @@
                   "null"
                 ]
               },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
               "env": {
                 "additionalProperties": {
                   "type": "string"
@@ -6108,6 +6175,16 @@
             "content"
           ],
           "type": "object"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
         },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
@@ -9772,6 +9849,10 @@
                   "null"
                 ]
               },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
               "env": {
                 "additionalProperties": {
                   "type": "string"
@@ -9988,6 +10069,16 @@
             "content"
           ],
           "type": "object"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
         },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
@@ -13098,6 +13189,10 @@
                   "null"
                 ]
               },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
               "env": {
                 "additionalProperties": {
                   "type": "string"
@@ -13265,6 +13360,16 @@
             "automatic",
             "always"
           ],
+          "type": "string"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
           "type": "string"
         },
         "McpProtocolMode": {
@@ -13574,6 +13679,10 @@
                   "null"
                 ]
               },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
               "env": {
                 "additionalProperties": {
                   "type": "string"
@@ -13635,6 +13744,16 @@
             "type": "string"
           },
           "type": "object"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
         },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
@@ -14830,6 +14949,10 @@
                   "null"
                 ]
               },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
               "env": {
                 "additionalProperties": {
                   "type": "string"
@@ -15046,6 +15169,16 @@
             "content"
           ],
           "type": "object"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
         },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
@@ -16817,6 +16950,10 @@
                   "null"
                 ]
               },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
               "env": {
                 "additionalProperties": {
                   "type": "string"
@@ -16936,6 +17073,16 @@
             "content"
           ],
           "type": "object"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
         },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
@@ -17431,6 +17578,16 @@
     "description": "Update an MCP server. Only provided fields are changed.",
     "input_schema": {
       "$defs": {
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
+        },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
           "enum": [
@@ -17500,6 +17657,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "elicitation_policy": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/McpElicitationPolicy",
+                  "description": "Elicitation modes the server may use (`url`, `url_and_form`, `none`)."
+                }
               ]
             },
             "headers": {
@@ -19522,6 +19690,10 @@
                   "null"
                 ]
               },
+              "elicitation_policy": {
+                "$ref": "#/$defs/McpElicitationPolicy",
+                "description": "Which elicitation modes this server may use (`url` by default)."
+              },
               "env": {
                 "additionalProperties": {
                   "type": "string"
@@ -19927,6 +20099,16 @@
             "content"
           ],
           "type": "object"
+        },
+        "McpElicitationPolicy": {
+          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+          "enum": [
+            "url",
+            "url_and_form",
+            "none"
+          ],
+          "example": "url",
+          "type": "string"
         },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
