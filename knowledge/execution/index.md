@@ -16,6 +16,7 @@
 * [Capabilities Specification](capabilities.md) - Agent capabilities system.
 * [Ask User](ask-user.md) - Structured choice questions that pause through the client-side tool-results lifecycle.
 * [Soft Approval](soft-approval.md) - Spoken-consent confirmation before critical actions, as prompt guidance rather than a permission gate.
+* [Computer Use](computer-use.md) - Provider-neutral computer use: screenshots plus pointer and keyboard actions on a display.
 * [Guardrails Specification](guardrails.md) - Guardrails (capability-based output/tool-call checks).
 * [Background Execution Capability](background-execution.md) - `background_execution` capability and cross-cutting / auto-activation contract.
 * [Client-Side Tools](client-side-tools.md) - Client-side tools for API/SDK consumers.

@@ -1,5 +1,11 @@
 # Everruns Knowledge Update Log
 
+## 2026-09-30
+
+* **Computer use**: Added the provider-neutral [computer use](execution/computer-use.md)
+  contract and its first backend on Browserless, with threat-model entries
+  TM-TOOL-048 to TM-TOOL-050.
+
 ## 2026-09-28
 
 * **Inbound MCP form mode elicitation now has a design, and the blocker that

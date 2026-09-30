@@ -192,6 +192,7 @@ pub mod command;
 pub mod command_host;
 pub mod compaction_checkpoint;
 pub mod compaction_policy;
+pub mod computer_use;
 pub mod config;
 pub mod config_layer;
 pub mod context_report;

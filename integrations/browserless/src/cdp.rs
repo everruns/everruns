@@ -5,7 +5,8 @@
 //!   The browser stays alive on Browserless servers between tool calls.
 //! Decision: 60s default reconnect timeout. Covers LLM thinking time between tool calls.
 //! Decision: Browserless v2 connects at the browser root. Attach to a page target on every
-//!   WebSocket connect, and route page-scoped domains (`Page.*`, `Runtime.*`, `Input.*`)
+//!   WebSocket connect, and route page-scoped domains (`Page.*`, `Runtime.*`, `Input.*`,
+//!   `Emulation.*`)
 //!   through that attached target session.
 
 use futures_util::stream::SplitSink;
@@ -832,7 +833,7 @@ fn command_requires_page_session(method: &str) -> bool {
     method
         .split('.')
         .next()
-        .is_some_and(|domain| matches!(domain, "Page" | "Runtime" | "Input"))
+        .is_some_and(|domain| matches!(domain, "Page" | "Runtime" | "Input" | "Emulation"))
 }
 
 fn target_is_page(target: &Value) -> bool {
