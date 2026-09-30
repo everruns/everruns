@@ -242,6 +242,17 @@ The model's identity, promoted from a runtime-computed shadow type to a first-cl
 
 Profile matching heuristics (version normalization, slug mapping) run at **sync/creation time** to assign `profile_key`; reads use the stored assignment.
 
+Embedded consumers can enumerate the built-in registry for fresh-install menus
+and offline fallback instead of maintaining model lists. The registry currently
+is the curated selected set; selection does not introduce an independent preset
+or promise the entire upstream catalog. Provider-filtered enumeration preserves
+point lookup's capability masking. Identity-bearing entries keep variants and
+service kinds distinct from model families; live discovery remains authoritative
+for provider request ids and account availability. Registry order is deterministic,
+not a recommendation or flagship ranking. See the [enumeration contract and
+examples](../../crates/model-profiles/README.md#offline-enumeration) and
+[registry implementation](../../crates/model-profiles/src/profiles.rs).
+
 ## Resolution Contract
 
 ### Model-bound resolution (chat)

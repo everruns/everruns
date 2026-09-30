@@ -41,6 +41,7 @@ pub mod native_async;
 pub mod openai_compat;
 #[cfg(feature = "http")]
 pub mod openai_errors;
+pub mod openai_hosted_tools;
 #[cfg(feature = "http")]
 pub mod openai_protocol;
 #[cfg(feature = "http")]
@@ -109,7 +110,11 @@ pub use model_discovery::{
     discover_provider_models, enrich_with_profiles, match_models, normalize_and_enrich,
     rank_discovered_models, search_provider_models,
 };
-pub use model_profiles::{get_model_profile, get_model_vendor};
+pub use model_profiles::{
+    ModelProfileEntry, all_profile_entries, all_profiles, get_model_profile, get_model_vendor,
+    profile_entries_for_provider, profiles_for_provider, selected_profiles,
+    selected_profiles_for_provider,
+};
 pub use model_spec::{ModelSpec, UnknownProvider};
 #[cfg(feature = "http")]
 pub use openai_protocol::OpenAIProtocolChatDriver;

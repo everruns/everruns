@@ -121,22 +121,24 @@ test.describe("Page masthead responsive layout", () => {
     await mockAgentDetailApi(page);
   });
 
-  test("uses overflow-only actions at mobile width", async ({ page }) => {
+  // The agent page keeps a three-action header at every width (Edit, the
+  // overflow menu, New session); secondary actions live in the overflow.
+  test("keeps the agent actions contained with secondary actions in the overflow at mobile width", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/agents/${AGENT_ID}`);
 
     const title = page.getByRole("heading", { name: "Jokes Agent" });
     const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
-    const identity = masthead.locator('[data-slot="page-masthead-identity"]');
-    const icon = identity.locator('[data-slot="icon-tile"]');
-    const actions = masthead.locator('[data-slot="page-masthead-compact-actions"]');
+    const actions = masthead.locator('[data-slot="page-masthead-actions"]');
     const moreActions = page.getByRole("button", { name: "More actions" });
     await expect(title).toBeVisible();
     await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
-    await expect(actions).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "New session" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
     await expect(moreActions).toBeVisible();
-    await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeHidden();
-    await expect(page.getByRole("link", { name: "Observe this agent" })).toBeHidden();
+    await expect(page.getByRole("button", { name: "Copy", exact: true })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Open navigation" }).click();
     await expect(page.locator('[data-slot="drawer-content"]')).toBeVisible();
@@ -147,34 +149,20 @@ test.describe("Page masthead responsive layout", () => {
     await moreActions.click();
     await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Export" })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Create app" })).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Version history" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Archive agent" })).toBeVisible();
 
     await page.keyboard.press("Escape");
     await expect(moreActions).toBeFocused();
     await moreActions.press("Enter");
     await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
     await page.keyboard.press("Escape");
 
     const mastheadBox = await masthead.boundingBox();
-    const identityBox = await identity.boundingBox();
-    const iconBox = await icon.boundingBox();
     const actionsBox = await actions.boundingBox();
-    const titleBox = await title.boundingBox();
-
     expect(mastheadBox).not.toBeNull();
-    expect(identityBox).not.toBeNull();
-    expect(iconBox).not.toBeNull();
     expect(actionsBox).not.toBeNull();
-    expect(titleBox).not.toBeNull();
-    expect(Math.abs(actionsBox!.y - iconBox!.y)).toBeLessThanOrEqual(1);
-    expect(Math.max(actionsBox!.y + actionsBox!.height, iconBox!.y + iconBox!.height)).toBeLessThan(
-      titleBox!.y,
-    );
-    expect(mastheadBox!.width).toBeGreaterThanOrEqual(300);
-    expect(identityBox!.width).toBeGreaterThanOrEqual(Math.min(320, mastheadBox!.width));
     expect(actionsBox!.x + actionsBox!.width).toBeLessThanOrEqual(
       mastheadBox!.x + mastheadBox!.width,
     );
@@ -187,40 +175,27 @@ test.describe("Page masthead responsive layout", () => {
     { name: "compact desktop", width: 1024, height: 900 },
     { name: "tablet", width: 768, height: 900 },
   ]) {
-    test(`places prioritized actions above identity at ${viewport.name} width`, async ({ page }) => {
+    test(`keeps the agent actions visible and contained at ${viewport.name} width`, async ({
+      page,
+    }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto(`/agents/${AGENT_ID}`);
 
       const title = page.getByRole("heading", { name: "Jokes Agent" });
       const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
-      const icon = masthead.locator('[data-slot="icon-tile"]');
-      const actions = page
-        .getByRole("button", { name: "New session" })
-        .locator("xpath=ancestor::div[@data-slot='page-masthead-compact-actions'][1]");
-      const actionStrip = masthead.locator('[data-slot="page-masthead-compact-action-strip"]');
+      const actions = masthead.locator('[data-slot="page-masthead-actions"]');
 
       await expect(page.getByRole("button", { name: "New session" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "More actions" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Edit" })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Create app" })).toHaveCount(0);
-      await expect(page.getByRole("link", { name: "Observe this agent" })).toBeHidden();
-
-      await page.getByRole("button", { name: "More actions" }).click();
-      await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
-      await expect(page.getByRole("menuitem", { name: "Copy" })).toHaveCount(0);
 
       const mastheadBox = await masthead.boundingBox();
-      const iconBox = await icon.boundingBox();
       const actionsBox = await actions.boundingBox();
-      const stripBox = await actionStrip.boundingBox();
       expect(mastheadBox).not.toBeNull();
-      expect(iconBox).not.toBeNull();
       expect(actionsBox).not.toBeNull();
-      expect(stripBox).not.toBeNull();
-      expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(iconBox!.y);
-      expect(stripBox!.width).toBeLessThanOrEqual(mastheadBox!.width);
+      expect(actionsBox!.x + actionsBox!.width).toBeLessThanOrEqual(
+        mastheadBox!.x + mastheadBox!.width,
+      );
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         await page.evaluate(() => document.documentElement.clientWidth),
       );
@@ -242,8 +217,6 @@ test.describe("Page masthead responsive layout", () => {
     expect(actionsBox).not.toBeNull();
     expect(actionsBox!.y).toBeLessThan(titleBox!.y + titleBox!.height);
     await expect(page.getByRole("button", { name: "Open navigation" })).toBeHidden();
-    await expect(page.getByRole("button", { name: "More actions" })).toBeHidden();
-    await expect(page.getByRole("link", { name: "Observe this agent" })).toBeVisible();
     await expect(page.locator('[data-slot="page-masthead"] a > button')).toHaveCount(0);
   });
 

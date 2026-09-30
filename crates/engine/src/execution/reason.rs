@@ -72,6 +72,7 @@ mod compaction;
 mod error_policy;
 mod facts;
 mod finalized_calls;
+mod hosted_tools;
 mod observability;
 mod output_hooks;
 mod provider_managed_compaction;
@@ -1180,6 +1181,10 @@ impl ReasonAtom {
             provider_managed,
             restored_checkpoint.is_some(),
         );
+        hosted_tools::ensure_hosted_tools_supported(
+            &llm_config.driver_options,
+            model_with_provider.provider_type.as_str(),
+        )?;
 
         tracing::debug!(
             session_id = %session_id,
@@ -1343,19 +1348,8 @@ impl ReasonAtom {
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let retry_config = self.provider_retry_config.clone();
-        // OpenRouter server tools execute inside the provider and therefore do
-        // not surface as agent ToolCalls. Reissuing their request can duplicate
-        // side effects even when the stream has emitted only reasoning. The
-        // routing payload shape is owned by the OpenRouter driver crate
-        // (`everruns_openrouter::options`); the engine only sniffs the opaque
-        // `driver_options` data so the `engine -> core/provider/capability`
-        // dependency direction holds.
-        let has_provider_executed_tools = llm_config
-            .driver_options
-            .get("openrouter/routing")
-            .and_then(|raw| raw.get("server_tools"))
-            .and_then(|tools| tools.as_array())
-            .is_some_and(|tools| !tools.is_empty());
+        let has_provider_executed_tools =
+            hosted_tools::has_provider_executed_tools(&llm_config.driver_options);
         let mut stream_retry_metadata = RetryMetadata::default();
         let mut retry_started_at = None;
         // Best-effort streamed phase hint (EVE-774). Starts `None` ("not yet

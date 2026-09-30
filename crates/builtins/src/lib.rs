@@ -48,6 +48,7 @@ pub mod infinity_context;
 pub mod loop_detection;
 pub mod message_metadata;
 pub mod native_async_tools;
+pub mod openai_server_tools;
 pub mod openai_tool_search;
 #[cfg(feature = "ui-capabilities")]
 pub mod openui;
@@ -155,6 +156,9 @@ pub use loop_detection::{LOOP_DETECTION_CAPABILITY_ID, LoopDetectionCapability};
 pub use message_metadata::{
     MESSAGE_METADATA_CAPABILITY_ID, MessageMetadataCapability, MessageMetadataConfig,
     MessageMetadataField, render_annotation, strip_leading_timestamp_annotations,
+};
+pub use openai_server_tools::{
+    OPENAI_SERVER_TOOLS_CAPABILITY_ID, OpenAiServerToolsCapability, hosted_tools_from_config,
 };
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,

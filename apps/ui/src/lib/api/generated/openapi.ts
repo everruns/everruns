@@ -31363,6 +31363,13 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description Long-lived response concurrency limit reached */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       /** @description Internal server error */
       500: {
         headers: {

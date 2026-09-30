@@ -8,15 +8,15 @@ mod anthropic_profiles;
 // and cross-reference with official provider documentation. If a model is not
 // yet listed on models.dev, wait until the data is available before adding it.
 //
-// NOTE: Currently only includes profiles for selected models.
-// Additional model profiles can be added as needed by extending the match arms.
-//
+// The registry itself is the curated selection; there is no separate preset list.
 // Data source: https://github.com/sst/models.dev/tree/dev/providers
 // Cross-referenced with official Anthropic and OpenAI documentation
 
 mod anthropic_capabilities;
+mod enumeration;
 mod gpt6;
 mod model_id_match;
+pub use enumeration::*;
 
 use crate::types::{
     CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
