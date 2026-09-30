@@ -19,7 +19,7 @@ use crate::openai_hosted_tools::{
 };
 
 use super::OpenResponsesProtocolChatDriver;
-use super::wire::ResponsesInputItem;
+use super::wire::{ResponsesContent, ResponsesInputItem};
 
 impl OpenResponsesProtocolChatDriver {
     /// Wire entries for the hosted tools this call asked for.
@@ -138,7 +138,12 @@ pub(crate) fn replay_mcp_approvals(items: Vec<ResponsesInputItem>) -> Vec<Respon
             ResponsesInputItem::FunctionCallOutput {
                 call_id, output, ..
             } if approval_ids.contains(&call_id) => {
-                let approve = serde_json::from_str::<Value>(&output)
+                // The approval answer is a text result; anything else denies.
+                let text = match &output {
+                    ResponsesContent::Text(text) => text.as_str(),
+                    ResponsesContent::Parts(_) => "",
+                };
+                let approve = serde_json::from_str::<Value>(text)
                     .ok()
                     .and_then(|result| result.get("approve").and_then(Value::as_bool))
                     .unwrap_or(false);
@@ -303,7 +308,7 @@ mod tests {
         let output = |id: &str, output: &str| ResponsesInputItem::FunctionCallOutput {
             r#type: "function_call_output".into(),
             call_id: id.into(),
-            output: output.into(),
+            output: output.to_string().into(),
         };
         let items = replay_mcp_approvals(vec![
             call("mcpr_1"),
